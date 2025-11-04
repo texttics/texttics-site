@@ -8,7 +8,7 @@
   <style>
     body { 
       font: 16px/1.4 system-ui, sans-serif; 
-      max-width: 1600px; 
+      max-width: 1200px; 
       margin: 2rem auto; 
       padding: 0 1rem; 
     }
@@ -33,8 +33,8 @@
     
     /* * NEW: CSS for the second row of counters * */
     .sequence-stats {
+      /* This re-uses the .stats grid logic but for 2 items */
       display: grid;
-      /* We have 2 new counters, let them split the space */
       grid-template-columns: repeat(2, 1fr);
       gap: .8rem;
       margin-top: 1rem;
@@ -75,7 +75,7 @@
   
   <div class="stats" id="stats"></div>
   
-  <div class="stats sequence-stats" id="sequence-stats"></div>
+  <div class="sequence-stats" id="sequence-stats"></div>
 
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
@@ -89,18 +89,19 @@ import re # * NEW: Import Regular Expressions *
 PUNCTUATION_SET = set(string.punctuation)
 CONTROL_CHARS = set(string.whitespace) - {' '}
 
-# --- Setup for Sequence Counters ---
-# 1. Alphanumeric sequences: (letters or numbers)
+# --- * NEW: Setup for Sequence Counters * ---
+# 1. Alphanumeric Sequences: (letters or numbers)
+# This finds runs of letters/numbers, delimited by anything else.
+# Matches: 'abra', 'cadabra' (from 'abra-cadabra')
+# Matches: 'fire', 'roasted', 'tomatoes' (from 'fire-roasted tomatoes')
 ALPHANUM_RE = re.compile(r'[A-Za-z0-9]+')
 
-# 2. Symbolic sequences:
-# We define these as any non-whitespace, non-alphanumeric character.
-# This includes punctuation (like -) and symbols (like $).
-# Your examples ('$$$-$$$'=2) show that '-' acts as a delimiter.
-# So we will find runs of symbols, and runs of punctuation.
-# Let's define "Symbolic" as any run of non-alphanumeric, non-whitespace chars.
-# This will find '$$$' and '-' and '###' as separate sequences.
-SYMBOLIC_RE = re.compile(r'[^A-Za-z0-9\s]+')
+# 2. "Other" Sequences:
+# This finds runs of any character that is NOT a letter, number,
+# whitespace, or a hyphen. This perfectly matches your examples.
+# Matches: '$$$', '$$$' (from '$$$-$$$')
+# Matches: '###' (from '###')
+OTHER_SEQ_RE = re.compile(r'[^A-Za-z0-9\s-]+')
 
 
 def compute_stats(t: str):
@@ -141,23 +142,14 @@ def compute_stats(t: str):
         "Symbols": symbols,
     }
 
-# * NEW: Function to count sequences *
+# * NEW: Function to count sequences based on your examples *
 def compute_sequence_stats(t: str):
     alphanum_seq = ALPHANUM_RE.findall(t)
-    
-    # Let's adjust the symbolic definition based on your examples:
-    # '$$$-$$$'=2 and '###'=1.
-    # This implies we are looking for runs of symbols *not* in PUNCTUATION_SET
-    # (since '-' is in that set and acts as a delimiter).
-    
-    # Build a regex for any char NOT in: (alphanum, whitespace, punctuation)
-    escaped_punct = re.escape(string.punctuation)
-    symbol_regex_str = r'[^A-Za-z0-9\s' + escaped_punct + r']+'
-    symbol_seq = re.findall(symbol_regex_str, t)
+    other_seq = OTHER_SEQ_RE.findall(t)
 
     return {
         "Alphanumeric Sequences": len(alphanum_seq),
-        "Symbolic Sequences": len(symbol_seq),
+        "Symbol/Punctuation Sequences": len(other_seq),
     }
 
 
@@ -176,7 +168,7 @@ def format_text(t: str):
     
     labels = [
         "0-10%", "10-20%", "20-30%", "30-40%", "40-50%",
-        "50-60%", "60-70%", "70-80%", "80-90%", "100%"
+        "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"
     ]
     
     html_output = ""
