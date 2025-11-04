@@ -4,43 +4,146 @@
   <meta charset="UTF-8" />
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
   <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+
+  <py-env>
+  numpy
+  </py-env>
+
   <style>
     body { font: 16px/1.4 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    textarea { width: 100%; height: 220px; }
+    textarea { width: 100%; height: 220px; box-sizing: border-box; } /* NEW: Added box-sizing */
     .stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: .8rem; margin-top: 1rem; }
     .card { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 10px; }
+
+    /* NEW: Styles for the formatted output area */
+    h2 { margin-top: 2rem; }
+    .formatted-text {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 1rem;
+      min-height: 150px;
+      line-height: 1.6;
+      background: #fdfdfd;
+    }
+
+    /* NEW: Styles for each quantile. You can change these colors! */
+    .q1 { background-color: #fbebe; } /* Shortest 25% */
+    .q2 { background-color: #fbf5eb; } /* 25%-50% */
+    .q3 { background-color: #eefbeb; } /* 50%-75% */
+    .q4 { background-color: #ebf5fb; } /* Longest 25% */
   </style>
 </head>
 <body>
   <h1>Word Counter (client-side Python)</h1>
-  <textarea id="text" py-input="update" placeholder="Paste or type here…"></textarea>
+  
+  <textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
+  
   <div class="stats" id="stats"></div>
+
+  <h2>Formatted Output (by sentence length)</h2>
+  <div id="formatted-output" class="formatted-text"></div>
 
   <script type="py">
 from pyscript import document
 import re
+import numpy as np  # NEW: Import numpy
 
 WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+(?:[-'][A-Za-zÀ-ÖØ-öø-ÿ0-9]+)*")
-SENT_RE = re.compile(r"[.!?]+(?:\s|$)")
+
+# NEW: Regex to split text into sentences *while keeping* the delimiters
+# This splits at [.!?] followed by a space or end-of-string.
+SENT_SPLIT_RE = re.compile(r'([.!?]+(?:\s|$))')
 
 def compute_stats(t: str):
     words = WORD_RE.findall(t)
+    # NEW: Improved sentence counter that works even without trailing punctuation
+    sentences_for_count = SENT_SPLIT_RE.split(t)
+    num_sentences = sum(1 for s in sentences_for_count if s.strip() and not SENT_SPLIT_RE.match(s))
+    if not t.strip():
+        num_sentences = 0
+
     return {
         "Words": len(words),
         "Characters": len(t),
         "Characters (no spaces)": len("".join(ch for ch in t if not ch.isspace())),
-        "Sentences": 0 if not t.strip() else len(SENT_RE.findall(t)),
+        "Sentences": num_sentences,
         "Paragraphs": sum(1 for p in t.splitlines() if p.strip()),
         "Reading time": f"{(len(words)/200)*60:.0f} s" if words else "0 s",
     }
 
-def update(event=None):
-    t = document.getElementById("text").value
-    html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                   for k,v in compute_stats(t).items())
-    document.getElementById("stats").innerHTML = html
+# NEW: Function to get word count for a single sentence
+def get_word_count(sentence_str):
+    return len(WORD_RE.findall(sentence_str))
 
-update()  # initial render
+# NEW: Function to create the formatted HTML
+def format_text(t: str):
+    if not t.strip():
+        return "" # Return empty if no text
+
+    # Split text into sentences and delimiters: ['sent 1', '!', ' sent 2', '.', '...']
+    split_text = SENT_SPLIT_RE.split(t)
+    
+    # Re-combine sentences with their delimiters
+    sentences = []
+    for i in range(0, len(split_text) - 1, 2):
+        sentence = split_text[i] + (split_text[i+1] or '')
+        sentences.append(sentence)
+    
+    # Add any trailing text that didn't end with punctuation
+    if len(split_text) % 2 == 1:
+        sentences.append(split_text[-1])
+
+    # Get a list of word lengths for all non-empty sentences
+    lengths = [get_word_count(s) for s in sentences if s.strip()]
+    if not lengths:
+        return t # Return plain text if no sentences were found
+
+    # Calculate percentile thresholds using numpy
+    # We get 25th, 50th (median), and 75th percentiles
+    p25, p50, p75 = np.percentile(lengths, [25, 50, 75])
+
+    # Build the HTML output
+    html_output = ""
+    for s in sentences:
+        if not s.strip():
+            html_output += s  # Add whitespace back
+            continue
+            
+        length = get_word_count(s)
+        css_class = ""
+        
+        # Assign a CSS class based on which quantile the length falls into
+        if length <= p25:
+            css_class = "q1"
+        elif length <= p50:
+            css_class = "q2"
+        elif length <= p75:
+            css_class = "q3"
+        else:
+            css_class = "q4"
+            
+        # Wrap the sentence in a <span> with its class
+        html_output += f'<span class="{css_class}">{s}</span>'
+
+    return html_output
+
+
+# Renamed your 'update' function to 'update_all'
+def update_all(event=None):
+    t = document.getElementById("text").value
+    
+    # 1. Update the stats cards
+    stats = compute_stats(t)
+    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
+                         for k,v in stats.items())
+    document.getElementById("stats").innerHTML = stats_html
+    
+    # 2. NEW: Update the formatted text output
+    formatted_html = format_text(t)
+    document.getElementById("formatted-output").innerHTML = formatted_html
+
+# Run once on load
+update_all()
   </script>
 </body>
 </html>
