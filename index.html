@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
+  <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+  <style>
+    body { font: 16px/1.4 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    textarea { width: 100%; height: 220px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: .8rem; margin-top: 1rem; }
+    .card { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Word Counter (client-side Python)</h1>
+  <textarea id="text" py-input="update" placeholder="Paste or type here…"></textarea>
+  <div class="stats" id="stats"></div>
+
+  <script type="py">
+from pyscript import document
+import re
+
+WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+(?:[-'][A-Za-zÀ-ÖØ-öø-ÿ0-9]+)*")
+SENT_RE = re.compile(r"[.!?]+(?:\s|$)")
+
+def compute_stats(t: str):
+    words = WORD_RE.findall(t)
+    return {
+        "Words": len(words),
+        "Characters": len(t),
+        "Characters (no spaces)": len("".join(ch for ch in t if not ch.isspace())),
+        "Sentences": 0 if not t.strip() else len(SENT_RE.findall(t)),
+        "Paragraphs": sum(1 for p in t.splitlines() if p.strip()),
+        "Reading time": f"{(len(words)/200)*60:.0f} s" if words else "0 s",
+    }
+
+def update(event=None):
+    t = document.getElementById("text").value
+    html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
+                   for k,v in compute_stats(t).items())
+    document.getElementById("stats").innerHTML = html
+
+update()  # initial render
+  </script>
+</body>
+</html>
