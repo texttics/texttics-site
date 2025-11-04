@@ -276,40 +276,43 @@ update_all()
   </script>
 
 <script>
-  // Run after DOM is parsed (and after module/py scripts too)
-  document.addEventListener('DOMContentLoaded', function () {
+  // Attach AFTER the banner exists in the DOM
+  function bindCookieBanner(){
     const banner = document.getElementById('cookie-banner');
     const btn = document.getElementById('accept-cookies');
+    if (!banner || !btn) return;
 
     // Hide if already accepted
     if (localStorage.getItem('cookie_consent') === 'true') {
-      banner?.classList.add('hidden');
+      banner.classList.add('hidden');
       return;
     }
 
-    // Bind click without inline attributes (best practice)
-    btn?.addEventListener('click', function () {
-      console.log('[cookie] Accept clicked'); // debug aid
+    btn.addEventListener('click', () => {
+      console.log('[cookie] Accept clicked');   // debug line – should appear in Console
 
-      // Update Consent Mode v2
       if (window.gtag) {
-        gtag('consent', 'update', {
-          ad_storage: 'granted',
-          analytics_storage: 'granted',
-          ad_user_data: 'granted',
-          ad_personalization: 'granted'
+        gtag('consent','update',{
+          ad_storage:'granted',
+          analytics_storage:'granted',
+          ad_user_data:'granted',
+          ad_personalization:'granted'
         });
-
-        // Optional: send a page_view after consent is granted
-        gtag('event', 'page_view');
+        // Optional: send a page_view after consent
+        gtag('event','page_view');
       }
 
-      // Persist & hide
-      localStorage.setItem('cookie_consent', 'true');
-      banner?.classList.add('hidden');
+      localStorage.setItem('cookie_consent','true');
+      banner.classList.add('hidden');
     });
-  });
+  }
+
+  // Robustly attach (works even with module/async scripts on the page)
+  document.addEventListener('DOMContentLoaded', bindCookieBanner);
+  // Fallback in case something delays DOMContentLoaded
+  setTimeout(bindCookieBanner, 2000);
 </script>
+
 
 
 
