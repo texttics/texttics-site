@@ -9,7 +9,6 @@
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
 
-    // Default-deny consent. This is correct.
     gtag('consent', 'default', {
       'ad_storage': 'denied',
       'analytics_storage': 'denied',
@@ -17,7 +16,6 @@
       'ad_personalization': 'denied'
     });
 
-    // Config with your real ID
     gtag('config', 'G-HKGZL0K924');
   </script>
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
@@ -136,7 +134,7 @@
 
   <div id="cookie-banner">
     <p>This site uses cookies to analyze traffic and improve your experience. By clicking "Accept," you consent to our use of cookies.</p>
-    <button id="accept-cookies">Accept</button>
+    <button id="accept-cookies" onclick="grantCookieConsent()">Accept</button>
   </div>
 
 
@@ -279,30 +277,32 @@ update_all()
   </script>
 
   <script>
+    // This script runs after the banner HTML is loaded.
     const banner = document.getElementById('cookie-banner');
-    const acceptButton = document.getElementById('accept-cookies');
-
-    // Check if user has already made a choice
+    
+    // 1. Check if consent was already given on a previous visit
     if (localStorage.getItem('cookie_consent')) {
       banner.classList.add('hidden');
     }
 
-    acceptButton.addEventListener('click', () => {
-      // User clicked "Accept".
-      // 1. Grant consent to Google Analytics
-      gtag('consent', 'update', {
-        'ad_storage': 'granted',
-        'analytics_storage': 'granted',
-        'ad_user_data': 'granted',
-        'ad_personalization': 'granted'
-      });
+    // 2. Define the global function that the button's "onclick" will call
+    function grantCookieConsent() {
+      // 2a. Grant consent to Google (this includes v2 parameters)
+      if (window.gtag) {
+        window.gtag('consent', 'update', {
+          'ad_storage': 'granted',
+          'analytics_storage': 'granted',
+          'ad_user_data': 'granted',
+          'ad_personalization': 'granted'
+        });
+      }
       
-      // 2. Hide the banner
+      // 2b. Hide the banner
       banner.classList.add('hidden');
       
-      // 3. Save this choice so the banner doesn't show again
+      // 2c. Save the choice so the banner doesn't show again
       localStorage.setItem('cookie_consent', 'true');
-    });
+    }
   </script>
 
 </body>
