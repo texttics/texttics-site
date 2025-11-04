@@ -16,10 +16,9 @@
     .card { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 10px; }
 
     /* Styles for the formatted output area */
-/* Styles for the formatted output area */
     h2 { margin-top: 2rem; }
 
-    /* NEW: This is now the main grid container */
+    /* This is now the main grid container */
     #formatted-output {
       display: grid;
       /* 2 columns: label (auto-width) and text (takes rest of space) */
@@ -27,10 +26,10 @@
       /* Add space between the label and the text box */
       column-gap: 1.5rem;
       /* Add space between each percentile row */
-      row-gap: 0.5rem; /* Reduced this gap */
+      row-gap: 0.5rem;
     }
 
-    /* NEW: Style for the label (left column) */
+    /* Style for the label (left column) */
     .percentile-label {
       font-family: monospace;
       font-size: 0.9rem;
@@ -39,7 +38,7 @@
       padding-top: 1rem; 
     }
     
-    /* NEW: Style for the text block (right column) */
+    /* Style for the text block (right column) */
     .percentile-text-block {
       border: 1px solid #ccc;
       border-radius: 10px;
@@ -89,7 +88,6 @@ def compute_stats(t: str):
 def get_word_count(sentence_str):
     return len(WORD_RE.findall(sentence_str))
 
-# *** NEW: Completely rewritten to dissect text by word count deciles ***
 def format_text(t: str):
     if not t.strip():
         return ""
@@ -105,7 +103,6 @@ def format_text(t: str):
             sentences.append({'text': sentence_text, 'count': count})
             total_words += count
             
-    # Add any trailing text
     if len(split_text) % 2 == 1 and split_text[-1].strip():
         count = get_word_count(split_text[-1])
         sentences.append({'text': split_text[-1], 'count': count})
@@ -115,7 +112,6 @@ def format_text(t: str):
         return t
 
     # --- 2. Define decile cutoffs based on total word count ---
-    # We create 9 cutoffs: 10%, 20%, ..., 90%
     decile_cutoffs = [(total_words * (i / 10.0)) for i in range(1, 10)]
     
     labels = [
@@ -126,39 +122,24 @@ def format_text(t: str):
     # --- 3. Build HTML by iterating through sentences ---
     html_output = ""
     running_word_count = 0
-    decile_index = 0 # This is the index for labels AND cutoffs
+    decile_index = 0
 
-    # Start the very first grid row
-    # Add the label (left column)
     html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-    # Start the text block (right column)
     html_output += f'<div class="percentile-text-block">'
     
     for s in sentences:
         sentence_text = s['text']
         sentence_count = s['count']
 
-        # Check if adding this sentence *crosses* the *next* boundary
-        # We check < 9 because there are 9 cutoffs (decile_cutoffs[0] to decile_cutoffs[8])
         if decile_index < 9 and (running_word_count + sentence_count) > decile_cutoffs[decile_index]:
-            # It crosses the boundary. End the current text block.
             html_output += '</div>'
-            
-            # Move to the next decile
             decile_index += 1
-            
-            # Start the new grid row
-            # Add the new label (left column)
             html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-            # Start the new text block (right column)
-            # *** THIS IS THE LINE I FIXED (was _output) ***
             html_output += f'<div class="percentile-text-block">'
             
-        # Add the sentence text to the current text block
         html_output += sentence_text + ' '
         running_word_count += sentence_count
 
-    # Close the final text block
     html_output += '</div>'
     
     return html_output
@@ -167,17 +148,14 @@ def format_text(t: str):
 def update_all(event=None):
     t = document.getElementById("text").value
     
-    # 1. Update the stats cards
     stats = compute_stats(t)
     stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
                          for k,v in stats.items())
     document.getElementById("stats").innerHTML = stats_html
     
-    # 2. Update the formatted text output
     formatted_html = format_text(t)
     document.getElementById("formatted-output").innerHTML = formatted_html
 
-# Run once on load
 update_all()
   </script>
 </body>
