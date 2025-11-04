@@ -292,34 +292,40 @@ def update_all(event=None):
 update_all()
   </script>
 
-  <script>
-    // This script runs after the banner HTML is loaded.
+ <script>
+  (function () {
     const banner = document.getElementById('cookie-banner');
-    
-    // 1. Check if consent was already given on a previous visit
-    if (localStorage.getItem('cookie_consent')) {
+    const btn = document.getElementById('accept-cookies');
+
+    // Hide if already accepted
+    if (localStorage.getItem('cookie_consent') === 'true') {
       banner.classList.add('hidden');
+      return;
     }
 
-    // 2. Define the global function that the button's "onclick" will call
-    function grantCookieConsent() {
-      // 2a. Grant consent to Google (this includes v2 parameters)
+    // Make the handler global + add a listener (robust)
+    window.grantCookieConsent = function () {
       if (window.gtag) {
-        window.gtag('consent', 'update', {
+        gtag('consent', 'update', {
           'ad_storage': 'granted',
           'analytics_storage': 'granted',
           'ad_user_data': 'granted',
           'ad_personalization': 'granted'
         });
+
+        // Optional: send a page_view after consent (some teams do this)
+        gtag('event', 'page_view');
       }
-      
-      // 2b. Hide the banner
+
       banner.classList.add('hidden');
-      
-      // 2c. Save the choice so the banner doesn't show again
       localStorage.setItem('cookie_consent', 'true');
-    }
-  </script>
+    };
+
+    // Also bind via JS in case inline onclick is blocked
+    if (btn) btn.addEventListener('click', window.grantCookieConsent);
+  })();
+</script>
+
 
 </body>
 </html>
