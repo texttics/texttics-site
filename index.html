@@ -8,17 +8,22 @@
   <style>
     body { 
       font: 16px/1.4 system-ui, sans-serif; 
-      max-width: 1500px; 
+      max-width: 1200px; 
       margin: 2rem auto; 
       padding: 0 1rem; 
     }
     textarea { width: 100%; height: 220px; box-sizing: border-box; }
     
+    /* This rule applies to BOTH counter rows */
     .stats { 
       display: grid;
-      grid-template-columns: repeat(9, 1fr);
       gap: .8rem; 
       margin-top: 1rem; 
+    }
+    
+    /* * FIXED: This now only targets the top row * */
+    #stats {
+      grid-template-columns: repeat(9, 1fr);
     }
     
     .card { 
@@ -27,12 +32,17 @@
       border-radius: 10px; 
     }
     
-    .card:first-child {
+    /* * FIXED: This rule is now more specific *
+     * It only makes the first card in the #stats row span 2 columns
+     */
+    #stats .card:first-child {
       grid-column: span 2;
     }
     
-    /* * NEW: CSS for the sequence counters (7 columns) * */
-    .sequence-stats {
+    /* * FIXED: This now correctly targets the second row *
+     * and gives it 7 columns for its 7 cards.
+     */
+    .stats.sequence-stats {
       grid-template-columns: repeat(7, 1fr);
     }
 
@@ -79,7 +89,6 @@
   <script type="py">
 from pyscript import document
 import string
-import re # No longer needed, but leaving it won't hurt
 
 # --- Setup for Character Counters ---
 PUNCTUATION_SET = set(string.punctuation)
@@ -123,31 +132,31 @@ def compute_stats(t: str):
         "Symbols": symbols,
     }
 
-# * NEW: Helper function to classify a character *
+# Helper function to classify a character
 def get_char_type(char):
     if char == ' ':
-        return 'Space'
+        return 'Space' # Simple key
     if char.isalpha():
         return 'Letters'
     if char.isdigit():
         return 'Numbers'
     if char in CONTROL_CHARS:
-        return 'Control'
+        return 'Control' # Simple key
     if char in PUNCTUATION_SET:
         return 'Punctuation'
     if ord(char) >= 0x1F300:
         return 'Emoji'
-    # If it's none of the above, it's a symbol
     return 'Symbols'
 
-# * NEW: Function to count sequences using a state machine *
+# Function to count sequences using a state machine
 def compute_sequence_stats(t: str):
+    # * FIXED: Keys are now simple strings *
     counters = {
         "Letters": 0,
         "Numbers": 0,
-        "Space (' ')": 0,
+        "Space": 0,
         "Punctuation": 0,
-        "Control Chars": 0, # Renamed from 'Control' for display
+        "Control": 0,
         "Emoji": 0,
         "Symbols": 0,
     }
@@ -232,15 +241,16 @@ def update_all(event=None):
                          for k,v in stats.items())
     document.getElementById("stats").innerHTML = stats_html
     
-    # * NEW: 2. Update the sequence stats *
+    # 2. Update the sequence stats
     seq_stats = compute_sequence_stats(t)
-    # Rename 'Control' to 'Control Chars' for display
+    
+    # * FIXED: Map simple keys back to display names *
     seq_stats_renamed = {
         "Letters": seq_stats["Letters"],
         "Numbers": seq_stats["Numbers"],
-        "Space (' ')": seq_stats["Space (' ')"],
+        "Space (' ')": seq_stats["Space"], # Map 'Space' to 'Space (' ')'
         "Punctuation": seq_stats["Punctuation"],
-        "Control Chars": seq_stats["Control Chars"],
+        "Control Chars": seq_stats["Control"], # Map 'Control' to 'Control Chars'
         "Emoji": seq_stats["Emoji"],
         "Symbols": seq_stats["Symbols"],
     }
