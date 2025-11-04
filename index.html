@@ -9,9 +9,29 @@
     body { font: 16px/1.4 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
     textarea { width: 100%; height: 220px; box-sizing: border-box; }
     
-    /* NEW: Changed minmax to 110px to fit 8 cards */
-    .stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(110px,1fr)); gap: .8rem; margin-top: 1rem; }
-    .card { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 10px; }
+    /* * NEW: Replaced the .stats rule.
+     * We define a 9-column grid. All 8 cards will fit.
+     */
+    .stats { 
+      display: grid;
+      /* 9 fractional units for 8 cards (7x 1fr + 1x 2fr) */
+      grid-template-columns: repeat(9, 1fr);
+      gap: .8rem; 
+      margin-top: 1rem; 
+    }
+    
+    .card { 
+      padding: .8rem 1rem; 
+      border: 1px solid #ddd; 
+      border-radius: 10px; 
+    }
+    
+    /* * NEW: This pseudo-selector targets the first card ("Characters (any)")
+     * and makes it span 2 columns instead of 1.
+     */
+    .card:first-child {
+      grid-column: span 2;
+    }
 
     /* Styles for the formatted output area */
     h2 { margin-top: 2rem; }
@@ -54,12 +74,15 @@
 
   <script type="py">
 from pyscript import document
-import string
+import string # We need this for the fix
 
 # Create a set of all punctuation characters for fast checking
 PUNCTUATION_SET = set(string.punctuation)
 
-# *** NEW: compute_stats function rewritten for 8 granular counters ***
+# NEW: Create a set of "control" characters (like \n, \t)
+# We take all whitespace characters and remove the plain space.
+CONTROL_CHARS = set(string.whitespace) - {' '}
+
 def compute_stats(t: str):
     # Initialize all our new counters
     total = len(t)
@@ -71,8 +94,6 @@ def compute_stats(t: str):
     emoji = 0
     symbols = 0    # $, +, €, © etc.
 
-    # Loop through the entire text one character at a time
-    # The order of these checks is important
     for char in t:
         if char == ' ':
             whitespace += 1
@@ -80,15 +101,14 @@ def compute_stats(t: str):
             letters += 1
         elif char.isdigit():
             numbers += 1
-        elif char.iscntrl(): # This catches \n, \t, \b, etc.
+        # FIXED: Replaced char.iscntrl() with a check against our new set
+        elif char in CONTROL_CHARS:
             control += 1
         elif char in PUNCTUATION_SET:
             punctuation += 1
         # This is a simple proxy for most emojis.
-        # Unicode is complex, but this catches common ranges.
         elif ord(char) >= 0x1F300: 
             emoji += 1
-        # Anything left that isn't one of the above is a symbol
     
     # "Symbols" is what's left over
     symbols = total - (whitespace + letters + numbers + control + punctuation + emoji)
@@ -106,23 +126,16 @@ def compute_stats(t: str):
     }
 
 
-# This function remains unchanged.
-# Its job is to dissect the text based on NON-WHITESPACE characters,
-# which is still the correct and precise logic.
 def format_text(t: str):
     if not t.strip():
         return ""
 
-    # --- 1. Get total non-space character count ---
-    # We build a list of only the non-space characters
-    # 'isspace()' correctly handles ' ', '\n', '\t', etc.
     clean_text = [ch for ch in t if not ch.isspace()]
     total_non_space_chars = len(clean_text)
 
     if total_non_space_chars == 0:
         return ""
 
-    # --- 2. Define decile cutoffs based on this count ---
     decile_cutoffs = [(total_non_space_chars * (i / 10.0)) for i in range(1, 10)]
     
     labels = [
@@ -130,7 +143,6 @@ def format_text(t: str):
         "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"
     ]
     
-    # --- 3. Build HTML by iterating through the *original* text ---
     html_output = ""
     running_non_space_count = 0
     decile_index = 0
@@ -142,7 +154,6 @@ def format_text(t: str):
     for char in t:
         current_text_chunk.append(char)
         
-        # Only count if it's not whitespace
         if not char.isspace():
             running_non_space_count += 1
             
@@ -163,13 +174,11 @@ def format_text(t: str):
 def update_all(event=None):
     t = document.getElementById("text").value
     
-    # 1. Update the stats cards
     stats = compute_stats(t)
     stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
                          for k,v in stats.items())
     document.getElementById("stats").innerHTML = stats_html
     
-    # 2. Update the formatted text output
     formatted_html = format_text(t)
     document.getElementById("formatted-output").innerHTML = formatted_html
 
