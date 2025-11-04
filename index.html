@@ -5,10 +5,6 @@
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
   <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
 
-  <py-config type="toml">
-    packages = ["numpy"]
-  </py-config>
-
   <style>
     body { font: 16px/1.4 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
     textarea { width: 100%; height: 220px; box-sizing: border-box; }
@@ -18,36 +14,30 @@
     /* Styles for the formatted output area */
     h2 { margin-top: 2rem; }
 
-    /* This is now the main grid container */
     #formatted-output {
       display: grid;
-      /* 2 columns: label (auto-width) and text (takes rest of space) */
       grid-template-columns: auto 1fr;
-      /* Add space between the label and the text box */
       column-gap: 1.5rem;
-      /* Add space between each percentile row */
       row-gap: 0.5rem;
+      /* NEW: Add word-break to handle breaks mid-word */
+      word-break: break-all;
     }
 
-    /* Style for the label (left column) */
     .percentile-label {
       font-family: monospace;
       font-size: 0.9rem;
       color: #333;
-      /* Aligns the label text to the top of its row */
       padding-top: 1rem; 
     }
     
-    /* Style for the text block (right column) */
     .percentile-text-block {
       border: 1px solid #ccc;
       border-radius: 10px;
       padding: 1rem;
       line-height: 1.6;
       background: #fdfdfd;
-      /* This adds the underline you wanted, visually separating it */
       border-bottom: 2px solid #aaa; 
-      margin-bottom: 1rem; /* Adds space after the underline */
+      margin-bottom: 1rem;
     }
   </style>
 </head>
@@ -58,88 +48,91 @@
   
   <div class="stats" id="stats"></div>
 
-  <h2>Text Dissected by Word Count Decile</h2>
+  <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
 
   <script type="py">
 from pyscript import document
 import re
-import numpy as np
 
+# We still need WORD_RE for the "Words" count
 WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+(?:[-'][A-Za-zÀ-ÖØ-öø-ÿ0-9]+)*")
-SENT_SPLIT_RE = re.compile(r'([.!?]+(?:\s|$))')
+# SENT_SPLIT_RE is no longer needed
 
 def compute_stats(t: str):
     words = WORD_RE.findall(t)
-    sentences_for_count = SENT_SPLIT_RE.split(t)
-    num_sentences = sum(1 for s in sentences_for_count if s.strip() and not SENT_SPLIT_RE.match(s))
-    if not t.strip():
-        num_sentences = 0
-
+    
+    # NEW: Removed unreliable stats
     return {
         "Words": len(words),
         "Characters": len(t),
         "Characters (no spaces)": len("".join(ch for ch in t if not ch.isspace())),
-        "Sentences": num_sentences,
-        "Paragraphs": sum(1 for p in t.splitlines() if p.strip()),
-        "Reading time": f"{(len(words)/200)*60:.0f} s" if words else "0 s",
     }
 
-def get_word_count(sentence_str):
-    return len(WORD_RE.findall(sentence_str))
+# get_word_count() is no longer needed
 
+# *** NEW: Completely rewritten to dissect text by non-space character count ***
 def format_text(t: str):
     if not t.strip():
         return ""
 
-    # --- 1. Get all sentences and their word counts ---
-    split_text = SENT_SPLIT_RE.split(t)
-    sentences = []
-    total_words = 0
-    for i in range(0, len(split_text) - 1, 2):
-        sentence_text = split_text[i] + (split_text[i+1] or '')
-        if sentence_text.strip():
-            count = get_word_count(sentence_text)
-            sentences.append({'text': sentence_text, 'count': count})
-            total_words += count
-            
-    if len(split_text) % 2 == 1 and split_text[-1].strip():
-        count = get_word_count(split_text[-1])
-        sentences.append({'text': split_text[-1], 'count': count})
-        total_words += count
+    # --- 1. Get total non-space character count ---
+    # We build a list of only the non-space characters
+    clean_text = [ch for ch in t if not ch.isspace()]
+    total_non_space_chars = len(clean_text)
 
-    if not sentences:
-        return t
+    if total_non_space_chars == 0:
+        return ""
 
-    # --- 2. Define decile cutoffs based on total word count ---
-    decile_cutoffs = [(total_words * (i / 10.0)) for i in range(1, 10)]
+    # --- 2. Define decile cutoffs based on this count ---
+    # We create 9 cutoffs: 10%, 20%, ..., 90%
+    decile_cutoffs = [(total_non_space_chars * (i / 10.0)) for i in range(1, 10)]
     
     labels = [
         "0-10%", "10-20%", "20-30%", "30-40%", "40-50%",
         "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"
     ]
     
-    # --- 3. Build HTML by iterating through sentences ---
+    # --- 3. Build HTML by iterating through the *original* text ---
     html_output = ""
-    running_word_count = 0
+    running_non_space_count = 0
     decile_index = 0
+    current_text_chunk = [] # Use a list to build the string chunk
 
+    # Start the very first grid row
     html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
     html_output += f'<div class="percentile-text-block">'
     
-    for s in sentences:
-        sentence_text = s['text']
-        sentence_count = s['count']
-
-        if decile_index < 9 and (running_word_count + sentence_count) > decile_cutoffs[decile_index]:
-            html_output += '</div>'
-            decile_index += 1
-            html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-            html_output += f'<div class="percentile-text-block">'
+    for char in t:
+        # Add the current character (space or not) to our chunk
+        current_text_chunk.append(char)
+        
+        # Only count if it's not whitespace
+        if not char.isspace():
+            running_non_space_count += 1
             
-        html_output += sentence_text + ' '
-        running_word_count += sentence_count
+            # Check if this character just crossed the boundary
+            if decile_index < 9 and running_non_space_count > decile_cutoffs[decile_index]:
+                # Yes. Dump the current chunk into the HTML
+                html_output += "".join(current_text_chunk)
+                
+                # End the current text block
+                html_output += '</div>'
+                
+                # Move to the next decile
+                decile_index += 1
+                
+                # Start the new grid row
+                html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
+                html_output += f'<div class="percentile-text-block">'
+                
+                # Reset the chunk
+                current_text_chunk = []
 
+    # After the loop, add any remaining text to the last block
+    html_output += "".join(current_text_chunk)
+    
+    # Close the final text block
     html_output += '</div>'
     
     return html_output
@@ -148,14 +141,17 @@ def format_text(t: str):
 def update_all(event=None):
     t = document.getElementById("text").value
     
+    # 1. Update the stats cards
     stats = compute_stats(t)
     stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
                          for k,v in stats.items())
     document.getElementById("stats").innerHTML = stats_html
     
+    # 2. Update the formatted text output
     formatted_html = format_text(t)
     document.getElementById("formatted-output").innerHTML = formatted_html
 
+# Run once on load
 update_all()
   </script>
 </body>
