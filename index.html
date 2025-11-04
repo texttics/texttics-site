@@ -2,24 +2,40 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-HKGZL0K924"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
 
-    gtag('consent', 'default', {
-      'ad_storage': 'denied',
-      'analytics_storage': 'denied',
-      'ad_user_data': 'denied',
-      'ad_personalization': 'denied'
-    });
+<script>
+  // Define dataLayer + gtag *first*
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
 
-    gtag('config', 'G-HKGZL0K924');
-  </script>
-  <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
-  <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+  // 1) Set Consent Mode *defaults* BEFORE loading gtag.js
+  // (v2 requires ad_user_data + ad_personalization too)
+  gtag('consent', 'default', {
+    'ad_storage': 'denied',
+    'analytics_storage': 'denied',
+    'ad_user_data': 'denied',
+    'ad_personalization': 'denied',
+    // optional: hold pageview briefly so a CMP/banner can update
+    'wait_for_update': 500
+  });
+
+  // (optional hardening)
+  gtag('set', 'url_passthrough', true);
+  gtag('set', 'ads_data_redaction', true);
+</script>
+
+<!-- 2) Load the Google tag -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HKGZL0K924"></script>
+
+<script>
+  // 3) Initialize & configure GA4
+  gtag('js', new Date());
+  gtag('config', 'G-HKGZL0K924');  // OK to run with denied defaults
+</script>
+
+<link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
+<script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+
 
   <style>
     body { 
