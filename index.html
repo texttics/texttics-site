@@ -100,40 +100,21 @@
     }
 
     /* CSS FOR THE COOKIE BANNER */
-    #cookie-banner {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: #222;
-      color: #eee;
-      padding: 1rem 1.5rem;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
-      z-index: 1000;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.9rem;
-    }
-    #cookie-banner p {
-      margin: 0;
-      padding-right: 1rem;
-    }
-    #cookie-banner button {
-      background: #4CAF50;
-      color: white;
-      border: none;
-      padding: 0.6rem 1rem;
-      border-radius: 5px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    #cookie-banner button:hover {
-      background: #45a049;
-    }
-    .hidden {
-      display: none;
-    }
+#cookie-banner{
+  position:fixed; left:0; right:0; bottom:0;
+  background:#222; color:#eee; padding:1rem 1.5rem;
+  display:flex; justify-content:space-between; align-items:center;
+  box-shadow:0 -2px 10px rgba(0,0,0,.3);
+  z-index: 999999;            /* stronger than most overlays */
+  pointer-events: auto;
+}
+#cookie-banner * { pointer-events:auto; }
+#accept-cookies{
+  background:#4CAF50; color:#fff; border:0; padding:.6rem 1rem;
+  border-radius:6px; cursor:pointer; font-weight:700; position:relative; z-index:1000000;
+}
+.hidden{ display:none; }
+
 
   </style>
 </head>
@@ -148,10 +129,11 @@
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
 
-  <div id="cookie-banner">
+<div id="cookie-banner" role="dialog" aria-live="polite">
   <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  <button id="accept-cookies" type="button">Accept</button>
+  <button id="accept-cookies" type="button" aria-label="Accept cookies">Accept</button>
 </div>
+
 
 
 
