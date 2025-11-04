@@ -2,26 +2,44 @@
 <html>
 <head>
   <meta charset="UTF-8" />
+  
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    // Default-deny consent. No tracking until the user clicks "Accept".
+    gtag('consent', 'default', {
+      'ad_storage': 'denied',
+      'analytics_storage': 'denied',
+      'ad_user_data': 'denied',
+      'ad_personalization': 'denied'
+    });
+
+    // Your GA4 config
+    gtag('config', 'G-XXXXXXX');
+  </script>
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
   <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
 
   <style>
     body { 
       font: 16px/1.4 system-ui, sans-serif; 
-      max-width: 1300px; 
+      max-width: 1200px; 
       margin: 2rem auto; 
       padding: 0 1rem; 
+      /* NEW: Add padding at the bottom to make space for the banner */
+      padding-bottom: 150px; 
     }
     textarea { width: 100%; height: 220px; box-sizing: border-box; }
     
-    /* This rule applies to BOTH counter rows */
     .stats { 
       display: grid;
       gap: .8rem; 
       margin-top: 1rem; 
     }
     
-    /* * FIXED: This now only targets the top row * */
     #stats {
       grid-template-columns: repeat(9, 1fr);
     }
@@ -32,16 +50,10 @@
       border-radius: 10px; 
     }
     
-    /* * FIXED: This rule is now more specific *
-     * It only makes the first card in the #stats row span 2 columns
-     */
     #stats .card:first-child {
       grid-column: span 2;
     }
     
-    /* * FIXED: This now correctly targets the second row *
-     * and gives it 7 columns for its 7 cards.
-     */
     .stats.sequence-stats {
       grid-template-columns: repeat(7, 1fr);
     }
@@ -73,28 +85,70 @@
       border-bottom: 2px solid #aaa; 
       margin-bottom: 1rem;
     }
+
+    /* * NEW: 2. CSS FOR THE COOKIE BANNER * */
+    #cookie-banner {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #222;
+      color: #eee;
+      padding: 1rem 1.5rem;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+      z-index: 1000;
+      display: flex; /* Use flexbox to align items */
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+    }
+    #cookie-banner p {
+      margin: 0;
+      padding-right: 1rem;
+    }
+    #cookie-banner button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #cookie-banner button:hover {
+      background: #45a049;
+    }
+    /* This class will be added by JS to hide the banner */
+    .hidden {
+      display: none;
+    }
+
   </style>
-</head><body>
-  <h1>Text Counter</h1>
+</head>
+<body>
+  <h1>Word Counter (client-side Python)</h1>
   
   <textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
   
   <div class="stats" id="stats"></div>
-  
   <div class="stats sequence-stats" id="sequence-stats"></div>
 
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
 
+  <div id="cookie-banner">
+    <p>This site uses cookies to analyze traffic and improve your experience. By clicking "Accept," you consent to our use of cookies.</p>
+    <button id="accept-cookies">Accept</button>
+  </div>
+
+
   <script type="py">
 from pyscript import document
 import string
 
-# --- Setup for Character Counters ---
 PUNCTUATION_SET = set(string.punctuation)
 CONTROL_CHARS = set(string.whitespace) - {' '}
 
-# This function is unchanged and correct
 def compute_stats(t: str):
     total = len(t)
     letters = 0
@@ -132,92 +186,67 @@ def compute_stats(t: str):
         "Symbols": symbols,
     }
 
-# Helper function to classify a character
 def get_char_type(char):
     if char == ' ':
-        return 'Space' # Simple key
+        return 'Space'
     if char.isalpha():
         return 'Letters'
     if char.isdigit():
         return 'Numbers'
     if char in CONTROL_CHARS:
-        return 'Control' # Simple key
+        return 'Control'
     if char in PUNCTUATION_SET:
         return 'Punctuation'
     if ord(char) >= 0x1F300:
         return 'Emoji'
     return 'Symbols'
 
-# Function to count sequences using a state machine
 def compute_sequence_stats(t: str):
-    # * FIXED: Keys are now simple strings *
     counters = {
-        "Letters": 0,
-        "Numbers": 0,
-        "Space": 0,
-        "Punctuation": 0,
-        "Control": 0,
-        "Emoji": 0,
-        "Symbols": 0,
+        "Letters": 0, "Numbers": 0, "Space": 0,
+        "Punctuation": 0, "Control": 0, "Emoji": 0, "Symbols": 0,
     }
     
     if not t:
         return counters
 
-    current_state = 'NONE' # Start state
+    current_state = 'NONE'
     
     for char in t:
         new_state = get_char_type(char)
         
-        if new_state == current_state:
-            continue # We are in the middle of a sequence
-        else:
-            # A sequence just ended. Increment the counter for the *previous* state.
+        if new_state != current_state:
             if current_state in counters:
                 counters[current_state] += 1
-            
-            # Start the new sequence
             current_state = new_state
             
-    # After the loop, we must count the very last sequence
     if current_state in counters:
         counters[current_state] += 1
         
     return counters
 
-
 def format_text(t: str):
-    # This function is unchanged and works for dissection
     if not t.strip():
         return ""
-
     clean_text = [ch for ch in t if not ch.isspace()]
     total_non_space_chars = len(clean_text)
-
     if total_non_space_chars == 0:
         return ""
-
     decile_cutoffs = [(total_non_space_chars * (i / 10.0)) for i in range(1, 10)]
-    
     labels = [
         "0-10%", "10-20%", "20-30%", "30-40%", "40-50%",
         "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"
     ]
-    
     html_output = ""
     running_non_space_count = 0
     decile_index = 0
     current_text_chunk = []
-
     html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
     html_output += f'<div class="percentile-text-block">'
-    
     for char in t:
         current_text_chunk.append(char)
-        
         if not char.isspace():
             running_non_space_count += 1
-            
             if decile_index < 9 and running_non_space_count > decile_cutoffs[decile_index]:
                 html_output += "".join(current_text_chunk)
                 html_output += '</div>'
@@ -225,45 +254,60 @@ def format_text(t: str):
                 html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
                 html_output += f'<div class="percentile-text-block">'
                 current_text_chunk = []
-
     html_output += "".join(current_text_chunk)
     html_output += '</div>'
-    
     return html_output
-
 
 def update_all(event=None):
     t = document.getElementById("text").value
-    
-    # 1. Update the character stats
     stats = compute_stats(t)
     stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
                          for k,v in stats.items())
     document.getElementById("stats").innerHTML = stats_html
-    
-    # 2. Update the sequence stats
     seq_stats = compute_sequence_stats(t)
-    
-    # * FIXED: Map simple keys back to display names *
     seq_stats_renamed = {
-        "Letters": seq_stats["Letters"],
-        "Numbers": seq_stats["Numbers"],
-        "Space (' ')": seq_stats["Space"], # Map 'Space' to 'Space (' ')'
-        "Punctuation": seq_stats["Punctuation"],
-        "Control Chars": seq_stats["Control"], # Map 'Control' to 'Control Chars'
-        "Emoji": seq_stats["Emoji"],
+        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
+        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
+        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
         "Symbols": seq_stats["Symbols"],
     }
     seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
                              for k,v in seq_stats_renamed.items())
     document.getElementById("sequence-stats").innerHTML = seq_stats_html
-    
-    # 3. Update the dissected text
     formatted_html = format_text(t)
     document.getElementById("formatted-output").innerHTML = formatted_html
 
-# Run once on load
 update_all()
   </script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+      const banner = document.getElementById('cookie-banner');
+      const acceptButton = document.getElementById('accept-cookies');
+
+      // Check if user has already made a choice
+      if (localStorage.getItem('cookie_consent')) {
+        banner.classList.add('hidden');
+      }
+
+      acceptButton.addEventListener('click', () => {
+        // User clicked "Accept".
+        // 1. Grant consent to Google Analytics
+        gtag('consent', 'update', {
+          'ad_storage': 'granted',
+          'analytics_storage': 'granted',
+          'ad_user_data': 'granted',
+          'ad_personalization': 'granted'
+        });
+        
+        // 2. Hide the banner
+        banner.classList.add('hidden');
+        
+        // 3. Save this choice so the banner doesn't show again
+        localStorage.setItem('cookie_consent', 'true');
+      });
+    });
+  </script>
+
 </body>
 </html>
