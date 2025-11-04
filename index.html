@@ -8,7 +8,7 @@
   <style>
     body { 
       font: 16px/1.4 system-ui, sans-serif; 
-      max-width: 1200px; 
+      max-width: 1500px; 
       margin: 2rem auto; 
       padding: 0 1rem; 
     }
@@ -31,13 +31,9 @@
       grid-column: span 2;
     }
     
-    /* * NEW: CSS for the second row of counters * */
+    /* * NEW: CSS for the sequence counters (7 columns) * */
     .sequence-stats {
-      /* This re-uses the .stats grid logic but for 2 items */
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: .8rem;
-      margin-top: 1rem;
+      grid-template-columns: repeat(7, 1fr);
     }
 
     /* Styles for the formatted output area */
@@ -75,7 +71,7 @@
   
   <div class="stats" id="stats"></div>
   
-  <div class="sequence-stats" id="sequence-stats"></div>
+  <div class="stats sequence-stats" id="sequence-stats"></div>
 
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
@@ -83,29 +79,14 @@
   <script type="py">
 from pyscript import document
 import string
-import re # * NEW: Import Regular Expressions *
+import re # No longer needed, but leaving it won't hurt
 
 # --- Setup for Character Counters ---
 PUNCTUATION_SET = set(string.punctuation)
 CONTROL_CHARS = set(string.whitespace) - {' '}
 
-# --- * NEW: Setup for Sequence Counters * ---
-# 1. Alphanumeric Sequences: (letters or numbers)
-# This finds runs of letters/numbers, delimited by anything else.
-# Matches: 'abra', 'cadabra' (from 'abra-cadabra')
-# Matches: 'fire', 'roasted', 'tomatoes' (from 'fire-roasted tomatoes')
-ALPHANUM_RE = re.compile(r'[A-Za-z0-9]+')
-
-# 2. "Other" Sequences:
-# This finds runs of any character that is NOT a letter, number,
-# whitespace, or a hyphen. This perfectly matches your examples.
-# Matches: '$$$', '$$$' (from '$$$-$$$')
-# Matches: '###' (from '###')
-OTHER_SEQ_RE = re.compile(r'[^A-Za-z0-9\s-]+')
-
-
+# This function is unchanged and correct
 def compute_stats(t: str):
-    # This function is unchanged and works for character counts
     total = len(t)
     letters = 0
     numbers = 0
@@ -142,15 +123,58 @@ def compute_stats(t: str):
         "Symbols": symbols,
     }
 
-# * NEW: Function to count sequences based on your examples *
-def compute_sequence_stats(t: str):
-    alphanum_seq = ALPHANUM_RE.findall(t)
-    other_seq = OTHER_SEQ_RE.findall(t)
+# * NEW: Helper function to classify a character *
+def get_char_type(char):
+    if char == ' ':
+        return 'Space'
+    if char.isalpha():
+        return 'Letters'
+    if char.isdigit():
+        return 'Numbers'
+    if char in CONTROL_CHARS:
+        return 'Control'
+    if char in PUNCTUATION_SET:
+        return 'Punctuation'
+    if ord(char) >= 0x1F300:
+        return 'Emoji'
+    # If it's none of the above, it's a symbol
+    return 'Symbols'
 
-    return {
-        "Alphanumeric Sequences": len(alphanum_seq),
-        "Symbol/Punctuation Sequences": len(other_seq),
+# * NEW: Function to count sequences using a state machine *
+def compute_sequence_stats(t: str):
+    counters = {
+        "Letters": 0,
+        "Numbers": 0,
+        "Space (' ')": 0,
+        "Punctuation": 0,
+        "Control Chars": 0, # Renamed from 'Control' for display
+        "Emoji": 0,
+        "Symbols": 0,
     }
+    
+    if not t:
+        return counters
+
+    current_state = 'NONE' # Start state
+    
+    for char in t:
+        new_state = get_char_type(char)
+        
+        if new_state == current_state:
+            continue # We are in the middle of a sequence
+        else:
+            # A sequence just ended. Increment the counter for the *previous* state.
+            if current_state in counters:
+                counters[current_state] += 1
+            
+            # Start the new sequence
+            current_state = new_state
+            
+    # After the loop, we must count the very last sequence
+    if current_state in counters:
+        counters[current_state] += 1
+        
+    return counters
 
 
 def format_text(t: str):
@@ -210,8 +234,18 @@ def update_all(event=None):
     
     # * NEW: 2. Update the sequence stats *
     seq_stats = compute_sequence_stats(t)
+    # Rename 'Control' to 'Control Chars' for display
+    seq_stats_renamed = {
+        "Letters": seq_stats["Letters"],
+        "Numbers": seq_stats["Numbers"],
+        "Space (' ')": seq_stats["Space (' ')"],
+        "Punctuation": seq_stats["Punctuation"],
+        "Control Chars": seq_stats["Control Chars"],
+        "Emoji": seq_stats["Emoji"],
+        "Symbols": seq_stats["Symbols"],
+    }
     seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                             for k,v in seq_stats.items())
+                             for k,v in seq_stats_renamed.items())
     document.getElementById("sequence-stats").innerHTML = seq_stats_html
     
     # 3. Update the dissected text
