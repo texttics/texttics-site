@@ -16,26 +16,39 @@
     .card { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 10px; }
 
     /* Styles for the formatted output area */
+/* Styles for the formatted output area */
     h2 { margin-top: 2rem; }
-    .formatted-text {
+
+    /* NEW: This is now the main grid container */
+    #formatted-output {
+      display: grid;
+      /* 2 columns: label (auto-width) and text (takes rest of space) */
+      grid-template-columns: auto 1fr;
+      /* Add space between the label and the text box */
+      column-gap: 1.5rem;
+      /* Add space between each percentile row */
+      row-gap: 0.5rem; /* Reduced this gap */
+    }
+
+    /* NEW: Style for the label (left column) */
+    .percentile-label {
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #333;
+      /* Aligns the label text to the top of its row */
+      padding-top: 1rem; 
+    }
+    
+    /* NEW: Style for the text block (right column) */
+    .percentile-text-block {
       border: 1px solid #ccc;
       border-radius: 10px;
       padding: 1rem;
-      min-height: 150px;
       line-height: 1.6;
       background: #fdfdfd;
-    }
-
-    /* Style for the dissected percentile paragraphs */
-    .percentile-group {
-      margin-bottom: 1rem;
-    }
-    .percentile-group strong {
-      display: block; /* Makes the label appear on its own line */
-      margin-bottom: 0.25rem;
-      font-size: 0.9rem;
-      color: #333;
-      font-family: monospace;
+      /* This adds the underline you wanted, visually separating it */
+      border-bottom: 2px solid #aaa; 
+      margin-bottom: 1rem; /* Adds space after the underline */
     }
   </style>
 </head>
