@@ -1,320 +1,99 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
+  <title>Consent Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<script>
-  // Define dataLayer + gtag *first*
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){ dataLayer.push(arguments); }
+  <!-- 1) Consent defaults MUST run before loading gtag.js -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
 
-  // 1) Set Consent Mode *defaults* BEFORE loading gtag.js
-  // (v2 requires ad_user_data + ad_personalization too)
-  gtag('consent', 'default', {
-    'ad_storage': 'denied',
-    'analytics_storage': 'denied',
-    'ad_user_data': 'denied',
-    'ad_personalization': 'denied',
-    // optional: hold pageview briefly so a CMP/banner can update
-    'wait_for_update': 500
-  });
+    // Consent Mode v2 defaults
+    gtag('consent','default',{
+      ad_storage:'denied',
+      analytics_storage:'denied',
+      ad_user_data:'denied',
+      ad_personalization:'denied',
+      wait_for_update:500
+    });
 
-  // (optional hardening)
-  gtag('set', 'url_passthrough', true);
-  gtag('set', 'ads_data_redaction', true);
-</script>
+    // Optional hardening
+    gtag('set','url_passthrough',true);
+    gtag('set','ads_data_redaction',true);
+  </script>
 
-<!-- 2) Load the Google tag -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-HKGZL0K924"></script>
-
-<script>
-  // 3) Initialize & configure GA4
-  gtag('js', new Date());
-  gtag('config', 'G-HKGZL0K924');  // OK to run with denied defaults
-</script>
-
-<link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
-<script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
-
+  <!-- 2) Load Google tag and init -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-HKGZL0K924"></script>
+  <script>
+    gtag('js', new Date());
+    gtag('config', 'G-HKGZL0K924');
+  </script>
 
   <style>
-    body { 
-      font: 16px/1.4 system-ui, sans-serif; 
-      max-width: 1200px; 
-      margin: 2rem auto; 
-      padding: 0 1rem; 
-      padding-bottom: 150px; 
+    body { font: 16px/1.4 system-ui, sans-serif; min-height: 200vh; margin:0; }
+    /* Banner is guaranteed on top and clickable */
+    #cookie-banner{
+      position:fixed; left:0; right:0; bottom:0;
+      background:#222; color:#eee; padding:1rem 1.5rem;
+      display:flex; gap:1rem; align-items:center; justify-content:space-between;
+      box-shadow:0 -2px 10px rgba(0,0,0,.35);
+      z-index: 2147483000;          /* BIG z-index */
+      pointer-events: auto;
     }
-    textarea { width: 100%; height: 220px; box-sizing: border-box; }
-    
-    .stats { 
-      display: grid;
-      gap: .8rem; 
-      margin-top: 1rem; 
+    #cookie-banner * { pointer-events:auto; }
+    #accept-cookies{
+      background:#4CAF50; color:#fff; border:0; padding:.65rem 1rem; 
+      border-radius:8px; cursor:pointer; font-weight:700;
     }
-    
-    #stats {
-      grid-template-columns: repeat(9, 1fr);
-    }
-    
-    .card { 
-      padding: .8rem 1rem; 
-      border: 1px solid #ddd; 
-      border-radius: 10px; 
-    }
-    
-    #stats .card:first-child {
-      grid-column: span 2;
-    }
-    
-    .stats.sequence-stats {
-      grid-template-columns: repeat(7, 1fr);
-    }
-
-    /* Styles for the formatted output area */
-    h2 { margin-top: 2rem; }
-
-    #formatted-output {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      column-gap: 1.5rem;
-      row-gap: 0.5rem;
-      word-break: break-all;
-    }
-
-    .percentile-label {
-      font-family: monospace;
-      font-size: 0.9rem;
-      color: #333;
-      padding-top: 1rem; 
-    }
-    
-    .percentile-text-block {
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      padding: 1rem;
-      line-height: 1.6;
-      background: #fdfdfd;
-      border-bottom: 2px solid #aaa; 
-      margin-bottom: 1rem;
-    }
-
-    /* CSS FOR THE COOKIE BANNER */
-#cookie-banner{
-  position:fixed; left:0; right:0; bottom:0;
-  background:#222; color:#eee; padding:1rem 1.5rem;
-  display:flex; justify-content:space-between; align-items:center;
-  box-shadow:0 -2px 10px rgba(0,0,0,.3);
-  z-index: 999999;            /* stronger than most overlays */
-  pointer-events: auto;
-}
-#cookie-banner * { pointer-events:auto; }
-#accept-cookies{
-  background:#4CAF50; color:#fff; border:0; padding:.6rem 1rem;
-  border-radius:6px; cursor:pointer; font-weight:700; position:relative; z-index:1000000;
-}
-.hidden{ display:none; }
-
-
+    .hidden{ display:none; }
   </style>
 </head>
 <body>
-  <h1>Word Counter (client-side Python)</h1>
-  
-  <textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
-  
-  <div class="stats" id="stats"></div>
-  <div class="stats sequence-stats" id="sequence-stats"></div>
 
-  <h2>Text Dissected by Character Count Decile</h2>
-  <div id="formatted-output"></div>
+  <main style="padding:2rem">
+    <h1>Test page</h1>
+    <p>Open DevTools → Console. Click “Accept” below. You should see a log line, the banner hides, and Consent is updated.</p>
+  </main>
 
-<div id="cookie-banner" role="dialog" aria-live="polite">
-  <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  <button id="accept-cookies" type="button" aria-label="Accept cookies">Accept</button>
-</div>
+  <div id="cookie-banner" role="dialog" aria-live="polite">
+    <span>This site uses cookies to analyze traffic and improve your experience.</span>
+    <button id="accept-cookies" type="button" aria-label="Accept cookies">Accept</button>
+  </div>
 
+  <script>
+    function bindCookieBanner(){
+      const banner = document.getElementById('cookie-banner');
+      const btn = document.getElementById('accept-cookies');
+      if (!banner || !btn) return;
 
-
-
-  <script type="py">
-from pyscript import document
-import string
-
-PUNCTUATION_SET = set(string.punctuation)
-CONTROL_CHARS = set(string.whitespace) - {' '}
-
-def compute_stats(t: str):
-    total = len(t)
-    letters = 0
-    numbers = 0
-    whitespace = 0
-    control = 0
-    punctuation = 0
-    emoji = 0
-    symbols = 0
-
-    for char in t:
-        if char == ' ':
-            whitespace += 1
-        elif char.isalpha():
-            letters += 1
-        elif char.isdigit():
-            numbers += 1
-        elif char in CONTROL_CHARS:
-            control += 1
-        elif char in PUNCTUATION_SET:
-            punctuation += 1
-        elif ord(char) >= 0x1F300: 
-            emoji += 1
-    
-    symbols = total - (whitespace + letters + numbers + control + punctuation + emoji)
-
-    return {
-        "Characters (any)": total,
-        "Letters": letters,
-        "Numbers": numbers,
-        "Space (' ')": whitespace,
-        "Punctuation": punctuation,
-        "Control Chars": control,
-        "Emoji": emoji,
-        "Symbols": symbols,
-    }
-
-def get_char_type(char):
-    if char == ' ':
-        return 'Space'
-    if char.isalpha():
-        return 'Letters'
-    if char.isdigit():
-        return 'Numbers'
-    if char in CONTROL_CHARS:
-        return 'Control'
-    if char in PUNCTUATION_SET:
-        return 'Punctuation'
-    if ord(char) >= 0x1F300:
-        return 'Emoji'
-    return 'Symbols'
-
-def compute_sequence_stats(t: str):
-    counters = {
-        "Letters": 0, "Numbers": 0, "Space": 0,
-        "Punctuation": 0, "Control": 0, "Emoji": 0, "Symbols": 0,
-    }
-    
-    if not t:
-        return counters
-
-    current_state = 'NONE'
-    
-    for char in t:
-        new_state = get_char_type(char)
-        
-        if new_state != current_state:
-            if current_state in counters:
-                counters[current_state] += 1
-            current_state = new_state
-            
-    if current_state in counters:
-        counters[current_state] += 1
-        
-    return counters
-
-def format_text(t: str):
-    if not t.strip():
-        return ""
-    clean_text = [ch for ch in t if not ch.isspace()]
-    total_non_space_chars = len(clean_text)
-    if total_non_space_chars == 0:
-        return ""
-    decile_cutoffs = [(total_non_space_chars * (i / 10.0)) for i in range(1, 10)]
-    labels = [
-        "0-10%", "10-20%", "20-30%", "30-40%", "40-50%",
-        "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"
-    ]
-    html_output = ""
-    running_non_space_count = 0
-    decile_index = 0
-    current_text_chunk = []
-    html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-    html_output += f'<div class="percentile-text-block">'
-    for char in t:
-        current_text_chunk.append(char)
-        if not char.isspace():
-            running_non_space_count += 1
-            if decile_index < 9 and running_non_space_count > decile_cutoffs[decile_index]:
-                html_output += "".join(current_text_chunk)
-                html_output += '</div>'
-                decile_index += 1
-                html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-                html_output += f'<div class="percentile-text-block">'
-                current_text_chunk = []
-    html_output += "".join(current_text_chunk)
-    html_output += '</div>'
-    return html_output
-
-def update_all(event=None):
-    t = document.getElementById("text").value
-    stats = compute_stats(t)
-    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                         for k,v in stats.items())
-    document.getElementById("stats").innerHTML = stats_html
-    seq_stats = compute_sequence_stats(t)
-    seq_stats_renamed = {
-        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
-        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
-        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
-        "Symbols": seq_stats["Symbols"],
-    }
-    seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                             for k,v in seq_stats_renamed.items())
-    document.getElementById("sequence-stats").innerHTML = seq_stats_html
-    formatted_html = format_text(t)
-    document.getElementById("formatted-output").innerHTML = formatted_html
-
-update_all()
-  </script>
-
-<script>
-  // Attach AFTER the banner exists in the DOM
-  function bindCookieBanner(){
-    const banner = document.getElementById('cookie-banner');
-    const btn = document.getElementById('accept-cookies');
-    if (!banner || !btn) return;
-
-    // Hide if already accepted
-    if (localStorage.getItem('cookie_consent') === 'true') {
-      banner.classList.add('hidden');
-      return;
-    }
-
-    btn.addEventListener('click', () => {
-      console.log('[cookie] Accept clicked');   // debug line – should appear in Console
-
-      if (window.gtag) {
-        gtag('consent','update',{
-          ad_storage:'granted',
-          analytics_storage:'granted',
-          ad_user_data:'granted',
-          ad_personalization:'granted'
-        });
-        // Optional: send a page_view after consent
-        gtag('event','page_view');
+      // Hide if already accepted
+      if (localStorage.getItem('cookie_consent') === 'true') {
+        banner.classList.add('hidden');
+        return;
       }
 
-      localStorage.setItem('cookie_consent','true');
-      banner.classList.add('hidden');
-    });
-  }
+      btn.addEventListener('click', () => {
+        console.log('[cookie] Accept clicked');
 
-  // Robustly attach (works even with module/async scripts on the page)
-  document.addEventListener('DOMContentLoaded', bindCookieBanner);
-  // Fallback in case something delays DOMContentLoaded
-  setTimeout(bindCookieBanner, 2000);
-</script>
+        // Consent Mode v2: update to granted
+        if (window.gtag) {
+          gtag('consent','update',{
+            ad_storage:'granted',
+            analytics_storage:'granted',
+            ad_user_data:'granted',
+            ad_personalization:'granted'
+          });
+          // Optional: fire a page_view after consent
+          gtag('event','page_view');
+        }
 
-
-
-
+        localStorage.setItem('cookie_consent','true');
+        banner.classList.add('hidden');
+      });
+    }
+    document.addEventListener('DOMContentLoaded', bindCookieBanner);
+  </script>
 </body>
 </html>
