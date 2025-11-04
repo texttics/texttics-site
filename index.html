@@ -5,18 +5,17 @@
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
   <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
 
-  <!-- tell PyScript to load numpy -->
   <py-config type="toml">
     packages = ["numpy"]
   </py-config>
 
   <style>
     body { font: 16px/1.4 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    textarea { width: 100%; height: 220px; box-sizing: border-box; } /* NEW: Added box-sizing */
+    textarea { width: 100%; height: 220px; box-sizing: border-box; }
     .stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: .8rem; margin-top: 1rem; }
     .card { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 10px; }
 
-    /* NEW: Styles for the formatted output area */
+    /* Styles for the formatted output area */
     h2 { margin-top: 2rem; }
     .formatted-text {
       border: 1px solid #ccc;
@@ -27,11 +26,19 @@
       background: #fdfdfd;
     }
 
-    /* NEW: Styles for each quantile. You can change these colors! */
-    .q1 { background-color: #fbebe; } /* Shortest 25% */
-    .q2 { background-color: #fbf5eb; } /* 25%-50% */
-    .q3 { background-color: #eefbeb; } /* 50%-75% */
-    .q4 { background-color: #ebf5fb; } /* Longest 25% */
+    /* * NEW: 10 CSS classes for 10 deciles (10% groups)
+     * You can change these colors to any you like.
+     */
+    .p10 { background-color: #fce4ec; } /* 0-10% (Shortest) */
+    .p20 { background-color: #f8bbd0; } /* 10-20% */
+    .p30 { background-color: #f48fb1; } /* 20-30% */
+    .p40 { background-color: #f06292; } /* 30-40% */
+    .p50 { background-color: #ec407a; } /* 40-50% */
+    .p60 { background-color: #e91e63; } /* 50-60% */
+    .p70 { background-color: #d81b60; } /* 60-70% */
+    .p80 { background-color: #c2185b; color: white; } /* 70-80% */
+    .p90 { background-color: #ad1457; color: white; } /* 80-90% */
+    .p100 { background-color: #880e4f; color: white; } /* 90-100% (Longest) */
   </style>
 </head>
 <body>
@@ -41,23 +48,19 @@
   
   <div class="stats" id="stats"></div>
 
-  <h2>Formatted Output (by sentence length)</h2>
+  <h2>Formatted Output (by sentence length decile)</h2>
   <div id="formatted-output" class="formatted-text"></div>
 
   <script type="py">
 from pyscript import document
 import re
-import numpy as np  # NEW: Import numpy
+import numpy as np
 
 WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9]+(?:[-'][A-Za-zÀ-ÖØ-öø-ÿ0-9]+)*")
-
-# NEW: Regex to split text into sentences *while keeping* the delimiters
-# This splits at [.!?] followed by a space or end-of-string.
 SENT_SPLIT_RE = re.compile(r'([.!?]+(?:\s|$))')
 
 def compute_stats(t: str):
     words = WORD_RE.findall(t)
-    # NEW: Improved sentence counter that works even without trailing punctuation
     sentences_for_count = SENT_SPLIT_RE.split(t)
     num_sentences = sum(1 for s in sentences_for_count if s.strip() and not SENT_SPLIT_RE.match(s))
     if not t.strip():
@@ -72,64 +75,68 @@ def compute_stats(t: str):
         "Reading time": f"{(len(words)/200)*60:.0f} s" if words else "0 s",
     }
 
-# NEW: Function to get word count for a single sentence
 def get_word_count(sentence_str):
     return len(WORD_RE.findall(sentence_str))
 
-# NEW: Function to create the formatted HTML
+# NEW: Updated function to use 10 deciles
 def format_text(t: str):
     if not t.strip():
-        return "" # Return empty if no text
+        return ""
 
-    # Split text into sentences and delimiters: ['sent 1', '!', ' sent 2', '.', '...']
     split_text = SENT_SPLIT_RE.split(t)
     
-    # Re-combine sentences with their delimiters
     sentences = []
     for i in range(0, len(split_text) - 1, 2):
         sentence = split_text[i] + (split_text[i+1] or '')
         sentences.append(sentence)
     
-    # Add any trailing text that didn't end with punctuation
     if len(split_text) % 2 == 1:
         sentences.append(split_text[-1])
 
-    # Get a list of word lengths for all non-empty sentences
     lengths = [get_word_count(s) for s in sentences if s.strip()]
     if not lengths:
-        return t # Return plain text if no sentences were found
+        return t
 
-    # Calculate percentile thresholds using numpy
-    # We get 25th, 50th (median), and 75th percentiles
-    p25, p50, p75 = np.percentile(lengths, [25, 50, 75])
+    # NEW: Calculate 9 percentile cutoffs (10%, 20%, ..., 90%)
+    cutoffs = np.percentile(lengths, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+    p10, p20, p30, p40, p50, p60, p70, p80, p90 = cutoffs
 
-    # Build the HTML output
     html_output = ""
     for s in sentences:
         if not s.strip():
-            html_output += s  # Add whitespace back
+            html_output += s
             continue
             
         length = get_word_count(s)
         css_class = ""
         
-        # Assign a CSS class based on which quantile the length falls into
-        if length <= p25:
-            css_class = "q1"
+        # NEW: if/elif chain to assign one of 10 classes
+        if length <= p10:
+            css_class = "p10"
+        elif length <= p20:
+            css_class = "p20"
+        elif length <= p30:
+            css_class = "p30"
+        elif length <= p40:
+            css_class = "p40"
         elif length <= p50:
-            css_class = "q2"
-        elif length <= p75:
-            css_class = "q3"
+            css_class = "p50"
+        elif length <= p60:
+            css_class = "p60"
+        elif length <= p70:
+            css_class = "p70"
+        elif length <= p80:
+            css_class = "p80"
+        elif length <= p90:
+            css_class = "p90"
         else:
-            css_class = "q4"
+            css_class = "p100" # 90th-100th percentile
             
-        # Wrap the sentence in a <span> with its class
         html_output += f'<span class="{css_class}">{s}</span>'
 
     return html_output
 
 
-# Renamed your 'update' function to 'update_all'
 def update_all(event=None):
     t = document.getElementById("text").value
     
@@ -139,7 +146,7 @@ def update_all(event=None):
                          for k,v in stats.items())
     document.getElementById("stats").innerHTML = stats_html
     
-    # 2. NEW: Update the formatted text output
+    # 2. Update the formatted text output
     formatted_html = format_text(t)
     document.getElementById("formatted-output").innerHTML = formatted_html
 
