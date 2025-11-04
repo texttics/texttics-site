@@ -149,9 +149,10 @@
   <div id="formatted-output"></div>
 
   <div id="cookie-banner">
-    <p>This site uses cookies to analyze traffic and improve your experience. By clicking "Accept," you consent to our use of cookies.</p>
-    <button id="accept-cookies" onclick="grantCookieConsent()">Accept</button>
-  </div>
+  <p>This site uses cookies to analyze traffic and improve your experience.</p>
+  <button id="accept-cookies" type="button">Accept</button>
+</div>
+
 
 
   <script type="py">
@@ -292,39 +293,42 @@ def update_all(event=None):
 update_all()
   </script>
 
- <script>
-  (function () {
+<script>
+  // Run after DOM is parsed (and after module/py scripts too)
+  document.addEventListener('DOMContentLoaded', function () {
     const banner = document.getElementById('cookie-banner');
     const btn = document.getElementById('accept-cookies');
 
     // Hide if already accepted
     if (localStorage.getItem('cookie_consent') === 'true') {
-      banner.classList.add('hidden');
+      banner?.classList.add('hidden');
       return;
     }
 
-    // Make the handler global + add a listener (robust)
-    window.grantCookieConsent = function () {
+    // Bind click without inline attributes (best practice)
+    btn?.addEventListener('click', function () {
+      console.log('[cookie] Accept clicked'); // debug aid
+
+      // Update Consent Mode v2
       if (window.gtag) {
         gtag('consent', 'update', {
-          'ad_storage': 'granted',
-          'analytics_storage': 'granted',
-          'ad_user_data': 'granted',
-          'ad_personalization': 'granted'
+          ad_storage: 'granted',
+          analytics_storage: 'granted',
+          ad_user_data: 'granted',
+          ad_personalization: 'granted'
         });
 
-        // Optional: send a page_view after consent (some teams do this)
+        // Optional: send a page_view after consent is granted
         gtag('event', 'page_view');
       }
 
-      banner.classList.add('hidden');
+      // Persist & hide
       localStorage.setItem('cookie_consent', 'true');
-    };
-
-    // Also bind via JS in case inline onclick is blocked
-    if (btn) btn.addEventListener('click', window.grantCookieConsent);
-  })();
+      banner?.classList.add('hidden');
+    });
+  });
 </script>
+
 
 
 </body>
