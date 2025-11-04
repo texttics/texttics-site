@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXX"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-HKGZL0K924"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
 
-    // Default-deny consent. No tracking until the user clicks "Accept".
+    // Default-deny consent. This is correct.
     gtag('consent', 'default', {
       'ad_storage': 'denied',
       'analytics_storage': 'denied',
@@ -17,8 +17,8 @@
       'ad_personalization': 'denied'
     });
 
-    // Your GA4 config
-    gtag('config', 'G-XXXXXXX');
+    // Config with your real ID
+    gtag('config', 'G-HKGZL0K924');
   </script>
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
   <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
@@ -29,7 +29,6 @@
       max-width: 1200px; 
       margin: 2rem auto; 
       padding: 0 1rem; 
-      /* NEW: Add padding at the bottom to make space for the banner */
       padding-bottom: 150px; 
     }
     textarea { width: 100%; height: 220px; box-sizing: border-box; }
@@ -86,7 +85,7 @@
       margin-bottom: 1rem;
     }
 
-    /* * NEW: 2. CSS FOR THE COOKIE BANNER * */
+    /* CSS FOR THE COOKIE BANNER */
     #cookie-banner {
       position: fixed;
       bottom: 0;
@@ -97,7 +96,7 @@
       padding: 1rem 1.5rem;
       box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
       z-index: 1000;
-      display: flex; /* Use flexbox to align items */
+      display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 0.9rem;
@@ -118,7 +117,6 @@
     #cookie-banner button:hover {
       background: #45a049;
     }
-    /* This class will be added by JS to hide the banner */
     .hidden {
       display: none;
     }
@@ -281,31 +279,29 @@ update_all()
   </script>
 
   <script>
-    document.addEventListener('DOMContentLoaded', (event) => {
-      const banner = document.getElementById('cookie-banner');
-      const acceptButton = document.getElementById('accept-cookies');
+    const banner = document.getElementById('cookie-banner');
+    const acceptButton = document.getElementById('accept-cookies');
 
-      // Check if user has already made a choice
-      if (localStorage.getItem('cookie_consent')) {
-        banner.classList.add('hidden');
-      }
+    // Check if user has already made a choice
+    if (localStorage.getItem('cookie_consent')) {
+      banner.classList.add('hidden');
+    }
 
-      acceptButton.addEventListener('click', () => {
-        // User clicked "Accept".
-        // 1. Grant consent to Google Analytics
-        gtag('consent', 'update', {
-          'ad_storage': 'granted',
-          'analytics_storage': 'granted',
-          'ad_user_data': 'granted',
-          'ad_personalization': 'granted'
-        });
-        
-        // 2. Hide the banner
-        banner.classList.add('hidden');
-        
-        // 3. Save this choice so the banner doesn't show again
-        localStorage.setItem('cookie_consent', 'true');
+    acceptButton.addEventListener('click', () => {
+      // User clicked "Accept".
+      // 1. Grant consent to Google Analytics
+      gtag('consent', 'update', {
+        'ad_storage': 'granted',
+        'analytics_storage': 'granted',
+        'ad_user_data': 'granted',
+        'ad_personalization': 'granted'
       });
+      
+      // 2. Hide the banner
+      banner.classList.add('hidden');
+      
+      // 3. Save this choice so the banner doesn't show again
+      localStorage.setItem('cookie_consent', 'true');
     });
   </script>
 
