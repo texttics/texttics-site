@@ -540,8 +540,8 @@ minor_stats = {}
 if is_honest_mode:
 # --- HONEST MODE (Fixes 1 & 2) ---
 # 1. Count 29 categories against the FULL text (no emoji deletion)
-for key, regex in RE_MINOR_29_HONEST.items():
-minor_stats[key] = count_matches(regex, t)
+    for key, regex in RE_MINOR_29_HONEST.items():
+        minor_stats[key] = count_matches(regex, t)
 # 2. Calculate 'Cn' as the mathematical remainder
 sum_of_29_cats = sum(minor_stats.values())
 total_code_points = derived_stats["Total Code Points"]
@@ -553,7 +553,7 @@ else:
 text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
 # 2. Count all 30 categories (incl. flawed \p{Cn}) against the filtered text
 for key, regex in RE_MINOR_LEGACY.items():
-minor_stats[key] = count_matches(regex, text_no_emoji)
+        minor_stats[key] = count_matches(regex, text_no_emoji)
 # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
 # This logic is UNCHANGED. It correctly aggregates 'minor_stats'
 # from whichever mode was run.
