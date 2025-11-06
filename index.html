@@ -12,40 +12,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   <meta charset="UTF-8" />
 
 <script>
-  // This function will be called BY PYTHON
-  function handleAcceptCookies() {
-    console.log('[cookie] JS handleAcceptCookies() CALLED!'); // New debug check
-    const banner = document.getElementById('cookie-banner');
-    
-    if (window.gtag) {
-      gtag('consent', 'update', {
-        ad_storage: 'granted',
-        analytics_storage: 'granted',
-        ad_user_data: 'granted',
-        ad_personalization: 'granted'
-      });
-      gtag('event', 'page_view');
-    }
-
-    localStorage.setItem('cookie_consent', 'true');
-    
-    if (banner) {
-      banner.classList.add('hidden');
-    }
-  }
-
-  // This check to hide the banner on load is still needed
-  function initCookieBanner() {
-    if (localStorage.getItem('cookie_consent') === 'true') {
-      const banner = document.getElementById('cookie-banner');
-      if (banner) {
-        banner.classList.add('hidden');
-      }
-    }
-  }
-</script>
-
-<script>
   // Define dataLayer + gtag *first*
   window.dataLayer = window.dataLayer || [];
   function gtag(){ dataLayer.push(arguments); }
@@ -174,14 +140,6 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
-
-<div id="cookie-banner" role="dialog" aria-live="polite">
-  <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  
-  <button id="accept-cookies" type="button" aria-label="Accept cookies" py-click="py_accept_cookies">
-    Accept
-  </button>
-</div>
 
 
 
@@ -334,6 +292,73 @@ def update_all(event=None):
     document.getElementById("formatted-output").innerHTML = formatted_html
 
 update_all()
+
+# ... (all your other python functions like update_all) ...
+
+# -----------------------------------------------------------------
+# NEW COOKIE BANNER LOGIC - ALL INSIDE PYSCRIPT
+# -----------------------------------------------------------------
+
+def setup_cookie_banner():
+    """
+    Finds the banner and attaches listeners from within Python
+    after PyScript has initialized.
+    """
+    print("[PyScript] Running setup_cookie_banner()...")
+    
+    try:
+        # Get banner elements using PyScript's document
+        banner = document.getElementById("cookie-banner")
+        button = document.getElementById("accept-cookies")
+
+        if not banner or not button:
+            print("[PyScript-ERROR] Banner or Button NOT FOUND in DOM.")
+            return
+
+        # 1. Check if consent is already given
+        if js.localStorage.getItem('cookie_consent') == 'true':
+            print("[PyScript] Consent already given, hiding banner.")
+            banner.classList.add('hidden')
+            return
+
+        # 2. Define the click handler function *inside* Python
+        def accept_logic(event):
+            print("[PyScript] Accept Button CLICKED!")
+            
+            # Update Google Consent Mode (using the global 'js.gtag')
+            if hasattr(js, 'gtag'):
+                js.gtag('consent', 'update', {
+                    'ad_storage': 'granted',
+                    'analytics_storage': 'granted',
+                    'ad_user_data': 'granted',
+                    'ad_personalization': 'granted'
+                })
+                js.gtag('event', 'page_view')
+                print("[PyScript] gtag consent updated.")
+            else:
+                print("[PyScript-WARN] gtag function not found on 'js' object.")
+
+            # Save consent to localStorage
+            js.localStorage.setItem('cookie_consent', 'true')
+            
+            # Hide the banner
+            banner.classList.add('hidden')
+
+        # 3. Attach the event listener
+        button.addEventListener('click', accept_logic)
+        print("[PyScript] Event listener attached to 'accept-cookies' button.")
+
+    except Exception as e:
+        print(f"[PyScript-CRITICAL] Error in setup_cookie_banner: {e}")
+
+#
+# --- RUN THE SETUP FUNCTION ---
+# This code runs once the <script type="py"> block is executed
+#
+setup_cookie_banner()
+
+</script>
+    
   </script>
 
 
