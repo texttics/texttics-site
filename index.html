@@ -468,7 +468,7 @@ ALIASES = {
 
 # Compilers for Module 1 (Character Analysis)
 RE_MINOR = {key: window.RegExp.new(val, "gu") for key, val in MINOR_CATEGORIES.items()}
-RE_DERIVED = {key: window.RegExp.new(val, "guv") for key, val in DERIVED_PROPERTIES.items()} 
+RE_DERIVED = {key: window.RegExp.new(val, "gv") for key, val in DERIVED_PROPERTIES.items()} 
 RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 
 # Testers for Module 2 (Token Shape Analysis)
