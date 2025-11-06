@@ -1,15 +1,12 @@
 <!doctype html>
 <html>
 <head>
-  <!-- Google Tag Manager -->
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
 j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
 })(window,document,'script','dataLayer','GTM-KKG6C4ZW');</script>
-<!-- End Google Tag Manager -->
-  
-  <meta charset="UTF-8" />
+<meta charset="UTF-8" />
 
 <script>
   // Define dataLayer + gtag *first*
@@ -17,13 +14,12 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   function gtag(){ dataLayer.push(arguments); }
 
   // 1) Set Consent Mode *defaults* BEFORE loading gtag.js
-  // (v2 requires ad_user_data + ad_personalization too)
+  // This will remain, but users will have no way to accept
   gtag('consent', 'default', {
     'ad_storage': 'denied',
     'analytics_storage': 'denied',
     'ad_user_data': 'denied',
     'ad_personalization': 'denied',
-    // optional: hold pageview briefly so a CMP/banner can update
     'wait_for_update': 500
   });
 
@@ -32,7 +28,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   gtag('set', 'ads_data_redaction', true);
 </script>
 
-<!-- 2) Load the Google tag -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-HKGZL0K924"></script>
 
 <script>
@@ -46,29 +41,29 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
 
   <style>
-    body { 
-      font: 16px/1.4 system-ui, sans-serif; 
-      max-width: 1200px; 
-      margin: 2rem auto; 
-      padding: 0 1rem; 
-      padding-bottom: 150px; 
+    body {  
+      font: 16px/1.4 system-ui, sans-serif;  
+      max-width: 1200px;  
+      margin: 2rem auto;  
+      padding: 0 1rem;  
+      padding-bottom: 150px;  
     }
     textarea { width: 100%; height: 220px; box-sizing: border-box; }
     
-    .stats { 
+    .stats {  
       display: grid;
-      gap: .8rem; 
-      margin-top: 1rem; 
+      gap: .8rem;  
+      margin-top: 1rem;  
     }
     
     #stats {
       grid-template-columns: repeat(9, 1fr);
     }
     
-    .card { 
-      padding: .8rem 1rem; 
-      border: 1px solid #ddd; 
-      border-radius: 10px; 
+    .card {  
+      padding: .8rem 1rem;  
+      border: 1px solid #ddd;  
+      border-radius: 10px;  
     }
     
     #stats .card:first-child {
@@ -94,7 +89,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       font-family: monospace;
       font-size: 0.9rem;
       color: #333;
-      padding-top: 1rem; 
+      padding-top: 1rem;  
     }
     
     .percentile-text-block {
@@ -103,35 +98,18 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       padding: 1rem;
       line-height: 1.6;
       background: #fdfdfd;
-      border-bottom: 2px solid #aaa; 
+      border-bottom: 2px solid #aaa;  
       margin-bottom: 1rem;
     }
 
-    /* CSS FOR THE COOKIE BANNER */
-#cookie-banner{
-  position:fixed; left:0; right:0; bottom:0;
-  background:#222; color:#eee; padding:1rem 1.5rem;
-  display:flex; justify-content:space-between; align-items:center;
-  box-shadow:0 -2px 10px rgba(0,0,0,.3);
-  z-index: 999999;            /* stronger than most overlays */
-  pointer-events: auto;
-}
-#cookie-banner * { pointer-events:auto; }
-#accept-cookies{
-  background:#4CAF50; color:#fff; border:0; padding:.6rem 1rem;
-  border-radius:6px; cursor:pointer; font-weight:700; position:relative; z-index:1000000;
-}
-.hidden{ display:none; }
-
+    /* ALL COOKIE BANNER CSS REMOVED */
 
   </style>
 </head>
 <body>
-  <!-- Google Tag Manager (noscript) -->
-<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KKG6C4ZW"
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KKG6C4ZW"
 height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-<!-- End Google Tag Manager (noscript) -->
-  <h1>Text Counter</h1>
+<h1>Text Counter</h1>
   
   <textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
   
@@ -142,12 +120,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="formatted-output"></div>
 
 
-
-
   <script type="py">
 from pyscript import document
 import string
-
 
 PUNCTUATION_SET = set(string.punctuation)
 CONTROL_CHARS = set(string.whitespace) - {' '}
@@ -173,7 +148,7 @@ def compute_stats(t: str):
             control += 1
         elif char in PUNCTUATION_SET:
             punctuation += 1
-        elif ord(char) >= 0x1F300: 
+        elif ord(char) >= 0x1F300:  
             emoji += 1
     
     symbols = total - (whitespace + letters + numbers + control + punctuation + emoji)
@@ -262,60 +237,31 @@ def format_text(t: str):
     html_output += '</div>'
     return html_output
 
+# ADDING THIS FUNCTION DEFINITION BACK TO FIX THE NameError
+def update_all(event=None):
+    t = document.getElementById("text").value
+    stats = compute_stats(t)
+    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
+                         for k,v in stats.items())
+    document.getElementById("stats").innerHTML = stats_html
+    seq_stats = compute_sequence_stats(t)
+    seq_stats_renamed = {
+        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
+        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
+        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
+        "Symbols": seq_stats["Symbols"],
+    }
+    seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
+                             for k,v in seq_stats_renamed.items())
+    document.getElementById("sequence-stats").innerHTML = seq_stats_html
+    formatted_html = format_text(t)
+    document.getElementById("formatted-output").innerHTML = formatted_html
 
-
-
+# This call will now work
 update_all()
     
   </script>
 
 </body>
-
-
-
-<div id="cookie-banner" role="dialog" aria-live="polite">
-  <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  <button id="accept-cookies" type="button" aria-label="Accept cookies" onclick="handleAcceptConsent()">
-    Accept
-  </button>
-</div>
-
-<script>
-  (function() {
-    const banner = document.getElementById('cookie-banner');
-    
-    // 1. Function to handle the click (called by onclick)
-    window.handleAcceptConsent = function() {
-      console.log('[cookie] Accept clicked (isolated script)');
-      
-      // Send the consent update to Google
-      if (window.gtag) {
-        gtag('consent', 'update', {
-          ad_storage: 'granted',
-          analytics_storage: 'granted',
-          ad_user_data: 'granted',
-          ad_personalization: 'granted'
-        });
-        gtag('event', 'page_view');
-      }
-
-      // Save the choice
-      localStorage.setItem('cookie_consent', 'true');
-      
-      // Hide the banner
-      if (banner) {
-        banner.classList.add('hidden');
-      }
-    }
-
-    // 2. Check on page load if already accepted
-    if (localStorage.getItem('cookie_consent') === 'true') {
-      if (banner) {
-        banner.classList.add('hidden');
-      }
-    }
-  })();
-</script>
-
 
 </html>
