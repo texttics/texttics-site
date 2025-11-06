@@ -1,20 +1,24 @@
 <!doctype html>
 <html>
 <head>
+  <!-- Google Tag Manager -->
   <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
 j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
 })(window,document,'script','dataLayer','GTM-KKG6C4ZW');</script>
-<meta charset="UTF-8" />
+  <!-- End Google Tag Manager -->
 
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Google Analytics & Consent Mode -->
 <script>
   // Define dataLayer + gtag *first*
   window.dataLayer = window.dataLayer || [];
   function gtag(){ dataLayer.push(arguments); }
 
   // 1) Set Consent Mode *defaults* BEFORE loading gtag.js
-  // This will remain, but users will have no way to accept
   gtag('consent', 'default', {
     'ad_storage': 'denied',
     'analytics_storage': 'denied',
@@ -33,231 +37,532 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <script>
   // 3) Initialize & configure GA4
   gtag('js', new Date());
-  gtag('config', 'G-HKGZL0K924');  // OK to run with denied defaults
+  gtag('config', 'G-HKGZL0K924');
 </script>
 
+<!-- PyScript -->
 <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css" />
 <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
 
 
   <style>
-    body {  
-      font: 16px/1.4 system-ui, sans-serif;  
-      max-width: 1400px;  
-      margin: 2rem auto;  
-      padding: 0 1rem;  
-      padding-bottom: 150px;  
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+      font: 16px/1.4 system-ui, sans-serif;
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      padding-bottom: 150px;
+      background-color: #f9fafb;
+      color: #111827;
     }
-    textarea { width: 100%; height: 220px; box-sizing: border-box; }
-    
-    .stats {  
-      display: grid;
-      gap: .8rem;  
-      margin-top: 1rem;  
+    h1 { text-align: center; color: #1f2937; }
+    h2 { 
+      margin-top: 2.5rem; 
+      color: #1f2937;
+      border-bottom: 1px solid #d1d5db;
+      padding-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
     }
-    
-    #stats {
-      grid-template-columns: repeat(9, 1fr);
-    }
-    
-    .card {  
-      padding: .8rem 1rem;  
-      border: 1px solid #ddd;  
-      border-radius: 10px;  
-    }
-    
-    #stats .card:first-child {
-      grid-column: span 2;
-    }
-    
-    .stats.sequence-stats {
-      grid-template-columns: repeat(7, 1fr);
-    }
-
-    /* Styles for the formatted output area */
-    h2 { margin-top: 2rem; }
-
-    #formatted-output {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      column-gap: 1.5rem;
-      row-gap: 0.5rem;
-      word-break: break-all;
-    }
-
-    .percentile-label {
-      font-family: monospace;
-      font-size: 0.9rem;
-      color: #333;
-      padding-top: 1rem;  
-    }
-    
-    .percentile-text-block {
-      border: 1px solid #ccc;
+    textarea { 
+      width: 100%; 
+      height: 220px; 
+      box-sizing: border-box; 
+      border: 1px solid #d1d5db;
       border-radius: 10px;
       padding: 1rem;
-      line-height: 1.6;
-      background: #fdfdfd;
-      border-bottom: 2px solid #aaa;  
-      margin-bottom: 1rem;
+      font-size: 1.1rem;
+      line-height: 1.5;
     }
-h1 { text-align: center; }
-    /* ALL COOKIE BANNER CSS REMOVED */
+    textarea:focus {
+      outline: 2px solid #3b82f6;
+      border-color: #3b82f6;
+    }
+    
+    /* --- Main Stats Grid --- */
+    .stats {
+      display: grid;
+      gap: .8rem;
+      margin-top: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    
+    .card {
+      padding: 1rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      text-align: left;
+    }
+    .card strong {
+      display: block;
+      font-size: 0.9rem;
+      color: #374151;
+      margin-bottom: 0.25rem;
+    }
+    .card div {
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: #111827;
+    }
 
-/* --- Tooltip Styles --- */
-.tooltip {
-  position: relative;
-  display: inline-block;
-  cursor: help;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #007bff;
-  margin-left: 6px;
-}
+    /* --- Tooltip Styles --- */
+    .tooltip {
+      position: relative;
+      display: inline-block;
+      cursor: help;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #3b82f6;
+      margin-left: 8px;
+    }
+    .tooltip .tooltip-text {
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 0.3s;
+      width: 320px;
+      background-color: #1f2937;
+      color: #fff;
+      text-align: left;
+      font-weight: normal;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      border-radius: 6px;
+      padding: 10px;
+      position: absolute;
+      z-index: 10;
+      bottom: 125%;
+      left: 50%;
+      margin-left: -160px; /* Center it (half of 320px width) */
+    }
+    .tooltip .tooltip-text::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: #1f2937 transparent transparent transparent;
+    }
+    .tooltip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
 
-.tooltip .tooltip-text {
-  /* Visibility (hidden by default) */
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.3s;
+    /* --- Tab Navigation --- */
+    .tabs-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      border-bottom: 1px solid #d1d5db;
+    }
+    .tab-btn {
+      padding: 0.5rem 1rem;
+      border: 1px solid transparent;
+      border-bottom: 0;
+      border-radius: 6px 6px 0 0;
+      cursor: pointer;
+      background: #e5e7eb;
+      color: #4b5563;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      background: #f3f4f6;
+    }
+    .tab-btn.active {
+      background: #ffffff;
+      border-color: #d1d5db;
+      color: #111827;
+      border-bottom: 1px solid #ffffff;
+      margin-bottom: -1px;
+    }
+    .tab-content {
+      display: none; /* Hidden by default */
+      padding: 1.5rem 0.5rem;
+      border: 1px solid #d1d5db;
+      border-top: 0;
+      border-radius: 0 0 10px 10px;
+      background: #ffffff;
+    }
+    .tab-content.active {
+      display: grid; /* Use grid when active */
+    }
 
-  /* Box Styling */
-  width: 300px;
-  background-color: #333;
-  color: #fff;
-  text-align: left;
-  font-weight: normal; /* Un-bold the text */
-  font-size: 0.9rem;
-  line-height: 1.4;
-  border-radius: 6px;
-  padding: 10px;
-  
-  /* Positioning */
-  position: absolute;
-  z-index: 1;
-  bottom: 125%; /* Position above the '?' */
-  left: 50%;
-  margin-left: -150px; /* Center it (half of the 300px width) */
-}
-
-/* Show the tooltip on hover */
-.tooltip:hover .tooltip-text {
-  visibility: visible;
-  opacity: 1;
-}
-/* --- End Tooltip Styles --- */
+    /* --- Minor Stats (Tab 3) --- */
+    .stats-minor {
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 0.75rem;
+    }
+    .minor-card {
+      display: grid;
+      grid-template-columns: 40px 1fr 40px;
+      align-items: center;
+      padding: 0.5rem 0.75rem;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+    }
+    .minor-key {
+      font-weight: 700;
+      font-family: monospace;
+      color: #1d4ed8;
+    }
+    .minor-alias {
+      font-size: 0.8rem;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .minor-val {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #111827;
+      text-align: right;
+    }
+    
+    /* --- Toggle Switch (Module 2) --- */
+    .toggle-switch {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .toggle-switch label {
+      font-weight: 500;
+      color: #374151;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 28px;
+    }
+    .switch input { 
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 28px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2563eb;
+    }
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+    
+    /* --- Script Stats (Module 3) --- */
+    #script-stats {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+    
+    /* Responsive */
+    @media (max-width: 600px) {
+      body { margin: 1rem auto; padding: 0 0.5rem; }
+      h2 { font-size: 1.25rem; }
+      .stats, .stats-minor {
+        grid-template-columns: 1fr;
+      }
+      .tabs-nav {
+        flex-direction: column;
+        gap: 0;
+      }
+      .tab-btn {
+        border-radius: 6px 6px 0 0;
+        margin-bottom: 0;
+      }
+      .tab-btn.active {
+        margin-bottom: -1px;
+      }
+      .tab-content {
+        padding: 1rem 0.5rem;
+      }
+    }
     
   </style>
-
-  
 </head>
 <body>
+  <!-- GTM Noscript -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KKG6C4ZW"
 height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End GTM Noscript -->
+
+  <!-- Hidden div for Python to store state -->
+  <div id="app-state" style="display: none;">{"active_tab": "summary"}</div>
+
+  <h1>Text...tics</h1>
+  <h2>Text Input</h2>  
+  <textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
   
-<h1>Text...tics</h1>
-  
-<h2>Text Input</h2>  
-<textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
-  
-<h2>
-  Character Composition
-  <span class="tooltip">(?)
-    <span class="tooltip-text">
-      Measures the static properties of the text by counting the frequency of 8 different character classes (e.g., Letters, Numbers, Punctuation, etc.).
+  <!-- === MODULE 1: COMPREHENSIVE CHARACTER ANALYSIS === -->
+  <h2>
+    Comprehensive Character Analysis
+    <span class="tooltip">(?)
+      <span class="tooltip-text">
+        Provides a detailed breakdown of all characters based on the official Unicode Standard. The analysis is presented in three layers of detail.
+      </span>
     </span>
-  </span>
-</h2>
-<div class="stats" id="stats"></div>
+  </h2>
   
-<h2>
-  Character Sequence Analysis
-  <span class="tooltip">(?)
-    <span class="tooltip-text">
-      Performs a Run-Length Analysis to count uninterrupted sequences (or 'runs') of the same character type (e.g., 'Hello-100%' has 4 sequences).
+  <!-- Tab Navigation -->
+  <div class="tabs-nav">
+    <button id="tab-btn-summary" class="tab-btn active" py-click="select_tab('summary')">Summary</button>
+    <button id="tab-btn-major" class="tab-btn" py-click="select_tab('major')">Major Categories</button>
+    <button id="tab-btn-minor" class="tab-btn" py-click="select_tab('minor')">Full Breakdown (30)</button>
+  </div>
+  
+  <!-- Tab 1: Summary (Default) -->
+  <div id="tab-summary" class="tab-content active stats">
+    <!-- This content is generated by Python -->
+  </div>
+  
+  <!-- Tab 2: Major Categories -->
+  <div id="tab-major" class="tab-content stats">
+    <!-- This content is generated by Python -->
+  </div>
+
+  <!-- Tab 3: Full Breakdown (30) -->
+  <div id="tab-minor" class="tab-content stats stats-minor">
+    <!-- This content is generated by Python -->
+  </div>
+
+
+  <!-- === MODULE 2: TOKEN SHAPE ANALYSIS (CLASS RUNS) === -->
+  <h2>
+    Token Shape Analysis (Class Runs)
+    <span class="tooltip">(?)
+      <span class="tooltip-text">
+        Performs a Run-Length Analysis to count uninterrupted sequences (or 'runs') of the same character type. (e.g., 'Hello-100%' has 4 sequences in 'Major' mode).
+      </span>
     </span>
-  </span>
-</h2>
-<div class="stats sequence-stats" id="sequence-stats"></div>
+  </h2>
+  
+  <!-- Toggle Switch -->
+  <div class="toggle-switch">
+    <label for="granularity-toggle">Major Categories</label>
+    <label class="switch">
+      <input type="checkbox" id="granularity-toggle" py-click="update_all">
+      <span class="slider"></span>
+    </label>
+    <label for="granularity-toggle">Minor Categories</label>
+  </div>
+  
+  <!-- Sequence Stats Output -->
+  <div id="sequence-stats" class="stats">
+    <!-- This content is generated by Python -->
+  </div>
+
+  <!-- === MODULE 3: SCRIPT ANALYSIS === -->
+  <h2>
+    Script Analysis
+    <span class="tooltip">(?)
+      <span class="tooltip-text">
+        Counts all characters belonging to a specific Unicode Script property (e.g., Latin, Cyrillic, Han, etc.).
+      </span>
+    </span>
+  </h2>
+  
+  <!-- Script Stats Output -->
+  <div id="script-stats" class="stats">
+    <!-- This content is generated by Python -->
+  </div>
 
 
-  <h2>Text Dissected by Character Count Decile</h2>
-  <div id="formatted-output"></div>
-
-
+  <!-- === PYTHONS SCRIPT === -->
   <script type="py">
-from pyscript import document
-import string
+from pyscript import window, document, create
+import json
 
-PUNCTUATION_SET = set(string.punctuation)
-CONTROL_CHARS = set(string.whitespace) - {' '}
+# --- 1. DEFINE CATEGORIES (Unicode Standard) ---
 
-def compute_stats(t: str):
-    total = len(t)
-    letters = 0
-    numbers = 0
-    whitespace = 0
-    control = 0
-    punctuation = 0
-    emoji = 0
-    symbols = 0
+# Tier 3: The 30 Minor General Categories
+MINOR_CATEGORIES = {
+    # Letters
+    "Lu": r"\p{Lu}", "Ll": r"\p{Ll}", "Lt": r"\p{Lt}", "Lm": r"\p{Lm}", "Lo": r"\p{Lo}",
+    # Marks
+    "Mn": r"\p{Mn}", "Mc": r"\p{Mc}", "Me": r"\p{Me}",
+    # Numbers
+    "Nd": r"\p{Nd}", "Nl": r"\p{Nl}", "No": r"\p{No}",
+    # Punctuation
+    "Pc": r"\p{Pc}", "Pd": r"\p{Pd}", "Ps": r"\p{Ps}", "Pe": r"\p{Pe}", 
+    "Pi": r"\p{Pi}", "Pf": r"\p{Pf}", "Po": r"\p{Po}",
+    # Symbols
+    "Sm": r"\p{Sm}", "Sc": r"\p{Sc}", "Sk": r"\p{Sk}", "So": r"\p{So}",
+    # Separators
+    "Zs": r"\p{Zs}", "Zl": r"\p{Zl}", "Zp": r"\p{Zp}",
+    # Other
+    "Cc": r"\p{Cc}", "Cf": r"\p{Cf}", "Cs": r"\p{Cs}", "Co": r"\p{Co}", "Cn": r"\p{Cn}"
+}
 
-    for char in t:
-        if char == ' ':
-            whitespace += 1
-        elif char.isalpha():
-            letters += 1
-        elif char.isdigit():
-            numbers += 1
-        elif char in CONTROL_CHARS:
-            control += 1
-        elif char in PUNCTUATION_SET:
-            punctuation += 1
-        elif ord(char) >= 0x1F300:  
-            emoji += 1
+# Tier 1: Derived/Intuitive Properties
+DERIVED_PROPERTIES = {
+    "Emoji": r"\p{RGI_Emoji}",
+    "Whitespace": r"\p{White_Space}" 
+}
+
+# New Module: Script Properties
+SCRIPTS = {
+    "Latin": r"\p{sc=Latin}",
+    "Cyrillic": r"\p{sc=Cyrillic}",
+    "Greek": r"\p{sc=Greek}",
+    "Han": r"\p{sc=Han}",
+    "Hiragana": r"\p{sc=Hiragana}",
+    "Katakana": r"\p{sc=Katakana}",
+    "Arabic": r"\p{sc=Arabic}",
+    "Hebrew": r"\p{sc=Hebrew}",
+    "Devanagari": r"\p{sc=Devanagari}",
+    "Common": r"\p{sc=Common}" # Punct, symbols, etc.
+}
+
+# Tier 2: The 7 Major General Categories (for Token Shape Analysis)
+MAJOR_CATEGORIES_TEST = {
+    "L (Letter)": window.RegExp.new(r"^\p{L}$", "u"),
+    "M (Mark)": window.RegExp.new(r"^\p{M}$", "u"),
+    "N (Number)": window.RegExp.new(r"^\p{N}$", "u"),
+    "P (Punctuation)": window.RegExp.new(r"^\p{P}$", "u"),
+    "S (Symbol)": window.RegExp.new(r"^\p{S}$", "u"),
+    "Z (Separator)": window.RegExp.new(r"^\p{Z}$", "u"),
+    "C (Other)": window.RegExp.new(r"^\p{C}$", "u")
+}
+
+# Aliases for the "Full Breakdown" (Tier 3) tab
+ALIASES = {
+    "Lu": "Uppercase Letter", "Ll": "Lowercase Letter", "Lt": "Titlecase Letter", "Lm": "Modifier Letter", "Lo": "Other Letter",
+    "Mn": "Nonspacing Mark", "Mc": "Spacing Mark", "Me": "Enclosing Mark",
+    "Nd": "Decimal Number", "Nl": "Letter Number", "No": "Other Number",
+    "Pc": "Connector Punct.", "Pd": "Dash Punct.", "Ps": "Open Punct.", "Pe": "Close Punct.", 
+    "Pi": "Initial Punct.", "Pf": "Final Punct.", "Po": "Other Punct.",
+    "Sm": "Math Symbol", "Sc": "Currency Symbol", "Sk": "Modifier Symbol", "So": "Other Symbol",
+    "Zs": "Space Separator", "Zl": "Line Separator", "Zp": "Paragraph Separator",
+    "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
+}
+
+# --- 2. CREATE JS REGEXP OBJECTS (for performance) ---
+
+# Compilers for Module 1 (Character Analysis)
+RE_MINOR = {key: window.RegExp.new(val, "gu") for key, val in MINOR_CATEGORIES.items()}
+RE_DERIVED = {key: window.RegExp.new(val, "gu") for key, val in DERIVED_PROPERTIES.items()}
+RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
+
+# Testers for Module 2 (Token Shape Analysis)
+TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
+
+
+# --- 3. HELPER FUNCTIONS ---
+
+def count_matches(regex, text):
+    """Counts matches of a JS RegExp object in a string."""
+    matches = text.match(regex)
+    return len(matches) if matches else 0
+
+def get_char_type(char, is_minor):
+    """Classifies a single char as a Major or Minor category."""
+    if is_minor:
+        for key, regex in TEST_MINOR.items():
+            if regex.test(char):
+                return key
+    else:
+        for key, regex in MAJOR_CATEGORIES_TEST.items():
+            if regex.test(char):
+                return key
+    return "NONE"
+
+def get_state():
+    """Gets the UI state from the hidden div."""
+    try:
+        return json.loads(document.getElementById("app-state").innerHTML)
+    except:
+        return {"active_tab": "summary"} # Default state
+
+def set_state(key, value):
+    """Sets a value in the UI state."""
+    state = get_state()
+    state[key] = value
+    document.getElementById("app-state").innerHTML = json.dumps(state)
+
+# --- 4. CORE LOGIC (MODULES) ---
+
+def compute_comprehensive_stats(t: str):
+    """Module 1: Runs the 3-Tier analysis."""
     
-    symbols = total - (whitespace + letters + numbers + control + punctuation + emoji)
+    # --- PASS 1: Count DERIVED Properties (Tier 1) ---
+    derived_stats = {
+        "Total Code Points": len(t),
+        "RGI Emoji Sequences": count_matches(RE_DERIVED["Emoji"], t),
+        "Whitespace (Total)": count_matches(RE_DERIVED["Whitespace"], t)
+    }
+    
+    # --- PASS 2: Count MINOR Categories (Tier 3) ---
+    # Remove emoji to prevent double-counting components
+    text_no_emoji = t.replaceAll(RE_DERIVED["Emoji"], "")
+    
+    minor_stats = {}
+    for key, regex in RE_MINOR.items():
+        minor_stats[key] = count_matches(regex, text_no_emoji)
 
-    return {
-        "Characters (any)": total,
-        "Letters": letters,
-        "Numbers": numbers,
-        "Space (' ')": whitespace,
-        "Punctuation": punctuation,
-        "Control Chars": control,
-        "Emoji": emoji,
-        "Symbols": symbols,
+    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
+    major_stats = {
+        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
+        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
+        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
+        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
+        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
+        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
+        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+    }
+    
+    # --- Build Summary (Tier 1) ---
+    summary_stats = {
+        "Total Code Points": derived_stats["Total Code Points"],
+        "RGI Emoji Sequences": derived_stats["RGI Emoji Sequences"],
+        "Whitespace (Total)": derived_stats["Whitespace (Total)"],
+        "L (Letter)": major_stats["L (Letter)"],
+        "N (Number)": major_stats["N (Number)"],
+        "P (Punctuation)": major_stats["P (Punctuation)"],
+        "S (Symbol)": major_stats["S (Symbol)"]
     }
 
-    
-def get_char_type(char):
-    if char == ' ':
-        return 'Space'
-    if char.isalpha():
-        return 'Letters'
-    if char.isdigit():
-        return 'Numbers'
-    if char in CONTROL_CHARS:
-        return 'Control'
-    if char in PUNCTUATION_SET:
-        return 'Punctuation'
-    if ord(char) >= 0x1F300:
-        return 'Emoji'
-    return 'Symbols'
+    return summary_stats, major_stats, minor_stats
 
-def compute_sequence_stats(t: str):
-    counters = {
-        "Letters": 0, "Numbers": 0, "Space": 0,
-        "Punctuation": 0, "Control": 0, "Emoji": 0, "Symbols": 0,
-    }
+def compute_sequence_stats(t: str, is_minor: bool):
+    """Module 2: Runs the Token Shape Analysis."""
+    if is_minor:
+        counters = {key: 0 for key in MINOR_CATEGORIES}
+    else:
+        counters = {key: 0 for key in MAJOR_CATEGORIES_TEST}
     
     if not t:
         return counters
 
-    current_state = 'NONE'
+    current_state = "NONE"
     
     for char in t:
-        new_state = get_char_type(char)
+        new_state = get_char_type(char, is_minor)
         
         if new_state != current_state:
             if current_state in counters:
@@ -269,62 +574,91 @@ def compute_sequence_stats(t: str):
         
     return counters
 
-def format_text(t: str):
-    if not t.strip():
-        return ""
-    clean_text = [ch for ch in t if not ch.isspace()]
-    total_non_space_chars = len(clean_text)
-    if total_non_space_chars == 0:
-        return ""
-    decile_cutoffs = [(total_non_space_chars * (i / 10.0)) for i in range(1, 10)]
-    labels = [
-        "0-10%", "10-20%", "20-30%", "30-40%", "40-50%",
-        "50-60%", "60-70%", "70-80%", "80-90%", "90-100%"
-    ]
-    html_output = ""
-    running_non_space_count = 0
-    decile_index = 0
-    current_text_chunk = []
-    html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-    html_output += f'<div class="percentile-text-block">'
-    for char in t:
-        current_text_chunk.append(char)
-        if not char.isspace():
-            running_non_space_count += 1
-            if decile_index < 9 and running_non_space_count > decile_cutoffs[decile_index]:
-                html_output += "".join(current_text_chunk)
-                html_output += '</div>'
-                decile_index += 1
-                html_output += f'<div class="percentile-label">{labels[decile_index]}</div>'
-                html_output += f'<div class="percentile-text-block">'
-                current_text_chunk = []
-    html_output += "".join(current_text_chunk)
-    html_output += '</div>'
-    return html_output
+def compute_script_stats(t: str):
+    """Module 3: Runs the Script Analysis."""
+    text_no_emoji = t.replaceAll(RE_DERIVED["Emoji"], "")
+    script_stats = {}
+    for key, regex in RE_SCRIPTS.items():
+        script_stats[key] = count_matches(regex, text_no_emoji)
+    return script_stats
 
-# ADDING THIS FUNCTION DEFINITION BACK TO FIX THE NameError
-def update_all(event=None):
-    t = document.getElementById("text").value
-    stats = compute_stats(t)
-    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                         for k,v in stats.items())
-    document.getElementById("stats").innerHTML = stats_html
-    seq_stats = compute_sequence_stats(t)
-    seq_stats_renamed = {
-        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
-        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
-        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
-        "Symbols": seq_stats["Symbols"],
-    }
-    seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                             for k,v in seq_stats_renamed.items())
-    document.getElementById("sequence-stats").innerHTML = seq_stats_html
-    formatted_html = format_text(t)
-    document.getElementById("formatted-output").innerHTML = formatted_html
+# --- 5. DOM/UI FUNCTIONS ---
 
-# This call will now work
-update_all()
+def render_stats(stats_dict, element_id, class_name="card"):
+    """Generates and injects HTML for standard stat cards."""
+    html = []
+    for k, v in stats_dict.items():
+        if v > 0:
+            html.append(f'<div class="{class_name}"><strong>{k}</strong><div>{v}</div></div>')
     
+    element = document.getElementById(element_id)
+    if element:
+        element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
+
+def render_minor_stats(stats_dict, element_id):
+    """Generates and injects HTML for the 30-category breakdown."""
+    html = []
+    for k, v in stats_dict.items():
+        if v > 0:
+            alias = ALIASES.get(k, "Unknown")
+            html.append(f'<div class="minor-card"><div class="minor-key">{k}</div><div class="minor-alias" title="{alias}">{alias}</div><div class="minor-val">{v}</div></div>')
+    
+    element = document.getElementById(element_id)
+    if element:
+        element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
+
+def select_tab(tab_name):
+    """Handles tab switching UI and state."""
+    # Store state
+    set_state("active_tab", tab_name)
+    
+    # Update button active class
+    for btn in document.querySelectorAll(".tab-btn"):
+        btn.classList.remove("active")
+    document.getElementById(f"tab-btn-{tab_name}").classList.add("active")
+    
+    # Update content active class
+    for content in document.querySelectorAll(".tab-content"):
+        content.classList.remove("active")
+    document.getElementById(f"tab-{tab_name}").classList.add("active")
+
+# --- 6. MAIN ENTRY POINT ---
+
+def update_all(event=None):
+    """The main function called on every keypress."""
+    t = document.getElementById("text").value
+    
+    # Read UI state
+    is_minor_seq = document.getElementById("granularity-toggle").checked
+    active_tab = get_state()["active_tab"]
+
+    # --- Run Module 1 ---
+    summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t)
+    
+    # Render Module 1
+    # Note: We must re-render all tabs, as they are hidden, not destroyed
+    render_stats(summary_stats, "tab-summary")
+    render_stats(major_stats, "tab-major")
+    render_minor_stats(minor_stats, "tab-minor")
+    
+    # --- Run Module 2 ---
+    seq_stats = compute_sequence_stats(t, is_minor_seq)
+    
+    # Render Module 2
+    render_stats(seq_stats, "sequence-stats")
+
+    # --- Run Module 3 ---
+    script_stats = compute_script_stats(t)
+    
+    # Render Module 3
+    render_stats(script_stats, "script-stats", class_name="card")
+    
+    # --- Final UI sync ---
+    # Re-apply the active tab in case this is the first load
+    select_tab(active_tab)
+
+# Initial call to populate the dashboard on load
+update_all()
   </script>
 
 </body>
