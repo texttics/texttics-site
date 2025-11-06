@@ -580,7 +580,8 @@ def compute_sequence_stats(t: str, is_minor: bool):
 
 def compute_script_stats(t: str):
     """Module 3: Runs the Script Analysis."""
-    text_no_emoji = t.replaceAll(RE_DERIVED["Emoji"], "")
+    # FIX: Use JS String.prototype.replace.call()
+    text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
     script_stats = {}
     for key, regex in RE_SCRIPTS.items():
         script_stats[key] = count_matches(regex, text_no_emoji)
