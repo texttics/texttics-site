@@ -525,61 +525,61 @@ def set_state(key, value):
 # --- 4. CORE LOGIC (MODULES) ---
 
 def compute_comprehensive_stats(t: str, is_honest_mode: bool):
-    """Module 1: Runs the 3-Tier analysis."""
-# --- PASS 1: Count DERIVED Properties (Tier 1) ---
-# This is now common to both modes
-code_points_array = window.Array.from_(t)
-derived_stats = {
-"Total Code Points": len(code_points_array),
-"RGI Emoji Sequences": count_matches(RE_DERIVED["Emoji"], t),
-"Whitespace (Total)": count_matches(RE_DERIVED["Whitespace"], t)
-}
+        """Module 1: Runs the 3-Tier analysis."""
+    # --- PASS 1: Count DERIVED Properties (Tier 1) ---
+    # This is now common to both modes
+    code_points_array = window.Array.from_(t)
+    derived_stats = {
+    "Total Code Points": len(code_points_array),
+    "RGI Emoji Sequences": count_matches(RE_DERIVED["Emoji"], t),
+    "Whitespace (Total)": count_matches(RE_DERIVED["Whitespace"], t)
+    }
 
-minor_stats = {}
+    minor_stats = {}
 
-if is_honest_mode:
-# --- HONEST MODE (Fixes 1 & 2) ---
-# 1. Count 29 categories against the FULL text (no emoji deletion)
-    for key, regex in RE_MINOR_29_HONEST.items():
-        minor_stats[key] = count_matches(regex, t)
-# 2. Calculate 'Cn' as the mathematical remainder
-sum_of_29_cats = sum(minor_stats.values())
-total_code_points = derived_stats["Total Code Points"]
-cn_count = total_code_points - sum_of_29_cats
-minor_stats["Cn"] = cn_count
-else:
-# --- LEGACY (FILTERED) MODE ---
-# 1. Keep the original flawed logic (delete emoji)
-text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-# 2. Count all 30 categories (incl. flawed \p{Cn}) against the filtered text
-for key, regex in RE_MINOR_LEGACY.items():
+    if is_honest_mode:
+    # --- HONEST MODE (Fixes 1 & 2) ---
+    # 1. Count 29 categories against the FULL text (no emoji deletion)
+        for key, regex in RE_MINOR_29_HONEST.items():
+            minor_stats[key] = count_matches(regex, t)
+    # 2. Calculate 'Cn' as the mathematical remainder
+        sum_of_29_cats = sum(minor_stats.values())
+        total_code_points = derived_stats["Total Code Points"]
+        cn_count = total_code_points - sum_of_29_cats
+        minor_stats["Cn"] = cn_count
+    else:
+    # --- LEGACY (FILTERED) MODE ---
+    # 1. Keep the original flawed logic (delete emoji)
+        text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    # 2. Count all 30 categories (incl. flawed \p{Cn}) against the filtered text
+    for key, regex in RE_MINOR_LEGACY.items():
         minor_stats[key] = count_matches(regex, text_no_emoji)
-# --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
-# This logic is UNCHANGED. It correctly aggregates 'minor_stats'
-# from whichever mode was run.
-major_stats = {
-"L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
-"M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
-"N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
-"P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
-"S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
-"Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
-"C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
-}
+    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
+    # This logic is UNCHANGED. It correctly aggregates 'minor_stats'
+    # from whichever mode was run.
+    major_stats = {
+    "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
+    "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
+    "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
+    "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
+    "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
+    "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
+    "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+    }
 
-# --- Build Summary (Tier 1) ---
-# This logic is UNCHANGED.
-summary_stats = {
-"Total Code Points": derived_stats["Total Code Points"],
-"RGI Emoji Sequences": derived_stats["RGI Emoji Sequences"],
-"Whitespace (Total)": derived_stats["Whitespace (Total)"],
-"L (Letter)": major_stats["L (Letter)"],
-"N (Number)": major_stats["N (Number)"],
-"P (Punctuation)": major_stats["P (Punctuation)"],
-"S (Symbol)": major_stats["S (Symbol)"]
-}
+    # --- Build Summary (Tier 1) ---
+    # This logic is UNCHANGED.
+    summary_stats = {
+    "Total Code Points": derived_stats["Total Code Points"],
+    "RGI Emoji Sequences": derived_stats["RGI Emoji Sequences"],
+    "Whitespace (Total)": derived_stats["Whitespace (Total)"],
+    "L (Letter)": major_stats["L (Letter)"],
+    "N (Number)": major_stats["N (Number)"],
+    "P (Punctuation)": major_stats["P (Punctuation)"],
+    "S (Symbol)": major_stats["S (Symbol)"]
+    }
 
-return summary_stats, major_stats, minor_stats
+    return summary_stats, major_stats, minor_stats
 
 def compute_sequence_stats(t: str, is_minor: bool):
     """Module 2: Runs the Token Shape Analysis."""
