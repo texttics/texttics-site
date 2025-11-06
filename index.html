@@ -515,8 +515,8 @@ def compute_comprehensive_stats(t: str):
     """Module 1: Runs the 3-Tier analysis."""
     
     # --- PASS 1: Count DERIVED Properties (Tier 1) ---
-    # Convert the JS string to an array of code points to get the *true* length
-    code_points_array = window.Array.from_(t)
+    # Convert the JS string to an array of code points to get the "true" length
+code_points_array = window.Array.from_(t)
     derived_stats = {
         "Total Code Points": len(code_points_array), # <-- FIX
         "RGI Emoji Sequences": count_matches(RE_DERIVED["Emoji"], t),
