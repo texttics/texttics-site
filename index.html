@@ -423,7 +423,7 @@ MINOR_CATEGORIES = {
 
 # Tier 1: Derived/Intuitive Properties
 DERIVED_PROPERTIES = {
-    "Emoji": r"\p{Emoji_Presentation}",
+    "Emoji": r"\p{RGI_Emoji}",
     "Whitespace": r"\p{White_Space}" 
 }
 
@@ -468,7 +468,7 @@ ALIASES = {
 
 # Compilers for Module 1 (Character Analysis)
 RE_MINOR = {key: window.RegExp.new(val, "gu") for key, val in MINOR_CATEGORIES.items()}
-RE_DERIVED = {key: window.RegExp.new(val, "gu") for key, val in DERIVED_PROPERTIES.items()}
+RE_DERIVED = {key: window.RegExp.new(val, "guv") for key, val in DERIVED_PROPERTIES.items()} 
 RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 
 # Testers for Module 2 (Token Shape Analysis)
