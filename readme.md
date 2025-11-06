@@ -1,15 +1,15 @@
-# Client-Side Python Text Analyzer
+# Text...tics: A Client-Side Python Text Analyzer
 
 This is a single-page web application that functions as a real-time, high-precision text analyzer. It uses **PyScript** to run Python directly in the browser without requiring a server backend.
 
-It provides a detailed breakdown of the text's composition at both the character and sequence (token) level, and it implements a privacy-first analytics solution using Google Consent Mode v2.
+It provides a detailed breakdown of the text's composition at both the character and sequence (token) level. It also implements a privacy-first analytics solution using Google Consent Mode v2, which is set to 'denied' by default.
 
 ## 🚀 Features
 
-* **Granular Character Counters:** A top-row dashboard provides a real-time count of every character in the input, broken down into 8 distinct categories (Letters, Numbers, Punctuation, Spaces, Control Chars, Emoji, Symbols, and Total).
-* **Sequence (Token) Counters:** A second-row dashboard counts uninterrupted sequences of the same character type, providing a structural analysis of the text's composition (e.g., `Hello-100%!` = 1 Letter seq, 1 Punctuation seq, 1 Number seq, 1 Symbol seq, 1 Punctuation seq).
-* **Text Dissection by Character Count Decile:** Analyzes the total number of **non-space characters** and renders the text into 10 separate blocks, each containing exactly 10% of the non-space characters. This dissection is literal and will split mid-word.
-* **Privacy-First Cookie Consent:** Implements Google's Consent Mode v2. All analytics and ad tracking are **disabled by default**. A cookie banner is shown, and tracking is only enabled *after* the user explicitly clicks "Accept."
+* **Character Composition (Granular Counters):** A dashboard provides a real-time count of every character in the input, broken down into 8 distinct categories (Letters, Numbers, Punctuation, Spaces, Control Chars, Emoji, Symbols, and Total).
+* **Sequence Analysis (Token Counters):** A second dashboard counts uninterrupted sequences of the same character type, providing a structural analysis of the text's composition (e.g., `Hello-100%!` = 1 Letter seq, 1 Punctuation seq, 1 Number seq, 1 Symbol seq, 1 Punctuation seq).
+* **Text Dissection by Character Count Decile:** Analyzes the total number of **non-space characters** and renders the text into 10 separate blocks, each containing exactly 10% of the non-space characters.
+* **Privacy-First Analytics:** Implements Google's Consent Mode v2. All analytics and ad tracking are **disabled by default** (set to 'denied') to ensure user privacy.
 
 ## 💻 Tech Stack
 
@@ -21,12 +21,11 @@ It provides a detailed breakdown of the text's composition at both the character
     * Uses the `string` module to define character sets.
     * Manipulates the DOM directly using `from pyscript import document`.
 * **Google Analytics (GA4) & Google Tag Manager (GTM):** For website traffic analysis.
-* **Google Consent Mode v2:** Manages analytics consent based on user interaction, implementing a "default-deny" state to comply with privacy laws (e.g., GDPR).
-* **Vanilla JavaScript:** Powers the cookie consent banner logic (showing/hiding the banner, setting `localStorage`, and sending consent updates to `gtag`).
+* **Google Consent Mode v2:** Implements a "default-deny" state to comply with privacy laws (e.g., GDPR). As there is no consent banner, tracking remains permanently disabled.
 
 ## ⚙️ How It Works
 
-The application has two parallel systems: the Python analyzer and the JavaScript-based consent manager.
+The application logic is powered entirely by Python running in the browser, alongside the "default-deny" Google Analytics configuration.
 
 ### Python App Logic
 
@@ -38,14 +37,8 @@ The application has two parallel systems: the Python analyzer and the JavaScript
     3.  `format_text(t)`: Calculates the total non-space character count, finds the 10 decile cutoffs, and generates the HTML for the two-column dissected text output.
 4.  The generated HTML is injected into the three output `div`s: `#stats`, `#sequence-stats`, and `#formatted-output`.
 
-### Analytics & Consent Logic
+### Analytics & Privacy Logic
 
 1.  On page load, Google Tag Manager and the GA4 tag are loaded.
 2.  Crucially, **before** the tags fully initialize, Google Consent Mode is set to **'denied'** by default for all tracking categories (`analytics_storage`, `ad_storage`, etc.).
-3.  A simple JavaScript function (`bindCookieBanner`) runs to check `localStorage` for a previous 'accept' choice.
-4.  If no consent is found in `localStorage`, the cookie banner is displayed.
-5.  If the user clicks the "Accept" button:
-    * The `gtag('consent', 'update', ...)` command is sent, granting permission for all tracking types.
-    * A value is saved to `localStorage` to hide the banner on future visits.
-    * The banner is hidden.
-6.  Only *after* this explicit consent is granted will GA4 and GTM begin to collect user-specific data for the session.
+3.  Because the application does not include a cookie/consent banner for users to click "Accept," this **'denied' state is permanent**, and no user-specific analytics data is collected.
