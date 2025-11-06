@@ -272,28 +272,7 @@ def format_text(t: str):
     html_output += '</div>'
     return html_output
 
-def update_all(event=None):
-    t = document.getElementById("text").value
-    stats = compute_stats(t)
-    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                         for k,v in stats.items())
-    document.getElementById("stats").innerHTML = stats_html
-    seq_stats = compute_sequence_stats(t)
-    seq_stats_renamed = {
-        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
-        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
-        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
-        "Symbols": seq_stats["Symbols"],
-    }
-    seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                             for k,v in seq_stats_renamed.items())
-    document.getElementById("sequence-stats").innerHTML = seq_stats_html
-    formatted_html = format_text(t)
-    document.getElementById("formatted-output").innerHTML = formatted_html
 
-update_all()
-
-# ... (all your other python functions like update_all) ...
 
 # -----------------------------------------------------------------
 # NEW COOKIE BANNER LOGIC - ALL INSIDE PYSCRIPT
@@ -356,6 +335,29 @@ def setup_cookie_banner():
 # This code runs once the <script type="py"> block is executed
 #
 setup_cookie_banner()
+    
+def update_all(event=None):
+    t = document.getElementById("text").value
+    stats = compute_stats(t)
+    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
+                         for k,v in stats.items())
+    document.getElementById("stats").innerHTML = stats_html
+    seq_stats = compute_sequence_stats(t)
+    seq_stats_renamed = {
+        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
+        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
+        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
+        "Symbols": seq_stats["Symbols"],
+    }
+    seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
+                             for k,v in seq_stats_renamed.items())
+    document.getElementById("sequence-stats").innerHTML = seq_stats_html
+    formatted_html = format_text(t)
+    document.getElementById("formatted-output").innerHTML = formatted_html
+
+update_all()
+
+
 
 </script>
     
