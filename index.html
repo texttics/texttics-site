@@ -614,7 +614,7 @@ def compute_script_stats(t: str, is_honest_mode: bool):
     if not is_honest_mode:
     # Legacy (Filtered) mode: remove emoji first
         text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-        script_stats = {}
+    script_stats = {}
     for key, regex in RE_SCRIPTS.items():
         script_stats[key] = count_matches(regex, text_to_scan)
     return script_stats
