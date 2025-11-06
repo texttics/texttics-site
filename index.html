@@ -478,7 +478,9 @@ TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATE
 
 def count_matches(regex, text):
     """Counts matches of a JS RegExp object in a string."""
-    matches = text.match(regex)
+    # We must explicitly call the JS String.prototype.match method
+    # and pass the Python string 'text' as the 'this' context.
+    matches = window.String.prototype.match.call(text, regex)
     return len(matches) if matches else 0
 
 def get_char_type(char, is_minor):
@@ -520,7 +522,8 @@ def compute_comprehensive_stats(t: str):
     
     # --- PASS 2: Count MINOR Categories (Tier 3) ---
     # Remove emoji to prevent double-counting components
-    text_no_emoji = t.replaceAll(RE_DERIVED["Emoji"], "")
+    # FIX: Use JS String.prototype.replace.call()
+    text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
     
     minor_stats = {}
     for key, regex in RE_MINOR.items():
