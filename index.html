@@ -11,10 +11,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   
   <meta charset="UTF-8" />
 
-  <script>
-  // This function will be called directly by the button's onclick
+<script>
+  // This function will be called BY PYTHON
   function handleAcceptCookies() {
-    console.log('[cookie] Accept clicked'); // Debug check
+    console.log('[cookie] JS handleAcceptCookies() CALLED!'); // New debug check
     const banner = document.getElementById('cookie-banner');
     
     if (window.gtag) {
@@ -29,15 +29,12 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
     localStorage.setItem('cookie_consent', 'true');
     
-    // Hide the banner
     if (banner) {
       banner.classList.add('hidden');
-    } else {
-      console.log('[cookie] Error: Banner not found for hiding.');
     }
   }
 
-  // This function will run on page load to check if consent is *already* given
+  // This check to hide the banner on load is still needed
   function initCookieBanner() {
     if (localStorage.getItem('cookie_consent') === 'true') {
       const banner = document.getElementById('cookie-banner');
@@ -180,7 +177,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <div id="cookie-banner" role="dialog" aria-live="polite">
   <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  <button id="accept-cookies" type="button" aria-label="Accept cookies" onclick="handleAcceptCookies()">
+  
+  <button id="accept-cookies" type="button" aria-label="Accept cookies" py-click="py_accept_cookies">
     Accept
   </button>
 </div>
@@ -189,8 +187,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 
   <script type="py">
-from pyscript import document
+from pyscript import document, window
 import string
+
 
 PUNCTUATION_SET = set(string.punctuation)
 CONTROL_CHARS = set(string.whitespace) - {' '}
@@ -231,7 +230,18 @@ def compute_stats(t: str):
         "Emoji": emoji,
         "Symbols": symbols,
     }
-
+    
+def py_accept_cookies(event=None):
+    """
+    This function is called by the button's py-click event.
+    It then calls the global JavaScript function 'handleAcceptCookies'.
+    """
+    print("[cookie] Python py_accept_cookies() CALLED!") # Python-side debug
+    try:
+        window.handleAcceptCookies()
+    except Exception as e:
+        print(f"[cookie] Python Error calling JS: {e}")
+    
 def get_char_type(char):
     if char == ' ':
         return 'Space'
