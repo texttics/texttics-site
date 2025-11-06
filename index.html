@@ -141,11 +141,16 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
 
-
+<div id="cookie-banner" role="dialog" aria-live="polite">
+  <p>This site uses cookies to analyze traffic and improve your experience.</p>
+  <button id="accept-cookies" type="button" aria-label="Accept cookies">
+    Accept
+  </button>
+</div>
 
 
   <script type="py">
-from pyscript import document, window
+from pyscript import document, window, js
 import string
 
 
