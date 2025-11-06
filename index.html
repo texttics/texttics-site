@@ -669,6 +669,8 @@ def select_tab(event):
     tab_name = event.target.id.split('-')[-1]
     _select_tab_internal(tab_name)
 
+# --- 6. MAIN ENTRY POINT ---
+    
 def update_all(event=None):
     """The main function called on every keypress."""
     t = document.getElementById("text").value
