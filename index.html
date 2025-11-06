@@ -525,8 +525,7 @@ def set_state(key, value):
 # --- 4. CORE LOGIC (MODULES) ---
 
 def compute_comprehensive_stats(t: str, is_honest_mode: bool):
-    """Module 1: Runs the 3-Tier analysis."""
-    
+    """Module 1: Runs the 3-Tier analysis."""
     # --- PASS 1: Count DERIVED Properties (Tier 1) ---
     # This is now common to both modes
     code_points_array = window.Array.from_(t)
