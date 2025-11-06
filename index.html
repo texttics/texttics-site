@@ -11,6 +11,42 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   
   <meta charset="UTF-8" />
 
+  <script>
+  // This function will be called directly by the button's onclick
+  function handleAcceptCookies() {
+    console.log('[cookie] Accept clicked'); // Debug check
+    const banner = document.getElementById('cookie-banner');
+    
+    if (window.gtag) {
+      gtag('consent', 'update', {
+        ad_storage: 'granted',
+        analytics_storage: 'granted',
+        ad_user_data: 'granted',
+        ad_personalization: 'granted'
+      });
+      gtag('event', 'page_view');
+    }
+
+    localStorage.setItem('cookie_consent', 'true');
+    
+    // Hide the banner
+    if (banner) {
+      banner.classList.add('hidden');
+    } else {
+      console.log('[cookie] Error: Banner not found for hiding.');
+    }
+  }
+
+  // This function will run on page load to check if consent is *already* given
+  function initCookieBanner() {
+    if (localStorage.getItem('cookie_consent') === 'true') {
+      const banner = document.getElementById('cookie-banner');
+      if (banner) {
+        banner.classList.add('hidden');
+      }
+    }
+  }
+</script>
 
 <script>
   // Define dataLayer + gtag *first*
@@ -144,7 +180,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <div id="cookie-banner" role="dialog" aria-live="polite">
   <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  <button id="accept-cookies" type="button" aria-label="Accept cookies">Accept</button>
+  <button id="accept-cookies" type="button" aria-label="Accept cookies" onclick="handleAcceptCookies()">
+    Accept
+  </button>
 </div>
 
 
