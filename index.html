@@ -104,17 +104,80 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 h1 { text-align: center; }
     /* ALL COOKIE BANNER CSS REMOVED */
 
+/* --- Tooltip Styles --- */
+.tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #007bff;
+  margin-left: 6px;
+}
+
+.tooltip .tooltip-text {
+  /* Visibility (hidden by default) */
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.3s;
+
+  /* Box Styling */
+  width: 300px;
+  background-color: #333;
+  color: #fff;
+  text-align: left;
+  font-weight: normal; /* Un-bold the text */
+  font-size: 0.9rem;
+  line-height: 1.4;
+  border-radius: 6px;
+  padding: 10px;
+  
+  /* Positioning */
+  position: absolute;
+  z-index: 1;
+  bottom: 125%; /* Position above the '?' */
+  left: 50%;
+  margin-left: -150px; /* Center it (half of the 300px width) */
+}
+
+/* Show the tooltip on hover */
+.tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+/* --- End Tooltip Styles --- */
+    
   </style>
+
+  
 </head>
 <body>
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KKG6C4ZW"
 height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  
 <h1>Text...tics</h1>
+  
 <h2>Text Input</h2>  
 <textarea id="text" py-input="update_all" placeholder="Paste or type here..."></textarea>
-<h2>Character Composition</h2> 
+  
+<h2>
+  Character Composition
+  <span class="tooltip">(?)
+    <span class="tooltip-text">
+      Measures the static properties of the text by counting the frequency of 8 different character classes (e.g., Letters, Numbers, Punctuation, etc.).
+    </span>
+  </span>
+</h2>
 <div class="stats" id="stats"></div>
-<h2>Sequence Analysis</h2>
+  
+<h2>
+  Character Sequence Analysis
+  <span class="tooltip">(?)
+    <span class="tooltip-text">
+      Performs a Run-Length Analysis to count uninterrupted sequences (or 'runs') of the same character type. (e.g., 'Hello-100%' has 5 sequences).
+    </span>
+  </span>
+</h2>
 <div class="stats sequence-stats" id="sequence-stats"></div>
 
 
