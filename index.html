@@ -320,10 +320,8 @@ update_all()
     });
   }
 
-  // Robustly attach (works even with module/async scripts on the page)
-  document.addEventListener('DOMContentLoaded', bindCookieBanner);
-  // Fallback in case something delays DOMContentLoaded
-  setTimeout(bindCookieBanner, 2000);
+// Robustly attach *after* PyScript is fully initialized
+  document.addEventListener('py:ready', bindCookieBanner);
 </script>
 
 
