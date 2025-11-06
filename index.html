@@ -326,41 +326,6 @@ def update_all(event=None):
 update_all()
   </script>
 
-<script>
-  // Attach AFTER the banner exists in the DOM
-  function bindCookieBanner(){
-    const banner = document.getElementById('cookie-banner');
-    const btn = document.getElementById('accept-cookies');
-    if (!banner || !btn) return;
-
-    // Hide if already accepted
-    if (localStorage.getItem('cookie_consent') === 'true') {
-      banner.classList.add('hidden');
-      return;
-    }
-
-    btn.addEventListener('click', () => {
-      console.log('[cookie] Accept clicked');   // debug line – should appear in Console
-
-      if (window.gtag) {
-        gtag('consent','update',{
-          ad_storage:'granted',
-          analytics_storage:'granted',
-          ad_user_data:'granted',
-          ad_personalization:'granted'
-        });
-        // Optional: send a page_view after consent
-        gtag('event','page_view');
-      }
-
-      localStorage.setItem('cookie_consent','true');
-      banner.classList.add('hidden');
-    });
-  }
-
-// Robustly attach *after* PyScript is fully initialized
-  document.addEventListener('py:ready', bindCookieBanner);
-</script>
 
 
 
