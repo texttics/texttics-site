@@ -552,8 +552,8 @@ def compute_comprehensive_stats(t: str, is_honest_mode: bool):
         # 1. Keep the original flawed logic (delete emoji)
             text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
         # 2. Count all 30 categories (incl. flawed \p{Cn}) against the filtered text
-        for key, regex in RE_MINOR_LEGACY.items():
-            minor_stats[key] = count_matches(regex, text_no_emoji)
+            for key, regex in RE_MINOR_LEGACY.items():
+                minor_stats[key] = count_matches(regex, text_no_emoji)
         # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
         # This logic is UNCHANGED. It correctly aggregates 'minor_stats'
         # from whichever mode was run.
