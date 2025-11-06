@@ -250,16 +250,7 @@ def check_initial_consent():
     except Exception as e:
         print(f"[PyScript] Error in check_initial_consent: {e}")
     
-def py_accept_cookies(event=None):
-    """
-    This function is called by the button's py-click event.
-    It then calls the global JavaScript function 'handleAcceptCookies'.
-    """
-    print("[cookie] Python py_accept_cookies() CALLED!") # Python-side debug
-    try:
-        window.handleAcceptCookies()
-    except Exception as e:
-        print(f"[cookie] Python Error calling JS: {e}")
+
     
 def get_char_type(char):
     if char == ' ':
@@ -335,63 +326,6 @@ def format_text(t: str):
 
 
 
-# -----------------------------------------------------------------
-# NEW COOKIE BANNER LOGIC - ALL INSIDE PYSCRIPT
-# -----------------------------------------------------------------
-
-def setup_cookie_banner():
-    """
-    Finds the banner and attaches listeners from within Python
-    after PyScript has initialized.
-    """
-    print("[PyScript] Running setup_cookie_banner()...")
-    
-    try:
-        # Get banner elements using PyScript's document
-        banner = document.getElementById("cookie-banner")
-        button = document.getElementById("accept-cookies")
-
-        if not banner or not button:
-            print("[PyScript-ERROR] Banner or Button NOT FOUND in DOM.")
-            return
-
-        # 1. Check if consent is already given
-        if js.localStorage.getItem('cookie_consent') == 'true':
-            print("[PyScript] Consent already given, hiding banner.")
-            banner.classList.add('hidden')
-            return
-
-        # 2. Define the click handler function *inside* Python
-        def accept_logic(event):
-            print("[PyScript] Accept Button CLICKED!")
-            
-            # Update Google Consent Mode (using the global 'js.gtag')
-            if hasattr(js, 'gtag'):
-                js.gtag('consent', 'update', {
-                    'ad_storage': 'granted',
-                    'analytics_storage': 'granted',
-                    'ad_user_data': 'granted',
-                    'ad_personalization': 'granted'
-                })
-                js.gtag('event', 'page_view')
-                print("[PyScript] gtag consent updated.")
-            else:
-                print("[PyScript-WARN] gtag function not found on 'js' object.")
-
-            # Save consent to localStorage
-            js.localStorage.setItem('cookie_consent', 'true')
-            
-            # Hide the banner
-            banner.classList.add('hidden')
-
-        # 3. Attach the event listener
-        button.addEventListener('click', accept_logic)
-        print("[PyScript] Event listener attached to 'accept-cookies' button.")
-
-    except Exception as e:
-        print(f"[PyScript-CRITICAL] Error in setup_cookie_banner: {e}")
-
-#
 # --- RUN THE SETUP FUNCTION ---
 # This code runs once the <script type="py"> block is executed
 #
