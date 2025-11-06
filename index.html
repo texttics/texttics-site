@@ -150,7 +150,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 
   <script type="py">
-from pyscript import document, window, js
+from pyscript import document, window, when
+import js
 import string
 
 
@@ -193,6 +194,61 @@ def compute_stats(t: str):
         "Emoji": emoji,
         "Symbols": symbols,
     }
+
+# ADD THIS NEW CODE INSIDE YOUR <script type="py">
+
+def update_gtm_consent():
+    """
+    Calls the global js.gtag function to update consent state.
+    """
+    print("[PyScript] Updating GTM Consent...")
+    try:
+        consent_settings = {
+            'analytics_storage': 'granted',
+            'ad_storage': 'granted',
+            'ad_user_data': 'granted',
+            'ad_personalization': 'granted'
+        }
+        # Call the global gtag function
+        js.gtag('consent', 'update', consent_settings)
+        print("[PyScript] GTM Consent updated successfully.")
+    except Exception as e:
+        print(f"[PyScript] Error calling js.gtag: {e}")
+
+@when("click", "#accept-cookies")  # <-- Uses your button's ID
+def handle_accept_click(event):
+    """
+    Handles the 'Accept' button click event using the @when decorator.
+    """
+    print("[PyScript] Accept button clicked! (via @when)")
+    
+    try:
+        # 1. Hide the banner
+        banner = js.document.getElementById("cookie-banner") # <-- Your banner ID
+        if banner:
+            banner.classList.add("hidden")
+
+        # 2. Update GTM Consent
+        update_gtm_consent()
+
+        # 3. Set localStorage flag
+        js.localStorage.setItem("cookie_consent", "true") # <-- Your storage key
+    except Exception as e:
+        print(f"[PyScript] Error in handle_accept_click: {e}")
+
+def check_initial_consent():
+    """
+    Checks localStorage on load and hides banner if already accepted.
+    """
+    print("[PyScript] Checking initial consent...")
+    try:
+        if js.localStorage.getItem('cookie_consent') == 'true':
+            banner = js.document.getElementById("cookie-banner")
+            if banner:
+                banner.classList.add('hidden')
+                print("[PyScript] Consent already given, hiding banner.")
+    except Exception as e:
+        print(f"[PyScript] Error in check_initial_consent: {e}")
     
 def py_accept_cookies(event=None):
     """
@@ -339,7 +395,7 @@ def setup_cookie_banner():
 # --- RUN THE SETUP FUNCTION ---
 # This code runs once the <script type="py"> block is executed
 #
-setup_cookie_banner()
+check_initial_consent()
     
 def update_all(event=None):
     t = document.getElementById("text").value
@@ -361,15 +417,8 @@ def update_all(event=None):
     document.getElementById("formatted-output").innerHTML = formatted_html
 
 update_all()
-
-
-
-</script>
     
   </script>
-
-
-
 
 
 </body>
