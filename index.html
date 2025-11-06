@@ -331,9 +331,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   
   <!-- Tab Navigation -->
   <div class="tabs-nav">
-    <button id="tab-btn-summary" class="tab-btn active" py-click="select_tab('summary')">Summary</button>
-    <button id="tab-btn-major" class="tab-btn" py-click="select_tab('major')">Major Categories</button>
-    <button id="tab-btn-minor" class="tab-btn" py-click="select_tab('minor')">Full Breakdown (30)</button>
+    <button id="tab-btn-summary" class="tab-btn active" py-click="select_tab">Summary</button>
+    <button id="tab-btn-major" class="tab-btn" py-click="select_tab">Major Categories</button>
+    <button id="tab-btn-minor" class="tab-btn" py-click="select_tab">Full Breakdown (30)</button>
   </div>
   
   <!-- Tab 1: Summary (Default) -->
@@ -398,6 +398,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 from pyscript import window, document
 import json
+from pyodide.ffi import create_proxy
 
 # --- 1. DEFINE CATEGORIES (Unicode Standard) ---
 
@@ -612,8 +613,8 @@ def render_minor_stats(stats_dict, element_id):
     if element:
         element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
 
-def select_tab(tab_name):
-    """Handles tab switching UI and state."""
+def _select_tab_internal(tab_name):
+    """Internal logic for switching tabs."""
     # Store state
     set_state("active_tab", tab_name)
     
@@ -626,6 +627,15 @@ def select_tab(tab_name):
     for content in document.querySelectorAll(".tab-content"):
         content.classList.remove("active")
     document.getElementById(f"tab-{tab_name}").classList.add("active")
+
+# This is the new event handler for py-click
+@create_proxy
+def select_tab(event):
+    """Handles tab switching UI from a JS click event."""
+    # Get tab name from the button's ID
+    # e.g., id="tab-btn-summary" -> "summary"
+    tab_name = event.target.id.split('-')[-1]
+    _select_tab_internal(tab_name)
 
 # --- 6. MAIN ENTRY POINT ---
 
@@ -660,7 +670,8 @@ def update_all(event=None):
     
     # --- Final UI sync ---
     # Re-apply the active tab in case this is the first load
-    select_tab(active_tab)
+    # Call the internal function directly
+    _select_tab_internal(active_tab)
 
 # Initial call to populate the dashboard on load
 update_all()
