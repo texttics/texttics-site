@@ -1,3 +1,4 @@
+
 # Text...tics: A Client-Side Python Text Analyzer
 
 This is a single-page web application that functions as a real-time, high-precision text analyzer. It uses **PyScript** to run Python directly in the browser without requiring a server backend.
