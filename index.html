@@ -669,46 +669,46 @@ def select_tab(event):
     tab_name = event.target.id.split('-')[-1]
     _select_tab_internal(tab_name)
 
-    def update_all(event=None):
-            """The main function called on every keypress."""
-            t = document.getElementById("text").value
+def update_all(event=None):
+    """The main function called on every keypress."""
+    t = document.getElementById("text").value
 
-            # Read UI state
-            is_minor_seq = document.getElementById("granularity-toggle").checked
-            is_honest_mode = document.getElementById("analysis-mode-toggle").checked # <-- NEW
-            active_tab = get_state()["active_tab"]
+    # Read UI state
+    is_minor_seq = document.getElementById("granularity-toggle").checked
+    is_honest_mode = document.getElementById("analysis-mode-toggle").checked # <-- NEW
+    active_tab = get_state()["active_tab"]
 
-            # --- Run Module 1 ---
-            # Pass the new flag to the compute function
-            summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
+    # --- Run Module 1 ---
+    # Pass the new flag to the compute function
+    summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
-            # Render Module 1
-            # Note: We must re-render all tabs, as they are hidden, not destroyed
-            render_stats(summary_stats, "tab-summary")
-            render_stats(major_stats, "tab-major")
-            render_minor_stats(minor_stats, "tab-minor")
-            
-            # --- Run Module 2 ---
-            # This module is unchanged and unaffected
-            seq_stats = compute_sequence_stats(t, is_minor_seq)
-            
-            # Render Module 2
-            render_stats(seq_stats, "sequence-stats")
+    # Render Module 1
+    # Note: We must re-render all tabs, as they are hidden, not destroyed
+    render_stats(summary_stats, "tab-summary")
+    render_stats(major_stats, "tab-major")
+    render_minor_stats(minor_stats, "tab-minor")
+    
+    # --- Run Module 2 ---
+    # This module is unchanged and unaffected
+    seq_stats = compute_sequence_stats(t, is_minor_seq)
+    
+    # Render Module 2
+    render_stats(seq_stats, "sequence-stats")
 
-            # --- Run Module 3 ---
-            # Pass the new flag to the compute function
-            script_stats = compute_script_stats(t, is_honest_mode)
-            
-            # Render Module 3
-            render_stats(script_stats, "script-stats", class_name="card")
-            
-            # --- Final UI sync ---
-            # Re-apply the active tab in case this is the first load
-            # Call the internal function directly
-            _select_tab_internal(active_tab)
+    # --- Run Module 3 ---
+    # Pass the new flag to the compute function
+    script_stats = compute_script_stats(t, is_honest_mode)
+    
+    # Render Module 3
+    render_stats(script_stats, "script-stats", class_name="card")
+    
+    # --- Final UI sync ---
+    # Re-apply the active tab in case this is the first load
+    # Call the internal function directly
+    _select_tab_internal(active_tab)
 
-            # Initial call to populate the dashboard on load
-    update_all()
+    # Initial call to populate the dashboard on load
+update_all()
 
   </script>
 
