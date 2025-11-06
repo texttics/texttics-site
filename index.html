@@ -141,17 +141,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <h2>Text Dissected by Character Count Decile</h2>
   <div id="formatted-output"></div>
 
-<div id="cookie-banner" role="dialog" aria-live="polite">
-  <p>This site uses cookies to analyze traffic and improve your experience.</p>
-  <button id="accept-cookies" type="button" aria-label="Accept cookies">
-    Accept
-  </button>
-</div>
+
 
 
   <script type="py">
-from pyscript import document, window, when
-import js
+from pyscript import document
 import string
 
 
@@ -194,62 +188,6 @@ def compute_stats(t: str):
         "Emoji": emoji,
         "Symbols": symbols,
     }
-
-# ADD THIS NEW CODE INSIDE YOUR <script type="py">
-
-def update_gtm_consent():
-    """
-    Calls the global js.gtag function to update consent state.
-    """
-    print("[PyScript] Updating GTM Consent...")
-    try:
-        consent_settings = {
-            'analytics_storage': 'granted',
-            'ad_storage': 'granted',
-            'ad_user_data': 'granted',
-            'ad_personalization': 'granted'
-        }
-        # Call the global gtag function
-        js.gtag('consent', 'update', consent_settings)
-        print("[PyScript] GTM Consent updated successfully.")
-    except Exception as e:
-        print(f"[PyScript] Error calling js.gtag: {e}")
-
-@when("click", "#accept-cookies")  # <-- Uses your button's ID
-def handle_accept_click(event):
-    """
-    Handles the 'Accept' button click event using the @when decorator.
-    """
-    print("[PyScript] Accept button clicked! (via @when)")
-    
-    try:
-        # 1. Hide the banner
-        banner = js.document.getElementById("cookie-banner") # <-- Your banner ID
-        if banner:
-            banner.classList.add("hidden")
-
-        # 2. Update GTM Consent
-        update_gtm_consent()
-
-        # 3. Set localStorage flag
-        js.localStorage.setItem("cookie_consent", "true") # <-- Your storage key
-    except Exception as e:
-        print(f"[PyScript] Error in handle_accept_click: {e}")
-
-def check_initial_consent():
-    """
-    Checks localStorage on load and hides banner if already accepted.
-    """
-    print("[PyScript] Checking initial consent...")
-    try:
-        if js.localStorage.getItem('cookie_consent') == 'true':
-            banner = js.document.getElementById("cookie-banner")
-            if banner:
-                banner.classList.add('hidden')
-                print("[PyScript] Consent already given, hiding banner.")
-    except Exception as e:
-        print(f"[PyScript] Error in check_initial_consent: {e}")
-    
 
     
 def get_char_type(char):
@@ -326,34 +264,58 @@ def format_text(t: str):
 
 
 
-# --- RUN THE SETUP FUNCTION ---
-# This code runs once the <script type="py"> block is executed
-#
-check_initial_consent()
-    
-def update_all(event=None):
-    t = document.getElementById("text").value
-    stats = compute_stats(t)
-    stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                         for k,v in stats.items())
-    document.getElementById("stats").innerHTML = stats_html
-    seq_stats = compute_sequence_stats(t)
-    seq_stats_renamed = {
-        "Letters": seq_stats["Letters"], "Numbers": seq_stats["Numbers"],
-        "Space (' ')": seq_stats["Space"], "Punctuation": seq_stats["Punctuation"],
-        "Control Chars": seq_stats["Control"], "Emoji": seq_stats["Emoji"],
-        "Symbols": seq_stats["Symbols"],
-    }
-    seq_stats_html = "".join(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>'
-                             for k,v in seq_stats_renamed.items())
-    document.getElementById("sequence-stats").innerHTML = seq_stats_html
-    formatted_html = format_text(t)
-    document.getElementById("formatted-output").innerHTML = formatted_html
 
 update_all()
     
   </script>
 
-
 </body>
+
+
+
+<div id="cookie-banner" role="dialog" aria-live="polite">
+  <p>This site uses cookies to analyze traffic and improve your experience.</p>
+  <button id="accept-cookies" type="button" aria-label="Accept cookies" onclick="handleAcceptConsent()">
+    Accept
+  </button>
+</div>
+
+<script>
+  (function() {
+    const banner = document.getElementById('cookie-banner');
+    
+    // 1. Function to handle the click (called by onclick)
+    window.handleAcceptConsent = function() {
+      console.log('[cookie] Accept clicked (isolated script)');
+      
+      // Send the consent update to Google
+      if (window.gtag) {
+        gtag('consent', 'update', {
+          ad_storage: 'granted',
+          analytics_storage: 'granted',
+          ad_user_data: 'granted',
+          ad_personalization: 'granted'
+        });
+        gtag('event', 'page_view');
+      }
+
+      // Save the choice
+      localStorage.setItem('cookie_consent', 'true');
+      
+      // Hide the banner
+      if (banner) {
+        banner.classList.add('hidden');
+      }
+    }
+
+    // 2. Check on page load if already accepted
+    if (localStorage.getItem('cookie_consent') === 'true') {
+      if (banner) {
+        banner.classList.add('hidden');
+      }
+    }
+  })();
+</script>
+
+
 </html>
