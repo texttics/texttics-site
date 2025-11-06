@@ -328,6 +328,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       </span>
     </span>
   </h2>
+
+<div class="toggle-switch">
+    <label for="analysis-mode-toggle">Filtered (Legacy)</label>
+    <label class="switch">
+      <input type="checkbox" id="analysis-mode-toggle" py-click="update_all" checked>
+      <span class="slider"></span>
+    </label>
+    <label for="analysis-mode-toggle">Honest (Full Partition)</label>
+  </div>
   
   <!-- Tab Navigation -->
   <div class="tabs-nav">
@@ -467,7 +476,11 @@ ALIASES = {
 # --- 2. CREATE JS REGEXP OBJECTS (for performance) ---
 
 # Compilers for Module 1 (Character Analysis)
-RE_MINOR = {key: window.RegExp.new(val, "gu") for key, val in MINOR_CATEGORIES.items()}
+# RE_MINOR is now RE_MINOR_LEGACY (all 30, for Module 2 and Legacy Mode)
+RE_MINOR_LEGACY = {key: window.RegExp.new(val, "gu") for key, val in MINOR_CATEGORIES.items()}
+# NEW: A 29-category dict for "Honest" mode (all *except* 'Cn')
+RE_MINOR_29_HONEST = {k: v for k, v in RE_MINOR_LEGACY.items() if k != "Cn"}
+
 RE_DERIVED = {key: window.RegExp.new(val, "gv") for key, val in DERIVED_PROPERTIES.items()} 
 RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 
@@ -511,50 +524,66 @@ def set_state(key, value):
 
 # --- 4. CORE LOGIC (MODULES) ---
 
-def compute_comprehensive_stats(t: str):
-    """Module 1: Runs the 3-Tier analysis."""
-    
-    # --- PASS 1: Count DERIVED Properties (Tier 1) ---
-    # Convert the JS string to an array of code points to get the "true" length
-    code_points_array = window.Array.from_(t)
-    derived_stats = {
-    "Total Code Points": len(code_points_array), # <-- FIX
-    "RGI Emoji Sequences": count_matches(RE_DERIVED["Emoji"], t),
-    "Whitespace (Total)": count_matches(RE_DERIVED["Whitespace"], t)
-    }
-    
-    # --- PASS 2: Count MINOR Categories (Tier 3) ---
-    # Remove emoji to prevent double-counting components
-    # FIX: Use JS String.prototype.replace.call()
-    text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-    
-    minor_stats = {}
-    for key, regex in RE_MINOR.items():
-        minor_stats[key] = count_matches(regex, text_no_emoji)
+def compute_comprehensive_stats(t: str, is_honest_mode: bool):
+    """Module 1: Runs the 3-Tier analysis."""
+    
+    # --- PASS 1: Count DERIVED Properties (Tier 1) ---
+    # This is now common to both modes
+    code_points_array = window.Array.from_(t)
+    derived_stats = {
+        "Total Code Points": len(code_points_array),
+        "RGI Emoji Sequences": count_matches(RE_DERIVED["Emoji"], t),
+        "Whitespace (Total)": count_matches(RE_DERIVED["Whitespace"], t)
+    }
+    
+    minor_stats = {}
 
-    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
-    major_stats = {
-        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
-        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
-        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
-        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
-        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
-        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
-        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
-    }
-    
-    # --- Build Summary (Tier 1) ---
-    summary_stats = {
-        "Total Code Points": derived_stats["Total Code Points"],
-        "RGI Emoji Sequences": derived_stats["RGI Emoji Sequences"],
-        "Whitespace (Total)": derived_stats["Whitespace (Total)"],
-        "L (Letter)": major_stats["L (Letter)"],
-        "N (Number)": major_stats["N (Number)"],
-        "P (Punctuation)": major_stats["P (Punctuation)"],
-        "S (Symbol)": major_stats["S (Symbol)"]
-    }
+    if is_honest_mode:
+        # --- HONEST MODE (Fixes 1 & 2) ---
+        # 1. Count 29 categories against the FULL text (no emoji deletion)
+        for key, regex in RE_MINOR_29_HONEST.items():
+            minor_stats[key] = count_matches(regex, t)
+        
+        # 2. Calculate 'Cn' as the mathematical remainder
+        sum_of_29_cats = sum(minor_stats.values())
+        total_code_points = derived_stats["Total Code Points"]
+        cn_count = total_code_points - sum_of_29_cats
+        minor_stats["Cn"] = cn_count
+    else:
+        # --- LEGACY (FILTERED) MODE ---
+        # 1. Keep the original flawed logic (delete emoji)
+        text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+        
+        # 2. Count all 30 categories (incl. flawed \p{Cn}) against the filtered text
+        for key, regex in RE_MINOR_LEGACY.items():
+            minor_stats[key] = count_matches(regex, text_no_emoji)
 
-    return summary_stats, major_stats, minor_stats
+    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
+    # This logic is UNCHANGED. It correctly aggregates 'minor_stats'
+    # from whichever mode was run.
+    major_stats = {
+        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
+        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
+        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
+        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
+        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
+        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
+        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+    }
+    
+    # --- Build Summary (Tier 1) ---
+    # This logic is UNCHANGED.
+    summary_stats = {
+        "Total Code Points": derived_stats["Total Code Points"],
+        "RGI Emoji Sequences": derived_stats["RGI Emoji Sequences"],
+        "Whitespace (Total)": derived_stats["Whitespace (Total)"],
+        "L (Letter)": major_stats["L (Letter)"],
+  t     "N (Number)": major_stats["N (Number)"],
+        "P (Punctuation)": major_stats["P (Punctuation)"],
+        "S (Symbol)": major_stats["S (Symbol)"]
+    }
+
+    return summary_stats, major_stats, minor_stats
 
 def compute_sequence_stats(t: str, is_minor: bool):
     """Module 2: Runs the Token Shape Analysis."""
@@ -581,14 +610,20 @@ def compute_sequence_stats(t: str, is_minor: bool):
         
     return counters
 
-def compute_script_stats(t: str):
-    """Module 3: Runs the Script Analysis."""
-    # FIX: Use JS String.prototype.replace.call()
-    text_no_emoji = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-    script_stats = {}
-    for key, regex in RE_SCRIPTS.items():
-        script_stats[key] = count_matches(regex, text_no_emoji)
-    return script_stats
+def compute_script_stats(t: str, is_honest_mode: bool):
+    """Module 3: Runs the Script Analysis."""
+    
+    text_to_scan = t # Default to Honest mode
+    
+    if not is_honest_mode:
+        # Legacy (Filtered) mode: remove emoji first
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    
+    script_stats = {}
+    for key, regex in RE_SCRIPTS.items():
+        script_stats[key] = count_matches(regex, text_to_scan)
+
+    return script_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -642,38 +677,42 @@ def select_tab(event):
 # --- 6. MAIN ENTRY POINT ---
 
 def update_all(event=None):
-    """The main function called on every keypress."""
-    t = document.getElementById("text").value
-    
-    # Read UI state
-    is_minor_seq = document.getElementById("granularity-toggle").checked
-    active_tab = get_state()["active_tab"]
+    """The main function called on every keypress."""
+    t = document.getElementById("text").value
+    
+    # Read UI state
+    is_minor_seq = document.getElementById("granularity-toggle").checked
+    is_honest_mode = document.getElementById("analysis-mode-toggle").checked # <-- NEW
+    active_tab = get_state()["active_tab"]
 
-    # --- Run Module 1 ---
-    summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t)
-    
-    # Render Module 1
-    # Note: We must re-render all tabs, as they are hidden, not destroyed
-    render_stats(summary_stats, "tab-summary")
-    render_stats(major_stats, "tab-major")
-    render_minor_stats(minor_stats, "tab-minor")
-    
-    # --- Run Module 2 ---
-    seq_stats = compute_sequence_stats(t, is_minor_seq)
-    
-    # Render Module 2
-    render_stats(seq_stats, "sequence-stats")
+    # --- Run Module 1 ---
+    # Pass the new flag to the compute function
+    summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
+    
+    # Render Module 1
+    # Note: We must re-render all tabs, as they are hidden, not destroyed
+    render_stats(summary_stats, "tab-summary")
+    render_stats(major_stats, "tab-major")
+    render_minor_stats(minor_stats, "tab-minor")
+    
+    # --- Run Module 2 ---
+    # This module is unchanged and unaffected
+    seq_stats = compute_sequence_stats(t, is_minor_seq)
+    
+    # Render Module 2
+    render_stats(seq_stats, "sequence-stats")
 
-    # --- Run Module 3 ---
-    script_stats = compute_script_stats(t)
-    
-    # Render Module 3
-    render_stats(script_stats, "script-stats", class_name="card")
-    
-    # --- Final UI sync ---
-    # Re-apply the active tab in case this is the first load
-    # Call the internal function directly
-    _select_tab_internal(active_tab)
+    # --- Run Module 3 ---
+    # Pass the new flag to the compute function
+    script_stats = compute_script_stats(t, is_honest_mode)
+    
+    # Render Module 3
+    render_stats(script_stats, "script-stats", class_name="card")
+    
+    # --- Final UI sync ---
+    # Re-apply the active tab in case this is the first load
+    # Call the internal function directly
+    _select_tab_internal(active_tab)
 
 # Initial call to populate the dashboard on load
 update_all()
