@@ -565,7 +565,7 @@ def set_state(key, value):
 
 def compute_comprehensive_stats(t: str, is_honest_mode: bool):
         """Module 1: Runs the 3-Tier analysis."""
-    # --- PASS 1: Count DERIVED Properties (Tier 1) ---
+# --- PASS 1: Count DERIVED Properties (Tier 1) ---
     # This is now common to both modes
         code_points_array = window.Array.from_(t)
         derived_stats = {
@@ -593,7 +593,7 @@ def compute_comprehensive_stats(t: str, is_honest_mode: bool):
         # 2. Count all 30 categories (incl. flawed \p{Cn}) against the filtered text
             for key, regex in RE_MINOR_LEGACY.items():
                 minor_stats[key] = count_matches(regex, text_no_emoji)
-        # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
+   # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
         # This logic is UNCHANGED. It correctly aggregates 'minor_stats'
         # from whichever mode was run.
         major_stats = {
@@ -799,31 +799,6 @@ def compute_forensic_stats(t: str, is_honest_mode: bool, cn_count: int, cs_count
 
     return forensic_stats
 
-    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
-    # This logic is identical to your other function, just aggregating the new counts
-    major_stats = {
-        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
-        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
-        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
-        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
-        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
-        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
-        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
-    }
-
-    # --- Build Summary (Tier 1) ---
-    # This is also identical, but we replace "Total Code Points" with "Total Graphemes"
-    summary_stats = {
-        "Total Graphemes": total_graphemes, # <-- NEW LABEL
-        # We can't easily count RGI Emoji or Whitespace with this method
-        # So we just show the main categories
-        "L (Letter)": major_stats["L (Letter)"],
-        "N (Number)": major_stats["N (Number)"],
-        "P (Punctuation)": major_stats["P (Punctuation)"],
-        "S (Symbol)": major_stats["S (Symbol)"]
-    }
-
-    return summary_stats, major_stats, minor_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
 
