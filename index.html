@@ -374,7 +374,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 
   <!-- === MODULE 2: TOKEN SHAPE ANALYSIS (CLASS RUNS) === -->
-  <h2>
+  <h2 id="module-2-header">
     Token Shape Analysis (Class Runs)
     <span class="tooltip">(?)
       <span class="tooltip-text">
@@ -399,7 +399,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   </div>
 
   <!-- === MODULE 3: SCRIPT ANALYSIS === -->
-  <h2>
+  <h2 id="module-3-header">
     Script Analysis
     <span class="tooltip">(?)
       <span class="tooltip-text">
@@ -830,6 +830,9 @@ def select_tab(event):
     tab_name = event.target.id.split('-')[-1]
     _select_tab_internal(tab_name)
 
+
+# --- 6. MAIN ENTRY POINT ---
+
 def update_all(event=None):
     """The main function called on every keypress."""
     t = document.getElementById("text").value
@@ -840,48 +843,56 @@ def update_all(event=None):
     is_grapheme_mode = document.getElementById("unit-mode-toggle").checked # <-- NEW2
     active_tab = get_state()["active_tab"]
 
-    # --- Run Module 1 ---
-    # This is the new switch that runs ONE of the two analysis functions
+# Get references to the other modules
+    module_2_header = document.getElementById("module-2-header")
+    module_2_content = document.getElementById("sequence-stats")
+    module_2_toggle = document.getElementById("granularity-toggle").parentElement # Get the .switch's parent
+    module_3_header = document.getElementById("module-3-header")
+    module_3_content = document.getElementById("script-stats")
+    
+    # --- Module 1 Toggle ---
     if is_grapheme_mode:
         summary_stats, major_stats, minor_stats = compute_grapheme_stats(t)
-        # Optional: Disable the "Honest/Filtered" toggle since it doesn't apply
+        # --- HIDE OTHER MODULES ---
         document.getElementById("analysis-mode-toggle").disabled = True
+        module_2_header.style.display = "none"
+        module_2_content.style.display = "none"
+        module_2_toggle.parentElement.style.display = "none" # Hide the toggle-switch div
+        module_3_header.style.display = "none"
+        module_3_content.style.display = "none"
     else:
-        # Original code path
+# --- SHOW OTHER MODULES ---
         document.getElementById("analysis-mode-toggle").disabled = False
+        module_2_header.style.display = "flex" # 'flex' is what h2 uses
+        module_2_content.style.display = "grid" # 'grid' is what .stats uses
+        module_2_toggle.parentElement.style.display = "flex" # Show the toggle-switch div
+        module_3_header.style.display = "flex"
+        module_3_content.style.display = "grid"
+        # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
-    # Render Module 1
-    # Note: We must re-render all tabs, as they are hidden, not destroyed
+    # Render Module 1 (Always runs, just with different data)
     render_stats(summary_stats, "tab-summary")
     render_stats(major_stats, "tab-major")
     render_minor_stats(minor_stats, "tab-minor")
-    
-    # --- Run Module 2 ---
-    # This module is unchanged and unaffected
-    seq_stats = compute_sequence_stats(t, is_minor_seq)
-    
-    # Render Module 2
-    render_stats(seq_stats, "sequence-stats")
 
-    # --- Run Module 3 ---
-    # Pass the new flag to the compute function, security fix
-    script_stats = compute_script_stats(t, is_honest_mode)
-    security_stats = compute_security_stats(t, is_honest_mode) # <-- NEW
-    
-    # Merge the two dictionaries so they render in the same section
-    combined_script_stats = {**security_stats, **script_stats} # <-- NEW
-    
-    # Render Module 3
-    # Pass the *combined* dictionary to the *existing* render function
-    render_stats(combined_script_stats, "script-stats", class_name="card") # <-- MODIFIED
-    
+    # --- Run Module 2 & 3 (Only if not in Grapheme mode) ---
+    if not is_grapheme_mode:
+        t = document.getElementById("text").value
+        # Run Module 2
+        seq_stats = compute_sequence_stats(t, is_minor_seq)
+        render_stats(seq_stats, "sequence-stats")
+
+    # Run Module 3
+        script_stats = compute_script_stats(t, is_honest_mode)
+        security_stats = compute_security_stats(t, is_honest_mode)
+        combined_script_stats = {**security_stats, **script_stats}
+        render_stats(combined_script_stats, "script-stats", class_name="card")
+
     # --- Final UI sync ---
-    # Re-apply the active tab in case this is the first load
-    # Call the internal function directly
     _select_tab_internal(active_tab)
 
-    # Initial call to populate the dashboard on load
+# Initial call to populate the dashboard on load
 update_all()
 
   </script>
