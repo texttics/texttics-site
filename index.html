@@ -459,7 +459,6 @@ SCRIPTS = {
 # NEW: Forensic Properties (Module 3 Add-on)
 FORENSIC_PROPERTIES = {
     "Bidi Controls": r"\p{Bidi_Control}",
-    "Restricted": r"\p{Identifier_Status=Restricted}",
     "Ignorables (Invisible)": r"\p{Default_Ignorable_Code_Point}",
     # 'Deceptive Spaces' requires the 'v' flag for set operations
     "Deceptive Spaces": r"[\p{White_Space}&&[^ \n\r\t]]"
@@ -504,7 +503,6 @@ RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 RE_FORENSIC = {
     # These can be 'gu' for simple global counting
     "Bidi Controls": window.RegExp.new(FORENSIC_PROPERTIES["Bidi Controls"], "gu"),
-    "Restricted": window.RegExp.new(FORENSIC_PROPERTIES["Restricted"], "gu"),
     "Ignorables (Invisible)": window.RegExp.new(FORENSIC_PROPERTIES["Ignorables (Invisible)"], "gu"),
     # This one MUST use 'gv' (global, v-flag) for the set operation
     "Deceptive Spaces": window.RegExp.new(FORENSIC_PROPERTIES["Deceptive Spaces"], "gv")
