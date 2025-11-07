@@ -963,7 +963,12 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     # Round the total value to avoid floating point issues
     final_total_value = round(numeric_total_value, 4)
     
-    return numeric_type_stats, final_total_value
+    # --- NEW: Add the Mixed-Number flag to the output ---
+    final_stats = {
+        "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0
+    }
+    
+    return final_stats, numeric_type_stats, final_total_value
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -1128,16 +1133,16 @@ def update_all(event=None):
         render_stats(uax44_stats, "uax44-stats", class_name="card")
 
         # Run Module 6 (Python Deep Scan)
-        numeric_types, total_value = compute_ucd_deep_scan(t, is_honest_mode)
+        security_flags, numeric_types, total_value = compute_ucd_deep_scan(t, is_honest_mode) # <-- NEW return
         
         total_value_dict = {}
         if total_value > 0 or "Num Type: Decimal (Nd)" in numeric_types or "Num Type: Letter (Nl)" in numeric_types or "Num Type: Other (No)" in numeric_types:
-            # Show total value even if it's 0, as long as there were numbers
             total_value_dict = {"Total Numeric Value": total_value}
             
         combined_deep_scan_stats = {
+            **security_flags, # <-- NEW (Holds "Mixed-Number Systems")
             **total_value_dict, 
-            **numeric_types 
+            **numeric_types
         }
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
 
