@@ -102,3 +102,34 @@ The application logic is a hybrid of Python (for orchestration) and JavaScript (
 1.  On page load, Google Tag Manager and the GA4 tag are loaded.
 2.  Crucially, **before** the tags fully initialize, Google Consent Mode is set to **'denied'** by default for all tracking categories (`analytics_storage`, `ad_storage`, etc.).
 3.  Because the application does not include a cookie/consent banner for users to click "Accept," this **'denied' state is permanent**, and no user-specific analytics data is collected.
+
+
+## 🚀 Recent Additions & Feature Upgrades
+
+### 1. New! Grapheme Forensic Analysis (Module 1.5)
+
+The "Graphemes (Perceived)" mode has been significantly upgraded. While it still provides the original 3-tab analysis (Summary, Major, Minor) based on the *first* code point, it now **adds a new, dedicated "Grapheme Forensic Analysis" module.**
+
+This new module addresses the "lossy" nature of the original classification by providing a "forensically honest" look at the *physical structure* of the grapheme clusters themselves. This is especially useful for detecting Zalgo text or other complex clusters.
+
+This module is **only visible when "Graphemes (Perceived)" mode is active** and provides the following new statistics:
+* **Total Graphemes:** The total count of "user-perceived characters."
+* **Single-Code-Point:** A count of "simple" graphemes that consist of only one code point (e.g., `a`).
+* **Multi-Code-Point:** A count of "complex" graphemes that are clusters of multiple code points (e.g., `e` + `◌́` or `x` + 8 marks).
+* **Total Combining Marks:** A `\p{M}` count of all combining marks found *inside* all graphemes.
+* **Max Marks in one Grapheme:** A "Zalgo detector" that reports the highest number of marks found in a single cluster.
+* **Avg. Marks per Grapheme:** A statistical average of marks per grapheme.
+
+### 2. New! Full UCD Profile Modules (Code Point Mode)
+
+Two new modules have been added to the default "Code Points (Raw)" mode to provide a much deeper analysis based on the full Unicode Character Database (UAX #44).
+
+* **Full UCD Profile (UAX #44):**
+    This module uses the `RegExp` engine to count deterministic properties beyond the basic `General_Category`. It provides a much more useful, high-level profile of the text's composition, including:
+    * **Binary Properties:** `Dash (binary)`, `Alphabetic (binary)`.
+    * **Script Properties:** `Script: Cyrillic`, `Script: Greek`, `Script: Han`, `Script: Arabic`, `Script: Hebrew`, etc. This replaces the old, simplistic "Other" category with a precise, standards-based script-by-script breakdown.
+
+* **UCD Deep Scan (Python):**
+    This module performs a "deep scan" of every code point using Python's built-in `unicodedata` library. This allows it to access complex properties *not available* to the JavaScript `RegExp` engine, providing a true numeric and forensic analysis:
+    * **`Numeric_Type` Counters:** Deterministically classifies all numeric characters into types like `Num Type: Decimal (Nd)` (e.g., `1`), `Num Type: Letter (Nl)` (e.g., Roman `V`), and `Num Type: Other (No)` (e.g., `½`).
+    * **`Total Numeric Value`:** A powerful forensic tool that calculates the *actual mathematical sum* of all numeric characters in the string (e.g., `V`+`¼` = `5.25`).
