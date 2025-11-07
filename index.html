@@ -435,6 +435,20 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
     <div id="uax44-stats" class="stats">
         </div>
+
+<h2 id="module-6-header">
+        UCD Deep Scan (Python)
+        <span class="tooltip">(?)
+            <span class="tooltip-text">
+                A full, Python-based scan of every code point to extract
+                complex UCD properties like Numeric_Value and Age.
+                This scan may be slower on very large texts.
+            </span>
+        </span>
+    </h2>
+
+    <div id="ucd-deep-scan-stats" class="stats">
+        </div>
   
   <!-- === PYTHONS SCRIPT === -->
   <script type="py">
@@ -864,6 +878,56 @@ def compute_uax44_stats(t: str, is_honest_mode: bool):
 
     return uax44_stats
 
+# NEW: UCD DEEP SCAN FUNCTION (PYTHON)
+def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
+    """Module 6: Runs a Python-based deep scan for properties
+       not available in RegExp."""
+    
+    text_to_scan = t # Default to Honest mode
+
+    if not is_honest_mode:
+        # Legacy (Filtered) mode: remove emoji first
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    
+    age_stats = {}
+    numeric_type_stats = {}
+    numeric_total_value = 0
+
+    # Iterate through every code point in Python
+    for char in text_to_scan:
+        
+        # --- 1. Get Age ---
+        try:
+            # Get the Unicode version string, e.g., "1.1", "5.0", "13.0"
+            age = unicodedata.age(char)
+            age_key = f"Age: {age}"
+            age_stats[age_key] = age_stats.get(age_key, 0) + 1
+        except ValueError:
+            pass # Not all chars have an age
+
+        # --- 2. Get Numeric Properties ---
+        try:
+            # This throws an error if the char is not numeric
+            value = unicodedata.numeric(char) 
+            numeric_total_value += value
+            
+            # Get the General_Category as a proxy for Numeric_Type
+            gc = unicodedata.category(char)
+            if gc == "Nd": n_type = "Num Type: Decimal (Nd)"
+            elif gc == "Nl": n_type = "Num Type: Letter (Nl)"
+            elif gc == "No": n_type = "Num Type: Other (No)"
+            else: n_type = f"Num Type: Other ({gc})"
+            
+            numeric_type_stats[n_type] = numeric_type_stats.get(n_type, 0) + 1
+            
+        except (ValueError, TypeError):
+            pass # Not a numeric character
+
+    # Round the total value to avoid floating point issues
+    final_total_value = round(numeric_total_value, 4)
+    
+    return age_stats, numeric_type_stats, final_total_value
+
 # --- 5. DOM/UI FUNCTIONS ---
 
 def render_stats(stats_dict, element_id, class_name="card"):
@@ -939,6 +1003,9 @@ def update_all(event=None):
 # NEW2
     module_5_header = document.getElementById("module-5-header")
     module_5_content = document.getElementById("uax44-stats")
+# NEW3
+    module_6_header = document.getElementById("module-6-header")
+    module_6_content = document.getElementById("ucd-deep-scan-stats")
     
     # --- Module 1 Toggle ---
     if is_grapheme_mode:
@@ -956,6 +1023,9 @@ def update_all(event=None):
     # NEW2
         module_5_header.style.display = "none"
         module_5_content.style.display = "none"
+    # NEW3
+        module_6_header.style.display = "none"
+        module_6_content.style.display = "none"
     
     else:
 # --- SHOW OTHER MODULES ---
@@ -971,6 +1041,11 @@ def update_all(event=None):
     # NEW2
         module_5_header.style.display = "flex"
         module_5_content.style.display = "grid"
+    # NEW3
+        module_6_header.style.display = "flex"
+        module_6_content.style.display = "grid"
+
+    
         # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
@@ -1011,6 +1086,21 @@ def update_all(event=None):
   # NEW: 5. Run and Render Module 4
         uax44_stats = compute_uax44_stats(t, is_honest_mode)
         render_stats(uax44_stats, "uax44-stats", class_name="card")
+
+  # NEW: 6. Run and Render Module 5 (Python Deep Scan)
+        age_stats, numeric_types, total_value = compute_ucd_deep_scan(t, is_honest_mode)
+        
+        total_value_dict = {}
+        if total_value > 0:
+            # Create a dict so render_stats can process it
+            total_value_dict = {"Total Numeric Value": total_value}
+
+        combined_deep_scan_stats = {
+            **total_value_dict, 
+            **numeric_types, 
+            **age_stats
+        }
+        render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
 
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
