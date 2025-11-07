@@ -459,6 +459,8 @@ SCRIPTS = {
 # NEW: Forensic Properties (Module 3 Add-on)
 FORENSIC_PROPERTIES = {
     "Bidi Controls": r"\p{Bidi_Control}",
+    "Deprecated": r"\p{Deprecated}",                # <-- NEW
+    "Noncharacter": r"\p{Noncharacter_Code_Point}", # <-- NEW
     "Ignorables (Invisible)": r"\p{Default_Ignorable_Code_Point}",
     # 'Deceptive Spaces' requires the 'v' flag for set operations
     "Deceptive Spaces": r"[\p{White_Space}&&[^ \n\r\t]]"
@@ -503,6 +505,8 @@ RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 RE_FORENSIC = {
     # These can be 'gu' for simple global counting
     "Bidi Controls": window.RegExp.new(FORENSIC_PROPERTIES["Bidi Controls"], "gu"),
+    "Deprecated": window.RegExp.new(FORENSIC_PROPERTIES["Deprecated"], "gu"),             # <-- NEW
+    "Noncharacter": window.RegExp.new(FORENSIC_PROPERTIES["Noncharacter"], "gu"),         # <-- NEW
     "Ignorables (Invisible)": window.RegExp.new(FORENSIC_PROPERTIES["Ignorables (Invisible)"], "gu"),
     # This one MUST use 'gv' (global, v-flag) for the set operation
     "Deceptive Spaces": window.RegExp.new(FORENSIC_PROPERTIES["Deceptive Spaces"], "gv")
@@ -775,8 +779,8 @@ def compute_security_stats(t: str, is_honest_mode: bool):
             
     return {"Mixed-Script Runs": mixed_run_count}
 
-  # NEW: FORENSIC ANALYSIS FUNCTION
-def compute_forensic_stats(t: str, is_honest_mode: bool, cn_count: int, cs_count: int, co_count: int):
+# NEW: FORENSIC ANALYSIS FUNCTION
+def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
     """Module 3 Add-on: Runs the Forensic Analysis."""
     
     text_to_scan = t # Default to Honest mode
@@ -788,9 +792,11 @@ def compute_forensic_stats(t: str, is_honest_mode: bool, cn_count: int, cs_count
     # 1. Initialize with the pre-calculated counts from Module 1
     #    This is efficient and respects "Honest Mode" logic for Cn.
     forensic_stats = {
-        "Unassigned (Void)": cn_count,
-        "Surrogates (Broken)": cs_count,
-        "Private Use (Black Box)": co_count
+        # Get counts from minor_stats, defaulting to 0
+        "Unassigned (Void)": minor_stats.get("Cn", 0),
+        "Surrogates (Broken)": minor_stats.get("Cs", 0),
+        "Private Use (Black Box)": minor_stats.get("Co", 0),
+        "Control (Cc)": minor_stats.get("Cc", 0)  # <-- PROMOTED FLAG
     }
 
     # 2. Run the other regex-based forensic checks
