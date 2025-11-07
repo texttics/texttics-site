@@ -914,18 +914,13 @@ def update_all(event=None):
         script_stats = compute_script_stats(t, is_honest_mode)
         security_stats = compute_security_stats(t, is_honest_mode)
         
-        # 2. Get the pre-calculated stats from Module 1
-        #    We use .get() for safety, defaulting to 0
-        cn_count = minor_stats.get("Cn", 0)
-        cs_count = minor_stats.get("Cs", 0)
-        co_count = minor_stats.get("Co", 0)
-        
-        # 3. Call the new forensic function
+         # 2. Call the new forensic function
+        #    We pass the whole minor_stats dict to pull Cc, Cn, Cs, Co
         forensic_stats = compute_forensic_stats(
-            t, is_honest_mode, cn_count, cs_count, co_count
+            t, is_honest_mode, minor_stats
         )
         
-        # 4. Combine all stats for Module 3
+        # 3. Combine all stats for Module 3
         #    The order here determines the display order
         combined_module_3_stats = {
             **security_stats, 
@@ -933,7 +928,7 @@ def update_all(event=None):
             **script_stats
         }
         
-        # 5. Render to the same 'script-stats' div
+        # 4. Render to the same 'script-stats' div
         render_stats(combined_module_3_stats, "script-stats", class_name="card")
 
     # --- Final UI sync ---
