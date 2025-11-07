@@ -276,17 +276,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       transform: translateX(22px);
     }
 
-    /* --- New Toggle-Switch  - Grapheme Cluster (EGC) Toggle --- */
-
-    <div class="toggle-switch">
-    <label for="unit-mode-toggle">Code Points (Raw)</label>
-    <label class="switch">
-      <input type="checkbox" id="unit-mode-toggle" py-click="update_all">
-      <span class="slider"></span>
-    </label>
-    <label for="unit-mode-toggle">Graphemes (Perceived)</label>
-    </div>
-    
+   
     /* --- Script Stats (Module 3) --- */
     #script-stats {
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -348,7 +338,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </label>
     <label for="analysis-mode-toggle">Honest (Full Partition)</label>
   </div>
-  
+
+    <!-- --- New Toggle-Switch  - Grapheme Cluster (EGC) Toggle --- -->
+
+    <div class="toggle-switch">
+    <label for="unit-mode-toggle">Code Points (Raw)</label>
+    <label class="switch">
+      <input type="checkbox" id="unit-mode-toggle" py-click="update_all">
+      <span class="slider"></span>
+    </label>
+    <label for="unit-mode-toggle">Graphemes (Perceived)</label>
+    </div>
+    
   <!-- Tab Navigation -->
   <div class="tabs-nav">
     <button id="tab-btn-summary" class="tab-btn active" py-click="select_tab">Summary</button>
