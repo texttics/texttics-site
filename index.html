@@ -455,6 +455,17 @@ SCRIPTS = {
     "Inherited": r"\p{sc=Inherited}" # Combining marks
 }
 
+
+# NEW: Forensic Properties (Module 3 Add-on)
+FORENSIC_PROPERTIES = {
+    "Bidi Controls": r"\p{Bidi_Control}",
+    "Restricted": r"\p{Identifier_Status=Restricted}",
+    "Ignorables (Invisible)": r"\p{Default_Ignorable_Code_Point}",
+    # 'Deceptive Spaces' requires the 'v' flag for set operations
+    "Deceptive Spaces": r"[\p{White_Space}&&[^ \n\r\t]]"
+}
+
+    
 # Tier 2: The 7 Major General Categories (for Token Shape Analysis)
 MAJOR_CATEGORIES_TEST = {
     "L (Letter)": window.RegExp.new(r"^\p{L}$", "u"),
@@ -488,6 +499,17 @@ RE_MINOR_29_HONEST = {k: v for k, v in RE_MINOR_LEGACY.items() if k != "Cn"}
 
 RE_DERIVED = {key: window.RegExp.new(val, "gv") for key, val in DERIVED_PROPERTIES.items()} 
 RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
+
+# NEW: Compilers for Forensic Module
+RE_FORENSIC = {
+    # These can be 'gu' for simple global counting
+    "Bidi Controls": window.RegExp.new(FORENSIC_PROPERTIES["Bidi Controls"], "gu"),
+    "Restricted": window.RegExp.new(FORENSIC_PROPERTIES["Restricted"], "gu"),
+    "Ignorables (Invisible)": window.RegExp.new(FORENSIC_PROPERTIES["Ignorables (Invisible)"], "gu"),
+    # This one MUST use 'gv' (global, v-flag) for the set operation
+    "Deceptive Spaces": window.RegExp.new(FORENSIC_PROPERTIES["Deceptive Spaces"], "gv")
+}
+
 
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
@@ -755,6 +777,30 @@ def compute_security_stats(t: str, is_honest_mode: bool):
             
     return {"Mixed-Script Runs": mixed_run_count}
 
+  # NEW: FORENSIC ANALYSIS FUNCTION
+def compute_forensic_stats(t: str, is_honest_mode: bool, cn_count: int, cs_count: int, co_count: int):
+    """Module 3 Add-on: Runs the Forensic Analysis."""
+    
+    text_to_scan = t # Default to Honest mode
+
+    if not is_honest_mode:
+        # Legacy (Filtered) mode: remove emoji first
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    
+    # 1. Initialize with the pre-calculated counts from Module 1
+    #    This is efficient and respects "Honest Mode" logic for Cn.
+    forensic_stats = {
+        "Unassigned (Void)": cn_count,
+        "Surrogates (Broken)": cs_count,
+        "Private Use (Black Box)": co_count
+    }
+
+    # 2. Run the other regex-based forensic checks
+    for key, regex in RE_FORENSIC.items():
+        forensic_stats[key] = count_matches(regex, text_to_scan)
+
+    return forensic_stats
+
     # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
     # This logic is identical to your other function, just aggregating the new counts
     major_stats = {
@@ -871,23 +917,45 @@ def update_all(event=None):
         # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
-    # Render Module 1 (Always runs, just with different data)
+# Render Module 1 (Always runs, just with different data)
     render_stats(summary_stats, "tab-summary")
     render_stats(major_stats, "tab-major")
     render_minor_stats(minor_stats, "tab-minor")
 
-    # --- Run Module 2 & 3 (Only if not in Grapheme mode) ---
+ # --- Run Module 2 & 3 (Only if not in Grapheme mode) ---
     if not is_grapheme_mode:
         t = document.getElementById("text").value
         # Run Module 2
         seq_stats = compute_sequence_stats(t, is_minor_seq)
         render_stats(seq_stats, "sequence-stats")
 
-    # Run Module 3
+# Run Module 3 (Script, Security, & Forensic)
+        
+        # 1. Run the original computes
         script_stats = compute_script_stats(t, is_honest_mode)
         security_stats = compute_security_stats(t, is_honest_mode)
-        combined_script_stats = {**security_stats, **script_stats}
-        render_stats(combined_script_stats, "script-stats", class_name="card")
+        
+        # 2. Get the pre-calculated stats from Module 1
+        #    We use .get() for safety, defaulting to 0
+        cn_count = minor_stats.get("Cn", 0)
+        cs_count = minor_stats.get("Cs", 0)
+        co_count = minor_stats.get("Co", 0)
+        
+        # 3. Call the new forensic function
+        forensic_stats = compute_forensic_stats(
+            t, is_honest_mode, cn_count, cs_count, co_count
+        )
+        
+        # 4. Combine all stats for Module 3
+        #    The order here determines the display order
+        combined_module_3_stats = {
+            **security_stats, 
+            **forensic_stats, 
+            **script_stats
+        }
+        
+        # 5. Render to the same 'script-stats' div
+        render_stats(combined_module_3_stats, "script-stats", class_name="card")
 
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
