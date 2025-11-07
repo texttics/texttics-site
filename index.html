@@ -629,22 +629,32 @@ def _finalize_allowed(ranges):
     print(f"Loaded {len(ALLOWED_RANGES)} allowed ranges.")
 
 def parse_identifier_status(txt: str):
-    """Parse IdentifierStatus.txt (which lists ONLY Allowed)."""
+    """Parse IdentifierStatus.txt and ONLY store Allowed ranges."""
     ranges = []
     for raw in txt.splitlines():
         # strip inline comments and whitespace
         line = raw.split('#', 1)[0].strip()
         if not line:
             continue
-        # Field 0 is the code point or range before the first ';'
-        code = line.split(';', 1)[0].strip()
-        if '..' in code:
-            a, b = code.split('..', 1)
-            ranges.append((int(a, 16), int(b, 16)))
-        else:
-            cp = int(code, 16)
-            ranges.append((cp, cp))
-    _finalize_allowed(ranges)
+        
+        parts = line.split(';', 2) # Split into max 2 parts
+        if len(parts) < 2:
+            continue
+            
+        code = parts[0].strip()
+        status = parts[1].strip() # <-- GET THE STATUS
+        
+        # --- THIS IS THE FIX ---
+        # We only add it to the list if it's 'Allowed'
+        if status == 'Allowed':
+            if '..' in code:
+                a, b = code.split('..', 1)
+                ranges.append((int(a, 16), int(b, 16)))
+            else:
+                cp = int(code, 16)
+                ranges.append((cp, cp))
+                
+    _finalize_allowed(ranges) # This function is still correct
 
 def is_restricted(char: str) -> bool:
     """True iff char NOT covered by any Allowed range."""
