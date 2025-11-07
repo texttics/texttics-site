@@ -424,7 +424,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <div id="forensic-stats" class="stats">
         </div>
 
+<h2 id="module-5-header">
+        Full UCD Profile (UAX #44)
+        <span class="tooltip">(?)
+            <span class="tooltip-text">
+                A "treasure trove" of other deterministic properties from the Unicode Character Database (UAX #44), such as Block, Age, and binary properties.
+            </span>
+        </span>
+    </h2>
 
+    <div id="uax44-stats" class="stats">
+        </div>
+  
   <!-- === PYTHONS SCRIPT === -->
   <script type="py">
 
@@ -477,6 +488,29 @@ FORENSIC_PROPERTIES = {
     "Deceptive Spaces": r"[\p{White_Space}&&[^ \n\r\t]]"
 }
 
+# NEW: UAX #44 'Gold' Properties (Module 5)
+UAX44_PROPERTIES = {
+    # Binary Properties
+    "Whitespace (binary)": r"\p{White_Space=True}",
+    "Dash (binary)": r"\p{Dash=True}",
+    
+    # Block Properties
+    "Block: Basic Latin": r"\p{Block=Basic_Latin}",
+    "Block: Latin-1 Supplement": r"\p{Block=Latin_1_Supplement}",
+    "Block: Cyrillic": r"\p{Block=Cyrillic}",
+    "Block: General Punctuation": r"\p{Block=General_Punctuation}",
+    "Block: CJK Unified Ideographs": r"\p{Block=CJK_Unified_Ideographs}",
+    
+    # Age Properties (examples)
+    "Age: 1.1": r"\p{Age=1.1}",
+    "Age: 3.0": r"\p{Age=3.0}",
+    "Age: 5.0": r"\p{Age=5.0}",
+
+    # Numeric Type Properties
+    "Numeric Type: Decimal": r"\p{Numeric_Type=Decimal}", # (Should match Nd)
+    "Numeric Type: Digit": r"\p{Numeric_Type=Digit}",
+    "Numeric Type: Numeric": r"\p{Numeric_Type=Numeric}"  # (Should match Nl + No)
+}
     
 # Tier 2: The 7 Major General Categories (for Token Shape Analysis)
 MAJOR_CATEGORIES_TEST = {
@@ -523,7 +557,12 @@ RE_FORENSIC = {
     "Deceptive Spaces": window.RegExp.new(FORENSIC_PROPERTIES["Deceptive Spaces"], "gv")
 }
 
-
+# NEW: Compilers for UAX #44 Module
+RE_UAX44 = {
+    key: window.RegExp.new(val, "gu") 
+    for key, val in UAX44_PROPERTIES.items()
+}
+    
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
 
@@ -816,6 +855,22 @@ def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
 
     return forensic_stats
 
+# NEW: UAX #44 ANALYSIS FUNCTION
+def compute_uax44_stats(t: str, is_honest_mode: bool):
+    """Module 5: Runs the UAX #44 Property Analysis."""
+    
+    text_to_scan = t # Default to Honest mode
+
+    if not is_honest_mode:
+        # Legacy (Filtered) mode: remove emoji first
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    
+    uax44_stats = {}
+
+    for key, regex in RE_UAX44.items():
+        uax44_stats[key] = count_matches(regex, text_to_scan)
+
+    return uax44_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -888,6 +943,10 @@ def update_all(event=None):
 # NEW
     module_4_header = document.getElementById("module-4-header")
     module_4_content = document.getElementById("forensic-stats")
+
+# NEW2
+    module_5_header = document.getElementById("module-5-header")
+    module_5_content = document.getElementById("uax44-stats")
     
     # --- Module 1 Toggle ---
     if is_grapheme_mode:
@@ -902,6 +961,10 @@ def update_all(event=None):
     # NEW
         module_4_header.style.display = "none"
         module_4_content.style.display = "none"
+    # NEW2
+        module_5_header.style.display = "none"
+        module_5_content.style.display = "none"
+    
     else:
 # --- SHOW OTHER MODULES ---
         document.getElementById("analysis-mode-toggle").disabled = False
@@ -913,6 +976,9 @@ def update_all(event=None):
     # NEW
         module_4_header.style.display = "flex"
         module_4_content.style.display = "grid"
+    # NEW2
+        module_5_header.style.display = "flex"
+        module_5_content.style.display = "grid"
         # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
@@ -949,6 +1015,10 @@ def update_all(event=None):
   # 4. Render Module 3 and Module 4 separately
         render_stats(combined_script_stats, "script-stats", class_name="card")
         render_stats(forensic_stats, "forensic-stats", class_name="card") # <-- RENDER FORENSIC
+
+  # NEW: 5. Run and Render Module 4
+        uax44_stats = compute_uax44_stats(t, is_honest_mode)
+        render_stats(uax44_stats, "uax44-stats", class_name="card")
 
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
