@@ -658,6 +658,7 @@ async def load_unicode_data():
         if response.ok:
             text = await response.string()
             parse_identifier_status(text)
+            update_all()
         else:
             print(f"Failed to load IdentifierStatus.txt: {response.status}")
     except Exception as e:
@@ -1208,7 +1209,7 @@ def update_all(event=None):
     _select_tab_internal(active_tab)
 
 # Initial call to populate the dashboard on load
-update_all()
+# update_all()
 
 # NEW: Start loading the external data
 asyncio.ensure_future(load_unicode_data())
