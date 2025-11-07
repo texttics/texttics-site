@@ -480,6 +480,17 @@ RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
 
+# NEW: Helpers for Security Module
+# Finds all continuous runs of one or more letters
+RE_LETTER_RUNS = window.RegExp.new(r"\p{L}+", "gu")
+
+# Tests if a string contains at least one Latin-script character
+RE_TEST_LATIN = window.RegExp.new(r"\p{sc=Latin}", "u")
+
+# Tests if a string contains at least one Letter that is *not* Latin
+# Uses the 'v' flag for Unicode set operations: [\p{L} (all letters) AND \P{sc=Latin} (not Latin)]
+RE_TEST_NOT_LATIN = window.RegExp.new(r"[\p{L}&&\P{sc=Latin}]", "v")
+
 
 # --- 3. HELPER FUNCTIONS ---
 
@@ -627,6 +638,43 @@ def compute_script_stats(t: str, is_honest_mode: bool):
     
     return script_stats
 
+def compute_security_stats(t: str, is_honest_mode: bool):
+    """Module 3 Add-on: Runs the Mixed-Script Run security check."""
+    
+    text_to_scan = t # Default to Honest mode
+
+    if not is_honest_mode:
+        # Legacy (Filtered) mode: remove emoji first
+        # We must use the global RE_DERIVED object here
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    
+    if not text_to_scan:
+        return {"Mixed-Script Runs": 0}
+
+    mixed_run_count = 0
+    
+    # Use the global regex to find all continuous runs of letters
+    letter_runs = window.String.prototype.match.call(text_to_scan, RE_LETTER_RUNS)
+    
+    if not letter_runs:
+        # No letter runs found in the text
+        return {"Mixed-Script Runs": 0}
+
+    # Analyze each letter-run individually
+    for run in letter_runs:
+        # Test if this specific run contains at least one Latin char
+        has_latin = RE_TEST_LATIN.test(run)
+        
+        # Test if this specific run contains at least one non-Latin *letter*
+        # This prevents runs of 'Hello!!!' from being flagged if '!' is not 'sc=Latin'
+        has_not_latin_letter = RE_TEST_NOT_LATIN.test(run)
+        
+        # If a single, continuous run of letters has both, it's a "Mixed-Script Run"
+        if has_latin and has_not_latin_letter:
+            mixed_run_count += 1
+            
+    return {"Mixed-Script Runs": mixed_run_count}
+
 # --- 5. DOM/UI FUNCTIONS ---
 
 def render_stats(stats_dict, element_id, class_name="card"):
@@ -707,9 +755,14 @@ def update_all(event=None):
     # --- Run Module 3 ---
     # Pass the new flag to the compute function
     script_stats = compute_script_stats(t, is_honest_mode)
+    security_stats = compute_security_stats(t, is_honest_mode) # <-- NEW
+    
+    # Merge the two dictionaries so they render in the same section
+    combined_script_stats = {**security_stats, **script_stats} # <-- NEW
     
     # Render Module 3
-    render_stats(script_stats, "script-stats", class_name="card")
+    # Pass the *combined* dictionary to the *existing* render function
+    render_stats(combined_script_stats, "script-stats", class_name="card") # <-- MODIFIED
     
     # --- Final UI sync ---
     # Re-apply the active tab in case this is the first load
