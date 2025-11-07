@@ -442,6 +442,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 from pyscript import window, document
 import json
 from pyodide.ffi import create_proxy
+import unicodedata
 
 # --- 1. DEFINE CATEGORIES (Unicode Standard) ---
 
@@ -489,26 +490,18 @@ FORENSIC_PROPERTIES = {
 }
 
 # NEW: UAX #44 'Gold' Properties (Module 5)
+# These properties are supported by the JS RegExp engine
 UAX44_PROPERTIES = {
     # Binary Properties
     "Dash (binary)": r"\p{Dash}",
-    
-    # Block Properties
-    "Block: Basic Latin": r"\p{Block=Basic_Latin}",
-    "Block: Latin-1 Supplement": r"\p{Block=Latin_1_Supplement}",
-    "Block: Cyrillic": r"\p{Block=Cyrillic}",
-    "Block: General Punctuation": r"\p{Block=General_Punctuation}",
-    "Block: CJK Unified Ideographs": r"\p{Block=CJK_Unified_Ideographs}",
-    
-    # Age Properties (examples)
-    "Age: 1.1": r"\p{Age=1.1}",
-    "Age: 3.0": r"\p{Age=3.0}",
-    "Age: 5.0": r"\p{Age=5.0}",
+    "Alphabetic (binary)": r"\p{Alphabetic}",
 
-    # Numeric Type Properties
-    "Numeric Type: Decimal": r"\p{Numeric_Type=Decimal}", # (Should match Nd)
-    "Numeric Type: Digit": r"\p{Numeric_Type=Digit}",
-    "Numeric Type: Numeric": r"\p{Numeric_Type=Numeric}"  # (Should match Nl + No)
+    # Script Properties (these are supported!)
+    "Script: Cyrillic": r"\p{Script=Cyrillic}",
+    "Script: Greek": r"\p{Script=Greek}",
+    "Script: Han": r"\p{Script=Han}",
+    "Script: Arabic": r"\p{Script=Arabic}",
+    "Script: Hebrew": r"\p{Script=Hebrew}"
 }
     
 # Tier 2: The 7 Major General Categories (for Token Shape Analysis)
