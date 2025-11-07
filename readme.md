@@ -1,8 +1,20 @@
-# Text...tics: A Unicode-Aware Client-Side Text Analyzer
+# Text...tics: A Deterministic Code Point & Forensic Analyzer
 
-This is a single-page web application that functions as a real-time, **Unicode-compliant** text analyzer. It uses **PyScript** to run Python 3.12 directly in the browser, leveraging the browser's native JavaScript `RegExp` engine and `Intl.Segmenter` API for high-performance, standards-based analysis without a server backend.
+This is a single-page web application that functions as a real-time, **deterministic** text analyzer. It is a **Physical Code Point Analyzer** and **Forensic Analysis** tool designed to give a literal, precise, and unfiltered view of the data in a string.
 
-It provides a multi-layered analysis of text composition, sequence (run) shape, and script properties, all based on the official **Unicode Standard**. Its core feature is a **dual-unit analysis engine** that allows the user to switch between analyzing raw **Code Points** and user-perceived **Grapheme Clusters**.
+It uses **PyScript** to run Python 3.12 directly in the browser, leveraging the browser's native JavaScript `RegExp` engine and `Intl.Segmenter` API for high-performance, standards-based analysis without a server backend.
+
+It provides a multi-layered, *literal* analysis of text composition, sequence (run) shape, script properties, and hidden forensic flags, all based on the official **Unicode Standard**. Its core feature is a **dual-unit analysis engine** that allows the user to switch between analyzing raw **Code Points** and user-perceived **Grapheme Clusters**.
+
+## 🔬 Core Philosophy: What This Tool Is (and Is Not)
+
+> **This tool is a Physical Code Point Analyzer, not a Linguistic Tool.**
+
+* **IT IS:** A **deterministic** and **literal** microscope. Its purpose is to analyze the *physical code points* of a string exactly as they are. The analysis is 100% deterministic and based on static Unicode properties.
+
+* **IT IS NOT:** A **linguistic** or **contextual** analyzer. It does not implement UAX #29 Word Boundaries and will not analyze "don't" as one "word." Instead, its **Sequence (Run) Analysis** will correctly identify "don't" as three physical runs: Letter (`L`), Punctuation (`P`), and Letter (`L`).
+
+* **IT IS PRECISE (NOT BRITTLE):** The tool **intentionally avoids normalization** (like NFC or NFKC). It correctly distinguishes between `U+212B (ANGSTROM SIGN)` (a `Symbol, So`) and its canonical equivalent `U+00C5 (A-WITH-RING)` (a `Letter, Lu`). This precision in identifying the *actual* code points in memory is a core feature, not a flaw.
 
 ## 🚀 Features
 
@@ -23,23 +35,29 @@ It provides a multi-layered analysis of text composition, sequence (run) shape, 
     * **2. Graphemes (Perceived) Mode:** Analyzes "user-perceived characters."
         1.  Uses the browser's native **`Intl.Segmenter`** (UAX #29) to algorithmically segment the string into **Extended Grapheme Clusters** (e.g., `e` + `◌́` is 1 grapheme; `👨‍👩‍👧‍👦` is 1 grapheme).
         2.  It then classifies each grapheme based on the `General_Category` of its *first* code point.
-        3.  **Note:** When this mode is active, Modules 2 and 3 (which are code-point-specific) are hidden to prevent logical contradictions.
+        3.  **Note:** When this mode is active, Modules 2, 3, and 4 (which are code-point-specific) are hidden to prevent logical contradictions.
 
-* **Sequence (Run) Analysis:** A structural analysis tool that performs a true **run-length analysis** to count uninterrupted sequences (runs) of the same character type. This module only appears in "Code Point" mode.
+* **Module 2: Sequence (Run) Analysis:** A structural analysis tool that performs a true **run-length analysis** to count uninterrupted sequences (runs) of the same character type. This module only appears in "Code Point" mode.
     * **Major Categories:** Counts runs of the 7 major categories (e.g., `Hello-100%` is `L` run, `P` run, `N` run, `P` run).
     * **Minor Categories:** Counts runs of the 30 minor categories (e.g., `Hello-100%` is `Lu` run, `Ll` run, `Pd` run, `Nd` run, `Po` run).
 
-* **Script & Security Analysis:** A module focused on the script properties of code points, with a focus on an English/Latin baseline and security. This module only appears in "Code Point" mode.
+* **Module 3: Script & Security Analysis:** A module focused on the script properties of code points, with a focus on an English/Latin baseline and security. This module only appears in "Code Point" mode.
     * **Script Counters:** Provides counts for `Latin`, `Common` (punctuation, symbols), and `Inherited` (marks).
     * **`Other` (Calculated):** A calculated counter (`Total - Latin - Common - Inherited`) that serves as a primary detector for any non-Latin text.
-    * **🔒 Security Counter: `Mixed-Script Runs`:** A deterministic security feature that detects **homograph attacks**. It counts any `Letter` (L) run that contains code points from *multiple* scripts (e.g., `paypaӏ`, which mixes `Latin` and `Cyrillic` characters, is flagged as 1 Mixed-Script Run).
+    * **🔒 Homograph Detector: `Mixed-Script Runs`:** A deterministic security feature that detects **homograph attacks**. It counts any `Letter` (L) run that contains code points from *multiple* scripts (e.g., `paypaӏ`, which mixes `Latin` and `Cyrillic` characters, is flagged as 1 Mixed-Script Run).
+
+* **NEW! Module 4: Forensic Analysis:** This module is dedicated to detecting "invisible," "deceptive," "corrupt," or "problematic" characters based on their deterministic Unicode properties. It provides counters for:
+    * **Corruption & Error Flags:** `Unassigned (Void)`, `Surrogates (Broken)`, `Noncharacter`, and `Deprecated` code points.
+    * **Invisible Ink Detectors:** `Ignorables (Invisible)` (like `U+200B Zero Width Space`) and `Deceptive Spaces` (like `U+200A Hair Space`).
+    * **Hidden Manipulators:** `Bidi Controls` (used in Trojan Source attacks) and `Control (Cc)` characters (like `NULL` or `BELL`).
+    * **Contextual Flags:** `Private Use (Black Box)` characters, which have no public meaning.
 
 * **Privacy-First Analytics:** Implements Google's Consent Mode v2. All analytics and ad tracking are **disabled by default** (set to 'denied') to ensure user privacy.
 
 ## 💻 Tech Stack
 
-* **HTML5:** Structures the application, including the new dual-unit toggle UI.
-* **CSS3:** Styles the application, using CSS Grid for the counter layouts.
+* **HTML5:** Structures the application, including the new Module 4 UI.
+* **CSS3:** Styles the application, including a distinct style for the new Forensic Analysis cards.
 * **PyScript (2024.9.1):** Runs Python 3.12 in the browser.
 * **Python 3.12 (via PyScript):**
     * All logic is contained within a single `<script type="py">` tag.
@@ -48,7 +66,7 @@ It provides a multi-layered analysis of text composition, sequence (run) shape, 
     * Manipulates the DOM directly using `from pyscript import document`.
 * **JavaScript (via PyScript `window` object):**
     * Python leverages the browser's JavaScript engines to perform all deterministic analysis:
-    * **`RegExp` engine:** Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{sc=Latin}`).
+    * **`RegExp` engine:** Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{Bidi_Control}`, `\p{Deprecated}`).
     * **`Intl.Segmenter` API:** Used to perform UAX #29-compliant grapheme cluster segmentation.
 * **Google Analytics (GA4) & Google Tag Manager (GTM):** For website traffic analysis.
 * **Google Consent Mode v2:** Implements a "default-deny" state. As there is no consent banner, tracking remains permanently disabled.
@@ -62,7 +80,7 @@ The application logic is a hybrid of Python (for orchestration) and JavaScript (
 1.  A user types into the `<textarea>`.
 2.  The `py-input="update_all"` attribute triggers the Python `update_all` function on every keypress.
 3.  The `update_all` function reads the UI state:
-    * `is_grapheme_mode`: (Bool) The state of the new "Unit of Analysis" toggle.
+    * `is_grapheme_mode`: (Bool) The state of the "Unit of Analysis" toggle.
     * `is_honest_mode`: (Bool) The state of the "Analysis Mode" sub-toggle.
     * `is_minor_seq`: (Bool) The state of the "Sequence (Run)" toggle.
     * `active_tab`: (String) Which tab is currently open.
@@ -70,13 +88,14 @@ The application logic is a hybrid of Python (for orchestration) and JavaScript (
     * **IF `is_grapheme_mode == True`:**
         1.  Calls `compute_grapheme_stats(t)` (which uses `Intl.Segmenter`).
         2.  Calls `render_stats` to update Module 1.
-        3.  Hides Module 2 and Module 3 (and their toggles) via DOM manipulation.
+        3.  Hides Module 2, Module 3, and **Module 4** via DOM manipulation.
     * **ELSE (`is_grapheme_mode == False`):**
-        1.  Shows Module 2 and Module 3 (and their toggles).
-        2.  Calls `compute_comprehensive_stats(t, is_honest_mode)` (using `RegExp`) to run Module 1.
+        1.  Shows Module 2, Module 3, and **Module 4**.
+        2.  Calls `compute_comprehensive_stats(t, is_honest_mode)` to run Module 1. This generates the crucial `minor_stats` dictionary.
         3.  Calls `compute_sequence_stats(t, is_minor_seq)` to run Module 2.
         4.  Calls `compute_script_stats(t, is_honest_mode)` and `compute_security_stats(t, is_honest_mode)` to run Module 3.
-        5.  Calls `render_stats` to inject all results into the UI.
+        5.  Calls **`compute_forensic_stats(t, is_honest_mode, minor_stats)`** to run Module 4, efficiently passing in the `minor_stats` (for `Cn`, `Cc`, `Cs`, `Co`) from Module 1.
+        6.  Calls `render_stats` to inject all results into the appropriate UI sections (`#script-stats`, `#forensic-stats`, etc.).
 
 ### Analytics & Privacy Logic
 
