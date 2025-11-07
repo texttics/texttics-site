@@ -653,6 +653,71 @@ def compute_script_stats(t: str, is_honest_mode: bool):
     
     return script_stats
 
+def compute_grapheme_stats(t: str):
+    """Module 1 (Alternate): Runs the 3-Tier analysis on Grapheme Clusters."""
+    
+    # --- PASS 1: Get all grapheme segments ---
+    # We call the JS API directly
+    segments_iterable = GRAPHEME_SEGMENTER.segment(t)
+    # Convert the JS iterator to a Python list
+    segments = window.Array.from_(segments_iterable)
+    
+    total_graphemes = len(segments)
+    
+    # Initialize all 30 minor counters
+    minor_stats = {key: 0 for key in MINOR_CATEGORIES}
+
+    # --- PASS 2: Classify each grapheme ---
+    for segment in segments:
+        # segment.segment is the string for that grapheme (e.g., "á" or "👨‍👩‍👧‍👦")
+        grapheme_str = segment.segment
+        
+        if not grapheme_str:
+            continue
+
+        # Get the *first code point* of the grapheme
+        # We use window.Array.from_ to handle surrogate pairs correctly
+        first_char = window.Array.from_(grapheme_str)[0]
+        
+        # Now, classify that *first char* using your existing regex testers
+        # This is a robust, deterministic classification method
+        classified = False
+        for key, regex in TEST_MINOR.items():
+            if regex.test(first_char):
+                minor_stats[key] += 1
+                classified = True
+                break
+        
+        if not classified:
+            # This should rarely happen, but it would be an unassigned 'Cn'
+            minor_stats["Cn"] += 1
+
+    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
+    # This logic is identical to your other function, just aggregating the new counts
+    major_stats = {
+        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
+        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
+        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
+        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
+        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
+        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
+        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+    }
+
+    # --- Build Summary (Tier 1) ---
+    # This is also identical, but we replace "Total Code Points" with "Total Graphemes"
+    summary_stats = {
+        "Total Graphemes": total_graphemes, # <-- NEW LABEL
+        # We can't easily count RGI Emoji or Whitespace with this method
+        # So we just show the main categories
+        "L (Letter)": major_stats["L (Letter)"],
+        "N (Number)": major_stats["N (Number)"],
+        "P (Punctuation)": major_stats["P (Punctuation)"],
+        "S (Symbol)": major_stats["S (Symbol)"]
+    }
+
+    return summary_stats, major_stats, minor_stats
+    
 def compute_security_stats(t: str, is_honest_mode: bool):
     """Module 3 Add-on: Runs the Mixed-Script Run security check."""
     
