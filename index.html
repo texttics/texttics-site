@@ -927,7 +927,6 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
         # Legacy (Filtered) mode: remove emoji first
         text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
     
-    age_stats = {}
     numeric_type_stats = {}
     numeric_total_value = 0
 
@@ -935,13 +934,13 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     for char in text_to_scan:
         
         # --- 1. Get Age ---
-        try:
+        # try:
             # Get the Unicode version string, e.g., "1.1", "5.0", "13.0"
-            age = unicodedata.age(char)
-            age_key = f"Age: {age}"
-            age_stats[age_key] = age_stats.get(age_key, 0) + 1
-        except ValueError:
-            pass # Not all chars have an age
+          #   age = unicodedata.age(char)
+          #   age_key = f"Age: {age}"
+          #   age_stats[age_key] = age_stats.get(age_key, 0) + 1
+      #   except ValueError:
+        #     pass # Not all chars have an age
 
         # --- 2. Get Numeric Properties ---
         try:
@@ -1138,8 +1137,7 @@ def update_all(event=None):
             
         combined_deep_scan_stats = {
             **total_value_dict, 
-            **numeric_types, 
-            **age_stats
+            **numeric_types 
         }
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
 
