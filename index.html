@@ -1019,7 +1019,9 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     for char in text_to_scan:
         
         # --- NEW: Identifier Status Check ---
-        if is_restricted(char):
+        if char == ' ': # <-- OPTIONAL: Ignore simple spaces
+             pass
+        elif is_restricted(char):
             restricted_count += 1
         
         # --- Get Numeric Properties ---
