@@ -133,3 +133,32 @@ Two new modules have been added to the default "Code Points (Raw)" mode to provi
     This module performs a "deep scan" of every code point using Python's built-in `unicodedata` library. This allows it to access complex properties *not available* to the JavaScript `RegExp` engine, providing a true numeric and forensic analysis:
     * **`Numeric_Type` Counters:** Deterministically classifies all numeric characters into types like `Num Type: Decimal (Nd)` (e.g., `1`), `Num Type: Letter (Nl)` (e.g., Roman `V`), and `Num Type: Other (No)` (e.g., `½`).
     * **`Total Numeric Value`:** A powerful forensic tool that calculates the *actual mathematical sum* of all numeric characters in the string (e.g., `V`+`¼` = `5.25`).
+
+
+### 3. New! UCD Deep Scan (Python) & Data-Driven Forensics (Module)
+
+This module represents a significant leap in the app's capability, proving its "data-driven" forensic model. It uses Python's `unicodedata` library and asynchronously fetches raw data files from the Unicode Consortium (`IdentifierStatus.txt`) to perform checks that are impossible with `RegExp` alone.
+
+This module provides the following deep-scan statistics in "Code Point Mode":
+
+* **Numeric Type & Value Analysis:**
+    * **`Total Numeric Value`:** A powerful forensic tool that calculates the *actual mathematical sum* of all numeric characters in the string (e.g., `V` + `¼` = `5.25`).
+    * **`Numeric_Type` Counters:** Deterministically classifies all numeric characters into types like `Num Type: Decimal (Nd)` (e.g., `1`), `Num Type: Letter (Nl)` (e.g., Roman `V`), and `Num Type: Other (No)` (e.g., `½`).
+
+* **Data-Driven Security Flags:**
+    * **`Mixed-Number Systems`:** A security flag (derived from `unicodedata`) that detects when a string mixes decimal digits from different scripts (e.g., Latin `1` and Arabic-Indic `٠`), a common spoofing technique.
+    * **`Restricted Characters`:** A powerful, data-driven flag. The app fetches `IdentifierStatus.txt` from Unicode, parses it, and then flags any character that is **not** on the `Allowed` list. This catches most "weird" or "problematic" symbols, punctuation, and spaces that are not recommended for identifiers.
+
+### 4. New! Grapheme Forensic Analysis (Module 1.5)
+
+The "Graphemes (Perceived)" mode has been significantly upgraded. While it still provides the original 3-tab analysis (based on the *first* code point), it now **adds a new, dedicated "Grapheme Forensic Analysis" module.**
+
+This new module addresses the "lossy" nature of the original classification by providing a "forensically honest" look at the *physical structure* of the grapheme clusters themselves. This is especially useful for detecting Zalgo text or other complex clusters.
+
+This module is **only visible when "Graphemes (Perceived)" mode is active** and provides the following new statistics:
+* **Total Graphemes:** The total count of "user-perceived characters."
+* **Single-Code-Point:** A count of "simple" graphemes that consist of only one code point (e.g., `a`).
+* **Multi-Code-Point:** A count of "complex" graphemes that are clusters of multiple code points (e.g., `e` + `◌́` or `x` + 8 marks).
+* **Total Combining Marks:** A `\p{M}` count of all combining marks found *inside* all graphemes.
+* **Max Marks in one Grapheme:** A "Zalgo detector" that reports the highest number of marks found in a single cluster.
+* **Avg. Marks per Grapheme:** A statistical average of marks per grapheme.
