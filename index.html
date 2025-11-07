@@ -436,18 +436,11 @@ DERIVED_PROPERTIES = {
     "Whitespace": r"\p{White_Space}" 
 }
 
-# New Module: Script Properties
+# New Module: Script Properties (Simplified)
 SCRIPTS = {
     "Latin": r"\p{sc=Latin}",
-    "Cyrillic": r"\p{sc=Cyrillic}",
-    "Greek": r"\p{sc=Greek}",
-    "Han": r"\p{sc=Han}",
-    "Hiragana": r"\p{sc=Hiragana}",
-    "Katakana": r"\p{sc=Katakana}",
-    "Arabic": r"\p{sc=Arabic}",
-    "Hebrew": r"\p{sc=Hebrew}",
-    "Devanagari": r"\p{sc=Devanagari}",
-    "Common": r"\p{sc=Common}" # Punct, symbols, etc.
+    "Common": r"\p{sc=Common}", # Punct, symbols, etc.
+    "Inherited": r"\p{sc=Inherited}" # Combining marks
 }
 
 # Tier 2: The 7 Major General Categories (for Token Shape Analysis)
@@ -616,8 +609,22 @@ def compute_script_stats(t: str, is_honest_mode: bool):
         text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
     
     script_stats = {}
+    sum_of_known_scripts = 0
+
+    # 1. Count the known scripts (Latin, Common, Inherited)
     for key, regex in RE_SCRIPTS.items():
-        script_stats[key] = count_matches(regex, text_to_scan)
+        count = count_matches(regex, text_to_scan)
+        script_stats[key] = count
+        sum_of_known_scripts += count
+
+    # 2. Get the total code points *of the text we just scanned*
+    # This is the key to the "Honest" partition
+    total_code_points_in_scan = len(window.Array.from_(text_to_scan))
+
+    # 3. Calculate "Other" as the mathematical remainder
+    other_count = total_code_points_in_scan - sum_of_known_scripts
+    script_stats["Other"] = other_count
+    
     return script_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
