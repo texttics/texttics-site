@@ -1,34 +1,44 @@
 # Text...tics: A Unicode-Aware Client-Side Text Analyzer
 
-This is a single-page web application that functions as a real-time, **Unicode-compliant** text analyzer. It uses **PyScript** to run Python 3.12 directly in the browser, leveraging the browser's native JavaScript `RegExp` engine for high-performance, C++-backed Unicode property matching without a server backend.
+This is a single-page web application that functions as a real-time, **Unicode-compliant** text analyzer. It uses **PyScript** to run Python 3.12 directly in the browser, leveraging the browser's native JavaScript `RegExp` engine and `Intl.Segmenter` API for high-performance, standards-based analysis without a server backend.
 
-It provides a multi-layered analysis of text composition, token shape, and script properties, all based on the official **Unicode Standard**. Its core feature is a dual-mode analysis engine that offers both a mathematically perfect "honest" partition of all code points and a "filtered" view for legacy analysis.
+It provides a multi-layered analysis of text composition, sequence (run) shape, and script properties, all based on the official **Unicode Standard**. Its core feature is a **dual-unit analysis engine** that allows the user to switch between analyzing raw **Code Points** and user-perceived **Grapheme Clusters**.
 
 ## 🚀 Features
 
-* **Dual-Mode Character Analysis (3-Tier):** A tabbed dashboard provides a detailed breakdown of all characters based on the **Unicode General Category (gc)**. A toggle switch controls two distinct analysis models:
+* **Dual-Unit Character Analysis (Code Point vs. Grapheme):** A top-level toggle (`Code Points (Raw)` vs. `Graphemes (Perceived)`) switches the entire analysis unit for Module 1.
 
-    * **Honest (Full Partition) Mode (Default):** This mode is 100% standards-compliant and mathematically sound.
-        1.  It counts the constituent code points of *all* characters, including complex emoji (e.g., `👨‍💻` is correctly tallied as 2 `So` Symbols and 1 `Cf` Format character).
-        2.  It fixes the "`\p{Cn}` Gap" by *calculating* the `Cn` (Unassigned) category as the mathematical remainder.
-        3.  This **guarantees** that `Total Code Points == Sum(All 30 Minor Categories)`.
+    * **1. Code Points (Raw) Mode (Default):** Analyzes every individual Unicode code point. This mode provides two further analysis models controlled by a sub-toggle:
 
-    * **Filtered (Legacy) Mode:** This mode provides a "cleaner" view by filtering specific components.
-        1.  It pre-filters and *removes* all `\p{RGI_Emoji}` sequences before analysis.
-        2.  It uses a regex to count `\p{Cn}` (which can miss some unassigned code points).
-        3.  In this mode, `Total Code Points` will *not* equal the sum of all categories, as components have been intentionally removed.
+        * **Honest (Full Partition) Mode:** 100% standards-compliant.
+            1.  It counts the code points of *all* characters, including complex emoji (`👨‍💻` is tallied as 2 `So` + 1 `Cf`).
+            2.  It *calculates* the `Cn` (Unassigned) category as the mathematical remainder.
+            3.  This **guarantees** `Total Code Points == Sum(All 30 Minor Categories)`.
 
-* **Condensed Word Shape (Token Shape Analysis):** A structural analysis tool that performs a true **run-length analysis** (also known as "Condensed Word Shape" in NLP) to count uninterrupted sequences (runs) of the same character type. A toggle switch allows for analysis at two granularities:
+        * **Filtered (Legacy) Mode:** A "cleaner" view.
+            1.  It pre-filters and *removes* all `\p{RGI_Emoji}` sequences before analysis.
+            2.  It uses a regex to count `\p{Cn}`.
+            3.  In this mode, `Total Code Points` will *not* equal the sum of all categories.
+
+    * **2. Graphemes (Perceived) Mode:** Analyzes "user-perceived characters."
+        1.  Uses the browser's native **`Intl.Segmenter`** (UAX #29) to algorithmically segment the string into **Extended Grapheme Clusters** (e.g., `e` + `◌́` is 1 grapheme; `👨‍👩‍👧‍👦` is 1 grapheme).
+        2.  It then classifies each grapheme based on the `General_Category` of its *first* code point.
+        3.  **Note:** When this mode is active, Modules 2 and 3 (which are code-point-specific) are hidden to prevent logical contradictions.
+
+* **Sequence (Run) Analysis:** A structural analysis tool that performs a true **run-length analysis** to count uninterrupted sequences (runs) of the same character type. This module only appears in "Code Point" mode.
     * **Major Categories:** Counts runs of the 7 major categories (e.g., `Hello-100%` is `L` run, `P` run, `N` run, `P` run).
     * **Minor Categories:** Counts runs of the 30 minor categories (e.g., `Hello-100%` is `Lu` run, `Ll` run, `Pd` run, `Nd` run, `Po` run).
 
-* **Script Analysis:** A module that counts all characters belonging to a specific Unicode **Script property** (e.g., `Latin`, `Cyrillic`, `Han`). This module also respects the "Honest" vs. "Filtered" analysis toggle.
+* **Script & Security Analysis:** A module focused on the script properties of code points, with a focus on an English/Latin baseline and security. This module only appears in "Code Point" mode.
+    * **Script Counters:** Provides counts for `Latin`, `Common` (punctuation, symbols), and `Inherited` (marks).
+    * **`Other` (Calculated):** A calculated counter (`Total - Latin - Common - Inherited`) that serves as a primary detector for any non-Latin text.
+    * **🔒 Security Counter: `Mixed-Script Runs`:** A deterministic security feature that detects **homograph attacks**. It counts any `Letter` (L) run that contains code points from *multiple* scripts (e.g., `paypaӏ`, which mixes `Latin` and `Cyrillic` characters, is flagged as 1 Mixed-Script Run).
 
 * **Privacy-First Analytics:** Implements Google's Consent Mode v2. All analytics and ad tracking are **disabled by default** (set to 'denied') to ensure user privacy.
 
 ## 💻 Tech Stack
 
-* **HTML5:** Structures the application, including the new dual-mode toggle UI.
+* **HTML5:** Structures the application, including the new dual-unit toggle UI.
 * **CSS3:** Styles the application, using CSS Grid for the counter layouts.
 * **PyScript (2024.9.1):** Runs Python 3.12 in the browser.
 * **Python 3.12 (via PyScript):**
@@ -37,35 +47,36 @@ It provides a multi-layered analysis of text composition, token shape, and scrip
     * Uses `pyodide.ffi.create_proxy` to create event handlers for UI elements.
     * Manipulates the DOM directly using `from pyscript import document`.
 * **JavaScript (via PyScript `window` object):**
-    * Python leverages the browser's JavaScript **`RegExp` engine** to perform all Unicode-aware classifications. This hybrid C++/Python-in-JS approach provides exceptional performance, capable of analyzing massive inputs in real-time.
-    * This is necessary because Pyodide's built-in Python `re` module does not support Unicode property escapes (e.g., `\p{L}`, `\p{Emoji}`).
+    * Python leverages the browser's JavaScript engines to perform all deterministic analysis:
+    * **`RegExp` engine:** Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{sc=Latin}`).
+    * **`Intl.Segmenter` API:** Used to perform UAX #29-compliant grapheme cluster segmentation.
 * **Google Analytics (GA4) & Google Tag Manager (GTM):** For website traffic analysis.
 * **Google Consent Mode v2:** Implements a "default-deny" state. As there is no consent banner, tracking remains permanently disabled.
 
 ## ⚙️ How It Works
 
-The application logic is a hybrid of Python (for orchestration) and JavaScript (for high-performance Unicode regex).
+The application logic is a hybrid of Python (for orchestration) and JavaScript (for high-performance, standards-compliant analysis).
 
 ### Unicode-Aware App Logic
 
 1.  A user types into the `<textarea>`.
 2.  The `py-input="update_all"` attribute triggers the Python `update_all` function on every keypress.
 3.  The `update_all` function reads the UI state:
-    * `is_honest_mode`: (Bool) The state of the new "Analysis Mode" toggle.
-    * `is_minor_seq`: (Bool) The state of the "Token Shape" toggle.
+    * `is_grapheme_mode`: (Bool) The state of the new "Unit of Analysis" toggle.
+    * `is_honest_mode`: (Bool) The state of the "Analysis Mode" sub-toggle.
+    * `is_minor_seq`: (Bool) The state of the "Sequence (Run)" toggle.
     * `active_tab`: (String) Which tab is currently open.
-4.  The `update_all` function then calls three other Python functions:
-    1.  `compute_comprehensive_stats(t, is_honest_mode)`:
-        * **If Honest Mode:**
-            * **Pass 1:** Counts derived properties (`\p{RGI_Emoji}`, `\p{Whitespace}`) from the full text `t`.
-            * **Pass 2:** Counts all **29 assigned Minor Categories** (e.g., `\p{Lu}`, `\p{Cf}`) against the *full text* `t`.
-            * **Pass 3:** Calculates `Cn` (Unassigned) as the remainder: `Total Code Points - Sum(29 Categories)`.
-        * **If Filtered (Legacy) Mode:**
-            * **Pass 1:** Counts `\p{RGI_Emoji}` and *removes* them to create a `text_no_emoji`.
-            * **Pass 2:** Counts all **30 Minor Categories** (using the flawed `\p{Cn}` regex) against the *filtered* `text_no_emoji`.
-    2.  `compute_sequence_stats(t, is_minor)`: Uses a **state machine** to loop through `t` and implement a "Condensed Word Shape" (run-length) algorithm.
-    3.  `compute_script_stats(t, is_honest_mode)`: Counts `\p{sc=...}` properties against either the full text `t` or the filtered `text_no_emoji`, based on the mode.
-5.  The `update_all` function then calls `render_stats` to inject the results into the correct UI sections.
+4.  The `update_all` function then executes its main logic:
+    * **IF `is_grapheme_mode == True`:**
+        1.  Calls `compute_grapheme_stats(t)` (which uses `Intl.Segmenter`).
+        2.  Calls `render_stats` to update Module 1.
+        3.  Hides Module 2 and Module 3 (and their toggles) via DOM manipulation.
+    * **ELSE (`is_grapheme_mode == False`):**
+        1.  Shows Module 2 and Module 3 (and their toggles).
+        2.  Calls `compute_comprehensive_stats(t, is_honest_mode)` (using `RegExp`) to run Module 1.
+        3.  Calls `compute_sequence_stats(t, is_minor_seq)` to run Module 2.
+        4.  Calls `compute_script_stats(t, is_honest_mode)` and `compute_security_stats(t, is_honest_mode)` to run Module 3.
+        5.  Calls `render_stats` to inject all results into the UI.
 
 ### Analytics & Privacy Logic
 
