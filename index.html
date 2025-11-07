@@ -604,67 +604,78 @@ RE_TEST_NOT_LATIN = window.RegExp.new(r"[\p{L}&&\P{sc=Latin}]", "v")
 # We create one segmenter instance to reuse
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
 
-# --- NEW: Identifier Status (Restricted) Logic ---
-RESTRICTED_RANGES = [] # Global var to hold our parsed data
+# --- NEW: Identifier Status (Allowed -> Restricted complement) ---
+
+ALLOWED_RANGES = []      # list[(start,end)]
+ALLOWED_STARTS = []      # for bisect
+ALLOWED_ENDS = []        # for bisect
+
+def _finalize_allowed(ranges):
+    from bisect import bisect_right
+    # normalize & prep arrays for O(log n) lookups
+    ranges.sort()
+    # merge overlapping/adjacent ranges for speed
+    merged = []
+    for s, e in ranges:
+        if not merged or s > merged[-1][1] + 1:
+            merged.append([s, e])
+        else:
+            merged[-1][1] = max(merged[-1][1], e)
+    # commit
+    global ALLOWED_RANGES, ALLOWED_STARTS, ALLOWED_ENDS
+    ALLOWED_RANGES = [(s, e) for s, e in merged]
+    ALLOWED_STARTS = [s for s, _ in ALLOWED_RANGES]
+    ALLOWED_ENDS   = [e for _, e in ALLOWED_RANGES]
+    print(f"Loaded {len(ALLOWED_RANGES)} allowed ranges.")
 
 def parse_identifier_status(txt: str):
-    """Parses the raw IdentifierStatus.txt file."""
-    global RESTRICTED_RANGES
+    """Parse IdentifierStatus.txt (which lists ONLY Allowed)."""
     ranges = []
-    for line in txt.split('\n'):
-        if not line or line.startswith('#'):
-            continue # Skip comments and empty lines
-        
-        parts = line.split(';')
-        if len(parts) < 2:
+    for raw in txt.splitlines():
+        # strip inline comments and whitespace
+        line = raw.split('#', 1)[0].strip()
+        if not line:
             continue
-            
-        code_range_str = parts[0].strip()
-        status = parts[1].strip()
-        
-        if status == 'Restricted':
-            if '..' in code_range_str:
-                # It's a range (e.g., "00B6..00B7")
-                start, end = code_range_str.split('..')
-                ranges.append((int(start, 16), int(end, 16)))
-            else:
-                # It's a single code point
-                cp = int(code_range_str, 16)
-                ranges.append((cp, cp))
-    
-    RESTRICTED_RANGES = sorted(ranges)
-    print(f"Loaded {len(RESTRICTED_RANGES)} restricted ranges.")
+        # Field 0 is the code point or range before the first ';'
+        code = line.split(';', 1)[0].strip()
+        if '..' in code:
+            a, b = code.split('..', 1)
+            ranges.append((int(a, 16), int(b, 16)))
+        else:
+            cp = int(code, 16)
+            ranges.append((cp, cp))
+    _finalize_allowed(ranges)
 
 def is_restricted(char: str) -> bool:
-    """Checks if a character is in the Restricted list."""
-    if not RESTRICTED_RANGES:
-        return False # Data not loaded yet
-        
+    """True iff char NOT covered by any Allowed range."""
+    if not ALLOWED_RANGES:
+        # Until data loads, be conservative (this may flash Restricted=True
+        # for a moment, but it's safer than False)
+        return True
+    import bisect
     cp = ord(char)
-    
-    # Simple binary search would be faster, but for < 1000 ranges,
-    # a linear scan is fine and easier to read.
-    for start, end in RESTRICTED_RANGES:
-        if cp < start:
-            return False # We've gone past where it could be
-        if cp >= start and cp <= end:
-            return True # It's in a restricted range
-    return False
+    # Find the index of the last range that *starts* at or before cp
+    i = bisect.bisect_right(ALLOWED_STARTS, cp) - 1
+    # Check if we are within that range's end
+    return not (i >= 0 and cp <= ALLOWED_ENDS[i])
 
 async def load_unicode_data():
-    """Fetches and parses the external Unicode data files."""
+    """Fetches, parses, and then triggers a UI update."""
     try:
-        response = await pyfetch("IdentifierStatus.txt")
+        response = await pyfetch("./IdentifierStatus.txt")
         if response.ok:
             text = await response.string()
+            # Sanity check: file should mention "Identifier_Status"
+            if "Identifier_Status" not in text and ";" not in text:
+                print("IdentifierStatus.txt fetched, but content looks like HTML (wrong path/SPA redirect?).")
             parse_identifier_status(text)
-            update_all()
+            update_all() # <-- Correctly calls update_all *after* parsing
         else:
             print(f"Failed to load IdentifierStatus.txt: {response.status}")
     except Exception as e:
         print(f"Error loading IdentifierStatus.txt: {e}")
 
-# --- End of new logic block ---
+# --- End of replacement block --
     
 # --- 3. HELPER FUNCTIONS ---
 
