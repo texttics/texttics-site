@@ -275,6 +275,17 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     input:checked + .slider:before {
       transform: translateX(22px);
     }
+
+    /* --- New Toggle-Switch  - Grapheme Cluster (EGC) Toggle --- */
+
+    <div class="toggle-switch">
+    <label for="unit-mode-toggle">Code Points (Raw)</label>
+    <label class="switch">
+      <input type="checkbox" id="unit-mode-toggle" py-click="update_all">
+      <span class="slider"></span>
+    </label>
+    <label for="unit-mode-toggle">Graphemes (Perceived)</label>
+    </div>
     
     /* --- Script Stats (Module 3) --- */
     #script-stats {
@@ -491,7 +502,10 @@ RE_TEST_LATIN = window.RegExp.new(r"\p{sc=Latin}", "u")
 # Uses the 'v' flag for Unicode set operations: [\p{L} (all letters) AND \P{sc=Latin} (not Latin)]
 RE_TEST_NOT_LATIN = window.RegExp.new(r"[\p{L}&&\P{sc=Latin}]", "v")
 
-
+# NEW: Grapheme Segmenter (Module 1 alternate)
+# We create one segmenter instance to reuse
+GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
+    
 # --- 3. HELPER FUNCTIONS ---
 
 def count_matches(regex, text):
@@ -675,6 +689,32 @@ def compute_security_stats(t: str, is_honest_mode: bool):
             
     return {"Mixed-Script Runs": mixed_run_count}
 
+    # --- PASS 3: Aggregate MAJOR Categories (Tier 2) ---
+    # This logic is identical to your other function, just aggregating the new counts
+    major_stats = {
+        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
+        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
+        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
+        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
+        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
+        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
+        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+    }
+
+    # --- Build Summary (Tier 1) ---
+    # This is also identical, but we replace "Total Code Points" with "Total Graphemes"
+    summary_stats = {
+        "Total Graphemes": total_graphemes, # <-- NEW LABEL
+        # We can't easily count RGI Emoji or Whitespace with this method
+        # So we just show the main categories
+        "L (Letter)": major_stats["L (Letter)"],
+        "N (Number)": major_stats["N (Number)"],
+        "P (Punctuation)": major_stats["P (Punctuation)"],
+        "S (Symbol)": major_stats["S (Symbol)"]
+    }
+
+    return summary_stats, major_stats, minor_stats
+
 # --- 5. DOM/UI FUNCTIONS ---
 
 def render_stats(stats_dict, element_id, class_name="card"):
@@ -724,20 +764,26 @@ def select_tab(event):
     tab_name = event.target.id.split('-')[-1]
     _select_tab_internal(tab_name)
 
-# --- 6. MAIN ENTRY POINT ---
-    
 def update_all(event=None):
     """The main function called on every keypress."""
     t = document.getElementById("text").value
 
     # Read UI state
     is_minor_seq = document.getElementById("granularity-toggle").checked
-    is_honest_mode = document.getElementById("analysis-mode-toggle").checked # <-- NEW
+    is_honest_mode = document.getElementById("analysis-mode-toggle").checked # <-- NEW1
+    is_grapheme_mode = document.getElementById("unit-mode-toggle").checked # <-- NEW2
     active_tab = get_state()["active_tab"]
 
     # --- Run Module 1 ---
-    # Pass the new flag to the compute function
-    summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
+    # This is the new switch that runs ONE of the two analysis functions
+    if is_grapheme_mode:
+        summary_stats, major_stats, minor_stats = compute_grapheme_stats(t)
+        # Optional: Disable the "Honest/Filtered" toggle since it doesn't apply
+        document.getElementById("analysis-mode-toggle").disabled = True
+    else:
+        # Original code path
+        document.getElementById("analysis-mode-toggle").disabled = False
+        summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
     # Render Module 1
     # Note: We must re-render all tabs, as they are hidden, not destroyed
@@ -753,7 +799,7 @@ def update_all(event=None):
     render_stats(seq_stats, "sequence-stats")
 
     # --- Run Module 3 ---
-    # Pass the new flag to the compute function
+    # Pass the new flag to the compute function, security fix
     script_stats = compute_script_stats(t, is_honest_mode)
     security_stats = compute_security_stats(t, is_honest_mode) # <-- NEW
     
