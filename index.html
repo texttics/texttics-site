@@ -963,7 +963,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     # Round the total value to avoid floating point issues
     final_total_value = round(numeric_total_value, 4)
     
-    return age_stats, numeric_type_stats, final_total_value
+    return numeric_type_stats, final_total_value
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -1128,7 +1128,7 @@ def update_all(event=None):
         render_stats(uax44_stats, "uax44-stats", class_name="card")
 
         # Run Module 6 (Python Deep Scan)
-        age_stats, numeric_types, total_value = compute_ucd_deep_scan(t, is_honest_mode)
+        numeric_types, total_value = compute_ucd_deep_scan(t, is_honest_mode)
         
         total_value_dict = {}
         if total_value > 0 or "Num Type: Decimal (Nd)" in numeric_types or "Num Type: Letter (Nl)" in numeric_types or "Num Type: Other (No)" in numeric_types:
