@@ -618,12 +618,12 @@ def compute_script_stats(t: str, is_honest_mode: bool):
         sum_of_known_scripts += count
 
     # 2. Get the total code points *of the text we just scanned*
-    # This is the key to the "Honest" partition
-    total_code_points_in_scan = len(window.Array.from_(text_to_scan))
+    # This is the key to the "Honest" partition
+    total_code_points_in_scan = len(window.Array.from_(text_to_scan))
 
     # 3. Calculate "Other" as the mathematical remainder
-    other_count = total_code_points_in_scan - sum_of_known_scripts
-    script_stats["Other"] = other_count
+    other_count = total_code_points_in_scan - sum_of_known_scripts
+    script_stats["Other"] = other_count
     
     return script_stats
 
