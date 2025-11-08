@@ -965,7 +965,7 @@ async def load_unicode_data():
 
     # --- NEW: Parse StandardizedVariants.txt ---
         if standardized_variants_txt:
-            if "StandardizedVariants" in standardized_variants_txt: # Sanity check
+            if "FE00..FE0F" in standardized_variants_txt: # A more robust check for actual file data
                 parse_standardized_variants(standardized_variants_txt)
             else:
                 print("StandardizedVariants.txt content invalid.")
