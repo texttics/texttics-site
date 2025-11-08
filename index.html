@@ -1651,9 +1651,9 @@ def update_all(event=None):
         else:
             skeleton_output.style.display = "none"
 
-            # --- Run Module 8 (Standardized Variant Analysis) ---
-            variant_stats = compute_variant_stats(t, is_honest_mode)
-            render_stats(variant_stats, "intentional-stats-output")
+        # --- Run Module 8 (Standardized Variant Analysis) ---
+        variant_stats = compute_variant_stats(t, is_honest_mode)
+        render_stats(variant_stats, "intentional-stats-output")
 
     
     # --- Final UI sync ---
