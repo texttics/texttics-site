@@ -1173,10 +1173,10 @@ for char in text_to_scan:
 
         final_total_value = round(numeric_total_value, 4)
     
-    final_stats = {
-        "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0,
-        "Restricted Characters": restricted_count # <-- NEW: Add to output
-    }
+        final_stats = {
+          "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0,
+          "Restricted Characters": restricted_count # <-- NEW: Add to output
+        }
     
     return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats
 
