@@ -733,6 +733,8 @@ def parse_identifier_status(txt: str):
                 
     _finalize_allowed(ranges) # This function is still correct
 
+
+    
 def is_restricted(char: str) -> bool:
     """True iff char NOT covered by any Allowed range."""
     if not ALLOWED_RANGES:
@@ -1245,43 +1247,51 @@ def _get_confusable_skeleton(char: str, include_custom: bool = False) -> str | N
 
     return None
 
-def _iter_confusable_segments(text: str, include_custom: bool = True):
+def _iter_confusable_segments(t: str):
+    """Return contiguous segments of confusable characters across ALL categories.
+    Each item has: orig, skel, char_diffs[], start, end.
     """
-    Yields dicts of contiguous confusable segments:
-      {"orig": <substring>, "skel": <mapped substring>, "start": i0, "end": i1}
-    A segment ends when we hit a non-confusable character.
-    """
-    segs = []
-    start_idx = None
-    skel_buf = []
+    segments = []
+    n = len(t)
+    i = 0
 
-    for idx, ch in enumerate(text):
-        skel = _get_confusable_skeleton(ch)  # uses your current helper (NFKC + map)
-        if skel is not None:
-            if start_idx is None:
-                start_idx = idx
-                skel_buf = []
-            skel_buf.append(skel)
-        else:
-            if start_idx is not None:
-                segs.append({
-                    "orig": text[start_idx:idx],
-                    "skel": "".join(skel_buf),
-                    "start": start_idx,
-                    "end": idx
-                })
-                start_idx = None
-                skel_buf = []
+    while i < n:
+        ch = t[i]
+        skel = _get_confusable_skeleton(ch)  # None or (possibly multi-char) skeleton
+        if skel is None:
+            i += 1
+            continue
 
-    # flush last segment
-    if start_idx is not None:
-        segs.append({
-            "orig": text[start_idx:len(text)],
-            "skel": "".join(skel_buf),
-            "start": start_idx,
-            "end": len(text)
+        # start a new segment
+        start = i
+        orig_chars = [ch]
+        skels = [skel]
+        char_diffs = [{"orig": ch, "skel": skel, "changed": (skel != ch)}]
+        i += 1
+
+        # extend while next char is also confusable
+        while i < n:
+            ch2 = t[i]
+            skel2 = _get_confusable_skeleton(ch2)
+            if skel2 is None:
+                break
+            orig_chars.append(ch2)
+            skels.append(skel2)
+            char_diffs.append({"orig": ch2, "skel": skel2, "changed": (skel2 != ch2)})
+            i += 1
+
+        orig = "".join(orig_chars)
+        skel_concat = "".join(skels)
+        segments.append({
+            "orig": orig,
+            "skel": skel_concat,
+            "char_diffs": char_diffs,
+            "start": start,
+            "end": start + len(orig)
         })
-    return segs
+
+    return segments
+
 
     
 def compute_confusable_stats(t: str, is_honest_mode: bool):
@@ -1302,6 +1312,8 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
 
     # --- PASS 2: BUILD REPORT FROM CONTIGUOUS CONFUSABLE SEGMENTS (ALL CATEGORIES) ---
     runs_detail = _iter_confusable_segments(t)
+
+    return stats, runs_detail
     
 
 
