@@ -874,7 +874,11 @@ def parse_intentional(txt: str):
         try:
             source_hex_list = parts[0].strip().split()
             skeleton_hex_list = parts[1].strip().split()
-            
+            # --- THIS IS THE FIX ---
+            # Only load sequences that are 2+ characters long.
+            # This ignores all the single-character "noise" (like A -> Α).
+            if len(source_hex_list) <= 1:
+                continue
             if not source_hex_list or not skeleton_hex_list:
                 continue
 
@@ -894,6 +898,8 @@ def parse_intentional(txt: str):
             pass # Ignore malformed lines
             
     print(f"Loaded {count} intentional sequence mappings.")
+
+
     
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
