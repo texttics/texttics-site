@@ -1310,10 +1310,47 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     )
     stats = {"Confusable Chars": confusable_count}
 
-    # --- PASS 2: BUILD REPORT FROM CONTIGUOUS CONFUSABLE SEGMENTS (ALL CATEGORIES) ---
-    runs_detail = _iter_confusable_segments(t)
-
+    # --- PASS 2: build detailed runs with per-char diffs (KEEP ALL CHARS) ---
+    runs_detail = []
+    runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)  # \p{L}+|\p{N}+|\p{S}+|\p{P}+
+    if not runs_js:
+        return stats, []
+    
+    runs = window.Array.from_(runs_js)
+    idx = 0
+    for run in runs:
+        run_py = str(run)
+    
+        # Find run position to show [start–end]
+        start = t.find(run_py, idx)
+        if start == -1:
+            start = t.find(run_py, 0)
+        idx = start + len(run_py)
+    
+        has_confusable = False
+        char_diffs = []   # list of {"orig": ch, "skel": skel_str, "changed": bool}
+    
+        # IMPORTANT: we walk every char in the run and keep unchanged chars
+        for ch in run_py:
+            skel = _get_confusable_skeleton(ch)  # returns None or a (possibly multi-char) skeleton
+            if skel is None:
+                char_diffs.append({"orig": ch, "skel": ch, "changed": False})
+            else:
+                has_confusable = True
+                char_diffs.append({"orig": ch, "skel": skel, "changed": True})
+    
+        if has_confusable:
+            skel_concat = "".join(d["skel"] for d in char_diffs)
+            runs_detail.append({
+                "orig": run_py,
+                "skel": skel_concat,
+                "char_diffs": char_diffs,   # used by the renderer to keep full context
+                "start": start,
+                "end": start + len(run_py)
+            })
+    
     return stats, runs_detail
+
     
 
 
@@ -1674,26 +1711,23 @@ def update_all(event=None):
         # --- Build the visual report (per-code-point; supports multi-char skeletons) ---
         lines = []
         for r in runs:
-            diff_parts = []
+            diff_html = []
             skel_hex_parts = []
-            
-            # Build highlight per original code point
-            for ch in r["orig"]:
-                skel = _get_confusable_skeleton(ch, include_custom=True)
-                if skel:
-                    title = f'U+{ord(ch):04X} → ' + " ".join(f'U+{ord(x):04X}' for x in skel)
-                    diff_parts.append(f'<span class="changed" title="{title}">{_html_escape(skel)}</span>')
-                    skel_hex_parts.extend(f'U+{ord(x):04X}' for x in skel)
+        
+            for d in r["char_diffs"]:
+                if d["changed"]:
+                    title = 'U+{0:04X} → '.format(ord(d["orig"])) + " ".join('U+{0:04X}'.format(ord(x)) for x in d["skel"])
+                    diff_html.append(f'<span class="changed" title="{title}">{_html_escape(d["skel"])}</span>')
+                    skel_hex_parts.extend('U+{0:04X}'.format(ord(x)) for x in d["skel"])
                 else:
-                    diff_parts.append(_html_escape(ch))
-                    skel_hex_parts.append(f'U+{ord(ch):04X}')
-            
-            # Hex for originals and skeleton
+                    diff_html.append(_html_escape(d["orig"]))
+                    skel_hex_parts.append('U+{0:04X}'.format(ord(d["orig"])))
+        
             orig_hex = _hex_seq(r["orig"])
             skel_hex = " ".join(skel_hex_parts)
-            
+        
             lines.append(
-                f"{_html_escape(r['orig'])} → {''.join(diff_parts)}   "
+                f"{_html_escape(r['orig'])} → {''.join(diff_html)}   "
                 f"[{r['start']}–{r['end']}]   "
                 f"[Hex: {orig_hex} → {skel_hex}]"
             )
@@ -1703,6 +1737,7 @@ def update_all(event=None):
             skeleton_output.style.display = "block"
         else:
             skeleton_output.style.display = "none"
+
 
 
 
