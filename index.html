@@ -1125,7 +1125,7 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-# --- NEW: Confusable Analysis (Phase 3 Refactored) ---
+# --- NEW: Confusable Analysis (Phase 3 Final Refactor) ---
 def compute_confusable_stats(t: str):
     """Module 7: Runs the Confusable Skeleton analysis.
     
@@ -1136,8 +1136,8 @@ def compute_confusable_stats(t: str):
     if not CONFUSABLES_MAP or not t:
         return {}, ""
 
-    # --- PASS 1: Calculate total confusable char count (same as before) ---
-    # This scans the *entire* string for the counter.
+    # --- PASS 1: Calculate total confusable char count ---
+    # This scans the *entire* string for the counter card.
     confusable_count = 0
     for char in t:
         if ord(char) in CONFUSABLES_MAP:
@@ -1150,30 +1150,30 @@ def compute_confusable_stats(t: str):
     # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
     spoofed_runs_skeletons = [] # The new output list
     
-    # Find all continuous runs of letters (L) OR numbers (N)
-    alphanum_runs = window.String.prototype.match.call(t, RE_LN_RUNS)
+    # Use the (correct) physical run RegExp
+    alphanum_runs = window.String.prototype.match.call(t, RE_ALPHANUM_RUNS)
     
     if not alphanum_runs:
-        return stats, "" # No runs found, return stats and empty string
+        return stats, "" # No runs found
 
     for run in alphanum_runs:
-        has_confusable = False
-        current_run_skeleton = [] # Build skeleton for *this* run
+        has_confusable_run = False # <-- Use a local flag for *this run*
+        current_run_skeleton = [] # Build skeleton for *this run*
         
         for char in run:
             cp = ord(char)
             skeleton_val = CONFUSABLES_MAP.get(cp)
             
+            # --- THIS IS THE FIX ---
+            # The 'else' block is now correctly placed.
             if skeleton_val:
-                # This run is a spoof!
-                has_confusable = True
-                current_run_skeleton.append(skeleton_val)
+                has_confusable_run = True # This run is a spoof!
+                current_run_skeleton.append(skeleton_val) # Append the skeleton
             else:
-                # Not a confusable char, but part of the run
-                current_run_skeleton.append(char)
+                current_run_skeleton.append(char) # Append the original
         
-        # Now that we've checked the whole run...
-        if has_confusable:
+        # Only check the LOCAL flag
+        if has_confusable_run:
             spoofed_runs_skeletons.append("".join(current_run_skeleton))
     
     # Format the final output string
