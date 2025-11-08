@@ -1214,10 +1214,8 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     if not CONFUSABLES_MAP or not t:
         return {}, []
 
-    # --- THIS IS THE FIX (PASS 1) ---
-    # We must count confusables on the correct text (respecting the filter)
-    # BEFORE we analyze the runs.
-    
+    # --- PASS 1: COUNT ALL CONFUSABLE CHARS ---
+    # This part respects the "Honest/Legacy" filter
     text_to_scan = t
     if not is_honest_mode:
         text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
@@ -1230,30 +1228,27 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     stats = {
         "Confusable Chars": confusable_count
     }
-    # --- END OF FIX (PASS 1) ---
+    # --- END OF PASS 1 ---
 
-
-    # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
-    # This part is correct and scans the *original* text 't' to find runs.
+    # --- PASS 2: FIND & BUILD RUNS FOR THE REPORT ---
+    # This part always scans the full, original text 't'
     runs_detail = []
     
     alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)
     if not alphanum_runs_js:
-        return stats, [] # Return the count, even if no runs are found
+        return stats, [] # Return the correct count, even if no runs are found
     
-    alphanum_runs = window.Array.from_(alphanum_runs_js) # Convert JS Array
+    alphanum_runs = window.Array.from_(alphanum_runs_js)
     
     idx = 0
     for run in alphanum_runs:
-        run_py = str(run) # Force Python string
+        run_py = str(run)
         
-        # Find the start index of this run
         start = t.find(run_py, idx)
         if start == -1:
-             # Should not happen, but as a fallback
              start = t.find(run_py, 0)
         
-        idx = start + len(run_py) # Update index for next search
+        idx = start + len(run_py)
 
         has_confusable_run = False
         current_run_skeleton = []
@@ -1277,7 +1272,7 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
                 "end": start + len(run_py)
             })
     
-    # Return the stats from Pass 1 and the runs from Pass 2
+    # Return the correct stats from Pass 1 and the runs from Pass 2
     return stats, runs_detail
 
 # --- NEW: Standardized Variant Analysis (Module 8) ---
