@@ -1636,20 +1636,24 @@ def update_all(event=None):
 
         lines = []
         for r in runs:
-            # Build the visual diff
             diff_html = []
-            for orig_char, skel_char in zip(r["orig"], r["skel"]):
-                if orig_char != skel_char:
-                    diff_html.append(f'<span class="changed" title="U+{ord(orig_char):04X} → U+{ord(skel_char):04X}">{skel_char}</span>')
+            # Build per-original-char, allowing multi-char skeleton expansions
+            for orig_char in r["orig"]:
+                skel = _get_confusable_skeleton(orig_char)
+                if skel:
+                    # Show the full expansion (may be >1 char)
+                    diff_html.append(
+                        f'<span class="changed" title="U+{ord(orig_char):04X} → {_hex_seq(skel)}">{_html_escape(skel)}</span>'
+                    )
                 else:
-                    diff_html.append(skel_char)
-            
-            # Get hex for both original and skeleton
-            orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
-            skel_hex = " ".join(f"U+{ord(c):04X}" for c in r["skel"])
-            
+                    diff_html.append(_html_escape(orig_char))
+
+            # Hex for whole run (use the stored skeleton string)
+            orig_hex = _hex_seq(r["orig"])
+            skel_hex = _hex_seq(r["skel"])
+
             lines.append(
-                f"{r['orig']} → {"".join(diff_html)}   "
+                f"{_html_escape(r['orig'])} → {''.join(diff_html)}   "
                 f"[{r['start']}–{r['end']}]   "
                 f"[Hex: {orig_hex} → {skel_hex}]"
             )
@@ -1667,6 +1671,12 @@ def update_all(event=None):
     
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
+
+def _html_escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+def _hex_seq(s: str) -> str:
+    return " ".join(f"U+{ord(c):04X}" for c in s)
 
 # Initial call to populate the dashboard on load
 # update_all()
