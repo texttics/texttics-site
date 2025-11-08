@@ -1151,24 +1151,25 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     age_stats = {}
     
     for char in text_to_scan:
-            cp = ord(char) # Get the code point
-            
-            # --- NEW: Phase 1 Logic (Blocks & Age) ---
-            block_name = find_in_ranges(cp, BLOCK_STARTS, BLOCK_ENDS, BLOCK_RANGES_STORE)
-            if block_name:
-                key = f"Block: {block_name}"
-                block_stats[key] = block_stats.get(key, 0) + 1
-            
-            age = find_in_ranges(cp, AGE_STARTS, AGE_ENDS, AGE_RANGES_STORE)
-            if age:
-                key = f"Age: {age}"
-                age_stats[key] = age_stats.get(key, 0) + 1
+        cp = ord(char) # Get the code point
+        
+        # --- NEW: Phase 1 Logic (Blocks & Age) ---
+        block_name = find_in_ranges(cp, BLOCK_STARTS, BLOCK_ENDS, BLOCK_RANGES_STORE)
+        if block_name:
+            key = f"Block: {block_name}"
+            block_stats[key] = block_stats.get(key, 0) + 1
+        
+        age = find_in_ranges(cp, AGE_STARTS, AGE_ENDS, AGE_RANGES_STORE)
+        if age:
+            key = f"Age: {age}"
+            age_stats[key] = age_stats.get(key, 0) + 1
 
-            # --- Identifier Status Check (Phase 2 Upgrade) ---
-            if char != ' ' and is_restricted(char):
+        # --- Identifier Status Check (Phase 2 Upgrade) ---
+        # This is the block that had the indentation error
+        if char != ' ' and is_restricted(char):
             # We know it's restricted, now find out *why*
             # Use the cp (ord(char)) we got at the start of the loop
-              type_val = find_in_ranges(cp, ID_TYPE_STARTS, ID_TYPE_ENDS, ID_TYPE_RANGES_STORE)
+            type_val = find_in_ranges(cp, ID_TYPE_STARTS, ID_TYPE_ENDS, ID_TYPE_RANGES_STORE)
             
             if not type_val:
                 type_val = "Not_Specified" # Fallback per UCD docs
@@ -1176,25 +1177,25 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
             # Format the key
             key = f"Restricted ({type_val})"
             restricted_type_stats[key] = restricted_type_stats.get(key, 0) + 1
+        
+        # --- Get Numeric Properties (existing) ---
+        try:
+            value = unicodedata.numeric(char)  
+            numeric_total_value += value
             
-            # --- Get Numeric Properties (existing) ---
-            try:
-                value = unicodedata.numeric(char)  
-                numeric_total_value += value
-                
-                gc = unicodedata.category(char)
-                if gc == "Nd":
-                    n_type = "Num Type: Decimal (Nd)"
-                    zero_code_point = ord(char) - int(value)
-                    number_script_zeros.add(zero_code_point)
-                elif gc == "Nl": n_type = "Num Type: Letter (Nl)"
-                elif gc == "No": n_type = "Num Type: Other (No)"
-                else: n_type = f"Num Type: Other ({gc})"
-                
-                numeric_type_stats[n_type] = numeric_type_stats.get(n_type, 0) + 1
-                
-            except (ValueError, TypeError):
-                pass
+            gc = unicodedata.category(char)
+            if gc == "Nd":
+                n_type = "Num Type: Decimal (Nd)"
+                zero_code_point = ord(char) - int(value)
+                number_script_zeros.add(zero_code_point)
+            elif gc == "Nl": n_type = "Num Type: Letter (Nl)"
+            elif gc == "No": n_type = "Num Type: Other (No)"
+            else: n_type = f"Num Type: Other ({gc})"
+            
+            numeric_type_stats[n_type] = numeric_type_stats.get(n_type, 0) + 1
+            
+        except (ValueError, TypeError):
+            pass
 
     final_total_value = round(numeric_total_value, 4)
         
