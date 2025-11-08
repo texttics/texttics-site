@@ -1150,7 +1150,7 @@ def compute_confusable_stats(t: str):
     # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
     spoofed_runs_skeletons = [] # The new output list
     
-    # Find all continuous runs of letters (L) OR numbers (N)
+    # Use the (correct) physical run RegExp
     alphanum_runs = window.String.prototype.match.call(t, RE_LN_RUNS)
     
     if not alphanum_runs:
@@ -1165,7 +1165,8 @@ def compute_confusable_stats(t: str):
             skeleton_val = CONFUSABLES_MAP.get(cp)
             
             # --- THIS IS THE FIX ---
-            # The 'else' block is now correctly placed.
+            # We must append the skeleton_val *if it exists*,
+            # and the original char *only if it does not*.
             if skeleton_val:
                 has_confusable_run = True # This run is a spoof!
                 current_run_skeleton.append(skeleton_val) # Append the skeleton
