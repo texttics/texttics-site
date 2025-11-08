@@ -1232,66 +1232,53 @@ def _get_confusable_skeleton(char: str) -> str | None:
 
 def compute_confusable_stats(t: str, is_honest_mode: bool):
     """
-    Module 7: Runs the Confusable Skeleton analysis.
-    This version uses the same robust logic for both counting and reporting.
+    Module 7 — Confusables & Spoofing: use the SAME logic for counting and
+    for the visual report (map + NFKC). This keeps the card and the report in sync.
     """
     if not t:
         return {}, []
 
-    # --- PASS 1: TRUE PER-CHARACTER COUNT ---
-    text_to_scan = t
-    if not is_honest_mode:
-        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-
-    # We now use our smarter helper for the count
-    confusable_count = sum(1 for char in text_to_scan if _get_confusable_skeleton(char) is not None)
+    # PASS 1 — per-character count (respects legacy emoji filtering)
+    text_to_scan = t if is_honest_mode else window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    confusable_count = sum(1 for ch in text_to_scan if _get_confusable_skeleton(ch) is not None)
     stats = {"Confusable Chars": confusable_count}
-    # --- END OF PASS 1 ---
 
-    # --- PASS 2: BUILD THE VISUAL REPORT ---
+    # PASS 2 — build runs/skeletons for display (now same logic as pass 1)
     runs_detail = []
-    # This RegExp is correct and finds all L, N, S, and P runs
-    alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS) 
-    if not alphanum_runs_js:
-        return stats, [] 
-    
-    alphanum_runs = window.Array.from_(alphanum_runs_js)
-    
+    alnum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)  # includes L|N|S|P
+    if not alnum_runs_js:
+        return stats, []
+
+    alnum_runs = window.Array.from_(alnum_runs_js)
     idx = 0
-    for run in alphanum_runs:
+    for run in alnum_runs:
         run_py = str(run)
-        
+
         start = t.find(run_py, idx)
         if start == -1:
-             start = t.find(run_py, 0)
-        
+            start = t.find(run_py, 0)
         idx = start + len(run_py)
 
-        has_confusable_run = False
-        current_run_skeleton = []
-        
-        # --- THIS IS THE FIX ---
-        # We use the *exact same logic* as Pass 1
-        for char in run_py:
-            skeleton_val = _get_confusable_skeleton(char)
-            
-            if skeleton_val:
-                has_confusable_run = True
-                current_run_skeleton.append(skeleton_val)
+        has_confusable = False
+        skel_buf = []
+        for ch in run_py:
+            sk = _get_confusable_skeleton(ch)
+            if sk is not None:
+                has_confusable = True
+                skel_buf.append(sk)
             else:
-                current_run_skeleton.append(char)
-        # --- END OF FIX ---
-        
-        if has_confusable_run:
-            skel_str = "".join(current_run_skeleton)
+                skel_buf.append(ch)
+
+        if has_confusable:
             runs_detail.append({
                 "orig": run_py,
-                "skel": skel_str,
+                "skel": "".join(skel_buf),
                 "start": start,
                 "end": start + len(run_py)
             })
 
     return stats, runs_detail
+
 
     
 # --- NEW: Standardized Variant Analysis (Module 8) ---
