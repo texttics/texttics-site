@@ -162,3 +162,32 @@ This module is **only visible when "Graphemes (Perceived)" mode is active** and 
 * **Total Combining Marks:** A `\p{M}` count of all combining marks found *inside* all graphemes.
 * **Max Marks in one Grapheme:** A "Zalgo detector" that reports the highest number of marks found in a single cluster.
 * **Avg. Marks per Grapheme:** A statistical average of marks per grapheme.
+
+
+### 5. New! Data-Driven Module 6 (Blocks & Age)
+
+Module 6, the **UCD Deep Scan (Python)**, has been significantly upgraded. By directly fetching and parsing `Blocks.txt` and `DerivedAge.txt` from the Unicode Consortium, this module now provides two powerful new data-driven properties that were impossible to implement with the JavaScript `RegExp` engine:
+
+* **Unicode Block Counters:** The deep scan now reports on the specific memory block for each character (e.g., `Block: Basic Latin`, `Block: Cyrillic`, `Block: Emoticons`). This provides a much richer forensic profile of the text's composition.
+* **Unicode Age Counters:** The scan also reports the Unicode version in which each character was introduced (e.g., `Age: 1.1`, `Age: 6.0`, `Age: 9.0`). This is excellent for detecting newer characters, like modern emoji.
+
+---
+
+### 6. New! Upgraded Data-Driven Forensics (Identifier Type)
+
+This upgrade unifies our forensic analysis logic. By fetching and parsing `IdentifierType.txt`, we have made two major improvements:
+
+1.  **Upgraded "Restricted" Feature:** The old, simple `Restricted Characters` counter in Module 6 has been **replaced** with a far more detailed, data-driven breakdown. The app now reports *why* a character is forensically interesting, providing specific flags like `Type: Not_XID`, `Type: Not_NFKC`, or `Type: Default_Ignorable`.
+
+2.  **Unified Forensic Logic:** The `RegExp`-based `Bidi Controls` and `Control (Cc)` counters have been **removed from Module 4**. These are now correctly identified by the data-driven `IdentifierType.txt` lookup in Module 6, appearing as `Type: Format` and `Type: Technical`, respectively. This consolidates our logic and resolves a data-model contradiction, making Module 6 the single source of truth for data-driven properties.
+
+---
+
+### 7. New! Module 7: True Confusable & Spoofing Analysis
+
+This is a "holy grail" security feature that replaces our old, naive security check. The app now fetches and parses the 700K+ `confusables.txt` file from the Unicode Consortium to build a true, standards-based spoofing detector.
+
+* **New Module 7:** A new "Confusable & Spoofing Analysis" module has been added.
+* **"Skeleton" Generation:** This module analyzes the entire string and generates a "confusable skeleton" by mapping confusable characters (e.g., Cyrillic `а`, `р`, `о`) to their Latin equivalents (e.g., `a`, `p`, `o`).
+* **Confusable Count:** It provides a `Confusable Chars` counter, instantly flagging any character that has a confusable equivalent.
+* **Deprecated Feature:** This new, far superior module **replaces and deprecates** the old `Mixed-Script Runs` counter from Module 3. We no longer use a "best guess" `RegExp`—we now use the official Unicode data file to definitively detect spoofing attacks, including "whole-script confusables" (e.g., Cyrillic `ѕсоре` vs. Latin `scope`).
