@@ -610,6 +610,16 @@ ALLOWED_RANGES = []      # list[(start,end)]
 ALLOWED_STARTS = []      # for bisect
 ALLOWED_ENDS = []        # for bisect
 
+# --- NEW: Globals for Blocks.txt ---
+BLOCK_RANGES_STORE = [] # list[(start, end, "Block Name")]
+BLOCK_STARTS = []       # for bisect
+BLOCK_ENDS = []         # for bisect
+
+# --- NEW: Globals for DerivedAge.txt ---
+AGE_RANGES_STORE = []   # list[(start, end, "Age")]
+AGE_STARTS = []         # for bisect
+AGE_ENDS = []           # for bisect
+
 def _finalize_allowed(ranges):
     from bisect import bisect_right
     # normalize & prep arrays for O(log n) lookups
@@ -669,21 +679,123 @@ def is_restricted(char: str) -> bool:
     # Check if we are within that range's end
     return not (i >= 0 and cp <= ALLOWED_ENDS[i])
 
+def find_in_ranges(cp: int, starts_list, ends_list, store_list):
+    """Generic range finder using bisect.
+    
+    Finds the value for a code point 'cp' in the pre-parsed lists.
+    Returns the value (e.g., "Basic Latin" or "6.1") or None.
+    """
+    if not starts_list:
+        return None
+    import bisect
+    # Find the index of the last range that *starts* at or before cp
+    i = bisect.bisect_right(starts_list, cp) - 1
+    
+    # Check if we are within that range's end
+    if i >= 0 and cp <= ends_list[i]:
+        # store_list[i] is a tuple (start, end, value)
+        return store_list[i][2] 
+    return None
+
+def _parse_and_store_ranges(txt: str, global_store, global_starts, global_ends):
+    """
+    A generic parser for Unicode data files (e.g., Blocks.txt, DerivedAge.txt).
+    Expects lines like: 0000..007F; Basic Latin
+    """
+    from bisect import bisect_right
+    ranges = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+        code_range, value = parts[0].strip(), parts[1].strip()
+        
+        if '..' in code_range:
+            a, b = code_range.split('..', 1)
+            ranges.append((int(a, 16), int(b, 16), value))
+        else:
+            cp = int(code_range, 16)
+            ranges.append((cp, cp, value))
+    
+    # Sort for bisect
+    ranges.sort()
+    
+    # Clear and populate the global lists
+    global_store.clear()
+    global_starts.clear()
+    global_ends.clear()
+    
+    for s, e, v in ranges:
+        global_store.append((s, e, v))
+        global_starts.append(s)
+        global_ends.append(e)
+    
+    print(f"Loaded {len(ranges)} ranges for {global_store.__name__}.")
+
+def parse_blocks(txt: str):
+    """Parses Blocks.txt into its global stores."""
+    global BLOCK_RANGES_STORE, BLOCK_STARTS, BLOCK_ENDS
+    _parse_and_store_ranges(txt, BLOCK_RANGES_STORE, BLOCK_STARTS, BLOCK_ENDS)
+
+def parse_derived_age(txt: str):
+    """Parses DerivedAge.txt into its global stores."""
+    global AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS
+    _parse_and_store_ranges(txt, AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS)
+    
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
+    
+    async def fetch_file(filename):
+        """Helper to fetch a file and return its text or None."""
+        try:
+            response = await pyfetch(f"./{filename}")
+            if response.ok:
+                return await response.string()
+            else:
+                print(f"Failed to load {filename}: {response.status}")
+                return None
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            return None
+
     try:
-        response = await pyfetch("./IdentifierStatus.txt")
-        if response.ok:
-            text = await response.string()
-            # Sanity check: file should mention "Identifier_Status"
-            if "Identifier_Status" not in text and ";" not in text:
-                print("IdentifierStatus.txt fetched, but content looks like HTML (wrong path/SPA redirect?).")
-            parse_identifier_status(text)
-            update_all() # <-- Correctly calls update_all *after* parsing
-        else:
-            print(f"Failed to load IdentifierStatus.txt: {response.status}")
+        # --- NEW: Fetch all files in parallel ---
+        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt"]
+        print("Fetching Unicode data files...")
+        results = await asyncio.gather(*[fetch_file(f) for f in filenames])
+        
+        id_status_txt, blocks_txt, derived_age_txt = results
+        
+        # --- Parse each file if it loaded ---
+        if id_status_txt:
+            if "Identifier_Status" in id_status_txt:
+                parse_identifier_status(id_status_txt)
+            else:
+                print("IdentifierStatus.txt content invalid.")
+
+        if blocks_txt:
+            if "Block" in blocks_txt:
+                parse_blocks(blocks_txt)
+            else:
+                print("Blocks.txt content invalid.")
+        
+        if derived_age_txt:
+            if "Age" in derived_age_txt:
+                parse_derived_age(derived_age_txt)
+            else:
+                print("DerivedAge.txt content invalid.")
+        
+        # --- Final step: Trigger UI update ---
+        # This call is now crucial as it runs after all data is parsed
+        print("Unicode data loaded. Triggering UI update.")
+        update_all() 
+
     except Exception as e:
-        print(f"Error loading IdentifierStatus.txt: {e}")
+        print(f"An error occurred during parallel data loading: {e}")
 
 # --- End of replacement block --
     
@@ -1016,17 +1128,33 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     number_script_zeros = set()
     restricted_count = 0 # <-- NEW: Restricted counter
 
-    for char in text_to_scan:
+# --- NEW: Counters for Phase 1 ---
+    block_stats = {}
+    age_stats = {}
+    
+for char in text_to_scan:
+        cp = ord(char) # Get the code point
         
-        # --- NEW: Identifier Status Check ---
+        # --- NEW: Phase 1 Logic (Blocks & Age) ---
+        block_name = find_in_ranges(cp, BLOCK_STARTS, BLOCK_ENDS, BLOCK_RANGES_STORE)
+        if block_name:
+            key = f"Block: {block_name}"
+            block_stats[key] = block_stats.get(key, 0) + 1
+        
+        age = find_in_ranges(cp, AGE_STARTS, AGE_ENDS, AGE_RANGES_STORE)
+        if age:
+            key = f"Age: {age}"
+            age_stats[key] = age_stats.get(key, 0) + 1
+
+        # --- Identifier Status Check (existing) ---
         if char == ' ': # <-- OPTIONAL: Ignore simple spaces
-             pass
+            pass
         elif is_restricted(char):
             restricted_count += 1
         
-        # --- Get Numeric Properties ---
+        # --- Get Numeric Properties (existing) ---
         try:
-            value = unicodedata.numeric(char) 
+            value = unicodedata.numeric(char)  
             numeric_total_value += value
             
             gc = unicodedata.category(char)
@@ -1041,7 +1169,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
             numeric_type_stats[n_type] = numeric_type_stats.get(n_type, 0) + 1
             
         except (ValueError, TypeError):
-            pass 
+            pass
 
     final_total_value = round(numeric_total_value, 4)
     
@@ -1050,7 +1178,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
         "Restricted Characters": restricted_count # <-- NEW: Add to output
     }
     
-    return final_stats, numeric_type_stats, final_total_value
+    return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -1215,16 +1343,18 @@ def update_all(event=None):
         render_stats(uax44_stats, "uax44-stats", class_name="card")
 
         # Run Module 6 (Python Deep Scan)
-        security_flags, numeric_types, total_value = compute_ucd_deep_scan(t, is_honest_mode) # <-- NEW return
+        security_flags, numeric_types, total_value, block_stats, age_stats = compute_ucd_deep_scan(t, is_honest_mode) # <-- Phase 1 Update
         
         total_value_dict = {}
         if total_value > 0 or "Num Type: Decimal (Nd)" in numeric_types or "Num Type: Letter (Nl)" in numeric_types or "Num Type: Other (No)" in numeric_types:
             total_value_dict = {"Total Numeric Value": total_value}
             
         combined_deep_scan_stats = {
-            **security_flags, # <-- NEW (Holds "Mixed-Number Systems")
+            **security_flags,       # (Holds "Mixed-Number Systems", "Restricted")
             **total_value_dict, 
-            **numeric_types
+            **numeric_types,
+            **age_stats,            # <-- NEW: Phase 1
+            **block_stats           # <-- NEW: Phase 1
         }
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
 
