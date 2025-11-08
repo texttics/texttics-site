@@ -1204,64 +1204,83 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-# --- NEW: Confusable Analysis (Phase 3 Final Refactor) ---
-# --- Module 7: Confusables (v3) ---
-def compute_confusable_stats_v3(t: str, is_honest_mode: bool):
-    print("compute_confusable_stats_v3: starting")
+import unicodedata
 
+def _is_confusable_char(char: str) -> bool:
+    """Checks if a character is confusable."""
+    if ord(char) in CONFUSABLES_MAP:
+        return True
+    
+    # This is the new, robust check suggested by ChatGPT.
+    # It catches width-based confusables (like ０) and others.
+    try:
+        # We must avoid normalizing control chars, spaces, etc.
+        if unicodedata.category(char)[0] in ("L", "N", "S"):
+            return unicodedata.normalize('NFKC', char) != char
+    except Exception:
+        pass # Not a valid char for normalization
+        
+    return False
+
+def compute_confusable_stats(t: str, is_honest_mode: bool):
+    """
+    Module 7: Runs the Confusable Skeleton analysis.
+    This is the final, correct, hybrid version.
+    """
     if not CONFUSABLES_MAP or not t:
         return {}, []
 
-    # Pass 1 — count every confusable code point
-    text_to_scan = t if is_honest_mode else window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-    confusable_count = 0
-    debug_list = []  # collect what we count
+    # --- PASS 1: TRUE PER-CHARACTER COUNT ---
+    # This uses our new helper and respects the honest_mode flag
+    text_to_scan = t
+    if not is_honest_mode:
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
 
-    for ch in text_to_scan:
-        cp = ord(ch)
-        if cp in CONFUSABLES_MAP:
-            confusable_count += 1
-            debug_list.append(f"U+{cp:04X}")
-
-    print(f"Confusable cp counted: {', '.join(debug_list) or 'none'}")
-
+    confusable_count = sum(1 for char in text_to_scan if _is_confusable_char(char))
     stats = {"Confusable Chars": confusable_count}
+    # --- END OF PASS 1 ---
 
-    # Pass 2 — build runs report (unchanged)
+    # --- PASS 2: YOUR EXISTING RUN/SKELETON REPORT (UNCHANGED) ---
     runs_detail = []
-    alnum = window.String.prototype.match.call(t, RE_LN_RUNS)
-    if not alnum:
-        return stats, []
-
+    alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)
+    if not alphanum_runs_js:
+        return stats, [] # Return the correct count
+    
+    alphanum_runs = window.Array.from_(alphanum_runs_js)
+    
     idx = 0
-    for run in window.Array.from_(alnum):
-        s = str(run)
-        start = t.find(s, idx)
+    for run in alphanum_runs:
+        run_py = str(run)
+        
+        start = t.find(run_py, idx)
         if start == -1:
-            start = t.find(s, 0)
-        idx = start + len(s)
+             start = t.find(run_py, 0)
+        
+        idx = start + len(run_py)
 
-        has_conf = False
-        skel = []
-        for ch in s:
-            cp = ord(ch)
-            sk = CONFUSABLES_MAP.get(cp)
-            if sk:
-                has_conf = True
-                skel.append(sk)
+        has_confusable_run = False
+        current_run_skeleton = []
+        
+        for char in run_py:
+            cp = ord(char)
+            skeleton_val = CONFUSABLES_MAP.get(cp)
+            
+            if skeleton_val:
+                has_confusable_run = True
+                current_run_skeleton.append(skeleton_val)
             else:
-                skel.append(ch)
-
-        if has_conf:
+                current_run_skeleton.append(char)
+        
+        if has_confusable_run:
+            skel_str = "".join(current_run_skeleton)
             runs_detail.append({
-                "orig": s,
-                "skel": "".join(skel),
+                "orig": run_py,
+                "skel": skel_str,
                 "start": start,
-                "end": start + len(s)
+                "end": start + len(run_py)
             })
 
     return stats, runs_detail
-
 
     
 # --- NEW: Standardized Variant Analysis (Module 8) ---
