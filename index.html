@@ -1165,10 +1165,10 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
                 age_stats[key] = age_stats.get(key, 0) + 1
 
             # --- Identifier Status Check (Phase 2 Upgrade) ---
-        if char != ' ' and is_restricted(char):
+            if char != ' ' and is_restricted(char):
             # We know it's restricted, now find out *why*
             # Use the cp (ord(char)) we got at the start of the loop
-            type_val = find_in_ranges(cp, ID_TYPE_STARTS, ID_TYPE_ENDS, ID_TYPE_RANGES_STORE)
+              type_val = find_in_ranges(cp, ID_TYPE_STARTS, ID_TYPE_ENDS, ID_TYPE_RANGES_STORE)
             
             if not type_val:
                 type_val = "Not_Specified" # Fallback per UCD docs
