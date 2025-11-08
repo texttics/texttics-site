@@ -637,7 +637,7 @@ RE_MARK_COUNTER = window.RegExp.new(r"\p{M}", "gu")
 
 # --- NEW: Helper for Module 7 (Phase 3 Refactor) ---
 # Finds all continuous runs of one or more letters or numbers
-RE_LN_RUNS = window.RegExp.new(r"\p{L}+|\p{N}+", "gu")
+RE_LN_RUNS = window.RegExp.new(r"\p{L}+|\p{N}+|\p{S}+", "gu")
     
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
@@ -1204,8 +1204,6 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-import unicodedata
-
 def _is_confusable_char(char: str) -> bool:
     """Checks if a character is confusable."""
     if ord(char) in CONFUSABLES_MAP:
