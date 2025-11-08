@@ -1207,8 +1207,8 @@ def compute_grapheme_stats(t: str):
 # --- NEW: Confusable Analysis (Phase 3 Final Refactor) ---
 def compute_confusable_stats(t: str, is_honest_mode: bool):
     """Module 7: Runs the Confusable Skeleton analysis.
-    
-    This version contains the corrected counting logic.
+    This version has the correct "Pass 1" for counting
+    and ensures the old, buggy counting logic is gone.
     """
     
     if not CONFUSABLES_MAP or not t:
@@ -1225,6 +1225,7 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
         if ord(char) in CONFUSABLES_MAP:
             confusable_count += 1
     
+    # This 'stats' dict is now the single source of truth for the count.
     stats = {
         "Confusable Chars": confusable_count
     }
@@ -1236,7 +1237,7 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     
     alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)
     if not alphanum_runs_js:
-        return stats, [] # Return the correct count, even if no runs are found
+        return stats, [] # Return the correct count
     
     alphanum_runs = window.Array.from_(alphanum_runs_js)
     
@@ -1272,7 +1273,7 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
                 "end": start + len(run_py)
             })
     
-    # Return the correct stats from Pass 1 and the runs from Pass 2
+    # We return the stats from Pass 1, not a new count.
     return stats, runs_detail
 
     
