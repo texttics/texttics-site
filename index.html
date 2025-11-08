@@ -1630,7 +1630,7 @@ def update_all(event=None):
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
         
         # --- Run Module 7 (Confusables) ---
-        confusable_stats, runs = compute_confusable_stats(t)
+        confusable_stats, runs = compute_confusable_stats(t, is_honest_mode)
         render_stats(confusable_stats, "confusable-stats")
 
         lines = []
