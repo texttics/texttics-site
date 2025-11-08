@@ -637,7 +637,9 @@ RE_MARK_COUNTER = window.RegExp.new(r"\p{M}", "gu")
 
 # --- NEW: Helper for Module 7 (Phase 3 Refactor) ---
 # Finds all continuous runs of one or more letters or numbers
-RE_LN_RUNS = window.RegExp.new(r"\p{L}+|\p{N}+|\p{S}+", "gu")
+    # Finds continuous runs of letters, numbers, and symbols (for visual diff)
+    # OPTIONAL: include punctuation runs in the visual diff as well
+RE_LN_RUNS = window.RegExp.new(r"\p{L}+|\p{N}+|\p{S}+|\p{P}+", "gu")
     
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
