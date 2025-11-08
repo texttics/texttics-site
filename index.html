@@ -90,6 +90,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
 pre#skeleton-output {
       display: none; /* Hidden by default, shown by Python */
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       background: #f3f4f6;
       border: 1px solid #d1d5db;
       border-radius: 10px;
@@ -1486,12 +1487,17 @@ def update_all(event=None):
         }
     
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
+        
         # --- Run Module 7 (Confusables) ---
         confusable_stats, skeleton_str = compute_confusable_stats(t)
         render_stats(confusable_stats, "confusable-stats")
         
         if skeleton_str:
-            skeleton_output.innerHTML = skeleton_str
+            # NEW: Generate hex codes for the skeleton to make it forensic
+            hex_codes = " ".join(f"U+{ord(c):04X}" for c in skeleton_str)
+            
+            # Display both the skeleton and the hex codes
+            skeleton_output.innerHTML = f"{skeleton_str}\n[Hex: {hex_codes}]"
             skeleton_output.style.display = "block"
         else:
             skeleton_output.style.display = "none"
