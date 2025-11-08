@@ -102,7 +102,14 @@ pre#skeleton-output {
       word-break: break-all;     /* Break long strings */
       margin-top: 1rem;
     }
-    
+
+.changed { 
+      background: #fff3cd; 
+      color: #664d03;
+      padding: 0 .15rem; 
+      border-radius: .2rem; 
+      font-weight: bold;
+    }
     .card {
       padding: 1rem;
       border: 1px solid #e5e7eb;
@@ -1131,14 +1138,13 @@ def compute_confusable_stats(t: str):
     """Module 7: Runs the Confusable Skeleton analysis.
     
     Finds alphanumeric runs, checks if they contain confusables,
-    and returns a clean list of only the skeletonized, spoofed runs.
+    and returns a list of (original_run, skeleton_run) string pairs.
     """
     
     if not CONFUSABLES_MAP or not t:
-        return {}, ""
+        return {}, []
 
     # --- PASS 1: Calculate total confusable char count ---
-    # This scans the *entire* string for the counter card.
     confusable_count = 0
     for char in t:
         if ord(char) in CONFUSABLES_MAP:
@@ -1149,39 +1155,34 @@ def compute_confusable_stats(t: str):
     }
 
     # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
-    spoofed_runs_skeletons = [] # The new output list
+    spoofed_pairs = [] # NEW: List to hold (orig_str, skel_str)
     
-    # Use the (correct) physical run RegExp
-    alphanum_runs = window.String.prototype.match.call(t, RE_LN_RUNS)
+    # Use the physical run RegExp (L or N)
+    alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)
+    if not alphanum_runs_js:
+        return stats, []
     
-    if not alphanum_runs:
-        return stats, "" # No runs found
+    alphanum_runs = window.Array.from_(alphanum_runs_js) # Convert JS Array to Python list
 
     for run in alphanum_runs:
-        has_confusable_run = False # <-- Use a local flag for *this run*
-        current_run_skeleton = [] # Build skeleton for *this run*
+        run_py = str(run) # Force Python str
+        has_confusable_run = False
+        current_run_skeleton = []
         
-        for char in run:
+        for char in run_py:
             cp = ord(char)
             skeleton_val = CONFUSABLES_MAP.get(cp)
             
-            # --- THIS IS THE FIX ---
-            # We must append the skeleton_val *if it exists*,
-            # and the original char *only if it does not*.
             if skeleton_val:
-                has_confusable_run = True # This run is a spoof!
-                current_run_skeleton.append(skeleton_val) # Append the skeleton
+                has_confusable_run = True
+                current_run_skeleton.append(skeleton_val)
             else:
-                current_run_skeleton.append(char) # Append the original
+                current_run_skeleton.append(char)
         
-        # Only check the LOCAL flag
         if has_confusable_run:
-            spoofed_runs_skeletons.append("".join(current_run_skeleton))
+            spoofed_pairs.append( (run_py, "".join(current_run_skeleton)) )
     
-    # Format the final output string
-    skeleton_string = " ".join(spoofed_runs_skeletons)
-    
-    return stats, skeleton_string
+    return stats, spoofed_pairs
 
 # NEW: FORENSIC ANALYSIS FUNCTION
 def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
@@ -1489,15 +1490,28 @@ def update_all(event=None):
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
         
         # --- Run Module 7 (Confusables) ---
-        confusable_stats, skeleton_str = compute_confusable_stats(t)
+        confusable_stats, spoofed_pairs = compute_confusable_stats(t)
         render_stats(confusable_stats, "confusable-stats")
         
-        if skeleton_str:
-            # NEW: Generate hex codes for the skeleton to make it forensic
-            hex_codes = " ".join(f"U+{ord(c):04X}" for c in skeleton_str)
-            
-            # Display both the skeleton and the hex codes
-            skeleton_output.innerHTML = f"{skeleton_str}\n[Hex: {hex_codes}]"
+        if spoofed_pairs:
+            html_lines = []
+            for orig_run, skel_run in spoofed_pairs:
+                
+                # Build the visual diff
+                diff_html = []
+                for orig_char, skel_char in zip(orig_run, skel_run):
+                    if orig_char != skel_char:
+                        # Add a title to see the hex change on hover
+                        diff_html.append(f'<span class="changed" title="U+{ord(orig_char):04X} → U+{ord(skel_char):04X}">{skel_char}</span>')
+                    else:
+                        diff_html.append(skel_char)
+                
+                # Generate hex codes for the *skeleton*
+                hex_codes = " ".join(f"U+{ord(c):04X}" for c in skel_run)
+                
+                html_lines.append(f'{orig_run} → {"".join(diff_html)}\n[Hex: {hex_codes}]')
+                
+            skeleton_output.innerHTML = "\n\n".join(html_lines)
             skeleton_output.style.display = "block"
         else:
             skeleton_output.style.display = "none"
