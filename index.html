@@ -87,6 +87,20 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       margin-top: 1rem;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     }
+
+pre#skeleton-output {
+      display: none; /* Hidden by default, shown by Python */
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 1rem;
+      font-size: 1.1rem;
+      line-height: 1.5;
+      color: #1f2937;
+      white-space: pre-wrap;     /* Wrap long skeleton strings */
+      word-break: break-all;     /* Break long strings */
+      margin-top: 1rem;
+    }
     
     .card {
       padding: 1rem;
@@ -461,6 +475,19 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
     <div id="ucd-deep-scan-stats" class="stats">
         </div>
+
+<h2 id="module-7-header">
+      Confusable &amp; Spoofing Analysis
+      <span class="tooltip">(?)
+          <span class="tooltip-text">
+              Detects "confusable" characters used in spoofing attacks by
+              mapping them to their "skeleton" (e.g., Cyrillic 'а' -> Latin 'a').
+          </span>
+      </span>
+  </h2>
+  <div id="confusable-stats" class="stats">
+  </div>
+  <pre id="skeleton-output"></pre>
   
   <!-- === PYTHONS SCRIPT === -->
   <script type="py">
@@ -589,17 +616,6 @@ RE_MARK_COUNTER = window.RegExp.new(r"\p{M}", "gu")
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
 
-# NEW: Helpers for Security Module
-# Finds all continuous runs of one or more letters
-RE_LETTER_RUNS = window.RegExp.new(r"\p{L}+", "gu")
-
-# Tests if a string contains at least one Latin-script character
-RE_TEST_LATIN = window.RegExp.new(r"\p{sc=Latin}", "u")
-
-# Tests if a string contains at least one Letter that is *not* Latin
-# Uses the 'v' flag for Unicode set operations: [\p{L} (all letters) AND \P{sc=Latin} (not Latin)]
-RE_TEST_NOT_LATIN = window.RegExp.new(r"[\p{L}&&\P{sc=Latin}]", "v")
-
 # NEW: Grapheme Segmenter (Module 1 alternate)
 # We create one segmenter instance to reuse
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
@@ -625,6 +641,9 @@ ID_TYPE_RANGES_STORE = [] # list[(start, end, "Type")]
 ID_TYPE_STARTS = []       # for bisect
 ID_TYPE_ENDS = []         # for bisect
 
+# --- NEW: Globals for confusables.txt (Phase 3) ---
+CONFUSABLES_MAP = {} # dict[int, str] mapping code point -> skeleton string
+    
 def _finalize_allowed(ranges):
     from bisect import bisect_right
     # normalize & prep arrays for O(log n) lookups
@@ -756,6 +775,49 @@ def parse_identifier_type(txt: str):
     """Parses IdentifierType.txt into its global stores."""
     global ID_TYPE_RANGES_STORE, ID_TYPE_STARTS, ID_TYPE_ENDS
     _parse_and_store_ranges(txt, ID_TYPE_RANGES_STORE, ID_TYPE_STARTS, ID_TYPE_ENDS, "IdentifierType")
+
+# --- NEW: Parser for confusables.txt (Phase 3) ---
+def parse_confusables(txt: str):
+    """
+    Parses confusables.txt into a simple {code_point: "skeleton"} map.
+    Format: 0430 ; 0061 ; MA # (Cyrillic 'a' -> Latin 'a')
+    Format: 00C6 ; 0041 0045 ; MA # (Latin 'Æ' -> "AE")
+    """
+    global CONFUSABLES_MAP
+    CONFUSABLES_MAP.clear()
+    count = 0
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 2) # Split max 2 times
+        if len(parts) < 2:
+            continue
+        
+        try:
+            source_hex = parts[0].strip()
+            skeleton_hex_list = parts[1].strip().split() # e.g., "0041 0045"
+            
+            # This character is confusable with *something*
+            source_cp = int(source_hex, 16)
+            
+            # Build the skeleton string
+            skeleton_str = "".join(
+                [chr(int(hex_val, 16)) for hex_val in skeleton_hex_list]
+            )
+            
+            # We only store the mapping if the source is not
+            # already identical to its skeleton (e.g., 0061 ; 0061)
+            if chr(source_cp) != skeleton_str:
+                CONFUSABLES_MAP[source_cp] = skeleton_str
+                count += 1
+                
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {count} confusable mappings.")
     
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -775,11 +837,11 @@ async def load_unicode_data():
 
     try:
         # --- NEW: Fetch all files in parallel ---
-        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt"]
+        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "confusables.txt"]
         print("Fetching Unicode data files...")
         results = await asyncio.gather(*[fetch_file(f) for f in filenames])
         
-        id_status_txt, blocks_txt, derived_age_txt, id_type_txt = results
+        id_status_txt, blocks_txt, derived_age_txt, id_type_txt, confusables_txt = results
         
         # --- Parse each file if it loaded ---
         if id_status_txt:
@@ -806,7 +868,14 @@ async def load_unicode_data():
                 parse_identifier_type(id_type_txt)
             else:
                 print("IdentifierType.txt content invalid.")
-        
+
+    # --- NEW: Parse confusables.txt ---
+        if confusables_txt:
+            if "confusables" in confusables_txt: # Sanity check
+                parse_confusables(confusables_txt)
+            else:
+                print("confusables.txt content invalid.")
+    
         # --- Final step: Trigger UI update ---
         # This call is now crucial as it runs after all data is parsed
         print("Unicode data loaded. Triggering UI update.")
@@ -1051,42 +1120,44 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-def compute_security_stats(t: str, is_honest_mode: bool):
-    """Module 3 Add-on: Runs the Mixed-Script Run security check."""
+# --- NEW: Confusable Analysis (Phase 3) ---
+def compute_confusable_stats(t: str):
+    """Module 7: Runs the Confusable Skeleton analysis."""
     
-    text_to_scan = t # Default to Honest mode
-
-    if not is_honest_mode:
-        # Legacy (Filtered) mode: remove emoji first
-        # We must use the global RE_DERIVED object here
-        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-    
-    if not text_to_scan:
-        return {"Mixed-Script Runs": 0}
-
-    mixed_run_count = 0
-    
-    # Use the global regex to find all continuous runs of letters
-    letter_runs = window.String.prototype.match.call(text_to_scan, RE_LETTER_RUNS)
-    
-    if not letter_runs:
-        # No letter runs found in the text
-        return {"Mixed-Script Runs": 0}
-
-    # Analyze each letter-run individually
-    for run in letter_runs:
-        # Test if this specific run contains at least one Latin char
-        has_latin = RE_TEST_LATIN.test(run)
+    if not CONFUSABLES_MAP:
+        # Data hasn't loaded yet
+        return {}, "Confusables.txt data is still loading..."
         
-        # Test if this specific run contains at least one non-Latin *letter*
-        # This prevents runs of 'Hello!!!' from being flagged if '!' is not 'sc=Latin'
-        has_not_latin_letter = RE_TEST_NOT_LATIN.test(run)
+    if not t:
+        return {}, ""
+
+    confusable_count = 0
+    skeleton_chars = []
+    
+    for char in t:
+        cp = ord(char)
+        # Check if this char is in our confusable map
+        skeleton_val = CONFUSABLES_MAP.get(cp)
         
-        # If a single, continuous run of letters has both, it's a "Mixed-Script Run"
-        if has_latin and has_not_latin_letter:
-            mixed_run_count += 1
+        if skeleton_val:
+            # Yes, it's confusable
+            confusable_count += 1
+            skeleton_chars.append(skeleton_val)
+        else:
+            # No, just append the original char
+            skeleton_chars.append(char)
             
-    return {"Mixed-Script Runs": mixed_run_count}
+    stats = {
+        "Confusable Chars": confusable_count
+    }
+    
+    skeleton_string = "".join(skeleton_chars)
+    
+    # Don't show skeleton if it's identical to the input
+    if skeleton_string == t:
+        skeleton_string = ""
+        
+    return stats, skeleton_string
 
 # NEW: FORENSIC ANALYSIS FUNCTION
 def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
@@ -1286,6 +1357,11 @@ def update_all(event=None):
     
     grapheme_forensics_module = document.getElementById("grapheme-forensics-module")
 
+    # --- NEW: Module 7 (Phase 3) ---
+    module_7_header = document.getElementById("module-7-header")
+    module_7_content = document.getElementById("confusable-stats")
+    skeleton_output = document.getElementById("skeleton-output")
+
     # --- Module 1 Toggle ---
     if is_grapheme_mode:
         # 1. Run compute function (now returns 4 items)
@@ -1313,6 +1389,9 @@ def update_all(event=None):
         module_5_content.style.display = "none"
         module_6_header.style.display = "none"
         module_6_content.style.display = "none"
+        module_7_header.style.display = "none"
+        module_7_content.style.display = "none"
+        skeleton_output.style.display = "none"
     
     else:
         # --- HIDE GRAPHEME FORENSICS ---
@@ -1331,6 +1410,9 @@ def update_all(event=None):
         module_5_content.style.display = "grid"
         module_6_header.style.display = "flex"
         module_6_content.style.display = "grid"
+        module_7_header.style.display = "flex"
+        module_7_content.style.display = "grid"
+        # skeleton_output display is handled by its content
         
         # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
@@ -1348,11 +1430,10 @@ def update_all(event=None):
         seq_stats = compute_sequence_stats(t, is_minor_seq)
         render_stats(seq_stats, "sequence-stats")
 
-        # Run Module 3 (Script & Security)
+        # Run Module 3 (Script Analysis)
         script_stats = compute_script_stats(t, is_honest_mode)
-        security_stats = compute_security_stats(t, is_honest_mode)
+        # 'compute_security_stats' is now removed (Phase 3)
         combined_script_stats = {
-            **security_stats, 
             **script_stats
         }
         render_stats(combined_script_stats, "script-stats", class_name="card")
@@ -1384,6 +1465,15 @@ def update_all(event=None):
         }
     
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
+        # --- Run Module 7 (Confusables) ---
+        confusable_stats, skeleton_str = compute_confusable_stats(t)
+        render_stats(confusable_stats, "confusable-stats")
+        
+        if skeleton_str:
+            skeleton_output.innerHTML = skeleton_str
+            skeleton_output.style.display = "block"
+        else:
+            skeleton_output.style.display = "none"
 
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
