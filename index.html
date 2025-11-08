@@ -498,15 +498,15 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <pre id="skeleton-output"></pre>
 
 <h2 id="module-8-header">
-      Intentional Sequence Analysis
-      <span class="tooltip">(?)
-          <span class="tooltip-text">
-              Detects specific multi-character sequences (e.g., 'rn')
-              that are intentionally confusable with other characters (e.g., 'm').
-              Based on Unicode's intentional.txt.
-          </span>
-      </span>
-  </h2>
+      Standardized Variant Analysis
+      <span class="tooltip">(?)
+          <span class="tooltip-text">
+              Detects standardized variant sequences, such as emoji
+              variation selectors (e.g., U+FE0F) that can
+              invisibly change a character's appearance.
+          </span>
+      </span>
+  </h2>
   
   <div id="intentional-stats-output" class="stats">
       </div>
@@ -670,8 +670,9 @@ ID_TYPE_ENDS = []         # for bisect
 # --- NEW: Globals for confusables.txt (Phase 3) ---
 CONFUSABLES_MAP = {} # dict[int, str] mapping code point -> skeleton string
 
-# --- NEW: Globals for intentional.txt (Phase 4) ---
-INTENTIONAL_MAP = {} # dict[str, str] mapping "source_seq" -> "skel_seq"
+# --- NEW: Globals for StandardizedVariants.txt (Module 8) ---
+VARIANT_BASE_CHARS = set() # Holds chars that can be varied (e.g., U+263A)
+VARIATION_SELECTORS = set() # Holds the selectors themselves (e.g., U+FE0F)
     
 def _finalize_allowed(ranges):
     from bisect import bisect_right
@@ -851,55 +852,57 @@ def parse_confusables(txt: str):
             
     print(f"Loaded {count} confusable mappings.")
 
-# --- NEW: Parser for intentional.txt (Phase 4) ---
-def parse_intentional(txt: str):
-    """
-    Parses intentional.txt into a {source_str: skeleton_str} map.
-    Format: 0072 006E ; 006D ; # ( rn -> m )
-    Format: 0041 ; 0391 ; # ( A -> Α )
-    """
-    global INTENTIONAL_MAP
-    INTENTIONAL_MAP.clear()
-    count = 0
-    
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        parts = line.split(';', 1) # Split only on the *first* semicolon
-        if len(parts) < 2:
-            continue
-        
-        try:
-            source_hex_list = parts[0].strip().split()
-            skeleton_hex_list = parts[1].strip().split()
-          
-            # --- THIS IS THE FIX ---
-            # Only load sequences that are 2+ characters long.
-            # This ignores all the single-character "noise" (like A -> Α).
-            # if len(source_hex_list) <= 1:
-            #     continue
-    
-            if not source_hex_list or not skeleton_hex_list:
-                continue
+# --- NEW: Parser for StandardizedVariants.txt (Module 8) ---
+def parse_standardized_variants(txt: str):
+    """
+    Parses StandardizedVariants.txt into two sets:
+    1. VARIANT_BASE_CHARS: Base characters that can be modified.
+    2. VARIATION_SELECTORS: The modifier characters themselves.
+    """
+    global VARIANT_BASE_CHARS, VARIATION_SELECTORS
+    VARIANT_BASE_CHARS.clear()
+    VARIATION_SELECTORS.clear()
+    
+    base_count = 0
+    selector_count = 0
 
-            source_str = "".join(
-                [chr(int(hex_val, 16)) for hex_val in source_hex_list]
-            )
-            skeleton_str = "".join(
-                [chr(int(hex_val, 16)) for hex_val in skeleton_hex_list]
-            )
-
-            # Only add if it's not an identity mapping
-            if source_str and skeleton_str and source_str != skeleton_str:
-                INTENTIONAL_MAP[source_str] = skeleton_str
-                count += 1
-                
-        except Exception:
-            pass # Ignore malformed lines
-            
-    print(f"Loaded {count} intentional sequence mappings.")
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 3) # e.g., 0030..0039; FE00; Zs; (decimal digit)
+        if len(parts) < 2:
+            continue
+        
+        try:
+            code_range = parts[0].strip()
+            variation_info = parts[1].strip()
+            
+            start_hex, end_hex = code_range, code_range
+            if '..' in code_range:
+                start_hex, end_hex = code_range.split('..', 1)
+                
+            start_cp = int(start_hex, 16)
+            end_cp = int(end_hex, 16)
+            
+            if not variation_info:
+                # This is a line defining the selectors THEMSELVES
+                # e.g., "FE00..FE0F; ; C; (variation selector)"
+                for cp in range(start_cp, end_cp + 1):
+                    VARIATION_SELECTORS.add(cp)
+                    selector_count += 1
+            else:
+                # This is a line defining a base character
+                # e.g., "0030..0039; FE00; Zs; (decimal digit)"
+                for cp in range(start_cp, end_cp + 1):
+                    VARIANT_BASE_CHARS.add(cp)
+                    base_count += 1
+                
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {base_count} variant base chars and {selector_count} variation selectors.")
 
 
     
@@ -921,11 +924,11 @@ async def load_unicode_data():
 
     try:
         # --- NEW: Fetch all files in parallel ---
-        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "confusables.txt", "intentional.txt"]
+        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "confusables.txt", "StandardizedVariants.txt"]
         print("Fetching Unicode data files...")
         results = await asyncio.gather(*[fetch_file(f) for f in filenames])
         
-        id_status_txt, blocks_txt, derived_age_txt, id_type_txt, confusables_txt, intentional_txt = results
+        id_status_txt, blocks_txt, derived_age_txt, id_type_txt, confusables_txt, standardized_variants_txt = results
         
         # --- Parse each file if it loaded ---
         if id_status_txt:
@@ -960,12 +963,12 @@ async def load_unicode_data():
             else:
                 print("confusables.txt content invalid.")
 
-    # --- NEW: Parse intentional.txt ---
-        if intentional_txt:
-            if "intentional.txt" in intentional_txt: # Sanity check
-                parse_intentional(intentional_txt)
-            else:
-                print("intentional.txt content invalid.")
+    # --- NEW: Parse StandardizedVariants.txt ---
+        if standardized_variants_txt:
+            if "StandardizedVariants" in standardized_variants_txt: # Sanity check
+                parse_standardized_variants(standardized_variants_txt)
+            else:
+                print("StandardizedVariants.txt content invalid.")
     
         # --- Final step: Trigger UI update ---
         # This call is now crucial as it runs after all data is parsed
@@ -1279,42 +1282,28 @@ def compute_confusable_stats(t: str):
     
     return stats, runs_detail
 
-# --- NEW: Intentional Sequence Analysis (Phase 4) ---
-def compute_intentional_stats(t: str):
-    """Module 8: Finds all hits from intentional.txt."""
-    
-    if not INTENTIONAL_MAP or not t:
-        return 0, []
+# --- NEW: Standardized Variant Analysis (Phase 4) ---
+def compute_variant_stats(t: str):
+    """Module 8: Counts variant base chars and selectors."""
+    
+    if (not VARIANT_BASE_CHARS and not VARIATION_SELECTORS) or not t:
+        return {}
 
-    hits = []
-    
-    # Iterate over our map of ("rn", "m")
-    for source_str, skel_str in INTENTIONAL_MAP.items():
-        start_index = 0
-        
-        # Find all occurrences of this sequence in the text
-        while True:
-            # Use JS .indexOf for performance
-            found_index = window.String.prototype.indexOf.call(t, source_str, start_index)
-            
-            if found_index == -1:
-                break
-                
-            hits.append({
-                "orig": source_str,
-                "skel": skel_str,
-                "start": found_index,
-                "end": found_index + len(source_str)
-            })
-            
-            # Move index forward to find next match
-            start_index = found_index + 1
-            
-    # Sort hits by their start position
-    hits.sort(key=lambda x: x["start"])
-    
-    total_hits = len(hits)
-    return total_hits, hits
+    base_count = 0
+    selector_count = 0
+    
+    for char in t:
+        cp = ord(char)
+        if cp in VARIANT_BASE_CHARS:
+            base_count += 1
+        if cp in VARIATION_SELECTORS:
+            selector_count += 1
+            
+    stats = {
+        "Variant Base Chars": base_count,
+        "Variation Selectors": selector_count
+    }
+    return stats
     
 # NEW: FORENSIC ANALYSIS FUNCTION
 def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
@@ -1553,6 +1542,7 @@ def update_all(event=None):
         skeleton_output.style.display = "none"
         module_8_header.style.display = "none"
         module_8_content.style.display = "none"
+        document.getElementById("intentional-skeleton-output").style.display = "none"
     
     else:
         # --- HIDE GRAPHEME FORENSICS ---
@@ -1576,7 +1566,7 @@ def update_all(event=None):
         # skeleton_output display is handled by its content
         module_8_header.style.display = "flex"
         module_8_content.style.display = "grid"
-    
+        document.getElementById("intentional-skeleton-output").style.display = "none"
         # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
@@ -1658,38 +1648,12 @@ def update_all(event=None):
             skeleton_output.style.display = "block"
         else:
             skeleton_output.style.display = "none"
-# --- Run Module 8 (Intentional Sequences) ---
-        
-        # Get the new <pre> box element
-        intentional_skeleton_output = document.getElementById("intentional-skeleton-output")
 
-        total_hits, intentional_hits = compute_intentional_stats(t)
-        
-        # Render the card count
-        render_stats({"Confusable Sequences": total_hits}, "intentional-stats-output")
+    # --- Run Module 8 (Standardized Variant Analysis) ---
+        variant_stats = compute_variant_stats(t)
+        render_stats(variant_stats, "intentional-stats-output")
 
-        # Render the text diffs into the NEW <pre> box
-        if intentional_hits:
-            lines = []
-            for r in intentional_hits:
-                orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
-                skel_hex = " ".join(f"U+{ord(c):04X}" for c in r["skel"])
-                
-                # --- THIS IS THE FIX ---
-                # We create the HTML for the skeleton, wrapping it in the 'changed' class.
-                skel_html = f'<span class="changed" title="{orig_hex} → {skel_hex}">{r["skel"]}</span>'
-                
-                lines.append(
-                    f"{r['orig']} → {skel_html}   " # Use the new skel_html
-                    f"[{r['start']}–{r['end']}]   "
-                    f"[Hex: {orig_hex} → {skel_hex}]"
-                )
-            
-            intentional_skeleton_output.innerHTML = "\n".join(lines)
-            intentional_skeleton_output.style.display = "block"
-        else:
-            intentional_skeleton_output.innerHTML = ""
-            intentional_skeleton_output.style.display = "none"
+    
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
 
