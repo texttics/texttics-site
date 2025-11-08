@@ -1636,24 +1636,29 @@ def update_all(event=None):
 
         lines = []
         for r in runs:
-            diff_html = []
-            # Build per-original-char, allowing multi-char skeleton expansions
-            for orig_char in r["orig"]:
-                skel = _get_confusable_skeleton(orig_char)
-                if skel:
-                    # Show the full expansion (may be >1 char)
-                    diff_html.append(
-                        f'<span class="changed" title="U+{ord(orig_char):04X} → {_hex_seq(skel)}">{_html_escape(skel)}</span>'
-                    )
-                else:
-                    diff_html.append(_html_escape(orig_char))
+            # Build per-char diff that supports 1→many expansions.
+            parts = []
+            built_skel_chars = []  # to recompute full skeleton hex reliably
 
-            # Hex for whole run (use the stored skeleton string)
-            orig_hex = _hex_seq(r["orig"])
-            skel_hex = _hex_seq(r["skel"])
+            for ch in r["orig"]:
+                skel = _get_confusable_skeleton(ch)
+                if skel is None:
+                    parts.append(ch)
+                    built_skel_chars.append(ch)
+                else:
+                    skel_hex = " ".join(f"U+{ord(c):04X}" for c in skel)
+                    parts.append(
+                        f'<span class="changed" title="U+{ord(ch):04X} → {skel_hex}">{skel}</span>'
+                    )
+                    built_skel_chars.extend(list(skel))
+
+            # Recompute hex with the *actual* skeleton we displayed
+            orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
+            skel_str = "".join(built_skel_chars)
+            skel_hex = " ".join(f"U+{ord(c):04X}" for c in skel_str)
 
             lines.append(
-                f"{_html_escape(r['orig'])} → {''.join(diff_html)}   "
+                f"{r['orig']} → {''.join(parts)}   "
                 f"[{r['start']}–{r['end']}]   "
                 f"[Hex: {orig_hex} → {skel_hex}]"
             )
