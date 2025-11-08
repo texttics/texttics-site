@@ -613,7 +613,7 @@ RE_MARK_COUNTER = window.RegExp.new(r"\p{M}", "gu")
 
 # --- NEW: Helper for Module 7 (Phase 3 Refactor) ---
 # Finds all continuous runs of one or more letters or numbers
-RE_ALPHANUM_RUNS = window.RegExp.new(r"[\p{L}\p{N}]+", "gu")
+RE_LN_RUNS = window.RegExp.new(r"\p{L}+|\p{N}+", "gu")
     
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
@@ -802,17 +802,20 @@ def parse_confusables(txt: str):
             source_hex = parts[0].strip()
             skeleton_hex_list = parts[1].strip().split() # e.g., "0041 0045"
             
-            # This character is confusable with *something*
             source_cp = int(source_hex, 16)
             
             # Build the skeleton string
             skeleton_str = "".join(
                 [chr(int(hex_val, 16)) for hex_val in skeleton_hex_list]
             )
+
+            # --- THIS IS THE FIX ---
+            # We must check the code points, not the characters, to
+            # correctly handle case-only mappings (like I -> l)
+            skeleton_cp_list = [int(hex_val, 16) for hex_val in skeleton_hex_list]
+            is_identity = (len(skeleton_cp_list) == 1 and skeleton_cp_list[0] == source_cp)
             
-            # We only store the mapping if the source is not
-            # already identical to its skeleton (e.g., 0061 ; 0061)
-            if chr(source_cp) != skeleton_str:
+            if not is_identity:
                 CONFUSABLES_MAP[source_cp] = skeleton_str
                 count += 1
                 
@@ -1147,8 +1150,8 @@ def compute_confusable_stats(t: str):
     # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
     spoofed_runs_skeletons = [] # The new output list
     
-    # Find all continuous runs of letters/numbers
-    alphanum_runs = window.String.prototype.match.call(t, RE_ALPHANUM_RUNS)
+    # Find all continuous runs of letters (L) OR numbers (N)
+    alphanum_runs = window.String.prototype.match.call(t, RE_LN_RUNS)
     
     if not alphanum_runs:
         return stats, "" # No runs found, return stats and empty string
