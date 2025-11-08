@@ -1245,7 +1245,45 @@ def _get_confusable_skeleton(char: str, include_custom: bool = False) -> str | N
 
     return None
 
+def _iter_confusable_segments(text: str, include_custom: bool = True):
+    """
+    Yields dicts of contiguous confusable segments:
+      {"orig": <substring>, "skel": <mapped substring>, "start": i0, "end": i1}
+    A segment ends when we hit a non-confusable character.
+    """
+    segs = []
+    start_idx = None
+    skel_buf = []
 
+    for idx, ch in enumerate(text):
+        skel = _get_confusable_skeleton(ch)  # uses your current helper (NFKC + map)
+        if skel is not None:
+            if start_idx is None:
+                start_idx = idx
+                skel_buf = []
+            skel_buf.append(skel)
+        else:
+            if start_idx is not None:
+                segs.append({
+                    "orig": text[start_idx:idx],
+                    "skel": "".join(skel_buf),
+                    "start": start_idx,
+                    "end": idx
+                })
+                start_idx = None
+                skel_buf = []
+
+    # flush last segment
+    if start_idx is not None:
+        segs.append({
+            "orig": text[start_idx:len(text)],
+            "skel": "".join(skel_buf),
+            "start": start_idx,
+            "end": len(text)
+        })
+    return segs
+
+    
 def compute_confusable_stats(t: str, is_honest_mode: bool):
     """
     Module 7: Confusable analysis with per-character diffs.
@@ -1262,44 +1300,9 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     )
     stats = {"Confusable Chars": confusable_count}
 
-    # PASS 2 — build detailed runs with per-char diffs
-    runs_detail = []
-    runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)  # \p{L}|\p{N}|\p{S}|\p{P}
-    if not runs_js:
-        return stats, []
-
-    runs = window.Array.from_(runs_js)
-    idx = 0
-    for run in runs:
-        run_py = str(run)
-
-        start = t.find(run_py, idx)
-        if start == -1:
-            start = t.find(run_py, 0)
-        idx = start + len(run_py)
-
-        has_confusable = False
-        char_diffs = []   # list of {"orig": ch, "skel": skel_str, "changed": bool}
-
-        for ch in run_py:
-            skel = _get_confusable_skeleton(ch)
-            if skel is None:
-                char_diffs.append({"orig": ch, "skel": ch, "changed": False})
-            else:
-                has_confusable = True
-                char_diffs.append({"orig": ch, "skel": skel, "changed": True})
-
-        if has_confusable:
-            skel_concat = "".join(d["skel"] for d in char_diffs)
-            runs_detail.append({
-                "orig": run_py,
-                "skel": skel_concat,
-                "char_diffs": char_diffs,
-                "start": start,
-                "end": start + len(run_py)
-            })
-
-    return stats, runs_detail
+    # --- PASS 2: BUILD REPORT FROM CONTIGUOUS CONFUSABLE SEGMENTS (ALL CATEGORIES) ---
+    runs_detail = _iter_confusable_segments(t)
+    
 
 
     
