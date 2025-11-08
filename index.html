@@ -1634,40 +1634,39 @@ def update_all(event=None):
         confusable_stats, runs = compute_confusable_stats(t, is_honest_mode)
         render_stats(confusable_stats, "confusable-stats")
 
-        lines = []
-        for r in runs:
-            # Build per-char diff that supports 1→many expansions.
-            parts = []
-            built_skel_chars = []  # to recompute full skeleton hex reliably
+        # --- Build the visual report WITHOUT zipping (supports multi-char skeletons) ---
+lines = []
+for r in runs:
+    diff_parts = []
+    skel_hex_parts = []
 
-            for ch in r["orig"]:
-                skel = _get_confusable_skeleton(ch)
-                if skel is None:
-                    parts.append(ch)
-                    built_skel_chars.append(ch)
-                else:
-                    skel_hex = " ".join(f"U+{ord(c):04X}" for c in skel)
-                    parts.append(
-                        f'<span class="changed" title="U+{ord(ch):04X} → {skel_hex}">{skel}</span>'
-                    )
-                    built_skel_chars.extend(list(skel))
-
-            # Recompute hex with the *actual* skeleton we displayed
-            orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
-            skel_str = "".join(built_skel_chars)
-            skel_hex = " ".join(f"U+{ord(c):04X}" for c in skel_str)
-
-            lines.append(
-                f"{r['orig']} → {''.join(parts)}   "
-                f"[{r['start']}–{r['end']}]   "
-                f"[Hex: {orig_hex} → {skel_hex}]"
-            )
-
-        if lines:
-            skeleton_output.innerHTML = "\n".join(lines)
-            skeleton_output.style.display = "block"
+    # Build highlight per original code point
+    for ch in r["orig"]:
+        skel = _get_confusable_skeleton(ch)  # may be None or multi-char string
+        if skel:
+            title = 'U+{0:04X} → '.format(ord(ch)) + " ".join('U+{0:04X}'.format(ord(x)) for x in skel)
+            diff_parts.append(f'<span class="changed" title="{title}">{skel}</span>')
+            skel_hex_parts.extend('U+{0:04X}'.format(ord(x)) for x in skel)
         else:
-            skeleton_output.style.display = "none"
+            diff_parts.append(ch)
+            skel_hex_parts.append('U+{0:04X}'.format(ord(ch)))
+
+    # Hex for the originals
+    orig_hex = " ".join('U+{0:04X}'.format(ord(c)) for c in r["orig"])
+    skel_hex = " ".join(skel_hex_parts)
+
+    lines.append(
+        f"{r['orig']} → {''.join(diff_parts)}   "
+        f"[{r['start']}–{r['end']}]   "
+        f"[Hex: {orig_hex} → {skel_hex}]"
+    )
+
+if lines:
+    skeleton_output.innerHTML = "\n".join(lines)
+    skeleton_output.style.display = "block"
+else:
+    skeleton_output.style.display = "none"
+
 
         # --- Run Module 8 (Standardized Variant Analysis) ---
         variant_stats = compute_variant_stats(t, is_honest_mode)
