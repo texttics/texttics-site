@@ -1272,22 +1272,34 @@ def compute_confusable_stats(t: str):
     
     return stats, runs_detail
 
-# --- NEW: Standardized Variant Analysis (Phase 4) ---
-def compute_variant_stats(t: str):
+# --- NEW: Standardized Variant Analysis (Module 8) ---
+def compute_variant_stats(t: str, is_honest_mode: bool):
     """Module 8: Counts variant base chars and selectors."""
     
     if (not VARIANT_BASE_CHARS and not VARIATION_SELECTORS) or not t:
         return {}
 
+    text_to_scan = t
+    if not is_honest_mode:
+        # Respect the legacy filter mode
+        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+
     base_count = 0
     selector_count = 0
     
-    for char in t:
+    # --- DEBUGGING: Print the size of the sets ---
+    # print(f"Compute: Base set size: {len(VARIANT_BASE_CHARS)}")
+    # print(f"Compute: Selector set size: {len(VARIATION_SELECTORS)}")
+    
+    for char in text_to_scan:
         cp = ord(char)
         if cp in VARIANT_BASE_CHARS:
             base_count += 1
+            # print(f"Found base char: {char}")
+            
         if cp in VARIATION_SELECTORS:
             selector_count += 1
+            # print(f"Found selector: U+{cp:04X}")
             
     stats = {
         "Variant Base Chars": base_count,
@@ -1640,7 +1652,7 @@ def update_all(event=None):
             skeleton_output.style.display = "none"
 
             # --- Run Module 8 (Standardized Variant Analysis) ---
-            variant_stats = compute_variant_stats(t)
+            variant_stats = compute_variant_stats(t, is_honest_mode)
             render_stats(variant_stats, "intentional-stats-output")
 
     
