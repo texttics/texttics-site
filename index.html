@@ -1206,45 +1206,54 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-def _is_confusable_char(char: str) -> bool:
-    """Checks if a character is confusable."""
-    if ord(char) in CONFUSABLES_MAP:
-        return True
+def _get_confusable_skeleton(char: str) -> str | None:
+    """
+    Checks if a character is confusable and returns its skeleton.
+    Returns None if it's not confusable.
+    """
     
-    # This is the new, robust check suggested by ChatGPT.
-    # It catches width-based confusables (like ０) and others.
+    # 1. Check the main map first (fastest)
+    skel = CONFUSABLES_MAP.get(ord(char))
+    if skel:
+        return skel
+    
+    # 2. Check NFKC normalization (slower, but catches symbols/width)
     try:
-        # We must avoid normalizing control chars, spaces, etc.
-        if unicodedata.category(char)[0] in ("L", "N", "S"):
-            return unicodedata.normalize('NFKC', char) != char
+        # Only normalize categories that make sense
+        if unicodedata.category(char)[0] in ("L", "N", "S", "P"):
+            normalized_char = unicodedata.normalize('NFKC', char)
+            if normalized_char != char:
+                # Return the normalized version as the skeleton
+                return normalized_char
     except Exception:
         pass # Not a valid char for normalization
         
-    return False
+    return None
 
 def compute_confusable_stats(t: str, is_honest_mode: bool):
     """
     Module 7: Runs the Confusable Skeleton analysis.
-    This is the final, correct, hybrid version.
+    This version uses the same robust logic for both counting and reporting.
     """
-    if not CONFUSABLES_MAP or not t:
+    if not t:
         return {}, []
 
     # --- PASS 1: TRUE PER-CHARACTER COUNT ---
-    # This uses our new helper and respects the honest_mode flag
     text_to_scan = t
     if not is_honest_mode:
         text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
 
-    confusable_count = sum(1 for char in text_to_scan if _is_confusable_char(char))
+    # We now use our smarter helper for the count
+    confusable_count = sum(1 for char in text_to_scan if _get_confusable_skeleton(char) is not None)
     stats = {"Confusable Chars": confusable_count}
     # --- END OF PASS 1 ---
 
-    # --- PASS 2: YOUR EXISTING RUN/SKELETON REPORT (UNCHANGED) ---
+    # --- PASS 2: BUILD THE VISUAL REPORT ---
     runs_detail = []
-    alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)
+    # This RegExp is correct and finds all L, N, S, and P runs
+    alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS) 
     if not alphanum_runs_js:
-        return stats, [] # Return the correct count
+        return stats, [] 
     
     alphanum_runs = window.Array.from_(alphanum_runs_js)
     
@@ -1261,15 +1270,17 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
         has_confusable_run = False
         current_run_skeleton = []
         
+        # --- THIS IS THE FIX ---
+        # We use the *exact same logic* as Pass 1
         for char in run_py:
-            cp = ord(char)
-            skeleton_val = CONFUSABLES_MAP.get(cp)
+            skeleton_val = _get_confusable_skeleton(char)
             
             if skeleton_val:
                 has_confusable_run = True
                 current_run_skeleton.append(skeleton_val)
             else:
                 current_run_skeleton.append(char)
+        # --- END OF FIX ---
         
         if has_confusable_run:
             skel_str = "".join(current_run_skeleton)
