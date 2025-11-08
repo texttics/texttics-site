@@ -863,46 +863,36 @@ def parse_standardized_variants(txt: str):
     VARIANT_BASE_CHARS.clear()
     VARIATION_SELECTORS.clear()
     
-    base_count = 0
-    selector_count = 0
-
+    base_mappings_count = 0
+    
     for raw in txt.splitlines():
         line = raw.split('#', 1)[0].strip()
         if not line:
             continue
             
-        parts = line.split(';', 3) # e.g., 0030..0039; FE00; Zs; (decimal digit)
+        parts = line.split(';', 1) # Split into "data" and "description"
         if len(parts) < 2:
             continue
         
-        try:
-            code_range = parts[0].strip()
-            variation_info = parts[1].strip()
-            
-            start_hex, end_hex = code_range, code_range
-            if '..' in code_range:
-                start_hex, end_hex = code_range.split('..', 1)
+        data_part = parts[0].strip()
+        
+        # The data part is "BaseHex SelectorHex"
+        hex_codes = data_part.split() 
+        
+        if len(hex_codes) == 2:
+            try:
+                base_cp = int(hex_codes[0], 16)
+                selector_cp = int(hex_codes[1], 16)
                 
-            start_cp = int(start_hex, 16)
-            end_cp = int(end_hex, 16)
-            
-            if not variation_info:
-                # This is a line defining the selectors THEMSELVES
-                # e.g., "FE00..FE0F; ; C; (variation selector)"
-                for cp in range(start_cp, end_cp + 1):
-                    VARIATION_SELECTORS.add(cp)
-                    selector_count += 1
-            else:
-                # This is a line defining a base character
-                # e.g., "0030..0039; FE00; Zs; (decimal digit)"
-                for cp in range(start_cp, end_cp + 1):
-                    VARIANT_BASE_CHARS.add(cp)
-                    base_count += 1
-                    
-        except Exception:
-            pass # Ignore malformed lines
-            
-    print(f"Loaded {base_count} variant base chars and {selector_count} variation selectors.")
+                VARIANT_BASE_CHARS.add(base_cp)
+                VARIATION_SELECTORS.add(selector_cp)
+                
+                base_mappings_count += 1
+            except ValueError:
+                pass # Ignore malformed hex codes
+                
+    selector_count = len(VARIATION_SELECTORS)
+    print(f"Loaded {base_mappings_count} variant base char mappings and {selector_count} unique variation selectors.")
 
 
     
@@ -965,7 +955,7 @@ async def load_unicode_data():
 
     # --- NEW: Parse StandardizedVariants.txt ---
         if standardized_variants_txt:
-            if "FE00..FE0F" in standardized_variants_txt: # A more robust check for actual file data
+            if "# StandardizedVariants" in standardized_variants_txt: # Check for the file header
                 parse_standardized_variants(standardized_variants_txt)
             else:
                 print("StandardizedVariants.txt content invalid.")
