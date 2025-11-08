@@ -1666,8 +1666,13 @@ def update_all(event=None):
             for r in intentional_hits:
                 orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
                 skel_hex = " ".join(f"U+{ord(c):04X}" for c in r["skel"])
+                
+                # --- THIS IS THE FIX ---
+                # We create the HTML for the skeleton, wrapping it in the 'changed' class.
+                skel_html = f'<span class="changed" title="{orig_hex} → {skel_hex}">{r["skel"]}</span>'
+                
                 lines.append(
-                    f"{r['orig']} → {r['skel']}   "
+                    f"{r['orig']} → {skel_html}   " # Use the new skel_html
                     f"[{r['start']}–{r['end']}]   "
                     f"[Hex: {orig_hex} → {skel_hex}]"
                 )
