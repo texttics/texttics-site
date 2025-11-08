@@ -610,6 +610,10 @@ RE_UAX44 = {
 
 # NEW: Counter for Grapheme Forensics (counts \p{M})
 RE_MARK_COUNTER = window.RegExp.new(r"\p{M}", "gu")
+
+# --- NEW: Helper for Module 7 (Phase 3 Refactor) ---
+# Finds all continuous runs of one or more letters or numbers
+RE_ALPHANUM_RUNS = window.RegExp.new(r"[\p{L}\p{N}]+", "gu")
     
 # Testers for Module 2 (Token Shape Analysis)
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES.items()}
@@ -1118,43 +1122,60 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-# --- NEW: Confusable Analysis (Phase 3) ---
+# --- NEW: Confusable Analysis (Phase 3 Refactored) ---
 def compute_confusable_stats(t: str):
-    """Module 7: Runs the Confusable Skeleton analysis."""
+    """Module 7: Runs the Confusable Skeleton analysis.
     
-    if not CONFUSABLES_MAP:
-        # Data hasn't loaded yet
-        return {}, "Confusables.txt data is still loading..."
-        
-    if not t:
+    Finds alphanumeric runs, checks if they contain confusables,
+    and returns a clean list of only the skeletonized, spoofed runs.
+    """
+    
+    if not CONFUSABLES_MAP or not t:
         return {}, ""
 
+    # --- PASS 1: Calculate total confusable char count (same as before) ---
+    # This scans the *entire* string for the counter.
     confusable_count = 0
-    skeleton_chars = []
-    
     for char in t:
-        cp = ord(char)
-        # Check if this char is in our confusable map
-        skeleton_val = CONFUSABLES_MAP.get(cp)
-        
-        if skeleton_val:
-            # Yes, it's confusable
+        if ord(char) in CONFUSABLES_MAP:
             confusable_count += 1
-            skeleton_chars.append(skeleton_val)
-        else:
-            # No, just append the original char
-            skeleton_chars.append(char)
-            
+    
     stats = {
         "Confusable Chars": confusable_count
     }
+
+    # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
+    spoofed_runs_skeletons = [] # The new output list
     
-    skeleton_string = "".join(skeleton_chars)
+    # Find all continuous runs of letters/numbers
+    alphanum_runs = window.String.prototype.match.call(t, RE_ALPHANUM_RUNS)
     
-    # Don't show skeleton if it's identical to the input
-    if skeleton_string == t:
-        skeleton_string = ""
+    if not alphanum_runs:
+        return stats, "" # No runs found, return stats and empty string
+
+    for run in alphanum_runs:
+        has_confusable = False
+        current_run_skeleton = [] # Build skeleton for *this* run
         
+        for char in run:
+            cp = ord(char)
+            skeleton_val = CONFUSABLES_MAP.get(cp)
+            
+            if skeleton_val:
+                # This run is a spoof!
+                has_confusable = True
+                current_run_skeleton.append(skeleton_val)
+            else:
+                # Not a confusable char, but part of the run
+                current_run_skeleton.append(char)
+        
+        # Now that we've checked the whole run...
+        if has_confusable:
+            spoofed_runs_skeletons.append("".join(current_run_skeleton))
+    
+    # Format the final output string
+    skeleton_string = " ".join(spoofed_runs_skeletons)
+    
     return stats, skeleton_string
 
 # NEW: FORENSIC ANALYSIS FUNCTION
