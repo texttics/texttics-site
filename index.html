@@ -674,7 +674,18 @@ CONFUSABLES_MAP = {} # dict[int, str] mapping code point -> skeleton string
 
 # --- NEW: Globals for StandardizedVariants.txt (Module 8) ---
 VARIANT_BASE_CHARS = set() # Holds chars that can be varied (e.g., U+263A)
-VARIATION_SELECTORS = set() # Holds the selectors themselves (e.g., U+FE0F)
+VARIATION_SELECTORS = set() # Holds the selectors themselves (e.g., U+FE0F)\
+
+# --- Display-only overrides (not part of UTS #39) ---
+# We use these ONLY for the visual report, so users see the ASCII-ish
+# intent of some symbols that the spec doesn't map to ASCII.
+CUSTOM_CONFUSABLES = {
+    '→': '->', '←': '<-', '↔': '<->', '⇒': '=>', '⇐': '<=',
+    '≤': '<=', '≥': '>=', '≠': '!=',
+    '—': '-', '–': '-', '−': '-',  # em/en/minus sign → hyphen-minus
+    '•': '*', '·': '.', '×': 'x', '÷': '/',
+}
+
     
 def _finalize_allowed(ranges):
     from bisect import bisect_right
@@ -1206,29 +1217,34 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-def _get_confusable_skeleton(char: str) -> str | None:
+def _get_confusable_skeleton(char: str, include_custom: bool = False) -> str | None:
     """
-    Checks if a character is confusable and returns its skeleton.
-    Returns None if it's not confusable.
+    Return the skeleton for `char` or None if not confusable.
+    When include_custom=True, also apply our display-only overrides.
     """
-    
-    # 1. Check the main map first (fastest)
-    skel = CONFUSABLES_MAP.get(ord(char))
-    if skel:
-        return skel
-    
-    # 2. Check NFKC normalization (slower, but catches symbols/width)
+
+    # (A) Optional display-only overrides (do NOT affect spec-accurate counts)
+    if include_custom:
+        sk = CUSTOM_CONFUSABLES.get(char)
+        if sk:
+            return sk
+
+    # (B) Spec data first (fast)
+    sk = CONFUSABLES_MAP.get(ord(char))
+    if sk:
+        return sk
+
+    # (C) Compatibility fallback (width/compat chars; still spec-compliant)
     try:
-        # Only normalize categories that make sense
         if unicodedata.category(char)[0] in ("L", "N", "S", "P"):
-            normalized_char = unicodedata.normalize('NFKC', char)
-            if normalized_char != char:
-                # Return the normalized version as the skeleton
-                return normalized_char
+            nfkc = unicodedata.normalize('NFKC', char)
+            if nfkc != char:
+                return nfkc
     except Exception:
-        pass # Not a valid char for normalization
-        
+        pass
+
     return None
+
 
 def compute_confusable_stats(t: str, is_honest_mode: bool):
     """
@@ -1240,10 +1256,10 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
 
     # PASS 1 — count (identical logic to report)
     text_to_scan = t if is_honest_mode else window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
-    confusable_count = 0
-    for ch in text_to_scan:
-        if _get_confusable_skeleton(ch) is not None:
-            confusable_count += 1
+    confusable_count = sum(
+        1 for ch in text_to_scan
+        if _get_confusable_skeleton(ch, include_custom=False) is not None
+    )
     stats = {"Confusable Chars": confusable_count}
 
     # PASS 2 — build detailed runs with per-char diffs
@@ -1648,7 +1664,7 @@ def update_all(event=None):
             
             # Build highlight per original code point
             for ch in r["orig"]:
-                skel = _get_confusable_skeleton(ch)  # may be None or multi-char string
+                skel = _get_confusable_skeleton(ch, include_custom=True)
                 if skel:
                     title = f'U+{ord(ch):04X} → ' + " ".join(f'U+{ord(x):04X}' for x in skel)
                     diff_parts.append(f'<span class="changed" title="{title}">{_html_escape(skel)}</span>')
