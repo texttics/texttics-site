@@ -536,7 +536,6 @@ SCRIPTS = {
 
 # NEW: Forensic Properties (Module 3 Add-on)
 FORENSIC_PROPERTIES = {
-    "Bidi Controls": r"\p{Bidi_Control}",
     "Deprecated": r"\p{Deprecated}",                # <-- NEW
     "Noncharacter": r"\p{Noncharacter_Code_Point}", # <-- NEW
     "Ignorables (Invisible)": r"\p{Default_Ignorable_Code_Point}",
@@ -596,7 +595,6 @@ RE_SCRIPTS = {key: window.RegExp.new(val, "gu") for key, val in SCRIPTS.items()}
 # NEW: Compilers for Forensic Module
 RE_FORENSIC = {
     # These can be 'gu' for simple global counting
-    "Bidi Controls": window.RegExp.new(FORENSIC_PROPERTIES["Bidi Controls"], "gu"),
     "Deprecated": window.RegExp.new(FORENSIC_PROPERTIES["Deprecated"], "gu"),             # <-- NEW
     "Noncharacter": window.RegExp.new(FORENSIC_PROPERTIES["Noncharacter"], "gu"),         # <-- NEW
     "Ignorables (Invisible)": window.RegExp.new(FORENSIC_PROPERTIES["Ignorables (Invisible)"], "gu"),
@@ -1175,8 +1173,7 @@ def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
         # Get counts from minor_stats, defaulting to 0
         "Unassigned (Void)": minor_stats.get("Cn", 0),
         "Surrogates (Broken)": minor_stats.get("Cs", 0),
-        "Private Use (Black Box)": minor_stats.get("Co", 0),
-        "Control (Cc)": minor_stats.get("Cc", 0)  # <-- PROMOTED FLAG
+        "Private Use (Black Box)": minor_stats.get("Co", 0)
     }
 
     # 2. Run the other regex-based forensic checks
@@ -1215,7 +1212,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     numeric_type_stats = {}
     numeric_total_value = 0
     number_script_zeros = set()
-    restricted_type_stats = {} # <-- NEW: Phase 2 counter
+    id_type_stats = {} # <-- NEW: Phase 2 refactored counter
 
     # --- NEW: Counters for Phase 1 ---
     block_stats = {}
@@ -1224,7 +1221,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     for char in text_to_scan:
         cp = ord(char) # Get the code point
         
-        # --- NEW: Phase 1 Logic (Blocks & Age) ---
+        # --- Phase 1 Logic (Blocks & Age) ---
         block_name = find_in_ranges(cp, BLOCK_STARTS, BLOCK_ENDS, BLOCK_RANGES_STORE)
         if block_name:
             key = f"Block: {block_name}"
@@ -1235,20 +1232,19 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
             key = f"Age: {age}"
             age_stats[key] = age_stats.get(key, 0) + 1
 
-        # --- Identifier Status Check (Phase 2 Upgrade) ---
-        # This is the block that had the indentation error
-        if char != ' ' and is_restricted(char):
-            # We know it's restricted, now find out *why*
-            # Use the cp (ord(char)) we got at the start of the loop
+        # --- NEW: Phase 2 Refactored Logic ---
+        # We now look up the Type for *every* char, not just restricted ones
+        if char != ' ':
             type_val = find_in_ranges(cp, ID_TYPE_STARTS, ID_TYPE_ENDS, ID_TYPE_RANGES_STORE)
             
-            if not type_val:
-                type_val = "Not_Specified" # Fallback per UCD docs
-            
-            # Format the key
-            key = f"Restricted ({type_val})"
-            restricted_type_stats[key] = restricted_type_stats.get(key, 0) + 1
-        
+            if type_val:
+                # We will *only* report on types that are forensically
+                # interesting, to avoid noise like "Recommended".
+                # "Format" (like Bidi) and "Technical" (like Cc) will now be caught.
+                if type_val not in ("Recommended", "Inclusion"):
+                    key = f"Type: {type_val}"
+                    id_type_stats[key] = id_type_stats.get(key, 0) + 1
+
         # --- Get Numeric Properties (existing) ---
         try:
             value = unicodedata.numeric(char)  
@@ -1274,7 +1270,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
         "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0
         }
         
-    return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats, restricted_type_stats
+    return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats, id_type_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -1449,7 +1445,7 @@ def update_all(event=None):
         render_stats(uax44_stats, "uax44-stats", class_name="card")
 
         # Run Module 6 (Python Deep Scan)
-        security_flags, numeric_types, total_value, block_stats, age_stats, restricted_types = compute_ucd_deep_scan(t, is_honest_mode) # <-- Phase 2 Update
+        security_flags, numeric_types, total_value, block_stats, age_stats, id_types = compute_ucd_deep_scan(t, is_honest_mode) # <-- Phase 2 Refactor
         
         total_value_dict = {}
         if total_value > 0 or "Num Type: Decimal (Nd)" in numeric_types or "Num Type: Letter (Nl)" in numeric_types or "Num Type: Other (No)" in numeric_types:
@@ -1457,7 +1453,7 @@ def update_all(event=None):
             
         combined_deep_scan_stats = {
             **security_flags,       # (Holds "Mixed-Number Systems")
-            **restricted_types,     # <-- NEW: Phase 2
+            **id_types,             # <-- NEW: Phase 2 Refactor
             **total_value_dict, 
             **numeric_types,
             **age_stats,            # <-- NEW: Phase 1
