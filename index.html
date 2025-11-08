@@ -697,7 +697,7 @@ def find_in_ranges(cp: int, starts_list, ends_list, store_list):
         return store_list[i][2] 
     return None
 
-def _parse_and_store_ranges(txt: str, global_store, global_starts, global_ends):
+def _parse_and_store_ranges(txt: str, global_store, global_starts, global_ends, dataset_name: str):
     """
     A generic parser for Unicode data files (e.g., Blocks.txt, DerivedAge.txt).
     Expects lines like: 0000..007F; Basic Latin
@@ -734,17 +734,17 @@ def _parse_and_store_ranges(txt: str, global_store, global_starts, global_ends):
         global_starts.append(s)
         global_ends.append(e)
     
-    print(f"Loaded {len(ranges)} ranges for {global_store.__name__}.")
+    print(f"Loaded {len(ranges)} ranges for {dataset_name}.")
 
 def parse_blocks(txt: str):
     """Parses Blocks.txt into its global stores."""
     global BLOCK_RANGES_STORE, BLOCK_STARTS, BLOCK_ENDS
-    _parse_and_store_ranges(txt, BLOCK_RANGES_STORE, BLOCK_STARTS, BLOCK_ENDS)
+    _parse_and_store_ranges(txt, BLOCK_RANGES_STORE, BLOCK_STARTS, BLOCK_ENDS, "Blocks")
 
 def parse_derived_age(txt: str):
     """Parses DerivedAge.txt into its global stores."""
     global AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS
-    _parse_and_store_ranges(txt, AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS)
+    _parse_and_store_ranges(txt, AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS, "DerivedAge")
     
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
