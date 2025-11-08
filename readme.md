@@ -192,3 +192,97 @@ This is a "holy grail" security feature that replaces our old, naive security ch
 * **Forensic Diff Report:** Only runs that contain at least one confusable character are reported. The module generates a detailed, line-by-line forensic "diff" for each spoofed run. This makes the change unambiguous by showing the original run, the skeletonized run with changes highlighted, the `[start–end]` index, and a full hex diff (e.g., `RGI → RGl [0–3] [Hex: U+0052 U+0047 U+0049 → U+0052 U+0047 U+006C]`).
 * **Confusable Count:** It provides a `Confusable Chars` counter, instantly flagging any character that has a confusable equivalent.
 * **Deprecated Feature:** This new, far superior module **replaces and deprecates** the old `Mixed-Script Runs` counter from Module 3. We no longer use a "best guess" `RegExp`—we now use the official Unicode data file to definitively detect spoofing attacks, including "whole-script confusables" (e.g., Cyrillic `ѕсоре` vs. Latin `scope`).
+
+
+
+UPDATE:
+
+Here are the updated sections for your `readme.md` file, reflecting all the new features and changes for Modules 6, 7, 8, and the other nuances we developed.
+
+Only written the new or modified sections.
+
+---
+
+*(Find the `## 🚀 Features` section in your file and replace/add the following modules)*
+
+* **Module 3: Script & Security Analysis:** A module focused on the script properties of code points.
+    * **Script Counters:** Provides counts for `Latin`, `Common` (punctuation, symbols), and `Inherited` (marks).
+    * **`Other` (Calculated):** A calculated counter (`Total - Latin - Common - Inherited`) that serves as a primary detector for any non-Latin text.
+    * **🔒 [DEPRECATED] Homograph Detector:** The old `Mixed-Script Runs` feature has been deprecated and is now replaced by the far superior, data-driven **Module 7**.
+
+* **Module 4: Forensic Analysis:** This module is dedicated to detecting "invisible," "deceptive," "corrupt," or "problematic" characters based on their deterministic Unicode properties. It provides counters for:
+    * **Corruption & Error Flags:** `Unassigned (Void)`, `Surrogates (Broken)`, `Noncharacter`, and `Deprecated` code points.
+    * **Invisible Ink Detectors:** `Ignorables (Invisible)` (like `U+200B Zero Width Space`) and `Deceptive Spaces` (like `U+200A Hair Space`).
+    * **Contextual Flags:** `Private Use (Black Box)` characters, which have no public meaning.
+    * **Note on Deprecated Flags:** The `RegExp`-based `Bidi Controls` and `Control (Cc)` counters have been removed from this module. They are now correctly and more accurately identified by the data-driven **Module 6**.
+
+* **NEW! Module 5: Full UCD Profile (UAX #44):** A high-speed, `RegExp`-based module that provides a high-level profile of the text, including:
+    * **Binary Properties:** `Dash (binary)`, `Alphabetic (binary)`.
+    * **Script Properties:** `Script: Cyrillic`, `Script: Greek`, `Script: Han`, etc. This provides a precise, standards-based script-by-script breakdown.
+
+* **NEW! Module 6: UCD Deep Scan (Python):** A powerful, data-driven module that performs a deep scan of every code point using Python's `unicodedata` library and data fetched asynchronously from the Unicode Consortium. It provides properties that are impossible to get with `RegExp` alone:
+    * **Data-Driven Properties:** Fetches `Blocks.txt`, `DerivedAge.txt`, and `IdentifierType.txt` to report:
+        * `Block: ...` counters (e.g., `Block: Basic Latin`, `Block: Cyrillic`).
+        * `Age: ...` counters (e.g., `Age: 1.1`, `Age: 6.0`).
+        * `Type: ...` counters (e.g., `Type: Not_XID`, `Type: Default_Ignorable`). This is the new, unified forensic flag that replaces the old "Restricted" and `RegExp`-based `Bidi`/`Cc` checks.
+    * **Numeric & Security Analysis:**
+        * `Total Numeric Value:` Calculates the *actual mathematical sum* of all numeric characters (e.g., `V` + `¼` = `5.25`).
+        * `Num Type: ...` counters (e.g., `Decimal (Nd)`, `Letter (Nl)`).
+        * `Mixed-Number Systems:` A security flag that triggers when digits from different scripts (e.g., Latin `1` and Arabic-Indic `٥`) are mixed.
+
+* **NEW! Module 7: True Confusable & Spoofing Analysis:** This is the new "holy grail" security feature, replacing the old Module 3 `Mixed-Script Runs` detector. It fetches and parses the 700K+ `confusables.txt` file to build a true, standards-based spoofing detector.
+    * **Hybrid Counter:** The `Confusable Chars` card is powered by a robust Python helper function (`_get_confusable_skeleton`) that checks *both* the `confusables.txt` map **and** performs `NFKC` normalization (via `unicodedata.normalize`) to find all confusable characters (letters, numbers, symbols, and punctuation).
+    * **Intelligent Report Generator:** The visual "diff" report finds all physical, uninterrupted runs of Letters, Numbers, Punctuation, and Symbols (`\p{L}+|\p{N}+|\p{P}+|\p{S}+`) and generates a forensic diff for any run containing a character found by the hybrid counter.
+
+* **NEW! Module 8: Standardized Variant Analysis:** A new data-driven module that fetches and parses `StandardizedVariants.txt`. It detects "invisible" characters that modify the appearance of other characters.
+    * `Variant Base Chars:` Counts characters that can be modified (e.g., `0`, `“`).
+    * `Variation Selectors:` Counts the modifying characters themselves (e.g., the invisible `U+FE00`).
+
+---
+
+*(Find the `## 💻 Tech Stack` section and update the Python/JavaScript subsections)*
+
+* **Python 3.12 (via PyScript):**
+    * All logic is contained within a single `<script type="py">` tag.
+    * Orchestrates all application state and DOM manipulation.
+    * Uses `pyodide.ffi.create_proxy` to create event handlers for UI elements.
+    * Manipulates the DOM directly using `from pyscript import document`.
+    * Imports `unicodedata` for powerful, data-driven analysis (NFKC normalization, numeric values, categories).
+    * Imports `asyncio` and `from pyodide.http import pyfetch` for asynchronously fetching Unicode data files (`.txt`) from the server on page load.
+* **JavaScript (via PyScript `window` object):**
+    * Python leverages the browser's JavaScript engines to perform all deterministic analysis:
+    * **`RegExp` engine:** Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{Script=Cyrillic}`, `\p{L}+|\p{N}+|\p{P}+|\p{S}+`).
+    * **`Intl.Segmenter` API:** Used to perform UAX #29-compliant grapheme cluster segmentation.
+
+---
+
+*(Find the `## ⚙️ How It Works` section and replace the `Unicode-Aware App Logic` subsection)*
+
+### Unicode-Aware App Logic
+
+1.  On page load, the Python `asyncio.ensure_future(load_unicode_data())` function is called. This asynchronously fetches and parses all required Unicode data files (`confusables.txt`, `Blocks.txt`, `IdentifierType.txt`, etc.) in parallel, populating the global Python dictionaries and sets.
+2.  A user types into the `<textarea>`.
+3.  The `py-input="update_all"` attribute triggers the Python `update_all` function on every keypress.
+4.  The `update_all` function reads the UI state:
+    * `is_grapheme_mode`: (Bool) The state of the "Unit of Analysis" toggle.
+    * `is_honest_mode`: (Bool) The state of the "Analysis Mode" sub-toggle.
+    * `is_minor_seq`: (Bool) The state of the "Sequence (Run)" toggle.
+    * `active_tab`: (String) Which tab is currently open.
+5.  The `update_all` function then executes its main logic:
+    * **IF `is_grapheme_mode == True`:**
+        1.  Calls `compute_grapheme_stats(t)` (which uses `Intl.Segmenter`).
+        2.  Calls `render_stats` to update Module 1.
+        3.  Shows Module 1.5 (Grapheme Forensics).
+        4.  Hides Modules 2, 3, 4, 5, 6, 7, and 8.
+    * **ELSE (`is_grapheme_mode == False`):**
+        1.  Hides Module 1.5 (Grapheme Forensics) and the unused `intentional-skeleton-output` `<pre>`.
+        2.  Shows Modules 2, 3, 4, 5, 6, 7, and 8.
+        3.  Calls `compute_comprehensive_stats(t, is_honest_mode)` to run **Module 1**.
+        4.  Calls `compute_sequence_stats(t, is_minor_seq)` to run **Module 2**.
+        5.  Calls `compute_script_stats(t, is_honest_mode)` to run **Module 3**.
+        6.  Calls `compute_forensic_stats(t, is_honest_mode, minor_stats)` to run **Module 4**.
+        7.  Calls `compute_uax44_stats(t, is_honest_mode)` to run **Module 5**.
+        8.  Calls `compute_ucd_deep_scan(t, is_honest_mode)` to run **Module 6**.
+        9.  Calls `compute_confusable_stats(t, is_honest_mode)` to run **Module 7**.
+        10. Calls `compute_variant_stats(t, is_honest_mode)` to run **Module 8**.
+        11. Calls `render_stats` to inject all results into the appropriate UI sections.
