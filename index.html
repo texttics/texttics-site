@@ -1138,7 +1138,7 @@ def compute_confusable_stats(t: str):
     """Module 7: Runs the Confusable Skeleton analysis.
     
     Finds alphanumeric runs, checks if they contain confusables,
-    and returns a list of (original_run, skeleton_run) string pairs.
+    and returns a list of dictionaries with full run details.
     """
     
     if not CONFUSABLES_MAP or not t:
@@ -1155,17 +1155,28 @@ def compute_confusable_stats(t: str):
     }
 
     # --- PASS 2: Find, check, and build skeleton for Alphanum runs ---
-    spoofed_pairs = [] # NEW: List to hold (orig_str, skel_str)
+    runs_detail = [] # NEW: List to hold run dictionaries
     
     # Use the physical run RegExp (L or N)
     alphanum_runs_js = window.String.prototype.match.call(t, RE_LN_RUNS)
     if not alphanum_runs_js:
         return stats, []
     
-    alphanum_runs = window.Array.from_(alphanum_runs_js) # Convert JS Array to Python list
-
+    alphanum_runs = window.Array.from_(alphanum_runs_js) # Convert JS Array
+    
+    # Walk the string to compute start indexes for runs
+    idx = 0
     for run in alphanum_runs:
-        run_py = str(run) # Force Python str
+        run_py = str(run) # Force Python string
+        
+        # Find the start index of this run
+        start = t.find(run_py, idx)
+        if start == -1:
+             # Should not happen, but as a fallback
+             start = t.find(run_py, 0)
+        
+        idx = start + len(run_py) # Update index for next search
+
         has_confusable_run = False
         current_run_skeleton = []
         
@@ -1180,9 +1191,15 @@ def compute_confusable_stats(t: str):
                 current_run_skeleton.append(char)
         
         if has_confusable_run:
-            spoofed_pairs.append( (run_py, "".join(current_run_skeleton)) )
+            skel_str = "".join(current_run_skeleton)
+            runs_detail.append({
+                "orig": run_py,
+                "skel": skel_str,
+                "start": start,
+                "end": start + len(run_py)
+            })
     
-    return stats, spoofed_pairs
+    return stats, runs_detail
 
 # NEW: FORENSIC ANALYSIS FUNCTION
 def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
@@ -1490,28 +1507,31 @@ def update_all(event=None):
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
         
         # --- Run Module 7 (Confusables) ---
-        confusable_stats, spoofed_pairs = compute_confusable_stats(t)
+        confusable_stats, runs = compute_confusable_stats(t)
         render_stats(confusable_stats, "confusable-stats")
-        
-        if spoofed_pairs:
-            html_lines = []
-            for orig_run, skel_run in spoofed_pairs:
-                
-                # Build the visual diff
-                diff_html = []
-                for orig_char, skel_char in zip(orig_run, skel_run):
-                    if orig_char != skel_char:
-                        # Add a title to see the hex change on hover
-                        diff_html.append(f'<span class="changed" title="U+{ord(orig_char):04X} → U+{ord(skel_char):04X}">{skel_char}</span>')
-                    else:
-                        diff_html.append(skel_char)
-                
-                # Generate hex codes for the *skeleton*
-                hex_codes = " ".join(f"U+{ord(c):04X}" for c in skel_run)
-                
-                html_lines.append(f'{orig_run} → {"".join(diff_html)}\n[Hex: {hex_codes}]')
-                
-            skeleton_output.innerHTML = "\n\n".join(html_lines)
+
+        lines = []
+        for r in runs:
+            # Build the visual diff
+            diff_html = []
+            for orig_char, skel_char in zip(r["orig"], r["skel"]):
+                if orig_char != skel_char:
+                    diff_html.append(f'<span class="changed" title="U+{ord(orig_char):04X} → U+{ord(skel_char):04X}">{skel_char}</span>')
+                else:
+                    diff_html.append(skel_char)
+            
+            # Get hex for both original and skeleton
+            orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
+            skel_hex = " ".join(f"U+{ord(c):04X}" for c in r["skel"])
+            
+            lines.append(
+                f"{r['orig']} → {"".join(diff_html)}   "
+                f"[{r['start']}–{r['end']}]   "
+                f"[Hex: {orig_hex} → {skel_hex}]"
+            )
+
+        if lines:
+            skeleton_output.innerHTML = "\n".join(lines)
             skeleton_output.style.display = "block"
         else:
             skeleton_output.style.display = "none"
