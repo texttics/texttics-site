@@ -620,6 +620,11 @@ AGE_RANGES_STORE = []   # list[(start, end, "Age")]
 AGE_STARTS = []         # for bisect
 AGE_ENDS = []           # for bisect
 
+# --- NEW: Globals for IdentifierType.txt (Phase 2) ---
+ID_TYPE_RANGES_STORE = [] # list[(start, end, "Type")]
+ID_TYPE_STARTS = []       # for bisect
+ID_TYPE_ENDS = []         # for bisect
+
 def _finalize_allowed(ranges):
     from bisect import bisect_right
     # normalize & prep arrays for O(log n) lookups
@@ -745,6 +750,12 @@ def parse_derived_age(txt: str):
     """Parses DerivedAge.txt into its global stores."""
     global AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS
     _parse_and_store_ranges(txt, AGE_RANGES_STORE, AGE_STARTS, AGE_ENDS, "DerivedAge")
+
+# --- NEW: Parser for IdentifierType.txt (Phase 2) ---
+def parse_identifier_type(txt: str):
+    """Parses IdentifierType.txt into its global stores."""
+    global ID_TYPE_RANGES_STORE, ID_TYPE_STARTS, ID_TYPE_ENDS
+    _parse_and_store_ranges(txt, ID_TYPE_RANGES_STORE, ID_TYPE_STARTS, ID_TYPE_ENDS, "IdentifierType")
     
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -764,11 +775,11 @@ async def load_unicode_data():
 
     try:
         # --- NEW: Fetch all files in parallel ---
-        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt"]
+        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt"]
         print("Fetching Unicode data files...")
         results = await asyncio.gather(*[fetch_file(f) for f in filenames])
         
-        id_status_txt, blocks_txt, derived_age_txt = results
+        id_status_txt, blocks_txt, derived_age_txt, id_type_txt = results
         
         # --- Parse each file if it loaded ---
         if id_status_txt:
@@ -788,6 +799,13 @@ async def load_unicode_data():
                 parse_derived_age(derived_age_txt)
             else:
                 print("DerivedAge.txt content invalid.")
+
+    # --- NEW: Parse IdentifierType.txt ---
+        if id_type_txt:
+            if "Identifier_Type" in id_type_txt: # Sanity check
+                parse_identifier_type(id_type_txt)
+            else:
+                print("IdentifierType.txt content invalid.")
         
         # --- Final step: Trigger UI update ---
         # This call is now crucial as it runs after all data is parsed
@@ -1126,7 +1144,7 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     numeric_type_stats = {}
     numeric_total_value = 0
     number_script_zeros = set()
-    restricted_count = 0 # <-- NEW: Restricted counter
+    restricted_type_stats = {} # <-- NEW: Phase 2 counter
 
     # --- NEW: Counters for Phase 1 ---
     block_stats = {}
@@ -1146,11 +1164,18 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
                 key = f"Age: {age}"
                 age_stats[key] = age_stats.get(key, 0) + 1
 
-            # --- Identifier Status Check (existing) ---
-            if char == ' ': # <-- OPTIONAL: Ignore simple spaces
-                pass
-            elif is_restricted(char):
-                restricted_count += 1
+            # --- Identifier Status Check (Phase 2 Upgrade) ---
+        if char != ' ' and is_restricted(char):
+            # We know it's restricted, now find out *why*
+            # Use the cp (ord(char)) we got at the start of the loop
+            type_val = find_in_ranges(cp, ID_TYPE_STARTS, ID_TYPE_ENDS, ID_TYPE_RANGES_STORE)
+            
+            if not type_val:
+                type_val = "Not_Specified" # Fallback per UCD docs
+            
+            # Format the key
+            key = f"Restricted ({type_val})"
+            restricted_type_stats[key] = restricted_type_stats.get(key, 0) + 1
             
             # --- Get Numeric Properties (existing) ---
             try:
@@ -1174,11 +1199,10 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     final_total_value = round(numeric_total_value, 4)
         
     final_stats = {
-        "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0,
-        "Restricted Characters": restricted_count # <-- NEW: Add to output
+        "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0
         }
         
-    return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats
+    return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats, restricted_type_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
 
@@ -1343,19 +1367,21 @@ def update_all(event=None):
         render_stats(uax44_stats, "uax44-stats", class_name="card")
 
         # Run Module 6 (Python Deep Scan)
-        security_flags, numeric_types, total_value, block_stats, age_stats = compute_ucd_deep_scan(t, is_honest_mode) # <-- Phase 1 Update
+        security_flags, numeric_types, total_value, block_stats, age_stats, restricted_types = compute_ucd_deep_scan(t, is_honest_mode) # <-- Phase 2 Update
         
         total_value_dict = {}
         if total_value > 0 or "Num Type: Decimal (Nd)" in numeric_types or "Num Type: Letter (Nl)" in numeric_types or "Num Type: Other (No)" in numeric_types:
             total_value_dict = {"Total Numeric Value": total_value}
             
         combined_deep_scan_stats = {
-            **security_flags,       # (Holds "Mixed-Number Systems", "Restricted")
+            **security_flags,       # (Holds "Mixed-Number Systems")
+            **restricted_types,     # <-- NEW: Phase 2
             **total_value_dict, 
             **numeric_types,
             **age_stats,            # <-- NEW: Phase 1
             **block_stats           # <-- NEW: Phase 1
         }
+    
         render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
 
     # --- Final UI sync ---
