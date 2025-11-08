@@ -964,11 +964,11 @@ async def load_unicode_data():
                 print("confusables.txt content invalid.")
 
     # --- NEW: Parse StandardizedVariants.txt ---
-        if standardized_variants_txt:
-            if "StandardizedVariants" in standardized_variants_txt: # Sanity check
-                parse_standardized_variants(standardized_variants_txt)
-            else:
-                print("StandardizedVariants.txt content invalid.")
+        if standardized_variants_txt:
+            if "StandardizedVariants" in standardized_variants_txt: # Sanity check
+                parse_standardized_variants(standardized_variants_txt)
+            else:
+                print("StandardizedVariants.txt content invalid.")
     
         # --- Final step: Trigger UI update ---
         # This call is now crucial as it runs after all data is parsed
