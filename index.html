@@ -854,55 +854,55 @@ def parse_confusables(txt: str):
 
 # --- NEW: Parser for StandardizedVariants.txt (Module 8) ---
 def parse_standardized_variants(txt: str):
-    """
-    Parses StandardizedVariants.txt into two sets:
-    1. VARIANT_BASE_CHARS: Base characters that can be modified.
-    2. VARIATION_SELECTORS: The modifier characters themselves.
-    """
-    global VARIANT_BASE_CHARS, VARIATION_SELECTORS
-    VARIANT_BASE_CHARS.clear()
-    VARIATION_SELECTORS.clear()
-    
-    base_count = 0
-    selector_count = 0
+    """
+    Parses StandardizedVariants.txt into two sets:
+    1. VARIANT_BASE_CHARS: Base characters that can be modified.
+    2. VARIATION_SELECTORS: The modifier characters themselves.
+    """
+    global VARIANT_BASE_CHARS, VARIATION_SELECTORS
+    VARIANT_BASE_CHARS.clear()
+    VARIATION_SELECTORS.clear()
+    
+    base_count = 0
+    selector_count = 0
 
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        parts = line.split(';', 3) # e.g., 0030..0039; FE00; Zs; (decimal digit)
-        if len(parts) < 2:
-            continue
-        
-        try:
-            code_range = parts[0].strip()
-            variation_info = parts[1].strip()
-            
-            start_hex, end_hex = code_range, code_range
-            if '..' in code_range:
-                start_hex, end_hex = code_range.split('..', 1)
-                
-            start_cp = int(start_hex, 16)
-            end_cp = int(end_hex, 16)
-            
-            if not variation_info:
-                # This is a line defining the selectors THEMSELVES
-                # e.g., "FE00..FE0F; ; C; (variation selector)"
-                for cp in range(start_cp, end_cp + 1):
-                    VARIATION_SELECTORS.add(cp)
-                    selector_count += 1
-            else:
-                # This is a line defining a base character
-                # e.g., "0030..0039; FE00; Zs; (decimal digit)"
-                for cp in range(start_cp, end_cp + 1):
-                    VARIANT_BASE_CHARS.add(cp)
-                    base_count += 1
-                
-        except Exception:
-            pass # Ignore malformed lines
-            
-    print(f"Loaded {base_count} variant base chars and {selector_count} variation selectors.")
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 3) # e.g., 0030..0039; FE00; Zs; (decimal digit)
+        if len(parts) < 2:
+            continue
+        
+        try:
+            code_range = parts[0].strip()
+            variation_info = parts[1].strip()
+            
+            start_hex, end_hex = code_range, code_range
+            if '..' in code_range:
+                start_hex, end_hex = code_range.split('..', 1)
+                
+            start_cp = int(start_hex, 16)
+            end_cp = int(end_hex, 16)
+            
+            if not variation_info:
+                # This is a line defining the selectors THEMSELVES
+                # e.g., "FE00..FE0F; ; C; (variation selector)"
+                for cp in range(start_cp, end_cp + 1):
+                    VARIATION_SELECTORS.add(cp)
+                    selector_count += 1
+            else:
+                # This is a line defining a base character
+                # e.g., "0030..0039; FE00; Zs; (decimal digit)"
+                for cp in range(start_cp, end_cp + 1):
+                    VARIANT_BASE_CHARS.add(cp)
+                    base_count += 1
+                    
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {base_count} variant base chars and {selector_count} variation selectors.")
 
 
     
@@ -1284,26 +1284,26 @@ def compute_confusable_stats(t: str):
 
 # --- NEW: Standardized Variant Analysis (Phase 4) ---
 def compute_variant_stats(t: str):
-    """Module 8: Counts variant base chars and selectors."""
-    
-    if (not VARIANT_BASE_CHARS and not VARIATION_SELECTORS) or not t:
-        return {}
+    """Module 8: Counts variant base chars and selectors."""
+    
+    if (not VARIANT_BASE_CHARS and not VARIATION_SELECTORS) or not t:
+        return {}
 
-    base_count = 0
-    selector_count = 0
-    
-    for char in t:
-        cp = ord(char)
-        if cp in VARIANT_BASE_CHARS:
-            base_count += 1
-        if cp in VARIATION_SELECTORS:
-            selector_count += 1
-            
-    stats = {
-        "Variant Base Chars": base_count,
-        "Variation Selectors": selector_count
-    }
-    return stats
+    base_count = 0
+    selector_count = 0
+    
+    for char in t:
+        cp = ord(char)
+        if cp in VARIANT_BASE_CHARS:
+            base_count += 1
+        if cp in VARIATION_SELECTORS:
+            selector_count += 1
+            
+    stats = {
+        "Variant Base Chars": base_count,
+        "Variation Selectors": selector_count
+    }
+    return stats
     
 # NEW: FORENSIC ANALYSIS FUNCTION
 def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
