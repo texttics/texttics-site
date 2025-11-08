@@ -496,6 +496,20 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="confusable-stats" class="stats">
   </div>
   <pre id="skeleton-output"></pre>
+
+<h2 id="module-8-header">
+      Intentional Sequence Analysis
+      <span class="tooltip">(?)
+          <span class="tooltip-text">
+              Detects specific multi-character sequences (e.g., 'rn')
+              that are intentionally confusable with other characters (e.g., 'm').
+              Based on Unicode's intentional.txt.
+          </span>
+      </span>
+  </h2>
+  
+  <div id="intentional-stats-output" class="stats">
+      </div>
   
   <!-- === PYTHONS SCRIPT === -->
   <script type="py">
@@ -653,6 +667,9 @@ ID_TYPE_ENDS = []         # for bisect
 
 # --- NEW: Globals for confusables.txt (Phase 3) ---
 CONFUSABLES_MAP = {} # dict[int, str] mapping code point -> skeleton string
+
+# --- NEW: Globals for intentional.txt (Phase 4) ---
+INTENTIONAL_MAP = {} # dict[str, str] mapping "source_seq" -> "skel_seq"
     
 def _finalize_allowed(ranges):
     from bisect import bisect_right
@@ -831,6 +848,50 @@ def parse_confusables(txt: str):
             pass # Ignore malformed lines
             
     print(f"Loaded {count} confusable mappings.")
+
+# --- NEW: Parser for intentional.txt (Phase 4) ---
+def parse_intentional(txt: str):
+    """
+    Parses intentional.txt into a {source_str: skeleton_str} map.
+    Format: 0072 006E ; 006D ; # ( rn -> m )
+    Format: 0041 ; 0391 ; # ( A -> Α )
+    """
+    global INTENTIONAL_MAP
+    INTENTIONAL_MAP.clear()
+    count = 0
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 1) # Split only on the *first* semicolon
+        if len(parts) < 2:
+            continue
+        
+        try:
+            source_hex_list = parts[0].strip().split()
+            skeleton_hex_list = parts[1].strip().split()
+            
+            if not source_hex_list or not skeleton_hex_list:
+                continue
+
+            source_str = "".join(
+                [chr(int(hex_val, 16)) for hex_val in source_hex_list]
+            )
+            skeleton_str = "".join(
+                [chr(int(hex_val, 16)) for hex_val in skeleton_hex_list]
+            )
+
+            # Only add if it's not an identity mapping
+            if source_str and skeleton_str and source_str != skeleton_str:
+                INTENTIONAL_MAP[source_str] = skeleton_str
+                count += 1
+                
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {count} intentional sequence mappings.")
     
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -850,11 +911,11 @@ async def load_unicode_data():
 
     try:
         # --- NEW: Fetch all files in parallel ---
-        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "confusables.txt"]
+        filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "confusables.txt", "intentional.txt"]
         print("Fetching Unicode data files...")
         results = await asyncio.gather(*[fetch_file(f) for f in filenames])
         
-        id_status_txt, blocks_txt, derived_age_txt, id_type_txt, confusables_txt = results
+        id_status_txt, blocks_txt, derived_age_txt, id_type_txt, confusables_txt, intentional_txt = results
         
         # --- Parse each file if it loaded ---
         if id_status_txt:
@@ -888,6 +949,13 @@ async def load_unicode_data():
                 parse_confusables(confusables_txt)
             else:
                 print("confusables.txt content invalid.")
+
+    # --- NEW: Parse intentional.txt ---
+        if intentional_txt:
+            if "intentional.txt" in intentional_txt: # Sanity check
+                parse_intentional(intentional_txt)
+            else:
+                print("intentional.txt content invalid.")
     
         # --- Final step: Trigger UI update ---
         # This call is now crucial as it runs after all data is parsed
@@ -1201,6 +1269,43 @@ def compute_confusable_stats(t: str):
     
     return stats, runs_detail
 
+# --- NEW: Intentional Sequence Analysis (Phase 4) ---
+def compute_intentional_stats(t: str):
+    """Module 8: Finds all hits from intentional.txt."""
+    
+    if not INTENTIONAL_MAP or not t:
+        return 0, []
+
+    hits = []
+    
+    # Iterate over our map of ("rn", "m")
+    for source_str, skel_str in INTENTIONAL_MAP.items():
+        start_index = 0
+        
+        # Find all occurrences of this sequence in the text
+        while True:
+            # Use JS .indexOf for performance
+            found_index = window.String.prototype.indexOf.call(t, source_str, start_index)
+            
+            if found_index == -1:
+                break
+                
+            hits.append({
+                "orig": source_str,
+                "skel": skel_str,
+                "start": found_index,
+                "end": found_index + len(source_str)
+            })
+            
+            # Move index forward to find next match
+            start_index = found_index + 1
+            
+    # Sort hits by their start position
+    hits.sort(key=lambda x: x["start"])
+    
+    total_hits = len(hits)
+    return total_hits, hits
+    
 # NEW: FORENSIC ANALYSIS FUNCTION
 def compute_forensic_stats(t: str, is_honest_mode: bool, minor_stats: dict):
     """Module 3 Add-on: Runs the Forensic Analysis."""
@@ -1402,6 +1507,10 @@ def update_all(event=None):
     module_7_content = document.getElementById("confusable-stats")
     skeleton_output = document.getElementById("skeleton-output")
 
+    # --- NEW: Module 8 (Phase 4) ---
+    module_8_header = document.getElementById("module-8-header")
+    module_8_content = document.getElementById("intentional-stats-output")
+    
     # --- Module 1 Toggle ---
     if is_grapheme_mode:
         # 1. Run compute function (now returns 4 items)
@@ -1432,6 +1541,8 @@ def update_all(event=None):
         module_7_header.style.display = "none"
         module_7_content.style.display = "none"
         skeleton_output.style.display = "none"
+        module_8_header.style.display = "none"
+        module_8_content.style.display = "none"
     
     else:
         # --- HIDE GRAPHEME FORENSICS ---
@@ -1453,7 +1564,9 @@ def update_all(event=None):
         module_7_header.style.display = "flex"
         module_7_content.style.display = "grid"
         # skeleton_output display is handled by its content
-        
+        module_8_header.style.display = "flex"
+        module_8_content.style.display = "grid"
+    
         # --- Original Code Path ---
         summary_stats, major_stats, minor_stats = compute_comprehensive_stats(t, is_honest_mode)
 
@@ -1535,7 +1648,35 @@ def update_all(event=None):
             skeleton_output.style.display = "block"
         else:
             skeleton_output.style.display = "none"
+# --- Run Module 8 (Intentional Sequences) ---
+        total_hits, intentional_hits = compute_intentional_stats(t)
+        
+        # We'll create one card for the total count
+        render_stats({"Confusable Sequences": total_hits}, "intentional-stats-output")
 
+        # We can re-use the Module 7 logic to render the diffs
+        # in the *same* <pre> box for a combined report.
+        if intentional_hits:
+            lines = []
+            for r in intentional_hits:
+                orig_hex = " ".join(f"U+{ord(c):04X}" for c in r["orig"])
+                skel_hex = " ".join(f"U+{ord(c):04X}" for c in r["skel"])
+                lines.append(
+                    f"{r['orig']} → {r['skel']}   "
+                    f"[{r['start']}–{r['end']}]   "
+                    f"[Hex: {orig_hex} → {skel_hex}]"
+                )
+            
+            # Append to the skeleton output
+            output_html = "\n\n".join(lines)
+            
+            # Check if Module 7 already wrote content
+            existing_html = skeleton_output.innerHTML
+            if existing_html:
+                skeleton_output.innerHTML += f"\n\n--- Intentional Sequences ---\n{output_html}"
+            else:
+                skeleton_output.innerHTML = output_html
+                skeleton_output.style.display = "block"
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
 
