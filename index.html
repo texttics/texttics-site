@@ -1128,56 +1128,56 @@ def compute_ucd_deep_scan(t: str, is_honest_mode: bool):
     number_script_zeros = set()
     restricted_count = 0 # <-- NEW: Restricted counter
 
-# --- NEW: Counters for Phase 1 ---
+    # --- NEW: Counters for Phase 1 ---
     block_stats = {}
     age_stats = {}
     
-for char in text_to_scan:
-        cp = ord(char) # Get the code point
-        
-        # --- NEW: Phase 1 Logic (Blocks & Age) ---
-        block_name = find_in_ranges(cp, BLOCK_STARTS, BLOCK_ENDS, BLOCK_RANGES_STORE)
-        if block_name:
-            key = f"Block: {block_name}"
-            block_stats[key] = block_stats.get(key, 0) + 1
-        
-        age = find_in_ranges(cp, AGE_STARTS, AGE_ENDS, AGE_RANGES_STORE)
-        if age:
-            key = f"Age: {age}"
-            age_stats[key] = age_stats.get(key, 0) + 1
+    for char in text_to_scan:
+            cp = ord(char) # Get the code point
+            
+            # --- NEW: Phase 1 Logic (Blocks & Age) ---
+            block_name = find_in_ranges(cp, BLOCK_STARTS, BLOCK_ENDS, BLOCK_RANGES_STORE)
+            if block_name:
+                key = f"Block: {block_name}"
+                block_stats[key] = block_stats.get(key, 0) + 1
+            
+            age = find_in_ranges(cp, AGE_STARTS, AGE_ENDS, AGE_RANGES_STORE)
+            if age:
+                key = f"Age: {age}"
+                age_stats[key] = age_stats.get(key, 0) + 1
 
-        # --- Identifier Status Check (existing) ---
-        if char == ' ': # <-- OPTIONAL: Ignore simple spaces
-            pass
-        elif is_restricted(char):
-            restricted_count += 1
-        
-        # --- Get Numeric Properties (existing) ---
-        try:
-            value = unicodedata.numeric(char)  
-            numeric_total_value += value
+            # --- Identifier Status Check (existing) ---
+            if char == ' ': # <-- OPTIONAL: Ignore simple spaces
+                pass
+            elif is_restricted(char):
+                restricted_count += 1
             
-            gc = unicodedata.category(char)
-            if gc == "Nd":
-                n_type = "Num Type: Decimal (Nd)"
-                zero_code_point = ord(char) - int(value)
-                number_script_zeros.add(zero_code_point)
-            elif gc == "Nl": n_type = "Num Type: Letter (Nl)"
-            elif gc == "No": n_type = "Num Type: Other (No)"
-            else: n_type = f"Num Type: Other ({gc})"
-            
-            numeric_type_stats[n_type] = numeric_type_stats.get(n_type, 0) + 1
-            
-        except (ValueError, TypeError):
-            pass
+            # --- Get Numeric Properties (existing) ---
+            try:
+                value = unicodedata.numeric(char)  
+                numeric_total_value += value
+                
+                gc = unicodedata.category(char)
+                if gc == "Nd":
+                    n_type = "Num Type: Decimal (Nd)"
+                    zero_code_point = ord(char) - int(value)
+                    number_script_zeros.add(zero_code_point)
+                elif gc == "Nl": n_type = "Num Type: Letter (Nl)"
+                elif gc == "No": n_type = "Num Type: Other (No)"
+                else: n_type = f"Num Type: Other ({gc})"
+                
+                numeric_type_stats[n_type] = numeric_type_stats.get(n_type, 0) + 1
+                
+            except (ValueError, TypeError):
+                pass
 
-        final_total_value = round(numeric_total_value, 4)
-    
-        final_stats = {
-          "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0,
-          "Restricted Characters": restricted_count # <-- NEW: Add to output
+    final_total_value = round(numeric_total_value, 4)
+        
+    final_stats = {
+        "Mixed-Number Systems": 1 if len(number_script_zeros) > 1 else 0,
+        "Restricted Characters": restricted_count # <-- NEW: Add to output
         }
-    
+        
     return final_stats, numeric_type_stats, final_total_value, block_stats, age_stats
 
 # --- 5. DOM/UI FUNCTIONS ---
