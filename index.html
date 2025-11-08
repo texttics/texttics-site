@@ -510,6 +510,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   
   <div id="intentional-stats-output" class="stats">
       </div>
+
+  <pre id="intentional-skeleton-output"></pre>
   
   <!-- === PYTHONS SCRIPT === -->
   <script type="py">
@@ -1649,13 +1651,16 @@ def update_all(event=None):
         else:
             skeleton_output.style.display = "none"
 # --- Run Module 8 (Intentional Sequences) ---
+        
+        # Get the new <pre> box element
+        intentional_skeleton_output = document.getElementById("intentional-skeleton-output")
+
         total_hits, intentional_hits = compute_intentional_stats(t)
         
-        # We'll create one card for the total count
+        # Render the card count
         render_stats({"Confusable Sequences": total_hits}, "intentional-stats-output")
 
-        # We can re-use the Module 7 logic to render the diffs
-        # in the *same* <pre> box for a combined report.
+        # Render the text diffs into the NEW <pre> box
         if intentional_hits:
             lines = []
             for r in intentional_hits:
@@ -1667,16 +1672,11 @@ def update_all(event=None):
                     f"[Hex: {orig_hex} → {skel_hex}]"
                 )
             
-            # Append to the skeleton output
-            output_html = "\n\n".join(lines)
-            
-            # Check if Module 7 already wrote content
-            existing_html = skeleton_output.innerHTML
-            if existing_html:
-                skeleton_output.innerHTML += f"\n\n--- Intentional Sequences ---\n{output_html}"
-            else:
-                skeleton_output.innerHTML = output_html
-                skeleton_output.style.display = "block"
+            intentional_skeleton_output.innerHTML = "\n".join(lines)
+            intentional_skeleton_output.style.display = "block"
+        else:
+            intentional_skeleton_output.innerHTML = ""
+            intentional_skeleton_output.style.display = "none"
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
 
