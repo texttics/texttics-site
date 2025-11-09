@@ -297,11 +297,67 @@ def _parse_script_extensions(txt: str):
 # 3. COMPUTATION FUNCTIONS
 # ---
 
-def _find_matches_with_indices(regex_key: str, text: str):
-    """Uses matchAll to find all matches and their indices."""
-    regex = REGEX_MATCHER.get(regex_key)
-    if not regex:
-        return [], 0
+def count_matches(regex, text):
+    """
+    Counts matches of a JS RegExp object in a string.
+    (This is the proven, working logic from your original file)
+    """
+    matches = window.String.prototype.match.call(text, regex)
+    return len(matches) if matches else 0
+
+def compute_code_point_stats(t: str):
+    """
+    Module 1 (Code Point): Runs the 3-Tier analysis.
+    (This is the proven, working logic from your original file)
+    """
+
+    # 1. Get derived stats (from full string)
+    code_points_array = window.Array.from_(t)
+    total_code_points = len(code_points_array)
+
+    # Use the simple, correct count_matches function
+    emoji_count = count_matches(REGEX_MATCHER["RGI Emoji"], t)
+    whitespace_count = count_matches(REGEX_MATCHER["Whitespace"], t)
+
+    derived_stats = {
+        "Total Code Points": total_code_points,
+        "RGI Emoji Sequences": emoji_count,
+        "Whitespace (Total)": whitespace_count
+    }
+
+    # 2. Get 29 minor categories (Honest Mode)
+    minor_stats = {}
+    sum_of_29_cats = 0
+    for key in MINOR_CATEGORIES_29.keys():
+        # Use the pre-compiled regex from our new REGEX_MATCHER
+        count = count_matches(REGEX_MATCHER[key], t)
+        minor_stats[key] = count
+        sum_of_29_cats += count
+
+    # 3. Calculate 'Cn' as the remainder
+    minor_stats["Cn"] = total_code_points - sum_of_29_cats
+
+    # 4. Aggregate Major Categories
+    major_stats = {
+        "L (Letter)": minor_stats.get("Lu", 0) + minor_stats.get("Ll", 0) + minor_stats.get("Lt", 0) + minor_stats.get("Lm", 0) + minor_stats.get("Lo", 0),
+        "M (Mark)": minor_stats.get("Mn", 0) + minor_stats.get("Mc", 0) + minor_stats.get("Me", 0),
+        "N (Number)": minor_stats.get("Nd", 0) + minor_stats.get("Nl", 0) + minor_stats.get("No", 0),
+        "P (Punctuation)": minor_stats.get("Pc", 0) + minor_stats.get("Pd", 0) + minor_stats.get("Ps", 0) + minor_stats.get("Pe", 0) + minor_stats.get("Pi", 0) + minor_stats.get("Pf", 0) + minor_stats.get("Po", 0),
+        "S (Symbol)": minor_stats.get("Sm", 0) + minor_stats.get("Sc", 0) + minor_stats.get("Sk", 0) + minor_stats.get("So", 0),
+        "Z (Separator)": minor_stats.get("Zs", 0) + minor_stats.get("Zl", 0) + minor_stats.get("Zp", 0),
+        "C (Other)": minor_stats.get("Cc", 0) + minor_stats.get("Cf", 0) + minor_stats.get("Cs", 0) + minor_stats.get("Co", 0) + minor_stats.get("Cn", 0)
+    }
+
+    # 5. Build Summary (for Meta-Analysis cards)
+    summary_stats = {
+        **derived_stats,
+        "L (Letter)": major_stats["L (Letter)"],
+        "N (Number)": major_stats["N (Number)"],
+        "P (Punctuation)": major_stats["P (Punctuation)"],
+        "S (Symbol)": major_stats["S (Symbol)"]
+    }
+
+    return summary_stats, major_stats, minor_stats
 
 def get_char_type(char, is_minor):
     """
@@ -328,20 +384,6 @@ def get_char_type(char, is_minor):
         print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
         return [], 0
 
-def compute_code_point_stats(t: str):
-    """Module 1 (Code Point): Runs the 3-Tier analysis."""
-    
-    # 1. Get derived stats (from full string)
-    code_points_array = window.Array.from_(t)
-    total_code_points = len(code_points_array)
-    _, emoji_count = _find_matches_with_indices("RGI Emoji", t)
-    _, whitespace_count = _find_matches_with_indices("Whitespace", t)
-
-    derived_stats = {
-        "Total Code Points": total_code_points,
-        "RGI Emoji Sequences": emoji_count,
-        "Whitespace (Total)": whitespace_count
-    }
     
     # 2. Get 29 minor categories (Honest Mode)
     minor_stats = {}
