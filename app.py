@@ -495,19 +495,16 @@ def compute_grapheme_stats(t: str):
 def compute_sequence_stats(t: str):
     """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
     counters = {key: 0 for key in TEST_MAJOR}
+
     if not t:
         return {} # Return an empty dict
 
     current_state = "NONE"
     for char in t:
-        new_state = "NONE"
-        for key, regex in TEST_MAJOR.items():
-            if regex.test(char):
-                new_state = key
-                break
+        new_state = get_char_type(char, is_minor=False) # Use the helper
 
         if new_state != current_state:
-            if current_state in counters:
+            if current_state in counters: # This is the safe, working check
                 counters[current_state] += 1
             current_state = new_state
 
@@ -807,7 +804,7 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
         gr_val = gr_stats.get(key, 0)
         
         if cp_val > 0 or gr_val > 0:
-            label = aliases.get(key, key) if aliases else key
+            label = key
             html.append(
                 f'<tr><th scope="row">{label}</th><td>{cp_val}</td><td>{gr_val}</td></tr>'
             )
