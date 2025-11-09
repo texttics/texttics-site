@@ -1752,8 +1752,7 @@ def update_all(event=None):
         # --- CRITICAL: Only run data-dependent modules if data is READY ---
         if LOADING_STATE == "READY":
             # Run Module 6 (Python Deep Scan)
-            security_flags, numeric_types, total_value, block_stats, age_stats, 
-            id_types = compute_ucd_deep_scan(t, is_honest_mode)
+            security_flags, numeric_types, total_value, block_stats, age_stats, id_types = compute_ucd_deep_scan(t, is_honest_mode)
             
             total_value_dict = {}
             # Check if we should show numeric value
@@ -1773,7 +1772,7 @@ def update_all(event=None):
             render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
         
         # Run Module 7 (Confusables) - now with trusted input context
-        is_trusted = _is_trusted_input_source(t)  # See Fix 3 below
+        is_trusted = _is_trusted_input_source(t)  
         confusable_stats, runs = compute_confusable_stats(t, is_honest_mode, is_trusted)
         render_stats(confusable_stats, "confusable-stats")
 
