@@ -43,7 +43,7 @@ REGEX_MATCHER = {
     
     # UAX #44 Properties (for Module 2.D)
     "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
-    "Alphabetic": window.RegE.new(r"\p{Alphabetic}", "gu"),
+    "Alphabetic": window.RegExp.new(r"\p{Alphabetic}", "gu"),
     "Script: Cyrillic": window.RegExp.new(r"\p{Script=Cyrillic}", "gu"),
     "Script: Greek": window.RegExp.new(r"\p{Script=Greek}", "gu"),
     "Script: Han": window.RegExp.new(r"\p{Script=Han}", "gu"),
