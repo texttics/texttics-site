@@ -1797,11 +1797,11 @@ def update_all(event=None):
 
 
 
-        # --- Run Module 8 (Standardized Variant Analysis) ---
+            # --- Run Module 8 (Standardized Variant Analysis) ---
         variant_stats = compute_variant_stats(t, is_honest_mode)
         render_stats(variant_stats, "intentional-stats-output")
         document.getElementById("intentional-skeleton-output").style.display = "none"
-        else:
+    else:
         # Data not ready - render appropriate message
         render_loading_state()
     
