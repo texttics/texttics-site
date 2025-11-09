@@ -332,6 +332,82 @@ def compute_code_point_stats(t: str):
 
     return summary_stats, major_stats, minor_stats
 
+def compute_grapheme_stats(t: str):
+    """Module 1 (Grapheme): Runs analysis on Grapheme Clusters."""
+    
+    segments_iterable = GRAPHEME_SEGMENTER.segment(t)
+    segments = window.Array.from_(segments_iterable)
+    total_graphemes = len(segments)
+
+    minor_stats = {key: 0 for key in MINOR_CATEGORIES_29}
+    minor_stats["Cn"] = 0 # Initialize Cn
+    
+    # Module 1.5 Grapheme Forensic stats
+    single_cp_count = 0
+    multi_cp_count = 0
+    total_mark_count = 0
+    max_marks = 0
+
+    for segment in segments:
+        grapheme_str = segment.segment
+        if not grapheme_str:
+            continue
+        
+        # --- Module 1.5 Logic (Forensics) ---
+        cp_array = window.Array.from_(grapheme_str)
+        cp_count = len(cp_array)
+        
+        if cp_count == 1:
+            single_cp_count += 1
+        elif cp_count > 1:
+            multi_cp_count += 1
+        
+        _, mark_count = _find_matches_with_indices("Marks", grapheme_str)
+        total_mark_count += mark_count
+        if mark_count > max_marks:
+            max_marks = mark_count
+
+        # --- Module 1 Logic (Classification) ---
+        first_char = cp_array[0]
+        
+        classified = False
+        for key, regex in TEST_MINOR.items():
+            if regex.test(first_char):
+                minor_stats[key] += 1
+                classified = True
+                break
+        
+        if not classified:
+            # Test for Cn explicitly
+            if window.RegExp.new(r"^\p{Cn}$", "u").test(first_char):
+                 minor_stats["Cn"] += 1
+
+    # Aggregate Major Categories
+    major_stats = {
+        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
+        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
+        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
+        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
+        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
+        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
+        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+    }
+
+    # Build Summary (for Meta-Analysis cards)
+    summary_stats = {"Total Graphemes": total_graphemes}
+    
+    # Build Grapheme Forensics (Module 1.5)
+    avg_marks = (total_mark_count / total_graphemes) if total_graphemes > 0 else 0
+    grapheme_forensic_stats = {
+        "Single-Code-Point": single_cp_count,
+        "Multi-Code-Point": multi_cp_count,
+        "Total Combining Marks": total_mark_count,
+        "Max Marks in one Grapheme": max_marks,
+        "Avg. Marks per Grapheme": round(avg_marks, 2)
+    }
+
+    return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
+
 def compute_sequence_stats(t: str):
     """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
     counters = {key: 0 for key in TEST_MAJOR}
