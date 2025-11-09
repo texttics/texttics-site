@@ -7,7 +7,7 @@
 
   <!-- PyScript (will be needed for app.py) -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css">
-  <script type="module" config="pyscript.toml" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+  <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
 
   <!-- Main application stylesheet -->
   <link rel="stylesheet" href="styles.css">
@@ -62,12 +62,7 @@
 
       <!-- Group 2.A: Dual-Atom Fingerprint (Module 1) -->
       <section id="dual-atom" class="fingerprint-section" aria-labelledby="dual-atom-title">
-        <h2 id="dual-atom-title" class="section-title">
-  <span>Dual-Atom Fingerprint</span>
-  <button id="copy-report-btn" class="copy-btn" title="Copy full structured report">
-    Copy Report
-  </button>
-</h2>
+        <h2 id="dual-atom-title" class="section-title">Dual-Atom Fingerprint</h2>
 
         <!-- WAI-ARIA Tabs pattern (Overview | Full Breakdown) -->
         <div class="tabs">
@@ -134,16 +129,26 @@
 
       <!-- Group 2.B: Structural Shape Fingerprint (Module 2) -->
       <section id="structural-shape" class="fingerprint-section" aria-labelledby="shape-title">
-        <h2 id="shape-title" class="section-title">Structural Shape Fingerprint</h2>
-        
-    <table class="matrix" id="shape-matrix">
-          <caption>Sequence (Run) Analysis</caption>
+        <h2 id="shape-title" class="section-title">Structural Shape Fingerprint</h2>
+        <table class="matrix" id="shape-matrix">
+          <caption>Sequence (Run) Analysis</caption>
+          <thead>
+            <tr>
+              <th scope="col">Metric</th>
+              <th scope="col">Count</th>
+            </tr>
+          </thead>
+          <tbody id="shape-matrix-body">
+            <!-- Python will inject <tr> rows here -->
+          </tbody>
+        </table>
+      </section>
 
       <!-- Group 2.C: Forensic Integrity Fingerprint (Modules 4, 6, 8) -->
       <section id="forensic-integrity" class="fingerprint-section" aria-labelledby="forensic-title">
         <h2 id="forensic-title" class="section-title">Forensic Integrity Fingerprint</h2>
         <table class="matrix" id="forensic-matrix">
-          <caption>Forensic Flags (Invisibles, Modifiers, IVS)</caption>
+          <caption>Invisible, Deceptive &amp; Modifying Atoms</caption>
           <thead>
             <tr>
               <th scope="col">Metric</th>
@@ -161,7 +166,7 @@
       <section id="provenance-context" class="fingerprint-section" aria-labelledby="prov-title">
         <h2 id="prov-title" class="section-title">Provenance &amp; Context Fingerprint</h2>
         <table class="matrix" id="provenance-matrix">
-          <caption>Script, Script-Extension, Block, Age &amp; Numeric Properties</caption>
+          <caption>Script, Block, Age &amp; Numeric Properties</caption>
           <thead>
             <tr>
               <th scope="col">Metric</th>
@@ -184,8 +189,5 @@
     </main>
   </div> <!-- /.lab-bench -->
 
-<script type="py" src="app.py"></script>
-<script src="ui-glue.js" defer></script>
-  
 </body>
 </html>
