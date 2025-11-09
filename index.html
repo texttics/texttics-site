@@ -1752,7 +1752,8 @@ def update_all(event=None):
         # --- CRITICAL: Only run data-dependent modules if data is READY ---
         if LOADING_STATE == "READY":
             # Run Module 6 (Python Deep Scan)
-            security_flags, numeric_types, total_value, block_stats, age_stats, id_types = compute_ucd_deep_scan(t, is_honest_mode)
+            security_flags, numeric_types, total_value, block_stats, age_stats, 
+            id_types = compute_ucd_deep_scan(t, is_honest_mode)
             
             total_value_dict = {}
             # Check if we should show numeric value
