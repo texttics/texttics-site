@@ -104,3 +104,118 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 });
+
+// ---
+// 4. Structured Report Copy Logic
+// ---
+const copyButton = document.getElementById('copy-report-btn');
+if (copyButton) {
+  copyButton.addEventListener('click', handleCopyReport);
+}
+
+async function handleCopyReport() {
+  const report = buildStructuredReport();
+
+  try {
+    await navigator.clipboard.writeText(report);
+
+    // --- Visual Feedback ---
+    const originalText = copyButton.innerText;
+    copyButton.innerText = 'Copied!';
+    copyButton.classList.add('copied');
+
+    setTimeout(() => {
+      copyButton.innerText = originalText;
+      copyButton.classList.remove('copied');
+    }, 2000);
+
+  } catch (err) {
+    console.error('Failed to copy report: ', err);
+    copyButton.innerText = 'Error!';
+  }
+}
+
+function buildStructuredReport() {
+  // This helper builds the structured text string you wanted
+  let report = [];
+
+  // --- Helper Functions ---
+  const getText = (selector) => document.querySelector(selector)?.innerText || '';
+  const getVal = (selector) => document.querySelector(selector)?.value || '';
+
+  const parseCards = (elementId) => {
+    const lines = [];
+    const cardContainer = document.getElementById(elementId);
+    if (cardContainer) {
+      cardContainer.querySelectorAll('.card').forEach(card => {
+        const label = card.querySelector('strong')?.innerText || 'Unknown';
+        const value = card.querySelector('div')?.innerText || 'N/A';
+        lines.push(`  ${label}: ${value}`);
+      });
+    }
+    return lines;
+  };
+
+  const parseTable = (tbodyId, sectionTitle) => {
+    const lines = [];
+    const tbody = document.getElementById(tbodyId);
+    if (tbody) {
+      tbody.querySelectorAll('tr').forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        if (cells.length === 0 || row.querySelector('.placeholder-text')) {
+          return;
+        }
+
+        const rowData = Array.from(cells).map(cell => cell.innerText);
+        // Format: "Section: Metric (Col1), Value (Col2)..."
+        lines.push(`  ${sectionTitle}: ${rowData.join(', ')}`);
+      });
+    }
+    return lines;
+  };
+
+  const parseParallelTable = (tbodyId, sectionTitle) => {
+    const lines = [];
+    const tbody = document.getElementById(tbodyId);
+    if (tbody) {
+      tbody.querySelectorAll('tr').forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        if (cells.length === 3) {
+          lines.push(`  ${sectionTitle}: ${cells[0].innerText} (Code Points: ${cells[1].innerText}, Graphemes: ${cells[2].innerText})`);
+        }
+      });
+    }
+    return lines;
+  };
+
+  // --- 1. Build the Report ---
+  report.push('--- Text...tics Structural Fingerprint ---');
+  report.push(`Timestamp: ${new Date().toISOString()}`);
+  report.push('\n[ Analysis Configuration ]');
+  report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
+
+  // --- 2. Dual-Atom Fingerprint ---
+  report.push('\n[ Dual-Atom Fingerprint ]');
+  report.push(...parseCards('meta-totals-cards'));
+  report.push(...parseCards('grapheme-integrity-cards'));
+  report.push(...parseParallelTable('major-parallel-body', 'Major Category'));
+  report.push(...parseParallelTable('minor-parallel-body', 'Minor Category'));
+
+  // --- 3. Structural Shape ---
+  report.push(`\n[ ${getText('#shape-title')} ]`);
+  report.push(...parseTable('shape-matrix-body', 'Run'));
+
+  // --- 4. Forensic Integrity ---
+  report.push(`\n[ ${getText('#forensic-title')} ]`);
+  report.push(...parseTable('forensic-matrix-body', 'Flag'));
+
+  // --- 5. Provenance & Context ---
+  report.push(`\n[ ${getText('#prov-title')} ]`);
+  report.push(...parseTable('provenance-matrix-body', 'Property'));
+
+  // --- 6. Threat-Hunting (Placeholder) ---
+  report.push(`\n[ ${getText('#threat-title')} ]`);
+  report.push('  (No data from this section yet)');
+
+  return report.join('\n');
+}
