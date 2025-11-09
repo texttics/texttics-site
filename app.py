@@ -239,7 +239,7 @@ async def load_unicode_data():
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
-        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt = results
+        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt, linebreak_txt = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
