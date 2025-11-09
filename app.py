@@ -451,7 +451,7 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
     counters = {key: 0 for key in testers}
 
     if not t:
-        return counters
+        return {}
 
     current_state = "NONE"
     for char in t:
@@ -469,7 +469,16 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
     if current_state in counters:
         counters[current_state] += 1
 
-    return counters
+    # If in minor mode, we MUST return the aliased keys
+    if is_minor_mode:
+        aliased_counters = {}
+        for key, count in counters.items():
+            if count > 0:
+                aliased_key = ALIASES.get(key, key) # Get "Lowercase Letter" from "Ll"
+                aliased_counters[aliased_key] = count
+        return aliased_counters
+    else:
+        return counters
 
     current_state = "NONE"
     for char in t:
