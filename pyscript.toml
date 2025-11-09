@@ -1,0 +1,14 @@
+# This file tells PyScript what to load
+packages = [
+  "pyodide-http"
+]
+
+# This tells PyScript to pre-load your data files
+[[fetch]]
+files = [
+    "Blocks.txt", 
+    "DerivedAge.txt", 
+    "IdentifierType.txt", 
+    "confusables.txt", 
+    "StandardizedVariants.txt"
+]
