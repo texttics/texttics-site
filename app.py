@@ -456,8 +456,10 @@ def compute_grapheme_stats(t: str):
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
 def compute_sequence_stats(t: str, is_minor_mode: bool):
-    """Module 2.B: Runs the Token Shape Analysis (Major or Minor)."""
-
+    """
+    Module 2.B: Runs the Token Shape Analysis (Major or Minor).
+    (This logic is from the original, working index.html)
+    """
     testers = TEST_MINOR if is_minor_mode else TEST_MAJOR
     counters = {key: 0 for key in testers}
 
@@ -469,7 +471,7 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
         new_state = get_char_type(char, is_minor_mode) # Use the helper
 
         if new_state != current_state:
-            if current_state in counters: # Check 'in' is safer than '!='
+            if current_state in counters: # This is the safe, working check
                 counters[current_state] += 1
             current_state = new_state
 
@@ -481,6 +483,7 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
     for key, count in counters.items():
         if count > 0:
             final_counts[key] = count
+
     return final_counts
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
