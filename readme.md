@@ -218,63 +218,91 @@ The application is a pure, serverless, single-page web application. The logic is
     * These HTML strings are injected into their respective `<tbody>` or `<div>` elements (e.g., `#major-parallel-body`, `#forensic-matrix-body`).
     * The UI updates in a single, efficient paint.
 
+
 ---
 
 ## 🚀 Project Status & Roadmap
 
 ### ✅ Completed: The Structural Fingerprint (Group 2)
-The primary goal is complete. The tool successfully generates a deterministic, multi-layered fingerprint for any pasted text. This includes:
-* **Dual-Atom Analysis:** Fully implemented with parallel comparison.
-* **Forensic Integrity:** Fully implemented, including positions.
-* **Provenance & Context:** Fully implemented, including the advanced `ScriptExtensions` parser.
 
-### ▶️ To-Do: Remaining Work
-The project's remaining work is clearly defined in two tasks: completing the last 1% of the "Fingerprint" and building the entire "Threat-Hunting" module.
+The primary goal of the application is **complete**. The tool successfully generates a deterministic, multi-layered "structural fingerprint" for any pasted text, based on the raw, unaltered (State 1) string.
 
-#### Task 1: Fingerprint Completion (Minor Shape Runs)
-This is the final, missing piece of the Group 2 "Structural Fingerprint."
+Our "facts-first" parallel-analysis architecture is fully implemented:
 
-* **What it is:** The `Structural Shape Fingerprint` section currently shows "Major Run Counters" (e.g., `L-Run: 3`). We need to add a toggle to allow the user to see the "Minor Run Counters" (e.g., `Lu-Run: 1`, `Ll-Run: 2`).
-* **Why it's a fingerprint:** The string `Aa` has one `L-Run`. The string `aA` *also* has one `L-Run`. Only the "Minor Run" fingerprint can tell them apart: `Aa` is `Lu-Run: 1, Ll-Run: 1` (2 runs), while `aA` is `Ll-Run: 1, Lu-Run: 1` (2 runs). (Wait, no, that's a bad example... `Aa` is `Lu-Ll` and `aA` is `Ll-Lu`. Both are 2 runs. A better example: `a.a` is `Ll-Po-Ll`. `a'a` is `Ll-Pf-Ll`. The Major run is `L-P-L` for both, but the Minor run fingerprint is different. This is the last piece of structural evidence.)
-* **Implementation Plan:**
-    1.  **`index.html`:** Add a simple toggle switch UI (HTML+CSS) inside the `Structural Shape Fingerprint` section, just above the table.
-    2.  **`app.py`:**
-        * Modify `compute_sequence_stats` to accept a boolean, `is_minor_mode`.
-        * If `is_minor_mode` is true, it will use the `TEST_MINOR` regexes to find runs.
-        * Modify `render_matrix_table` to check if it's rendering for the "shape" matrix in "minor" mode. If so, it must use the `ALIASES` dictionary to convert keys like `Lu` to "Uppercase Letter" for the table.
-    3.  **`app.py` / `ui-glue.js`:** Add an `input` event listener to the new toggle that calls the main `update_all` function.
+1.  **Dual-Atom Fingerprint:** Fully implemented. This includes the "Meta-Analysis" & "Grapheme Structural Integrity" cards, as well as the parallel (Code Point vs. Grapheme) comparison tables for both **7 Major Categories** and **30 Minor Categories**.
 
-#### Task 2: Threat-Hunting Analysis (Group 3)
-This is the entire secondary goal of the application. It involves building the last, currently empty, section.
+2.  **Structural Shape Fingerprint:** Fully implemented. This was our most recent task. The module now correctly generates *two separate, parallel tables* for:
+    * **Major Category Run Analysis** (e.g., `L-Run: 3`)
+    * **Minor Category Run Analysis** (e.g., `Lu-Run: 1`, `Ll-Run: 2`)
+    This provides the complete "shape" signature of the text and officially replaces the old, inferior "toggle" plan.
 
-* **Sub-Task 2.A: The "Threat Alert" (Hybrid Counter)**
+3.  **Forensic Integrity Fingerprint:** Fully implemented. This "Matrix of Facts" correctly identifies all problematic flags (like Ignorables, Private Use, Deceptive Spaces, and Variation Selectors) and lists their exact `Positions` in the text.
+
+4.  **Provenance & Context Fingerprint:** Fully implemented. This matrix correctly calculates and displays all `Script`, `Block`, `Age`, and `Numeric` properties based on the data files we currently load (`Blocks.txt`, `DerivedAge.txt`, etc.).
+
+---
+
+### ▶️ Next Steps (The Roadmap)
+
+With the full "Structural Fingerprint" (Group 2) complete, the project's remaining work is clearly defined. The roadmap consists of one major feature (Group 3) and two minor "gap-filling" tasks to finalize the fingerprint.
+
+#### Task 1: Implement Threat-Hunting Analysis (Group 3)
+
+This is the **main priority** and the entire secondary goal of the application. It involves building the last, currently empty, section by implementing the "Tri-State Normalization Pipeline" (States 2 & 3) using our agreed-upon "pragmatic" approach.
+
+* **Sub-Task 1.A: The "Threat Alert" (Hybrid Counter)**
     * **Goal:** Create the main `Confusable Chars` counter.
     * **Plan:**
         1.  Add `confusables.txt` to the `[[fetch]]` list in `pyscript.toml`.
-        2.  Write a new parser, `_parse_confusables`, in `app.py` to load the 700K+ mappings into the `DATA_STORES["Confusables"]` dictionary.
+        2.  Write a new parser, `_parse_confusables`, in `app.py` to load the mappings into `DATA_STORES["Confusables"]`.
         3.  Write a new `compute_threat_stats` function in `app.py`.
-        4.  This function's first job will be to iterate through the string and count any character `c` where `DATA_STORES["Confusables"].get(ord(c))` is not `None` OR where `unicodedata.normalize('NFKC', c) != c`.
+        4.  This function will iterate the string and count any character `c` where `DATA_STORES["Confusables"].get(ord(c))` is not `None` **OR** where `unicodedata.normalize('NFKC', c) != c`.
         5.  This count will be rendered into a new card in the "Threat-Hunting Analysis" section.
 
-* **Sub-Task 2.B: The "Canonical Identity" (Tri-State Hashes)**
+* **Sub-Task 1.B: The "Canonical Identity" (Tri-State Hashes)**
     * **Goal:** Prove obfuscation is happening by showing a hash mismatch.
     * **Plan:**
         1.  Add `import hashlib` to `app.py`.
-        2.  The new `compute_threat_stats` function will also generate three SHA-256 hashes:
-            * `State 1 (Forensic):` `hashlib.sha256(raw_string.encode('utf-8')).hexdigest()`
-            * `State 2 (Compatibility):` `hashlib.sha256(unicodedata.normalize('NFKC', raw_string).encode('utf-8')).hexdigest()`
-            * `State 3 (Canonical):` `hashlib.sha256(unicodedata.normalize('NFKC', raw_string).casefold().encode('utf-8')).hexdigest()`
-        3.  **UI:** Add three `<pre>` tags to the `index.html` (in the "Threat-Hunting" section) to display these three hashes.
-        4.  **UI:** Add logic to show a `⚠️` warning if `hash1 != hash2` (compatibility characters found) or `hash2 != hash3` (case-variant characters found).
+        2.  The `compute_threat_stats` function will also generate three SHA-256 hashes:
+            * **State 1 (Forensic):** `hashlib.sha256(raw_string.encode('utf-8')).hexdigest()`
+            * **State 2 (Compatibility):** `hashlib.sha256(unicodedata.normalize('NFKC', raw_string).encode('utf-8')).hexdigest()`
+            * **State 3 (Canonical):** `hashlib.sha256(unicodedata.normalize('NFKC', raw_string).casefold().encode('utf-8')).hexdigest()`
+        3.  **UI:** Add UI to `index.html` to display these three hashes and show a `⚠️` warning if `hash1 != hash2` (compatibility) or `hash2 != hash3` (case-variant).
 
-* **Sub-Task 2.C: The "Evidence Report" (Visual Diff)**
+* **Sub-Task 1.C: The "Evidence Report" (Visual Diff)**
     * **Goal:** Provide the human-readable proof of *where* the spoofing is.
     * **Plan:**
-        1.  The `compute_threat_stats` function will use the `REGEX_MATCHER["LNPS_Runs"]` regex (which we already have in `app.py`) to find all runs of Letters, Numbers, Punctuation, and Symbols.
-        2.  It will iterate over each run. If a run contains a character that triggered the "Hybrid Counter" (from 2.A), it will build a "diff" object.
-        3.  This diff object will contain the original run (e.g., `раy`) and the "skeleton" run (e.g., `pay`).
-        4.  **UI:** A new `render_confusable_report` function will be created in `app.py`.
-        5.  This function will take the list of diff objects and generate HTML to be injected into a `<pre id="confusable-report">` element in the "Threat-Hunting" section, showing the classic `раy → pay` output.
+        1.  The `compute_threat_stats` function will use the `REGEX_MATCHER["LNPS_Runs"]` (already in `app.py`) to find all runs of Letters, Numbers, Punctuation, and Symbols.
+        2.  It will iterate over each run and, if it contains a character that triggered the "Hybrid Counter," it will build a "diff" object (e.g., original: `раy`, skeleton: `pay`).
+        3.  **UI:** A new `render_confusable_report` function will generate HTML to be injected into a `<pre id="confusable-report">` element, showing the classic `раy → pay` output.
+
+---
+
+#### Task 2: Integrate `ScriptExtensions.txt` (Fingerprint Gap)
+
+This is a "gap-filling" task to make our "Provenance" fingerprint 100% accurate, especially for punctuation and symbols shared across many scripts.
+
+* **Goal:** To create a perfect, non-redundant script fingerprint.
+* **Plan:**
+    1.  Add `ScriptExtensions.txt` to the `[[fetch]]` list in `pyscript.toml`.
+    2.  Add logic to `_parse_script_extensions` in `app.py` to load it into `DATA_STORES["ScriptExtensions"]`.
+    3.  Modify `compute_provenance_stats`. The logic must be updated to first check if a character's `cp` is in the `ScriptExtensions` data.
+        * **If YES:** Iterate its list of scripts (e.g., `Latn`, `Grek`) and add to the `Script-Ext: ...` counters.
+        * **If NO:** Fall back to the *current* logic (using `\p{Script=...}` regex) to find its single, primary `Script: ...` property.
+
+---
+
+#### Task 3: Add IVS Steganography Counter (Fingerprint Gap)
+
+This is a "gap-filling" task to explicitly flag a known steganography vector in our "Forensic" module.
+
+* **Goal:** To explicitly flag the use of Ideographic Variation Selectors (IVS).
+* **Plan:**
+    1.  This is a logic-only task; no new data files are needed.
+    2.  Modify the `compute_forensic_stats_with_positions` function in `app.py`.
+    3.  In the character-by-character loop, add a check for the IVS range: `if 0xE0100 <= cp <= 0xE01EF:`.
+    4.  If true, add the index to a new `ivs_indices` list.
+    5.  Add this list to the `forensic_stats` dictionary under the key `'Steganography (IVS)'`, which our `render_matrix_table` function will automatically display.
 
 ---
 
