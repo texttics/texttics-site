@@ -212,6 +212,7 @@ function buildStructuredReport() {
   report.push(`\n[ ${getText('#shape-title')} ]`);
   report.push(...parseTable('shape-matrix-body', 'Major Run'));
   report.push(...parseTable('minor-shape-matrix-body', 'Minor Run'));
+  report.push(...parseTable('linebreak-run-matrix-body', 'LineBreak Run'));
 
   // --- 4. Forensic Integrity ---
   report.push(`\n[ ${getText('#integrity-title')} ]`);
