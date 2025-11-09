@@ -1,1 +1,367 @@
+/* ---
+Root Variables & Reset
+--- */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  
+  --color-bg: #f9fafb;
+  --color-text: #111827;
+  --color-text-muted: #4b5563;
+  --color-border: #d1d5db;
+  --color-border-light: #e5e7eb;
+  --color-white: #ffffff;
+  --color-primary: #2563eb;
+  --color-primary-focus: #3b82f6;
 
+  --width-jump-list: 220px;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --radius: 0.5rem; /* 8px */
+  --radius-sm: 0.25rem; /* 4px */
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* ---
+Accessibility & Utilities
+--- */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: var(--spacing-4);
+  background: var(--color-primary);
+  color: var(--color-white);
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--radius-sm);
+  z-index: 1000;
+  transition: top 0.3s;
+}
+.skip-link:focus {
+  top: var(--spacing-4);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.placeholder-text {
+  padding: var(--spacing-4);
+  color: var(--color-text-muted);
+  font-style: italic;
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+
+/* ---
+Zone 0: Masthead (Static Header)
+--- */
+.masthead {
+  padding: var(--spacing-4) var(--spacing-8);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-white);
+}
+.app-title {
+  font-size: 1.5rem;
+  color: var(--color-text);
+}
+.spec, .method {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-1);
+}
+.spec {
+  font-weight: 600;
+}
+
+/* ---
+Main Two-Column "Lab Bench" Layout
+--- */
+.lab-bench {
+  display: grid;
+  grid-template-columns: var(--width-jump-list) 1fr;
+  max-width: 1600px;
+  margin: 0 auto;
+  gap: var(--spacing-8);
+  padding: var(--spacing-8);
+}
+
+/* ---
+Column 1: Sticky Jump List (Nav)
+--- */
+.jump-list {
+  position: sticky;
+  top: var(--spacing-8); /* Sticks below masthead (if masthead were sticky) */
+  align-self: start; /* Aligns to the top of the grid cell */
+  max-height: calc(100vh - var(--spacing-8) * 2);
+  overflow-y: auto;
+}
+.jump-list ol {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+.jump-list a {
+  display: block;
+  text-decoration: none;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+.jump-list a:hover {
+  background-color: var(--color-border-light);
+  color: var(--color-text);
+}
+.jump-list .count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-left: var(--spacing-2);
+}
+
+/* ---
+Column 2: Main Analysis Content
+--- */
+#main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  min-width: 0; /* Prevents overflow */
+}
+
+.section-title {
+  font-size: 1.25rem;
+  color: var(--color-text);
+  margin-bottom: var(--spacing-4);
+  padding-bottom: var(--spacing-2);
+  border-bottom: 1px solid var(--color-border-light);
+}
+.subsection-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-6);
+  margin-bottom: var(--spacing-3);
+}
+.fingerprint-section:first-of-type .subsection-title:first-of-type {
+  margin-top: 0;
+}
+
+/* ---
+Group 1: Control Plane
+--- */
+#text-input {
+  width: 100%;
+  height: 180px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--spacing-4);
+  font-size: 1rem;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+#text-input:focus {
+  outline: 2px solid var(--color-primary-focus);
+  border-color: var(--color-primary-focus);
+}
+.status {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-2);
+}
+
+/* ---
+Group 2.A: Dual-Atom Tabs
+--- */
+.tabs [role="tablist"] {
+  display: flex;
+  gap: var(--spacing-2);
+  border-bottom: 1px solid var(--color-border);
+}
+.tabs [role="tab"] {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: var(--spacing-2) var(--spacing-4);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  margin-bottom: -1px; /* Sits on top of the border */
+}
+.tabs [role="tab"]:hover {
+  color: var(--color-text);
+}
+.tabs [role="tab"][aria-selected="true"] {
+  background: var(--color-white);
+  border-color: var(--color-border);
+  color: var(--color-primary);
+}
+.tabs [role="tabpanel"] {
+  padding: var(--spacing-6) var(--spacing-4);
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.tabs [role="tabpanel"][hidden] {
+  display: none;
+}
+
+/* ---
+Group 2.A: Card Layout (for Meta-Analysis)
+--- */
+.cards {
+  display: grid;
+  gap: var(--spacing-4);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.card {
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius);
+  background: var(--color-white);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+.card strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-1);
+}
+.card div {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* ---
+Groups 2.B, 2.C, 2.D: "Matrix of Facts" Table Layout
+--- */
+.matrix {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-white);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius);
+  overflow: hidden; /* For border-radius */
+}
+.matrix caption {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: var(--spacing-3);
+  text-align: left;
+  background: var(--color-bg);
+}
+.matrix th, .matrix td {
+  padding: var(--spacing-3) var(--spacing-4);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.matrix thead th {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg);
+}
+.matrix tbody tr:last-child th,
+.matrix tbody tr:last-child td {
+  border-bottom: 0;
+}
+.matrix tbody th {
+  font-weight: 600;
+  color: var(--color-text);
+}
+.matrix td {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+.matrix td:nth-child(2) {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* ---
+Responsive Design
+--- */
+@media (max-width: 1024px) {
+  .lab-bench {
+    grid-template-columns: 1fr; /* Stack columns */
+    padding: var(--spacing-4);
+    gap: var(--spacing-6);
+  }
+  
+  .jump-list {
+    position: static; /* Un-stick the nav */
+    max-height: none;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--spacing-4);
+  }
+  .jump-list ol {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .masthead {
+    padding: var(--spacing-4) var(--spacing-6);
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+  .masthead {
+    padding: var(--spacing-4);
+  }
+  .lab-bench {
+    padding: var(--spacing-4);
+  }
+  .section-title {
+    font-size: 1.1rem;
+  }
+  .tabs [role="tab"] {
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: 0.9rem;
+  }
+  .matrix th, .matrix td {
+    padding: var(--spacing-2) var(--spacing-3);
+  }
+  .cards {
+    grid-template-columns: 1fr 1fr; /* 2-column cards on mobile */
+  }
+}
