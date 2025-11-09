@@ -11,5 +11,6 @@ files = [
     "IdentifierType.txt", 
     "confusables.txt", 
     "StandardizedVariants.txt",
-    "ScriptExtensions.txt"
+    "ScriptExtensions.txt",
+    "LineBreak.txt"
 ]
