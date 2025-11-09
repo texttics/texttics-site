@@ -515,10 +515,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
     forensic_stats = {}
 
-    # 1. Get pre-calculated counts from Module 1
-    forensic_stats["Unassigned (Void)"] = {'count': cp_minor_stats.get("Cn", 0), 'positions': []}
-    forensic_stats["Surrogates (Broken)"] = {'count': cp_minor_stats.get("Cs", 0), 'positions': []}
-    forensic_stats["Private Use"] = {'count': cp_minor_stats.get("Co", 0), 'positions': []}
+    # 1. Get pre-calculated counts from Module 1 - moved
     # Note: We can't easily get positions for calculated Cn.
 
     # 2. Run regex-based checks (ONLY for 'Deprecated')
@@ -533,6 +530,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     ignorable_indices = []
     deceptive_space_indices = []
     nonchar_indices = []
+
+    private_use_indices = []
+    surrogate_indices = []
+    unassigned_indices = []
     
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
@@ -540,23 +541,24 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             category = unicodedata.category(char)
             cp = ord(char)
             
-            # --- Check 1: Ignorables (Format/Cf) ---
+            # --- Chain 1: Category-based checks ---
             if category == "Cf":
-                # U+200B (ZWSP), U+2060 (WJ), U+FEFF (BOM), Bidi, etc.
                 ignorable_indices.append(f"#{i}")
-
-            # --- Check 2: Deceptive Spaces ---
-            # A 'Space Separator' that is NOT the common ASCII space (U+0020)
-            if category == "Zs" and cp != 0x0020:
+            elif category == "Zs" and cp != 0x0020:
                 deceptive_space_indices.append(f"#{i}")
+            elif category == "Co":
+                private_use_indices.append(f"#{i}")
+            elif category == "Cs":
+                surrogate_indices.append(f"#{i}")
+            elif category == "Cn":
+                unassigned_indices.append(f"#{i}")
 
-            # --- Check 3: Noncharacter ---
-            # Checks for ranges FDD0-FDEF or any code point ending in FFFE or FFFF
+            # --- Chain 2: Independent Code Point check ---
+            # (This MUST be a separate 'if', not 'elif')
             if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
                 nonchar_indices.append(f"#{i}")
                 
         except Exception as e:
-            # Failsafe in case ord() or category() has an issue
             print(f"Error processing char at index {i}: {e}")
 
 
@@ -573,6 +575,19 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         'positions': nonchar_indices
     }
 
+    forensic_stats["Private Use"] = {
+        'count': len(private_use_indices),
+        'positions': private_use_indices
+    }
+    forensic_stats["Surrogates (Broken)"] = {
+        'count': len(surrogate_indices),
+        'positions': surrogate_indices
+    }
+    forensic_stats["Unassigned (Void)"] = {
+        'count': len(unassigned_indices),
+        'positions': unassigned_indices
+    }
+    
     # 4. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
