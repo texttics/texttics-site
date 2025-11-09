@@ -134,20 +134,19 @@
 
       <!-- Group 2.B: Structural Shape Fingerprint (Module 2) -->
       <section id="structural-shape" class="fingerprint-section" aria-labelledby="shape-title">
-        <h2 id="shape-title" class="section-title">Structural Shape Fingerprint</h2>
-        <table class="matrix" id="shape-matrix">
-          <caption>Sequence (Run) Analysis</caption>
-          <thead>
-            <tr>
-              <th scope="col">Metric</th>
-              <th scope="col">Count</th>
-            </tr>
-          </thead>
-          <tbody id="shape-matrix-body">
-            <!-- Python will inject <tr> rows here -->
-          </tbody>
-        </table>
-      </section>
+        <h2 id="shape-title" class="section-title">Structural Shape Fingerprint</h2>
+        
+                <div class="toggle-switch">
+          <label for="shape-mode-toggle">Major Categories</label>
+          <label class="switch">
+            <input type="checkbox" id="shape-mode-toggle">
+            <span class="slider"></span>
+          </label>
+          <label for="shape-mode-toggle">Minor Categories (30)</label>
+        </div>
+                
+    t <table class="matrix" id="shape-matrix">
+          <caption>Sequence (Run) Analysis</caption>
 
       <!-- Group 2.C: Forensic Integrity Fingerprint (Modules 4, 6, 8) -->
       <section id="forensic-integrity" class="fingerprint-section" aria-labelledby="forensic-title">
