@@ -31,7 +31,7 @@ MINOR_CATEGORIES_29 = {
 
 # Regexes for finding *all* matches and their indices (must be 'gu')
 REGEX_MATCHER = {
-    "RGI Emoji": window.RegExp.new(r"\p{Emoji_Presentation}", "gv"), # Swapped to \p{Emoji_Presentation} for broad support
+    "RGI Emoji": window.RegExp.new(r"\p{RGI_Emoji}", "guv"), # 'v' for property intersections
     "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
     "Marks": window.RegExp.new(r"\p{M}", "gu"),
     
@@ -39,11 +39,11 @@ REGEX_MATCHER = {
     "Deprecated": window.RegExp.new(r"\p{Deprecated}", "gu"),
     "Noncharacter": window.RegExp.new(r"\p{Noncharacter_Code_Point}", "gu"),
     "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
-    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "gv"),
+    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "guv"),
     
     # UAX #44 Properties (for Module 2.D)
     "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
-    "Alphabetic": window.RegExp.new(r"\p{Alphabetic}", "gu"),
+    "Alphabetic": window.RegE.new(r"\p{Alphabetic}", "gu"),
     "Script: Cyrillic": window.RegExp.new(r"\p{Script=Cyrillic}", "gu"),
     "Script: Greek": window.RegExp.new(r"\p{Script=Greek}", "gu"),
     "Script: Han": window.RegExp.new(r"\p{Script=Han}", "gu"),
@@ -56,7 +56,6 @@ REGEX_MATCHER = {
     # Confusable runs (for Module 3)
     "LNPS_Runs": window.RegExp.new(r"\p{L}+|\p{N}+|\p{P}+|\p{S}+", "gu"),
 }
-
 
 # Pre-compiled testers for single characters
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
@@ -85,16 +84,6 @@ ALIASES = {
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
 
 # ---
-# 1.A. PRE-COMPILE ALL MINOR CATEGORY REGEXES
-# ---
-# This is the fix for the KeyError: 'Lu'. We must populate
-# REGEX_MATCHER with the 29 minor categories so compute_code_point_stats
-# can find them.
-for key, regex_str in MINOR_CATEGORIES_29.items():
-    # Add to the main matcher dict
-    REGEX_MATCHER[key] = window.RegExp.new(regex_str, "gu")
-
-# ---
 # 2. GLOBAL DATA STORES & ASYNC LOADING
 # ---
 
@@ -103,7 +92,6 @@ DATA_STORES = {
     "Blocks": {"ranges": [], "starts": [], "ends": []},
     "Age": {"ranges": [], "starts": [], "ends": []},
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
-    "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -235,11 +223,11 @@ async def load_unicode_data():
         # Fetch all files in parallel
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt"
+            "confusables.txt", "StandardizedVariants.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
         
-        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt = results
+        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt = results
         
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -247,7 +235,6 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
         if variants_txt: _parse_standardized_variants(variants_txt)
-        if script_ext_txt: _parse_script_extensions(script_ext_txt) # Use the new custom parser
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
@@ -259,94 +246,36 @@ async def load_unicode_data():
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
 
-def _parse_script_extensions(txt: str):
-    """Custom parser for ScriptExtensions.txt (which uses ';')."""
-    store_key = "ScriptExtensions"
-    store = DATA_STORES[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-
-    ranges_list = []
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-
-        # Data is separated by ';', but with variable whitespace
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-
-        code_range = parts[0].strip()
-        value = parts[1].strip() # This is the fix
-
-        if not value:
-            continue
-
-        if '..' in code_range:
-            a, b = code_range.split('..', 1)
-            ranges_list.append((int(a, 16), int(b, 16), value))
-        else:
-            cp = int(code_range, 16)
-            ranges_list.append((cp, cp, value))
-
-    ranges_list.sort()
-
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-
-    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
-    
 # ---
 # 3. COMPUTATION FUNCTIONS
 # ---
-
-def count_matches(regex, text):
-    """
-    Counts matches of a JS RegExp object in a string.
-    (This is the proven, working logic from your original file)
-    """
-    matches = window.String.prototype.match.call(text, regex)
-    return len(matches) if matches else 0
-
-def get_char_type(char, is_minor):
-    """
-    Classifies a single char as a Major or Minor category.
-    (This logic is from the original, working index.html)
-    """
-    testers = TEST_MINOR if is_minor else TEST_MAJOR
-    for key, regex in testers.items():
-        if regex.test(char):
-            return key
-    return "NONE"
 
 def _find_matches_with_indices(regex_key: str, text: str):
     """Uses matchAll to find all matches and their indices."""
     regex = REGEX_MATCHER.get(regex_key)
     if not regex:
-        print(f"Error: Regex key '{regex_key}' not found in REGEX_MATCHER.")
-        return [], 0 # Return unpackable empty values
-
+        return [], 0
+    
     try:
         matches_iter = window.String.prototype.matchAll.call(text, regex)
         matches = window.Array.from_(matches_iter)
-        indices = [m.index for m in matches]
+        # Use segmenter-aware indices for \p{RGI_Emoji}
+        if regex_key == "RGI Emoji":
+            indices = [m.index for m in matches]
+        else:
+            # For code-point based regex, we must use JS-style indices
+            indices = [m.index for m in matches]
         return indices, len(indices)
     except Exception as e:
         print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
-        return [], 0 # Return unpackable empty values
+        return [], 0
 
 def compute_code_point_stats(t: str):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
-
+    
     # 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
-
-    # Use the _find_matches_with_indices function
     _, emoji_count = _find_matches_with_indices("RGI Emoji", t)
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
 
@@ -355,40 +284,6 @@ def compute_code_point_stats(t: str):
         "RGI Emoji Sequences": emoji_count,
         "Whitespace (Total)": whitespace_count
     }
-
-    # 2. Get 29 minor categories (Honest Mode)
-    minor_stats = {}
-    sum_of_29_cats = 0
-    for key in MINOR_CATEGORIES_29.keys():
-        _, count = _find_matches_with_indices(key, t)
-        minor_stats[key] = count
-        sum_of_29_cats += count
-
-    # 3. Calculate 'Cn' as the remainder
-    minor_stats["Cn"] = total_code_points - sum_of_29_cats
-
-    # 4. Aggregate Major Categories
-    major_stats = {
-        "L (Letter)": minor_stats.get("Lu", 0) + minor_stats.get("Ll", 0) + minor_stats.get("Lt", 0) + minor_stats.get("Lm", 0) + minor_stats.get("Lo", 0),
-        "M (Mark)": minor_stats.get("Mn", 0) + minor_stats.get("Mc", 0) + minor_stats.get("Me", 0),
-        "N (Number)": minor_stats.get("Nd", 0) + minor_stats.get("Nl", 0) + minor_stats.get("No", 0),
-        "P (Punctuation)": minor_stats.get("Pc", 0) + minor_stats.get("Pd", 0) + minor_stats.get("Ps", 0) + minor_stats.get("Pe", 0) + minor_stats.get("Pi", 0) + minor_stats.get("Pf", 0) + minor_stats.get("Po", 0),
-        "S (Symbol)": minor_stats.get("Sm", 0) + minor_stats.get("Sc", 0) + minor_stats.get("Sk", 0) + minor_stats.get("So", 0),
-        "Z (Separator)": minor_stats.get("Zs", 0) + minor_stats.get("Zl", 0) + minor_stats.get("Zp", 0),
-        "C (Other)": minor_stats.get("Cc", 0) + minor_stats.get("Cf", 0) + minor_stats.get("Cs", 0) + minor_stats.get("Co", 0) + minor_stats.get("Cn", 0)
-    }
-
-    # 5. Build Summary (for Meta-Analysis cards)
-    summary_stats = {
-        **derived_stats,
-        "L (Letter)": major_stats["L (Letter)"],
-        "N (Number)": major_stats["N (Number)"],
-        "P (Punctuation)": major_stats["P (Punctuation)"],
-        "S (Symbol)": major_stats["S (Symbol)"]
-    }
-
-    return summary_stats, major_stats, minor_stats
-
     
     # 2. Get 29 minor categories (Honest Mode)
     minor_stats = {}
@@ -456,8 +351,7 @@ def compute_grapheme_stats(t: str):
         elif cp_count > 1:
             multi_cp_count += 1
         
-        mark_count = count_matches(REGEX_MATCHER["Marks"], grapheme_str)
-        
+        _, mark_count = _find_matches_with_indices("Marks", grapheme_str)
         total_mark_count += mark_count
         if mark_count > max_marks:
             max_marks = mark_count
@@ -506,103 +400,63 @@ def compute_grapheme_stats(t: str):
 def compute_sequence_stats(t: str):
     """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
     counters = {key: 0 for key in TEST_MAJOR}
-
     if not t:
-        return {} # Return an empty dict
+        return counters
 
     current_state = "NONE"
     for char in t:
-        new_state = get_char_type(char, is_minor=False) # Use the helper
-
+        new_state = "NONE"
+        for key, regex in TEST_MAJOR.items():
+            if regex.test(char):
+                new_state = key
+                break
+        
         if new_state != current_state:
-            if current_state in counters: # This is the safe, working check
+            if current_state in counters:
                 counters[current_state] += 1
             current_state = new_state
-
-    if current_state in counters: # Handle the last run
+            
+    if current_state in counters:
         counters[current_state] += 1
-
-    # Return only non-zero counts
-    final_counts = {}
-    for key, count in counters.items():
-        if count > 0:
-            final_counts[key] = count
-
-    return final_counts
+        
+    return counters
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
-
+    
     forensic_stats = {}
-
+    
     # 1. Get pre-calculated counts from Module 1
     forensic_stats["Unassigned (Void)"] = {'count': cp_minor_stats.get("Cn", 0), 'positions': []}
     forensic_stats["Surrogates (Broken)"] = {'count': cp_minor_stats.get("Cs", 0), 'positions': []}
     forensic_stats["Private Use"] = {'count': cp_minor_stats.get("Co", 0), 'positions': []}
     # Note: We can't easily get positions for calculated Cn.
 
-    # 2. Run regex-based checks (REMOVING Ignorables)
-    for key in ["Deprecated", "Noncharacter", "Deceptive Spaces"]:
+    # 2. Run regex-based checks and get positions
+    for key in ["Deprecated", "Noncharacter", "Ignorables (Invisible)", "Deceptive Spaces"]:
         indices, count = _find_matches_with_indices(key, t)
         forensic_stats[key] = {
             'count': count,
             'positions': [f"#{i}" for i in indices]
         }
-
-    # --- THIS IS THE FIX ---
-    # 3. Manually find Ignorables using Python, not a buggy regex
-    ignorable_indices = []
-    js_array = window.Array.from_(t)
-    for i, char in enumerate(js_array):
-        # Find Default Ignorable Code Points (like ZWSP) and Format (Cf) chars (like Bidi)
-        # This is a more robust check.
-        category = unicodedata.category(char)
-        if category == "Cf":
-            # U+200B (ZWSP), U+2060 (WJ), U+FEFF (BOM), Bidi, etc.
-            ignorable_indices.append(f"#{i}")
-
-    forensic_stats["Ignorables (Format/Cf)"] = {
-        'count': len(ignorable_indices),
-        'positions': ignorable_indices
-    }
-    # --- END OF FIX ---
-
-    # 4. Add Variant Stats (from Module 8)
+        
+    # 3. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
-    # 5. Manually find IdentifierType flags (this was a bug)
-    if LOADING_STATE == "READY":
-        id_type_stats = {}
-        js_array = window.Array.from_(t)
-        for i, char in enumerate(js_array):
-            cp = ord(char)
-            id_type = _find_in_ranges(cp, "IdentifierType")
 
-            # We only care about problematic types
-            if id_type and id_type not in ("Recommended", "Inclusion"):
-                key = f"Type: {id_type}"
-                if key not in id_type_stats:
-                    id_type_stats[key] = {'count': 0, 'positions': []}
-
-                id_type_stats[key]['count'] += 1
-                id_type_stats[key]['positions'].append(f"#{i}")
-
-        forensic_stats.update(id_type_stats)
-    
     return forensic_stats
 
 def compute_variant_stats_with_positions(t: str):
     """Part of Module 2.C: Counts variant base chars and selectors."""
     if LOADING_STATE != "READY":
         return {}
-
+        
     base_set = DATA_STORES["VariantBase"]
     selector_set = DATA_STORES["VariantSelectors"]
-
+    
     base_indices = []
     selector_indices = []
-    ivs_indices = [] # <-- ADDED THIS
-
+    
     # We must iterate using JS-style string indices
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
@@ -611,158 +465,54 @@ def compute_variant_stats_with_positions(t: str):
             base_indices.append(f"#{i}")
         if cp in selector_set:
             selector_indices.append(f"#{i}")
-
-        # --- ADDED THIS BLOCK ---
-        # Check for Ideographic Variation Selectors (Steganography vector)
-        if 0xE0100 <= cp <= 0xE01EF:
-            ivs_indices.append(f"#{i}")
-        # --- END OF ADDED BLOCK ---
-
+            
     return {
         "Variant Base Chars": {'count': len(base_indices), 'positions': base_indices},
-        "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices},
-        "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices} # <-- ADDED THIS
+        "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices}
     }
     
 def compute_provenance_stats(t: str):
     """Module 2.D: Runs UAX #44 and Deep Scan analysis."""
-
-    # 1. Fast UAX #44 Stats (non-Script properties)
+    
+    # 1. Fast UAX #44 Stats
     provenance_stats = {}
-    for key in ["Dash", "Alphabetic"]:
+    for key in [
+        "Dash", "Alphabetic", "Script: Cyrillic", "Script: Greek", 
+        "Script: Han", "Script: Arabic", "Script: Hebrew", "Script: Latin",
+        "Script: Common", "Script: Inherited"
+    ]:
         _, count = _find_matches_with_indices(key, t)
         if count > 0:
             provenance_stats[key] = count
-
-    # --- THIS IS THE FIX ---
-    # 2. We will now find Scripts char-by-char to avoid double counting
-
-    # Pre-compile single-char script testers for the "fallback"
-    script_testers = {
-        "Script: Cyrillic": window.RegExp.new(r"^\p{Script=Cyrillic}$", "u"),
-        "Script: Greek": window.RegExp.new(r"^\p{Script=Greek}$", "u"),
-        "Script: Han": window.RegExp.new(r"^\p{Script=Han}$", "u"),
-        "Script: Arabic": window.RegExp.new(r"^\p{Script=Arabic}$", "u"),
-        "Script: Hebrew": window.RegExp.new(r"^\p{Script=Hebrew}$", "u"),
-        "Script: Latin": window.RegExp.new(r"^\p{Script=Latin}$", "u"),
-        "Script: Common": window.RegExp.new(r"^\p{Script=Common}$", "u"),
-        "Script: Inherited": window.RegExp.new(r"^\p{Script=Inherited}$", "u"),
-    }
-
-    # These dicts will hold the counts
-    script_stats = {} 
-    script_ext_stats = {}
-    # --- END OF SETUP ---
-
-    # 3. Deep Scan Stats (if data is loaded)
+            
+    # 2. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
-        # If data isn't ready, just return the fast stats
         return provenance_stats
-
+        
     numeric_total_value = 0
     number_script_zeros = set()
-
+    
     deep_stats = {} # for Block, Age, Type, etc.
-
-    # We loop char-by-char for all data-file properties
+    
     for char in t:
         cp = ord(char)
-
-        # --- THIS IS THE NEW LOGIC ---
-        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-        if script_ext_val:
-            # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
-            scripts = script_ext_val.split()
-            for script in scripts:
-                key = f"Script-Ext: {script}"
-                script_ext_stats[key] = script_ext_stats.get(key, 0) + 1
-        else:
-            # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
-            # We fall back to its primary 'Script' property.
-            for key, regex in script_testers.items():
-                if regex.test(char):
-                    script_stats[key] = script_stats.get(key, 0) + 1
-                    break # Found its primary script
-        # --- END OF NEW LOGIC ---
-
+        
         # Block, Age, Type
         block_name = _find_in_ranges(cp, "Blocks")
         if block_name:
             key = f"Block: {block_name}"
             deep_stats[key] = deep_stats.get(key, 0) + 1
-
+            
         age = _find_in_ranges(cp, "Age")
         if age:
             key = f"Age: {age}"
             deep_stats[key] = deep_stats.get(key, 0) + 1
-
-        # Numeric Properties
-        try:
-            value = unicodedata.numeric(char)
-            numeric_total_value += value
-            gc = unicodedata.category(char)
-            if gc == "Nd":
-                zero_code_point = ord(char) - int(value)
-                number_script_zeros.add(zero_code_point)
-        except (ValueError, TypeError):
-            pass
-
-    if numeric_total_value > 0:
-        deep_stats["Total Numeric Value"] = round(numeric_total_value, 4)
-    if len(number_script_zeros) > 1:
-        deep_stats["Mixed-Number Systems"] = len(number_script_zeros)
-
-    # Combine fast and deep stats
-    # --- THIS IS THE FINAL FIX ---
-    provenance_stats.update(script_stats)
-    provenance_stats.update(script_ext_stats)
-    provenance_stats.update(deep_stats)
-    return provenance_stats
-
-    numeric_total_value = 0
-    number_script_zeros = set()
-
-    deep_stats = {} # for Block, Age, Type, etc.
-
-    for char in t:
-        cp = ord(char)
-
-        # --- THIS IS THE FIX (ScriptExtensions + Fallback) ---
-        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-        if script_ext_val:
-            # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
-            scripts = script_ext_val.split()
-            for script in scripts:
-                key = f"Script-Ext: {script}"
-                deep_stats[key] = deep_stats.get(key, 0) + 1
-        else:
-            # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
-            # We must fall back to its primary 'Script' property.
-            try:
-                # Use Python's built-in 'script' function
-                script = unicodedata.script(char) 
-                key = f"Script: {script}" # Note: "Script:", not "Script-Ext:"
-                deep_stats[key] = deep_stats.get(key, 0) + 1
-            except ValueError:
-                pass # Should not happen for valid chars
-        # --- END OF FIX ---
-
-        # Block, Age, Type
-        block_name = _find_in_ranges(cp, "Blocks")
-        if block_name:
-            key = f"Block: {block_name}"
-            deep_stats[key] = deep_stats.get(key, 0) + 1
-
-        age = _find_in_ranges(cp, "Age")
-        if age:
-            key = f"Age: {age}"
-            deep_stats[key] = deep_stats.get(key, 0) + 1
-
+            
         id_type = _find_in_ranges(cp, "IdentifierType")
         if id_type and id_type not in ("Recommended", "Inclusion"):
-             # This belongs in the Forensic module, not Provenance
+             # Add to forensic group instead
              pass
-
+            
         # Numeric Properties
         try:
             value = unicodedata.numeric(char)
@@ -815,7 +565,7 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
         gr_val = gr_stats.get(key, 0)
         
         if cp_val > 0 or gr_val > 0:
-            label = key
+            label = aliases.get(key, key) if aliases else key
             html.append(
                 f'<tr><th scope="row">{label}</th><td>{cp_val}</td><td>{gr_val}</td></tr>'
             )
@@ -827,13 +577,13 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
 def render_matrix_table(stats_dict, element_id, has_positions=False):
     """Renders a generic "Matrix of Facts" table."""
     html = []
-
+    
     for key, data in stats_dict.items():
         if not data:
             continue
-
-        label = key # No aliasing needed
-
+            
+        label = key
+        
         if has_positions:
             # Data is a dict: {'count': 1, 'positions': ['#42']}
             count = data.get('count', 0)
@@ -851,7 +601,7 @@ def render_matrix_table(stats_dict, element_id, has_positions=False):
             html.append(
                 f'<tr><th scope="row">{label}</th><td>{count}</td></tr>'
             )
-
+            
     element = document.getElementById(element_id)
     if element:
         element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
