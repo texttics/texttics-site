@@ -2,14 +2,14 @@
 
 This is a single-page web application that functions as a real-time, **deterministic** text analyzer. Its primary goal is to be a **"Structural Fingerprinter"**—a tool that generates a complete, absolute, and unambiguous statistical signature for any text.
 
-Its secondary goal is to use this "fingerprint" to detect forensic anomalies and **"inter-layer mismatch attacks"** (e.g., homoglyphs, invisible characters, Bidi controls) that survive the copy/paste process.
+Its secondary, but equally important, goal is to use this "fingerprint" to detect forensic anomalies and **"inter-layer mismatch attacks"** (e.g., homoglyphs, invisible characters, Bidi controls) that survive the copy/paste process.
 
 It is a **Post-Clipboard Forensic Analyzer** designed to give a literal, precise, and unfiltered view of the *structural integrity* of a decoded string.
 
-It uses **PyScript** to run Python 3.12 directly in the browser. It is built on a high-performance, serverless, hybrid model:
-* **Python (Orchestration):** Manages all application state, event handling, and DOM manipulation.
-* **Data-Driven Analysis (Python):** Uses the `unicodedata` library and asynchronously fetches raw Unicode data files (`confusables.txt`, `IdentifierType.txt`, etc.) to perform deep, data-driven analysis.
-* **Standards-Based Analysis (JavaScript):** Leverages the browser's native JavaScript `RegExp` engine (for `\p{...}` properties) and `Intl.Segmenter` API (for UAX #29) for maximum performance.
+It runs 100% in the browser using **PyScript** to execute Python 3.12, leveraging a high-performance, serverless, hybrid model:
+
+* **Python (Orchestration & Deep Analysis):** Manages all application state, event handling, and DOM rendering. It uses the `unicodedata` library for deep analysis and asynchronously fetches raw Unicode data files (`Blocks.txt`, `ScriptExtensions.txt`, etc.) to perform data-driven analysis that is impossible with regular expressions alone.
+* **JavaScript (High-Speed Standards Parsing):** Leverages the browser's native JavaScript engines for all high-performance, standards-compliant parsing. This includes the `RegExp` engine (for all `\p{...}` Unicode property checks) and the `Intl.Segmenter` API (for UAX #29 Grapheme Cluster segmentation).
 
 The result is a multi-layered, *literal* analysis of text composition, sequence (run) shape, script properties, and hidden forensic flags, all based on the official **Unicode Standard**.
 
@@ -21,27 +21,29 @@ This tool is a **"Post-Clipboard Forensic Analyzer"** and, primarily, a **"Struc
 
 Its **main goal** is to create a **complete, deterministic, and absolute structural fingerprint** of any text. It is designed to analyze the *structural integrity* of a decoded string exactly as it exists after being copied (Ctrl+C) and pasted (Ctrl+V) into the browser.
 
-This "fingerprint"—the full set of statistics across all modules—provides an **unambiguous structural signature** of the text. It is the "ground truth." By generating a fingerprint for a 'v1' (original) and 'v2' (modified) of a document, you can deterministically identify *any* change, no matter how slight.
+This "fingerprint"—the full set of statistics across all sections—provides an **unambiguous structural signature** of the text. It is the "ground truth." By generating a fingerprint for a 'v1' (original) and 'v2' (modified) of a document, you can deterministically identify *any* change, no matter how slight.
 
-A single, tiny change—like replacing a Latin 'a' with a Cyrillic 'а', or adding one Zero-Width Space—will cause a **verifiable change** in the fingerprint (e.g., in the `Script: Cyrillic` counter or the `Ignorables (Invisible)` count). This allows you to find the "slightest changes" that a simple line-by-line 'diff' tool could never see.
+A single, tiny change—like replacing a Latin 'a' with a Cyrillic 'а', or adding one Zero-Width Space—will cause a **verifiable and quantifiable change** in the fingerprint (e.g., in the `Script-Ext: Cyrl` counter or the `Forensic Integrity` flags). This allows you to find the "slightest changes" that a simple line-by-line 'diff' tool, or even the human eye, could never see.
 
 ### The "Great Standardizer": A Core Feature
+
 This "post-clipboard" scope is a **core feature, not a limitation.** The operating system's clipboard and the browser's "paste" event act as the **"Great Standardizer."**
 
 By the time the text appears in the input box, the browser's strict, standards-compliant engine has *already*:
-1.  Interpreted the raw bytes using a (guessed) encoding.
-2.  Decoded the text into a standard JavaScript string.
-3.  Strictly rejected or replaced any invalid byte-level corruption (like overlong UTF-8 sequences).
+1.  Interpreted the raw bytes using a (guessed) encoding (e.g., UTF-8, Windows-1252).
+2.  Decoded the text into a standard, internal JavaScript string (typically UTF-16).
+3.  Strictly rejected or replaced any invalid byte-level corruption (like overlong UTF-8 sequences or lone surrogates).
 
-This allows the tool to focus 100% on its primary mission and **intentionally excludes** a whole class of "raw file" analysis. This tool **does not**:
+This process allows the tool to focus 100% on its primary mission and **intentionally excludes** a whole class of "raw file" analysis. This tool **does not**:
 
 * Analyze raw bytes.
 * Perform encoding guessing (like `charset-normalizer`).
 * Detect overlong UTF-8 sequences or other byte-level corruption.
 
-These tasks are considered "pre-analysis" and are handled by the browser *before* your tool ever receives the text.
+These tasks are considered "pre-analysis" and are brilliantly handled by the browser *before* our tool ever receives the text. We analyze the *result* of that process, not the process itself.
 
 ### Our Focus: Fingerprinting First, Threat-Hunting Second
+
 This tool's philosophy is built on a clear order of operations:
 
 * **IT IS:** A **Post-Clipboard** analyzer that forensically examines the *structural integrity* of a decoded string.
@@ -57,198 +59,222 @@ The entire application is built on two core forensic models that allow it to ana
 
 ### 1. The "Dual-Atom" Analysis Model (The "What")
 
-This tool rejects the idea of a single "character." Instead, it is a **Dual-Atom Analyzer** that allows you to pivot between the two different "atoms" of a string. The "inter-layer mismatch" between these two atoms is the primary vector for structural attacks.
+This tool's architecture is built on the "Dual-Atom" model, which states that any text string is composed of two different "atoms" simultaneously. The "inter-layer mismatch" between these two atoms is the primary vector for structural attacks.
+
+Our UI **does not use a toggle** to switch between these atoms. Instead, it presents the analysis of both layers in **parallel**, providing an immediate, at-a-glance view of any mismatches.
 
 * **Atom 1: The Code Point (Logical Atom)**
-    * **What it is:** The foundational atom. This is the "raw" sequence of Unicode numbers (e.g., `U+0041`) that a database, parser, or compiler "sees."
-    * **Tooling:** This is the default **`Code Points (Raw)`** mode.
-    * **Forensic Value:** This is the *only* atom that can detect invisible deceptions. A Zero-Width Space (`U+200B`) is a full-fledged atom at this layer, as are Bidi control characters. The string `👨‍👩‍👧‍👦` is correctly identified as **7 distinct atoms** (`👨` + `ZWJ` + `👩` + `ZWJ` + `👧` + `ZWJ` + `👦`).
+    * **What it is:** The foundational, logical atom. This is the "raw" sequence of Unicode numbers (e.g., `U+0041`) that a database, parser, or compiler "sees."
+    * **Forensic Value:** This is the *only* atom that can detect invisible deceptions. A Zero-Width Space (`U+200B`) is a full-fledged atom at this layer, as are Bidi control characters. The string `👨‍👩‍👧‍👦` is correctly identified as **7 distinct logical atoms** (`👨` + `ZWJ` + `👩` + `ZWJ` + `👧` + `ZWJ` + `👦`).
 
 * **Atom 2: The Grapheme Cluster (Perceptual Atom)**
-    * **What it is:** The "user-facing" atom. This is the "perceived character" that a human user "sees."
-    * **Tooling:** This is the **`Graphemes (Perceived)`** mode, powered by the browser's native `Intl.Segmenter` (UAX #29).
-    * **Forensic Value:** This layer's entire purpose is to *contrast* with the Code Point layer. It correctly identifies `👨‍👩‍👧‍👦` as **1 single atom**, just as a user would.
+    * **What it is:** The "user-facing," perceptual atom. This is the "character" that a human user "sees" and interacts with.
+    * **Tooling:** This layer is analyzed using the browser's native `Intl.Segmenter` (which implements Unicode Standard Annex #29, or **UAX #29**).
+    * **Forensic Value:** This layer's entire purpose is to *contrast* with the Code Point layer. It correctly identifies `👨‍👩‍👧‍👦` as **1 single perceptual atom**, just as a user would.
 
-The core of the tool's philosophy is that you can only find structural deceptions by comparing the analysis of **Atom 1** against the analysis of **Atom 2**.
+The tool's core forensic power comes from this built-in, parallel comparison. The user can instantly see the mismatch (`Total Code Points: 7` vs. `Total Graphemes: 1`) and immediately prove that invisible structural characters (`ZWJ`) are present.
 
 ### 2. The "Tri-State" Normalization Pipeline (The "How")
 
-This tool uses a powerful **Tri-State Normalization Pipeline** to generate its fingerprint and unmask threats. Most of the tool operates *only* on State 1 to preserve evidence, while the dedicated spoofing module (Module 7) *intentionally* uses States 2 and 3 to unmask deceptions.
+This tool uses a powerful **Tri-State Normalization Pipeline** to generate its fingerprint and (in the future) unmask threats. The entire "Structural Fingerprint" (Group 2) operates *only* on State 1 to preserve evidence. The "Threat-Hunting Analysis" (Group 3) will *intentionally* use States 2 and 3 to unmask deceptions.
 
 * **State 1: Forensic State (Raw String)**
     * **Algorithm:** No normalization. This is the raw, unaltered text as it was pasted.
-    * **Purpose:** **Preserves 100% of evidence.** This is the *only* state that can see the physical difference between a pre-composed `é` and a decomposed `e`+`´`. It's the only state that sees compatibility characters (like `ﬁ`) and case differences.
-    * **Used By:** **Modules 1, 2, 3, 4, 5, 6, and 8.** All core forensic fingerprinting is done on the raw, unaltered data.
+    * **Purpose:** **Preserves 100% of evidence.** This is the *only* state that can see the physical difference between a pre-composed `é` (`U+00E9`) and a decomposed `e`+`´` (`U+0065` `U+0301`). It's the only state that sees compatibility characters (like `ﬁ`) and case differences.
+    * **Used By:** **The entire "Structural Fingerprint" (Group 2).** All core forensic fingerprinting is done on the raw, unaltered data.
 
 * **State 2: Compatibility State (NFKC)**
     * **Algorithm:** `unicodedata.normalize('NFKC', string)`
-    * **Purpose:** **Reveals compatibility spoofing.** This state *intentionally destroys* compatibility evidence (e.g., `ﬁ` → `fi`) to unmask attacks that rely on them.
-    * **Used By:** **Module 7 (Spoofing Analysis)**.
+    * **Purpose:** **Reveals compatibility spoofing.** This state *intentionally destroys* compatibility evidence to unmask attacks. It canonicalizes *and* compat-decomposes.
+    * **Example:** The ligature `ﬁ` (`U+FB01`) is "destroyed" and becomes its two-character equivalent `f` + `i`. A single, full-width `１` (`U+FF11`) becomes a standard `1`.
+    * **Used By:** **Threat-Hunting Analysis (Group 3).**
 
 * **State 3: Canonical Identity State (NFKC Casefold)**
     * **Algorithm:** `unicodedata.normalize('NFKC', string).casefold()`
-    * **Purpose:** **Reveals case-based spoofing.** This is the ultimate "skeleton." It destroys all compatibility *and* case evidence (e.g., `PayPal` → `paypal`) to create the ultimate canonical fingerprint for comparison.
-    * **Used By:** **Module 7 (Spoofing Analysis)**.
+    * **Purpose:** **Reveals case-based spoofing.** This is the ultimate "skeleton." It destroys all compatibility *and* case evidence to create the ultimate canonical fingerprint for comparison. It is the most aggressive normalization specified by the Unicode standard.
+    * **Example:** `PayPal` becomes `paypal`. A Greek `Σ` becomes `σ`.
+    * **Used By:** **Threat-Hunting Analysis (Group 3).**
 
 ---
 
-## 🚀 Features (The Structural Fingerprint)
+## 🏛️ Anatomy of the "Lab Instrument" (The Fingerprint)
 
-The tool's "fingerprint" is generated by a series of modules. Modules 1 and 1.5 are for *general analysis*, while Modules 2-8 are *forensic modules* that only appear when analyzing Code Points.
+The UI is not a flat list of modules but a hierarchical "lab bench" that presents the full fingerprint in a logical, facts-first order. It consists of a sticky navigation list and a main content feed broken into the following anchored sections.
 
-### Module 1: Comprehensive Character Analysis
-This is the main "Dual-Atom" analysis engine. A top-level toggle (`Code Points (Raw)` vs. `Graphemes (Perceived)`) switches the entire analysis unit for this module.
+### Group 1: Analysis Configuration
+This is the "Control Plane" for the instrument.
+* **Text Input:** The main `<textarea>` that receives the "post-clipboard" string.
+* **"Copy Report" Button:** A utility to copy the *entire* structured fingerprint to the clipboard as a human-readable, timestamped text report.
 
-* **1. Code Points (Raw) Mode (Default):** Analyzes every individual Unicode code point. This mode provides two further analysis models:
-    * **Honest (Full Partition) Mode:** 100% standards-compliant.
-        1.  It counts the code points of *all* characters, including complex emoji (`👨‍💻` is tallied as 2 `So` + 1 `Cf`).
-        2.  It *calculates* the `Cn` (Unassigned) category as the mathematical remainder.
-        3.  This **guarantees** `Total Code Points == Sum(All 30 Minor Categories)`. This deterministic guarantee is a core part of the "fingerprint."
-    * **Filtered (Legacy) Mode:** A "cleaner" view.
-        1.  It pre-filters and *removes* all `\p{RGI_Emoji}` sequences before analysis.
-        2.  It uses a regex to count `\p{Cn}`.
-        3.  In this mode, `Total Code Points` will *not* equal the sum of all categories.
+### Group 2.A: Dual-Atom Fingerprint
+This is the "Atomic Count" of the string—the *what*. It provides the core parallel analysis of "Logical" (Code Point) vs. "Perceptual" (Grapheme) atoms.
 
-* **2. Graphemes (Perceived) Mode:** Analyzes "user-perceived characters."
-    1.  Uses the browser's native **`Intl.Segmenter`** (UAX #29) to algorithmically segment the string into **Extended Grapheme Clusters** (e.g., `e` + `◌́` is 1 grapheme; `👨‍👩‍👧‍👦` is 1 grapheme).
-    2.  It then classifies each grapheme based on the `General_Category` of its *first* code point.
-    3.  **Note:** When this mode is active, Modules 2-8 (which are code-point-specific) are hidden to prevent logical contradictions.
+* **Meta-Analysis (Cards):** The highest-level counts.
+    * `Total Code Points`: The total number of logical atoms.
+    * `Total Graphemes`: The total number of perceptual atoms.
+    * `Whitespace (Total)`: Total `\p{White_Space}` characters.
+    * `RGI Emoji Sequences`: Total `\p{Emoji_Presentation}` sequences.
+* **Grapheme Structural Integrity (Cards):** A "Zalgo-detector" that analyzes the *physical structure* of the graphemes themselves.
+    * `Single-Code-Point`: "Simple" graphemes (e.g., `a`).
+    * `Multi-Code-Point`: "Complex" graphemes (e.g., `e`+`´` or `👨‍👩‍👧‍👦`).
+    * `Total Combining Marks`: Total `\p{M}` marks found.
+    * `Max Marks in one Grapheme`: The "Zalgo" score (e.g., `H̊̇ëļļo̧` would have a high score).
+* **Parallel Comparison Tables (Tabs):**
+    * **Overview Tab:** A side-by-side table comparing the Code Point vs. Grapheme counts for the **7 Major Categories** (Letter, Number, Punctuation, etc.).
+    * **Full Breakdown (30) Tab:** A side-by-side table comparing the Code Point vs. Grapheme counts for all **30 Minor Categories** (`Lu`, `Ll`, `Nd`, `Po`, `Cf`, etc.).
 
-### NEW! Module 1.5: Grapheme Forensic Analysis
-This module is **only visible when "Graphemes (Perceived)" mode is active** and provides a "forensically honest" look at the *physical structure* of the grapheme clusters themselves. This is a key "Zalgo detector" and part of the "inter-layer mismatch" analysis.
+### Group 2.B: Structural Shape Fingerprint
+This is the "Structural Arrangement" of the string—the *how*. It analyzes the text as a *sequence* of runs, not just a "bag of atoms."
 
-* **Total Graphemes:** The total count of "user-perceived characters."
-* **Single-Code-Point:** A count of "simple" graphemes that consist of only one code point (e.g., `a`).
-* **Multi-Code-Point:** A count of "complex" graphemes that are clusters of multiple code points (e.g., `e` + `◌́`).
-* **Total Combining Marks:** A `\p{M}` count of all combining marks found *inside* all graphemes.
-* **Max Marks in one Grapheme:** A "Zalgo detector" that reports the highest number of marks found in a single cluster.
-* **Avg. Marks per Grapheme:** A statistical average of marks per grapheme.
-
-### Module 2: Sequence (Run) Analysis
-This module performs a true **run-length analysis** on the string's *code points* (State 1) to analyze its structural shape. This is a critical part of the "fingerprint."
-* **Why it's a fingerprint:** A simple `diff` tool won't see a structural change. This module will. For example, the string "don't" produces a fingerprint of `L-P-L` (Letter, Punctuation, Letter). The "fixed" string "dont" produces a fingerprint of `L` (one run of Letters). This change in the run-count is a deterministic flag of a structural edit.
+* **Why it's a fingerprint:** A simple `diff` tool won't see a structural change. This module will. The string `"don't"` produces a Major Run fingerprint of `L-P-L` (Letter, Punctuation, Letter) and has **3** runs. The "fixed" string `"dont"` produces a fingerprint of `L` and has **1** run. This change in the run-count is a deterministic flag of a structural edit.
 * **Features:**
-    * **Major Categories:** Counts runs of the 7 major categories (e.g., `Hello-100%` is `L` run, `P` run, `N` run, `P` run).
-    * **Minor Categories:** Counts runs of the 30 minor categories (e.g., `Hello-100%` is `Lu` run, `Ll` run, `Pd` run, `Nd` run, `Po` run).
+    * **Sequence (Run) Analysis Table:** A matrix that counts the uninterrupted runs of characters belonging to the **7 Major Categories**.
+    * *(See Roadmap for Minor Category runs)*.
 
-### Module 3: Script Analysis (Simplified)
-This module provides a basic, high-level overview of the script properties of the code points.
-* **Script Counters:** Provides counts for `Latin`, `Common` (punctuation, symbols), and `Inherited` (marks).
-* **`Other` (Calculated):** A calculated counter (`Total - Latin - Common - Inherited`) that serves as a primary detector for any non-Latin text.
-* **🔒 [DEPRECATED] Homograph Detector:** The old `Mixed-Script Runs` feature has been deprecated. It was a "best-guess" regex, which has been replaced by the far superior, data-driven **Module 7**.
+### Group 2.C: Forensic Integrity Fingerprint
+This is the "Flag" report. It provides a detailed, non-judgmental list of all "problematic," invisible, or modifying atoms found in the string. It is a "matrix of facts" that reports both the `Count` and the `Positions` (indices) of each flag.
 
-### Module 4: Forensic Analysis (RegExp-Based)
-This module is dedicated to detecting "invisible," "deceptive," "corrupt," or "problematic" characters based on their deterministic `RegExp` properties. These are the "fast" checks.
-* **Corruption & Error Flags:**
-    * `Unassigned (Void)`: (`Cn` from Module 1) Code points that have not been assigned a meaning by Unicode. A key vector for "future" exploits.
-    * `Surrogates (Broken)`: (`Cs` from Module 1) Remnants of a broken `UTF-16` pair. A clear sign of a corrupt copy/paste.
-    * `Noncharacter`: (`\p{Noncharacter_Code_Point}`) Code points explicitly defined by Unicode as illegal (e.g., `U+FFFF`).
-    * `Deprecated`: (`\p{Deprecated}`) Characters explicitly removed from the standard that should no longer be used.
-* **Invisible Ink Detectors:**
-    * `Ignorables (Invisible)`: (`\p{Default_Ignorable_Code_Point}`) The primary "invisible ink" detector. Catches `U+200B` (Zero Width Space), `U+2060` (Word Joiner), etc.
-    * `Deceptive Spaces`: (`[\p{White_Space}&&[^ \n\r\t]]`) Detects any whitespace atom that is *not* a standard space, tab, or newline (e.g., `U+200A Hair Space`).
-* **Contextual Flags:**
-    * `Private Use (Black Box)`: (`Co` from Module 1) Characters with no public meaning, often used by fonts for custom glyphs (e.g., "Nerd Fonts") or for steganography.
-* **Note on Deprecated Flags:** The `RegExp`-based `Bidi Controls` and `Control (Cc)` counters have been removed from this module. They are now correctly and more accurately identified by the data-driven **Module 6**.
+* **Corruption Flags:**
+    * `Unassigned (Void) (Cn)`: Code points that have not been assigned a meaning by Unicode. A key vector for "future-tense" exploits.
+    * `Surrogates (Broken) (Cs)`: Remnants of a broken `UTF-16` pair. A clear sign of a corrupt copy/paste.
+    * `Deprecated`: `\p{Deprecated}` characters explicitly removed from the standard.
+    * `Noncharacter`: `\p{Noncharacter_Code_Point}` code points explicitly defined as illegal (e.g., `U+FFFF`).
+* **Invisible & Deceptive Flags:**
+    * `Ignorables (Format/Cf)`: A robust, Python-based `unicodedata.category == 'Cf'` check that finds *all* format characters, including `U+200B` (Zero Width Space), `U+2060` (Word Joiner), and all Bidi control characters (e.g., `U+2067` RLI).
+    * `Deceptive Spaces`: A `RegExp` check (`[\p{White_Space}&&[^ \n\r\t]]`) for any whitespace atom that is *not* a standard space, tab, or newline (e.g., `U+200A` Hair Space).
+* **Contextual & Steganography Flags:**
+    * `Private Use (Co)`: "Black box" characters with no public meaning, often used by fonts for custom glyphs (e.g., "Nerd Fonts") or for steganography.
+    * `Variant Base Chars`: Characters that *can be* modified by a variation selector.
+    * `Variation Selectors`: The invisible modifiers themselves (e.g., `U+FE0F` for emoji).
+    * `Steganography (IVS)`: A specific check for **Ideographic Variation Selectors** (`U+E0100`–`U+E01EF`), a known vector for steganography.
+* **Identifier Flags (Data-Driven):**
+    * `Type: ...`: Flags from `IdentifierType.txt`. This replaces old, unreliable `RegExp` checks.
+    * `Type: Not_XID`: Flags characters that are disallowed in identifiers.
+    * `Type: Default_Ignorable`: A data-driven confirmation of ignorable characters.
 
-### Module 5: Full UCD Profile (RegExp-Based)
-This is a high-speed, `RegExp`-based module that provides a high-level UAX #44 profile of the text. It's the "fast" way to check script properties without a full Python deep scan.
-* **Binary Properties:** `Dash (binary)`, `Alphabetic (binary)`, etc.
-* **Script Properties:** `Script: Cyrillic`, `Script: Greek`, `Script: Han`, etc. This provides a precise, standards-based script-by-script breakdown and is a key fingerprinting tool for detecting homograph attacks.
+### Group 2.D: Provenance & Context Fingerprint
+This is the "Origin Story" of the atoms. It provides the deep forensic context of *what* the characters are and *where* they come from.
 
-### Module 6: UCD Deep Scan (Python & Data-Driven)
-This is the most powerful **fingerprinting** module. It performs a deep scan of every code point using Python's `unicodedata` library and data fetched asynchronously from the Unicode Consortium. It finds properties that are impossible to get with `RegExp` alone.
-
-* **Data-Driven Properties (The "Fetched" Atoms):**
-    * **`Block: ...` counters:** Fetches `Blocks.txt`. Provides the "neighborhood" of a character (e.g., `Block: Basic Latin`, `Block: Cyrillic`). A change in this fingerprint is a 100% reliable flag that a cross-script change (like a homograph attack) has occurred.
-    * **`Age: ...` counters:** Fetches `DerivedAge.txt`. Provides the Unicode version a character was introduced in (e.g., `Age: 1.1`, `Age: 9.0`). A key tool for finding modern emoji or symbols.
-    * **`Type: ...` counters:** Fetches `IdentifierType.txt`. This is the new, **unified forensic flag** that replaces old `RegExp` checks. It provides a granular, data-driven reason *why* a character is problematic (e.g., `Type: Not_XID`, `Type: Default_Ignorable`, `Type: Format` (Bidi), `Type: Technical` (Controls)).
-    * **NEW! Steganography Vector (IVS):** Detects **Ideographic Variation Selectors** (`U+E0100`–`U+E01EF`), a known vector for steganography that is invisible to most tools.
-
-* **Numeric & Security Analysis (The "Python" Atoms):**
-    * **`Total Numeric Value:`** A powerful, non-obvious fingerprint. It calculates the *actual mathematical sum* of all numeric characters (e.g., `V` + `¼` = `5.25`). Any change to a number, even a "confusable" one, will change this fingerprint.
-    * **`Num Type: ...` counters:** Deterministically classifies numbers (e.g., `Decimal (Nd)`, `Letter (Nl)`).
-    * **`Mixed-Number Systems:`** A security flag that triggers when digits from different scripts (e.g., Latin `1` and Arabic-Indic `٥`) are mixed.
-
-### Module 7: True Confusable & Spoofing Analysis
-This is the "holy grail" **threat-hunting** module, replacing the old Module 3 `Mixed-Script Runs` detector. It fetches and parses the 700K+ `confusables.txt` file to build a true, standards-based spoofing detector based on the "Tri-State Normalization" model.
-
-* **Hybrid Counter:** The `Confusable Chars` card is powered by a robust Python helper function that checks *both* the `confusables.txt` map (for script-based attacks) **and** performs `NFKC` normalization (for compatibility-based attacks).
-* **NEW! Tri-State Canonical Fingerprints:** To provide the most complete spoofing detection, this module also generates three distinct "fingerprints" of the string:
-    1.  **Forensic State (Raw):** The hash of the raw, pasted string.
-    2.  **Compatibility State (NFKC):** The hash of the `NFKC` normalized string.
-    3.  **Canonical Identity State (NFKC Casefold):** The hash of the `NFKC_Casefold` string.
-    * A mismatch between these hashes deterministically proves the string is using compatibility or case-based obfuscation.
-* **Intelligent Report Generator:** The visual "diff" report finds all physical, uninterrupted runs of Letters, Numbers, Punctuation, and Symbols (`\p{L}+|\p{N}+|\p{P}+|\p{S}+`) and generates a forensic diff for any run containing a character found by the hybrid counter.
-
-### Module 8: Standardized Variant Analysis
-This is a dedicated data-driven module that detects "invisible" characters that modify the appearance of *other* characters.
-* **File Fetched:** `StandardizedVariants.txt`.
-* **Fingerprint:**
-    * `Variant Base Chars:` Counts characters that can be modified (e.g., `0`, `“`).
-    * `Variation Selectors:` Counts the modifying characters themselves (e.g., the invisible `U+FE00` or the emoji selector `U+FE0F`). This is a key tool for detecting subtle changes, like an emoji being "forced" into text-style.
+* **`Script:` & `Script-Ext:` (The "Script Fingerprint")**
+    * This is a sophisticated, two-level analysis. The tool first checks if a character is in `ScriptExtensions.txt`.
+    * If **YES** (it's a "shared" char like `·`), it adds to all its `Script-Ext:` counters (e.g., `Script-Ext: Latn`, `Script-Ext: Grek`).
+    * If **NO** (it's a "simple" char like `a`), it falls back to its primary `Script:` property (e.g., `Script: Latin`).
+    * This provides a 100% accurate, non-redundant script fingerprint and is a primary detector for homograph attacks.
+* **`Block:` Counters:**
+    * Fetches `Blocks.txt` to find the "neighborhood" of a character (e.g., `Block: Basic Latin`, `Block: Cyrillic`). A change in this fingerprint is a 100% reliable flag that a cross-script change (like a homograph attack) has occurred.
+* **`Age:` Counters:**
+    * Fetches `DerivedAge.txt` to show *when* a character was introduced (e.g., `Age: 1.1`, `Age: 15.0`). A key tool for finding modern emoji or symbols.
+* **`Total Numeric Value:`**
+    * A powerful, non-obvious fingerprint. It uses `unicodedata.numeric()` to calculate the *actual mathematical sum* of all numeric characters (e.g., `V` + `¼` = `5.25`). Any change to a number, even a "confusable" one, will change this fingerprint.
+* **`Alphabetic` / `Dash` / etc.:**
+    * High-speed `RegExp` properties from UAX #44.
 
 ---
 
 ## 💻 Tech Stack
 
-The application is a pure, serverless, single-page web application. It uses a hybrid of Python (for orchestration and deep analysis) and JavaScript (for high-performance, standards-compliant parsing).
+The application is a pure, serverless, single-page web application. The logic is cleanly separated for maintainability.
 
-* **HTML5:** Structures the application.
-* **CSS3:** Styles all modules and UI elements.
-* **PyScript (2024.9.1):** Runs Python 3.12 in the browser.
-* **Python 3.12 (via PyScript):**
-    * All logic is contained within a single `<script type="py">` tag.
-    * Orchestrates all application state and DOM manipulation.
-    * Uses `pyodide.ffi.create_proxy` to create event handlers for UI elements.
-    * Manipulates the DOM directly using `from pyscript import document`.
-    * Imports `unicodedata` for powerful, data-driven analysis (NFKC normalization, numeric values, categories).
-    * Imports `asyncio` and `from pyodide.http import pyfetch` for asynchronously fetching Unicode data files (`.txt`) from the server on page load.
-* **JavaScript (via PyScript `window` object):**
-    * Python leverages the browser's JavaScript engines to perform all deterministic analysis:
-    * **`RegExp` engine:** Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{Script=Cyrillic}`, `\p{L}+|\p{N}+|\p{P}+|\p{S}+`).
+* **`index.html`:** A single, semantic HTML5 file that defines the "skeleton" of the lab instrument. It uses ARIA roles for all components to ensure full accessibility.
+* **`styles.css`:** A single, responsive CSS3 stylesheet that provides the clean, information-dense "lab" aesthetic.
+* **`pyscript.toml`:** The PyScript configuration file. It lists the required Python packages (like `pyodide-http`) and, crucially, the list of all Unicode data files (`Blocks.txt`, etc.) to be pre-fetched.
+* **`app.py`:** The Python "brain." This file contains all the application's logic.
+    * It imports `unicodedata`, `asyncio`, and `pyfetch`.
+    * It defines all computation functions (e.g., `compute_code_point_stats`).
+    * It defines all rendering functions (e.g., `render_matrix_table`).
+    * It contains the main `update_all` orchestrator.
+* **`ui-glue.js`:** The JavaScript "nerves." A lightweight, dependency-free script that manages high-performance, accessibility-driven UI components, such as the ARIA tab controls and the "Copy Report" button logic.
+* **Browser-Native APIs:**
+    * **`RegExp` engine:** Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{Script=Cyrillic}`).
     * **`Intl.Segmenter` API:** Used to perform UAX #29-compliant grapheme cluster segmentation.
 * **Google Analytics (GA4) & Google Tag Manager (GTM):** For website traffic analysis.
 * **Google Consent Mode v2:** Implements a "default-deny" state for privacy.
 
 ---
 
-## ⚙️ How It Works
+## ⚙️ How It Works (The New Architecture)
 
-### Unicode-Aware App Logic
+1.  **On Page Load:**
+    * `index.html` and `styles.css` render the skeleton.
+    * `pyscript.toml` is read.
+    * `app.py` begins to load and calls `asyncio.ensure_future(load_unicode_data())`.
+    * The `load_unicode_data` function uses `pyfetch` to fetch all data files (`Blocks.txt`, `ScriptExtensions.txt`, etc.) in parallel. These are parsed into efficient Python data structures.
+    * `ui-glue.js` runs, attaching its event listeners to the "Copy Report" button and the Tab controls.
+2.  **On Data Ready:**
+    * `load_unicode_data` finishes and updates the status line to "Ready."
+3.  **On User Input:**
+    * The user types or pastes text into the `<textarea>`.
+    * The `input` event triggers the main `update_all` function in `app.py`.
+4.  **`update_all` Orchestration:**
+    * The `update_all` function executes its main logic, which is a single, sequential pipeline (no complex toggles).
+    * It calls `compute_code_point_stats(t)` to get the logical atom counts.
+    * It calls `compute_grapheme_stats(t)` to get the perceptual atom counts.
+    * It calls `compute_sequence_stats(t)` to get the Major run counts.
+    * It calls `compute_forensic_stats_with_positions(t)` to get all integrity flags.
+    * It calls `compute_provenance_stats(t)` to get all script, block, and age data.
+5.  **Render Data:**
+    * The results from all `compute` functions are passed to the `render` functions.
+    * `render_cards`, `render_parallel_table`, and `render_matrix_table` build HTML strings.
+    * These HTML strings are injected into their respective `<tbody>` or `<div>` elements (e.g., `#major-parallel-body`, `#forensic-matrix-body`).
+    * The UI updates in a single, efficient paint.
 
-1.  **On page load,** the Python `asyncio.ensure_future(load_unicode_data())` function is called. This asynchronously fetches and parses all required Unicode data files (`confusables.txt`, `Blocks.txt`, `IdentifierType.txt`, `StandardizedVariants.txt`, `DerivedAge.txt`, `ScriptExtensions.txt`) in parallel, populating the global Python dictionaries and sets.
-2.  A user types or pastes text into the `<textarea>`.
-3.  The `py-input="update_all"` attribute triggers the Python `update_all` function on every keypress.
-4.  The `update_all` function reads the entire UI state:
-    * `is_grapheme_mode`: (Bool) The state of the "Unit of Analysis" toggle.
-    * `is_honest_mode`: (Bool) The state of the "Analysis Mode" sub-toggle.
-    * `is_minor_seq`: (Bool) The state of the "Sequence (Run)" toggle.
-    * `active_tab`: (String) Which tab is currently open.
-5.  The `update_all` function then executes its main logic:
-    * **IF `is_grapheme_mode == True`:**
-        1.  Calls `compute_grapheme_stats(t)` (which uses `Intl.Segmenter`).
-        2.  Calls `render_stats` to update Module 1.
-        3.  Shows Module 1.5 (Grapheme Forensics).
-        4.  Hides Modules 2, 3, 4, 5, 6, 7, and 8.
-    * **ELSE (`is_grapheme_mode == False`):**
-        1.  Hides Module 1.5 (Grapheme Forensics).
-        2.  Shows Modules 2, 3, 4, 5, 6, 7, and 8.
-        3.  Calls `compute_comprehensive_stats(t, is_honest_mode)` to run **Module 1**. This generates the crucial `minor_stats` dictionary.
-        4.  Calls `compute_sequence_stats(t, is_minor_seq)` to run **Module 2**.
-        5.  Calls `compute_script_stats(t, is_honest_mode)` to run **Module 3**.
-        6.  Calls `compute_forensic_stats(t, is_honest_mode, minor_stats)` to run **Module 4**, efficiently passing in the `minor_stats` (for `Cn`, `Cs`, `Co`) from Module 1.
-        7.  Calls `compute_uax44_stats(t, is_honest_mode)` to run **Module 5**.
-        8.  Calls `compute_ucd_deep_scan(t, is_honest_mode)` to run **Module 6**.
-        9.  Calls `compute_confusable_stats(t, is_honest_mode)` to run **Module 7**.
-        10. Calls `compute_variant_stats(t, is_honest_mode)` to run **Module 8**.
-        11. Calls `render_stats` to inject all results into the appropriate UI sections.
+---
 
-### Analytics & Privacy Logic
+## 🚀 Project Status & Roadmap
 
-1.  On page load, Google Tag Manager and the GA4 tag are loaded.
-2.  Crucially, **before** the tags fully initialize, Google Consent Mode is set to **'denied'** by default for all tracking categories (`analytics_storage`, `ad_storage`, etc.).
-3.  Because the application does not include a cookie/consent banner for users to click "Accept," this **'denied' state is permanent**, and no user-specific analytics data is collected.
+### ✅ Completed: The Structural Fingerprint (Group 2)
+The primary goal is complete. The tool successfully generates a deterministic, multi-layered fingerprint for any pasted text. This includes:
+* **Dual-Atom Analysis:** Fully implemented with parallel comparison.
+* **Forensic Integrity:** Fully implemented, including positions.
+* **Provenance & Context:** Fully implemented, including the advanced `ScriptExtensions` parser.
+
+### ▶️ To-Do: Remaining Work
+The project's remaining work is clearly defined in two tasks: completing the last 1% of the "Fingerprint" and building the entire "Threat-Hunting" module.
+
+#### Task 1: Fingerprint Completion (Minor Shape Runs)
+This is the final, missing piece of the Group 2 "Structural Fingerprint."
+
+* **What it is:** The `Structural Shape Fingerprint` section currently shows "Major Run Counters" (e.g., `L-Run: 3`). We need to add a toggle to allow the user to see the "Minor Run Counters" (e.g., `Lu-Run: 1`, `Ll-Run: 2`).
+* **Why it's a fingerprint:** The string `Aa` has one `L-Run`. The string `aA` *also* has one `L-Run`. Only the "Minor Run" fingerprint can tell them apart: `Aa` is `Lu-Run: 1, Ll-Run: 1` (2 runs), while `aA` is `Ll-Run: 1, Lu-Run: 1` (2 runs). (Wait, no, that's a bad example... `Aa` is `Lu-Ll` and `aA` is `Ll-Lu`. Both are 2 runs. A better example: `a.a` is `Ll-Po-Ll`. `a'a` is `Ll-Pf-Ll`. The Major run is `L-P-L` for both, but the Minor run fingerprint is different. This is the last piece of structural evidence.)
+* **Implementation Plan:**
+    1.  **`index.html`:** Add a simple toggle switch UI (HTML+CSS) inside the `Structural Shape Fingerprint` section, just above the table.
+    2.  **`app.py`:**
+        * Modify `compute_sequence_stats` to accept a boolean, `is_minor_mode`.
+        * If `is_minor_mode` is true, it will use the `TEST_MINOR` regexes to find runs.
+        * Modify `render_matrix_table` to check if it's rendering for the "shape" matrix in "minor" mode. If so, it must use the `ALIASES` dictionary to convert keys like `Lu` to "Uppercase Letter" for the table.
+    3.  **`app.py` / `ui-glue.js`:** Add an `input` event listener to the new toggle that calls the main `update_all` function.
+
+#### Task 2: Threat-Hunting Analysis (Group 3)
+This is the entire secondary goal of the application. It involves building the last, currently empty, section.
+
+* **Sub-Task 2.A: The "Threat Alert" (Hybrid Counter)**
+    * **Goal:** Create the main `Confusable Chars` counter.
+    * **Plan:**
+        1.  Add `confusables.txt` to the `[[fetch]]` list in `pyscript.toml`.
+        2.  Write a new parser, `_parse_confusables`, in `app.py` to load the 700K+ mappings into the `DATA_STORES["Confusables"]` dictionary.
+        3.  Write a new `compute_threat_stats` function in `app.py`.
+        4.  This function's first job will be to iterate through the string and count any character `c` where `DATA_STORES["Confusables"].get(ord(c))` is not `None` OR where `unicodedata.normalize('NFKC', c) != c`.
+        5.  This count will be rendered into a new card in the "Threat-Hunting Analysis" section.
+
+* **Sub-Task 2.B: The "Canonical Identity" (Tri-State Hashes)**
+    * **Goal:** Prove obfuscation is happening by showing a hash mismatch.
+    * **Plan:**
+        1.  Add `import hashlib` to `app.py`.
+        2.  The new `compute_threat_stats` function will also generate three SHA-256 hashes:
+            * `State 1 (Forensic):` `hashlib.sha256(raw_string.encode('utf-8')).hexdigest()`
+            * `State 2 (Compatibility):` `hashlib.sha256(unicodedata.normalize('NFKC', raw_string).encode('utf-8')).hexdigest()`
+            * `State 3 (Canonical):` `hashlib.sha256(unicodedata.normalize('NFKC', raw_string).casefold().encode('utf-8')).hexdigest()`
+        3.  **UI:** Add three `<pre>` tags to the `index.html` (in the "Threat-Hunting" section) to display these three hashes.
+        4.  **UI:** Add logic to show a `⚠️` warning if `hash1 != hash2` (compatibility characters found) or `hash2 != hash3` (case-variant characters found).
+
+* **Sub-Task 2.C: The "Evidence Report" (Visual Diff)**
+    * **Goal:** Provide the human-readable proof of *where* the spoofing is.
+    * **Plan:**
+        1.  The `compute_threat_stats` function will use the `REGEX_MATCHER["LNPS_Runs"]` regex (which we already have in `app.py`) to find all runs of Letters, Numbers, Punctuation, and Symbols.
+        2.  It will iterate over each run. If a run contains a character that triggered the "Hybrid Counter" (from 2.A), it will build a "diff" object.
+        3.  This diff object will contain the original run (e.g., `раy`) and the "skeleton" run (e.g., `pay`).
+        4.  **UI:** A new `render_confusable_report` function will be created in `app.py`.
+        5.  This function will take the list of diff objects and generate HTML to be injected into a `<pre id="confusable-report">` element in the "Threat-Hunting" section, showing the classic `раy → pay` output.
 
 ---
 
