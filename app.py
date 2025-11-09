@@ -568,17 +568,70 @@ def compute_provenance_stats(t: str):
         if count > 0:
             provenance_stats[key] = count
 
-    # 2. Deep Scan Stats (if data is loaded)
+    # --- THIS IS THE FIX ---
+    # 2. Run the fast RegExp matchers for primary scripts
+    #    (This is our "fallback" logic, and it's much faster and works)
+    for key in [
+        "Script: Cyrillic", "Script: Greek", "Script: Han", "Script: Arabic", 
+        "Script: Hebrew", "Script: Latin", "Script: Common", "Script: Inherited"
+    ]:
+        _, count = _find_matches_with_indices(key, t)
+        if count > 0:
+            provenance_stats[key] = count
+    # --- END OF REGEX BLOCK ---
+
+    # 3. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
-        # Add placeholders for regex-based scripts if data is missing
-        for key in [
-            "Script: Cyrillic", "Script: Greek", "Script: Han", "Script: Arabic", 
-            "Script: Hebrew", "Script: Latin", "Script: Common", "Script: Inherited"
-        ]:
-            _, count = _find_matches_with_indices(key, t)
-            if count > 0:
-                provenance_stats[f"{key} (RegExp)"] = count
         return provenance_stats
+
+    numeric_total_value = 0
+    number_script_zeros = set()
+
+    deep_stats = {} # for Block, Age, Type, etc.
+
+    # We loop char-by-char ONLY for the data-file properties
+    for char in t:
+        cp = ord(char)
+
+        # --- ScriptExtensions (This logic is correct) ---
+        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+        if script_ext_val:
+            scripts = script_ext_val.split()
+            for script in scripts:
+                key = f"Script-Ext: {script}"
+                deep_stats[key] = deep_stats.get(key, 0) + 1
+        # --- END ScriptExtensions ---
+
+        # Block, Age, Type
+        block_name = _find_in_ranges(cp, "Blocks")
+        if block_name:
+            key = f"Block: {block_name}"
+            deep_stats[key] = deep_stats.get(key, 0) + 1
+
+        age = _find_in_ranges(cp, "Age")
+        if age:
+            key = f"Age: {age}"
+            deep_stats[key] = deep_stats.get(key, 0) + 1
+
+        # Numeric Properties
+        try:
+            value = unicodedata.numeric(char)
+            numeric_total_value += value
+            gc = unicodedata.category(char)
+            if gc == "Nd":
+                zero_code_point = ord(char) - int(value)
+                number_script_zeros.add(zero_code_point)
+        except (ValueError, TypeError):
+            pass
+
+    if numeric_total_value > 0:
+        deep_stats["Total Numeric Value"] = round(numeric_total_value, 4)
+    if len(number_script_zeros) > 1:
+        deep_stats["Mixed-Number Systems"] = len(number_script_zeros)
+
+    # Combine fast and deep stats
+    provenance_stats.update(deep_stats)
+    return provenance_stats
 
     numeric_total_value = 0
     number_script_zeros = set()
