@@ -31,7 +31,7 @@ MINOR_CATEGORIES_29 = {
 
 # Regexes for finding *all* matches and their indices (must be 'gu')
 REGEX_MATCHER = {
-    "RGI Emoji": window.RegExp.new(r"\p{RGI_Emoji}", "guv"), # 'v' for property intersections
+    "RGI Emoji": window.RegExp.new(r"\p{RGI_Emoji}", "gu"), # 'v' for property intersections
     "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
     "Marks": window.RegExp.new(r"\p{M}", "gu"),
     
@@ -39,7 +39,7 @@ REGEX_MATCHER = {
     "Deprecated": window.RegExp.new(r"\p{Deprecated}", "gu"),
     "Noncharacter": window.RegExp.new(r"\p{Noncharacter_Code_Point}", "gu"),
     "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
-    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "guv"),
+    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "gu"),
     
     # UAX #44 Properties (for Module 2.D)
     "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
