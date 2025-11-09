@@ -317,7 +317,7 @@ def get_char_type(char, is_minor):
     Classifies a single char as a Major or Minor category.
     (This logic is from the original, working index.html)
     """
-    testers = TEST_MINOR if is_minor else TEST_MAJOR
+    testers = TEST_MINOR if is_minor else MAJOR_CATEGORIES_TEST
     for key, regex in testers.items():
         if regex.test(char):
             return key
