@@ -31,7 +31,7 @@ MINOR_CATEGORIES_29 = {
 
 # Regexes for finding *all* matches and their indices (must be 'gu')
 REGEX_MATCHER = {
-    "RGI Emoji": window.RegExp.new(r"\p{RGI_Emoji}", "gu"), # 'v' for property intersections
+    "RGI Emoji": window.RegExp.new(r"\p{Emoji_Presentation}", "gu"), # Swapped to \p{Emoji_Presentation} for broad support
     "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
     "Marks": window.RegExp.new(r"\p{M}", "gu"),
     
