@@ -5,7 +5,7 @@
  * in the Text...tics application. It is designed to be lightweight and work
  * independently of the PyScript-driven analysis logic.
  *
- * Its primary responsibility is managing the "Dual-Atom Fingerprint" tabs.
+ * Its primary responsibility is managing the "Dual-Atom Profile" tabs.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -196,12 +196,12 @@ function buildStructuredReport() {
   };
 
   // --- 1. Build the Report ---
-  report.push('--- Text...tics Structural Fingerprint ---');
+  report.push('--- Text...tics Structural Profile ---');
   report.push(`Timestamp: ${new Date().toISOString()}`);
   report.push('\n[ Analysis Configuration ]');
   report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
 
-  // --- 2. Dual-Atom Fingerprint ---
+  // --- 2. Dual-Atom Profile ---
   report.push('\n[ Dual-Atom Fingerprint ]');
   report.push(...parseCards('meta-totals-cards'));
   report.push(...parseCards('grapheme-integrity-cards'));
