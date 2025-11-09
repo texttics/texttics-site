@@ -676,6 +676,10 @@ CONFUSABLES_MAP = {} # dict[int, str] mapping code point -> skeleton string
 VARIANT_BASE_CHARS = set() # Holds chars that can be varied (e.g., U+263A)
 VARIATION_SELECTORS = set() # Holds the selectors themselves (e.g., U+FE0F)\
 
+# --- CRITICAL: Loading State Machine (PENDING -> LOADING -> READY -> FAILED) ---
+# This prevents data-driven modules from running with partial/corrupted state
+LOADING_STATE = "PENDING"  # States: "PENDING", "LOADING", "READY", "FAILED"
+    
 # --- Display-only overrides (not part of UTS #39) ---
 # We use these ONLY for the visual report, so users see the ASCII-ish
 # intent of some symbols that the spec doesn't map to ASCII.
@@ -913,6 +917,7 @@ def parse_standardized_variants(txt: str):
     
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
+    global LOADING_STATE  # CRITICAL: Must declare global to modify state
     
     async def fetch_file(filename):
         """Helper to fetch a file and return its text or None."""
@@ -927,61 +932,45 @@ async def load_unicode_data():
             print(f"Error loading {filename}: {e}")
             return None
 
+    LOADING_STATE = "LOADING"  # Set to LOADING before any async work
+    print(f"Unicode data loading started. State: {LOADING_STATE}")
+    
     try:
-        # --- NEW: Fetch all files in parallel ---
+        # Fetch all files in parallel
         filenames = ["IdentifierStatus.txt", "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "confusables.txt", "StandardizedVariants.txt"]
         print("Fetching Unicode data files...")
         results = await asyncio.gather(*[fetch_file(f) for f in filenames])
         
         id_status_txt, blocks_txt, derived_age_txt, id_type_txt, confusables_txt, standardized_variants_txt = results
         
-        # --- Parse each file if it loaded ---
-        if id_status_txt:
-            if "Identifier_Status" in id_status_txt:
-                parse_identifier_status(id_status_txt)
-            else:
-                print("IdentifierStatus.txt content invalid.")
-
-        if blocks_txt:
-            if "Block" in blocks_txt:
-                parse_blocks(blocks_txt)
-            else:
-                print("Blocks.txt content invalid.")
+        # Parse each file if it loaded
+        if id_status_txt and "Identifier_Status" in id_status_txt:
+            parse_identifier_status(id_status_txt)
         
-        if derived_age_txt:
-            if "Age" in derived_age_txt:
-                parse_derived_age(derived_age_txt)
-            else:
-                print("DerivedAge.txt content invalid.")
-
-    # --- NEW: Parse IdentifierType.txt ---
-        if id_type_txt:
-            if "Identifier_Type" in id_type_txt: # Sanity check
-                parse_identifier_type(id_type_txt)
-            else:
-                print("IdentifierType.txt content invalid.")
-
-    # --- NEW: Parse confusables.txt ---
-        if confusables_txt:
-            if "confusables" in confusables_txt: # Sanity check
-                parse_confusables(confusables_txt)
-            else:
-                print("confusables.txt content invalid.")
-
-    # --- NEW: Parse StandardizedVariants.txt ---
-        if standardized_variants_txt:
-            if "# StandardizedVariants" in standardized_variants_txt: # Check for the file header
-                parse_standardized_variants(standardized_variants_txt)
-            else:
-                print("StandardizedVariants.txt content invalid.")
+        if blocks_txt and "Block" in blocks_txt:
+            parse_blocks(blocks_txt)
+        
+        if derived_age_txt and "Age" in derived_age_txt:
+            parse_derived_age(derived_age_txt)
+        
+        if id_type_txt and "Identifier_Type" in id_type_txt:
+            parse_identifier_type(id_type_txt)
+        
+        if confusables_txt and "confusables" in confusables_txt:
+            parse_confusables(confusables_txt)
+        
+        if standardized_variants_txt and "# StandardizedVariants" in standardized_variants_txt:
+            parse_standardized_variants(standardized_variants_txt)
     
-        # --- Final step: Trigger UI update ---
-        # This call is now crucial as it runs after all data is parsed
-        print("Unicode data loaded. Triggering UI update.")
-        update_all() 
-
+        # SUCCESS: Set to READY and trigger final UI update
+        LOADING_STATE = "READY"
+        print(f"Unicode data loaded successfully. State: {LOADING_STATE}")
+        update_all()  # Re-render with ready state
+        
     except Exception as e:
-        print(f"An error occurred during parallel data loading: {e}")
+        LOADING_STATE = "FAILED"
+        print(f"CRITICAL: Unicode data loading failed. State: {LOADING_STATE}. Error: {e}")
+        update_all()  # Re-render to show failure state
 
 # --- End of replacement block --
     
@@ -1006,6 +995,39 @@ def get_char_type(char, is_minor):
                 return key
     return "NONE"
 
+def _is_trusted_input_source(t: str) -> bool:
+    """
+    Determines if input is from a trusted source (keyboard) vs. untrusted (paste).
+    ASCII-only input with no invisible characters is trusted.
+    """
+    # Must have at least one character
+    if not t:
+        return False
+    
+    # Check 1: All characters must be ASCII (ord < 128)
+    # Check 2: No invisible/deceptive characters present
+    # Check 3: No Bidi controls or format characters
+    for char in t:
+        cp = ord(char)
+        if cp >= 128:  # Non-ASCII = untrusted
+            return False
+        if cp in INVISIBLE_DETECTORS:  # Has invisible chars = untrusted
+            return False
+        if unicodedata.category(char) in ("Cf", "Co", "Cs", "Cn"):  # Format/Private/Surrogate/Unassigned
+            return False
+    
+    return True
+
+# Pre-compute invisible detectors for performance
+INVISIBLE_DETECTORS = set()
+def _init_invisible_detectors():
+    """Initialize set of code points that are invisible/deceptive."""
+    global INVISIBLE_DETECTORS
+    # Add Default Ignorable Code Points
+    regex = window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu")
+    INVISIBLE_DETECTORS.update(ord(c) for c in (window.String.prototype.match.call("".join([chr(i) for i in range(0x110000)]), regex) or []))
+
+    
 def get_state():
     """Gets the UI state from the hidden div."""
     try:
@@ -1013,6 +1035,7 @@ def get_state():
     except:
         return {"active_tab": "summary"} # Default state
 
+    
 def set_state(key, value):
     """Sets a value in the UI state."""
     state = get_state()
@@ -1219,28 +1242,40 @@ def compute_grapheme_stats(t: str):
     # Return all 4 data packages
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
     
-def _get_confusable_skeleton(char: str, include_custom: bool = False) -> str | None:
+def _get_confusable_skeleton(char: str, include_custom: bool = False, is_trusted_input: bool = False) -> str | None:
     """
     Return the skeleton for `char` or None if not confusable.
-    When include_custom=True, also apply our display-only overrides.
+    When include_custom=True, also apply display-only overrides.
+    When is_trusted_input=True, suppress false positives on ASCII.
     """
+    
+    # --- PHILOSOPHICAL FIX: ASCII keyboard input is not suspicious ---
+    # If input is trusted (pure ASCII keyboard), confusables are benign
+    if is_trusted_input and ord(char) < 128:
+        return None  # Never flag standard keyboard characters
 
-    # (A) Optional display-only overrides (do NOT affect spec-accurate counts)
+    # (A) Optional display-only overrides (for visual clarity, not threat detection)
     if include_custom:
         sk = CUSTOM_CONFUSABLES.get(char)
         if sk:
             return sk
 
-    # (B) Spec data first (fast)
+    # (B) Spec data from confusables.txt (only for non-ASCII or untrusted)
     sk = CONFUSABLES_MAP.get(ord(char))
     if sk:
+        # Don't flag if skeleton is also ASCII in trusted context
+        if is_trusted_input and all(ord(c) < 128 for c in sk):
+            return None
         return sk
 
-    # (C) Compatibility fallback (width/compat chars; still spec-compliant)
+    # (C) Compatibility fallback (NFKC normalization)
     try:
         if unicodedata.category(char)[0] in ("L", "N", "S", "P"):
             nfkc = unicodedata.normalize('NFKC', char)
             if nfkc != char:
+                # Suppress ASCII->ASCII mappings in trusted context
+                if is_trusted_input and all(ord(c) < 128 for c in nfkc):
+                    return None
                 return nfkc
     except Exception:
         pass
@@ -1294,10 +1329,11 @@ def _iter_confusable_segments(t: str):
 
 
     
-def compute_confusable_stats(t: str, is_honest_mode: bool):
+def compute_confusable_stats(t: str, is_honest_mode: bool, is_trusted_input: bool = False):
     """
     Module 7: Confusable analysis with per-character diffs.
     Counting and reporting use the SAME logic (map + NFKC).
+    is_trusted_input=True suppresses false positives on standard keyboard input.
     """
     if not t:
         return {}, []
@@ -1306,7 +1342,8 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     text_to_scan = t if is_honest_mode else window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
     confusable_count = sum(
         1 for ch in text_to_scan
-        if _get_confusable_skeleton(ch, include_custom=False) is not None
+        if _get_confusable_skeleton(ch, include_custom=False,
+        is_trusted_input=is_trusted_input) is not None
     )
     stats = {"Confusable Chars": confusable_count}
 
@@ -1332,7 +1369,7 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
     
         # IMPORTANT: we walk every char in the run and keep unchanged chars
         for ch in run_py:
-            skel = _get_confusable_skeleton(ch)  # returns None or a (possibly multi-char) skeleton
+            skel = _get_confusable_skeleton(ch, is_trusted_input=is_trusted_input)
             if skel is None:
                 char_diffs.append({"orig": ch, "skel": ch, "changed": False})
             else:
@@ -1359,35 +1396,46 @@ def compute_confusable_stats(t: str, is_honest_mode: bool):
 def compute_variant_stats(t: str, is_honest_mode: bool):
     """Module 8: Counts variant base chars and selectors."""
     
-    if (not VARIANT_BASE_CHARS and not VARIATION_SELECTORS) or not t:
+    # Prevent running if data isn't loaded
+    if LOADING_STATE != "READY" or (not VARIANT_BASE_CHARS and not VARIATION_SELECTORS) or not t:
         return {}
 
-    text_to_scan = t
-    if not is_honest_mode:
-        # Respect the legacy filter mode
-        text_to_scan = window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], "")
+    # CRITICAL: Enforce string type and ensure emoji removal returns a string
+    if is_honest_mode:
+        text_to_scan = str(t)  # Explicit type enforcement
+    else:
+        # Ensure replace() returns a string, not an array
+        text_to_scan = str(window.String.prototype.replace.call(t, RE_DERIVED["Emoji"], ""))
 
     base_count = 0
     selector_count = 0
     
-    # --- DEBUGGING: Print the size of the sets ---
-    # print(f"Compute: Base set size: {len(VARIANT_BASE_CHARS)}")
-    # print(f"Compute: Selector set size: {len(VARIATION_SELECTORS)}")
+    # DEBUG: Verify loop executes correctly (uncomment if count is still wrong)
+    # print(f"Scanning '{text_to_scan}' of length {len(text_to_scan)}")
     
-    for char in text_to_scan:
+    # Iterate over each character individually
+    for i in range(len(text_to_scan)):
+        char = text_to_scan[i]  # Access by index to guarantee iteration
         cp = ord(char)
+        
         if cp in VARIANT_BASE_CHARS:
             base_count += 1
-            # print(f"Found base char: {char}")
-            
+            # DEBUG: Uncomment to see each match
+            # print(f"  [{i}] {repr(char)} U+{cp:04X} is a variant base")
+        
         if cp in VARIATION_SELECTORS:
             selector_count += 1
-            # print(f"Found selector: U+{cp:04X}")
-            
+            # DEBUG: Uncomment to see selectors
+            # print(f"  [{i}] U+{cp:04X} is a variation selector")
+    
     stats = {
         "Variant Base Chars": base_count,
         "Variation Selectors": selector_count
     }
+    
+    # DEBUG: Verify final count
+    # print(f"Final count: {base_count} base chars, {selector_count} selectors")
+    
     return stats
     
 # NEW: FORENSIC ANALYSIS FUNCTION
@@ -1518,17 +1566,22 @@ def render_stats(stats_dict, element_id, class_name="card"):
     if element:
         element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
 
-def render_minor_stats(stats_dict, element_id):
-    """Generates and injects HTML for the 30-category breakdown."""
-    html = []
-    for k, v in stats_dict.items():
-        if v > 0:
-            alias = ALIASES.get(k, "Unknown")
-            html.append(f'<div class="minor-card"><div class="minor-key">{k}</div><div class="minor-alias" title="{alias}">{alias}</div><div class="minor-val">{v}</div></div>')
+def render_loading_state():
+    """Renders loading/failure messages for data-dependent modules."""
+    loading_html = "<p style='padding: 1rem; color: #3b82f6; font-style: italic;'>Loading Unicode data files...</p>"
+    error_html = "<p style='padding: 1rem; color: #dc2626; font-weight: bold;'>⚠️ Error: Failed to load Unicode data. Please refresh the page.</p>"
     
-    element = document.getElementById(element_id)
-    if element:
-        element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
+    # Modules 6, 7, 8 depend on external data
+    target_ids = ["ucd-deep-scan-stats", "confusable-stats", "intentional-stats-output"]
+    
+    for element_id in target_ids:
+        element = document.getElementById(element_id)
+        if element:
+            if LOADING_STATE == "LOADING":
+                element.innerHTML = loading_html
+            elif LOADING_STATE == "FAILED":
+                element.innerHTML = error_html
+            # If READY, do nothing - let update_all populate with real data
 
 def _select_tab_internal(tab_name):
     """Internal logic for switching tabs."""
@@ -1686,26 +1739,29 @@ def update_all(event=None):
         uax44_stats = compute_uax44_stats(t, is_honest_mode)
         render_stats(uax44_stats, "uax44-stats", class_name="card")
 
-        # Run Module 6 (Python Deep Scan)
-        security_flags, numeric_types, total_value, block_stats, age_stats, id_types = compute_ucd_deep_scan(t, is_honest_mode) # <-- Phase 2 Refactor
-        
-        total_value_dict = {}
-        if total_value > 0 or "Num Type: Decimal (Nd)" in numeric_types or "Num Type: Letter (Nl)" in numeric_types or "Num Type: Other (No)" in numeric_types:
-            total_value_dict = {"Total Numeric Value": total_value}
+        # --- CRITICAL: Only run data-dependent modules if data is READY ---
+        if LOADING_STATE == "READY":
+            # Run Module 6 (Python Deep Scan)
+            security_flags, numeric_types, total_value, block_stats, age_stats, id_types = compute_ucd_deep_scan(t, is_honest_mode)
             
-        combined_deep_scan_stats = {
-            **security_flags,       # (Holds "Mixed-Number Systems")
-            **id_types,             # <-- NEW: Phase 2 Refactor
-            **total_value_dict, 
-            **numeric_types,
-            **age_stats,            # <-- NEW: Phase 1
-            **block_stats           # <-- NEW: Phase 1
-        }
-    
-        render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
+            total_value_dict = {}
+            if total_value > 0 or any(nt in numeric_types for nt in ["Num Type: Decimal (Nd)", "Num Type: Letter (Nl)", "Num Type: Other (No)"]):
+                total_value_dict = {"Total Numeric Value": total_value}
+                
+            combined_deep_scan_stats = {
+                **security_flags,       # (Holds "Mixed-Number Systems")
+                **id_types,
+                **total_value_dict, 
+                **numeric_types,
+                **age_stats,
+                **block_stats
+            }
         
-        # --- Run Module 7 (Confusables) ---
-        confusable_stats, runs = compute_confusable_stats(t, is_honest_mode)
+            render_stats(combined_deep_scan_stats, "ucd-deep-scan-stats", class_name="card")
+        
+        # Run Module 7 (Confusables) - now with trusted input context
+        is_trusted = _is_trusted_input_source(t)  # See Fix 3 below
+        confusable_stats, runs = compute_confusable_stats(t, is_honest_mode, is_trusted)
         render_stats(confusable_stats, "confusable-stats")
 
         # --- Build the visual report (per-code-point; supports multi-char skeletons) ---
@@ -1744,7 +1800,10 @@ def update_all(event=None):
         # --- Run Module 8 (Standardized Variant Analysis) ---
         variant_stats = compute_variant_stats(t, is_honest_mode)
         render_stats(variant_stats, "intentional-stats-output")
-
+        document.getElementById("intentional-skeleton-output").style.display = "none"
+        else:
+        # Data not ready - render appropriate message
+        render_loading_state()
     
     # --- Final UI sync ---
     _select_tab_internal(active_tab)
