@@ -805,9 +805,31 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             count = data.get('count', 0)
             if count == 0:
                 continue
-            positions = ", ".join(data.get('positions', []))
+            
+            position_list = data.get('positions', [])
+            total_positions = len(position_list)
+            
+            # --- New Logic: Use <details> for long lists ---
+            POSITION_THRESHOLD = 5 
+            
+            if total_positions > POSITION_THRESHOLD:
+                visible_positions = ", ".join(position_list[:POSITION_THRESHOLD])
+                # We put the rest of the list in a simple <div> inside <details>
+                # It will be hidden by default but still copied
+                hidden_positions = ", ".join(position_list[POSITION_THRESHOLD:])
+                
+                position_html = (
+                    f'<details style="cursor: pointer;">'
+                    f'<summary>{visible_positions} ... ({total_positions} total)</summary>'
+                    f'<div style="padding-top: 8px; user-select: all;">{hidden_positions}</div>'
+                    f'</details>'
+                )
+            else:
+                position_html = ", ".join(position_list)
+            # --- End of New Logic ---
+
             html.append(
-                f'<tr><th scope="row">{label}</th><td>{count}</td><td>{positions}</td></tr>'
+                f'<tr><th scope="row">{label}</th><td>{count}</td><td>{position_html}</td></tr>'
             )
         else:
             # Data is a simple value: 11
