@@ -88,6 +88,16 @@ ALIASES = {
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
 
 # ---
+# 1.A. PRE-COMPILE ALL MINOR CATEGORY REGEXES
+# ---
+# This is the fix for the KeyError: 'Lu'. We must populate
+# REGEX_MATCHER with the 29 minor categories so compute_code_point_stats
+# can find them.
+for key, regex_str in MINOR_CATEGORIES_29.items():
+    # Add to the main matcher dict
+    REGEX_MATCHER[key] = window.RegExp.new(regex_str, "gu")
+
+# ---
 # 2. GLOBAL DATA STORES & ASYNC LOADING
 # ---
 
