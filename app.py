@@ -59,6 +59,10 @@ REGEX_MATCHER = {
 
 # Pre-compiled testers for single characters
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
+TEST_MINOR["Cn"] = window.RegExp.new(r"^\p{Cn}$", "u") # Add Cn for the tester
+
+# Pre-compiled testers for single characters
+TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
 TEST_MAJOR = {
     "L (Letter)": window.RegExp.new(r"^\p{L}$", "u"),
     "M (Mark)": window.RegExp.new(r"^\p{M}$", "u"),
@@ -440,11 +444,32 @@ def compute_grapheme_stats(t: str):
 
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
-def compute_sequence_stats(t: str):
-    """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
-    counters = {key: 0 for key in TEST_MAJOR}
+def compute_sequence_stats(t: str, is_minor_mode: bool):
+    """Module 2.B: Runs the Token Shape Analysis (Major or Minor)."""
+
+    testers = TEST_MINOR if is_minor_mode else TEST_MAJOR
+    counters = {key: 0 for key in testers}
+
     if not t:
         return counters
+
+    current_state = "NONE"
+    for char in t:
+        new_state = "NONE"
+        for key, regex in testers.items():
+            if regex.test(char):
+                new_state = key
+                break
+
+        if new_state != current_state:
+            if current_state in counters:
+                counters[current_state] += 1
+            current_state = new_state
+
+    if current_state in counters:
+        counters[current_state] += 1
+
+    return counters
 
     current_state = "NONE"
     for char in t:
@@ -827,7 +852,8 @@ def update_all(event=None):
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     
     # Module 2.B: Structural Shape
-    seq_stats = compute_sequence_stats(t)
+    is_minor_shape_mode = document.getElementById("shape-mode-toggle").checked
+    seq_stats = compute_sequence_stats(t, is_minor_shape_mode)
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -890,6 +916,9 @@ def update_all(event=None):
 
 # Hook the main function to the text-input
 document.getElementById("text-input").addEventListener("input", update_all)
+
+# Hook the new shape toggle
+document.getElementById("shape-mode-toggle").addEventListener("input", update_all)
 
 # Start loading the external data
 asyncio.ensure_future(load_unicode_data())
