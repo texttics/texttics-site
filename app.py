@@ -236,7 +236,7 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
         if variants_txt: _parse_standardized_variants(variants_txt)
-        if script_ext_txt: _parse_and_store_ranges(script_ext_txt, "ScriptExtensions")
+        if script_ext_txt: _parse_script_extensions(script_ext_txt) # Use the new custom parser
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
@@ -248,6 +248,48 @@ async def load_unicode_data():
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
 
+def _parse_script_extensions(txt: str):
+    """Custom parser for ScriptExtensions.txt (which uses tabs/spaces, not ';')."""
+    store_key = "ScriptExtensions"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+
+        # Split on whitespace, not semicolon
+        parts = line.split(None, 1) 
+        if len(parts) < 2:
+            continue
+
+        code_range = parts[0]
+        # The rest of the line up to the '#' is the value
+        value = line[len(code_range):].split('#', 1)[0].strip()
+
+        if not value:
+            continue
+
+        if '..' in code_range:
+            a, b = code_range.split('..', 1)
+            ranges_list.append((int(a, 16), int(b, 16), value))
+        else:
+            cp = int(code_range, 16)
+            ranges_list.append((cp, cp, value))
+
+    ranges_list.sort()
+
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+
+    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
+    
 # ---
 # 3. COMPUTATION FUNCTIONS
 # ---
