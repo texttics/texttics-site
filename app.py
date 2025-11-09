@@ -575,7 +575,7 @@ def update_all(event=None):
     
     # Module 2.A: Dual-Atom Fingerprint
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t)
-    gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
+    #gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     
     # Module 2.B: Structural Shape
     seq_stats = compute_sequence_stats(t)
