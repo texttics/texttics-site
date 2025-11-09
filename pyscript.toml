@@ -10,5 +10,6 @@ files = [
     "DerivedAge.txt", 
     "IdentifierType.txt", 
     "confusables.txt", 
-    "StandardizedVariants.txt"
+    "StandardizedVariants.txt",
+    "ScriptExtensions.txt"
 ]
