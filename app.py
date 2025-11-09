@@ -312,6 +312,17 @@ def count_matches(regex, text):
     matches = window.String.prototype.match.call(text, regex)
     return len(matches) if matches else 0
 
+def get_char_type(char, is_minor):
+    """
+    Classifies a single char as a Major or Minor category.
+    (This logic is from the original, working index.html)
+    """
+    testers = TEST_MINOR if is_minor else TEST_MAJOR
+    for key, regex in testers.items():
+        if regex.test(char):
+            return key
+    return "NONE"
+
 def _find_matches_with_indices(regex_key: str, text: str):
     """Uses matchAll to find all matches and their indices."""
     regex = REGEX_MATCHER.get(regex_key)
