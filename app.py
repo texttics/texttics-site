@@ -474,6 +474,43 @@ def compute_sequence_stats(t: str):
         
     return counters
 
+def compute_minor_sequence_stats(t: str):
+    """Module 2.B-Minor: Runs the Token Shape Analysis (Minor Categories)."""
+    counters = {key: 0 for key in TEST_MINOR}
+    if not t:
+        return counters
+
+    current_state = "NONE"
+    
+    # We must use the 30 Minor Category testers
+    category_testers = TEST_MINOR 
+    
+    for char in t:
+        new_state = "NONE"
+        for key, regex in category_testers.items():
+            if regex.test(char):
+                new_state = key
+                break
+        
+        # If the char is Cn, it won't match TEST_MINOR (which has 29)
+        # We must test for it separately.
+        if new_state == "NONE":
+             # We use the full \p{Cn} test
+             if window.RegExp.new(r"^\p{Cn}$", "u").test(char):
+                 new_state = "Cn"
+                 if "Cn" not in counters:
+                     counters["Cn"] = 0 # Ensure Cn is in the dict
+        
+        if new_state != current_state:
+            if current_state in counters:
+                counters[current_state] += 1
+            current_state = new_state
+            
+    if current_state in counters:
+        counters[current_state] += 1
+        
+    return counters
+
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
 
@@ -769,7 +806,8 @@ def update_all(event=None):
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     
     # Module 2.B: Structural Shape
-    seq_stats = compute_sequence_stats(t)
+    major_seq_stats = compute_sequence_stats(t)
+    minor_seq_stats = compute_minor_sequence_stats(t)
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -789,7 +827,7 @@ def update_all(event=None):
     grapheme_cards = grapheme_forensics
     
     # 2.B
-    shape_matrix = seq_stats
+    shape_matrix = major_seq_stats
     
     # 2.C
     forensic_matrix = forensic_stats
@@ -816,6 +854,8 @@ def update_all(event=None):
     
     # Render 2.B
     render_matrix_table(shape_matrix, "shape-matrix-body")
+    # NEW: Render the minor runs to our new table
+    render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     
     # Render 2.C
     render_matrix_table(forensic_matrix, "forensic-matrix-body", has_positions=True)
