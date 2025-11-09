@@ -465,7 +465,7 @@ def compute_grapheme_stats(t: str):
         elif cp_count > 1:
             multi_cp_count += 1
         
-        mark_count = count_matches(REGEX_MATCHER["Marks"], grapheme_str)
+        mark_count = _find_matches_with_indices("Marks", grapheme_str)
         
         total_mark_count += mark_count
         if mark_count > max_marks:
