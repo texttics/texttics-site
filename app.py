@@ -57,9 +57,6 @@ REGEX_MATCHER = {
     "LNPS_Runs": window.RegExp.new(r"\p{L}+|\p{N}+|\p{P}+|\p{S}+", "gu"),
 }
 
-# Pre-compiled testers for single characters
-TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
-TEST_MINOR["Cn"] = window.RegExp.new(r"^\p{Cn}$", "u") # Add Cn for the tester
 
 # Pre-compiled testers for single characters
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
@@ -373,31 +370,6 @@ def compute_code_point_stats(t: str):
 
     return summary_stats, major_stats, minor_stats
 
-def get_char_type(char, is_minor):
-    """
-    Classifies a single char as a Major or Minor category.
-    (This logic is from the original, working index.html)
-    """
-    testers = TEST_MINOR if is_minor else TEST_MAJOR
-    for key, regex in testers.items():
-        if regex.test(char):
-            return key
-    return "NONE"
-    
-    try:
-        matches_iter = window.String.prototype.matchAll.call(text, regex)
-        matches = window.Array.from_(matches_iter)
-        # Use segmenter-aware indices for \p{RGI_Emoji}
-        if regex_key == "RGI Emoji":
-            indices = [m.index for m in matches]
-        else:
-            # For code-point based regex, we must use JS-style indices
-            indices = [m.index for m in matches]
-        return indices, len(indices)
-    except Exception as e:
-        print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
-        return [], 0
-
     
     # 2. Get 29 minor categories (Honest Mode)
     minor_stats = {}
@@ -512,23 +484,22 @@ def compute_grapheme_stats(t: str):
 
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
-def compute_sequence_stats(t: str, is_minor_mode: bool):
-    """
-    Module 2.B: Runs the Token Shape Analysis (Major or Minor).
-    (This logic is from the original, working index.html)
-    """
-    testers = TEST_MINOR if is_minor_mode else TEST_MAJOR
-    counters = {key: 0 for key in testers}
-
+def compute_sequence_stats(t: str):
+    """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
+    counters = {key: 0 for key in TEST_MAJOR}
     if not t:
         return {} # Return an empty dict
 
     current_state = "NONE"
     for char in t:
-        new_state = get_char_type(char, is_minor_mode) # Use the helper
+        new_state = "NONE"
+        for key, regex in TEST_MAJOR.items():
+            if regex.test(char):
+                new_state = key
+                break
 
         if new_state != current_state:
-            if current_state in counters: # This is the safe, working check
+            if current_state in counters:
                 counters[current_state] += 1
             current_state = new_state
 
@@ -841,16 +812,11 @@ def render_matrix_table(stats_dict, element_id, has_positions=False):
     """Renders a generic "Matrix of Facts" table."""
     html = []
 
-    # Check if this is the shape matrix *and* it's in minor mode
-    is_shape_minor_mode = (element_id == "shape-matrix-body" and 
-                         document.getElementById("shape-mode-toggle").checked)
-
     for key, data in stats_dict.items():
         if not data:
             continue
 
-        # Use alias if this is the minor shape matrix, otherwise use the raw key
-        label = ALIASES.get(key, key) if is_shape_minor_mode else key
+        label = key # No aliasing needed
 
         if has_positions:
             # Data is a dict: {'count': 1, 'positions': ['#42']}
@@ -911,8 +877,7 @@ def update_all(event=None):
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     
     # Module 2.B: Structural Shape
-    is_minor_shape_mode = document.getElementById("shape-mode-toggle").checked
-    seq_stats = compute_sequence_stats(t, is_minor_shape_mode)
+    seq_stats = compute_sequence_stats(t)
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -975,9 +940,6 @@ def update_all(event=None):
 
 # Hook the main function to the text-input
 document.getElementById("text-input").addEventListener("input", update_all)
-
-# Hook the new shape toggle
-document.getElementById("shape-mode-toggle").addEventListener("input", update_all)
 
 # Start loading the external data
 asyncio.ensure_future(load_unicode_data())
