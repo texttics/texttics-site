@@ -249,7 +249,7 @@ async def load_unicode_data():
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
 
 def _parse_script_extensions(txt: str):
-    """Custom parser for ScriptExtensions.txt (which uses tabs/spaces, not ';')."""
+    """Custom parser for ScriptExtensions.txt (which uses ';')."""
     store_key = "ScriptExtensions"
     store = DATA_STORES[store_key]
     store["ranges"].clear()
@@ -262,14 +262,13 @@ def _parse_script_extensions(txt: str):
         if not line:
             continue
 
-        # Split on whitespace, not semicolon
-        parts = line.split(None, 1) 
+        # Data is separated by ';', but with variable whitespace
+        parts = line.split(';', 1)
         if len(parts) < 2:
             continue
 
-        code_range = parts[0]
-        # The rest of the line up to the '#' is the value
-        value = line[len(code_range):].split('#', 1)[0].strip()
+        code_range = parts[0].strip()
+        value = parts[1].strip() # This is the fix
 
         if not value:
             continue
@@ -467,24 +466,42 @@ def compute_sequence_stats(t: str):
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
-    
+
     forensic_stats = {}
-    
+
     # 1. Get pre-calculated counts from Module 1
     forensic_stats["Unassigned (Void)"] = {'count': cp_minor_stats.get("Cn", 0), 'positions': []}
     forensic_stats["Surrogates (Broken)"] = {'count': cp_minor_stats.get("Cs", 0), 'positions': []}
     forensic_stats["Private Use"] = {'count': cp_minor_stats.get("Co", 0), 'positions': []}
     # Note: We can't easily get positions for calculated Cn.
 
-    # 2. Run regex-based checks and get positions
-    for key in ["Deprecated", "Noncharacter", "Ignorables (Invisible)", "Deceptive Spaces"]:
+    # 2. Run regex-based checks (REMOVING Ignorables)
+    for key in ["Deprecated", "Noncharacter", "Deceptive Spaces"]:
         indices, count = _find_matches_with_indices(key, t)
         forensic_stats[key] = {
             'count': count,
             'positions': [f"#{i}" for i in indices]
         }
-        
-    # 3. Add Variant Stats (from Module 8)
+
+    # --- THIS IS THE FIX ---
+    # 3. Manually find Ignorables using Python, not a buggy regex
+    ignorable_indices = []
+    js_array = window.Array.from_(t)
+    for i, char in enumerate(js_array):
+        # Find Default Ignorable Code Points (like ZWSP) and Format (Cf) chars (like Bidi)
+        # This is a more robust check.
+        category = unicodedata.category(char)
+        if category == "Cf":
+            # U+200B (ZWSP), U+2060 (WJ), U+FEFF (BOM), Bidi, etc.
+            ignorable_indices.append(f"#{i}")
+
+    forensic_stats["Ignorables (Format/Cf)"] = {
+        'count': len(ignorable_indices),
+        'positions': ignorable_indices
+    }
+    # --- END OF FIX ---
+
+    # 4. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
 
