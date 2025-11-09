@@ -224,7 +224,7 @@ async def load_unicode_data():
         # Fetch all files in parallel
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-            "confusables.txt", "StandardizedVariants.txt", , "ScriptExtensions.txt"
+            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
         
