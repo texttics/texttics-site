@@ -737,15 +737,26 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
     if element:
         element.innerHTML = "".join(html)
 
-def render_matrix_table(stats_dict, element_id, has_positions=False):
+def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None):
     """Renders a generic "Matrix of Facts" table."""
     html = []
     
-    for key, data in stats_dict.items():
+    # Sort the dictionary keys so the output is stable and alphabetical
+    sorted_keys = sorted(stats_dict.keys())
+    
+    for key in sorted_keys: # Iterate over sorted keys
+        data = stats_dict[key]
         if not data:
             continue
             
-        label = key
+        # --- THIS IS THE FIX ---
+        # If aliases are provided and the key is in them, use the alias.
+        # Otherwise, just use the key itself.
+        if aliases and key in aliases:
+            label = aliases[key]
+        else:
+            label = key
+        # --- END OF FIX ---
         
         if has_positions:
             # Data is a dict: {'count': 1, 'positions': ['#42']}
