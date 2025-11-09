@@ -784,7 +784,7 @@ def render_toc_counts(counts):
     """Updates the counts in the sticky Table of Contents."""
     document.getElementById("toc-dual-count").innerText = f"({counts.get('dual', 0)})"
     document.getElementById("toc-shape-count").innerText = f"({counts.get('shape', 0)})"
-    document.getElementById("toc-forensic-count").innerText = f"({counts.get('forensic', 0)})"
+    document.getElementById("toc-integrity-count").innerText = f"({counts.get('forensic', 0)})"
     document.getElementById("toc-prov-count").innerText = f"({counts.get('prov', 0)})"
     document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
 
@@ -850,7 +850,7 @@ def update_all(event=None):
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0),
-        'forensic': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
+        'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v > 0),
         'threat': 0 # Placeholder
     }
@@ -869,7 +869,7 @@ def update_all(event=None):
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     
     # Render 2.C
-    render_matrix_table(forensic_matrix, "forensic-matrix-body", has_positions=True)
+    render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
     
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body")
