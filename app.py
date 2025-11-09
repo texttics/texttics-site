@@ -260,7 +260,7 @@ async def load_unicode_data():
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
 
 def _parse_script_extensions(txt: str):
-    """Custom parser for ScriptExtensions.txt (which uses tabs/spaces, not ';')."""
+    """Custom parser for ScriptExtensions.txt (which uses ';')."""
     store_key = "ScriptExtensions"
     store = DATA_STORES[store_key]
     store["ranges"].clear()
@@ -269,20 +269,18 @@ def _parse_script_extensions(txt: str):
 
     ranges_list = []
     for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
+        # 1. Remove comments
+        line = raw.split('#', 1)[0]
+        # 2. Find the semicolon
+        parts = line.split(';', 1)
 
-        # Split on whitespace, not semicolon
-        parts = line.split(None, 1) 
         if len(parts) < 2:
-            continue
+            continue # Not a data line
 
-        code_range = parts[0]
-        # The rest of the line up to the '#' is the value
-        value = line[len(code_range):].split('#', 1)[0].strip()
+        code_range = parts[0].strip()
+        value = parts[1].strip()
 
-        if not value:
+        if not value or not code_range:
             continue
 
         if '..' in code_range:
@@ -478,27 +476,62 @@ def compute_sequence_stats(t: str):
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
-    
+
     forensic_stats = {}
-    
+
     # 1. Get pre-calculated counts from Module 1
     forensic_stats["Unassigned (Void)"] = {'count': cp_minor_stats.get("Cn", 0), 'positions': []}
     forensic_stats["Surrogates (Broken)"] = {'count': cp_minor_stats.get("Cs", 0), 'positions': []}
     forensic_stats["Private Use"] = {'count': cp_minor_stats.get("Co", 0), 'positions': []}
     # Note: We can't easily get positions for calculated Cn.
 
-    # 2. Run regex-based checks and get positions
-    for key in ["Deprecated", "Noncharacter", "Ignorables (Invisible)", "Deceptive Spaces"]:
+    # 2. Run regex-based checks (REMOVING Ignorables)
+    for key in ["Deprecated", "Noncharacter", "Deceptive Spaces"]:
         indices, count = _find_matches_with_indices(key, t)
         forensic_stats[key] = {
             'count': count,
             'positions': [f"#{i}" for i in indices]
         }
-        
-    # 3. Add Variant Stats (from Module 8)
+
+    # 3. Manually find Ignorables using Python, not a buggy regex
+    ignorable_indices = []
+    js_array = window.Array.from_(t)
+    for i, char in enumerate(js_array):
+        # Find Default Ignorable Code Points (like ZWSP) and Format (Cf) chars (like Bidi)
+        # This is a more robust check.
+        category = unicodedata.category(char)
+        if category == "Cf":
+            # U+200B (ZWSP), U+2060 (WJ), U+FEFF (BOM), Bidi, etc.
+            ignorable_indices.append(f"#{i}")
+
+    forensic_stats["Ignorables (Format/Cf)"] = {
+        'count': len(ignorable_indices),
+        'positions': ignorable_indices
+    }
+
+    # 4. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
 
+    # 5. Manually find IdentifierType flags
+    if LOADING_STATE == "READY":
+        id_type_stats = {}
+        js_array = window.Array.from_(t)
+        for i, char in enumerate(js_array):
+            cp = ord(char)
+            id_type = _find_in_ranges(cp, "IdentifierType")
+
+            # We only care about problematic types
+            if id_type and id_type not in ("Recommended", "Inclusion"):
+                key = f"Type: {id_type}"
+                if key not in id_type_stats:
+                    id_type_stats[key] = {'count': 0, 'positions': []}
+
+                id_type_stats[key]['count'] += 1
+                id_type_stats[key]['positions'].append(f"#{i}")
+
+        forensic_stats.update(id_type_stats)
+    
     return forensic_stats
 
 def compute_variant_stats_with_positions(t: str):
@@ -541,16 +574,29 @@ def compute_provenance_stats(t: str):
         if count > 0:
             provenance_stats[key] = count
 
-    # 2. Deep Scan Stats (if data is loaded)
+    # --- THIS IS THE FIX ---
+    # 2. We will now find Scripts char-by-char to avoid double counting
+
+    # Pre-compile single-char script testers for the "fallback"
+    script_testers = {
+        "Script: Cyrillic": window.RegExp.new(r"^\p{Script=Cyrillic}$", "u"),
+        "Script: Greek": window.RegExp.new(r"^\p{Script=Greek}$", "u"),
+        "Script: Han": window.RegExp.new(r"^\p{Script=Han}$", "u"),
+        "Script: Arabic": window.RegExp.new(r"^\p{Script=Arabic}$", "u"),
+        "Script: Hebrew": window.RegExp.new(r"^\p{Script=Hebrew}$", "u"),
+        "Script: Latin": window.RegExp.new(r"^\p{Script=Latin}$", "u"),
+        "Script: Common": window.RegExp.new(r"^\p{Script=Common}$", "u"),
+        "Script: Inherited": window.RegExp.new(r"^\p{Script=Inherited}$", "u"),
+    }
+
+    # These dicts will hold the counts
+    script_stats = {} 
+    script_ext_stats = {}
+    # --- END OF SETUP ---
+
+    # 3. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
-        # Add placeholders for regex-based scripts if data is missing
-        for key in [
-            "Script: Cyrillic", "Script: Greek", "Script: Han", "Script: Arabic", 
-            "Script: Hebrew", "Script: Latin", "Script: Common", "Script: Inherited"
-        ]:
-            _, count = _find_matches_with_indices(key, t)
-            if count > 0:
-                provenance_stats[f"{key} (RegExp)"] = count
+        # If data isn't ready, just return the fast stats
         return provenance_stats
 
     numeric_total_value = 0
@@ -558,17 +604,26 @@ def compute_provenance_stats(t: str):
 
     deep_stats = {} # for Block, Age, Type, etc.
 
+    # We loop char-by-char for all data-file properties
     for char in t:
         cp = ord(char)
 
-        # --- (ScriptExtensions) ---
+        # --- THIS IS THE NEW LOGIC ---
         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
         if script_ext_val:
+            # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
             scripts = script_ext_val.split()
             for script in scripts:
-                # Use "Script-Ext:" to distinguish from the old regex
                 key = f"Script-Ext: {script}"
-                deep_stats[key] = deep_stats.get(key, 0) + 1
+                script_ext_stats[key] = script_ext_stats.get(key, 0) + 1
+        else:
+            # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
+            # We fall back to its primary 'Script' property.
+            for key, regex in script_testers.items():
+                if regex.test(char):
+                    script_stats[key] = script_stats.get(key, 0) + 1
+                    break # Found its primary script
+        # --- END OF NEW LOGIC ---
 
         # Block, Age, Type
         block_name = _find_in_ranges(cp, "Blocks")
@@ -580,11 +635,6 @@ def compute_provenance_stats(t: str):
         if age:
             key = f"Age: {age}"
             deep_stats[key] = deep_stats.get(key, 0) + 1
-
-        id_type = _find_in_ranges(cp, "IdentifierType")
-        if id_type and id_type not in ("Recommended", "Inclusion"):
-             # This belongs in the Forensic module, not Provenance
-             pass
 
         # Numeric Properties
         try:
@@ -603,6 +653,9 @@ def compute_provenance_stats(t: str):
         deep_stats["Mixed-Number Systems"] = len(number_script_zeros)
 
     # Combine fast and deep stats
+    # --- THIS IS THE FINAL FIX ---
+    provenance_stats.update(script_stats)
+    provenance_stats.update(script_ext_stats)
     provenance_stats.update(deep_stats)
     return provenance_stats
 
