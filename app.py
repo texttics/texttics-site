@@ -451,7 +451,7 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
     counters = {key: 0 for key in testers}
 
     if not t:
-        return {}
+        return counters
 
     current_state = "NONE"
     for char in t:
@@ -462,7 +462,7 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
                 break
 
         if new_state != current_state:
-            if current_state in counters:
+            if current_state != "NONE" and current_state in counters:
                 counters[current_state] += 1
             current_state = new_state
 
