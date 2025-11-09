@@ -504,7 +504,25 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     # 4. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
+    # 5. Manually find IdentifierType flags (this was a bug)
+    if LOADING_STATE == "READY":
+        id_type_stats = {}
+        js_array = window.Array.from_(t)
+        for i, char in enumerate(js_array):
+            cp = ord(char)
+            id_type = _find_in_ranges(cp, "IdentifierType")
 
+            # We only care about problematic types
+            if id_type and id_type not in ("Recommended", "Inclusion"):
+                key = f"Type: {id_type}"
+                if key not in id_type_stats:
+                    id_type_stats[key] = {'count': 0, 'positions': []}
+
+                id_type_stats[key]['count'] += 1
+                id_type_stats[key]['positions'].append(f"#{i}")
+
+        forensic_stats.update(id_type_stats)
+    
     return forensic_stats
 
 def compute_variant_stats_with_positions(t: str):
