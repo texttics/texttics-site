@@ -546,6 +546,39 @@ def compute_linebreak_analysis(t: str):
         
     return counters
 
+def compute_bidi_class_analysis(t: str):
+    """Module 2.B-BidiClass: Runs Token Shape Analysis (UAX #9)."""
+    counters = {}
+    if not t:
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        # Get the Bidi class (e.g., "L", "R", "RLO", "NSM")
+        try:
+            new_state = unicodedata.bidirectional(char)
+        except Exception:
+            new_state = "XX" # Failsafe for any errors
+        
+        if new_state != current_state:
+            if current_state in counters:
+                counters[current_state] += 1
+            else:
+                counters[current_state] = 1 # Initialize on first find
+            current_state = new_state
+            
+    if current_state in counters:
+        counters[current_state] += 1
+    else:
+        counters[current_state] = 1
+        
+    # The first "NONE" state is not a real run
+    if "NONE" in counters:
+        del counters["NONE"]
+        
+    return counters
+
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
 
@@ -920,6 +953,7 @@ def update_all(event=None):
     major_seq_stats = compute_sequence_stats(t)
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
+    bidi_run_stats = compute_bidi_class_analysis(t)
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -968,6 +1002,7 @@ def update_all(event=None):
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
+    render_matrix_table(bidi_run_stats, "bidi-run-matrix-body")
     
     # Render 2.C
     render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
