@@ -998,34 +998,32 @@ def get_char_type(char, is_minor):
 def _is_trusted_input_source(t: str) -> bool:
     """
     Determines if input is from a trusted source (keyboard) vs. untrusted (paste).
-    ASCII-only input with no invisible characters is trusted.
+    ASCII-only input with no invisible/format characters is trusted.
     """
-    # Must have at least one character
     if not t:
         return False
     
-    # Check 1: All characters must be ASCII (ord < 128)
-    # Check 2: No invisible/deceptive characters present
-    # Check 3: No Bidi controls or format characters
+    # Check each character
     for char in t:
         cp = ord(char)
-        if cp >= 128:  # Non-ASCII = untrusted
+        # Non-ASCII = untrusted source
+        if cp >= 128:
             return False
-        if cp in INVISIBLE_DETECTORS:  # Has invisible chars = untrusted
-            return False
-        if unicodedata.category(char) in ("Cf", "Co", "Cs", "Cn"):  # Format/Private/Surrogate/Unassigned
+        # Format/Private/Surrogate/Unassigned = suspicious
+        if unicodedata.category(char) in ("Cf", "Co", "Cs", "Cn"):
             return False
     
     return True
 
-# Pre-compute invisible detectors for performance
-INVISIBLE_DETECTORS = set()
-def _init_invisible_detectors():
-    """Initialize set of code points that are invisible/deceptive."""
-    global INVISIBLE_DETECTORS
-    # Add Default Ignorable Code Points
-    regex = window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu")
-    INVISIBLE_DETECTORS.update(ord(c) for c in (window.String.prototype.match.call("".join([chr(i) for i in range(0x110000)]), regex) or []))
+# Static set of known invisible characters (simpler, no complex initialization)
+INVISIBLE_DETECTORS = {
+    0x200B,  # Zero Width Space
+    0x2060,  # Word Joiner
+    0xFEFF,  # Zero Width No-Break Space (BOM)
+    0x180E,  # Mongolian Vowel Separator
+    0x200C,  # Zero Width Non-Joiner
+    0x200D,  # Zero Width Joiner
+}
 
     
 def get_state():
@@ -1745,7 +1743,9 @@ def update_all(event=None):
             security_flags, numeric_types, total_value, block_stats, age_stats, id_types = compute_ucd_deep_scan(t, is_honest_mode)
             
             total_value_dict = {}
-            if total_value > 0 or any(nt in numeric_types for nt in ["Num Type: Decimal (Nd)", "Num Type: Letter (Nl)", "Num Type: Other (No)"]):
+            # Check if we should show numeric value
+            has_numeric_types = any(key in numeric_types for key in ["Num Type: Decimal (Nd)", "Num Type: Letter (Nl)", "Num Type: Other (No)"])
+            if total_value > 0 or has_numeric_types:
                 total_value_dict = {"Total Numeric Value": total_value}
                 
             combined_deep_scan_stats = {
