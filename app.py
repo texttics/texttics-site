@@ -104,6 +104,7 @@ DATA_STORES = {
     "Age": {"ranges": [], "starts": [], "ends": []},
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
     "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
+    "LineBreak": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -234,7 +235,7 @@ async def load_unicode_data():
     try:
         files_to_fetch = [
         "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt"
+        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", "LineBreak.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -247,6 +248,7 @@ async def load_unicode_data():
         if confusables_txt: _parse_confusables(confusables_txt)
         if variants_txt: _parse_standardized_variants(variants_txt)
         if script_ext_txt: _parse_script_extensions(script_ext_txt) # Use the new custom parser
+        if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
@@ -507,6 +509,40 @@ def compute_minor_sequence_stats(t: str):
             
     if current_state in counters:
         counters[current_state] += 1
+        
+    return counters
+
+def compute_linebreak_analysis(t: str):
+    """Module 2.B-LineBreak: Runs Token Shape Analysis (UAX #14)."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        # Find the Line Break class (e.g., "AL", "BK", "LS")
+        lb_class = _find_in_ranges(cp, "LineBreak")
+        
+        # Use "XX" (Unknown) as the default, per UAX #14
+        new_state = lb_class if lb_class else "XX"
+        
+        if new_state != current_state:
+            if current_state in counters:
+                counters[current_state] += 1
+            else:
+                counters[current_state] = 1 # Initialize on first find
+            current_state = new_state
+            
+    if current_state in counters:
+        counters[current_state] += 1
+    else:
+        counters[current_state] = 1
+        
+    # The first "NONE" state is not a real run
+    if "NONE" in counters:
+        del counters["NONE"]
         
     return counters
 
@@ -883,6 +919,7 @@ def update_all(event=None):
     # Module 2.B: Structural Shape
     major_seq_stats = compute_sequence_stats(t)
     minor_seq_stats = compute_minor_sequence_stats(t)
+    lb_run_stats = compute_linebreak_analysis(t)
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -929,8 +966,8 @@ def update_all(event=None):
     
     # Render 2.B
     render_matrix_table(shape_matrix, "shape-matrix-body")
-    # NEW: Render the minor runs to our new table
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
+    render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
     
     # Render 2.C
     render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
