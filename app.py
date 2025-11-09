@@ -31,7 +31,7 @@ MINOR_CATEGORIES_29 = {
 
 # Regexes for finding *all* matches and their indices (must be 'gu')
 REGEX_MATCHER = {
-    "RGI Emoji": window.RegExp.new(r"\p{RGI_Emoji}", "guv"), # 'v' for property intersections
+    "RGI Emoji": window.RegExp.new(r"\p{Emoji_Presentation}", "gv"), # Swapped to \p{Emoji_Presentation} for broad support
     "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
     "Marks": window.RegExp.new(r"\p{M}", "gu"),
     
@@ -39,7 +39,7 @@ REGEX_MATCHER = {
     "Deprecated": window.RegExp.new(r"\p{Deprecated}", "gu"),
     "Noncharacter": window.RegExp.new(r"\p{Noncharacter_Code_Point}", "gu"),
     "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
-    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "guv"),
+    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "gv"),
     
     # UAX #44 Properties (for Module 2.D)
     "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
@@ -82,6 +82,17 @@ ALIASES = {
 
 # Grapheme Segmenter (UAX #29)
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
+
+# ---
+# 1.A. PRE-COMPILE ALL MINOR CATEGORY REGEXES
+# ---
+# This is the fix: We pre-compile all 29 regexes into REGEX_MATCHER
+# to use the proven-correct 'matchAll' method, just like the
+# 'Provenance' module does.
+
+for key, regex_str in MINOR_CATEGORIES_29.items():
+    # Add to the main matcher dict
+    REGEX_MATCHER[key] = window.RegExp.new(regex_str, "gu")
 
 # ---
 # 2. GLOBAL DATA STORES & ASYNC LOADING
@@ -272,7 +283,7 @@ def _find_matches_with_indices(regex_key: str, text: str):
 
 def compute_code_point_stats(t: str):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
-    
+
     # 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
@@ -284,32 +295,32 @@ def compute_code_point_stats(t: str):
         "RGI Emoji Sequences": emoji_count,
         "Whitespace (Total)": whitespace_count
     }
-    
+
     # 2. Get 29 minor categories (Honest Mode)
+    # --- THIS IS THE FIX ---
+    # We now use our proven-correct helper function for all 29 categories.
     minor_stats = {}
     sum_of_29_cats = 0
-    for key, regex_str in MINOR_CATEGORIES_29.items():
-        # Use the 'gu' flag for simple counting
-        regex = window.RegExp.new(regex_str, "gu")
-        matches = window.String.prototype.match.call(t, regex)
-        count = len(matches) if matches else 0
+    for key in MINOR_CATEGORIES_29.keys():
+        _, count = _find_matches_with_indices(key, t)
         minor_stats[key] = count
         sum_of_29_cats += count
-        
+    # --- END OF FIX ---
+
     # 3. Calculate 'Cn' as the remainder
     minor_stats["Cn"] = total_code_points - sum_of_29_cats
-    
+
     # 4. Aggregate Major Categories
     major_stats = {
-        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
-        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
-        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
-        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
-        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
-        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
-        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
+        "L (Letter)": minor_stats.get("Lu", 0) + minor_stats.get("Ll", 0) + minor_stats.get("Lt", 0) + minor_stats.get("Lm", 0) + minor_stats.get("Lo", 0),
+        "M (Mark)": minor_stats.get("Mn", 0) + minor_stats.get("Mc", 0) + minor_stats.get("Me", 0),
+        "N (Number)": minor_stats.get("Nd", 0) + minor_stats.get("Nl", 0) + minor_stats.get("No", 0),
+        "P (Punctuation)": minor_stats.get("Pc", 0) + minor_stats.get("Pd", 0) + minor_stats.get("Ps", 0) + minor_stats.get("Pe", 0) + minor_stats.get("Pi", 0) + minor_stats.get("Pf", 0) + minor_stats.get("Po", 0),
+        "S (Symbol)": minor_stats.get("Sm", 0) + minor_stats.get("Sc", 0) + minor_stats.get("Sk", 0) + minor_stats.get("So", 0),
+        "Z (Separator)": minor_stats.get("Zs", 0) + minor_stats.get("Zl", 0) + minor_stats.get("Zp", 0),
+        "C (Other)": minor_stats.get("Cc", 0) + minor_stats.get("Cf", 0) + minor_stats.get("Cs", 0) + minor_stats.get("Co", 0) + minor_stats.get("Cn", 0)
     }
-    
+
     # 5. Build Summary (for Meta-Analysis cards)
     summary_stats = {
         **derived_stats,
@@ -320,82 +331,6 @@ def compute_code_point_stats(t: str):
     }
 
     return summary_stats, major_stats, minor_stats
-
-def compute_grapheme_stats(t: str):
-    """Module 1 (Grapheme): Runs analysis on Grapheme Clusters."""
-    
-    segments_iterable = GRAPHEME_SEGMENTER.segment(t)
-    segments = window.Array.from_(segments_iterable)
-    total_graphemes = len(segments)
-
-    minor_stats = {key: 0 for key in MINOR_CATEGORIES_29}
-    minor_stats["Cn"] = 0 # Initialize Cn
-    
-    # Module 1.5 Grapheme Forensic stats
-    single_cp_count = 0
-    multi_cp_count = 0
-    total_mark_count = 0
-    max_marks = 0
-
-    for segment in segments:
-        grapheme_str = segment.segment
-        if not grapheme_str:
-            continue
-        
-        # --- Module 1.5 Logic (Forensics) ---
-        cp_array = window.Array.from_(grapheme_str)
-        cp_count = len(cp_array)
-        
-        if cp_count == 1:
-            single_cp_count += 1
-        elif cp_count > 1:
-            multi_cp_count += 1
-        
-        _, mark_count = _find_matches_with_indices("Marks", grapheme_str)
-        total_mark_count += mark_count
-        if mark_count > max_marks:
-            max_marks = mark_count
-
-        # --- Module 1 Logic (Classification) ---
-        first_char = cp_array[0]
-        
-        classified = False
-        for key, regex in TEST_MINOR.items():
-            if regex.test(first_char):
-                minor_stats[key] += 1
-                classified = True
-                break
-        
-        if not classified:
-            # Test for Cn explicitly
-            if window.RegExp.new(r"^\p{Cn}$", "u").test(first_char):
-                 minor_stats["Cn"] += 1
-
-    # Aggregate Major Categories
-    major_stats = {
-        "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
-        "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
-        "N (Number)": minor_stats["Nd"] + minor_stats["Nl"] + minor_stats["No"],
-        "P (Punctuation)": minor_stats["Pc"] + minor_stats["Pd"] + minor_stats["Ps"] + minor_stats["Pe"] + minor_stats["Pi"] + minor_stats["Pf"] + minor_stats["Po"],
-        "S (Symbol)": minor_stats["Sm"] + minor_stats["Sc"] + minor_stats["Sk"] + minor_stats["So"],
-        "Z (Separator)": minor_stats["Zs"] + minor_stats["Zl"] + minor_stats["Zp"],
-        "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
-    }
-
-    # Build Summary (for Meta-Analysis cards)
-    summary_stats = {"Total Graphemes": total_graphemes}
-    
-    # Build Grapheme Forensics (Module 1.5)
-    avg_marks = (total_mark_count / total_graphemes) if total_graphemes > 0 else 0
-    grapheme_forensic_stats = {
-        "Single-Code-Point": single_cp_count,
-        "Multi-Code-Point": multi_cp_count,
-        "Total Combining Marks": total_mark_count,
-        "Max Marks in one Grapheme": max_marks,
-        "Avg. Marks per Grapheme": round(avg_marks, 2)
-    }
-
-    return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
 def compute_sequence_stats(t: str):
     """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
