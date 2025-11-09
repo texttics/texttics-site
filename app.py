@@ -99,10 +99,12 @@ for key, regex_str in MINOR_CATEGORIES_29.items():
 # ---
 
 LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
+
 DATA_STORES = {
     "Blocks": {"ranges": [], "starts": [], "ends": []},
     "Age": {"ranges": [], "starts": [], "ends": []},
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
+    "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -231,21 +233,21 @@ async def load_unicode_data():
     print("Unicode data loading started.")
     
     try:
-        # Fetch all files in parallel
         files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-            "confusables.txt", "StandardizedVariants.txt"
+        "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
+        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
-        
-        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt = results
-        
+    
+        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt = results
+    
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
         if age_txt: _parse_and_store_ranges(age_txt, "Age")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
         if variants_txt: _parse_standardized_variants(variants_txt)
+        if script_ext_txt: _parse_script_extensions(script_ext_txt) # Use the new custom parser
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
@@ -256,6 +258,48 @@ async def load_unicode_data():
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
+
+def _parse_script_extensions(txt: str):
+    """Custom parser for ScriptExtensions.txt (which uses tabs/spaces, not ';')."""
+    store_key = "ScriptExtensions"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+
+        # Split on whitespace, not semicolon
+        parts = line.split(None, 1) 
+        if len(parts) < 2:
+            continue
+
+        code_range = parts[0]
+        # The rest of the line up to the '#' is the value
+        value = line[len(code_range):].split('#', 1)[0].strip()
+
+        if not value:
+            continue
+
+        if '..' in code_range:
+            a, b = code_range.split('..', 1)
+            ranges_list.append((int(a, 16), int(b, 16), value))
+        else:
+            cp = int(code_range, 16)
+            ranges_list.append((cp, cp, value))
+
+    ranges_list.sort()
+
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+
+    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
 
 # ---
 # 3. COMPUTATION FUNCTIONS
@@ -467,6 +511,7 @@ def compute_variant_stats_with_positions(t: str):
     
     base_indices = []
     selector_indices = []
+    ivs_indices = []
     
     # We must iterate using JS-style string indices
     js_array = window.Array.from_(t)
@@ -476,54 +521,71 @@ def compute_variant_stats_with_positions(t: str):
             base_indices.append(f"#{i}")
         if cp in selector_set:
             selector_indices.append(f"#{i}")
+        # Check for Ideographic Variation Selectors (Steganography vector)
+        if 0xE0100 <= cp <= 0xE01EF:
+            ivs_indices.append(f"#{i}")
             
     return {
         "Variant Base Chars": {'count': len(base_indices), 'positions': base_indices},
-        "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices}
+        "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices},
+        "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices}
     }
     
 def compute_provenance_stats(t: str):
     """Module 2.D: Runs UAX #44 and Deep Scan analysis."""
-    
-    # 1. Fast UAX #44 Stats
+
+    # 1. Fast UAX #44 Stats (non-Script properties)
     provenance_stats = {}
-    for key in [
-        "Dash", "Alphabetic", "Script: Cyrillic", "Script: Greek", 
-        "Script: Han", "Script: Arabic", "Script: Hebrew", "Script: Latin",
-        "Script: Common", "Script: Inherited"
-    ]:
+    for key in ["Dash", "Alphabetic"]:
         _, count = _find_matches_with_indices(key, t)
         if count > 0:
             provenance_stats[key] = count
-            
+
     # 2. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
+        # Add placeholders for regex-based scripts if data is missing
+        for key in [
+            "Script: Cyrillic", "Script: Greek", "Script: Han", "Script: Arabic", 
+            "Script: Hebrew", "Script: Latin", "Script: Common", "Script: Inherited"
+        ]:
+            _, count = _find_matches_with_indices(key, t)
+            if count > 0:
+                provenance_stats[f"{key} (RegExp)"] = count
         return provenance_stats
-        
+
     numeric_total_value = 0
     number_script_zeros = set()
-    
+
     deep_stats = {} # for Block, Age, Type, etc.
-    
+
     for char in t:
         cp = ord(char)
-        
+
+        # --- (ScriptExtensions) ---
+        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+        if script_ext_val:
+            scripts = script_ext_val.split()
+            for script in scripts:
+                # Use "Script-Ext:" to distinguish from the old regex
+                key = f"Script-Ext: {script}"
+                deep_stats[key] = deep_stats.get(key, 0) + 1
+
         # Block, Age, Type
         block_name = _find_in_ranges(cp, "Blocks")
         if block_name:
             key = f"Block: {block_name}"
             deep_stats[key] = deep_stats.get(key, 0) + 1
-            
+
         age = _find_in_ranges(cp, "Age")
         if age:
             key = f"Age: {age}"
             deep_stats[key] = deep_stats.get(key, 0) + 1
-            
+
         id_type = _find_in_ranges(cp, "IdentifierType")
         if id_type and id_type not in ("Recommended", "Inclusion"):
-             # Add to forensic group instead
+             # This belongs in the Forensic module, not Provenance
              pass
-            
+
         # Numeric Properties
         try:
             value = unicodedata.numeric(char)
