@@ -588,15 +588,25 @@ def compute_provenance_stats(t: str):
     for char in t:
         cp = ord(char)
 
-        # --- ADDED THIS BLOCK (ScriptExtensions) ---
+        # --- THIS IS THE FIX (ScriptExtensions + Fallback) ---
         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
         if script_ext_val:
+            # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
             scripts = script_ext_val.split()
             for script in scripts:
-                # Use "Script-Ext:" to distinguish from the old regex
                 key = f"Script-Ext: {script}"
                 deep_stats[key] = deep_stats.get(key, 0) + 1
-        # --- END OF ADDED BLOCK ---
+        else:
+            # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
+            # We must fall back to its primary 'Script' property.
+            try:
+                # Use Python's built-in 'script' function
+                script = unicodedata.script(char) 
+                key = f"Script: {script}" # Note: "Script:", not "Script-Ext:"
+                deep_stats[key] = deep_stats.get(key, 0) + 1
+            except ValueError:
+                pass # Should not happen for valid chars
+        # --- END OF FIX ---
 
         # Block, Age, Type
         block_name = _find_in_ranges(cp, "Blocks")
