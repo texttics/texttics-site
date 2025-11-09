@@ -1564,6 +1564,18 @@ def render_stats(stats_dict, element_id, class_name="card"):
     if element:
         element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
 
+def render_minor_stats(stats_dict, element_id):
+    """Generates and injects HTML for the 30-category breakdown."""
+    html = []
+    for k, v in stats_dict.items():
+        if v > 0:
+            alias = ALIASES.get(k, "Unknown")
+            html.append(f'<div class="minor-card"><div class="minor-key">{k}</div><div class="minor-alias" title="{alias}">{alias}</div><div class="minor-val">{v}</div></div>')
+    
+    element = document.getElementById(element_id)
+    if element:
+        element.innerHTML = "".join(html) if html else "<p style='padding: 1rem; color: #6b7280;'>No data for this category.</p>"
+    
 def render_loading_state():
     """Renders loading/failure messages for data-dependent modules."""
     loading_html = "<p style='padding: 1rem; color: #3b82f6; font-style: italic;'>Loading Unicode data files...</p>"
