@@ -157,22 +157,29 @@ function buildStructuredReport() {
   };
 
   const parseTable = (tbodyId, sectionTitle) => {
-    const lines = [];
-    const tbody = document.getElementById(tbodyId);
-    if (tbody) {
-      tbody.querySelectorAll('tr').forEach(row => {
-        const cells = row.querySelectorAll('th, td');
-        if (cells.length === 0 || row.querySelector('.placeholder-text')) {
-          return;
-        }
+        const lines = [];
+        const tbody = document.getElementById(tbodyId);
+        if (tbody) {
+          tbody.querySelectorAll('tr').forEach(row => {
+            const cells = row.querySelectorAll('th, td');
+            if (cells.length === 0 || row.querySelector('.placeholder-text')) {
+              return;
+            }
 
-        const rowData = Array.from(cells).map(cell => cell.innerText);
-        // Format: "Section: Metric (Col1), Value (Col2)..."
-        lines.push(`  ${sectionTitle}: ${rowData.join(', ')}`);
-      });
-    }
-    return lines;
-  };
+            const metric = cells[0].innerText;
+            const count = cells[1].innerText;
+
+            // Check if it has a 'Positions' column
+            if (cells.length > 2 && cells[2].innerText) {
+              const positions = cells[2].innerText;
+              lines.push(`  ${sectionTitle}: ${metric}, ${count}, Positions: ${positions}`);
+            } else {
+              lines.push(`  ${sectionTitle}: ${metric}, ${count}`);
+            }
+          });
+        }
+        return lines;
+      };
 
   const parseParallelTable = (tbodyId, sectionTitle) => {
     const lines = [];
