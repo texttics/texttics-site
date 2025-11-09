@@ -302,6 +302,17 @@ def _find_matches_with_indices(regex_key: str, text: str):
     regex = REGEX_MATCHER.get(regex_key)
     if not regex:
         return [], 0
+
+def get_char_type(char, is_minor):
+    """
+    Classifies a single char as a Major or Minor category.
+    (This logic is from the original, working index.html)
+    """
+    testers = TEST_MINOR if is_minor else TEST_MAJOR
+    for key, regex in testers.items():
+        if regex.test(char):
+            return key
+    return "NONE"
     
     try:
         matches_iter = window.String.prototype.matchAll.call(text, regex)
@@ -451,36 +462,25 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
     counters = {key: 0 for key in testers}
 
     if not t:
-        return {} # Return an empty dict, not the zeroed-out one
+        return {} # Return an empty dict
 
     current_state = "NONE"
     for char in t:
-        new_state = "NONE"
-        for key, regex in testers.items():
-            if regex.test(char):
-                new_state = key
-                break
+        new_state = get_char_type(char, is_minor_mode) # Use the helper
 
         if new_state != current_state:
-            # This is the correct "NONE" state check
-            if current_state != "NONE": 
+            if current_state in counters: # Check 'in' is safer than '!='
                 counters[current_state] += 1
             current_state = new_state
 
-    # Handle the very last run
-    if current_state != "NONE":
+    if current_state in counters: # Handle the last run
         counters[current_state] += 1
 
-    # ---
-    # This is the correct, simplified return logic
-    # ---
+    # Return only non-zero counts
     final_counts = {}
     for key, count in counters.items():
         if count > 0:
-            # Alias the key if in minor mode, otherwise use the key as-is
-            label = ALIASES.get(key, key) if is_minor_mode else key
-            final_counts[label] = count
-
+            final_counts[key] = count
     return final_counts
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
@@ -780,13 +780,18 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
 def render_matrix_table(stats_dict, element_id, has_positions=False):
     """Renders a generic "Matrix of Facts" table."""
     html = []
-    
+
+    # Check if this is the shape matrix *and* it's in minor mode
+    is_shape_minor_mode = (element_id == "shape-matrix-body" and 
+                         document.getElementById("shape-mode-toggle").checked)
+
     for key, data in stats_dict.items():
         if not data:
             continue
-            
-        label = key
-        
+
+        # Use alias if this is the minor shape matrix, otherwise use the raw key
+        label = ALIASES.get(key, key) if is_shape_minor_mode else key
+
         if has_positions:
             # Data is a dict: {'count': 1, 'positions': ['#42']}
             count = data.get('count', 0)
@@ -804,7 +809,7 @@ def render_matrix_table(stats_dict, element_id, has_positions=False):
             html.append(
                 f'<tr><th scope="row">{label}</th><td>{count}</td></tr>'
             )
-            
+
     element = document.getElementById(element_id)
     if element:
         element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
