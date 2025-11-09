@@ -214,8 +214,8 @@ function buildStructuredReport() {
   report.push(...parseTable('minor-shape-matrix-body', 'Minor Run'));
 
   // --- 4. Forensic Integrity ---
-  report.push(`\n[ ${getText('#forensic-title')} ]`);
-  report.push(...parseTable('forensic-matrix-body', 'Flag'));
+  report.push(`\n[ ${getText('#integrity-title')} ]`);
+  report.push(...parseTable('integrity-matrix-body', 'Flag'));
 
   // --- 5. Provenance & Context ---
   report.push(`\n[ ${getText('#prov-title')} ]`);
