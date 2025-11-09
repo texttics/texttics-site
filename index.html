@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Text...tics — A Deterministic Structural Fingerprinter</title>
+  <title>Text...tics — A Deterministic Structural Profiler</title>
 
   <!-- PyScript (will be needed for app.py) -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css">
@@ -25,7 +25,7 @@
   <!-- Zone 0: Lab Instrument Masthead (Static Header) -->
   <header class="masthead" role="banner">
     <h1 class="app-title">Text...tics</h1>
-    <p class="spec">A Deterministic Structural Fingerprinter (Unicode 15.1 Ruleset)</p>
+    <p class="spec">A Deterministic Structural Profiler (Unicode 15.1 Ruleset)</p>
     <p class="method">Method: Post-clipboard analysis based on UAX #29 (Graphemes) &amp; UAX #44 (Properties).</p>
   </header>
 
@@ -35,11 +35,11 @@
     <!-- Column 1: Sticky In-Page Jump List -->
     <nav class="jump-list" aria-label="Sections">
       <ol>
-        <li><a href="#dual-atom">Dual-Atom Fingerprint <span id="toc-dual-count" class="count">(0)</span></a></li>
-        <li><a href="#structural-shape">Structural Shape <span id="toc-shape-count" class="count">(0)</span></a></li>
-        <li><a href="#structural-integrity">Structural Integrity <span id="toc-integrity-count" class="count">(0)</span></a></li>
-        <li><a href="#provenance-context">Provenance &amp; Context <span id="toc-prov-count" class="count">(0)</span></a></li>
-        <li><a href="#threat-hunting">Threat-Hunting <span id="toc-threat-count" class="count">(0)</span></a></li>
+        <li><a href="#dual-atom">Dual-Atom Profile <span id="toc-dual-count" class="count">(0)</span></a></li>
+        <li><a href="#structural-shape">Structural Shape Profile<span id="toc-shape-count" class="count">(0)</span></a></li>
+        <li><a href="#structural-integrity">Structural Integrity Profile <span id="toc-integrity-count" class="count">(0)</span></a></li>
+        <li><a href="#provenance-context">Provenance &amp; Context Profile <span id="toc-prov-count" class="count">(0)</span></a></li>
+        <li><a href="#threat-hunting">Threat-Hunting Analysis <span id="toc-threat-count" class="count">(0)</span></a></li>
       </ol>
     </nav>
 
@@ -57,13 +57,13 @@
       </section>
 
       <!-- 
-        GROUP 2: THE STRUCTURAL FINGERPRINT
+        GROUP 2: THE STRUCTURAL PROFILE
       -->
 
-      <!-- Group 2.A: Dual-Atom Fingerprint (Module 1) -->
+      <!-- Group 2.A: Dual-Atom Profile (Module 1) -->
       <section id="dual-atom" class="fingerprint-section" aria-labelledby="dual-atom-title">
         <h2 id="dual-atom-title" class="section-title">
-  <span>Dual-Atom Fingerprint</span>
+  <span>Dual-Atom Profile</span>
   <button id="copy-report-btn" class="copy-btn" title="Copy full structured report">
     Copy Report
   </button>
@@ -132,9 +132,9 @@
         </div>
       </section>
 
-      <!-- Group 2.B: Structural Shape Fingerprint (Module 2) -->
+      <!-- Group 2.B: Structural Shape Profile (Module 2) -->
       <section id="structural-shape" class="fingerprint-section" aria-labelledby="shape-title">
-      <h2 id="shape-title" class="section-title">Structural Shape Fingerprint</h2>
+      <h2 id="shape-title" class="section-title">Structural Shape Profile</h2>
 
       <h3 class="subsection-title">Major Category Run Analysis</h3>
       <table class="matrix" id="shape-matrix">
@@ -164,9 +164,9 @@
       
     </section>
 
-      <!-- Group 2.C: Forensic Integrity Fingerprint (Modules 4, 6, 8) -->
+      <!-- Group 2.C: Forensic Integrity Profile (Modules 4, 6, 8) -->
       <section id="structural-integrity" class="fingerprint-section" aria-labelledby="integrity-title">
-      <h2 id="integrity-title" class="section-title">Structural Integrity Fingerprint</h2>
+      <h2 id="integrity-title" class="section-title">Structural Integrity Profile</h2>
       <table class="matrix" id="integrity-matrix">
         <caption>Integrity Flags (Invisibles, Modifiers, IVS)</caption>
           <thead>
@@ -182,9 +182,9 @@
         </table>
       </section>
 
-      <!-- Group 2.D: Provenance & Context Fingerprint (Modules 5, 6) -->
+      <!-- Group 2.D: Provenance & Context Profile (Modules 5, 6) -->
       <section id="provenance-context" class="fingerprint-section" aria-labelledby="prov-title">
-        <h2 id="prov-title" class="section-title">Provenance &amp; Context Fingerprint</h2>
+        <h2 id="prov-title" class="section-title">Provenance &amp; Context Profile</h2>
         <table class="matrix" id="provenance-matrix">
           <caption>Script, Script-Extension, Block, Age &amp; Numeric Properties</caption>
           <thead>
