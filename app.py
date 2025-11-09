@@ -37,9 +37,8 @@ REGEX_MATCHER = {
     
     # Forensic Properties (for Module 2.C)
     "Deprecated": window.RegExp.new(r"\p{Deprecated}", "gu"),
-    "Noncharacter": window.RegExp.new(r"\p{Noncharacter_Code_Point}", "gu"),
+    # "Noncharacter" and "Deceptive Spaces" are now handled in Python
     "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
-    "Deceptive Spaces": window.RegExp.new(r"[\p{White_Space}&&[^ \n\r\t]]", "gv"),
     
     # UAX #44 Properties (for Module 2.D)
     "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
@@ -522,28 +521,56 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Private Use"] = {'count': cp_minor_stats.get("Co", 0), 'positions': []}
     # Note: We can't easily get positions for calculated Cn.
 
-    # 2. Run regex-based checks (REMOVING Ignorables)
-    for key in ["Deprecated", "Noncharacter", "Deceptive Spaces"]:
+    # 2. Run regex-based checks (ONLY for 'Deprecated')
+    for key in ["Deprecated"]:
         indices, count = _find_matches_with_indices(key, t)
         forensic_stats[key] = {
             'count': count,
             'positions': [f"#{i}" for i in indices]
         }
 
-    # 3. Manually find Ignorables using Python, not a buggy regex
+    # 3. Manually find 'Cf', 'Deceptive Spaces', and 'Noncharacter' in one Python loop
     ignorable_indices = []
+    deceptive_space_indices = []
+    nonchar_indices = []
+    
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
-        # Find Default Ignorable Code Points (like ZWSP) and Format (Cf) chars (like Bidi)
-        # This is a more robust check.
-        category = unicodedata.category(char)
-        if category == "Cf":
-            # U+200B (ZWSP), U+2060 (WJ), U+FEFF (BOM), Bidi, etc.
-            ignorable_indices.append(f"#{i}")
+        try:
+            category = unicodedata.category(char)
+            cp = ord(char)
+            
+            # --- Check 1: Ignorables (Format/Cf) ---
+            if category == "Cf":
+                # U+200B (ZWSP), U+2060 (WJ), U+FEFF (BOM), Bidi, etc.
+                ignorable_indices.append(f"#{i}")
+
+            # --- Check 2: Deceptive Spaces ---
+            # A 'Space Separator' that is NOT the common ASCII space (U+0020)
+            if category == "Zs" and cp != 0x0020:
+                deceptive_space_indices.append(f"#{i}")
+
+            # --- Check 3: Noncharacter ---
+            # Checks for ranges FDD0-FDEF or any code point ending in FFFE or FFFF
+            if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
+                nonchar_indices.append(f"#{i}")
+                
+        except Exception as e:
+            # Failsafe in case ord() or category() has an issue
+            print(f"Error processing char at index {i}: {e}")
+
 
     forensic_stats["Ignorables (Format/Cf)"] = {
         'count': len(ignorable_indices),
         'positions': ignorable_indices
+    }
+    forensic_stats["Deceptive Spaces"] = {
+        'count': len(deceptive_space_indices),
+        'positions': deceptive_space_indices
+    }
+    forensic_stats["Noncharacter"] = {
+        'count': len(nonchar_indices),
+        'positions': nonchar_indices
     }
 
     # 4. Add Variant Stats (from Module 8)
