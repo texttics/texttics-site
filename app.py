@@ -451,7 +451,7 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
     counters = {key: 0 for key in testers}
 
     if not t:
-        return counters
+        return {} # Return an empty dict, not the zeroed-out one
 
     current_state = "NONE"
     for char in t:
@@ -462,41 +462,26 @@ def compute_sequence_stats(t: str, is_minor_mode: bool):
                 break
 
         if new_state != current_state:
-            if current_state != "NONE" and current_state in counters:
+            # This is the correct "NONE" state check
+            if current_state != "NONE": 
                 counters[current_state] += 1
             current_state = new_state
 
-    if current_state in counters:
+    # Handle the very last run
+    if current_state != "NONE":
         counters[current_state] += 1
 
-    # If in minor mode, we MUST return the aliased keys
-    if is_minor_mode:
-        aliased_counters = {}
-        for key, count in counters.items():
-            if count > 0:
-                aliased_key = ALIASES.get(key, key) # Get "Lowercase Letter" from "Ll"
-                aliased_counters[aliased_key] = count
-        return aliased_counters
-    else:
-        return counters
+    # ---
+    # This is the correct, simplified return logic
+    # ---
+    final_counts = {}
+    for key, count in counters.items():
+        if count > 0:
+            # Alias the key if in minor mode, otherwise use the key as-is
+            label = ALIASES.get(key, key) if is_minor_mode else key
+            final_counts[label] = count
 
-    current_state = "NONE"
-    for char in t:
-        new_state = "NONE"
-        for key, regex in TEST_MAJOR.items():
-            if regex.test(char):
-                new_state = key
-                break
-        
-        if new_state != current_state:
-            if current_state in counters:
-                counters[current_state] += 1
-            current_state = new_state
-            
-    if current_state in counters:
-        counters[current_state] += 1
-        
-    return counters
+    return final_counts
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
@@ -841,11 +826,6 @@ def update_all(event=None):
     """The main function called on every input change."""
     
     t = document.getElementById("text-input").value
-
-    # Safely hook the toggle *once* on the first run
-    if not hasattr(update_all, "toggle_hooked"):
-        document.getElementById("shape-mode-toggle").addEventListener("input", update_all)
-        setattr(update_all, "toggle_hooked", True)
     
     if not t:
         # Render empty state
@@ -930,6 +910,9 @@ def update_all(event=None):
 
 # Hook the main function to the text-input
 document.getElementById("text-input").addEventListener("input", update_all)
+
+# Hook the new shape toggle
+document.getElementById("shape-mode-toggle").addEventListener("input", update_all)
 
 # Start loading the external data
 asyncio.ensure_future(load_unicode_data())
