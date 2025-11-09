@@ -304,6 +304,14 @@ def _parse_script_extensions(txt: str):
 # 3. COMPUTATION FUNCTIONS
 # ---
 
+def count_matches(regex, text):
+    """
+    Counts matches of a JS RegExp object in a string.
+    (This is the proven, working logic from your original file)
+    """
+    matches = window.String.prototype.match.call(text, regex)
+    return len(matches) if matches else 0
+
 def _find_matches_with_indices(regex_key: str, text: str):
     """Uses matchAll to find all matches and their indices."""
     regex = REGEX_MATCHER.get(regex_key)
@@ -437,7 +445,7 @@ def compute_grapheme_stats(t: str):
         elif cp_count > 1:
             multi_cp_count += 1
         
-        mark_count = _find_matches_with_indices("Marks", grapheme_str)
+        mark_count = count_matches(REGEX_MATCHER["Marks"], grapheme_str)
         
         total_mark_count += mark_count
         if mark_count > max_marks:
