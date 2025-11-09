@@ -554,17 +554,16 @@ def compute_bidi_class_analysis(t: str):
 
     current_state = "NONE"
     
-    for char_proxy in t:  # <-- Renamed to 'char_proxy' for clarity
+    # --- THIS IS THE FIX ---
+    # We MUST use the same loop as compute_forensic_stats_with_positions,
+    # as it's the only one proven to work with all unicodedata functions.
+    
+    js_array = window.Array.from_(t)
+    for char in js_array:
+    # --- END OF FIX ---
         try:
-            # --- THIS IS THE FIX ---
-            # 1. Get the code point as a Python int
-            cp = ord(char_proxy) 
-            # 2. Convert the int back to a native Python char
-            native_char = chr(cp)
-            # 3. Use the native char with unicodedata
-            new_state = unicodedata.bidirectional(native_char)
-            # --- END OF FIX ---
-
+            # Now this will work, just like it does in the other function
+            new_state = unicodedata.bidirectional(char)
         except Exception as e:
             print(f"Bidi class error: {e}")
             new_state = "XX" # Failsafe
