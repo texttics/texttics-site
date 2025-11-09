@@ -841,6 +841,11 @@ def update_all(event=None):
     """The main function called on every input change."""
     
     t = document.getElementById("text-input").value
+
+    # Safely hook the toggle *once* on the first run
+    if not hasattr(update_all, "toggle_hooked"):
+        document.getElementById("shape-mode-toggle").addEventListener("input", update_all)
+        setattr(update_all, "toggle_hooked", True)
     
     if not t:
         # Render empty state
@@ -925,9 +930,6 @@ def update_all(event=None):
 
 # Hook the main function to the text-input
 document.getElementById("text-input").addEventListener("input", update_all)
-
-# Hook the new shape toggle
-document.getElementById("shape-mode-toggle").addEventListener("input", update_all)
 
 # Start loading the external data
 asyncio.ensure_future(load_unicode_data())
