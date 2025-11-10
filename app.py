@@ -212,6 +212,33 @@ def _parse_standardized_variants(txt: str):
                 pass
     print(f"Loaded {len(base_set)} variant base chars and {len(selector_set)} unique selectors.")
 
+def _parse_emoji_variants(txt: str):
+    """Parses emoji-variation-sequences.txt to find emoji base chars."""
+    base_set = DATA_STORES["VariantBase"]
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        hex_codes = parts[0].strip().split()
+        
+        try:
+            # The base char is always the first one (e.g., '0023' from '0023 FE0E')
+            if hex_codes:
+                base_cp = int(hex_codes[0], 16)
+                if base_cp not in base_set:
+                    base_set.add(base_cp)
+                    count += 1
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {count} new emoji base chars from emoji-variation-sequences.")
+
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
     import bisect
@@ -262,26 +289,32 @@ async def load_unicode_data():
     print("Unicode data loading started.")
     
     try:
-        # 1. "DerivedNormalizationProps.txt" is included here
+        # 1. MODIFIED: Added the new file (with corrected path)
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
-            "Scripts.txt"
+            "Scripts.txt",
+            "emoji-variation-sequences.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
-        # 2. "derivednorm_txt" is included in the unpacking here
+        # 2. MODIFIED: Unpack the new file's result
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
-         scripts_txt) = results
+         scripts_txt, emoji_variants_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
         if age_txt: _parse_and_store_ranges(age_txt, "Age")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
+        
+        # 3. MODIFIED: Call the new parser
+        # This adds to the *same* DATA_STORES["VariantBase"] set
         if variants_txt: _parse_standardized_variants(variants_txt)
+        if emoji_variants_txt: _parse_emoji_variants(emoji_variants_txt)
+        
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
         if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
@@ -305,11 +338,10 @@ async def load_unicode_data():
                 "Alphabetic": "Alphabetic"
             })
             
-        
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
         render_status("Ready. Paste or type text to analyze.")
-        update_all() # Re-render with ready state
+        update_all()
         
     except Exception as e:
         LOADING_STATE = "FAILED"
