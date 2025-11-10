@@ -61,3 +61,13 @@
 2145..2149    ; Math # L&   [5] DOUBLE-STRUCK ITALIC CAPITAL D..DOUBLE-STRUCK ITALIC SMALL J
 214B          ; Math # Sm       TURNED AMPERSAND
 
+
+# DerivedCoreProperties.txt
+# Date: 2023-05-24, 18:14:00 GMT
+# © 2023 Unicode, Inc.
+
+0086..0089  ; Other_Default_Ignorable_Code_Point # Cc  [4] <control-0086>..<control-0089>
+00AD  ; Other_Default_Ignorable_Code_Point # Cf       SOFT HYPHEN
+115F..1160  ; Other_Default_Ignorable_Code_Point # Lo  [2] HANGUL CHOSEONG FILLER..HANGUL JUNGSEONG FILLER
+FFF9..FFFB  ; Other_Default_Ignorable_Code_Point # Cf  [3] INTERLINEAR ANNOTATION ANCHOR..INTERLINEAR ANNOTATION SEPARATOR
+
