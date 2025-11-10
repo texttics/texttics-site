@@ -222,6 +222,7 @@ function buildStructuredReport() {
   // --- 5. Provenance & Context ---
   report.push(`\n[ ${getText('#prov-title')} ]`);
   report.push(...parseTable('provenance-matrix-body', 'Property'));
+  report.push(...parseTable('script-run-matrix-body', 'Script Run'));
 
   // --- 6. Threat-Hunting (Placeholder) ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
