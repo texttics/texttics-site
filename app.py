@@ -262,17 +262,20 @@ async def load_unicode_data():
     print("Unicode data loading started.")
     
     try:
+        # 1. "DerivedNormalizationProps.txt" is ADDED here
         files_to_fetch = [
-        "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
-        "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
-        "Scripts.txt" # <-- ADDED
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
+            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
+            "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
+            "Scripts.txt",
+            "DerivedNormalizationProps.txt" 
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
+        # 2. "derivednorm_txt" is ADDED to the unpacking tuple
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
-         scripts_txt) = results # <-- ADDED
+         scripts_txt, derivednorm_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -282,29 +285,27 @@ async def load_unicode_data():
         if variants_txt: _parse_standardized_variants(variants_txt)
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
-        if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts") # <-- ADDED
+        if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
         
         if proplist_txt:
             _parse_property_file(proplist_txt, {
-                # --- UPDATED MAP ---
                 "Bidi_Control": "BidiControl",
                 "Join_Control": "JoinControl",
                 "Extender": "Extender",
                 "White_Space": "WhiteSpace",
-                "Deprecated": "Deprecated",
+                # 3. "Deprecated" is REMOVED from this block
                 "Dash": "Dash",
                 "Quotation_Mark": "QuotationMark",
                 "Terminal_Punctuation": "TerminalPunctuation",
                 "Sentence_Terminal": "SentenceTerminal"
-                # --- END UPDATED MAP ---
             })
         if derivedcore_txt:
             _parse_property_file(derivedcore_txt, {
-                # --- UPDATED MAP ---
                 "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
                 "Alphabetic": "Alphabetic"
-                # --- END UPDATED MAP ---
             })
+            
+        # 4. This block now works, parsing "Deprecated" from the correct file
         if derivednorm_txt:
             _parse_property_file(derivednorm_txt, {
                 "Deprecated": "Deprecated"
