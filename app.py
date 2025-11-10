@@ -100,28 +100,30 @@ for key, regex_str in MINOR_CATEGORIES_29.items():
 LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
 
 DATA_STORES = {
-"Blocks": {"ranges": [], "starts": [], "ends": []},
-"Age": {"ranges": [], "starts": [], "ends": []},
-"IdentifierType": {"ranges": [], "starts": [], "ends": []},
-"ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
-"LineBreak": {"ranges": [], "starts": [], "ends": []},
-"BidiControl": {"ranges": [], "starts": [], "ends": []},
-"JoinControl": {"ranges": [], "starts": [], "ends": []},
-"Extender": {"ranges": [], "starts": [], "ends": []},
-"WhiteSpace": {"ranges": [], "starts": [], "ends": []},
-"OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
-"Deprecated": {"ranges": [], "starts": [], "ends": []},
+    "Blocks": {"ranges": [], "starts": [], "ends": []},
+    "Age": {"ranges": [], "starts": [], "ends": []},
+    "IdentifierType": {"ranges": [], "starts": [], "ends": []},
+    "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
+    "LineBreak": {"ranges": [], "starts": [], "ends": []},
+    "BidiControl": {"ranges": [], "starts": [], "ends": []},
+    "JoinControl": {"ranges": [], "starts": [], "ends": []},
+    "Extender": {"ranges": [], "starts": [], "ends": []},
+    "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
+    "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
+    "Deprecated": {"ranges": [], "starts": [], "ends": []},
 
-"Scripts": {"ranges": [], "starts": [], "ends": []},
-"Dash": {"ranges": [], "starts": [], "ends": []},
-"QuotationMark": {"ranges": [], "starts": [], "ends": []},
-"TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
-"SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
-"Alphabetic": {"ranges": [], "starts": [], "ends": []},
-    
-"Confusables": {},
-"VariantBase": set(),
-"VariantSelectors": set()
+    # --- NEW KEYS ---
+    "Scripts": {"ranges": [], "starts": [], "ends": []},
+    "Dash": {"ranges": [], "starts": [], "ends": []},
+    "QuotationMark": {"ranges": [], "starts": [], "ends": []},
+    "TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
+    "SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
+    "Alphabetic": {"ranges": [], "starts": [], "ends": []},
+    # --- END NEW KEYS ---
+    
+    "Confusables": {},
+    "VariantBase": set(),
+    "VariantSelectors": set()
 }
 
 def _parse_and_store_ranges(txt: str, store_key: str):
