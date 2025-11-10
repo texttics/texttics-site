@@ -1034,8 +1034,17 @@ def update_all(event=None):
 # 6. INITIALIZATION
 # ---
 
-# Hook the main function to the text-input
-document.getElementById("text-input").addEventListener("input", update_all)
+async def main():
+    """Main entry point: Loads data, then hooks the input."""
+    # Start loading the external data and wait for it to finish.
+    # By the time this 'await' finishes, the document has
+    # almost certainly finished parsing.
+    await load_unicode_data()
+    
+    # Now that the DOM is stable and data is loaded,
+    # hook the main function to the text-input.
+    document.getElementById("text-input").addEventListener("input", update_all)
+    print("Text...tics is ready.") # A good sign to see in the console
 
-# Start loading the external data
-asyncio.ensure_future(load_unicode_data())
+# Start the main asynchronous task
+asyncio.ensure_future(main())
