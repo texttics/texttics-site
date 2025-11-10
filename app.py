@@ -36,7 +36,6 @@ REGEX_MATCHER = {
     "Marks": window.RegExp.new(r"\p{M}", "gu"),
     
     # Forensic Properties (for Module 2.C)
-    "Deprecated": window.RegExp.new(r"\p{Deprecated}", "gu"),
     # "Noncharacter" and "Deceptive Spaces" are now handled in Python
     "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
     
@@ -110,6 +109,7 @@ DATA_STORES = {
     "Extender": {"ranges": [], "starts": [], "ends": []},
     "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
     "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
+    "Deprecated": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -259,7 +259,8 @@ async def load_unicode_data():
                 "Bidi_Control": "BidiControl",
                 "Join_Control": "JoinControl",
                 "Extender": "Extender",
-                "White_Space": "WhiteSpace"
+                "White_Space": "WhiteSpace",
+                "Deprecated": "Deprecated"
             })
         if derivedcore_txt:
             _parse_property_file(derivedcore_txt, {
@@ -661,8 +662,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     # 1. Get pre-calculated counts from Module 1 - moved
     # Note: We can't easily get positions for calculated Cn.
 
-    # 2. Run regex-based checks (ONLY for 'Deprecated')
-    for key in ["Deprecated"]:
+    # 2. Run regex-based checks (all are now handled in Python)
+    for key in []: # <-- This loop is now empty
         indices, count = _find_matches_with_indices(key, t)
         forensic_stats[key] = {
             'count': count,
@@ -683,6 +684,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     true_ignorable_indices = []
     other_ignorable_indices = []
     extender_indices = []
+    deprecated_indices = []
     decomp_stats = {}
     
     js_array = window.Array.from_(t)
@@ -721,6 +723,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             # --- 4. Add Extender Property (Gap 6) ---
             if _find_in_ranges(cp, "Extender"):
                 extender_indices.append(f"#{i}")
+
+            # --- NEW: Check for Deprecated ---
+            elif _find_in_ranges(cp, "Deprecated"):
+                deprecated_indices.append(f"#{i}")
             
             # --- 5. Keep the checks we just fixed ---
             elif category == "Zs" and cp != 0x0020:
@@ -748,6 +754,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     
     # Add other PropList stats
     forensic_stats["Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
+    forensic_stats["Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
     
     # Add Decomposition stats
     forensic_stats.update(decomp_stats)
