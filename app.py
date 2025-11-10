@@ -947,6 +947,8 @@ def update_all(event=None):
         render_matrix_table({}, "shape-matrix-body")
         render_matrix_table({}, "integrity-matrix-body", has_positions=True)
         render_matrix_table({}, "provenance-matrix-body")
+        render_matrix_table({}, "linebreak-run-matrix-body")
+        render_matrix_table({}, "bidi-run-matrix-body")
         render_toc_counts({})
         return
 
