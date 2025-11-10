@@ -677,6 +677,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     private_use_indices = []
     surrogate_indices = []
     unassigned_indices = []
+
+    bidi_control_indices = []
+    join_control_indices = []
+    true_ignorable_indices = []
+    other_ignorable_indices = []
+    extender_indices = []
+    decomp_stats = {}
     
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
@@ -684,9 +691,38 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             category = unicodedata.category(char)
             cp = ord(char)
             
-            # --- Chain 1: Category-based checks ---
-            if category == "Cf":
-                ignorable_indices.append(f"#{i}")
+            # --- 1. Deconstruct the old 'Cf' logic (Gap 4) ---
+            if _find_in_ranges(cp, "BidiControl"):
+                bidi_control_indices.append(f"#{i}")
+            elif _find_in_ranges(cp, "JoinControl"):
+                join_control_indices.append(f"#{i}")
+            elif category == "Cf":
+                # This now only catches Cf chars that are NOT Bidi or Join
+                true_ignorable_indices.append(f"#{i}")
+
+            # --- 2. Add Other Ignorables (Gap 7) ---
+            if _find_in_ranges(cp, "OtherDefaultIgnorable"):
+                other_ignorable_indices.append(f"#{i}")
+
+            # --- 3. Add Decomposition Type (Gap 5) ---
+            decomp = unicodedata.decomposition(char)
+            if decomp and decomp.startswith('<'):
+                try:
+                    # 'decomp' is like '<compat> 0020 0041'
+                    tag = decomp.split('>', 1)[0].strip('<')
+                    key = f"Decomposition: {tag}"
+                    if key not in decomp_stats:
+                        decomp_stats[key] = {'count': 0, 'positions': []}
+                    decomp_stats[key]['count'] += 1
+                    decomp_stats[key]['positions'].append(f"#{i}")
+                except Exception:
+                    pass # Ignore malformed decomposition strings
+
+            # --- 4. Add Extender Property (Gap 6) ---
+            if _find_in_ranges(cp, "Extender"):
+                extender_indices.append(f"#{i}")
+            
+            # --- 5. Keep the checks we just fixed ---
             elif category == "Zs" and cp != 0x0020:
                 deceptive_space_indices.append(f"#{i}")
             elif category == "Co":
@@ -696,19 +732,27 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             elif category == "Cn":
                 unassigned_indices.append(f"#{i}")
 
-            # --- Chain 2: Independent Code Point check ---
-            # (This MUST be a separate 'if', not 'elif')
+            # Independent Code Point check
             if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
                 nonchar_indices.append(f"#{i}")
                 
         except Exception as e:
             print(f"Error processing char at index {i}: {e}")
 
-
-    forensic_stats["Ignorables (Format/Cf)"] = {
-        'count': len(ignorable_indices),
-        'positions': ignorable_indices
-    }
+    
+    # Add new decomposed Cf/Ignorable stats
+    forensic_stats["Bidi Control (UAX #9)"] = {'count': len(bidi_control_indices), 'positions': bidi_control_indices}
+    forensic_stats["Join Control (Structural)"] = {'count': len(join_control_indices), 'positions': join_control_indices}
+    forensic_stats["True Ignorable (Format/Cf)"] = {'count': len(true_ignorable_indices), 'positions': true_ignorable_indices}
+    forensic_stats["Other Default Ignorable"] = {'count': len(other_ignorable_indices), 'positions': other_ignorable_indices}
+    
+    # Add other PropList stats
+    forensic_stats["Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
+    
+    # Add Decomposition stats
+    forensic_stats.update(decomp_stats)
+    
+    # Add back the other flags we kept
     forensic_stats["Deceptive Spaces"] = {
         'count': len(deceptive_space_indices),
         'positions': deceptive_space_indices
@@ -717,7 +761,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         'count': len(nonchar_indices),
         'positions': nonchar_indices
     }
-
     forensic_stats["Private Use"] = {
         'count': len(private_use_indices),
         'positions': private_use_indices
@@ -730,6 +773,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         'count': len(unassigned_indices),
         'positions': unassigned_indices
     }
+
     
     # 4. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
