@@ -187,10 +187,9 @@ def _parse_confusables(txt: str):
 
 def _parse_standardized_variants(txt: str):
     """Parses StandardizedVariants.txt into two sets."""
-    base_set = DATA_STORES["VariantBase"]
-    selector_set = DATA_STORES["VariantSelectors"]
-    base_set.clear()
-    selector_set.clear()
+    # Create new, local sets instead of modifying the global one
+    base_set = set()
+    selector_set = set()
     
     for raw in txt.splitlines():
         line = raw.split('#', 1)[0].strip()
@@ -210,11 +209,15 @@ def _parse_standardized_variants(txt: str):
                 selector_set.add(selector_cp)
             except ValueError:
                 pass
+                
     print(f"Loaded {len(base_set)} variant base chars and {len(selector_set)} unique selectors.")
+    # Return the new local sets
+    return base_set, selector_set
 
 def _parse_emoji_variants(txt: str):
     """Parses emoji-variation-sequences.txt to find emoji base chars."""
-    base_set = DATA_STORES["VariantBase"]
+    # Create a new, local set
+    base_set = set()
     count = 0
     for raw in txt.splitlines():
         line = raw.split('#', 1)[0].strip()
@@ -238,6 +241,8 @@ def _parse_emoji_variants(txt: str):
             pass # Ignore malformed lines
             
     print(f"Loaded {count} new emoji base chars from emoji-variation-sequences.")
+    # Return the new local set
+    return base_set
 
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
@@ -271,7 +276,7 @@ def _get_char_script_id(char, cp: int):
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
     global LOADING_STATE
-
+    
     async def fetch_file(filename):
         try:
             response = await pyfetch(f"./{filename}")
@@ -287,7 +292,7 @@ async def load_unicode_data():
     LOADING_STATE = "LOADING"
     render_status(f"Loading Unicode data files...")
     print("Unicode data loading started.")
-
+    
     try:
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
@@ -297,40 +302,46 @@ async def load_unicode_data():
             "emoji-variation-sequences.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
-
+    
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt) = results
-
+    
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
         if age_txt: _parse_and_store_ranges(age_txt, "Age")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
-
-        # --- DIAGNOSTIC STEP ---
-        # We will track the size of the set.
-        print("--- DIAGNOSTIC: VariantBase Set ---")
-
+        
+        # --- NEW ROBUST LOGIC ---
+        
+        # 1. Initialize empty sets
+        std_base_set = set()
+        std_selector_set = set()
+        emoji_base_set = set()
+        
+        # 2. Call parsers and get their returned sets
         if variants_txt: 
-            _parse_standardized_variants(variants_txt)
-            print(f"--- DIAGNOSTIC: Set size AFTER StandardizedVariants: {len(DATA_STORES['VariantBase'])}")
+            std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
         else:
-            print("--- DIAGNOSTIC: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
-
+            print("--- WARNING: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
+            
         if emoji_variants_txt: 
-            _parse_emoji_variants(emoji_variants_txt)
-            print(f"--- DIAGNOSTIC: Set size AFTER EmojiVariants: {len(DATA_STORES['VariantBase'])}")
+            emoji_base_set = _parse_emoji_variants(emoji_variants_txt)
         else:
-            print("--- DIAGNOSTIC: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
-
-        print("--- END DIAGNOSTIC ---")
-        # --- END DIAGNOSTIC STEP ---
-
+            print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
+        
+        # 3. Manually combine the sets into the final global store
+        DATA_STORES["VariantBase"] = std_base_set.union(emoji_base_set)
+        DATA_STORES["VariantSelectors"] = std_selector_set # This one is simple
+        
+        print(f"--- DIAGNOSTIC: Final combined 'VariantBase' set size: {len(DATA_STORES['VariantBase'])}")
+        # --- END NEW LOGIC ---
+        
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
         if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
-
+        
         if proplist_txt:
             _parse_property_file(proplist_txt, {
                 "Bidi_Control": "BidiControl",
@@ -349,13 +360,13 @@ async def load_unicode_data():
                 "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
                 "Alphabetic": "Alphabetic"
             })
-
-
+            
+        
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
         render_status("Ready. Paste or type text to analyze.")
         update_all() # Re-render with ready state
-
+        
     except Exception as e:
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
