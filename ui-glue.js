@@ -213,13 +213,11 @@ function buildStructuredReport() {
   report.push(...parseTable('shape-matrix-body', 'Major Run'));
   report.push(...parseTable('minor-shape-matrix-body', 'Minor Run'));
   report.push(...parseTable('linebreak-run-matrix-body', 'LineBreak Run'));
+  report.push(...parseTable('bidi-run-matrix-body', 'Bidi Class Run'));
 
   // --- 4. Forensic Integrity ---
   report.push(`\n[ ${getText('#integrity-title')} ]`);
   report.push(...parseTable('integrity-matrix-body', 'Flag'));
-
-  report.push(`\n[ ${getText('#bidi-title')} ]`);
-  report.push(...parseTable('bidi-run-matrix-body', 'Bidi Class Run'));
 
   // --- 5. Provenance & Context ---
   report.push(`\n[ ${getText('#prov-title')} ]`);
