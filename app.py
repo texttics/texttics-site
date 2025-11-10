@@ -324,29 +324,29 @@ async def load_unicode_data():
         if confusables_txt: _parse_confusables(confusables_txt)
         
         # --- Feature 1 Logic (Robust Fix) ---
-        std_base_set = set()
-        std_selector_set = set()
-        emoji_base_set = set()
-        
-        if variants_txt: 
-            std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
-        else:
-            print("--- WARNING: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
-            
-        if emoji_variants_txt: 
-            emoji_base_set = _parse_emoji_variants(emoji_variants_txt)
-        else:
-            print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
-        
-        # 1. Assign the first set
-        DATA_STORES["VariantBase"] = std_base_set
-        # 2. Update it in-place with the second set
-        DATA_STORES["VariantBase"].update(emoji_base_set)
-        
-        DATA_STORES["VariantSelectors"] = std_selector_set
-        
-        print(f"--- DIAGNOSTIC: Final combined 'VariantBase' set size: {len(DATA_STORES['VariantBase'])}")
-        # --- End Feature 1 Logic ---
+        std_base_set = set()
+        std_selector_set = set()
+        emoji_base_set = set()
+        
+        if variants_txt: 
+            std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
+        else:
+            print("--- WARNING: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
+            
+        if emoji_variants_txt: 
+            emoji_base_set = _parse_emoji_variants(emoji_variants_txt)
+        else:
+            print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
+        
+        # 1. Assign the first set
+        DATA_STORES["VariantBase"] = std_base_set
+        # 2. Update it in-place with the second set
+        DATA_STORES["VariantBase"].update(emoji_base_set)
+        
+        DATA_STORES["VariantSelectors"] = std_selector_set
+        
+        print(f"--- DIAGNOSTIC: Final combined 'VariantBase' set size: {len(DATA_STORES['VariantBase'])}")
+        # --- End Feature 1 Logic ---
         
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
