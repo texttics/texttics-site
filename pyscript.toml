@@ -15,6 +15,5 @@ files = [
     "LineBreak.txt",
     "PropList.txt",
     "DerivedCoreProperties.txt",
-    "Scripts.txt",
-    "DerivedNormalizationProps.txt"
+    "Scripts.txt"
 ]
