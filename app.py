@@ -100,11 +100,16 @@ for key, regex_str in MINOR_CATEGORIES_29.items():
 LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
 
 DATA_STORES = {
-    "Blocks": {"ranges": [], "starts": [], "ends": []},
+"Blocks": {"ranges": [], "starts": [], "ends": []},
     "Age": {"ranges": [], "starts": [], "ends": []},
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
     "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "LineBreak": {"ranges": [], "starts": [], "ends": []},
+    "BidiControl": {"ranges": [], "starts": [], "ends": []},
+    "JoinControl": {"ranges": [], "starts": [], "ends": []},
+    "Extender": {"ranges": [], "starts": [], "ends": []},
+    "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
+    "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -235,11 +240,11 @@ async def load_unicode_data():
     try:
         files_to_fetch = [
         "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", "LineBreak.txt"
+        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
-        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt, linebreak_txt = results
+        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -249,6 +254,17 @@ async def load_unicode_data():
         if variants_txt: _parse_standardized_variants(variants_txt)
         if script_ext_txt: _parse_script_extensions(script_ext_txt) # Use the new custom parser
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
+        if proplist_txt:
+            _parse_property_file(proplist_txt, {
+                "Bidi_Control": "BidiControl",
+                "Join_Control": "JoinControl",
+                "Extender": "Extender",
+                "White_Space": "WhiteSpace"
+            })
+        if derivedcore_txt:
+            _parse_property_file(derivedcore_txt, {
+                "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable"
+            })
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
@@ -299,6 +315,57 @@ def _parse_script_extensions(txt: str):
         store["ends"].append(e)
 
     print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
+
+def _parse_property_file(txt: str, property_map: dict):
+    """
+    Generic parser for property files like PropList.txt.
+    It iterates a file once and sorts properties into *multiple* DATA_STORES buckets based on the property_map.
+    
+    property_map = {"FilePropertyName": "DataStoreKey"}
+    """
+    # A temp dict to hold lists of ranges before sorting
+    temp_ranges = {store_key: [] for store_key in property_map.values()}
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line: continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2: continue
+        
+        code_range, prop_name = parts[0].strip(), parts[1].strip()
+        
+        # Check if this is one of the properties we're looking for
+        if prop_name in property_map:
+            store_key = property_map[prop_name]
+            
+            try:
+                if '..' in code_range:
+                    a, b = code_range.split('..', 1)
+                    temp_ranges[store_key].append((int(a, 16), int(b, 16), prop_name))
+                else:
+                    cp = int(code_range, 16)
+                    temp_ranges[store_key].append((cp, cp, prop_name))
+            except Exception:
+                pass # Ignore malformed lines
+    
+    # Now, populate the real DATA_STORES
+    for store_key, ranges_list in temp_ranges.items():
+        if not ranges_list: continue
+        
+        store = DATA_STORES[store_key]
+        store["ranges"].clear()
+        store["starts"].clear()
+        store["ends"].clear()
+        
+        ranges_list.sort()
+        
+        for s, e, v in ranges_list:
+            store["ranges"].append((s, e, v))
+            store["starts"].append(s)
+            store["ends"].append(e)
+        
+        print(f"Loaded {len(ranges_list)} ranges for {store_key} from property file.")
 
 # ---
 # 3. COMPUTATION FUNCTIONS
