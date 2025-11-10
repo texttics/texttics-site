@@ -945,7 +945,7 @@ def update_all(event=None):
         render_parallel_table({}, {}, "major-parallel-body")
         render_parallel_table({}, {}, "minor-parallel-body", ALIASES)
         render_matrix_table({}, "shape-matrix-body")
-        render_matrix_table({}, "forensic-matrix-body", has_positions=True)
+        render_matrix_table({}, "integrity-matrix-body", has_positions=True)
         render_matrix_table({}, "provenance-matrix-body")
         render_toc_counts({})
         return
