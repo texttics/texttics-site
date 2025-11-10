@@ -214,6 +214,9 @@ function buildStructuredReport() {
   report.push(...parseTable('minor-shape-matrix-body', 'Minor Run'));
   report.push(...parseTable('linebreak-run-matrix-body', 'LineBreak Run'));
   report.push(...parseTable('bidi-run-matrix-body', 'Bidi Class Run'));
+  report.push(...parseTable('wordbreak-run-matrix-body', 'WordBreak Run'));
+  report.push(...parseTable('sentencebreak-run-matrix-body', 'SentenceBreak Run'));
+  report.push(...parseTable('graphemebreak-run-matrix-body', 'GraphemeBreak Run'));
 
   // --- 4. Forensic Integrity ---
   report.push(`\n[ ${getText('#integrity-title')} ]`);
