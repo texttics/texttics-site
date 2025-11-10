@@ -121,6 +121,7 @@ DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
     "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
     "GraphemeBreak": {"ranges": [], "starts": [], "ends": []},
+    "DoNotEmit": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     
     "VariantBase": set(),
@@ -247,6 +248,54 @@ def _parse_emoji_variants(txt: str):
     # Return the new local set
     return base_set
 
+def _parse_donotemit(txt: str):
+    """
+    Parses DoNotEmit.txt for single chars and ranges.
+    (Applies 80/20 rule: IGNORES sequences like '0340 0341').
+    """
+    store_key = "DoNotEmit"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        code_range = parts[0].strip()
+        
+        # --- THIS IS THE 80/20 RULE ---
+        # If there's a space, it's a sequence. Ignore it.
+        if ' ' in code_range:
+            continue
+        # --- END 80/20 RULE ---
+            
+        try:
+            if '..' in code_range:
+                a, b = code_range.split('..', 1)
+                ranges_list.append((int(a, 16), int(b, 16), "DoNotEmit"))
+            else:
+                cp = int(code_range, 16)
+                ranges_list.append((cp, cp, "DoNotEmit"))
+        except Exception:
+            pass # Ignore malformed lines
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+        
+    print(f"Loaded {len(ranges_list)} single-char/range rules for {store_key}.")
+
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
     import bisect
@@ -307,7 +356,8 @@ async def load_unicode_data():
             "emoji-variation-sequences.txt",
             "WordBreakProperty.txt",
             "SentenceBreakProperty.txt",
-            "GraphemeBreakProperty.txt"
+            "GraphemeBreakProperty.txt",
+            "DoNotEmit.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -315,7 +365,7 @@ async def load_unicode_data():
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
-         sentence_break_txt, grapheme_break_txt) = results
+         sentence_break_txt, grapheme_break_txt, donotemit_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -356,6 +406,9 @@ async def load_unicode_data():
         if word_break_txt: _parse_and_store_ranges(word_break_txt, "WordBreak")
         if sentence_break_txt: _parse_and_store_ranges(sentence_break_txt, "SentenceBreak")
         if grapheme_break_txt: _parse_and_store_ranges(grapheme_break_txt, "GraphemeBreak")
+
+        # --- NEW (Feature 3) ---
+        if donotemit_txt: _parse_donotemit(donotemit_txt)
         
         if proplist_txt:
             _parse_property_file(proplist_txt, {
@@ -903,6 +956,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     # PropList buckets
     extender_indices = []
     deprecated_indices = []
+    donotemit_indices = []
     dash_indices = []
     quote_indices = []
     terminal_punct_indices = []
@@ -948,6 +1002,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 extender_indices.append(f"#{i}")
             if _find_in_ranges(cp, "Deprecated"):
                 deprecated_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "DoNotEmit"):
+                donotemit_indices.append(f"#{i}")
             if _find_in_ranges(cp, "Dash"):
                 dash_indices.append(f"#{i}")
             if _find_in_ranges(cp, "QuotationMark"):
@@ -986,6 +1042,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     # Add other PropList stats
     forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
     forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
+    forensic_stats["Prop: Discouraged (DoNotEmit)"] = {'count': len(donotemit_indices), 'positions': donotemit_indices}
     forensic_stats["Prop: Dash"] = {'count': len(dash_indices), 'positions': dash_indices}
     forensic_stats["Prop: Quotation Mark"] = {'count': len(quote_indices), 'positions': quote_indices}
     forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
