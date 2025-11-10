@@ -111,7 +111,7 @@ DATA_STORES = {
     "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
     "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
     "Deprecated": {"ranges": [], "starts": [], "ends": []},
-
+    "VariationSelector": {"ranges": [], "starts": [], "ends": []},
     "Scripts": {"ranges": [], "starts": [], "ends": []},
     "Dash": {"ranges": [], "starts": [], "ends": []},
     "QuotationMark": {"ranges": [], "starts": [], "ends": []},
@@ -296,7 +296,8 @@ async def load_unicode_data():
                 "Dash": "Dash",
                 "Quotation_Mark": "QuotationMark",
                 "Terminal_Punctuation": "TerminalPunctuation",
-                "Sentence_Terminal": "SentenceTerminal"
+                "Sentence_Terminal": "SentenceTerminal",
+                "Variation_Selector": "VariationSelector"
             })
         if derivedcore_txt:
             _parse_property_file(derivedcore_txt, {
@@ -899,7 +900,9 @@ def compute_variant_stats_with_positions(t: str):
         cp = ord(char)
         if cp in base_set:
             base_indices.append(f"#{i}")
-        if cp in selector_set:
+        # Check both the old set (for Mongolian) AND the new property (for Emoji)
+        is_selector = (cp in selector_set) or (_find_in_ranges(cp, "VariationSelector") is not None)
+        if is_selector:
             selector_indices.append(f"#{i}")
         # Check for Ideographic Variation Selectors (Steganography vector)
         if 0xE0100 <= cp <= 0xE01EF:
