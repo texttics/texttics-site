@@ -963,6 +963,12 @@ def update_all(event=None):
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
     bidi_run_stats = compute_bidi_class_analysis(t)
+
+    # --- NEW: DIAGNOSTIC LOGGING ---
+    print("--- DEBUGGING BIDI ---")
+    print(f"BIDI STATS: {bidi_run_stats}")
+    print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
+    print("------------------------")
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
