@@ -970,6 +970,79 @@ def compute_variant_stats_with_positions(t: str):
         "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices}
     }
 
+def compute_provenance_stats(t: str):
+    """Module 2.D: Runs UAX #44 and Deep Scan analysis."""
+
+    # 1. UAX #44 Stats are now data-driven and moved to compute_forensic_stats
+    # This section is now only for Script, Block, Age, and Numeric analysis.
+
+    # These dicts will hold the counts
+    script_stats = {} 
+    script_ext_stats = {}
+    
+    # 2. Deep Scan Stats (if data is loaded)
+    if LOADING_STATE != "READY":
+        return {} # Return empty if data isn't ready
+
+    numeric_total_value = 0
+    number_script_zeros = set()
+    deep_stats = {} # for Block, Age, Type, etc.
+
+    # We loop char-by-char for all data-file properties
+    for char in t:
+        cp = ord(char)
+
+        # --- THIS IS THE NEW DATA-DRIVEN SCRIPT LOGIC ---
+        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+        if script_ext_val:
+            # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
+            scripts = script_ext_val.split()
+            for script in scripts:
+                key = f"Script-Ext: {script}"
+                script_ext_stats[key] = script_ext_stats.get(key, 0) + 1
+        else:
+            # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
+            # We fall back to its primary 'Script' property from Scripts.txt
+            script_val = _find_in_ranges(cp, "Scripts")
+            if script_val:
+                key = f"Script: {script_val}"
+                script_stats[key] = script_stats.get(key, 0) + 1
+        # --- END OF NEW LOGIC ---
+
+        # Block, Age, Type
+        block_name = _find_in_ranges(cp, "Blocks")
+        if block_name:
+            key = f"Block: {block_name}"
+            deep_stats[key] = deep_stats.get(key, 0) + 1
+
+        age = _find_in_ranges(cp, "Age")
+        if age:
+            key = f"Age: {age}"
+            deep_stats[key] = deep_stats.get(key, 0) + 1
+
+        # Numeric Properties
+        try:
+            value = unicodedata.numeric(char)
+            numeric_total_value += value
+            gc = unicodedata.category(char)
+            if gc == "Nd":
+                zero_code_point = ord(char) - int(value)
+                number_script_zeros.add(zero_code_point)
+        except (ValueError, TypeError):
+            pass
+
+    if numeric_total_value > 0:
+        deep_stats["Total Numeric Value"] = round(numeric_total_value, 4)
+    if len(number_script_zeros) > 1:
+        deep_stats["Mixed-Number Systems"] = len(number_script_zeros)
+
+    # Combine all stats
+    final_stats = {}
+    final_stats.update(script_stats)
+    final_stats.update(script_ext_stats)
+    final_stats.update(deep_stats)
+    return final_stats
+
 # ---
 # 4. DOM RENDERER FUNCTIONS
 # ---
