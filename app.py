@@ -262,17 +262,17 @@ async def load_unicode_data():
     print("Unicode data loading started.")
     
     try:
-        # 1. "DerivedNormalizationProps.txt" is ADDED here
+        # 1. "DerivedNormalizationProps.txt" is included here
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
             "Scripts.txt",
-            "DerivedNormalizationProps.txt" 
+            "DerivedNormalizationProps.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
-        # 2. "derivednorm_txt" is ADDED to the unpacking tuple
+        # 2. "derivednorm_txt" is included in the unpacking here
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, derivednorm_txt) = results
@@ -293,7 +293,7 @@ async def load_unicode_data():
                 "Join_Control": "JoinControl",
                 "Extender": "Extender",
                 "White_Space": "WhiteSpace",
-                # 3. "Deprecated" is REMOVED from this block
+                # 3. "Deprecated" is REMOVED from this parser
                 "Dash": "Dash",
                 "Quotation_Mark": "QuotationMark",
                 "Terminal_Punctuation": "TerminalPunctuation",
@@ -305,7 +305,7 @@ async def load_unicode_data():
                 "Alphabetic": "Alphabetic"
             })
             
-        # 4. This block now works, parsing "Deprecated" from the correct file
+        # 4. This block now correctly parses "Deprecated" from its own file
         if derivednorm_txt:
             _parse_property_file(derivednorm_txt, {
                 "Deprecated": "Deprecated"
