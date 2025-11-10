@@ -373,7 +373,7 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
         
-        # --- Feature 1 Logic (Reversed Robust Fix) ---
+        # --- Feature 1 Logic (as corrected) ---
         std_base_set = set()
         std_selector_set = set()
         emoji_base_set = set()
@@ -388,11 +388,7 @@ async def load_unicode_data():
         else:
             print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
         
-        # 1. Assign the *emoji* set first
-        DATA_STORES["VariantBase"] = emoji_base_set
-        # 2. Update it in-place with the *standardized* set
-        DATA_STORES["VariantBase"].update(std_base_set)
-        
+        DATA_STORES["VariantBase"] = std_base_set.union(emoji_base_set)
         DATA_STORES["VariantSelectors"] = std_selector_set
         
         print(f"--- DIAGNOSTIC: Final combined 'VariantBase' set size: {len(DATA_STORES['VariantBase'])}")
