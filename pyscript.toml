@@ -12,5 +12,7 @@ files = [
     "confusables.txt", 
     "StandardizedVariants.txt",
     "ScriptExtensions.txt",
-    "LineBreak.txt"
+    "LineBreak.txt",
+    "PropList.txt",
+    "DerivedCoreProperties.txt"
 ]
