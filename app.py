@@ -112,14 +112,12 @@ DATA_STORES = {
 "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
 "Deprecated": {"ranges": [], "starts": [], "ends": []},
 
-# --- NEW KEYS ---
 "Scripts": {"ranges": [], "starts": [], "ends": []},
 "Dash": {"ranges": [], "starts": [], "ends": []},
 "QuotationMark": {"ranges": [], "starts": [], "ends": []},
 "TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
 "SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
 "Alphabetic": {"ranges": [], "starts": [], "ends": []},
-# --- END NEW KEYS ---
     
 "Confusables": {},
 "VariantBase": set(),
