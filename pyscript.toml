@@ -19,5 +19,6 @@ files = [
     "emoji-variation-sequences.txt",
     "WordBreakProperty.txt",
     "SentenceBreakProperty.txt",
-    "GraphemeBreakProperty.txt"
+    "GraphemeBreakProperty.txt",
+    "DoNotEmit.txt"
 ]
