@@ -67,17 +67,6 @@ TEST_MAJOR = {
     "C (Other)": window.RegExp.new(r"^\p{C}$", "u")
 }
 
-# Pre-compiled script testers for the fallback
-SCRIPT_TESTERS = {
-    "Script: Cyrillic": window.RegExp.new(r"^\p{Script=Cyrillic}$", "u"),
-    "Script: Greek": window.RegExp.new(r"^\p{Script=Greek}$", "u"),
-    "Script: Han": window.RegExp.new(r"^\p{Script=Han}$", "u"),
-    "Script: Arabic": window.RegExp.new(r"^\p{Script=Arabic}$", "u"),
-    "Script: Hebrew": window.RegExp.new(r"^\p{Script=Hebrew}$", "u"),
-    "Script: Latin": window.RegExp.new(r"^\p{Script=Latin}$", "u"),
-    "Script: Common": window.RegExp.new(r"^\p{Script=Common}$", "u"),
-    "Script: Inherited": window.RegExp.new(r"^\p{Script=Inherited}$", "u"),
-}
 
 ALIASES = {
     "Lu": "Uppercase Letter", "Ll": "Lowercase Letter", "Lt": "Titlecase Letter", "Lm": "Modifier Letter", "Lo": "Other Letter",
@@ -122,6 +111,12 @@ DATA_STORES = {
     "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
     "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
     "Deprecated": {"ranges": [], "starts": [], "ends": []},
+    "Scripts": {"ranges": [], "starts": [], "ends": []},
+    "Dash": {"ranges": [], "starts": [], "ends": []},
+    "QuotationMark": {"ranges": [], "starts": [], "ends": []},
+    "TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
+    "SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
+    "Alphabetic": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -230,19 +225,19 @@ def _find_in_ranges(cp: int, store_key: str):
     return None
 
 def _get_char_script_id(char, cp: int):
-    """Helper for the RLE engine. Returns a single string ID for a char's script."""
-    # 1. Check ScriptExtensions first (for '·', '(', etc.)
-    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-    if script_ext_val:
-        # 'Latn Grek' becomes one "state"
-        return f"Script-Ext: {script_ext_val}"
+    """Helper for the RLE engine. Returns a single string ID for a char's script."""
+    # 1. Check ScriptExtensions first (for '·', '(', etc.)
+    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+    if script_ext_val:
+        # 'Latn Grek' becomes one "state"
+        return f"Script-Ext: {script_ext_val}"
 
-    # 2. Fall back to primary Script property (using our new global dict)
-    for key, regex in SCRIPT_TESTERS.items():
-        if regex.test(char):
-            return key # e.g., "Script: Latin"
+    # 2. Fall back to primary Script property (using our new data store)
+    script_val = _find_in_ranges(cp, "Scripts")
+    if script_val:
+        return f"Script: {script_val}"
 
-    return "Script: Unknown"
+    return "Script: Unknown"
 
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -266,12 +261,16 @@ async def load_unicode_data():
     
     try:
         files_to_fetch = [
-        "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt"
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
+            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
+            "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
+            "Scripts.txt" # <-- ADDED
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
-        blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt = results
+        (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
+         script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
+         scripts_txt) = results # <-- ADDED
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -279,19 +278,30 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
         if variants_txt: _parse_standardized_variants(variants_txt)
-        if script_ext_txt: _parse_script_extensions(script_ext_txt) # Use the new custom parser
+        if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
+        if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts") # <-- ADDED
+        
         if proplist_txt:
             _parse_property_file(proplist_txt, {
+                # --- UPDATED MAP ---
                 "Bidi_Control": "BidiControl",
                 "Join_Control": "JoinControl",
                 "Extender": "Extender",
                 "White_Space": "WhiteSpace",
-                "Deprecated": "Deprecated"
+                "Deprecated": "Deprecated",
+                "Dash": "Dash",
+                "Quotation_Mark": "QuotationMark",
+                "Terminal_Punctuation": "TerminalPunctuation",
+                "Sentence_Terminal": "SentenceTerminal"
+                # --- END UPDATED MAP ---
             })
         if derivedcore_txt:
             _parse_property_file(derivedcore_txt, {
-                "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable"
+                # --- UPDATED MAP ---
+                "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
+                "Alphabetic": "Alphabetic"
+                # --- END UPDATED MAP ---
             })
         
         LOADING_STATE = "READY"
@@ -714,32 +724,29 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
     forensic_stats = {}
 
-    # 1. Get pre-calculated counts from Module 1 - moved
-    # Note: We can't easily get positions for calculated Cn.
-
-    # 2. Run regex-based checks (all are now handled in Python)
-    for key in []: # <-- This loop is now empty
-        indices, count = _find_matches_with_indices(key, t)
-        forensic_stats[key] = {
-            'count': count,
-            'positions': [f"#{i}" for i in indices]
-        }
-
-    # 3. Manually find 'Cf', 'Deceptive Spaces', and 'Noncharacter' in one Python loop
-    ignorable_indices = []
+    # 1. Manually find flags in one Python loop
     deceptive_space_indices = []
     nonchar_indices = []
-
     private_use_indices = []
     surrogate_indices = []
     unassigned_indices = []
-
+    
+    # Cf/Ignorable buckets
     bidi_control_indices = []
     join_control_indices = []
     true_ignorable_indices = []
     other_ignorable_indices = []
+    
+    # PropList buckets
     extender_indices = []
     deprecated_indices = []
+    dash_indices = []
+    quote_indices = []
+    terminal_punct_indices = []
+    sentence_terminal_indices = []
+    alphabetic_indices = []
+    
+    # Other
     decomp_stats = {}
     
     js_array = window.Array.from_(t)
@@ -748,24 +755,22 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             category = unicodedata.category(char)
             cp = ord(char)
             
-            # --- 1. Deconstruct the old 'Cf' logic (Gap 4) ---
+            # --- 1. Deconstruct the old 'Cf' logic ---
             if _find_in_ranges(cp, "BidiControl"):
                 bidi_control_indices.append(f"#{i}")
             elif _find_in_ranges(cp, "JoinControl"):
                 join_control_indices.append(f"#{i}")
             elif category == "Cf":
-                # This now only catches Cf chars that are NOT Bidi or Join
                 true_ignorable_indices.append(f"#{i}")
 
-            # --- 2. Add Other Ignorables (Gap 7) ---
+            # --- 2. Add Other Ignorables ---
             if _find_in_ranges(cp, "OtherDefaultIgnorable"):
                 other_ignorable_indices.append(f"#{i}")
 
-            # --- 3. Add Decomposition Type (Gap 5) ---
+            # --- 3. Add Decomposition Type ---
             decomp = unicodedata.decomposition(char)
             if decomp and decomp.startswith('<'):
                 try:
-                    # 'decomp' is like '<compat> 0020 0041'
                     tag = decomp.split('>', 1)[0].strip('<')
                     key = f"Decomposition: {tag}"
                     if key not in decomp_stats:
@@ -773,18 +778,26 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     decomp_stats[key]['count'] += 1
                     decomp_stats[key]['positions'].append(f"#{i}")
                 except Exception:
-                    pass # Ignore malformed decomposition strings
+                    pass 
 
-            # --- 4. Add Extender Property (Gap 6) ---
+            # --- 4. Add Other Properties (Extender, Deprecated, etc.) ---
             if _find_in_ranges(cp, "Extender"):
                 extender_indices.append(f"#{i}")
-
-            # --- NEW: Check for Deprecated ---
-            elif _find_in_ranges(cp, "Deprecated"):
+            if _find_in_ranges(cp, "Deprecated"):
                 deprecated_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "Dash"):
+                dash_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "QuotationMark"):
+                quote_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "TerminalPunctuation"):
+                terminal_punct_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "SentenceTerminal"):
+                sentence_terminal_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "Alphabetic"):
+                alphabetic_indices.append(f"#{i}")
             
-            # --- 5. Keep the checks we just fixed ---
-            elif category == "Zs" and cp != 0x0020:
+            # --- 5. Keep the General Category checks ---
+            if category == "Zs" and cp != 0x0020:
                 deceptive_space_indices.append(f"#{i}")
             elif category == "Co":
                 private_use_indices.append(f"#{i}")
@@ -808,9 +821,14 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Other Default Ignorable"] = {'count': len(other_ignorable_indices), 'positions': other_ignorable_indices}
     
     # Add other PropList stats
-    forensic_stats["Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
-    forensic_stats["Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
-    
+    forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
+    forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
+    forensic_stats["Prop: Dash"] = {'count': len(dash_indices), 'positions': dash_indices}
+    forensic_stats["Prop: Quotation Mark"] = {'count': len(quote_indices), 'positions': quote_indices}
+    forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
+    forensic_stats["Prop: Sentence Terminal"] = {'count': len(sentence_terminal_indices), 'positions': sentence_terminal_indices}
+    forensic_stats["Prop: Alphabetic"] = {'count': len(alphabetic_indices), 'positions': alphabetic_indices}
+
     # Add Decomposition stats
     forensic_stats.update(decomp_stats)
     
@@ -829,7 +847,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     }
     forensic_stats["Surrogates (Broken)"] = {
         'count': len(surrogate_indices),
-        'positions': surrogate_indices
+        'positions': surrogates_indices
     }
     forensic_stats["Unassigned (Void)"] = {
         'count': len(unassigned_indices),
@@ -837,11 +855,11 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     }
 
     
-    # 4. Add Variant Stats (from Module 8)
+    # 2. Add Variant Stats (from Module 8)
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
 
-    # 5. Manually find IdentifierType flags
+    # 3. Manually find IdentifierType flags
     if LOADING_STATE == "READY":
         id_type_stats = {}
         js_array = window.Array.from_(t)
