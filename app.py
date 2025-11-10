@@ -118,8 +118,11 @@ DATA_STORES = {
     "TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
     "SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
     "Alphabetic": {"ranges": [], "starts": [], "ends": []},
-    
+    "WordBreak": {"ranges": [], "starts": [], "ends": []},
+    "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
+    "GraphemeBreak": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
+    
     "VariantBase": set(),
     "VariantSelectors": set()
 }
@@ -279,6 +282,7 @@ async def load_unicode_data():
     
     async def fetch_file(filename):
         try:
+            # Use "./" prefix for all files (no subdirectories)
             response = await pyfetch(f"./{filename}")
             if response.ok:
                 return await response.string()
@@ -294,18 +298,24 @@ async def load_unicode_data():
     print("Unicode data loading started.")
     
     try:
+        # --- MODIFIED (Feature 2 Expanded) ---
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
             "Scripts.txt",
-            "emoji-variation-sequences.txt"
+            "emoji-variation-sequences.txt",
+            "WordBreakProperty.txt",
+            "SentenceBreakProperty.txt",
+            "GraphemeBreakProperty.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
+        # --- MODIFIED (Feature 2 Expanded) ---
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
-         scripts_txt, emoji_variants_txt) = results
+         scripts_txt, emoji_variants_txt, word_break_txt, 
+         sentence_break_txt, grapheme_break_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -313,14 +323,11 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
         
-        # --- NEW ROBUST LOGIC ---
-        
-        # 1. Initialize empty sets
+        # --- Feature 1 Logic (as corrected) ---
         std_base_set = set()
         std_selector_set = set()
         emoji_base_set = set()
         
-        # 2. Call parsers and get their returned sets
         if variants_txt: 
             std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
         else:
@@ -331,16 +338,20 @@ async def load_unicode_data():
         else:
             print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
         
-        # 3. Manually combine the sets into the final global store
         DATA_STORES["VariantBase"] = std_base_set.union(emoji_base_set)
-        DATA_STORES["VariantSelectors"] = std_selector_set # This one is simple
+        DATA_STORES["VariantSelectors"] = std_selector_set
         
         print(f"--- DIAGNOSTIC: Final combined 'VariantBase' set size: {len(DATA_STORES['VariantBase'])}")
-        # --- END NEW LOGIC ---
+        # --- End Feature 1 Logic ---
         
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
         if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
+        
+        # --- NEW (Feature 2 Expanded) ---
+        if word_break_txt: _parse_and_store_ranges(word_break_txt, "WordBreak")
+        if sentence_break_txt: _parse_and_store_ranges(sentence_break_txt, "SentenceBreak")
+        if grapheme_break_txt: _parse_and_store_ranges(grapheme_break_txt, "GraphemeBreak")
         
         if proplist_txt:
             _parse_property_file(proplist_txt, {
@@ -777,6 +788,96 @@ def compute_script_run_analysis(t: str):
             
     return counters
 
+def compute_wordbreak_analysis(t: str):
+    """Module 2.B-WordBreak: Runs Token Shape Analysis (UAX #29)."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        wb_class = _find_in_ranges(cp, "WordBreak")
+        new_state = wb_class if wb_class else "XX"
+        
+        if new_state != current_state:
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
+            current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+            
+    return counters
+
+def compute_sentencebreak_analysis(t: str):
+    """Module 2.B-SentenceBreak: Runs Token Shape Analysis (UAX #29)."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        sb_class = _find_in_ranges(cp, "SentenceBreak")
+        new_state = sb_class if sb_class else "XX"
+        
+        if new_state != current_state:
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
+            current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+            
+    return counters
+
+def compute_graphemebreak_analysis(t: str):
+    """Module 2.B-GraphemeBreak: Runs Token Shape Analysis (UAX #29)."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        gb_class = _find_in_ranges(cp, "GraphemeBreak")
+        new_state = gb_class if gb_class else "XX"
+        
+        if new_state != current_state:
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
+            current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+            
+    return counters
+
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
 
@@ -1178,6 +1279,10 @@ def update_all(event=None):
         render_matrix_table({}, "provenance-matrix-body")
         render_matrix_table({}, "linebreak-run-matrix-body")
         render_matrix_table({}, "bidi-run-matrix-body")
+        render_matrix_table({}, "wordbreak-run-matrix-body")
+        render_matrix_table({}, "sentencebreak-run-matrix-body")
+        render_matrix_table({}, "graphemebreak-run-matrix-body")
+        
         render_toc_counts({})
         return
 
@@ -1192,6 +1297,9 @@ def update_all(event=None):
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
     bidi_run_stats = compute_bidi_class_analysis(t)
+    wb_run_stats = compute_wordbreak_analysis(t)
+    sb_run_stats = compute_sentencebreak_analysis(t)
+    gb_run_stats = compute_graphemebreak_analysis(t)
 
     # --- NEW: DIAGNOSTIC LOGGING ---
     print("--- DEBUGGING BIDI ---")
@@ -1229,7 +1337,7 @@ def update_all(event=None):
     # TOC Counts (count non-zero entries)
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
-        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0),
+        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v > 0) + sum(1 for v in script_run_stats.values() if v > 0),
         'threat': 0 # Placeholder
@@ -1248,6 +1356,9 @@ def update_all(event=None):
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
     render_matrix_table(bidi_run_stats, "bidi-run-matrix-body")
+    render_matrix_table(wb_run_stats, "wordbreak-run-matrix-body")
+    render_matrix_table(sb_run_stats, "sentencebreak-run-matrix-body")
+    render_matrix_table(gb_run_stats, "graphemebreak-run-matrix-body")
     
     # Render 2.C
     render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
