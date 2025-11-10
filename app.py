@@ -305,6 +305,10 @@ async def load_unicode_data():
                 "Alphabetic": "Alphabetic"
                 # --- END UPDATED MAP ---
             })
+        if derivednorm_txt:
+            _parse_property_file(derivednorm_txt, {
+                "Deprecated": "Deprecated"
+            })
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
