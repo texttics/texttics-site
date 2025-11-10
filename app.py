@@ -925,7 +925,6 @@ def render_toc_counts(counts):
     document.getElementById("toc-dual-count").innerText = f"({counts.get('dual', 0)})"
     document.getElementById("toc-shape-count").innerText = f"({counts.get('shape', 0)})"
     document.getElementById("toc-integrity-count").innerText = f"({counts.get('forensic', 0)})"
-    document.getElementById("toc-bidi-count").innerText = f"({counts.get('bidi', 0)})"
     document.getElementById("toc-prov-count").innerText = f"({counts.get('prov', 0)})"
     document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
 
@@ -1000,9 +999,8 @@ def update_all(event=None):
     # TOC Counts (count non-zero entries)
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
-        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0),
+        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
-        'bidi': sum(1 for v in bidi_run_stats.values() if v > 0),
         'prov': sum(1 for v in prov_matrix.values() if v > 0),
         'threat': 0 # Placeholder
     }
