@@ -227,19 +227,19 @@ def _find_in_ranges(cp: int, store_key: str):
     return None
 
 def _get_char_script_id(char, cp: int):
-    """Helper for the RLE engine. Returns a single string ID for a char's script."""
-    # 1. Check ScriptExtensions first (for '·', '(', etc.)
-    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-    if script_ext_val:
-        # 'Latn Grek' becomes one "state"
-        return f"Script-Ext: {script_ext_val}"
+    """Helper for the RLE engine. Returns a single string ID for a char's script."""
+    # 1. Check ScriptExtensions first (for '·', '(', etc.)
+    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+    if script_ext_val:
+        # 'Latn Grek' becomes one "state"
+        return f"Script-Ext: {script_ext_val}"
 
-    # 2. Fall back to primary Script property (using our new data store)
-    script_val = _find_in_ranges(cp, "Scripts")
-    if script_val:
-        return f"Script: {script_val}"
+    # 2. Fall back to primary Script property (using our new data store)
+    script_val = _find_in_ranges(cp, "Scripts")
+    if script_val:
+        return f"Script: {script_val}"
 
-    return "Script: Unknown"
+    return "Script: Unknown"
 
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -263,10 +263,10 @@ async def load_unicode_data():
     
     try:
         files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
-            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
-            "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
-            "Scripts.txt" # <-- ADDED
+        "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
+        "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
+        "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
+        "Scripts.txt" # <-- ADDED
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -849,7 +849,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     }
     forensic_stats["Surrogates (Broken)"] = {
         'count': len(surrogate_indices),
-        'positions': surrogates_indices
+        'positions': surrogate_indices
     }
     forensic_stats["Unassigned (Void)"] = {
         'count': len(unassigned_indices),
