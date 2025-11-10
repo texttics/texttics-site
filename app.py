@@ -913,48 +913,26 @@ def compute_variant_stats_with_positions(t: str):
 def compute_provenance_stats(t: str):
     """Module 2.D: Runs UAX #44 and Deep Scan analysis."""
 
-    # 1. Fast UAX #44 Stats (non-Script properties)
-    provenance_stats = {}
-    for key in ["Dash", "Alphabetic"]:
-        _, count = _find_matches_with_indices(key, t)
-        if count > 0:
-            provenance_stats[key] = count
-
-    # --- THIS IS THE FIX ---
-    # 2. We will now find Scripts char-by-char to avoid double counting
-
-    # Pre-compile single-char script testers for the "fallback"
-    script_testers = {
-        "Script: Cyrillic": window.RegExp.new(r"^\p{Script=Cyrillic}$", "u"),
-        "Script: Greek": window.RegExp.new(r"^\p{Script=Greek}$", "u"),
-        "Script: Han": window.RegExp.new(r"^\p{Script=Han}$", "u"),
-        "Script: Arabic": window.RegExp.new(r"^\p{Script=Arabic}$", "u"),
-        "Script: Hebrew": window.RegExp.new(r"^\p{Script=Hebrew}$", "u"),
-        "Script: Latin": window.RegExp.new(r"^\p{Script=Latin}$", "u"),
-        "Script: Common": window.RegExp.new(r"^\p{Script=Common}$", "u"),
-        "Script: Inherited": window.RegExp.new(r"^\p{Script=Inherited}$", "u"),
-    }
+    # 1. UAX #44 Stats are now data-driven and moved to compute_forensic_stats
+    # This section is now only for Script, Block, Age, and Numeric analysis.
 
     # These dicts will hold the counts
     script_stats = {} 
     script_ext_stats = {}
-    # --- END OF SETUP ---
-
-    # 3. Deep Scan Stats (if data is loaded)
+    
+    # 2. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
-        # If data isn't ready, just return the fast stats
-        return provenance_stats
+        return {} # Return empty if data isn't ready
 
     numeric_total_value = 0
     number_script_zeros = set()
-
     deep_stats = {} # for Block, Age, Type, etc.
 
     # We loop char-by-char for all data-file properties
     for char in t:
         cp = ord(char)
 
-        # --- THIS IS THE NEW LOGIC ---
+        # --- THIS IS THE NEW DATA-DRIVEN SCRIPT LOGIC ---
         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
         if script_ext_val:
             # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
@@ -964,11 +942,11 @@ def compute_provenance_stats(t: str):
                 script_ext_stats[key] = script_ext_stats.get(key, 0) + 1
         else:
             # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
-            # We fall back to its primary 'Script' property.
-            for key, regex in script_testers.items():
-                if regex.test(char):
-                    script_stats[key] = script_stats.get(key, 0) + 1
-                    break # Found its primary script
+            # We fall back to its primary 'Script' property from Scripts.txt
+            script_val = _find_in_ranges(cp, "Scripts")
+            if script_val:
+                key = f"Script: {script_val}"
+                script_stats[key] = script_stats.get(key, 0) + 1
         # --- END OF NEW LOGIC ---
 
         # Block, Age, Type
@@ -998,12 +976,12 @@ def compute_provenance_stats(t: str):
     if len(number_script_zeros) > 1:
         deep_stats["Mixed-Number Systems"] = len(number_script_zeros)
 
-    # Combine fast and deep stats
-    # --- THIS IS THE FINAL FIX ---
-    provenance_stats.update(script_stats)
-    provenance_stats.update(script_ext_stats)
-    provenance_stats.update(deep_stats)
-    return provenance_stats
+    # Combine all stats
+    final_stats = {}
+    final_stats.update(script_stats)
+    final_stats.update(script_ext_stats)
+    final_stats.update(deep_stats)
+    return final_stats
 
 # ---
 # 4. DOM RENDERER FUNCTIONS
