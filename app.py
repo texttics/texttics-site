@@ -615,30 +615,28 @@ def compute_linebreak_analysis(t: str):
 
     current_state = "NONE"
     
+    # --- START: CORRECT RLE LOGIC ---
     for char in t:
         cp = ord(char)
-        # Find the Line Break class (e.g., "AL", "BK", "LS")
         lb_class = _find_in_ranges(cp, "LineBreak")
-        
-        # Use "XX" (Unknown) as the default, per UAX #14
         new_state = lb_class if lb_class else "XX"
         
         if new_state != current_state:
-            if current_state in counters:
-                counters[current_state] += 1
-            else:
-                counters[current_state] = 1 # Initialize on first find
+            if current_state != "NONE": # Don't count the initial "NONE"
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
             current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+    # --- END: CORRECT RLE LOGIC ---
             
-    if current_state in counters:
-        counters[current_state] += 1
-    else:
-        counters[current_state] = 1
-        
-    # The first "NONE" state is not a real run
-    if "NONE" in counters:
-        del counters["NONE"]
-        
     return counters
 
 def compute_bidi_class_analysis(t: str):
@@ -649,36 +647,31 @@ def compute_bidi_class_analysis(t: str):
 
     current_state = "NONE"
     
-    # --- THIS IS THE FIX ---
-    # We MUST use the same loop as compute_forensic_stats_with_positions,
-    # as it's the only one proven to work with all unicodedata functions.
-    
+    # --- START: CORRECT RLE LOGIC ---
     js_array = window.Array.from_(t)
     for char in js_array:
-    # --- END OF FIX ---
         try:
-            # Now this will work, just like it does in the other function
             new_state = unicodedata.bidirectional(char)
         except Exception as e:
             print(f"Bidi class error: {e}")
             new_state = "XX" # Failsafe
         
         if new_state != current_state:
-            if current_state in counters:
-                counters[current_state] += 1
-            else:
-                counters[current_state] = 1 # Initialize on first find
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
             current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+    # --- END: CORRECT RLE LOGIC ---
             
-    if current_state in counters:
-        counters[current_state] += 1
-    else:
-        counters[current_state] = 1
-        
-    # The first "NONE" state is not a real run
-    if "NONE" in counters:
-        del counters["NONE"]
-        
     return counters
 
 def compute_script_run_analysis(t: str):
@@ -689,8 +682,7 @@ def compute_script_run_analysis(t: str):
 
     current_state = "NONE"
     
-    # We MUST use the js_array loop, as it's the only one
-    # proven to work with the helper's regex.test(char) calls.
+    # --- START: CORRECT RLE LOGIC ---
     js_array = window.Array.from_(t)
     for char in js_array:
         try:
@@ -700,20 +692,21 @@ def compute_script_run_analysis(t: str):
             new_state = "Script: Unknown" # Failsafe
         
         if new_state != current_state:
-            if current_state in counters:
-                counters[current_state] += 1
-            else:
-                counters[current_state] = 1 # Initialize on first find
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
             current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+    # --- END: CORRECT RLE LOGIC ---
             
-    if current_state in counters:
-        counters[current_state] += 1
-    else:
-        counters[current_state] = 1
-        
-    if "NONE" in counters:
-        del counters["NONE"]
-        
     return counters
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
