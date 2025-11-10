@@ -67,6 +67,18 @@ TEST_MAJOR = {
     "C (Other)": window.RegExp.new(r"^\p{C}$", "u")
 }
 
+# Pre-compiled script testers for the fallback
+SCRIPT_TESTERS = {
+    "Script: Cyrillic": window.RegExp.new(r"^\p{Script=Cyrillic}$", "u"),
+    "Script: Greek": window.RegExp.new(r"^\p{Script=Greek}$", "u"),
+    "Script: Han": window.RegExp.new(r"^\p{Script=Han}$", "u"),
+    "Script: Arabic": window.RegExp.new(r"^\p{Script=Arabic}$", "u"),
+    "Script: Hebrew": window.RegExp.new(r"^\p{Script=Hebrew}$", "u"),
+    "Script: Latin": window.RegExp.new(r"^\p{Script=Latin}$", "u"),
+    "Script: Common": window.RegExp.new(r"^\p{Script=Common}$", "u"),
+    "Script: Inherited": window.RegExp.new(r"^\p{Script=Inherited}$", "u"),
+}
+
 ALIASES = {
     "Lu": "Uppercase Letter", "Ll": "Lowercase Letter", "Lt": "Titlecase Letter", "Lm": "Modifier Letter", "Lo": "Other Letter",
     "Mn": "Nonspacing Mark", "Mc": "Spacing Mark", "Me": "Enclosing Mark",
@@ -216,6 +228,21 @@ def _find_in_ranges(cp: int, store_key: str):
     if i >= 0 and cp <= store["ends"][i]:
         return store["ranges"][i][2] # Return the value
     return None
+
+def _get_char_script_id(char, cp: int):
+    """Helper for the RLE engine. Returns a single string ID for a char's script."""
+    # 1. Check ScriptExtensions first (for '·', '(', etc.)
+    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+    if script_ext_val:
+        # 'Latn Grek' becomes one "state"
+        return f"Script-Ext: {script_ext_val}"
+
+    # 2. Fall back to primary Script property (using our new global dict)
+    for key, regex in SCRIPT_TESTERS.items():
+        if regex.test(char):
+            return key # e.g., "Script: Latin"
+
+    return "Script: Unknown"
 
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -649,6 +676,41 @@ def compute_bidi_class_analysis(t: str):
         counters[current_state] = 1
         
     # The first "NONE" state is not a real run
+    if "NONE" in counters:
+        del counters["NONE"]
+        
+    return counters
+
+def compute_script_run_analysis(t: str):
+    """Module 2.D-Script: Runs Token Shape Analysis (Script Properties)."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    # We MUST use the js_array loop, as it's the only one
+    # proven to work with the helper's regex.test(char) calls.
+    js_array = window.Array.from_(t)
+    for char in js_array:
+        try:
+            cp = ord(char)
+            new_state = _get_char_script_id(char, cp)
+        except Exception:
+            new_state = "Script: Unknown" # Failsafe
+        
+        if new_state != current_state:
+            if current_state in counters:
+                counters[current_state] += 1
+            else:
+                counters[current_state] = 1 # Initialize on first find
+            current_state = new_state
+            
+    if current_state in counters:
+        counters[current_state] += 1
+    else:
+        counters[current_state] = 1
+        
     if "NONE" in counters:
         del counters["NONE"]
         
@@ -1093,6 +1155,7 @@ def update_all(event=None):
     
     # Module 2.D: Provenance & Context
     provenance_stats = compute_provenance_stats(t)
+    script_run_stats = compute_script_run_analysis(t)
     
     # --- 2. Prepare Data for Renderers ---
     
@@ -1119,7 +1182,7 @@ def update_all(event=None):
         'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
-        'prov': sum(1 for v in prov_matrix.values() if v > 0),
+        'prov': sum(1 for v in prov_matrix.values() if v > 0) + sum(1 for v in script_run_stats.values() if v > 0),
         'threat': 0 # Placeholder
     }
     
@@ -1142,6 +1205,7 @@ def update_all(event=None):
     
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body")
+    render_matrix_table(script_run_stats, "script-run-matrix-body")
     
     # Render TOC
     render_toc_counts(toc_counts)
