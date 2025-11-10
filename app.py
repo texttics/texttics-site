@@ -271,7 +271,7 @@ def _get_char_script_id(char, cp: int):
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
     global LOADING_STATE
-    
+
     async def fetch_file(filename):
         try:
             response = await pyfetch(f"./{filename}")
@@ -287,9 +287,8 @@ async def load_unicode_data():
     LOADING_STATE = "LOADING"
     render_status(f"Loading Unicode data files...")
     print("Unicode data loading started.")
-    
+
     try:
-        # 1. MODIFIED: Added the new file (with corrected path)
         files_to_fetch = [
             "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
@@ -298,27 +297,40 @@ async def load_unicode_data():
             "emoji-variation-sequences.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
-    
-        # 2. MODIFIED: Unpack the new file's result
+
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt) = results
-    
+
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
         if age_txt: _parse_and_store_ranges(age_txt, "Age")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if confusables_txt: _parse_confusables(confusables_txt)
-        
-        # 3. MODIFIED: Call the new parser
-        # This adds to the *same* DATA_STORES["VariantBase"] set
-        if variants_txt: _parse_standardized_variants(variants_txt)
-        if emoji_variants_txt: _parse_emoji_variants(emoji_variants_txt)
-        
+
+        # --- DIAGNOSTIC STEP ---
+        # We will track the size of the set.
+        print("--- DIAGNOSTIC: VariantBase Set ---")
+
+        if variants_txt: 
+            _parse_standardized_variants(variants_txt)
+            print(f"--- DIAGNOSTIC: Set size AFTER StandardizedVariants: {len(DATA_STORES['VariantBase'])}")
+        else:
+            print("--- DIAGNOSTIC: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
+
+        if emoji_variants_txt: 
+            _parse_emoji_variants(emoji_variants_txt)
+            print(f"--- DIAGNOSTIC: Set size AFTER EmojiVariants: {len(DATA_STORES['VariantBase'])}")
+        else:
+            print("--- DIAGNOSTIC: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
+
+        print("--- END DIAGNOSTIC ---")
+        # --- END DIAGNOSTIC STEP ---
+
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
         if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
-        
+
         if proplist_txt:
             _parse_property_file(proplist_txt, {
                 "Bidi_Control": "BidiControl",
@@ -337,12 +349,13 @@ async def load_unicode_data():
                 "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
                 "Alphabetic": "Alphabetic"
             })
-            
+
+
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
         render_status("Ready. Paste or type text to analyze.")
-        update_all()
-        
+        update_all() # Re-render with ready state
+
     except Exception as e:
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
