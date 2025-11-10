@@ -292,7 +292,7 @@ async def load_unicode_data():
                 "Join_Control": "JoinControl",
                 "Extender": "Extender",
                 "White_Space": "WhiteSpace",
-                # 3. "Deprecated" is REMOVED from this parser
+                "Deprecated": "Deprecated",
                 "Dash": "Dash",
                 "Quotation_Mark": "QuotationMark",
                 "Terminal_Punctuation": "TerminalPunctuation",
