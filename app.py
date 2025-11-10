@@ -938,177 +938,37 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     
     return forensic_stats
 
-def compute_variant_stats_with_positions(t: str, cp_minor_stats: dict):
-    """Module 2.C: Runs Forensic Analysis and finds positions."""
+def compute_variant_stats_with_positions(t: str):
+    """Part of Module 2.C: Counts variant base chars and selectors."""
+    if LOADING_STATE != "READY":
+        return {}
+        
+    base_set = DATA_STORES["VariantBase"]
+    selector_set = DATA_STORES["VariantSelectors"]
     
-    # --- NEW DIAGNOSTIC ---
-    # What data is this function ACTUALLY seeing?
-    print(f"--- DIAGNOSTIC (COMPUTE): Seeing VariantBase set with size: {len(DATA_STORES['VariantBase'])}")
-    print(f"--- DIAGNOSTIC (COMPUTE): Type of set: {type(DATA_STORES['VariantBase'])}")
-    # --- END DIAGNOSTIC ---
-
-    forensic_stats = {}
-
-    # 1. Manually find flags in one Python loop
-    deceptive_space_indices = []
-    nonchar_indices = []
-    private_use_indices = []
-    surrogate_indices = []
-    unassigned_indices = []
+    base_indices = []
+    selector_indices = []
+    ivs_indices = []
     
-    # Cf/Ignorable buckets
-    bidi_control_indices = []
-    join_control_indices = []
-    true_ignorable_indices = []
-    other_ignorable_indices = []
-    
-    # PropList buckets
-    extender_indices = []
-    deprecated_indices = []
-    donotemit_indices = [] # This is from Feature 3, will be 0 for now
-    dash_indices = []
-    quote_indices = []
-    terminal_punct_indices = []
-    sentence_terminal_indices = []
-    alphabetic_indices = []
-    
-    # Other
-    decomp_stats = {}
-    
+    # We must iterate using JS-style string indices
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
-        try:
-            category = unicodedata.category(char)
-            cp = ord(char)
+        cp = ord(char)
+        if cp in base_set:
+            base_indices.append(f"#{i}")
+        # Check both the old set (for Mongolian) AND the new property (for Emoji)
+        is_selector = (cp in selector_set) or (_find_in_ranges(cp, "VariationSelector") is not None)
+        if is_selector:
+            selector_indices.append(f"#{i}")
+        # Check for Ideographic Variation Selectors (Steganography vector)
+        if 0xE0100 <= cp <= 0xE01EF:
+            ivs_indices.append(f"#{i}")
             
-            # --- 1. Deconstruct the old 'Cf' logic ---
-            if _find_in_ranges(cp, "BidiControl"):
-                bidi_control_indices.append(f"#{i}")
-            elif _find_in_ranges(cp, "JoinControl"):
-                join_control_indices.append(f"#{i}")
-            elif category == "Cf":
-                true_ignorable_indices.append(f"#{i}")
-
-            # --- 2. Add Other Ignorables ---
-            if _find_in_ranges(cp, "OtherDefaultIgnorable"):
-                other_ignorable_indices.append(f"#{i}")
-
-            # --- 3. Add Decomposition Type ---
-            decomp = unicodedata.decomposition(char)
-            if decomp and decomp.startswith('<'):
-                try:
-                    tag = decomp.split('>', 1)[0].strip('<')
-                    key = f"Decomposition: {tag}"
-                    if key not in decomp_stats:
-                        decomp_stats[key] = {'count': 0, 'positions': []}
-                    decomp_stats[key]['count'] += 1
-                    decomp_stats[key]['positions'].append(f"#{i}")
-                except Exception:
-                    pass 
-
-            # --- 4. Add Other Properties (Extender, Deprecated, etc.) ---
-            if _find_in_ranges(cp, "Extender"):
-                extender_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "Deprecated"):
-                deprecated_indices.append(f"#{i}")
-            # Check for DoNotEmit (from Feature 3, won't find anything yet)
-            if _find_in_ranges(cp, "DoNotEmit"):
-                donotemit_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "Dash"):
-                dash_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "QuotationMark"):
-                quote_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "TerminalPunctuation"):
-                terminal_punct_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "SentenceTerminal"):
-                sentence_terminal_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "Alphabetic"):
-                alphabetic_indices.append(f"#{i}")
-            
-            # --- 5. Keep the General Category checks ---
-            if category == "Zs" and cp != 0x0020:
-                deceptive_space_indices.append(f"#{i}")
-            elif category == "Co":
-                private_use_indices.append(f"#{i}")
-            elif category == "Cs":
-                surrogate_indices.append(f"#{i}")
-            elif category == "Cn":
-                unassigned_indices.append(f"#{i}")
-
-            # Independent Code Point check
-            if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
-                nonchar_indices.append(f"#{i}")
-                
-        except Exception as e:
-            print(f"Error processing char at index {i}: {e}")
-
-    
-    # Add new decomposed Cf/Ignorable stats
-    forensic_stats["Bidi Control (UAX #9)"] = {'count': len(bidi_control_indices), 'positions': bidi_control_indices}
-    forensic_stats["Join Control (Structural)"] = {'count': len(join_control_indices), 'positions': join_control_indices}
-    forensic_stats["True Ignorable (Format/Cf)"] = {'count': len(true_ignorable_indices), 'positions': true_ignorable_indices}
-    forensic_stats["Other Default Ignorable"] = {'count': len(other_ignorable_indices), 'positions': other_ignorable_indices}
-    
-    # Add other PropList stats
-    forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
-    forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
-    forensic_stats["Prop: Discouraged (DoNotEmit)"] = {'count': len(donotemit_indices), 'positions': donotemit_indices}
-    forensic_stats["Prop: Dash"] = {'count': len(dash_indices), 'positions': dash_indices}
-    forensic_stats["Prop: Quotation Mark"] = {'count': len(quote_indices), 'positions': quote_indices}
-    forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
-    forensic_stats["Prop: Sentence Terminal"] = {'count': len(sentence_terminal_indices), 'positions': sentence_terminal_indices}
-    forensic_stats["Prop: Alphabetic"] = {'count': len(alphabetic_indices), 'positions': alphabetic_indices}
-
-    # Add Decomposition stats
-    forensic_stats.update(decomp_stats)
-    
-    # Add back the other flags we kept
-    forensic_stats["Deceptive Spaces"] = {
-        'count': len(deceptive_space_indices),
-        'positions': deceptive_space_indices
+    return {
+        "Variant Base Chars": {'count': len(base_indices), 'positions': base_indices},
+        "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices},
+        "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices}
     }
-    forensic_stats["Noncharacter"] = {
-        'count': len(nonchar_indices),
-        'positions': nonchar_indices
-    }
-    forensic_stats["Private Use"] = {
-        'count': len(private_use_indices),
-        'positions': private_use_indices
-    }
-    forensic_stats["Surrogates (Broken)"] = {
-        'count': len(surrogate_indices),
-        'positions': surrogate_indices
-    }
-    forensic_stats["Unassigned (Void)"] = {
-        'count': len(unassigned_indices),
-        'positions': unassigned_indices
-    }
-
-    
-    # 2. Add Variant Stats (from Module 8)
-    variant_stats = compute_variant_stats_with_positions(t)
-    forensic_stats.update(variant_stats)
-
-    # 3. Manually find IdentifierType flags
-    if LOADING_STATE == "READY":
-        id_type_stats = {}
-        js_array = window.Array.from_(t)
-        for i, char in enumerate(js_array):
-            cp = ord(char)
-            id_type = _find_in_ranges(cp, "IdentifierType")
-
-            # We only care about problematic types
-            if id_type and id_type not in ("Recommended", "Inclusion"):
-                key = f"Type: {id_type}"
-                if key not in id_type_stats:
-                    id_type_stats[key] = {'count': 0, 'positions': []}
-
-                id_type_stats[key]['count'] += 1
-                id_type_stats[key]['positions'].append(f"#{i}")
-
-        forensic_stats.update(id_type_stats)
-    
-    return forensic_stats
 
 # ---
 # 4. DOM RENDERER FUNCTIONS
