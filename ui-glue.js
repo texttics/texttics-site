@@ -205,6 +205,7 @@ function buildStructuredReport() {
   report.push('\n[ Dual-Atom Fingerprint ]');
   report.push(...parseCards('meta-totals-cards'));
   report.push(...parseCards('grapheme-integrity-cards'));
+  report.push(...parseTable('ccc-matrix-body', 'Combining Class'));
   report.push(...parseParallelTable('major-parallel-body', 'Major Category'));
   report.push(...parseParallelTable('minor-parallel-body', 'Minor Category'));
 
