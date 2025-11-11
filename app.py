@@ -533,7 +533,7 @@ async def load_unicode_data():
                 "Terminal_Punctuation": "TerminalPunctuation",
                 "Sentence_Terminal": "SentenceTerminal",
                 "Variation_Selector": "VariationSelector",
-                "Bidi_Mirrored": "BidiMirrored
+                "Bidi_Mirrored": "BidiMirrored"
             })
         if derivedcore_txt:
             _parse_property_file(derivedcore_txt, {
