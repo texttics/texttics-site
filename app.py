@@ -122,6 +122,11 @@ DATA_STORES = {
     "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
     "GraphemeBreak": {"ranges": [], "starts": [], "ends": []},
     "DoNotEmit": {"ranges": [], "starts": [], "ends": []},
+    "CombiningClass": {"ranges": [], "starts": [], "ends": []},
+    "DecompositionType": {"ranges": [], "starts": [], "ends": []},
+    "NumericType": {"ranges": [], "starts": [], "ends": []},
+    "BidiMirrored": {"ranges": [], "starts": [], "ends": []},
+    "LogicalOrderException": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
     
     "VariantBase": set(),
@@ -357,7 +362,11 @@ async def load_unicode_data():
             "WordBreakProperty.txt",
             "SentenceBreakProperty.txt",
             "GraphemeBreakProperty.txt",
-            "DoNotEmit.txt"
+            "DoNotEmit.txt",
+            "DerivedCombiningClass.txt",
+            "DerivedDecompositionType.txt",
+            "DerivedBinaryProperties.txt",
+            "DerivedNumericType.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -365,7 +374,8 @@ async def load_unicode_data():
         (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
-         sentence_break_txt, grapheme_break_txt, donotemit_txt) = results
+         sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
+         decomp_type_txt, derived_binary_txt, num_type_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -409,6 +419,19 @@ async def load_unicode_data():
 
         # --- NEW (Feature 3) ---
         if donotemit_txt: _parse_donotemit(donotemit_txt)
+
+        # New ones
+        if ccc_txt: _parse_and_store_ranges(ccc_txt, "CombiningClass")
+        if decomp_type_txt: _parse_and_store_ranges(decomp_type_txt, "DecompositionType")
+        if num_type_txt: _parse_and_store_ranges(num_type_txt, "NumericType")
+        
+        # Use the multi-property parser for DerivedBinaryProperties.txt
+        if derived_binary_txt:
+            _parse_property_file(derived_binary_txt, {
+                "Bidi_Mirrored": "BidiMirrored",
+                "Logical_Order_Exception": "LogicalOrderException"
+                # We can add more properties here later
+            })
         
         if proplist_txt:
             _parse_property_file(proplist_txt, {
@@ -681,6 +704,23 @@ def compute_grapheme_stats(t: str):
     }
 
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
+
+def compute_combining_class_stats(t: str):
+    """Module 1.C: Runs Combining Class Profile."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    for char in t:
+        cp = ord(char)
+        ccc_class = _find_in_ranges(cp, "CombiningClass")
+        
+        # We only care about combining marks (class 0 is "Spacing")
+        if ccc_class and ccc_class != "0":
+            key = f"ccc={ccc_class}"
+            counters[key] = counters.get(key, 0) + 1
+            
+    return counters
 
 def compute_sequence_stats(t: str):
     """Module 2.B: Runs the Token Shape Analysis (Major Categories only)."""
@@ -965,6 +1005,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     
     # Other
     decomp_stats = {}
+    decomp_type_stats = {}
+    bidi_mirrored_indices = []
+    loe_indices = []
     
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
@@ -1028,7 +1071,25 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             # Independent Code Point check
             if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
                 nonchar_indices.append(f"#{i}")
-                
+
+            # --- 6. Add new Derived Properties (NON-DESTRUCTIVE TEST) ---
+
+            # Add Decomposition Type (from new file)
+            decomp_type = _find_in_ranges(cp, "DecompositionType")
+            if decomp_type and decomp_type != "Canonical":
+                key = f"Decomposition (Derived): {decomp_type.title()}"
+                if key not in decomp_type_stats:
+                    decomp_type_stats[key] = {'count': 0, 'positions': []}
+                decomp_type_stats[key]['count'] += 1
+                decomp_type_stats[key]['positions'].append(f"#{i}")
+            
+            # Add Binary Properties
+            if _find_in_ranges(cp, "BidiMirrored"):
+                bidi_mirrored_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "LogicalOrderException"):
+                loe_indices.append(f"#{i}")
+            # --- END OF NEW BLOCK ---
+        
         except Exception as e:
             print(f"Error processing char at index {i}: {e}")
 
@@ -1051,7 +1112,14 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
     # Add Decomposition stats
     forensic_stats.update(decomp_stats)
+
+    # Add new Decomposition stats (ADD THIS BLOCK)
+    forensic_stats.update(decomp_type_stats)
     
+    # Add new Binary Property stats (ADD THIS BLOCK)
+    forensic_stats["Prop: Bidi Mirrored"] = {'count': len(bidi_mirrored_indices), 'positions': bidi_mirrored_indices}
+    forensic_stats["Prop: Logical Order Exception"] = {'count': len(loe_indices), 'positions': loe_indices}
+
     # Add back the other flags we kept
     forensic_stats["Deceptive Spaces"] = {
         'count': len(deceptive_space_indices),
@@ -1181,6 +1249,13 @@ def compute_provenance_stats(t: str):
         if age:
             key = f"Age: {age}"
             deep_stats[key] = deep_stats.get(key, 0) + 1
+
+        # --- ADD THIS BLOCK ---
+        num_type = _find_in_ranges(cp, "NumericType")
+        if num_type:
+            key = f"Numeric Type: {num_type}"
+            deep_stats[key] = deep_stats.get(key, 0) + 1
+        # --- END ADD ---
 
         # Numeric Properties
         try:
@@ -1333,6 +1408,7 @@ def update_all(event=None):
         # Render empty state
         render_cards({}, "meta-totals-cards")
         render_cards({}, "grapheme-integrity-cards")
+        render_matrix_table({}, "ccc-matrix-body")
         render_parallel_table({}, {}, "major-parallel-body")
         render_parallel_table({}, {}, "minor-parallel-body", ALIASES)
         render_matrix_table({}, "shape-matrix-body")
@@ -1352,6 +1428,7 @@ def update_all(event=None):
     # Module 2.A: Dual-Atom Fingerprint
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
+    ccc_stats = compute_combining_class_stats(t)
     
     # Module 2.B: Structural Shape
     major_seq_stats = compute_sequence_stats(t)
@@ -1409,6 +1486,7 @@ def update_all(event=None):
     # Render 2.A
     render_cards(meta_cards, "meta-totals-cards")
     render_cards(grapheme_cards, "grapheme-integrity-cards")
+    render_matrix_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
     render_parallel_table(cp_minor, gr_minor, "minor-parallel-body", ALIASES)
     
