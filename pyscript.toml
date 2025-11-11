@@ -24,5 +24,11 @@ files = [
     "DerivedCombiningClass.txt",
     "DerivedDecompositionType.txt",
     "DerivedBinaryProperties.txt",
-    "DerivedNumericType.txt"
+    "DerivedNumericType.txt",
+    "EastAsianWidth.txt",
+    "VerticalOrientation.txt",
+    "BidiBrackets.txt",
+    "BidiMirroring.txt",
+    "DerivedNormalizationProps.txt",
+    "CompositionExclusions.txt"
 ]
