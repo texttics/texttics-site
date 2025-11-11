@@ -375,6 +375,41 @@ def _parse_bidi_brackets(txt: str):
         
     print(f"Loaded {len(ranges_list)} bidi bracket ranges.")
 
+def _parse_composition_exclusions(txt: str):
+    """Parses CompositionExclusions.txt."""
+    store_key = "CompositionExclusions"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        try:
+            # The format is just the code point, e.g., "00A0"
+            code_range = line.split(None, 1)[0]
+            if '..' in code_range:
+                a, b = code_range.split('..', 1)
+                ranges_list.append((int(a, 16), int(b, 16), "Full_Composition_Exclusion"))
+            else:
+                cp = int(code_range, 16)
+                ranges_list.append((cp, cp, "Full_Composition_Exclusion"))
+        except Exception:
+            pass # Ignore malformed lines
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+        
+    print(f"Loaded {len(ranges_list)} composition exclusion ranges.")
+
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
     import bisect
@@ -511,7 +546,7 @@ async def load_unicode_data():
         if vert_orient_txt: _parse_and_store_ranges(vert_orient_txt, "VerticalOrientation")
         if bidi_brackets_txt: _parse_bidi_brackets(bidi_brackets_txt)
         if bidi_mirroring_txt: _parse_bidi_mirroring(bidi_mirroring_txt)
-        if comp_ex_txt: _parse_and_store_ranges(comp_ex_txt, "CompositionExclusions")
+        if comp_ex_txt: _parse_composition_exclusions(comp_ex_txt)
         
         # Use the multi-property parser for DerivedBinaryProperties.txt
         if derived_binary_txt:
@@ -1076,6 +1111,37 @@ def compute_eastasianwidth_analysis(t: str):
         cp = ord(char)
         eaw_class = _find_in_ranges(cp, "EastAsianWidth")
         new_state = eaw_class if eaw_class else "N" # 'N' (Neutral) is the default
+        
+        if new_state != current_state:
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
+            current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+            
+    return counters
+
+def compute_eastasianwidth_analysis(t: str):
+    """Module 2.B-EastAsianWidth: Runs Token Shape Analysis."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        eaw_class = _find_in_ranges(cp, "EastAsianWidth")
+        # --- FIX: The default for non-listed chars is 'Na' (Narrow), not 'N' (Neutral) ---
+        new_state = eaw_class if eaw_class else "Na"
         
         if new_state != current_state:
             if current_state != "NONE":
