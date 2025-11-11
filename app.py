@@ -128,6 +128,13 @@ DATA_STORES = {
     "BidiMirrored": {"ranges": [], "starts": [], "ends": []},
     "LogicalOrderException": {"ranges": [], "starts": [], "ends": []},
     "Confusables": {},
+
+    "EastAsianWidth": {"ranges": [], "starts": [], "ends": []},
+    "VerticalOrientation": {"ranges": [], "starts": [], "ends": []},
+    "BidiBracketType": {"ranges": [], "starts": [], "ends": []},
+    "CompositionExclusions": {"ranges": [], "starts": [], "ends": []},
+    "ChangesWhenNFKCCasefolded": {"ranges": [], "starts": [], "ends": []},
+    "BidiMirroring": {}, # This will be a simple dict {cp: mirrored_cp}
     
     "VariantBase": set(),
     "VariantSelectors": set()
@@ -301,6 +308,73 @@ def _parse_donotemit(txt: str):
         
     print(f"Loaded {len(ranges_list)} single-char/range rules for {store_key}.")
 
+def _parse_bidi_mirroring(txt: str):
+    """Parses BidiMirroring.txt into a simple dict."""
+    store = DATA_STORES["BidiMirroring"]
+    store.clear()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        try:
+            source_hex = parts[0].strip()
+            mirror_hex = parts[1].strip()
+            source_cp = int(source_hex, 16)
+            mirror_cp = int(mirror_hex, 16)
+            store[source_cp] = mirror_cp
+            count += 1
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {count} bidi mirroring pairs.")
+
+def _parse_bidi_brackets(txt: str):
+    """Parses BidiBrackets.txt for open/close types."""
+    store_key = "BidiBracketType"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 2) # Format is: CP; Type; Mirrored_CP
+        if len(parts) < 3:
+            continue
+            
+        code_range = parts[0].strip()
+        bracket_type = parts[1].strip() # 'o' (Open) or 'c' (Close)
+        
+        try:
+            # We only care about ranges, not single code points
+            if '..' in code_range:
+                a, b = code_range.split('..', 1)
+                ranges_list.append((int(a, 16), int(b, 16), bracket_type))
+            else:
+                cp = int(code_range, 16)
+                ranges_list.append((cp, cp, bracket_type))
+        except Exception:
+            pass # Ignore malformed lines
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+        
+    print(f"Loaded {len(ranges_list)} bidi bracket ranges.")
+
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
     import bisect
@@ -366,7 +440,13 @@ async def load_unicode_data():
             "DerivedCombiningClass.txt",
             "DerivedDecompositionType.txt",
             "DerivedBinaryProperties.txt",
-            "DerivedNumericType.txt"
+            "DerivedNumericType.txt",
+            "EastAsianWidth.txt",
+            "VerticalOrientation.txt",
+            "BidiBrackets.txt",
+            "BidiMirroring.txt",
+            "DerivedNormalizationProps.txt",
+            "CompositionExclusions.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -375,7 +455,9 @@ async def load_unicode_data():
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
-         decomp_type_txt, derived_binary_txt, num_type_txt) = results
+         decomp_type_txt, derived_binary_txt, num_type_txt, 
+         ea_width_txt, vert_orient_txt, bidi_brackets_txt,
+         bidi_mirroring_txt, norm_props_txt, comp_ex_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -424,6 +506,12 @@ async def load_unicode_data():
         if ccc_txt: _parse_and_store_ranges(ccc_txt, "CombiningClass")
         if decomp_type_txt: _parse_and_store_ranges(decomp_type_txt, "DecompositionType")
         if num_type_txt: _parse_and_store_ranges(num_type_txt, "NumericType")
+
+        if ea_width_txt: _parse_and_store_ranges(ea_width_txt, "EastAsianWidth")
+        if vert_orient_txt: _parse_and_store_ranges(vert_orient_txt, "VerticalOrientation")
+        if bidi_brackets_txt: _parse_bidi_brackets(bidi_brackets_txt)
+        if bidi_mirroring_txt: _parse_bidi_mirroring(bidi_mirroring_txt)
+        if comp_ex_txt: _parse_and_store_ranges(comp_ex_txt, "CompositionExclusions")
         
         # Use the multi-property parser for DerivedBinaryProperties.txt
         if derived_binary_txt:
@@ -444,12 +532,13 @@ async def load_unicode_data():
                 "Quotation_Mark": "QuotationMark",
                 "Terminal_Punctuation": "TerminalPunctuation",
                 "Sentence_Terminal": "SentenceTerminal",
-                "Variation_Selector": "VariationSelector"
+                "Variation_Selector": "VariationSelector",
+                "Bidi_Mirrored": "BidiMirrored
             })
         if derivedcore_txt:
             _parse_property_file(derivedcore_txt, {
                 "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
-                "Alphabetic": "Alphabetic"
+                "Alphabetic": "Alphabetic", "Logical_Order_Exception": "LogicalOrderException"
             })
             
         
@@ -975,6 +1064,66 @@ def compute_graphemebreak_analysis(t: str):
             
     return counters
 
+def compute_eastasianwidth_analysis(t: str):
+    """Module 2.B-EastAsianWidth: Runs Token Shape Analysis."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        eaw_class = _find_in_ranges(cp, "EastAsianWidth")
+        new_state = eaw_class if eaw_class else "N" # 'N' (Neutral) is the default
+        
+        if new_state != current_state:
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
+            current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+            
+    return counters
+
+def compute_verticalorientation_analysis(t: str):
+    """Module 2.B-VerticalOrientation: Runs Token Shape Analysis."""
+    counters = {}
+    if not t or LOADING_STATE != "READY":
+        return counters
+
+    current_state = "NONE"
+    
+    for char in t:
+        cp = ord(char)
+        vo_class = _find_in_ranges(cp, "VerticalOrientation")
+        new_state = vo_class if vo_class else "R" # 'R' (Rotated) is the default
+        
+        if new_state != current_state:
+            if current_state != "NONE":
+                if current_state in counters:
+                    counters[current_state] += 1
+                else:
+                    counters[current_state] = 1
+            current_state = new_state
+    
+    # Add the final run
+    if current_state != "NONE":
+        if current_state in counters:
+            counters[current_state] += 1
+        else:
+            counters[current_state] = 1
+            
+    return counters
+
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
 
@@ -1008,6 +1157,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     decomp_type_stats = {}
     bidi_mirrored_indices = []
     loe_indices = []
+
+    bidi_bracket_open_indices = []
+    bidi_bracket_close_indices = []
+    bidi_mirroring_map = {}  # This will store the mappings {index: "char -> mirrored_char"}
+    norm_exclusion_indices = []
+    norm_nfkc_casefold_indices = []
     
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
@@ -1089,6 +1244,27 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             if _find_in_ranges(cp, "LogicalOrderException"):
                 loe_indices.append(f"#{i}")
             # --- END OF NEW BLOCK ---
+
+            # --- 7. Add new GEM properties ---
+
+            # Gem 1: Bidi-Brackets
+            bracket_type = _find_in_ranges(cp, "BidiBracketType")
+            if bracket_type == "o":
+                bidi_bracket_open_indices.append(f"#{i}")
+            elif bracket_type == "c":
+                bidi_bracket_close_indices.append(f"#{i}")
+    
+            # Gem 1: Bidi-Mirroring (Update)
+            # Check if this char is in our new mirroring map
+            if cp in DATA_STORES["BidiMirroring"]:
+                mirrored_cp = DATA_STORES["BidiMirroring"][cp]
+                bidi_mirroring_map[f"#{i}"] = f"'{char}' → '{chr(mirrored_cp)}'"
+    
+            # Gem 4: Normalization Properties
+            if _find_in_ranges(cp, "CompositionExclusions"):
+                norm_exclusion_indices.append(f"#{i}")
+            if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"):
+                norm_nfkc_casefold_indices.append(f"#{i}")
         
         except Exception as e:
             print(f"Error processing char at index {i}: {e}")
@@ -1120,6 +1296,19 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Prop: Bidi Mirrored"] = {'count': len(bidi_mirrored_indices), 'positions': bidi_mirrored_indices}
     forensic_stats["Prop: Logical Order Exception"] = {'count': len(loe_indices), 'positions': loe_indices}
 
+    forensic_stats["Flag: Bidi Paired Bracket (Open)"] = {'count': len(bidi_bracket_open_indices), 'positions': bidi_bracket_open_indices}
+    forensic_stats["Flag: Bidi Paired Bracket (Close)"] = {'count': len(bidi_bracket_close_indices), 'positions': bidi_bracket_close_indices}
+
+    # Special formatter for the Bidi Mirroring map
+    mirror_count = len(bidi_mirroring_map)
+    if mirror_count > 0:
+        # We just list the mappings directly
+        mirror_positions = [f"#{idx} ({mapping})" for idx, mapping in bidi_mirroring_map.items()]
+        forensic_stats["Flag: Bidi Mirrored Mapping"] = {'count': mirror_count, 'positions': mirror_positions}
+    
+    forensic_stats["Flag: Full Composition Exclusion"] = {'count': len(norm_exclusion_indices), 'positions': norm_exclusion_indices}
+    forensic_stats["Flag: Changes on NFKC Casefold"] = {'count': len(norm_nfkc_casefold_indices), 'positions': norm_nfkc_casefold_indices}
+    
     # Add back the other flags we kept
     forensic_stats["Deceptive Spaces"] = {
         'count': len(deceptive_space_indices),
@@ -1419,6 +1608,8 @@ def update_all(event=None):
         render_matrix_table({}, "wordbreak-run-matrix-body")
         render_matrix_table({}, "sentencebreak-run-matrix-body")
         render_matrix_table({}, "graphemebreak-run-matrix-body")
+        render_matrix_table({}, "eawidth-run-matrix-body")
+        render_matrix_table({}, "vo-run-matrix-body")
         
         render_toc_counts({})
         return
@@ -1438,6 +1629,8 @@ def update_all(event=None):
     wb_run_stats = compute_wordbreak_analysis(t)
     sb_run_stats = compute_sentencebreak_analysis(t)
     gb_run_stats = compute_graphemebreak_analysis(t)
+    eaw_run_stats = compute_eastasianwidth_analysis(t)
+    vo_run_stats = compute_verticalorientation_analysis(t)
 
     # --- NEW: DIAGNOSTIC LOGGING ---
     print("--- DEBUGGING BIDI ---")
@@ -1475,7 +1668,7 @@ def update_all(event=None):
     # TOC Counts (count non-zero entries)
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
-        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0),
+        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v > 0) + sum(1 for v in script_run_stats.values() if v > 0),
         'threat': 0 # Placeholder
@@ -1498,6 +1691,8 @@ def update_all(event=None):
     render_matrix_table(wb_run_stats, "wordbreak-run-matrix-body")
     render_matrix_table(sb_run_stats, "sentencebreak-run-matrix-body")
     render_matrix_table(gb_run_stats, "graphemebreak-run-matrix-body")
+    render_matrix_table(eaw_run_stats, "eawidth-run-matrix-body")
+    render_matrix_table(vo_run_stats, "vo-run-matrix-body")
     
     # Render 2.C
     render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
