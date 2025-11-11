@@ -20,5 +20,9 @@ files = [
     "WordBreakProperty.txt",
     "SentenceBreakProperty.txt",
     "GraphemeBreakProperty.txt",
-    "DoNotEmit.txt"
+    "DoNotEmit.txt",
+    "DerivedCombiningClass.txt",
+    "DerivedDecompositionType.txt",
+    "DerivedBinaryProperties.txt",
+    "DerivedNumericType.txt"
 ]
