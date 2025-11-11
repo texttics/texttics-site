@@ -218,6 +218,8 @@ function buildStructuredReport() {
   report.push(...parseTable('wordbreak-run-matrix-body', 'WordBreak Run'));
   report.push(...parseTable('sentencebreak-run-matrix-body', 'SentenceBreak Run'));
   report.push(...parseTable('graphemebreak-run-matrix-body', 'GraphemeBreak Run'));
+  report.push(...parseTable('eawidth-run-matrix-body', 'EastAsianWidth Run'));
+  report.push(...parseTable('vo-run-matrix-body', 'VerticalOrientation Run'));
 
   // --- 4. Forensic Integrity ---
   report.push(`\n[ ${getText('#integrity-title')} ]`);
