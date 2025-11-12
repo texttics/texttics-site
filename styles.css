@@ -151,7 +151,8 @@ Column 1: Sticky Jump List (Nav)
   background-color: var(--color-border-light);
   padding: 2px 8px;
   border-radius: 12px;
-  flex-shrink: 0; /* Prevents the badge from wrapping/shrinking */
+  flex-shrink: 0; /* Prevents badge from shrinking */
+  margin-left: auto; /* THE FIX: Pushes the badge to the right */
 }
 
 /* ---
