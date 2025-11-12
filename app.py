@@ -1699,10 +1699,10 @@ def update_all(event=None):
     vo_run_stats = compute_verticalorientation_analysis(t)
 
     # --- NEW: DIAGNOSTIC LOGGING ---
-    print("--- DEBUGGING BIDI ---")
-    print(f"BIDI STATS: {bidi_run_stats}")
-    print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
-    print("------------------------")
+    # print("--- DEBUGGING BIDI ---")
+    # print(f"BIDI STATS: {bidi_run_stats}")
+    # print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
+    # print("------------------------")
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
