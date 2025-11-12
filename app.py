@@ -1645,7 +1645,7 @@ def render_toc_counts(counts):
     """Updates the counts in the sticky Table of Contents."""
     document.getElementById("toc-dual-count").innerText = f"({counts.get('dual', 0)})"
     document.getElementById("toc-shape-count").innerText = f"({counts.get('shape', 0)})"
-    document.getElementById("toc-integrity-count").innerText = f"({counts.get('forensic', 0)})"
+    document.getElementById("toc-integrity-count").innerText = f"({counts.get('integrity', 0)})"
     document.getElementById("toc-prov-count").innerText = f"({counts.get('prov', 0)})"
     document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
 
