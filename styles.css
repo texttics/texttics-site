@@ -145,14 +145,11 @@ Column 1: Sticky Jump List (Nav)
 }
 
 .jump-list .count {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-primary);
-  background-color: var(--color-border-light);
-  padding: 2px 8px;
-  border-radius: 12px;
-  flex-shrink: 0; /* Prevents badge from shrinking */
-  margin-left: auto; /* THE FIX: Pushes the badge to the right */
+  font-size: 0.85rem;
+  font-weight: 500; /* Match the link's font-weight */
+  color: inherit; /* Inherit the muted gray from the <a> tag */
+  margin-left: var(--spacing-1); /* Slightly less space */
+  opacity: 0.8; /* Make it slightly more subtle */
 }
 
 /* ---
