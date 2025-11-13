@@ -111,6 +111,25 @@ ALIASES = {
     "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
 }
 
+# 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
+# We must define all categories to correctly implement the "default-to-restricted" rule.# Source: https://www.unicode.org/reports/tr31/
+# These are explicitly "Allowed" or "Recommended"
+UAX31_ALLOWED_STATUSES = {
+    "Allowed",
+    "Allowed_Limited",
+    "Recommended",
+}
+
+# These are the various "Restricted" types.
+UAX31_RESTRICTED_STATUSES = {
+    "Restricted",
+    "Technical",
+    "Uncommon_Use",
+    "Limited_Use",
+    "Deprecated",
+    "Not_XID",
+}
+
 # Grapheme Segmenter (UAX #29)
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
 
@@ -1315,14 +1334,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
 
-                decomp = unicodedata.decomposition(char)
-                if decomp and decomp.startswith('<'):
-                    tag = decomp.split('>', 1)[0].strip('<')
-                    key = f"Decomposition: {tag}"
-                    if key not in decomp_stats: decomp_stats[key] = {'count': 0, 'positions': []}
-                    decomp_stats[key]['count'] += 1
-                    decomp_stats[key]['positions'].append(f"#{i}")
-                
+        
                 # --- 4. Other Properties (from data) ---
                 if _find_in_ranges(cp, "Extender"): extender_indices.append(f"#{i}")
                 
@@ -1384,17 +1396,28 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
                 
-                # --- 9. IdentifierStatus (from data) ---
+                # --- 9. IdentifierStatus (UAX #31) ---
+                id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 
-                # --- BUG FIX for 'IdentifierStatus' ---
-                id_status = _find_in_ranges(cp, "IdentifierStatus")
-                # Use loose check 'in' instead of strict '=='
-                if id_status and "Restricted" in id_status:
-                    key = "Flag: Identifier Status (Restricted)"
+                status_key = ""
+                
+                if id_status_val:
+                    # It's in the file. Check if it's NOT allowed.
+                    if id_status_val not in UAX31_ALLOWED_STATUSES:
+                        # It's an explicit restricted type (e.g., Technical, Uncommon_Use)
+                        status_key = f"Identifier Status: {id_status_val}"
+                else:
+                    # It's NOT in the file. Apply the "Default Restricted" rule.
+                    # We must explicitly exclude Cn, Co, Cs (Other)
+                    if category not in ("Cn", "Co", "Cs"):
+                        # This character is not explicitly allowed, so it's restricted by default.
+                        status_key = "Identifier Status: Default Restricted"
+                
+                if status_key:
+                    key = f"Flag: {status_key}" # Prepend "Flag:" for the report
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
-                # --- END FIX ---
 
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
