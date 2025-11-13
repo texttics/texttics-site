@@ -169,30 +169,35 @@ function buildStructuredReport() {
     return lines;
   };
 
-  const parseTable = (tbodyId, sectionTitle) => {
-        const lines = [];
-        const tbody = document.getElementById(tbodyId);
-        if (tbody) {
-          tbody.querySelectorAll('tr').forEach(row => {
-            const cells = row.querySelectorAll('th, td');
-            if (cells.length === 0 || row.querySelector('.placeholder-text')) {
-              return;
-            }
+const parseTable = (tbodyId, sectionTitle) => {
+  const lines = [];
+  const tbody = document.getElementById(tbodyId);
+  if (tbody) {
+    tbody.querySelectorAll('tr').forEach(row => {
+      const cells = row.querySelectorAll('th, td');
+      if (cells.length === 0 || row.querySelector('.placeholder-text')) {
+        return;
+      }
 
-            const metric = cells[0].innerText;
-            const count = cells[1].innerText;
+      const metric = cells[0].innerText;
+      const count = cells[1].innerText;
 
-            // Check if it has a 'Positions' column
-            if (cells.length > 2 && cells[2].innerText) {
-              const positions = cells[2].innerText;
-              lines.push(`  ${sectionTitle}: ${metric}, ${count}, Positions: ${positions}`);
-            } else {
-              lines.push(`  ${sectionTitle}: ${metric}, ${count}`);
-            }
-          });
-        }
-        return lines;
-      };
+      // optional Positions column
+      const hasPositions = cells.length > 2 && cells[2].innerText;
+      const positions = hasPositions ? cells[2].innerText : null;
+
+      // ✅ Build prefix only if sectionTitle is non-empty
+      const prefix = sectionTitle ? `${sectionTitle}: ` : '';
+
+      if (hasPositions) {
+        lines.push(`  ${prefix}${metric}, ${count}, Positions: ${positions}`);
+      } else {
+        lines.push(`  ${prefix}${metric}, ${count}`);
+      }
+    });
+  }
+  return lines;
+};
 
   const parseParallelTable = (tbodyId, sectionTitle) => {
     const lines = [];
