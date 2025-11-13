@@ -20,6 +20,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabs = tablist.querySelectorAll('[role="tab"]');
   const panels = document.querySelectorAll('[role="tabpanel"]');
 
+ // Hook up the Python Reveal Button
+  // We dispatch a custom event that app.py will listen for
+  const revealBtn = document.getElementById('btn-reveal');
+  if (revealBtn) {
+    revealBtn.addEventListener('click', () => {
+      // Dispatch event to document so Python can catch it via py-click or addEventListener
+      // But simpler: let's just let Python bind to the ID directly.
+      // We don't strictly need JS code here if we bind in Python, 
+      // but let's add a visual ripple effect or log here if you want.
+      console.log("Requesting deobfuscation...");
+    });
+  }
+
   // --- 1. Click Event Handler ---
   
   tablist.addEventListener('click', (e) => {
