@@ -1257,7 +1257,6 @@ def compute_verticalorientation_analysis(t: str):
             
     return counters
 
-# [THIS IS IN app.py]
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
@@ -1307,17 +1306,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 elif cp == 0x2029: deceptive_ps_indices.append(f"#{i}")
                 elif cp == 0x0085: deceptive_nel_indices.append(f"#{i}")
 
-                # --- 1. Deconstruct Cf/Ignorable (from data) ---
-                # --- LOGIC FIX: Removed 'elif' to check all ---
                 if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
                 if category == "Cf" and not _find_in_ranges(cp, "BidiControl") and not _find_in_ranges(cp, "JoinControl"):
-                    true_ignorable_indices.append(f"#{i}") # Only if it's not Bidi/Join
+                    true_ignorable_indices.append(f"#{i}") 
 
-                # --- 2. Other Ignorables (from data) ---
                 if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
 
-                # --- 3. Decomposition (from unicodedata) ---
                 decomp = unicodedata.decomposition(char)
                 if decomp and decomp.startswith('<'):
                     tag = decomp.split('>', 1)[0].strip('<')
@@ -1328,7 +1323,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 
                 # --- 4. Other Properties (from data) ---
                 if _find_in_ranges(cp, "Extender"): extender_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "Deprecated"): deprecated_indices.append(f"#{i}")
+                
+                # --- BUG FIX for 'Deprecated' ---
+                deprecated_val = _find_in_ranges(cp, "Deprecated")
+                if deprecated_val and "Deprecated" in deprecated_val:
+                    deprecated_indices.append(f"#{i}")
+                # --- END FIX ---
+                    
                 if _find_in_ranges(cp, "DoNotEmit"): donotemit_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Dash"): dash_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "QuotationMark"): quote_indices.append(f"#{i}")
@@ -1336,12 +1337,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if _find_in_ranges(cp, "SentenceTerminal"): sentence_terminal_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Alphabetic"): alphabetic_indices.append(f"#{i}")
                 
-                # --- 5. General Category checks (FIXED) ---
+                # --- 5. General Category checks ---
                 if category == "Zs" and cp != 0x0020:
                     deceptive_space_indices.append(f"#{i}")
                 elif _find_in_ranges(cp, "WhiteSpace") and cp != 0x0020 and category not in ("Zl", "Zp", "Cc"):
-                     if f"#{i}" not in deceptive_space_indices:
-                        deceptive_space_indices.append(f"#{i}")
+                        if f"#{i}" not in deceptive_space_indices:
+                            deceptive_space_indices.append(f"#{i}")
                 
                 if category == "Co": private_use_indices.append(f"#{i}")
                 if category == "Cs": surrogate_indices.append(f"#{i}")
@@ -1381,14 +1382,17 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
                 
-                # --- 9. IdentifierStatus (from data) (MOVED HERE) ---
+                # --- 9. IdentifierStatus (from data) ---
+                
+                # --- BUG FIX for 'IdentifierStatus' ---
                 id_status = _find_in_ranges(cp, "IdentifierStatus")
-                if id_status == "Restricted":
+                # Use loose check 'in' instead of strict '=='
+                if id_status and "Restricted" in id_status:
                     key = "Flag: Identifier Status (Restricted)"
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
-
+                # --- END FIX ---
 
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
