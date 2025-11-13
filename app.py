@@ -105,6 +105,7 @@ DATA_STORES = {
     "Age": {"ranges": [], "starts": [], "ends": []},
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
     "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
+    "IntentionalPairs": set(),
     "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "LineBreak": {"ranges": [], "starts": [], "ends": []},
     "BidiControl": {"ranges": [], "starts": [], "ends": []},
@@ -441,6 +442,38 @@ def _get_char_script_id(char, cp: int):
 
     return "Script: Unknown"
 
+def _parse_intentional(txt: str):
+    """Parses intentional.txt into a set of frozenset pairs."""
+    store = DATA_STORES["IntentionalPairs"]
+    store.clear()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        try:
+            cp1_hex = parts[0].strip()
+            cp2_hex_list = parts[1].strip().split() # Can be one or more
+            
+            cp1 = int(cp1_hex, 16)
+            for cp2_hex in cp2_hex_list:
+                cp2 = int(cp2_hex, 16)
+                # Store as a frozenset so {A, B} is the same as {B, A}
+                pair = frozenset([cp1, cp2])
+                store.add(pair)
+                count += 1
+        except Exception:
+            pass # Ignore malformed lines
+    print(f"Loaded {count} intentional pairs.")
+    # Convert to frozenset for immutability after loading
+    DATA_STORES["IntentionalPairs"] = frozenset(store)
+    
+
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
     global LOADING_STATE
@@ -465,7 +498,7 @@ async def load_unicode_data():
     try:
         # --- MODIFIED (Feature 2 Expanded) ---
         files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt",
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt",
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
             "Scripts.txt",
@@ -488,7 +521,7 @@ async def load_unicode_data():
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
         # --- MODIFIED (Feature 2 Expanded) ---
-        (blocks_txt, age_txt, id_type_txt, id_status_txt, confusables_txt, variants_txt, 
+        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
@@ -501,6 +534,7 @@ async def load_unicode_data():
         if age_txt: _parse_and_store_ranges(age_txt, "Age")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
+        if intentional_txt: _parse_intentional(intentional_txt)
         if confusables_txt: _parse_confusables(confusables_txt)
         
         # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
@@ -1563,31 +1597,40 @@ def compute_provenance_stats(t: str):
     final_stats.update(deep_stats)
     return final_stats
 
+
 def _generate_uts39_skeleton(t: str):
     """Generates the UTS #39 'skeleton' for a string."""
     if LOADING_STATE != "READY":
         return ""
         
     confusables_map = DATA_STORES.get("Confusables", {})
-    if not confusables_map:
-        return "" # Data not loaded
-        
-    # Per UTS #39, the skeleton is created from the NFKC-Casefolded form
-    # We will use NFD first as a base for mapping, then re-compose.
-    # A more robust implementation would use NFKC-Casefold, but let's
-    # build the NFD-based mapper first as it's the core of confusables.txt
+    intentional_pairs = DATA_STORES.get("IntentionalPairs", set()) # This is a set of frozensets
     
     try:
-        # 1. Decompose the string (e.g., 'é' -> 'e' + '´')
         nfd_string = unicodedata.normalize('NFD', t)
         
         mapped_chars = []
         for char in nfd_string:
             cp = ord(char)
-            # 2. Map each character to its confusable prototype
-            # If not in the map, it maps to itself.
-            skeleton_char = confusables_map.get(cp, char)
-            mapped_chars.append(skeleton_char)
+            
+            # 1. Check if the character is in the confusable map
+            skeleton_char_str = confusables_map.get(cp)
+            
+            if skeleton_char_str:
+                # It IS confusable. Now, check if it's an INTENTIONAL confusable.
+                # We assume skeleton_char_str is a single char.
+                skeleton_cp = ord(skeleton_char_str[0])
+                
+                if frozenset([cp, skeleton_cp]) in intentional_pairs:
+                    # This is an intentional pair (e.g., A and Α).
+                    # Do NOT map it to the prototype. Map it to itself.
+                    mapped_chars.append(char)
+                else:
+                    # This is a "normal" confusable. Map it.
+                    mapped_chars.append(skeleton_char_str)
+            else:
+                # Not in the confusable map, maps to itself
+                mapped_chars.append(char)
         
         mapped_string = "".join(mapped_chars)
         
