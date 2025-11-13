@@ -253,7 +253,15 @@ function buildStructuredReport() {
         const confusableText = confusableReport.innerText;
         // Only add if it's not the placeholder
         if (confusableText && !confusableReport.querySelector('.placeholder-text')) {
-            report.push(`\nPerception vs. Reality Report:\n"""\n${confusableText}\n"""`);
+            report.push(`
+Perception vs. Reality Report:
+
+Raw:             ${result.raw}
+NFKC:            ${result.nfkc}
+Casefolded:      ${result.nfkc_cf}
+Skeleton:        ${result.skeleton}
+`);
+
         }
     }
 
