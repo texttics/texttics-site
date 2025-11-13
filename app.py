@@ -1645,6 +1645,8 @@ def _generate_uts39_skeleton(t: str):
     try:
         # We must use the NFKC-normalized string as the base
         # This handles compatibility chars (like ⓼) BEFORE skeletonization
+        # NOTE: We KNOW this normalize() call is failing silently right now,
+        # but the code should be correct for when the bug is fixed.
         nfd_string = unicodedata.normalize('NFD', t)
         
         mapped_chars = []
@@ -1656,7 +1658,6 @@ def _generate_uts39_skeleton(t: str):
             
             if skeleton_char_str:
                 # It IS confusable. Now, check if it's an INTENTIONAL confusable.
-                # We assume skeleton_char_str is a single char.
                 skeleton_cp = ord(skeleton_char_str[0])
                 
                 if frozenset([cp, skeleton_cp]) in intentional_pairs:
