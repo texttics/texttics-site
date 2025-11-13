@@ -1589,13 +1589,13 @@ def compute_threat_analysis(t: str):
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # --- Identifier Status Check (FIXED) ---
+                # --- Identifier Status Check ---
                 id_status = _find_in_ranges(cp, "IdentifierStatus")
                 if id_status == "Restricted":
                     key = "Flag: Identifier Status (Restricted)"
                     threat_flags[key] = threat_flags.get(key, 0) + 1
                 
-                # --- Bidi Check (FIXED) ---
+                # --- Bidi Check ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger = True
                     threat_flags["DANGER: Malicious Bidi Control"] = 1
@@ -1611,6 +1611,7 @@ def compute_threat_analysis(t: str):
                 lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
                 if cp in confusables_map and lnps_regex.test(char):
                     skeleton_char_str = confusables_map[cp]
+                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}" # Get hex for tooltip
                     skeleton_cp = ord(skeleton_char_str[0])
                     intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
                     
@@ -1621,7 +1622,7 @@ def compute_threat_analysis(t: str):
                         source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
                         target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
                         risk_label = "Confusable Character"
-                        if source_script != target_script and target_script != "Common":
+                        if source_script != target_script and target_script != "Common" and source_script != "Unknown":
                             risk_label = f"{source_script}–{target_script} Confusable"
                         else:
                             risk_label = f"{source_script} Confusable"
@@ -1654,7 +1655,8 @@ def compute_threat_analysis(t: str):
         # --- 5. Generate Hashes (FIXED) ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
-* threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
+        # --- THIS IS THE FIX (REMOVED THE ASTERISK) ---
+        threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
         final_html_report = "".join(html_report_parts) if found_confusable else ""
