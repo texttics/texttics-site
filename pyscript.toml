@@ -11,6 +11,7 @@ files = [
     "IdentifierType.txt",
     "IdentifierStatus.txt",
     "intentional.txt",
+    "confusablesSummary.txt",
     "confusables.txt", 
     "StandardizedVariants.txt",
     "ScriptExtensions.txt",
