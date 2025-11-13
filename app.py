@@ -1576,7 +1576,7 @@ def compute_threat_analysis(t: str):
     # --- END STATELESS FIX ---
 
     if not t:
-        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': "", 'bidi_danger': bidi_danger}
+        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger, 'raw': t, 'nfkc': nf_string,'nfkc_cf': nf_casefold_string,'skeleton': skeleton_string}
     
     def _get_hash(s: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
