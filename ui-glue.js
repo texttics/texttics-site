@@ -258,15 +258,16 @@ function buildStructuredReport() {
     report.push(...hashRows);
   }
 
-// --- 7. Perception vs. Reality (Using Python Data) ---
-  // This uses the window.latest_threat_data object we injected from Python
+// --- 7. Perception vs. Reality (Forensic States) ---
   if (window.latest_threat_data) {
       const t = window.latest_threat_data;
-      report.push('\n[ Perception vs. Reality Report ]');
-      report.push(`Raw:         ${t.raw}`);
-      report.push(`NFKC:        ${t.nfkc}`);
-      report.push(`Casefold:    ${t.nfkc_cf}`);
-      report.push(`Skeleton:    ${t.skeleton}`);
+      
+      report.push('\n[ Perception vs. Reality (Forensic States) ]');
+      report.push(`1. Forensic (Raw):   ${t.raw}`);
+      report.push(`2. NFKC:             ${t.nfkc}`);
+      report.push(`3. NFKC-Casefold:    ${t.nfkc_cf}`);
+      report.push(`4. UTS #39 Skeleton: ${t.skeleton}`);
   }
-  
+
   return report.join('\n');
+}
