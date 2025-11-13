@@ -1554,6 +1554,47 @@ def compute_provenance_stats(t: str):
     final_stats.update(deep_stats)
     return final_stats
 
+def compute_threat_analysis(t: str):
+    """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
+    if not t:
+        return {'flags': {}, 'hashes': {}, 'html_report': ""}
+        
+    # --- TODO: ---
+    # 1. Generate normalized states (NFKC, NFKC-Casefold)
+    # 2. Implement Mixed-Script Detection
+    # 3. Implement UTS #39 Skeleton Algorithm
+    # 4. Generate 4 hashes
+    
+    return {'flags': {}, 'hashes': {}, 'html_report': ""}
+
+def render_threat_analysis(threat_results):
+    """Renders the Group 3 Threat-Hunting results."""
+    
+    # 1. Render Flags
+    flags = threat_results.get('flags', {})
+    render_cards(flags, "threat-report-cards") # We can re-use render_cards!
+    
+    # 2. Render Hashes
+    hashes = threat_results.get('hashes', {})
+    hash_html = []
+    if hashes:
+        for k, v in hashes.items():
+            hash_html.append(f'<tr><th scope="row">{k}</th><td>{v}</td></tr>')
+        document.getElementById("threat-hash-report-body").innerHTML = "".join(hash_html)
+    else:
+        document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
+
+    # 3. Render Confusable Report
+    html_report = threat_results.get('html_report', "")
+    report_el = document.getElementById("confusable-diff-report")
+    if html_report:
+        report_el.innerHTML = html_report
+    else:
+        report_el.innerHTML = '<p class="placeholder-text">No confusable runs detected.</p>'
+    
+    # 4. Render Banner (TODO)
+    # (We'll add logic here later to un-hide and update #threat-banner if flags are present)
+
 # ---
 # 4. DOM RENDERER FUNCTIONS
 # ---
@@ -1695,6 +1736,7 @@ def update_all(event=None):
         render_matrix_table({}, "graphemebreak-run-matrix-body")
         render_matrix_table({}, "eawidth-run-matrix-body")
         render_matrix_table({}, "vo-run-matrix-body")
+        render_threat_analysis({}) 
         
         render_toc_counts({})
         return
@@ -1729,6 +1771,9 @@ def update_all(event=None):
     # Module 2.D: Provenance & Context
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
+
+    # Module 3: Threat-Hunting
+    threat_results = compute_threat_analysis(t)
     
     # --- 2. Prepare Data for Renderers ---
     
@@ -1756,7 +1801,7 @@ def update_all(event=None):
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v > 0) + sum(1 for v in script_run_stats.values() if v > 0),
-        'threat': 0 # Placeholder
+        'threat': sum(1 for v in threat_results.get('flags', {}).values() if v.get('count', 0) > 0)
     }
     
     # --- 3. Call All Renderers ---
@@ -1785,6 +1830,9 @@ def update_all(event=None):
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body")
     render_matrix_table(script_run_stats, "script-run-matrix-body")
+
+    # Render 3
+    render_threat_analysis(threat_results)
     
     # Render TOC
     render_toc_counts(toc_counts)
