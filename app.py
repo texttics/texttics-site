@@ -80,6 +80,12 @@ ALIASES = {
     "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
 }
 
+# Map for confusablesSummary.txt script codes
+SCRIPT_CODE_MAP = {
+    "L": "Latin", "C": "Cyrillic", "G": "Greek", "A": "Arabic",
+    "H": "Hebrew", "N": "Number", "S": "Symbol", "X": "Other"
+}
+
 # Grapheme Segmenter (UAX #29)
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
 
@@ -106,6 +112,7 @@ DATA_STORES = {
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
     "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
     "IntentionalPairs": set(),
+    "ConfusablesSummary": {},
     "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "LineBreak": {"ranges": [], "starts": [], "ends": []},
     "BidiControl": {"ranges": [], "starts": [], "ends": []},
@@ -473,6 +480,34 @@ def _parse_intentional(txt: str):
     # Convert to frozenset for immutability after loading
     DATA_STORES["IntentionalPairs"] = frozenset(store)
     
+def _parse_confusables_summary(txt: str):
+    """Parses confusablesSummary.txt into a {cp: (source_script, target_script)} map."""
+    store = DATA_STORES["ConfusablesSummary"]
+    store.clear()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 4) # Format: Code; Script; TargetCode; TargetScript; Name
+        if len(parts) < 4:
+            continue
+            
+        try:
+            cp = int(parts[0].strip(), 16)
+            source_script_code = parts[1].strip()
+            target_script_code = parts[3].strip()
+            
+            # Map the codes to full names, default to the code if not in our simple map
+            source_script = SCRIPT_CODE_MAP.get(source_script_code, source_script_code)
+            target_script = SCRIPT_CODE_MAP.get(target_script_code, target_script_code)
+            
+            store[cp] = (source_script, target_script)
+            count += 1
+        except Exception:
+            pass # Ignore malformed lines
+    print(f"Loaded {count} confusable summary entries.")
 
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -498,7 +533,7 @@ async def load_unicode_data():
     try:
         # --- MODIFIED (Feature 2 Expanded) ---
         files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt",
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt", "confusablesSummary.txt",
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
             "Scripts.txt",
@@ -521,7 +556,7 @@ async def load_unicode_data():
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
         # --- MODIFIED (Feature 2 Expanded) ---
-        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_txt, variants_txt, 
+        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_summary_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
@@ -535,6 +570,7 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
         if intentional_txt: _parse_intentional(intentional_txt)
+        if confusables_summary_txt: _parse_confusables_summary(confusables_summary_txt)
         if confusables_txt: _parse_confusables(confusables_txt)
         
         # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
@@ -1710,9 +1746,20 @@ def compute_threat_analysis(t: str):
                 if cp in confusables_map and lnps_regex.test(char):
                     found_confusable = True
                     
-                    skeleton_char = confusables_map[cp]
-                    skeleton_cp_hex = f"U+{ord(skeleton_char):04X}"
+                    skeleton_char_str = confusables_map[cp] # Renamed for clarity
+                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
                     script_val = _find_in_ranges(cp, "Scripts") or "Unknown"
+                    
+                    # --- NEW: Use confusablesSummary.txt ---
+                    summary_info = DATA_STORES["ConfusablesSummary"].get(cp)
+                    risk_label = "Confusable Character" # Default
+                    if summary_info:
+                        source_script, target_script = summary_info
+                        if source_script != target_script:
+                            risk_label = f"{source_script}–{target_script} Confusable"
+                        else:
+                            risk_label = f"{source_script} Confusable"
+                    # --- END NEW ---
                     
                     # Create the tooltip title
                     title = (
