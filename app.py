@@ -1965,6 +1965,10 @@ def update_all(event=None):
 
     # Module 3: Threat-Hunting
     threat_results = compute_threat_analysis(t)
+
+    # --- NEW: Pass the full data object to JavaScript ---
+    # This allows ui-glue.js to read the raw/skeleton strings directly
+    window.latest_threat_data = threat_results
     
     # --- 2. Prepare Data for Renderers ---
     
