@@ -5,6 +5,7 @@ from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
 from pyscript import document, window
 import hashlib
+from js import console
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
@@ -1958,16 +1959,15 @@ def render_toc_counts(counts):
 # ---
 # 5. MAIN ORCHESTRATOR
 # ---
-
-from js import console
-
-def update_all(event=None):
-    console.log("DEBUG: Visible DATA_STORES keys:", list(DATA_STORES.keys()))
-    console.log("DEBUG: Interpreter ID:", id(DATA_STORES))
+    
 
 
 @create_proxy
 def update_all(event=None):
+
+    console.log("DEBUG: Visible DATA_STORES keys:", list(DATA_STORES.keys()))
+    console.log("DEBUG: Interpreter ID:", id(DATA_STORES))
+    
     """The main function called on every input change."""
     
     t = document.getElementById("text-input").value
