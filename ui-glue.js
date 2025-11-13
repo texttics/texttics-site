@@ -247,7 +247,15 @@ function buildStructuredReport() {
     report.push(...hashRows);
   }
 
-// (We'll add the visual report scraper here later)
+// Scrape the new confusable report
+    const confusableReport = document.getElementById('confusable-diff-report');
+    if (confusableReport) {
+        const confusableText = confusableReport.innerText;
+        // Only add if it's not the placeholder
+        if (confusableText && !confusableReport.querySelector('.placeholder-text')) {
+            report.push(`\nPerception vs. Reality Report:\n"""\n${confusableText}\n"""`);
+        }
+    }
 
 return report.join('\n');
 }
