@@ -10,6 +10,7 @@ files = [
     "DerivedAge.txt", 
     "IdentifierType.txt",
     "IdentifierStatus.txt",
+    "intentional.txt",
     "confusables.txt", 
     "StandardizedVariants.txt",
     "ScriptExtensions.txt",
