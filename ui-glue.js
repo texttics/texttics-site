@@ -262,11 +262,13 @@ function buildStructuredReport() {
   if (window.latest_threat_data) {
       const t = window.latest_threat_data;
       
+      // Note: 't' is a Python Dictionary Proxy, so we must use .get() 
+      // instead of dot notation (t.raw)
       report.push('\n[ Perception vs. Reality (Forensic States) ]');
-      report.push(`1. Forensic (Raw):   ${t.raw}`);
-      report.push(`2. NFKC:             ${t.nfkc}`);
-      report.push(`3. NFKC-Casefold:    ${t.nfkc_cf}`);
-      report.push(`4. UTS #39 Skeleton: ${t.skeleton}`);
+      report.push(`1. Forensic (Raw):   ${t.get('raw')}`);
+      report.push(`2. NFKC:             ${t.get('nfkc')}`);
+      report.push(`3. NFKC-Casefold:    ${t.get('nfkc_cf')}`);
+      report.push(`4. UTS #39 Skeleton: ${t.get('skeleton')}`);
   }
 
   return report.join('\n');
