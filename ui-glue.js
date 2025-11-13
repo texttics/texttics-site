@@ -247,23 +247,19 @@ function buildStructuredReport() {
     report.push(...hashRows);
   }
 
-// Scrape the new confusable report
-    const confusableReport = document.getElementById('confusable-diff-report');
-    if (confusableReport) {
-        const confusableText = confusableReport.innerText;
-        // Only add if it's not the placeholder
-        if (confusableText && !confusableReport.querySelector('.placeholder-text')) {
-            report.push(`
-Perception vs. Reality Report:
+//
+// Perception vs. Reality Report (from Python threat results)
+//
+if (window.__analysis_results && window.__analysis_results.threat) {
+    const t = window.__analysis_results.threat;
 
-Raw:             ${result.raw}
-NFKC:            ${result.nfkc}
-Casefolded:      ${result.nfkc_cf}
-Skeleton:        ${result.skeleton}
-`);
+    report.push('\n[ Perception vs. Reality Report ]\n');
+    report.push(`Raw:             ${t.raw}`);
+    report.push(`NFKC:            ${t.nfkc}`);
+    report.push(`Casefolded:      ${t.nfkc_cf}`);
+    report.push(`Skeleton:        ${t.skeleton}`);
+}
 
-        }
-    }
 
 return report.join('\n');
 }
