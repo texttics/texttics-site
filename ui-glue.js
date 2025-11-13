@@ -260,19 +260,14 @@ function buildStructuredReport() {
     report.push(...hashRows);
   }
 
-//
-// Perception vs. Reality Report (from Python threat results)
-//
-if (window.__analysis_results && window.__analysis_results.threat) {
-    const t = window.__analysis_results.threat;
-
-    report.push('\n[ Perception vs. Reality Report ]\n');
-    report.push(`Raw:             ${t.raw}`);
-    report.push(`NFKC:            ${t.nfkc}`);
-    report.push(`Casefolded:      ${t.nfkc_cf}`);
-    report.push(`Skeleton:        ${t.skeleton}`);
-}
-
-
+const confusableReport = document.getElementById('confusable-diff-report');
+  if (confusableReport) {
+      const text = confusableReport.innerText;
+      // We check if it contains the specific placeholder text. 
+      // If NOT, we assume it has data.
+      if (!text.includes("No confusable runs detected") && !text.includes("Error generating")) {
+          report.push(`\n[ Perception vs. Reality Report ]\n"""\n${text}\n"""`);
+      }
+  }
 return report.join('\n');
 }
