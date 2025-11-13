@@ -1576,7 +1576,17 @@ def compute_threat_analysis(t: str):
     # --- END STATELESS FIX ---
 
     if not t:
-        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger, 'raw': t, 'nfkc': nf_string,'nfkc_cf': nf_casefold_string,'skeleton': skeleton_string}
+    return {
+        'flags': {},
+        'hashes': {},
+        'html_report': "",
+        'bidi_danger': False,
+        'raw': "",
+        'nfkc': "",
+        'nfkc_cf': "",
+        'skeleton': ""
+    }
+
     
     def _get_hash(s: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
@@ -1660,10 +1670,18 @@ def compute_threat_analysis(t: str):
         final_html_report = "".join(html_report_parts) if found_confusable else ""
 
     except Exception as e:
-        print(f"Error in compute_threat_analysis: {e}")
-        final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
+    print(f"Error in compute_threat_analysis: {e}")
+    return {
+        'flags': {},
+        'hashes': {},
+        'html_report': "<p class='placeholder-text'>Error generating confusable report.</p>",
+        'bidi_danger': False,
+        'raw': t,
+        'nfkc': unicodedata.normalize('NFKC', t),
+        'nfkc_cf': unicodedata.normalize('NFKC', t).casefold(),
+        'skeleton': _generate_uts39_skeleton(t)
+    }
 
-    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger, 'raw': t, 'nfkc': nf_string,'nfkc_cf': nf_casefold_string,'skeleton': skeleton_string}
 
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
