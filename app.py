@@ -1265,7 +1265,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     id_type_stats = {} # For IdentifierType
     # --- End Initialization ---
     
-    # We must loop only if data is ready
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
         for i, char in enumerate(js_array):
@@ -1279,9 +1278,11 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 elif cp == 0x0085: deceptive_nel_indices.append(f"#{i}")
 
                 # --- 1. Deconstruct Cf/Ignorable (from data) ---
+                # --- LOGIC FIX: Removed 'elif' to check all ---
                 if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
-                elif _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
-                elif category == "Cf": true_ignorable_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
+                if category == "Cf" and not _find_in_ranges(cp, "BidiControl") and not _find_in_ranges(cp, "JoinControl"):
+                    true_ignorable_indices.append(f"#{i}") # Only if it's not Bidi/Join
 
                 # --- 2. Other Ignorables (from data) ---
                 if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
@@ -1306,14 +1307,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if _find_in_ranges(cp, "Alphabetic"): alphabetic_indices.append(f"#{i}")
                 
                 # --- 5. General Category checks (FIXED) ---
-                # Check for deceptive spaces using BOTH category and our data file
                 if category == "Zs" and cp != 0x0020:
                     deceptive_space_indices.append(f"#{i}")
                 elif _find_in_ranges(cp, "WhiteSpace") and cp != 0x0020 and category not in ("Zl", "Zp", "Cc"):
-                     if f"#{i}" not in deceptive_space_indices: # Avoid duplicates
+                     if f"#{i}" not in deceptive_space_indices:
                         deceptive_space_indices.append(f"#{i}")
                 
-                # Check other categories
                 if category == "Co": private_use_indices.append(f"#{i}")
                 if category == "Cs": surrogate_indices.append(f"#{i}")
                 if category == "Cn": unassigned_indices.append(f"#{i}")
@@ -1351,6 +1350,15 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
+                
+                # --- 9. IdentifierStatus (from data) (MOVED HERE) ---
+                id_status = _find_in_ranges(cp, "IdentifierStatus")
+                if id_status == "Restricted":
+                    key = "Flag: Identifier Status (Restricted)"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+
 
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
@@ -1401,7 +1409,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
 
-    # Add IdentifierType Stats
+    # Add IdentifierType Stats (which now includes IdentifierStatus)
     forensic_stats.update(id_type_stats)
     
     return forensic_stats
@@ -1525,25 +1533,22 @@ def _generate_uts39_skeleton(t: str):
         return ""
         
     confusables_map = DATA_STORES.get("Confusables", {})
-    # intentional_pairs = DATA_STORES.get("IntentionalPairs", set()) # Removing this logic, it's flawed
     
     try:
-        # We will loop over the raw string 't' as a workaround
-        # for the broken unicodedata.normalize()
-        
+        # We will loop over the raw string 't'
         mapped_chars = []
         for char in t: # Loop over 't' directly
             cp = ord(char)
             
-            # 1. Check if the character is in the confusable map
+            # --- THIS IS THE FIX ---
+            # We map *all* confusables. The 'intentional' logic was flawed.
             skeleton_char_str = confusables_map.get(cp)
             
             if skeleton_char_str:
-                # This is a "normal" confusable (e.g., 'а' and 'a'). Map it.
                 mapped_chars.append(skeleton_char_str)
             else:
-                # Not in the confusable map, maps to itself
                 mapped_chars.append(char)
+            # --- END FIX ---
         
         final_skeleton = "".join(mapped_chars)
         
@@ -1562,13 +1567,14 @@ def _escape_html(s: str):
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
-    # --- Re-initialize ALL variables ---
+    # --- STATELESS FIX ---
     threat_flags = {}
     threat_hashes = {}
     html_report_parts = []
     found_confusable = False
     bidi_danger = False
-    
+    # --- END STATELESS FIX ---
+
     if not t:
         return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': "", 'bidi_danger': bidi_danger}
     
@@ -1589,12 +1595,6 @@ def compute_threat_analysis(t: str):
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # --- Identifier Status Check ---
-                id_status = _find_in_ranges(cp, "IdentifierStatus")
-                if id_status == "Restricted":
-                    key = "Flag: Identifier Status (Restricted)"
-                    threat_flags[key] = threat_flags.get(key, 0) + 1
-                
                 # --- Bidi Check ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger = True
@@ -1610,35 +1610,34 @@ def compute_threat_analysis(t: str):
                 # --- Confusable HTML Report Builder ---
                 lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
                 if cp in confusables_map and lnps_regex.test(char):
-                    skeleton_char_str = confusables_map[cp]
-                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}" # Get hex for tooltip
-                    skeleton_cp = ord(skeleton_char_str[0])
-                    intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
                     
-                    if frozenset([cp, skeleton_cp]) not in intentional_pairs:
-                        found_confusable = True
-                        
-                        # --- NEW DERIVED RISK LABEL ---
-                        source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
-                        target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
-                        risk_label = "Confusable Character"
-                        if source_script != target_script and target_script != "Common" and source_script != "Unknown":
-                            risk_label = f"{source_script}–{target_script} Confusable"
-                        else:
-                            risk_label = f"{source_script} Confusable"
-                        # --- END NEW LOGIC ---
-                        
-                        title = (
-                            f"Appears as: '{char}' (U+{cp:04X})\n"
-                            f"Script: {source_script}\n"
-                            f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
-                            f"Risk: {risk_label}"
-                        )
-                        html_report_parts.append(
-                            f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
-                        )
+                    # --- THIS IS THE FIX ---
+                    # Removed the flawed 'intentional_pairs' check
+                    found_confusable = True
+                    skeleton_char_str = confusables_map[cp]
+                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
+                    skeleton_cp = ord(skeleton_char_str[0])
+                    
+                    # --- NEW DERIVED RISK LABEL ---
+                    source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
+                    target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
+                    risk_label = "Confusable Character"
+                    if source_script != target_script and target_script != "Common" and source_script != "Unknown":
+                        risk_label = f"{source_script}–{target_script} Confusable"
                     else:
-                        html_report_parts.append(_escape_html(char)) # It's intentional
+                        risk_label = f"{source_script} Confusable"
+                    # --- END NEW LOGIC ---
+                    
+                    title = (
+                        f"Appears as: '{char}' (U+{cp:04X})\n"
+                        f"Script: {source_script}\n"
+                        f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
+                        f"Risk: {risk_label}"
+                    )
+                    html_report_parts.append(
+                        f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
+                    )
+                    # --- END FIX ---
                 else:
                     html_report_parts.append(_escape_html(char)) # Not confusable
             
@@ -1652,10 +1651,9 @@ def compute_threat_analysis(t: str):
         # --- 4. Implement UTS #39 Skeleton ---
         skeleton_string = _generate_uts39_skeleton(t) # Run on raw string 't'
 
-        # --- 5. Generate Hashes (FIXED) ---
+        # --- 5. Generate Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
-        # --- THIS IS THE FIX (REMOVED THE ASTERISK) ---
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
@@ -1666,8 +1664,6 @@ def compute_threat_analysis(t: str):
         final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
 
     return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger}
-
-
 
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
