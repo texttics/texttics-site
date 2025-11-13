@@ -1663,7 +1663,7 @@ def compute_threat_analysis(t: str):
         print(f"Error in compute_threat_analysis: {e}")
         final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
 
-    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger}
+    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger, 'raw': t, 'nfkc': nf_string,'nfkc_cf': nf_casefold_string,'skeleton': skeleton_string}
 
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
