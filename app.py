@@ -104,6 +104,7 @@ DATA_STORES = {
     "Blocks": {"ranges": [], "starts": [], "ends": []},
     "Age": {"ranges": [], "starts": [], "ends": []},
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
+    "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
     "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "LineBreak": {"ranges": [], "starts": [], "ends": []},
     "BidiControl": {"ranges": [], "starts": [], "ends": []},
@@ -464,7 +465,7 @@ async def load_unicode_data():
     try:
         # --- MODIFIED (Feature 2 Expanded) ---
         files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", 
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt",
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
             "Scripts.txt",
@@ -487,7 +488,7 @@ async def load_unicode_data():
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
         # --- MODIFIED (Feature 2 Expanded) ---
-        (blocks_txt, age_txt, id_type_txt, confusables_txt, variants_txt, 
+        (blocks_txt, age_txt, id_type_txt, id_status_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
@@ -499,6 +500,7 @@ async def load_unicode_data():
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
         if age_txt: _parse_and_store_ranges(age_txt, "Age")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
+        if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
         if confusables_txt: _parse_confusables(confusables_txt)
         
         # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
@@ -1428,6 +1430,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         js_array = window.Array.from_(t)
         for i, char in enumerate(js_array):
             cp = ord(char)
+            # --- NEW: Identifier Status Check ---
+            id_status = _find_in_ranges(cp, "IdentifierStatus")
+            if id_status == "Restricted":
+                key = "Flag: Identifier Status (Restricted)"
+                threat_flags[key] = threat_flags.get(key, 0) + 1
+            # --- END NEW ---
             id_type = _find_in_ranges(cp, "IdentifierType")
 
             # We only care about problematic types
