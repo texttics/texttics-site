@@ -236,7 +236,7 @@ function buildStructuredReport() {
 
   // --- 4. Forensic Integrity ---
   report.push(`\n[ ${getText('#integrity-title')} ]`);
-  report.push(...parseTable('integrity-matrix-body', 'Flag'));
+  report.push(...parseTable('integrity-matrix-body', ''));
 
   // --- 5. Provenance & Context ---
   report.push(`\n[ ${getText('#prov-title')} ]`);
