@@ -8,7 +8,8 @@ packages = [
 files = [
     "Blocks.txt", 
     "DerivedAge.txt", 
-    "IdentifierType.txt", 
+    "IdentifierType.txt",
+    "IdentifierStatus.txt",
     "confusables.txt", 
     "StandardizedVariants.txt",
     "ScriptExtensions.txt",
