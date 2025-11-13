@@ -2087,16 +2087,27 @@ def update_all(event=None):
 # 6. INITIALIZATION
 # ---
 
+# [THIS IS IN app.py]
+
 async def main():
     """Main entry point: Loads data, then hooks the input."""
+    
+    # --- FIX 1: Get element first ---
+    text_input_element = document.getElementById("text-input")
+    
     # Start loading the external data and wait for it to finish.
-    # By the time this 'await' finishes, the document has
-    # almost certainly finished parsing.
     await load_unicode_data()
     
-    # Now that the DOM is stable and data is loaded,
-    # hook the main function to the text-input.
-    document.getElementById("text-input").addEventListener("input", update_all)
+    # --- FIX 2: Bind listener *after* await ---
+    # This ensures the listener is bound in the SAME interpreter
+    # that just loaded the data.
+    text_input_element.addEventListener("input", update_all)
+    
+    # --- FIX 3: Un-gate the UI ---
+    # Now that the listener is bound and data is loaded,
+    # enable the text area for the user.
+    text_input_element.disabled = False
+    text_input_element.placeholder = "Paste or type here..."
     print("Text...tics is ready.") # A good sign to see in the console
 
 # Start the main asynchronous task
