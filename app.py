@@ -1643,6 +1643,8 @@ def _generate_uts39_skeleton(t: str):
     intentional_pairs = DATA_STORES.get("IntentionalPairs", set()) # This is a set of frozensets
     
     try:
+        # We must use the NFKC-normalized string as the base
+        # This handles compatibility chars (like ⓼) BEFORE skeletonization
         nfd_string = unicodedata.normalize('NFD', t)
         
         mapped_chars = []
@@ -1671,12 +1673,13 @@ def _generate_uts39_skeleton(t: str):
         mapped_string = "".join(mapped_chars)
         
         # 3. Re-normalize to NFD to stabilize the mapped string
+        # --- THIS IS THE TYPO FIX ---
         final_skeleton = unicodedata.normalize('NFD', mapped_string)
         
         return final_skeleton
     except Exception as e:
         print(f"Error generating skeleton: {e}")
-        return ""
+        return "" # Return empty string on failure
 
 def _escape_html(s: str):
     """Escapes basic HTML characters."""
@@ -1689,12 +1692,12 @@ def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     threat_flags = {}
     threat_hashes = {}
-    html_report_parts = [] # Changed to a list
+    html_report_parts = []
     found_confusable = False
     bidi_danger = False
 
     if not t:
-        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': ""}
+        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': "", 'bidi_danger': bidi_danger}
     
     # --- Helper for hashing ---
     def _get_hash(s: str):
@@ -1705,11 +1708,32 @@ def compute_threat_analysis(t: str):
         nf_string = unicodedata.normalize('NFKC', t)
         nf_casefold_string = nf_string.casefold()
 
-        # --- 2. Implement Mixed-Script Detection (Phase 3.B) ---
+        # --- 2. Run checks on the RAW string 't' (NEW LOGIC) ---
+        if LOADING_STATE == "READY":
+            js_array_raw = window.Array.from_(t)
+            for i, char in enumerate(js_array_raw):
+                cp = ord(char)
+                
+                # --- Identifier Status Check (MOVED HERE) ---
+                id_status = _find_in_ranges(cp, "IdentifierStatus")
+                if id_status == "Restricted":
+                    key = "Flag: Identifier Status (Restricted)"
+                    threat_flags[key] = threat_flags.get(key, 0) + 1
+                
+                # --- Bidi Check (MOVED HERE) ---
+                if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
+                    bidi_danger = True
+                    threat_flags["DANGER: Malicious Bidi Control"] = 1
+
+        # --- 3. Run checks on the NORMALIZED string 'nf_string' ---
         scripts_in_use = set()
+        confusables_map = DATA_STORES.get("Confusables", {})
+        
         if LOADING_STATE == "READY":
             for char in nf_string: # Analyze the normalized string
                 cp = ord(char)
+                
+                # --- Mixed-Script Detection ---
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -1717,85 +1741,61 @@ def compute_threat_analysis(t: str):
                     script_val = _find_in_ranges(cp, "Scripts")
                     if script_val:
                         scripts_in_use.add(script_val)
+                
+                # --- Confusable HTML Report Builder ---
+                lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
+                if cp in confusables_map and lnps_regex.test(char):
+                    # Check if it's intentional
+                    skeleton_char_str = confusables_map[cp]
+                    skeleton_cp = ord(skeleton_char_str[0])
+                    intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
+                    
+                    if frozenset([cp, skeleton_cp]) not in intentional_pairs:
+                        found_confusable = True
+                        script_val = _find_in_ranges(cp, "Scripts") or "Unknown"
+                        
+                        summary_info = DATA_STORES["ConfusablesSummary"].get(cp)
+                        risk_label = "Confusable Character"
+                        if summary_info:
+                            source_script, target_script = summary_info
+                            risk_label = f"{source_script}–{target_script} Confusable"
+                        
+                        title = (
+                            f"Appears as: '{char}' (U+{cp:04X})\n"
+                            f"Script: {script_val}\n"
+                            f"Maps to: '{skeleton_char_str}' (U+{ord(skeleton_char_str[0]):04X})\n"
+                            f"Risk: {risk_label}"
+                        )
+                        html_report_parts.append(
+                            f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
+                        )
+                    else:
+                        html_report_parts.append(_escape_html(char)) # It's intentional, don't highlight
+                else:
+                    html_report_parts.append(_escape_html(char)) # Not confusable
             
+            # --- Finish Mixed-Script Check ---
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
-            
             if len(scripts_in_use) > 1:
                 key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
                 threat_flags[key] = 1
 
-        # --- 3. Implement UTS #39 Skeleton (Phase 3.C) ---
+        # --- 4. Implement UTS #39 Skeleton (Phase 3.C) ---
+        # We run the skeleton on the NFKC string
         skeleton_string = _generate_uts39_skeleton(nf_string)
 
-        # --- 4. Generate Hashes (Phase 3.D) ---
+        # --- 5. Generate Hashes (Phase 3.D) ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        # --- 5. Build "Perception vs. Reality" HTML Report (NEW) ---
-        confusables_map = DATA_STORES.get("Confusables", {})
-        lnps_regex = REGEX_MATCHER.get("LNPS_Runs") # Get L/N/P/S regex
-
-        if LOADING_STATE == "READY" and confusables_map and lnps_regex:
-            for char in nf_string: # Iterate over the normalized string
-                cp = ord(char)
-                
-                # Check if it's confusable AND if it's a Letter/Number/Punct/Symbol
-                if cp in confusables_map and lnps_regex.test(char):
-                    found_confusable = True
-                    
-                    skeleton_char_str = confusables_map[cp] # Renamed for clarity
-                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
-                    script_val = _find_in_ranges(cp, "Scripts") or "Unknown"
-                    
-                    # --- NEW: Use confusablesSummary.txt ---
-                    summary_info = DATA_STORES["ConfusablesSummary"].get(cp)
-                    risk_label = "Confusable Character" # Default
-                    if summary_info:
-                        source_script, target_script = summary_info
-                        if source_script != target_script:
-                            risk_label = f"{source_script}–{target_script} Confusable"
-                        else:
-                            risk_label = f"{source_script} Confusable"
-                    # --- END NEW ---
-                    
-                    # Create the tooltip title
-                    title = (
-                        f"Appears as: '{char}' (U+{cp:04X})\n"
-                        f"Script: {script_val}\n"
-                        f"Maps to: '{skeleton_char}' ({skeleton_cp_hex})"
-                    )
-                    
-                    # Add the highlighted span
-                    html_report_parts.append(
-                        f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
-                    )
-                else:
-                    # Add the normal, non-confusable character
-                    html_report_parts.append(_escape_html(char))
-        
-        # Only build the final report if confusables were found
         final_html_report = "".join(html_report_parts) if found_confusable else ""
 
-    
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
         final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
-
-    # --- 6. Check for Malicious Bidi Chars (NEW) ---
-    # We must loop over the RAW string 't', not the normalized string
-    js_array = window.Array.from_(t)
-    for i, char in enumerate(js_array):
-        cp = ord(char)
-        # Check for U+202A-202E (LRE, RLE, PDF, LRO, RLO)
-        # and U+2066-2069 (LRI, RLI, FSI, PDI)
-        if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
-            bidi_danger = True
-            # Add a simple flag for the card report
-            threat_flags["DANGER: Malicious Bidi Control"] = 1
-            break # We only need one to trigger the banner
 
     return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger}
 
