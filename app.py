@@ -1865,7 +1865,8 @@ def compute_threat_analysis(t: str):
                 threat_flags[key] = 1
 
         # --- 4. Implement UTS #39 Skeleton ---
-        skeleton_string = _generate_uts39_skeleton(t)
+        # We run the skeleton on the *already normalized and casefolded* string
+        skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
 
         # --- 5. Generate Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
