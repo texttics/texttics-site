@@ -57,6 +57,36 @@ REGEX_MATCHER = {
     "LNPS_Runs": window.RegExp.new(r"\p{L}+|\p{N}+|\p{P}+|\p{S}+", "gu"),
 }
 
+# ---
+# 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
+# ---
+INVISIBLE_MAPPING = {
+    0x00AD: "[SHY]",           # Soft Hyphen
+    0x034F: "[CGJ]",           # Combining Grapheme Joiner
+    0x061C: "[ALM]",           # Arabic Letter Mark
+    0x200B: "[ZWSP]",          # Zero Width Space
+    0x200C: "[ZWNJ]",          # Zero Width Non-Joiner
+    0x200D: "[ZWJ]",           # Zero Width Joiner
+    0x200E: "[LRM]",           # Left-To-Right Mark
+    0x200F: "[RLM]",           # Right-To-Left Mark
+    0x202A: "[LRE]",           # Left-To-Right Embedding
+    0x202B: "[RLE]",           # Right-To-Left Embedding
+    0x202C: "[PDF]",           # Pop Directional Formatting
+    0x202D: "[LRO]",           # Left-To-Right Override
+    0x202E: "[RLO]",           # Right-To-Left Override
+    0x2060: "[WJ]",            # Word Joiner
+    0x2061: "[FA]",            # Function Application
+    0x2062: "[IT]",            # Invisible Times
+    0x2063: "[IS]",            # Invisible Separator
+    0x2066: "[LRI]",           # Left-To-Right Isolate
+    0x2067: "[RLI]",           # Right-To-Left Isolate
+    0x2068: "[FSI]",           # First Strong Isolate
+    0x2069: "[PDI]",           # Pop Directional Isolate
+    0xFEFF: "[BOM]",           # Byte Order Mark
+    0x180E: "[MVS]",           # Mongolian Vowel Separator
+}
+# Add Tag Characters (E0001, E0020-E007F) if you want, but this covers the main threats.
+
 # Pre-compiled testers for single characters
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
 TEST_MAJOR = {
@@ -1998,6 +2028,63 @@ def update_all(event=None):
     # Render TOC
     render_toc_counts(toc_counts)
 
+@create_proxy
+def reveal_invisibles(event=None):
+    """
+    Replaces invisible/control characters in the input with visible tags.
+    Triggered by the 'Reveal Invisibles' button.
+    """
+    element = document.getElementById("text-input")
+    if not element: return
+    
+    raw_text = element.value
+    if not raw_text: return
+
+    # Build the new string
+    new_chars = []
+    replaced_count = 0
+    
+    for char in raw_text:
+        cp = ord(char)
+        
+        # Check explicit mapping
+        if cp in INVISIBLE_MAPPING:
+            new_chars.append(INVISIBLE_MAPPING[cp])
+            replaced_count += 1
+            
+        # Check Variation Selectors (VS1 - VS16)
+        elif 0xFE00 <= cp <= 0xFE0F:
+            vs_num = cp - 0xFE00 + 1
+            new_chars.append(f"[VS{vs_num}]")
+            replaced_count += 1
+            
+        # Check Variation Selectors Supplement (VS17 - VS256)
+        elif 0xE0100 <= cp <= 0xE01EF:
+            vs_num = cp - 0xE0100 + 17
+            new_chars.append(f"[VS{vs_num}]")
+            replaced_count += 1
+            
+        # Check Tag Characters (Plane 14)
+        elif 0xE0000 <= cp <= 0xE007F:
+             new_chars.append(f"[TAG:U+{cp:04X}]")
+             replaced_count += 1
+             
+        else:
+            new_chars.append(char)
+            
+    if replaced_count > 0:
+        new_text = "".join(new_chars)
+        element.value = new_text
+        
+        # Update the status line to confirm action
+        render_status(f"Deobfuscation complete. Revealed {replaced_count} invisible characters.")
+        
+        # TRIGGER A RE-ANALYSIS manually
+        # This is crucial so the metrics update to reflect the "safe" text
+        update_all(None)
+    else:
+        render_status("No invisible characters found to reveal.")
+
 # ---
 # 6. INITIALIZATION
 # ---
@@ -2017,6 +2104,11 @@ async def main():
     # This ensures the listener is bound in the SAME interpreter
     # that just loaded the data.
     text_input_element.addEventListener("input", update_all)
+
+# --- NEW: Hook the Reveal Button ---
+    reveal_btn = document.getElementById("btn-reveal")
+    if reveal_btn:
+        reveal_btn.addEventListener("click", reveal_invisibles)
     
     # --- FIX 3: Un-gate the UI ---
     # Now that the listener is bound and data is loaded,
