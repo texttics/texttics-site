@@ -1019,6 +1019,8 @@ def compute_bidi_class_analysis(t: str):
     for char in js_array:
         try:
             new_state = unicodedata.bidirectional(char)
+            if not new_state: # If the class is an empty string
+                new_state = "Unknown" # Assign a default label
         except Exception as e:
             print(f"Bidi class error: {e}")
             new_state = "XX" # Failsafe
