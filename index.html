@@ -73,11 +73,16 @@
 
       <!-- Group 1: Analysis Configuration (Control Plane) -->
       <section id="control-plane" aria-labelledby="control-plane-title">
-        <h2 id="control-plane-title" class="section-title">Analysis Configuration</h2>
+        <div class="section-header">
+          <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Analysis Configuration</h2>
+          <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
+            👁️ Reveal Invisibles
+          </button>
+        </div>
+
         <label for="text-input" class="visually-hidden">Text input</label>
         <textarea id="text-input" placeholder="Loading Unicode data..." disabled></textarea>
         
-        <!-- Live status line for loader/errors -->
         <p id="status-line" role="status" aria-live="polite" class="status">Waiting for input…</p>
       </section>
 
