@@ -230,9 +230,24 @@ function buildStructuredReport() {
   report.push(...parseTable('provenance-matrix-body', 'Property'));
   report.push(...parseTable('script-run-matrix-body', 'Script Run'));
 
-  // --- 6. Threat-Hunting (Placeholder) ---
+  // --- 6. Threat-Hunting ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
-  report.push('  (No data from this section yet)');
+  
+  // Scrape the new threat cards
+  // Note: We're re-using the 'parseCards' helper
+  const threatCards = parseCards('threat-report-cards');
+  if (threatCards.length > 0) {
+    report.push(...threatCards);
+  }
+  
+  // Scrape the new hash table
+  // Note: We re-use 'parseTable' but give it a custom title
+  const hashRows = parseTable('threat-hash-report-body', 'Hash');
+  if (hashRows.length > 0) {
+    report.push(...hashRows);
+  }
 
-  return report.join('\n');
+// (We'll add the visual report scraper here later)
+
+return report.join('\n');
 }
