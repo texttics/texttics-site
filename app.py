@@ -1604,6 +1604,7 @@ def compute_threat_analysis(t: str):
     threat_hashes = {}
     html_report_parts = [] # Changed to a list
     found_confusable = False
+    bidi_danger = False
 
     if not t:
         return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': ""}
@@ -1680,12 +1681,27 @@ def compute_threat_analysis(t: str):
         # Only build the final report if confusables were found
         final_html_report = "".join(html_report_parts) if found_confusable else ""
 
+    
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
         final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
 
+    # --- 6. Check for Malicious Bidi Chars (NEW) ---
+    # We must loop over the RAW string 't', not the normalized string
+    js_array = window.Array.from_(t)
+    for i, char in enumerate(js_array):
+        cp = ord(char)
+        # Check for U+202A-202E (LRE, RLE, PDF, LRO, RLO)
+        # and U+2066-2069 (LRI, RLI, FSI, PDI)
+        if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
+            bidi_danger = True
+            # Add a simple flag for the card report
+            threat_flags["DANGER: Malicious Bidi Control"] = 1
+            break # We only need one to trigger the banner
 
-    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report}
+    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report, 'bidi_danger': bidi_danger}
+
+
 
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
