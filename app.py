@@ -12,6 +12,7 @@ from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
 from pyscript import document, window
 import hashlib
+import re
 
 
 # ---
@@ -136,6 +137,88 @@ UAX31_RESTRICTED_STATUSES = {
     "Deprecated",
     "Not_XID",
 }
+
+# ------------------------------------------------------------
+#  PATCH B: Robust Normalization Layer for Pyodide/PyScript
+# ------------------------------------------------------------
+
+# Tier 1: Attempt to import unicodedata2 (full Unicode)
+try:
+    import unicodedata2 as _ud
+    NORMALIZER = "unicodedata2"
+    print("Using full unicodedata2 library.")
+except Exception:
+    import unicodedata as _ud
+    NORMALIZER = "unicodedata"
+    # We already print a warning for this during startup
+
+# Tier 3: Manual expansions Pyodide fails to handle
+# Enclosed Alphanumerics → ASCII (⓼ → 8, ⓐ → a, ① → 1, etc.)
+# Covers U+2460–U+24FF (Full set)
+
+ENCLOSED_MAP = {}
+
+# Build mapping for numbers ①–⑳ etc.
+def _build_enclosed():
+    """Populates the ENCLOSED_MAP with manual normalization rules."""
+    try:
+        # Build mapping for numbers ①–⑳ etc. (U+2460 to U+2473)
+        for codepoint in range(0x2460, 0x2474):
+            ENCLOSED_MAP[chr(codepoint)] = str(codepoint - 0x245F)
+        
+        # Build mapping for circled numbers ⓵–⓾ (U+24F5 to U+24FE)
+        for i in range(1, 11):
+            ENCLOSED_MAP[chr(0x24F4 + i)] = str(i) # 0x24F5 is 1
+            
+        # Build mapping for circled Latin letters ⓐ–ⓩ (U+24D0 to U+24E9)
+        for i in range(26):
+            ENCLOSED_MAP[chr(0x24D0 + i)] = chr(ord('a') + i)
+            
+        # Build mapping for circled capital letters Ⓐ–Ⓩ (U+24B6 to U+24CF)
+        for i in range(26):
+            ENCLOSED_MAP[chr(0x24B6 + i)] = chr(ord('A') + i)
+            
+        print(f"Built manual ENCLOSED_MAP with {len(ENCLOSED_MAP)} rules.")
+    except Exception as e:
+        print(f"Error building ENCLOSED_MAP: {e}")
+
+# --- THIS IS THE FIX ---
+# Call the function once at startup to populate the map.
+_build_enclosed()
+# --- END OF FIX ---
+
+
+def normalize_extended(text: str) -> str:
+    """
+    Extended normalization pipeline:
+    Tier 1: NFKC via unicodedata2 if available
+    Tier 2: fallback Pyodide NFKC
+    Tier 3: manually expand enclosed alphanumerics & width-forms
+    """
+    if not text:
+        return ""
+        
+    # Base normalization (Tier 1 or 2)
+    try:
+        s = _ud.normalize("NFKC", text)
+    except Exception:
+        s = text # Failsafe
+
+    # Manual Enclosed Alphanumerics (fixes ⓼ → 8)
+    s = "".join(ENCLOSED_MAP.get(ch, ch) for ch in s)
+
+    # Normalize Fullwidth ASCII (Ｆ → F)
+    # (U+FF01 to U+FF5E)
+    s = "".join(
+        chr(ord(ch) - 0xFEE0) if 0xFF01 <= ord(ch) <= 0xFF5E else ch
+        for ch in s
+    )
+
+    # Remove default emoji variation selectors (FE0F)
+    # This makes '❤️' (U+2764 FE0F) normalize to '❤' (U+2764)
+    s = re.sub(r"[\uFE0E\uFE0F]", "", s)
+
+    return s
 
 # Grapheme Segmenter (UAX #29)
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
@@ -1713,9 +1796,9 @@ def compute_threat_analysis(t: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
 
     try:
-        # --- 2. Generate Normalized States ---
-        nf_string = unicodedata.normalize('NFKC', t)
-        nf_casefold_string = nf_string.casefold()
+        # --- 2. Generate Normalized States (using Extended Normalizer) ---
+        nf_string = normalize_extended(t)
+        nf_casefold_string = nf_string.casefold() # Use the already-normalized string
 
         # --- 3. Run checks on the RAW string 't' ---
         scripts_in_use = set()
