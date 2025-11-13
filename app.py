@@ -1264,25 +1264,21 @@ def compute_verticalorientation_analysis(t: str):
             
     return counters
 
+# [THIS IS IN app.py]
+
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
 
-    forensic_stats = {}
-
-    # 1. Manually find flags in one Python loop
+    # --- Re-initialize all lists to prevent stale state ---
     deceptive_space_indices = []
     nonchar_indices = []
     private_use_indices = []
     surrogate_indices = []
     unassigned_indices = []
-    
-    # Cf/Ignorable buckets
     bidi_control_indices = []
     join_control_indices = []
     true_ignorable_indices = []
     other_ignorable_indices = []
-    
-    # PropList buckets
     extender_indices = []
     deprecated_indices = []
     donotemit_indices = []
@@ -1291,144 +1287,118 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     terminal_punct_indices = []
     sentence_terminal_indices = []
     alphabetic_indices = []
-    
-    # Other
     decomp_stats = {}
     decomp_type_stats = {}
     bidi_mirrored_indices = []
     loe_indices = []
-
     bidi_bracket_open_indices = []
     bidi_bracket_close_indices = []
-    bidi_mirroring_map = {}  # This will store the mappings {index: "char -> mirrored_char"}
+    bidi_mirroring_map = {}
     norm_exclusion_indices = []
     norm_nfkc_casefold_indices = []
     deceptive_ls_indices = []
     deceptive_ps_indices = []
     deceptive_nel_indices = []
+    id_type_stats = {} # For IdentifierType
+    # --- End Initialization ---
     
-    js_array = window.Array.from_(t)
-    for i, char in enumerate(js_array):
-        try:
-            category = unicodedata.category(char)
-            cp = ord(char)
+    # We must loop only if data is ready
+    if LOADING_STATE == "READY":
+        js_array = window.Array.from_(t)
+        for i, char in enumerate(js_array):
+            try:
+                category = unicodedata.category(char)
+                cp = ord(char)
+                
+                # --- Deceptive Newline Check ---
+                if cp == 0x2028: deceptive_ls_indices.append(f"#{i}")
+                elif cp == 0x2029: deceptive_ps_indices.append(f"#{i}")
+                elif cp == 0x0085: deceptive_nel_indices.append(f"#{i}")
 
-            # --- NEW: Deceptive Newline Check (Phase 1.B) ---
-            if cp == 0x2028: # Line Separator (LS)
-                deceptive_ls_indices.append(f"#{i}")
-            elif cp == 0x2029: # Paragraph Separator (PS)
-                deceptive_ps_indices.append(f"#{i}")
-            elif cp == 0x0085: # Next Line (NEL)
-                deceptive_nel_indices.append(f"#{i}")
-            # --- END NEW ---
-            
-            # --- 1. Deconstruct the old 'Cf' logic ---
-            if _find_in_ranges(cp, "BidiControl"):
-                bidi_control_indices.append(f"#{i}")
-            elif _find_in_ranges(cp, "JoinControl"):
-                join_control_indices.append(f"#{i}")
-            elif category == "Cf":
-                true_ignorable_indices.append(f"#{i}")
+                # --- 1. Deconstruct Cf/Ignorable (from data) ---
+                if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
+                elif _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
+                elif category == "Cf": true_ignorable_indices.append(f"#{i}")
 
-            # --- 2. Add Other Ignorables ---
-            if _find_in_ranges(cp, "OtherDefaultIgnorable"):
-                other_ignorable_indices.append(f"#{i}")
+                # --- 2. Other Ignorables (from data) ---
+                if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
 
-            # --- 3. Add Decomposition Type ---
-            decomp = unicodedata.decomposition(char)
-            if decomp and decomp.startswith('<'):
-                try:
+                # --- 3. Decomposition (from unicodedata) ---
+                decomp = unicodedata.decomposition(char)
+                if decomp and decomp.startswith('<'):
                     tag = decomp.split('>', 1)[0].strip('<')
                     key = f"Decomposition: {tag}"
-                    if key not in decomp_stats:
-                        decomp_stats[key] = {'count': 0, 'positions': []}
+                    if key not in decomp_stats: decomp_stats[key] = {'count': 0, 'positions': []}
                     decomp_stats[key]['count'] += 1
                     decomp_stats[key]['positions'].append(f"#{i}")
-                except Exception:
-                    pass 
+                
+                # --- 4. Other Properties (from data) ---
+                if _find_in_ranges(cp, "Extender"): extender_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Deprecated"): deprecated_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "DoNotEmit"): donotemit_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Dash"): dash_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "QuotationMark"): quote_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "TerminalPunctuation"): terminal_punct_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "SentenceTerminal"): sentence_terminal_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Alphabetic"): alphabetic_indices.append(f"#{i}")
+                
+                # --- 5. General Category checks ---
+                # --- THIS IS THE FIX for Deceptive Spaces ---
+                if category == "Zs" and cp != 0x0020:
+                    deceptive_space_indices.append(f"#{i}")
+                # We also check our data file, which is more robust
+                elif _find_in_ranges(cp, "WhiteSpace") and cp != 0x0020 and category != "Zl" and category != "Zp":
+                     if f"#{i}" not in deceptive_space_indices: # Avoid duplicates
+                        deceptive_space_indices.append(f"#{i}")
+                # --- END FIX ---
+                
+                elif category == "Co": private_use_indices.append(f"#{i}")
+                elif category == "Cs": surrogate_indices.append(f"#{i}")
+                elif category == "Cn": unassigned_indices.append(f"#{i}")
 
-            # --- 4. Add Other Properties (Extender, Deprecated, etc.) ---
-            if _find_in_ranges(cp, "Extender"):
-                extender_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "Deprecated"):
-                deprecated_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "DoNotEmit"):
-                donotemit_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "Dash"):
-                dash_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "QuotationMark"):
-                quote_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "TerminalPunctuation"):
-                terminal_punct_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "SentenceTerminal"):
-                sentence_terminal_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "Alphabetic"):
-                alphabetic_indices.append(f"#{i}")
-            
-            # --- 5. Keep the General Category checks ---
-            if category == "Zs" and cp != 0x0020:
-                deceptive_space_indices.append(f"#{i}")
-            elif category == "Co":
-                private_use_indices.append(f"#{i}")
-            elif category == "Cs":
-                surrogate_indices.append(f"#{i}")
-            elif category == "Cn":
-                unassigned_indices.append(f"#{i}")
+                if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
+                    nonchar_indices.append(f"#{i}")
 
-            # Independent Code Point check
-            if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
-                nonchar_indices.append(f"#{i}")
+                # --- 6. Derived Properties (from data) ---
+                decomp_type = _find_in_ranges(cp, "DecompositionType")
+                if decomp_type and decomp_type != "Canonical":
+                    key = f"Decomposition (Derived): {decomp_type.title()}"
+                    if key not in decomp_type_stats: decomp_type_stats[key] = {'count': 0, 'positions': []}
+                    decomp_type_stats[key]['count'] += 1
+                    decomp_type_stats[key]['positions'].append(f"#{i}")
+                
+                if _find_in_ranges(cp, "BidiMirrored"): bidi_mirrored_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "LogicalOrderException"): loe_indices.append(f"#{i}")
 
-            # --- 6. Add new Derived Properties (NON-DESTRUCTIVE TEST) ---
+                # --- 7. GEM properties (from data) ---
+                bracket_type = _find_in_ranges(cp, "BidiBracketType")
+                if bracket_type == "o": bidi_bracket_open_indices.append(f"#{i}")
+                elif bracket_type == "c": bidi_bracket_close_indices.append(f"#{i}")
+                
+                if cp in DATA_STORES["BidiMirroring"]:
+                    mirrored_cp = DATA_STORES["BidiMirroring"][cp]
+                    bidi_mirroring_map[f"#{i}"] = f"'{char}' → '{chr(mirrored_cp)}'"
+                
+                if _find_in_ranges(cp, "CompositionExclusions"): norm_exclusion_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"): norm_nfkc_casefold_indices.append(f"#{i}")
 
-            # Add Decomposition Type (from new file)
-            decomp_type = _find_in_ranges(cp, "DecompositionType")
-            if decomp_type and decomp_type != "Canonical":
-                key = f"Decomposition (Derived): {decomp_type.title()}"
-                if key not in decomp_type_stats:
-                    decomp_type_stats[key] = {'count': 0, 'positions': []}
-                decomp_type_stats[key]['count'] += 1
-                decomp_type_stats[key]['positions'].append(f"#{i}")
-            
-            # Add Binary Properties
-            if _find_in_ranges(cp, "BidiMirrored"):
-                bidi_mirrored_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "LogicalOrderException"):
-                loe_indices.append(f"#{i}")
-            # --- END OF NEW BLOCK ---
+                # --- 8. IdentifierType (from data) ---
+                id_type = _find_in_ranges(cp, "IdentifierType")
+                if id_type and id_type not in ("Recommended", "Inclusion"):
+                    key = f"Type: {id_type}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
 
-            # --- 7. Add new GEM properties ---
+            except Exception as e:
+                print(f"Error processing char at index {i} ('{char}'): {e}")
 
-            # Gem 1: Bidi-Brackets
-            bracket_type = _find_in_ranges(cp, "BidiBracketType")
-            if bracket_type == "o":
-                bidi_bracket_open_indices.append(f"#{i}")
-            elif bracket_type == "c":
-                bidi_bracket_close_indices.append(f"#{i}")
-    
-            # Gem 1: Bidi-Mirroring (Update)
-            # Check if this char is in our new mirroring map
-            if cp in DATA_STORES["BidiMirroring"]:
-                mirrored_cp = DATA_STORES["BidiMirroring"][cp]
-                bidi_mirroring_map[f"#{i}"] = f"'{char}' → '{chr(mirrored_cp)}'"
-    
-            # Gem 4: Normalization Properties
-            if _find_in_ranges(cp, "CompositionExclusions"):
-                norm_exclusion_indices.append(f"#{i}")
-            if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"):
-                norm_nfkc_casefold_indices.append(f"#{i}")
-        
-        except Exception as e:
-            print(f"Error processing char at index {i}: {e}")
-
-    
-    # Add new decomposed Cf/Ignorable stats
+    # --- Build final report ---
+    forensic_stats = {}
     forensic_stats["Bidi Control (UAX #9)"] = {'count': len(bidi_control_indices), 'positions': bidi_control_indices}
     forensic_stats["Join Control (Structural)"] = {'count': len(join_control_indices), 'positions': join_control_indices}
     forensic_stats["True Ignorable (Format/Cf)"] = {'count': len(true_ignorable_indices), 'positions': true_ignorable_indices}
     forensic_stats["Other Default Ignorable"] = {'count': len(other_ignorable_indices), 'positions': other_ignorable_indices}
-    
-    # Add other PropList stats
     forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
     forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
     forensic_stats["Prop: Discouraged (DoNotEmit)"] = {'count': len(donotemit_indices), 'positions': donotemit_indices}
@@ -1437,88 +1407,40 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
     forensic_stats["Prop: Sentence Terminal"] = {'count': len(sentence_terminal_indices), 'positions': sentence_terminal_indices}
     forensic_stats["Prop: Alphabetic"] = {'count': len(alphabetic_indices), 'positions': alphabetic_indices}
-
-    # Add Decomposition stats
+    
     forensic_stats.update(decomp_stats)
-
-    # Add new Decomposition stats (ADD THIS BLOCK)
     forensic_stats.update(decomp_type_stats)
     
-    # Add new Binary Property stats (ADD THIS BLOCK)
     forensic_stats["Prop: Bidi Mirrored"] = {'count': len(bidi_mirrored_indices), 'positions': bidi_mirrored_indices}
     forensic_stats["Prop: Logical Order Exception"] = {'count': len(loe_indices), 'positions': loe_indices}
 
+    forensic_stats["Flag: Deceptive Newline (LS)"] = {'count': len(deceptive_ls_indices), 'positions': deceptive_ls_indices}
+    forensic_stats["Flag: Deceptive Newline (PS)"] = {'count': len(deceptive_ps_indices), 'positions': deceptive_ps_indices}
+    forensic_stats["Flag: Deceptive Newline (NEL)"] = {'count': len(deceptive_nel_indices), 'positions': deceptive_nel_indices}
+    
     forensic_stats["Flag: Bidi Paired Bracket (Open)"] = {'count': len(bidi_bracket_open_indices), 'positions': bidi_bracket_open_indices}
     forensic_stats["Flag: Bidi Paired Bracket (Close)"] = {'count': len(bidi_bracket_close_indices), 'positions': bidi_bracket_close_indices}
 
-    # Special formatter for the Bidi Mirroring map
     mirror_count = len(bidi_mirroring_map)
     if mirror_count > 0:
-        # We just list the mappings directly
         mirror_positions = [f"#{idx} ({mapping})" for idx, mapping in bidi_mirroring_map.items()]
         forensic_stats["Flag: Bidi Mirrored Mapping"] = {'count': mirror_count, 'positions': mirror_positions}
     
     forensic_stats["Flag: Full Composition Exclusion"] = {'count': len(norm_exclusion_indices), 'positions': norm_exclusion_indices}
-
-    # --- NEW: Add Deceptive Newline flags ---
-    forensic_stats["Flag: Deceptive Newline (LS)"] = {'count': len(deceptive_ls_indices), 'positions': deceptive_ls_indices}
-    forensic_stats["Flag: Deceptive Newline (PS)"] = {'count': len(deceptive_ps_indices), 'positions': deceptive_ps_indices}
-    forensic_stats["Flag: Deceptive Newline (NEL)"] = {'count': len(deceptive_nel_indices), 'positions': deceptive_nel_indices}
-    # --- END NEW ---
-    
     forensic_stats["Flag: Changes on NFKC Casefold"] = {'count': len(norm_nfkc_casefold_indices), 'positions': norm_nfkc_casefold_indices}
     
-    # Add back the other flags we kept
-    forensic_stats["Deceptive Spaces"] = {
-        'count': len(deceptive_space_indices),
-        'positions': deceptive_space_indices
-    }
-    forensic_stats["Noncharacter"] = {
-        'count': len(nonchar_indices),
-        'positions': nonchar_indices
-    }
-    forensic_stats["Private Use"] = {
-        'count': len(private_use_indices),
-        'positions': private_use_indices
-    }
-    forensic_stats["Surrogates (Broken)"] = {
-        'count': len(surrogate_indices),
-        'positions': surrogate_indices
-    }
-    forensic_stats["Unassigned (Void)"] = {
-        'count': len(unassigned_indices),
-        'positions': unassigned_indices
-    }
+    forensic_stats["Deceptive Spaces"] = {'count': len(deceptive_space_indices), 'positions': deceptive_space_indices}
+    forensic_stats["Noncharacter"] = {'count': len(nonchar_indices), 'positions': nonchar_indices}
+    forensic_stats["Private Use"] = {'count': len(private_use_indices), 'positions': private_use_indices}
+    forensic_stats["Surrogates (Broken)"] = {'count': len(surrogate_indices), 'positions': surrogate_indices}
+    forensic_stats["Unassigned (Void)"] = {'count': len(unassigned_indices), 'positions': unassigned_indices}
 
-    
-    # 2. Add Variant Stats (from Module 8)
+    # Add Variant Stats
     variant_stats = compute_variant_stats_with_positions(t)
     forensic_stats.update(variant_stats)
 
-    # 3. Manually find IdentifierType flags
-    if LOADING_STATE == "READY":
-        id_type_stats = {}
-        js_array = window.Array.from_(t)
-        for i, char in enumerate(js_array):
-            cp = ord(char)
-            # --- NEW: Identifier Status Check ---
-            id_status = _find_in_ranges(cp, "IdentifierStatus")
-            if id_status == "Restricted":
-                key = "Flag: Identifier Status (Restricted)"
-                threat_flags[key] = threat_flags.get(key, 0) + 1
-            # --- END NEW ---
-            id_type = _find_in_ranges(cp, "IdentifierType")
-
-            # We only care about problematic types
-            if id_type and id_type not in ("Recommended", "Inclusion"):
-                key = f"Type: {id_type}"
-                if key not in id_type_stats:
-                    id_type_stats[key] = {'count': 0, 'positions': []}
-
-                id_type_stats[key]['count'] += 1
-                id_type_stats[key]['positions'].append(f"#{i}")
-
-        forensic_stats.update(id_type_stats)
+    # Add IdentifierType Stats
+    forensic_stats.update(id_type_stats)
     
     return forensic_stats
 
@@ -1644,11 +1566,8 @@ def _generate_uts39_skeleton(t: str):
     intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
     
     try:
-        # --- BUG WORKAROUND ---
-        # We cannot use unicodedata.normalize, as it is broken
-        # in the current Pyodide environment. We will loop over
-        # the raw string 't' instead of the 'nfd_string'.
-        # This is less accurate but will not crash.
+        # We will loop over the raw string 't' as a workaround
+        # for the broken unicodedata.normalize()
         
         mapped_chars = []
         for char in t: # Loop over 't' directly
@@ -1659,21 +1578,22 @@ def _generate_uts39_skeleton(t: str):
             
             if skeleton_char_str:
                 # It IS confusable. Now, check if it's an INTENTIONAL confusable.
+                # The intentional map uses the *original* codepoints.
                 skeleton_cp = ord(skeleton_char_str[0])
                 
+                # --- THIS IS THE LOGIC FIX ---
+                # We must check if the pair {original_cp, skeleton_cp} is intentional
                 if frozenset([cp, skeleton_cp]) in intentional_pairs:
-                    # This is an intentional pair (e.g., A and Α).
-                    # Do NOT map it to the prototype. Map it to itself.
+                    # This is an intentional pair (e.g., 1 and l).
+                    # Do NOT map it. Map it to itself.
                     mapped_chars.append(char)
                 else:
-                    # This is a "normal" confusable. Map it.
+                    # This is a "normal" confusable (e.g., 'а' and 'a'). Map it.
                     mapped_chars.append(skeleton_char_str)
             else:
                 # Not in the confusable map, maps to itself
                 mapped_chars.append(char)
         
-        # --- BUG WORKAROUND ---
-        # We cannot re-normalize the final string.
         final_skeleton = "".join(mapped_chars)
         
         return final_skeleton
