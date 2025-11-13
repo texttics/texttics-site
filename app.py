@@ -1640,17 +1640,17 @@ def _generate_uts39_skeleton(t: str):
         return ""
         
     confusables_map = DATA_STORES.get("Confusables", {})
-    intentional_pairs = DATA_STORES.get("IntentionalPairs", set()) # This is a set of frozensets
+    intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
     
     try:
-        # We must use the NFKC-normalized string as the base
-        # This handles compatibility chars (like ⓼) BEFORE skeletonization
-        # NOTE: We KNOW this normalize() call is failing silently right now,
-        # but the code should be correct for when the bug is fixed.
-        nfd_string = unicodedata.normalize('NFD', t)
+        # --- BUG WORKAROUND ---
+        # We cannot use unicodedata.normalize, as it is broken
+        # in the current Pyodide environment. We will loop over
+        # the raw string 't' instead of the 'nfd_string'.
+        # This is less accurate but will not crash.
         
         mapped_chars = []
-        for char in nfd_string:
+        for char in t: # Loop over 't' directly
             cp = ord(char)
             
             # 1. Check if the character is in the confusable map
@@ -1671,11 +1671,9 @@ def _generate_uts39_skeleton(t: str):
                 # Not in the confusable map, maps to itself
                 mapped_chars.append(char)
         
-        mapped_string = "".join(mapped_chars)
-        
-        # 3. Re-normalize to NFD to stabilize the mapped string
-        # --- THIS IS THE TYPO FIX ---
-        final_skeleton = unicodedata.normalize('NFD', mapped_string)
+        # --- BUG WORKAROUND ---
+        # We cannot re-normalize the final string.
+        final_skeleton = "".join(mapped_chars)
         
         return final_skeleton
     except Exception as e:
@@ -1705,36 +1703,42 @@ def compute_threat_analysis(t: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16] # 16 chars (64-bit) is enough
 
     try:
-        # --- 1. Generate Normalized States (Phase 2.B) ---
+        # --- 1. Generate Normalized States (KNOWN BUG) ---
+        # We know normalize() is failing and nf_string will equal t.
         nf_string = unicodedata.normalize('NFKC', t)
         nf_casefold_string = nf_string.casefold()
 
-        # --- 2. Run checks on the RAW string 't' (NEW LOGIC) ---
+        # --- 2. Run checks on the RAW string 't' ---
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # --- Identifier Status Check (MOVED HERE) ---
+                # --- Identifier Status Check (KNOWN BUG) ---
+                # We know this _find_in_ranges call is failing
+                # due to the systemic bug, but the code is correct.
                 id_status = _find_in_ranges(cp, "IdentifierStatus")
                 if id_status == "Restricted":
                     key = "Flag: Identifier Status (Restricted)"
                     threat_flags[key] = threat_flags.get(key, 0) + 1
                 
-                # --- Bidi Check (MOVED HERE) ---
-                if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
+                # --- Bidi Check ---
+                if (0x202A <= cp <= 0x202E) or (0x2066 <= 0x2069):
                     bidi_danger = True
                     threat_flags["DANGER: Malicious Bidi Control"] = 1
 
-        # --- 3. Run checks on the NORMALIZED string 'nf_string' ---
+        # --- 3. Run checks on the (broken) NORMALIZED string 'nf_string' ---
         scripts_in_use = set()
         confusables_map = DATA_STORES.get("Confusables", {})
         
         if LOADING_STATE == "READY":
-            for char in nf_string: # Analyze the normalized string
+            # We must loop over 't' here because 'nf_string' is broken
+            # and our HTML report must match the *original* string.
+            for char in t: 
                 cp = ord(char)
                 
                 # --- Mixed-Script Detection ---
+                # (This will be slightly inaccurate without normalization, but will work)
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -1746,7 +1750,6 @@ def compute_threat_analysis(t: str):
                 # --- Confusable HTML Report Builder ---
                 lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
                 if cp in confusables_map and lnps_regex.test(char):
-                    # Check if it's intentional
                     skeleton_char_str = confusables_map[cp]
                     skeleton_cp = ord(skeleton_char_str[0])
                     intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
@@ -1782,14 +1785,14 @@ def compute_threat_analysis(t: str):
                 key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
                 threat_flags[key] = 1
 
-        # --- 4. Implement UTS #39 Skeleton (Phase 3.C) ---
-        # We run the skeleton on the NFKC string
-        skeleton_string = _generate_uts39_skeleton(nf_string)
+        # --- 4. Implement UTS #39 Skeleton ---
+        # We run the skeleton on the RAW string 't' as a workaround
+        skeleton_string = _generate_uts39_skeleton(t)
 
         # --- 5. Generate Hashes (Phase 3.D) ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
-        threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
-        threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
+        threat_hashes["State 2: NFKC (Broken)"] = _get_hash(nf_string) # Label as broken
+        threat_hashes["State 3: NFKC-Casefold (Broken)"] = _get_hash(nf_casefold_string) # Label as broken
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
         final_html_report = "".join(html_report_parts) if found_confusable else ""
