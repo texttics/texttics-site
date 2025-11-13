@@ -1,6 +1,7 @@
 # This file tells PyScript what to load
 packages = [
-  "pyodide-http"
+  "pyodide-http",
+  "unicodedata2"
 ]
 
 # This tells PyScript to pre-load your data files
