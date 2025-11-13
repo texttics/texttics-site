@@ -1229,12 +1229,24 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     bidi_mirroring_map = {}  # This will store the mappings {index: "char -> mirrored_char"}
     norm_exclusion_indices = []
     norm_nfkc_casefold_indices = []
+    deceptive_ls_indices = []
+    deceptive_ps_indices = []
+    deceptive_nel_indices = []
     
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
         try:
             category = unicodedata.category(char)
             cp = ord(char)
+
+            # --- NEW: Deceptive Newline Check (Phase 1.B) ---
+            if cp == 0x2028: # Line Separator (LS)
+                deceptive_ls_indices.append(f"#{i}")
+            elif cp == 0x2029: # Paragraph Separator (PS)
+                deceptive_ps_indices.append(f"#{i}")
+            elif cp == 0x0085: # Next Line (NEL)
+                deceptive_nel_indices.append(f"#{i}")
+            # --- END NEW ---
             
             # --- 1. Deconstruct the old 'Cf' logic ---
             if _find_in_ranges(cp, "BidiControl"):
@@ -1373,6 +1385,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         forensic_stats["Flag: Bidi Mirrored Mapping"] = {'count': mirror_count, 'positions': mirror_positions}
     
     forensic_stats["Flag: Full Composition Exclusion"] = {'count': len(norm_exclusion_indices), 'positions': norm_exclusion_indices}
+
+    # --- NEW: Add Deceptive Newline flags ---
+    forensic_stats["Flag: Deceptive Newline (LS)"] = {'count': len(deceptive_ls_indices), 'positions': deceptive_ls_indices}
+    forensic_stats["Flag: Deceptive Newline (PS)"] = {'count': len(deceptive_ps_indices), 'positions': deceptive_ps_indices}
+    forensic_stats["Flag: Deceptive Newline (NEL)"] = {'count': len(deceptive_nel_indices), 'positions': deceptive_nel_indices}
+    # --- END NEW ---
+    
     forensic_stats["Flag: Changes on NFKC Casefold"] = {'count': len(norm_nfkc_casefold_indices), 'positions': norm_nfkc_casefold_indices}
     
     # Add back the other flags we kept
