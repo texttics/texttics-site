@@ -4,6 +4,7 @@ import unicodedata
 from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
 from pyscript import document, window
+import hashlib
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
@@ -1554,18 +1555,98 @@ def compute_provenance_stats(t: str):
     final_stats.update(deep_stats)
     return final_stats
 
+def _generate_uts39_skeleton(t: str):
+    """Generates the UTS #39 'skeleton' for a string."""
+    if LOADING_STATE != "READY":
+        return ""
+        
+    confusables_map = DATA_STORES.get("Confusables", {})
+    if not confusables_map:
+        return "" # Data not loaded
+        
+    # Per UTS #39, the skeleton is created from the NFKC-Casefolded form
+    # We will use NFD first as a base for mapping, then re-compose.
+    # A more robust implementation would use NFKC-Casefold, but let's
+    # build the NFD-based mapper first as it's the core of confusables.txt
+    
+    try:
+        # 1. Decompose the string (e.g., 'é' -> 'e' + '´')
+        nfd_string = unicodedata.normalize('NFD', t)
+        
+        mapped_chars = []
+        for char in nfd_string:
+            cp = ord(char)
+            # 2. Map each character to its confusable prototype
+            # If not in the map, it maps to itself.
+            skeleton_char = confusables_map.get(cp, char)
+            mapped_chars.append(skeleton_char)
+        
+        mapped_string = "".join(mapped_chars)
+        
+        # 3. Re-normalize to NFD to stabilize the mapped string
+        final_skeleton = unicodedata.normalize('NFD', mapped_string)
+        
+        return final_skeleton
+    except Exception as e:
+        print(f"Error generating skeleton: {e}")
+        return ""
+
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
+    threat_flags = {}
+    threat_hashes = {}
+    html_report = "" # We'll populate this later
+
     if not t:
-        return {'flags': {}, 'hashes': {}, 'html_report': ""}
-        
-    # --- TODO: ---
-    # 1. Generate normalized states (NFKC, NFKC-Casefold)
-    # 2. Implement Mixed-Script Detection
-    # 3. Implement UTS #39 Skeleton Algorithm
-    # 4. Generate 4 hashes
+        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': html_report}
     
-    return {'flags': {}, 'hashes': {}, 'html_report': ""}
+    # --- Helper for hashing ---
+    def _get_hash(s: str):
+        return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16] # 16 chars (64-bit) is enough
+
+    try:
+        # --- 1. Generate Normalized States (Phase 2.B) ---
+        # Note: We use the raw string 't' for Forensic state
+        nf_string = unicodedata.normalize('NFKC', t)
+        nf_casefold_string = nf_string.casefold()
+
+        # --- 2. Implement Mixed-Script Detection (Phase 3.B) ---
+        scripts_in_use = set()
+        if LOADING_STATE == "READY":
+            for char in nf_string: # Analyze the normalized string
+                cp = ord(char)
+                # Use the same logic from Group 2.D
+                script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+                if script_ext_val:
+                    scripts_in_use.update(script_ext_val.split())
+                else:
+                    script_val = _find_in_ranges(cp, "Scripts")
+                    if script_val:
+                        scripts_in_use.add(script_val)
+            
+            # Remove "benign" scripts to reduce noise
+            scripts_in_use.discard("Common")
+            scripts_in_use.discard("Inherited")
+            
+            if len(scripts_in_use) > 1:
+                key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
+                threat_flags[key] = {'count': 1, 'positions': []} # We don't need positions for this flag
+
+        # --- 3. Implement UTS #39 Skeleton (Phase 3.C) ---
+        # Note: The plan says use nf_string, but UTS #39 recommends
+        # NFKC-Casefold. Let's stick to the plan for now.
+        skeleton_string = _generate_uts39_skeleton(nf_string)
+
+        # --- 4. Generate Hashes (Phase 3.D) ---
+        threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
+        threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
+        threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
+        threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
+
+    except Exception as e:
+        print(f"Error in compute_threat_analysis: {e}")
+
+    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': html_report}
 
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
