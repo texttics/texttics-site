@@ -430,3 +430,46 @@ Section Header & Copy Button
   background-color: #f0fdf4;
   border-color: #bbf7d0;
 }
+
+
+/* ---
+Group 3: Threat-Hunting
+--- */
+
+/* Style for the <pre> container */
+.confusable-report {
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius);
+  padding: var(--spacing-4);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  line-height: 1.6;
+  white-space: pre-wrap; /* Allow wrapping */
+  word-break: break-all; /* Break long words */
+}
+
+/* Style for the highlighted confusable character */
+.confusable {
+  background-color: #fffbeb; /* Yellow-100 */
+  color: #b45309; /* Amber-700 */
+  border-bottom: 2px dotted #f59e0b; /* Amber-500 */
+  cursor: help;
+  font-weight: 600;
+}
+
+/* Style for the "Bidi Control" banner */
+.banner-warning {
+  padding: var(--spacing-4);
+  background-color: #fef2f2; /* Red-50 */
+  color: #b91c1c; /* Red-700 */
+  border: 1px solid #fca5a5; /* Red-300 */
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+/* Make the banner hidden by default */
+.banner-warning[hidden] {
+  display: none;
+}
