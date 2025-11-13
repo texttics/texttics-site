@@ -245,19 +245,27 @@ function buildStructuredReport() {
 
   // --- 6. Threat-Hunting ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
-  
   // Scrape the new threat cards
   // Note: We're re-using the 'parseCards' helper
   const threatCards = parseCards('threat-report-cards');
   if (threatCards.length > 0) {
     report.push(...threatCards);
   }
-  
   // Scrape the new hash table
   // Note: We re-use 'parseTable' but give it a custom title
   const hashRows = parseTable('threat-hash-report-body', 'Hash');
   if (hashRows.length > 0) {
     report.push(...hashRows);
+  }
+
+  // --- 7. Perception vs. Reality (READING FROM PYTHON DIRECTLY) ---
+  if (window.latest_threat_data) {
+      const t = window.latest_threat_data;
+      report.push('\n[ Perception vs. Reality Report ]');
+      report.push(`Raw:        ${t.raw}`);
+      report.push(`NFKC:       ${t.nfkc}`);
+      report.push(`Casefold:   ${t.nfkc_cf}`);
+      report.push(`Skeleton:   ${t.skeleton}`);
   }
 
 const confusableReport = document.getElementById('confusable-diff-report');
