@@ -1591,14 +1591,22 @@ def _generate_uts39_skeleton(t: str):
         print(f"Error generating skeleton: {e}")
         return ""
 
+def _escape_html(s: str):
+    """Escapes basic HTML characters."""
+    s = s.replace("&", "&amp;")
+    s = s.replace("<", "&lt;")
+    s = s.replace(">", "&gt;")
+    return s
+
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     threat_flags = {}
     threat_hashes = {}
-    html_report = "" # We'll populate this later
+    html_report_parts = [] # Changed to a list
+    found_confusable = False
 
     if not t:
-        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': html_report}
+        return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': ""}
     
     # --- Helper for hashing ---
     def _get_hash(s: str):
@@ -1606,7 +1614,6 @@ def compute_threat_analysis(t: str):
 
     try:
         # --- 1. Generate Normalized States (Phase 2.B) ---
-        # Note: We use the raw string 't' for Forensic state
         nf_string = unicodedata.normalize('NFKC', t)
         nf_casefold_string = nf_string.casefold()
 
@@ -1615,7 +1622,6 @@ def compute_threat_analysis(t: str):
         if LOADING_STATE == "READY":
             for char in nf_string: # Analyze the normalized string
                 cp = ord(char)
-                # Use the same logic from Group 2.D
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -1624,18 +1630,14 @@ def compute_threat_analysis(t: str):
                     if script_val:
                         scripts_in_use.add(script_val)
             
-            # Remove "benign" scripts to reduce noise
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
             
             if len(scripts_in_use) > 1:
                 key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
-                # render_cards expects a simple integer value, not a dict
                 threat_flags[key] = 1
 
         # --- 3. Implement UTS #39 Skeleton (Phase 3.C) ---
-        # Note: The plan says use nf_string, but UTS #39 recommends
-        # NFKC-Casefold. Let's stick to the plan for now.
         skeleton_string = _generate_uts39_skeleton(nf_string)
 
         # --- 4. Generate Hashes (Phase 3.D) ---
@@ -1644,10 +1646,46 @@ def compute_threat_analysis(t: str):
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
+        # --- 5. Build "Perception vs. Reality" HTML Report (NEW) ---
+        confusables_map = DATA_STORES.get("Confusables", {})
+        lnps_regex = REGEX_MATCHER.get("LNPS_Runs") # Get L/N/P/S regex
+
+        if LOADING_STATE == "READY" and confusables_map and lnps_regex:
+            for char in nf_string: # Iterate over the normalized string
+                cp = ord(char)
+                
+                # Check if it's confusable AND if it's a Letter/Number/Punct/Symbol
+                if cp in confusables_map and lnps_regex.test(char):
+                    found_confusable = True
+                    
+                    skeleton_char = confusables_map[cp]
+                    skeleton_cp_hex = f"U+{ord(skeleton_char):04X}"
+                    script_val = _find_in_ranges(cp, "Scripts") or "Unknown"
+                    
+                    # Create the tooltip title
+                    title = (
+                        f"Appears as: '{char}' (U+{cp:04X})\n"
+                        f"Script: {script_val}\n"
+                        f"Maps to: '{skeleton_char}' ({skeleton_cp_hex})"
+                    )
+                    
+                    # Add the highlighted span
+                    html_report_parts.append(
+                        f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
+                    )
+                else:
+                    # Add the normal, non-confusable character
+                    html_report_parts.append(_escape_html(char))
+        
+        # Only build the final report if confusables were found
+        final_html_report = "".join(html_report_parts) if found_confusable else ""
+
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
+        final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
 
-    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': html_report}
+
+    return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': final_html_report}
 
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
