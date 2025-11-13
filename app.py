@@ -1,6 +1,13 @@
 import asyncio
 import json
-import unicodedata
+try:
+    # Use the full unicodedata2 library if installed
+    import unicodedata2 as unicodedata
+    print("Using full unicodedata2 library.")
+except ImportError:
+    # Fall back to Pyodide's built-in (incomplete) version
+    import unicodedata
+    print("Warning: unicodedata2 not found. Falling back to built-in unicodedata (normalization may be incomplete).")
 from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
 from pyscript import document, window
@@ -153,6 +160,7 @@ LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
 DATA_STORES = {
     "Blocks": {"ranges": [], "starts": [], "ends": []},
     "Age": {"ranges": [], "starts": [], "ends": []},
+    "Discouraged": {"ranges": [], "starts": [], "ends": []}, # For manual security overrides
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
     "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
     "IntentionalPairs": set(),
@@ -463,6 +471,50 @@ def _parse_composition_exclusions(txt: str):
         
     print(f"Loaded {len(ranges_list)} composition exclusion ranges.")
 
+def _add_manual_data_overrides():
+    """
+    Manually injects security-related data that isn't in the UCD files.
+    This flags broad "compatibility" blocks as "Discouraged" for security analysis.
+    """
+    print("Adding manual security overrides...")
+    store_key = "Discouraged"
+    store = DATA_STORES[store_key]
+    
+    # Ranges defined by Unicode blocks known to be problematic
+    # (e.g., CJK Compat, Half/Fullwidth, Presentation Forms)
+    discouraged_ranges = [
+        (0x2F00, 0x2FDF, "Kangxi Radicals"),
+        (0x2FF0, 0x2FFF, "Ideographic Description"),
+        (0x31C0, 0x31EF, "CJK Strokes"),
+        (0x3200, 0x32FF, "Enclosed CJK Letters and Months"),
+        (0x3300, 0x33FF, "CJK Compatibility"),
+        (0xF900, 0xFAFF, "CJK Compatibility Ideographs"),
+        (0xFB00, 0xFB4F, "Alphabetic Presentation Forms"), # Ligatures
+        (0xFB50, 0xFDFF, "Arabic Presentation Forms-A"),
+        (0xFE10, 0xFE1F, "Vertical Forms"),
+        (0xFE20, 0xFE2F, "Combining Half Marks"),
+        (0xFE30, 0xFE4F, "CJK Compatibility Forms"),
+        (0xFE50, 0xFE6F, "Small Form Variants"),
+        (0xFE70, 0xFEFF, "Arabic Presentation Forms-B"), # Excludes BOM
+        (0xFF00, 0xFFEF, "Halfwidth and Fullwidth Forms"),
+        (0x1F100, 0x1F1FF, "Enclosed Alphanumeric Supplement"),
+        (0x1F200, 0x1F2FF, "Enclosed Ideographic Supplement"),
+        (0x2F800, 0x2FA1F, "CJK Compatibility Ideographs Supplement"),
+    ]
+
+    ranges_list = []
+    for s, e, v in discouraged_ranges:
+        ranges_list.append((s, e, v))
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+    
+    print(f"Loaded {len(ranges_list)} manual 'Discouraged' ranges.")
+
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
     import bisect
@@ -661,7 +713,8 @@ async def load_unicode_data():
                 "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
                 "Alphabetic": "Alphabetic", "Logical_Order_Exception": "LogicalOrderException"
             })
-            
+        # --- Add Manual Security Overrides ---
+        _add_manual_data_overrides()    
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
@@ -1295,6 +1348,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     extender_indices = []
     deprecated_indices = []
     donotemit_indices = []
+    discouraged_indices = []
     dash_indices = []
     quote_indices = []
     terminal_punct_indices = []
@@ -1345,6 +1399,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 # --- END FIX ---
                     
                 if _find_in_ranges(cp, "DoNotEmit"): donotemit_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Discouraged"): discouraged_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Dash"): dash_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "QuotationMark"): quote_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "TerminalPunctuation"): terminal_punct_indices.append(f"#{i}")
@@ -1431,6 +1486,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
     forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
     forensic_stats["Prop: Discouraged (DoNotEmit)"] = {'count': len(donotemit_indices), 'positions': donotemit_indices}
+    forensic_stats["Flag: Security Discouraged (Compatibility)"] = {'count': len(discouraged_indices), 'positions': discouraged_indices}
     forensic_stats["Prop: Dash"] = {'count': len(dash_indices), 'positions': dash_indices}
     forensic_stats["Prop: Quotation Mark"] = {'count': len(quote_indices), 'positions': quote_indices}
     forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
