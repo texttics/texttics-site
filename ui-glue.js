@@ -258,24 +258,15 @@ function buildStructuredReport() {
     report.push(...hashRows);
   }
 
-  // --- 7. Perception vs. Reality (READING FROM PYTHON DIRECTLY) ---
+// --- 7. Perception vs. Reality (Using Python Data) ---
+  // This uses the window.latest_threat_data object we injected from Python
   if (window.latest_threat_data) {
       const t = window.latest_threat_data;
       report.push('\n[ Perception vs. Reality Report ]');
-      report.push(`Raw:        ${t.raw}`);
-      report.push(`NFKC:       ${t.nfkc}`);
-      report.push(`Casefold:   ${t.nfkc_cf}`);
-      report.push(`Skeleton:   ${t.skeleton}`);
+      report.push(`Raw:         ${t.raw}`);
+      report.push(`NFKC:        ${t.nfkc}`);
+      report.push(`Casefold:    ${t.nfkc_cf}`);
+      report.push(`Skeleton:    ${t.skeleton}`);
   }
-
-const confusableReport = document.getElementById('confusable-diff-report');
-  if (confusableReport) {
-      const text = confusableReport.innerText;
-      // We check if it contains the specific placeholder text. 
-      // If NOT, we assume it has data.
-      if (!text.includes("No confusable runs detected") && !text.includes("Error generating")) {
-          report.push(`\n[ Perception vs. Reality Report ]\n"""\n${text}\n"""`);
-      }
-  }
-return report.join('\n');
-}
+  
+  return report.join('\n');
