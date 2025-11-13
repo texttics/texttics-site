@@ -1629,9 +1629,9 @@ def compute_threat_analysis(t: str):
             scripts_in_use.discard("Inherited")
             
             if len(scripts_in_use) > 1:
-            key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
-            # render_cards expects a simple integer value, not a dict
-            threat_flags[key] = 1
+                key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
+                # render_cards expects a simple integer value, not a dict
+                threat_flags[key] = 1
 
         # --- 3. Implement UTS #39 Skeleton (Phase 3.C) ---
         # Note: The plan says use nf_string, but UTS #39 recommends
