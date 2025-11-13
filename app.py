@@ -1690,11 +1690,15 @@ def _escape_html(s: str):
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
+    
+    # --- STATELESS FIX ---
+    # Re-initialize ALL variables at the top to fight the "stale state" bug.
     threat_flags = {}
     threat_hashes = {}
     html_report_parts = []
     found_confusable = False
     bidi_danger = False
+    # --- END STATELESS FIX ---
 
     if not t:
         return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': "", 'bidi_danger': bidi_danger}
@@ -1705,7 +1709,7 @@ def compute_threat_analysis(t: str):
 
     try:
         # --- 1. Generate Normalized States (KNOWN BUG) ---
-        # We know normalize() is failing and nf_string will equal t.
+        # We know normalize() is failing, but we run it anyway for the hash.
         nf_string = unicodedata.normalize('NFKC', t)
         nf_casefold_string = nf_string.casefold()
 
@@ -1715,31 +1719,30 @@ def compute_threat_analysis(t: str):
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # --- Identifier Status Check (KNOWN BUG) ---
-                # We know this _find_in_ranges call is failing
-                # due to the systemic bug, but the code is correct.
+                # --- Identifier Status Check ---
+                # This should now work, since DATA_STORES is full
                 id_status = _find_in_ranges(cp, "IdentifierStatus")
                 if id_status == "Restricted":
                     key = "Flag: Identifier Status (Restricted)"
                     threat_flags[key] = threat_flags.get(key, 0) + 1
                 
                 # --- Bidi Check ---
-                if (0x202A <= cp <= 0x202E) or (0x2066 <= 0x2069):
+                if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger = True
                     threat_flags["DANGER: Malicious Bidi Control"] = 1
+                    # We break here, so bidi_danger is only set if found
+                    break
 
         # --- 3. Run checks on the (broken) NORMALIZED string 'nf_string' ---
         scripts_in_use = set()
         confusables_map = DATA_STORES.get("Confusables", {})
         
         if LOADING_STATE == "READY":
-            # We must loop over 't' here because 'nf_string' is broken
-            # and our HTML report must match the *original* string.
+            # We must loop over 't' because 'nf_string' is broken
             for char in t: 
                 cp = ord(char)
                 
                 # --- Mixed-Script Detection ---
-                # (This will be slightly inaccurate without normalization, but will work)
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -1775,7 +1778,7 @@ def compute_threat_analysis(t: str):
                             f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
                         )
                     else:
-                        html_report_parts.append(_escape_html(char)) # It's intentional, don't highlight
+                        html_report_parts.append(_escape_html(char)) # It's intentional
                 else:
                     html_report_parts.append(_escape_html(char)) # Not confusable
             
@@ -1787,13 +1790,12 @@ def compute_threat_analysis(t: str):
                 threat_flags[key] = 1
 
         # --- 4. Implement UTS #39 Skeleton ---
-        # We run the skeleton on the RAW string 't' as a workaround
         skeleton_string = _generate_uts39_skeleton(t)
 
         # --- 5. Generate Hashes (Phase 3.D) ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
-        threat_hashes["State 2: NFKC (Broken)"] = _get_hash(nf_string) # Label as broken
-        threat_hashes["State 3: NFKC-Casefold (Broken)"] = _get_hash(nf_casefold_string) # Label as broken
+        threat_hashes["State 2: NFKC (Broken)"] = _get_hash(nf_string)
+        threat_hashes["State 3: NFKC-Casefold (Broken)"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
         final_html_report = "".join(html_report_parts) if found_confusable else ""
