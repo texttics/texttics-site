@@ -1728,8 +1728,16 @@ def render_threat_analysis(threat_results):
     else:
         report_el.innerHTML = '<p class="placeholder-text">No confusable runs detected.</p>'
     
-    # 4. Render Banner (TODO)
-    # (We'll add logic here later to un-hide and update #threat-banner if flags are present)
+
+    # 4. Render Banner
+    banner_el = document.getElementById("threat-banner")
+    if banner_el:
+        bidi_danger = threat_results.get('bidi_danger', False)
+        if bidi_danger:
+            banner_el.innerText = "WARNING: This text contains malicious Bidi control characters (like RLO) designed to reverse text order. This is a vector for 'Trojan Source' attacks."
+            banner_el.removeAttribute("hidden")
+        else:
+            banner_el.setAttribute("hidden", "true")
 
 # ---
 # 4. DOM RENDERER FUNCTIONS
