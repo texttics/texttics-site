@@ -5,7 +5,7 @@ from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
 from pyscript import document, window
 import hashlib
-from js import console
+
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
@@ -1965,8 +1965,24 @@ def render_toc_counts(counts):
 @create_proxy
 def update_all(event=None):
 
-    console.log("DEBUG: Visible DATA_STORES keys:", list(DATA_STORES.keys()))
-    console.log("DEBUG: Interpreter ID:", id(DATA_STORES))
+# --- NEW DEBUG BLOCK ---
+    from js import console
+    try:
+        # We will check two things:
+        # 1. A store that loads early (Blocks)
+        # 2. A store that loads late (Confusables)
+        blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
+        confusables_len = len(DATA_STORES.get("Confusables", {}))
+        
+        console.log(f"--- DEBUG (update_all) ---")
+        console.log(f"Interpreter ID: {id(DATA_STORES)}")
+        console.log(f"Live 'Blocks' range count: {blocks_len}")
+        console.log(f"Live 'Confusables' map count: {confusables_len}")
+        console.log(f"----------------------------")
+        
+    except Exception as e:
+        console.log(f"--- DEBUG ERROR ---: {e}")
+    # --- END DEBUG BLOCK ---
     
     """The main function called on every input change."""
     
