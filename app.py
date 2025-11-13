@@ -81,12 +81,6 @@ ALIASES = {
     "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
 }
 
-# Map for confusablesSummary.txt script codes
-SCRIPT_CODE_MAP = {
-    "L": "Latin", "C": "Cyrillic", "G": "Greek", "A": "Arabic",
-    "H": "Hebrew", "N": "Number", "S": "Symbol", "X": "Other"
-}
-
 # Grapheme Segmenter (UAX #29)
 GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
 
@@ -113,7 +107,6 @@ DATA_STORES = {
     "IdentifierType": {"ranges": [], "starts": [], "ends": []},
     "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
     "IntentionalPairs": set(),
-    "ConfusablesSummary": {},
     "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
     "LineBreak": {"ranges": [], "starts": [], "ends": []},
     "BidiControl": {"ranges": [], "starts": [], "ends": []},
@@ -480,35 +473,6 @@ def _parse_intentional(txt: str):
     print(f"Loaded {count} intentional pairs.")
     # Convert to frozenset for immutability after loading
     DATA_STORES["IntentionalPairs"] = frozenset(store)
-    
-def _parse_confusables_summary(txt: str):
-    """Parses confusablesSummary.txt into a {cp: (source_script, target_script)} map."""
-    store = DATA_STORES["ConfusablesSummary"]
-    store.clear()
-    count = 0
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-        
-        parts = line.split('\t', 4) # Format: Code[TAB]Script[TAB]...
-        if len(parts) < 4:
-            continue
-            
-        try:
-            cp = int(parts[0].strip(), 16)
-            source_script_code = parts[1].strip()
-            target_script_code = parts[3].strip()
-            
-            # Map the codes to full names, default to the code if not in our simple map
-            source_script = SCRIPT_CODE_MAP.get(source_script_code, source_script_code)
-            target_script = SCRIPT_CODE_MAP.get(target_script_code, target_script_code)
-            
-            store[cp] = (source_script, target_script)
-            count += 1
-        except Exception:
-            pass # Ignore malformed lines
-    print(f"Loaded {count} confusable summary entries.")
 
 async def load_unicode_data():
     """Fetches, parses, and then triggers a UI update."""
@@ -534,7 +498,7 @@ async def load_unicode_data():
     try:
         # --- MODIFIED (Feature 2 Expanded) ---
         files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt", "confusablesSummary.txt",
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt",
             "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
             "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
             "Scripts.txt",
@@ -557,7 +521,7 @@ async def load_unicode_data():
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
         # --- MODIFIED (Feature 2 Expanded) ---
-        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_summary_txt, confusables_txt, variants_txt, 
+        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_txt, variants_txt, 
          script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
          scripts_txt, emoji_variants_txt, word_break_txt, 
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
@@ -571,7 +535,6 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
         if intentional_txt: _parse_intentional(intentional_txt)
-        if confusables_summary_txt: _parse_confusables_summary(confusables_summary_txt)
         if confusables_txt: _parse_confusables(confusables_txt)
         
         # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
@@ -1599,14 +1562,13 @@ def _escape_html(s: str):
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
-    # --- STATELESS FIX ---
+    # --- Re-initialize ALL variables ---
     threat_flags = {}
     threat_hashes = {}
     html_report_parts = []
     found_confusable = False
     bidi_danger = False
-    # --- END STATELESS FIX ---
-
+    
     if not t:
         return {'flags': threat_flags, 'hashes': threat_hashes, 'html_report': "", 'bidi_danger': bidi_danger}
     
@@ -1614,34 +1576,29 @@ def compute_threat_analysis(t: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
 
     try:
-        # --- 1. Generate Normalized States (KNOWN BUG) ---
+        # --- 1. Generate Normalized States (Now Working) ---
         nf_string = unicodedata.normalize('NFKC', t)
         nf_casefold_string = nf_string.casefold()
 
         # --- 2. Run checks on the RAW string 't' ---
+        scripts_in_use = set()
+        confusables_map = DATA_STORES.get("Confusables", {})
+        
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
+                # --- Identifier Status Check (FIXED) ---
                 id_status = _find_in_ranges(cp, "IdentifierStatus")
                 if id_status == "Restricted":
                     key = "Flag: Identifier Status (Restricted)"
                     threat_flags[key] = threat_flags.get(key, 0) + 1
                 
+                # --- Bidi Check (FIXED) ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger = True
                     threat_flags["DANGER: Malicious Bidi Control"] = 1
-                    # We break here, so bidi_danger is only set if found
-                    break # Only need one to trigger the banner
-
-        # --- 3. Run checks on the RAW string 't' (workaround) ---
-        scripts_in_use = set()
-        confusables_map = DATA_STORES.get("Confusables", {})
-        
-        if LOADING_STATE == "READY":
-            for char in t: # Loop over 't'
-                cp = ord(char)
                 
                 # --- Mixed-Script Detection ---
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
@@ -1653,31 +1610,38 @@ def compute_threat_analysis(t: str):
                 # --- Confusable HTML Report Builder ---
                 lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
                 if cp in confusables_map and lnps_regex.test(char):
-                    # --- THIS IS THE FIX ---
-                    # Removed the flawed 'intentional_pairs' check
-                    found_confusable = True
                     skeleton_char_str = confusables_map[cp]
-                    script_val = _find_in_ranges(cp, "Scripts") or "Unknown"
+                    skeleton_cp = ord(skeleton_char_str[0])
+                    intentional_pairs = DATA_STORES.get("IntentionalPairs", set())
                     
-                    summary_info = DATA_STORES["ConfusablesSummary"].get(cp)
-                    risk_label = "Confusable Character"
-                    if summary_info:
-                        source_script, target_script = summary_info
-                        risk_label = f"{source_script}–{target_script} Confusable"
-                    
-                    title = (
-                        f"Appears as: '{char}' (U+{cp:04X})\n"
-                        f"Script: {script_val}\n"
-                        f"Maps to: '{skeleton_char_str}' (U+{ord(skeleton_char_str[0]):04X})\n"
-                        f"Risk: {risk_label}"
-                    )
-                    html_report_parts.append(
-                        f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
-                    )
-                    # --- END FIX ---
+                    if frozenset([cp, skeleton_cp]) not in intentional_pairs:
+                        found_confusable = True
+                        
+                        # --- NEW DERIVED RISK LABEL ---
+                        source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
+                        target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
+                        risk_label = "Confusable Character"
+                        if source_script != target_script and target_script != "Common":
+                            risk_label = f"{source_script}–{target_script} Confusable"
+                        else:
+                            risk_label = f"{source_script} Confusable"
+                        # --- END NEW LOGIC ---
+                        
+                        title = (
+                            f"Appears as: '{char}' (U+{cp:04X})\n"
+                            f"Script: {source_script}\n"
+                            f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
+                            f"Risk: {risk_label}"
+                        )
+                        html_report_parts.append(
+                            f'<span class="confusable" title="{_escape_html(title)}">{_escape_html(char)}</span>'
+                        )
+                    else:
+                        html_report_parts.append(_escape_html(char)) # It's intentional
                 else:
                     html_report_parts.append(_escape_html(char)) # Not confusable
             
+            # --- Finish Mixed-Script Check ---
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
             if len(scripts_in_use) > 1:
@@ -1685,12 +1649,12 @@ def compute_threat_analysis(t: str):
                 threat_flags[key] = 1
 
         # --- 4. Implement UTS #39 Skeleton ---
-        skeleton_string = _generate_uts39_skeleton(t)
+        skeleton_string = _generate_uts39_skeleton(t) # Run on raw string 't'
 
-        # --- 5. Generate Hashes ---
+        # --- 5. Generate Hashes (FIXED) ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
-        threat_hashes["State 2: NFKC (Broken)"] = _get_hash(nf_string)
-        threat_hashes["State 3: NFKC-Casefold (Broken)"] = _get_hash(nf_casefold_string)
+        threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
+* threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
         final_html_report = "".join(html_report_parts) if found_confusable else ""
