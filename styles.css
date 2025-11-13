@@ -229,6 +229,41 @@ Group 1: Control Plane
   margin-top: var(--spacing-2);
 }
 
+/* Control Plane Toolbar */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-2);
+  border-bottom: 1px solid var(--color-border-light);
+  padding-bottom: var(--spacing-2);
+}
+
+.tool-btn {
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: var(--spacing-1) var(--spacing-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.tool-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: #eff6ff; /* Light blue tint */
+}
+
+.tool-btn:active {
+  transform: translateY(1px);
+}
+
 /* ---
 Group 2.A: Dual-Atom Tabs
 --- */
