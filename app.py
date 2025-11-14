@@ -1015,14 +1015,6 @@ async def load_unicode_data():
                 "Logical_Order_Exception": "LogicalOrderException"
                 # We can add more properties here later
             })
-
-        # Parse DerivedNormalizationProps.txt
-        if norm_props_txt:
-            _parse_property_file(norm_props_txt, {
-                "Changes_When_NFKC_Casefolded": "ChangesWhenNFKCCasefolded"
-                # This file also contains Changes_When_Casemapped, etc.
-                # We can add more properties here later as needed.
-            })
         
         if proplist_txt:
             _parse_property_file(proplist_txt, {
@@ -1060,43 +1052,31 @@ def compute_emoji_analysis(text: str) -> dict:
     """
     Scans the text and returns a full report on RGI sequences,
     single-character emoji, and qualification status.
-
-    This is a robust, multi-tier scanner:
-    - Tiers 1-3: Greedy RGI ZWJ/Flag/Modifier sequence scan.
-    - Tier 4: Single-character scan, which correctly handles:
-        - Forced Text Presentation (e.g., ❤️︎)
-        - RGI Singles (e.g., 😀)
-        - Qualification Status (Fully, Minimally, Unqualified, Component)
-        - Anomalies (e.g., lone IVS)
+    (Phase 3: Corrected Tier-4 scan and Forced-Text flag)
     """
-    # --- 1. Get Data Stores ---
+    # Get all data from the stores
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
     max_len = DATA_STORES.get("RGISequenceMaxLen", 0)
     qual_map = DATA_STORES.get("EmojiQualificationMap", {})
     
-    # --- 2. Initialize Accumulators ---
+    # --- Initialize all our new counters ---
     rgi_sequences_count = 0
     rgi_singles_count = 0
     
-    # For the V2 "Emoji Qualification Profile" table
-    emoji_details_list = []
-
-    # For the T3 "Structural Integrity" flags
+    # Flags for the Integrity Profile
     flag_unqualified = []
     flag_minimally_qualified = []
     flag_component = []
-    flag_forced_text = []
-    flag_fully_qualified = []
+    flag_forced_text = [] # <-- NEW (Phase 3)
 
-    # --- 3. Start Scan Loop ---
+    i = 0
     js_array = window.Array.from_(text)
     n = len(js_array)
-    i = 0
 
     while i < n:
         matched_sequence = False
         
-        # --- Tiers 1-3: Greedy RGI Sequence Scan (e.g., 👨‍👩‍👧‍👦, 👍🏾, 🇺🇦) ---
+        # --- Tiers 1-3: Greedy Sequence Scan ---
         if max_len > 1:
             max_window = min(max_len, n - i)
             for L in range(max_window, 1, -1): # From max_len down to 2
@@ -1104,98 +1084,62 @@ def compute_emoji_analysis(text: str) -> dict:
                 candidate = "".join(candidate_chars)
                 
                 if candidate in rgi_set:
-                    matched_sequence = True
                     rgi_sequences_count += 1
+                    matched_sequence = True
                     
-                    # Get status (default to FQ for RGI sequences not in test file)
-                    status = qual_map.get(candidate, "fully-qualified")
-
-                    # Add to V2 details list
-                    emoji_details_list.append({
-                        "sequence": candidate,
-                        "status": status,
-                        "index": i
-                    })
-                    
-                    # Add to T3 flag lists
+                    # Check qualification status for the sequence
+                    status = qual_map.get(candidate)
                     if status == "unqualified":
                         flag_unqualified.append(f"#{i}")
                     elif status == "minimally-qualified":
                         flag_minimally_qualified.append(f"#{i}")
                     elif status == "component":
                         flag_component.append(f"#{i}")
-                    elif status == "fully-qualified":
-                        flag_fully_qualified.append(f"#{i}")
-                    
-                    i += L  # Consume the entire sequence
-                    break # Exit the `for L` loop
+                        
+                    i += L 
+                    break
 
-        # --- Tier 4: Single Character Scan (if no sequence was found) ---
+        # --- Tier 4: Single Character Scan ---
         if not matched_sequence:
             char = js_array[i]
             cp = ord(char)
-            consumed = 1 # Default to consuming 1 char
-            final_status = "unknown" # Default status
-        
-        # This surgically adds the lone ZWJ to the emoji table
-        #if cp == 0x200D:
-         #   emoji_details_list.append({
-          #      "sequence": char,
-          #      "status": "component", # Manually assign status
-          #      "index": i,
-          #  })
-          #  i += 1
-          #  continue # Skip all other Tier 4 logic for this char
             
-            # --- A: Check for Forced Text (VS15) ---
-            # This is a 2-char sequence that isn't in the RGI set.
-            if i + 1 < n and ord(js_array[i+1]) == 0xFE0E: # Text Selector
-                if _find_in_ranges(cp, "Emoji_Presentation"): # Base is default-emoji
-                    flag_forced_text.append(f"#{i}")
-                    consumed = 2 # Consume both chars
-                    final_status = "forced-text" # Give it a special status
+            # --- LOGIC FIX (Phase 3): Check for forced-text style FIRST ---
+            if i + 1 < n:
+                next_char = js_array[i+1]
+                if ord(next_char) == 0xFE0E: # Text Presentation Selector
+                    # Check if the base char is a default-emoji char
+                    if _find_in_ranges(cp, "Emoji_Presentation"):
+                        flag_forced_text.append(f"#{i}")
+                        i += 2 # Consume both chars
+                        continue # Skip all other checks
+            # --- END LOGIC FIX ---
+
+            # --- LOGIC FIX: Separate RGI count from Qualification check ---
             
-            # --- B: If not Forced Text, analyze the single char ---
-            if final_status == "unknown":
-                final_status = qual_map.get(char, "unknown")
-                is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
-                is_ivs = 0xE0100 <= cp <= 0xE01EF # Steganography
-
-                if is_rgi_single:
-                    rgi_singles_count += 1
-                    if final_status == "unknown": # Upgrade status
-                        final_status = "fully-qualified"
+            # 1. Check for single-character RGI emoji
+            # (e.g., 😀, which is Emoji_Presentation=Yes)
+            if _find_in_ranges(cp, "Emoji_Presentation"):
+                rgi_singles_count += 1
+            
+            # 2. Check for qualification status (Unqualified, Component, etc.)
+            # This is now *independent* and will run for '©' (U+00A9)
+            status = qual_map.get(char)
+            if status == "unqualified":
+                flag_unqualified.append(f"#{i}")
+            elif status == "minimally-qualified":
+                flag_minimally_qualified.append(f"#{i}")
+            elif status == "component":
+                flag_component.append(f"#{i}")
                 
-                if is_ivs:
-                    # Treat lone IVS as a "component"
-                    if final_status == "unknown":
-                        final_status = "component"
-                    # Add to flag list (even if it's also in qual_map)
-                    if f"#{i}" not in flag_component:
-                         flag_component.append(f"#{i}")
+            # 3. Check for Steganography (IVS)
+            elif 0xE0100 <= cp <= 0xE01EF:
+                 flag_component.append(f"#{i}") # Add IVS to component flag
+            # --- END LOGIC FIX ---
+            
+            i += 1 # Advance by one char
 
-                # Add to V2 details list
-                if final_status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
-                    emoji_details_list.append({
-                        "sequence": char,
-                        "status": final_status,
-                        "index": i
-                    })
-                
-                # Add to T3 flag lists
-                if final_status == "unqualified":
-                    flag_unqualified.append(f"#{i}")
-                elif final_status == "minimally-qualified":
-                    flag_minimally_qualified.append(f"#{i}")
-                elif final_status == "component" and not is_ivs: # (IVS is already added)
-                    flag_component.append(f"#{i}")
-                elif final_status == "fully-qualified":
-                    flag_fully_qualified.append(f"#{i}")
-
-            # Advance the loop
-            i += consumed
-
-    # --- 4. Return the Full Report ---
+    # --- Return the full report ---
     return {
         "counts": {
             "RGI Emoji Sequences": rgi_sequences_count + rgi_singles_count,
@@ -1204,10 +1148,8 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Unqualified Emoji": {'count': len(flag_unqualified), 'positions': flag_unqualified},
             "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
-            "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text},
-            "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified}
-        },
-        "emoji_list": emoji_details_list
+            "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text}, # <-- NEW (Phase 3)
+        }
     }
 
 def _parse_script_extensions(txt: str):
@@ -1858,8 +1800,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     ext_pictographic_indices = []
     emoji_modifier_indices = []
     emoji_modifier_base_indices = []
-    invalid_vs_indices = []
-    variation_selector_indices = []
     # --- End Initialization ---
     
     if LOADING_STATE == "READY":
@@ -1970,22 +1910,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Emoji_Modifier"): emoji_modifier_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "VariationSelector"): variation_selector_indices.append(f"#{i}")
-
-                # --- 10. Variation Selector (VS) Sanity Check ---
-                is_vs = _find_in_ranges(cp, "VariationSelector")
-                if is_vs:
-                    # It's a selector. Now check if it's valid.
-                    is_valid_vs = False
-                    if i > 0:
-                        prev_cp = ord(js_array[i-1])
-                        # Check the master set of all valid bases (from emoji + std)
-                        if prev_cp in DATA_STORES["VariantBase"]:
-                            is_valid_vs = True
-                    
-                    if not is_valid_vs:
-                        # It's either at index 0 or follows an invalid base (like 'a')
-                        invalid_vs_indices.append(f"#{i}")
 
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
@@ -2036,8 +1960,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Prop: Extended Pictographic"] = {'count': len(ext_pictographic_indices), 'positions': ext_pictographic_indices}
     forensic_stats["Prop: Emoji Modifier"] = {'count': len(emoji_modifier_indices), 'positions': emoji_modifier_indices}
     forensic_stats["Prop: Emoji Modifier Base"] = {'count': len(emoji_modifier_base_indices), 'positions': emoji_modifier_base_indices}
-    forensic_stats["Flag: Invalid Variation Selector"] = {'count': len(invalid_vs_indices), 'positions': invalid_vs_indices}
-    forensic_stats["Prop: Variation Selector"] = {'count': len(variation_selector_indices), 'positions': variation_selector_indices}
     
     # Add Variant Stats
     # variant_stats = compute_variant_stats_with_positions(t)
@@ -2201,16 +2123,13 @@ def _escape_html(s: str):
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
-    # --- 0. Initialize defaults ---
+    # --- 0. Initialize defaults (Safe against UnboundLocalError) ---
     threat_flags = {}
     threat_hashes = {}
     html_report_parts = []
     found_confusable = False
+    bidi_danger = False
     
-    # --- We use lists/sets to gather data first ---
-    bidi_danger_indices = []
-    scripts_in_use = set() # Use ONE global set
-
     # Initialize output variables with safe defaults
     nf_string = ""
     nf_casefold_string = ""
@@ -2220,8 +2139,14 @@ def compute_threat_analysis(t: str):
     # --- 1. Early Exit for Empty Input ---
     if not t:
         return {
-            'flags': {}, 'hashes': {}, 'html_report': "", 'bidi_danger': False,
-            'raw': "", 'nfkc': "", 'nfkc_cf': "", 'skeleton': ""
+            'flags': {},
+            'hashes': {},
+            'html_report': "",
+            'bidi_danger': False,
+            'raw': "",
+            'nfkc': "",
+            'nfkc_cf': "",
+            'skeleton': ""
         }
 
     def _get_hash(s: str):
@@ -2234,24 +2159,22 @@ def compute_threat_analysis(t: str):
         nf_casefold_string = nf_string.casefold() # Use the already-normalized string
 
         # --- 3. Run checks on the RAW string 't' ---
+        scripts_in_use = set()
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
             lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
 
-            # --- LOOP: Single, "Per-Char" Analysis (Robust and Correct) ---
-            # This is the original, reliable loop from your first app.py
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
-                
-                # --- A. Bidi Check ---
-                # This will find the RLO (U+202E) from Test 2
-                if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
-                    bidi_danger_indices.append(f"#{i}")
 
-                # --- B. Mixed-Script Detection ---
-                # This global set will find 'Latin' and 'Cyrillic' from Test 1
+                # --- Bidi Check ---
+                if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
+                    bidi_danger = True
+                    threat_flags["DANGER: Malicious Bidi Control"] = 1
+
+                # --- Mixed-Script Detection ---
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -2259,13 +2182,15 @@ def compute_threat_analysis(t: str):
                     script_val = _find_in_ranges(cp, "Scripts")
                     if script_val:
                         scripts_in_use.add(script_val)
-                
-                # --- C. Confusable HTML Report Builder ---
+
+                # --- Confusable HTML Report Builder ---
+                # Only check confusables if we have the map and the regex matches
                 if lnps_regex and cp in confusables_map and lnps_regex.test(char):
                     found_confusable = True
                     skeleton_char_str = confusables_map[cp]
                     skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
                     skeleton_cp = ord(skeleton_char_str[0])
+
                     source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
                     target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
 
@@ -2287,33 +2212,21 @@ def compute_threat_analysis(t: str):
                         f"{_escape_html(char)}</span>"
                     )
                 else:
+                    # Not a confusable; just escape it
                     html_report_parts.append(_escape_html(char))
 
-            # --- 4. Populate Threat Flags (This fixes the TypeError) ---
-            # We build the flags *after* the loop, all as dicts.
-            
-            # Add Bidi flag
-            if bidi_danger_indices:
-                threat_flags["DANGER: Malicious Bidi Control"] = {
-                    'count': len(bidi_danger_indices),
-                    'positions': bidi_danger_indices
-                }
-            
-            # Add Mixed-Script flag (from the global set)
+            # --- Finish Mixed-Script Check ---
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
             if len(scripts_in_use) > 1:
                 key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
-                threat_flags[key] = {
-                    'count': 1,
-                    'positions': ["(See Provenance Profile for details)"]
-                }
-            # --- End of TypeError fix ---
+                threat_flags[key] = 1
 
-        # --- 5. Implement UTS #39 Skeleton ---
+        # --- 4. Implement UTS #39 Skeleton ---
+        # We run the skeleton on the *already normalized and casefolded* string
         skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
 
-        # --- 6. Generate Hashes ---
+        # --- 5. Generate Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
@@ -2323,31 +2236,31 @@ def compute_threat_analysis(t: str):
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
+        # In case of error, we return the raw text for the variants to prevent UI 'undefined'
+        # We do NOT retry normalization here, as that might be what caused the crash.
         if not nf_string: nf_string = t 
         if not nf_casefold_string: nf_casefold_string = t.casefold()
         if not skeleton_string: skeleton_string = t
         final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
 
-    # --- 7. Return Final Report ---
     return {
         'flags': threat_flags,
         'hashes': threat_hashes,
         'html_report': final_html_report,
-        'bidi_danger': bool(bidi_danger_indices), # Return True if the list is not empty
+        'bidi_danger': bidi_danger,
         'raw': t,
         'nfkc': nf_string,
         'nfkc_cf': nf_casefold_string,
         'skeleton': skeleton_string
     }
-    
+
+
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
     
     # 1. Render Flags
     flags = threat_results.get('flags', {})
-    # render_cards(flags, "threat-report-cards") # We can re-use render_cards!
-    # We can re-use the "integrity" matrix renderer!
-    render_matrix_table(flags, "threat-report-body", has_positions=True)
+    render_cards(flags, "threat-report-cards") # We can re-use render_cards!
     
     # 2. Render Hashes
     hashes = threat_results.get('hashes', {})
@@ -2389,94 +2302,12 @@ def render_status(message, is_error=False):
         status_line.innerText = message
         status_line.style.color = "#dc2626" if is_error else "var(--color-text-muted)"
 
-def render_emoji_qualification_table(emoji_list: list):
-    """Renders the new Emoji Qualification Profile table."""
-    element = document.getElementById("emoji-qualification-body")
-    if not element:
-        return
-
-    if not emoji_list:
-        element.innerHTML = "<tr><td colspan='3' class='placeholder-text'>No RGI emoji sequences detected.</td></tr>"
-        return
-
-    # 1. Aggregate the list by (sequence, status)
-    grouped = {}
-    for item in emoji_list:
-        seq = item.get("sequence", "?")
-        # Format status: "fully-qualified" -> "Fully Qualified"
-        status = item.get("status", "unknown").replace("-", " ").title()
-        index = item.get("index", 0)
-        
-        key = (seq, status)
-        if key not in grouped:
-            grouped[key] = []
-        grouped[key].append(f"#{index}")
-
-    # 2. Build HTML string
-    html = []
-    
-    # Sort by the first index to keep them in order of appearance
-    try:
-        # Sort the keys by the numeric value of their first position
-        sorted_keys = sorted(grouped.keys(), key=lambda k: int(grouped[k][0][1:]))
-    except Exception:
-        # Failsafe sort (alphabetical by sequence)
-        sorted_keys = sorted(grouped.keys())
-
-    for key in sorted_keys:
-        # Unpack the key, AND LOOK UP the value from the dict
-        seq, status = key
-        positions = grouped[key]
-        
-        count = len(positions)
-        
-        # Use <details> for long position lists
-        POSITION_THRESHOLD = 5
-        if count > POSITION_THRESHOLD:
-            visible_positions = ", ".join(positions[:POSITION_THRESHOLD])
-            hidden_positions = ", ".join(positions[POSITION_THRESHOLD:])
-            pos_html = (
-                f'<details style="cursor: pointer;">'
-                f'<summary>{visible_positions} ... ({count} total)</summary>'
-                f'<div style="padding-top: 8px; user-select: all;">{hidden_positions}</div>'
-                f'</details>'
-            )
-        else:
-            pos_html = ", ".join(positions)
-
-        html.append(
-            f'<tr>'
-            # Use mono font for emoji to prevent weird spacing
-            f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq} <span style="font-family: var(--font-sans); font-size: 0.9rem; color: var(--color-text-muted);">({status})</span></th>'
-            f'<td>{count}</td>'
-            f'<td>{pos_html}</td>'
-            f'</tr>'
-        )
-    
-    element.innerHTML = "".join(html)
-
 def render_cards(stats_dict, element_id):
     """Generates and injects HTML for standard stat cards."""
     html = []
-    
-    # Sort for consistent order
-    for k in sorted(stats_dict.keys()):
-        v = stats_dict[k]
-        
-        # --- THIS IS THE FIX ---
-        # Check if v is a dictionary (like the new threat flags)
-        if isinstance(v, dict):
-            # Extract the count from the dict
-            count = v.get('count', 0)
-        elif isinstance(v, (int, float)):
-            # It's a simple number (like from meta_cards)
-            count = v
-        else:
-            count = 0
-        # --- END OF FIX ---
-
-        if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
-             html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+    for k, v in stats_dict.items():
+        if v > 0 or (isinstance(v, (int, float)) and v == 0 and k in ["Total Graphemes", "Total Code Points"]):
+             html.append(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>')
     
     element = document.getElementById(element_id)
     if element:
@@ -2582,8 +2413,8 @@ def render_toc_counts(counts):
 
 @create_proxy
 def update_all(event=None):
-    """The main function called on every input change."""
 
+# --- NEW DEBUG BLOCK ---
     from js import console
     try:
         # We will check two things:
@@ -2597,8 +2428,10 @@ def update_all(event=None):
         console.log(f"Live 'Blocks' range count: {blocks_len}")
         console.log(f"Live 'Confusables' map count: {confusables_len}")
         console.log(f"----------------------------")
+        
     except Exception as e:
         console.log(f"--- DEBUG ERROR ---: {e}")
+    # --- END DEBUG BLOCK ---
     
     """The main function called on every input change."""
     
@@ -2621,7 +2454,6 @@ def update_all(event=None):
         render_matrix_table({}, "graphemebreak-run-matrix-body")
         render_matrix_table({}, "eawidth-run-matrix-body")
         render_matrix_table({}, "vo-run-matrix-body")
-        render_emoji_qualification_table([])
         render_threat_analysis({}) 
         
         render_toc_counts({})
@@ -2632,7 +2464,6 @@ def update_all(event=None):
     emoji_report = compute_emoji_analysis(t)
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
-    emoji_list = emoji_report.get("emoji_list", [])
     
     # Module 2.A: Dual-Atom Fingerprint
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
@@ -2655,18 +2486,6 @@ def update_all(event=None):
     # print(f"BIDI STATS: {bidi_run_stats}")
     # print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
     # print("------------------------")
-
-    emoji_qualification_stats = {}
-    for item in emoji_list:
-        sequence = item["sequence"]
-        status = item["status"].replace("-", " ").title() # "fully-qualified" -> "Fully Qualified"
-        key = f"{sequence} ({status})"
-        
-        if key not in emoji_qualification_stats:
-            emoji_qualification_stats[key] = {'count': 0, 'positions': []}
-            
-        emoji_qualification_stats[key]['count'] += 1
-        emoji_qualification_stats[key]['positions'].append(f"#{item['index']}")
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -2703,14 +2522,6 @@ def update_all(event=None):
     
     # 2.D
     prov_matrix = provenance_stats
-
-    threat_flags = threat_results.get('flags', {})
-    if forensic_matrix.get("Flag: Invalid Variation Selector", {}).get("count", 0) > 0:
-        threat_flags["Suspicious: Invalid Variation Selectors"] = forensic_matrix["Flag: Invalid Variation Selector"]
-    if forensic_matrix.get("Flag: Unqualified Emoji", {}).get("count", 0) > 0:
-        threat_flags["Suspicious: Unqualified Emoji"] = forensic_matrix["Flag: Unqualified Emoji"]
-    if forensic_matrix.get("Join Control (Structural)", {}).get("count", 0) > 0:
-        threat_flags["Suspicious: Lone Join Control (ZWJ)"] = forensic_matrix["Join Control (Structural)"]
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
@@ -2718,7 +2529,7 @@ def update_all(event=None):
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v > 0) + sum(1 for v in script_run_stats.values() if v > 0),
-        'threat': sum(1 for v in threat_results.get('flags', {}).values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
+        'threat': sum(1 for v in threat_results.get('flags', {}).values() if v > 0)
     }
     
     # --- 3. Call All Renderers ---
@@ -2747,9 +2558,6 @@ def update_all(event=None):
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body")
     render_matrix_table(script_run_stats, "script-run-matrix-body")
-    #render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
-
-    render_emoji_qualification_table(emoji_list)
 
     # Render 3
     render_threat_analysis(threat_results)
