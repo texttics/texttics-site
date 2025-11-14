@@ -556,21 +556,31 @@ def _parse_composition_exclusions(txt: str):
 def _parse_emoji_zwj_sequences(txt: str) -> set:
     """
     Parses emoji-zwj-sequences.txt into a set of RGI strings.
-    This parser handles the common format:
-    Format: 1F468 200D 1F469 200D 1F466 # (👨‍👩‍👦) man...
+    This parser is robust and handles formats like:
+    Format 1: 1F468 200D ... # (👨‍👩‍👦) man...
+    Format 2: 1F468 200D ... ; RGI_Emoji_ZWJ_Sequence ; ...
     """
     sequences = set()
+    # This regex will match *only* the leading hex codes and spaces
+    hex_match = re.compile(r'^([0-9a-fA-F\s]+)') 
+    
     for raw in txt.splitlines():
-        # 1. Split on the comment marker '#'
-        line = raw.split('#', 1)[0].strip()
+        line = raw.split('#', 1)[0].strip() # Strip hash comments first
         if not line:
             continue
             
         try:
-            # 2. The remaining part is just the hex codes
-            hex_codes = line.split() # Split by space
+            match = hex_match.match(line)
+            if not match:
+                continue
+                
+            hex_codes_str = match.group(1).strip()
+            if not hex_codes_str:
+                continue
+                
+            hex_codes = hex_codes_str.split()
             
-            if len(hex_codes) > 1: # We only want sequences
+            if len(hex_codes) > 1: # Only sequences
                 sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
                 sequences.add(sequence_str)
         except Exception as e:
@@ -583,8 +593,7 @@ def _parse_emoji_zwj_sequences(txt: str) -> set:
 def _parse_emoji_sequences(txt: str) -> set:
     """
     Parses emoji-sequences.txt for RGI sequences.
-    We ONLY want RGI sequences, not Basic_Emoji (which are single chars).
-    Format: 1F1E6 1F1E8 ; RGI_Emoji_Flag_Sequence ; ...
+    We ONLY want RGI sequences (Flags, Modifiers, Keycaps), not Basic_Emoji.
     """
     sequences = set()
     rgi_types = {
@@ -607,12 +616,19 @@ def _parse_emoji_sequences(txt: str) -> set:
             hex_codes_str = parts[0].strip()
             type_field = parts[1].strip()
             
-            # We only care about RGI *sequences*
-            if type_field in rgi_types and ' ' in hex_codes_str:
-                hex_codes = hex_codes_str.split()
-                sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
-                sequences.add(sequence_str)
-        except Exception:
+            # We only care about RGI *sequence* types
+            if type_field in rgi_types:
+                
+                # --- THIS IS THE FIX ---
+                # Ensure it's a space-delimited sequence
+                # AND not a range (which this parser doesn't handle)
+                if ' ' in hex_codes_str and '..' not in hex_codes_str:
+                    hex_codes = hex_codes_str.split()
+                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                    sequences.add(sequence_str)
+                # --- END FIX ---
+        except Exception as e:
+            # print(f"Skipping malformed SEQ line: {line} | Error: {e}")
             pass # Ignore malformed lines
             
     print(f"Loaded {len(sequences)} RGI non-ZWJ sequences (Flags, Modifiers, etc.).")
