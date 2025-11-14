@@ -2195,68 +2195,97 @@ def compute_threat_analysis(t: str):
         nf_casefold_string = nf_string.casefold() # Use the already-normalized string
 
         # --- 3. Run checks on the RAW string 't' ---
-        scripts_in_use = set()
+        # scripts_in_use = set()
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
-            lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
+        lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
+        
+        # --- NEW: Loop over LNPS Runs (Letters, Numbers, Punct, Symbols) ---
+        lnps_matches_iter = window.String.prototype.matchAll.call(t, lnps_regex)
+        lnps_matches = window.Array.from_(lnps_matches_iter)
+        
+        mixed_script_runs_found = []
 
-            for i, char in enumerate(js_array_raw):
-                cp = ord(char)
-
-                # --- Bidi Check ---
-                if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
+        for match in lnps_matches:
+            run_string = match[0]
+            run_index = match.index
+            scripts_in_this_run = set()
+            
+            # Analyze this specific run
+            for char_in_run in run_string:
+                cp_run = ord(char_in_run)
+                
+                # --- Bidi Check (now per-run) ---
+                if (0x202A <= cp_run <= 0x202E) or (0x2066 <= cp_run <= 0x2069):
                     bidi_danger = True
-                    threat_flags["DANGER: Malicious Bidi Control"] = 1
+                    threat_flags["DANGER: Malicious Bidi Control"] = 1 # This is still a global flag
 
-                # --- Mixed-Script Detection ---
-                script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+                # --- Mixed-Script Detection (now per-run) ---
+                script_ext_val = _find_in_ranges(cp_run, "ScriptExtensions")
                 if script_ext_val:
-                    scripts_in_use.update(script_ext_val.split())
+                    scripts_in_this_run.update(script_ext_val.split())
                 else:
-                    script_val = _find_in_ranges(cp, "Scripts")
+                    script_val = _find_in_ranges(cp_run, "Scripts")
                     if script_val:
-                        scripts_in_use.add(script_val)
+                        scripts_in_this_run.add(script_val)
 
-                # --- Confusable HTML Report Builder ---
-                # Only check confusables if we have the map and the regex matches
-                if lnps_regex and cp in confusables_map and lnps_regex.test(char):
-                    found_confusable = True
-                    skeleton_char_str = confusables_map[cp]
-                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
-                    skeleton_cp = ord(skeleton_char_str[0])
+            # --- Check this run for mixed scripts ---
+            scripts_in_this_run.discard("Common")
+            scripts_in_this_run.discard("Inherited")
+            
+            if len(scripts_in_this_run) > 1:
+                # This is a high-risk run!
+                scripts_label = ", ".join(sorted(scripts_in_this_run))
+                mixed_script_runs_found.append(f"'{run_string}' @ #{run_index} ({scripts_label})")
 
-                    source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
-                    target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
+        # --- END OF NEW LOOP ---
 
-                    if (source_script != target_script and 
-                        target_script != "Common" and 
+        # --- Add new flag to threat_flags ---
+        if mixed_script_runs_found:
+            # We can re-use render_matrix_table's <details> feature by passing a list
+            threat_flags["High-Risk: Mixed-Script Runs"] = {
+                'count': len(mixed_script_runs_found),
+                'positions': mixed_script_runs_found
+            }
+        
+        # --- This is the OLD loop, now used ONLY for the confusable HTML report ---
+        for i, char in enumerate(js_array_raw):
+            cp = ord(char)
+            
+            # --- Bidi and Script logic are now GONE from this loop ---
+
+            # --- Confusable HTML Report Builder (This stays) ---
+            if lnps_regex and cp in confusables_map and lnps_regex.test(char):
+                found_confusable = True
+                skeleton_char_str = confusables_map[cp]
+                skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
+                skeleton_cp = ord(skeleton_char_str[0])
+
+                source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
+                target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
+
+                if (source_script != target_script and
+                        target_script != "Common" and
                         source_script != "Unknown"):
-                        risk_label = f"{source_script}–{target_script} Confusable"
-                    else:
-                        risk_label = f"{source_script} Confusable"
-
-                    title = (
-                        f"Appears as: '{char}' (U+{cp:04X})\n"
-                        f"Script: {source_script}\n"
-                        f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
-                        f"Risk: {risk_label}"
-                    )
-                    html_report_parts.append(
-                        f'<span class="confusable" title="{_escape_html(title)}">'
-                        f"{_escape_html(char)}</span>"
-                    )
+                    risk_label = f"{source_script}–{target_script} Confusable"
                 else:
-                    # Not a confusable; just escape it
-                    html_report_parts.append(_escape_html(char))
+                    risk_label = f"{source_script} Confusable"
 
-            # --- Finish Mixed-Script Check ---
-            scripts_in_use.discard("Common")
-            scripts_in_use.discard("Inherited")
-            if len(scripts_in_use) > 1:
-                key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
-                threat_flags[key] = 1
+                title = (
+                    f"Appears as: '{char}' (U+{cp:04X})\n"
+                    f"Script: {source_script}\n"
+                    f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
+                    f"Risk: {risk_label}"
+                )
+                html_report_parts.append(
+                    f'<span class="confusable" title="{_escape_html(title)}">'
+                    f"{_escape_html(char)}</span>"
+                )
+            else:
+                # Not a confusable; just escape it
+                html_report_parts.append(_escape_html(char))
 
         # --- 4. Implement UTS #39 Skeleton ---
         # We run the skeleton on the *already normalized and casefolded* string
@@ -2296,7 +2325,9 @@ def render_threat_analysis(threat_results):
     
     # 1. Render Flags
     flags = threat_results.get('flags', {})
-    render_cards(flags, "threat-report-cards") # We can re-use render_cards!
+    # render_cards(flags, "threat-report-cards") # We can re-use render_cards!
+    # We can re-use the "integrity" matrix renderer!
+    render_matrix_table(flags, "threat-report-body", has_positions=True)
     
     # 2. Render Hashes
     hashes = threat_results.get('hashes', {})
