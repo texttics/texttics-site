@@ -2407,11 +2407,17 @@ def render_emoji_qualification_table(emoji_list: list):
     
     # Sort by the first index to keep them in order of appearance
     try:
+        # Sort the keys by the numeric value of their first position
         sorted_keys = sorted(grouped.keys(), key=lambda k: int(grouped[k][0][1:]))
     except Exception:
-        sorted_keys = grouped.keys() # Failsafe sort
+        # Failsafe sort (alphabetical by sequence)
+        sorted_keys = sorted(grouped.keys())
 
-    for (seq, status), positions in sorted_keys:
+    for key in sorted_keys:
+        # Unpack the key, AND LOOK UP the value from the dict
+        seq, status = key
+        positions = grouped[key]
+        
         count = len(positions)
         
         # Use <details> for long position lists
