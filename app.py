@@ -2173,6 +2173,7 @@ def _escape_html(s: str):
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
+# REPLACE ALL CODE BELOW THIS LINE WITH THE FOLLOWING:
 
     # --- 0. Initialize defaults ---
     threat_flags = {}
@@ -2330,8 +2331,7 @@ def compute_threat_analysis(t: str):
         'nfkc_cf': nf_casefold_string,
         'skeleton': skeleton_string
     }
-
-
+    
 def render_threat_analysis(threat_results):
     """Renders the Group 3 Threat-Hunting results."""
     
