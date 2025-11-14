@@ -403,6 +403,80 @@ def _parse_emoji_variants(txt: str):
     # Return the new local set
     return base_set
 
+def _parse_emoji_test(txt: str) -> dict:
+    """
+    Parses emoji-test.txt to build a map of {sequence: qualification_status}
+    
+    Format:
+    # group: fully-qualified
+    1F600 ; fully-qualified # 😀 grinning face
+    ...
+    # group: unqualified
+    00A9 ; unqualified # © copyright
+    """
+    qualification_map = {}
+    current_group = "unknown"
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        # Check if this is a group header
+        if line.startswith("# group:"):
+            current_group = line.split(":", 1)[-1].strip()
+            continue
+            
+        try:
+            parts = line.split(';', 1)
+            if len(parts) < 2:
+                continue
+                
+            hex_codes_str = parts[0].strip()
+            status = parts[1].strip()
+            
+            # Use the status from the line if available, otherwise from the group
+            final_status = status if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"} else current_group
+            
+            # We only care about these statuses
+            if final_status not in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
+                continue
+
+            hex_codes = hex_codes_str.split()
+            sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+            
+            if sequence_str:
+                qualification_map[sequence_str] = final_status
+
+        except Exception as e:
+            # print(f"Skipping malformed TEST line: {line} | Error: {e}")
+            pass
+            
+    print(f"Loaded {len(qualification_map)} emoji qualification statuses from emoji-test.txt.")
+    return qualification_map
+
+def _define_emoji_property_map() -> dict:
+    """
+    Returns the property map for parsing emoji-data.txt.
+    We will create new DATA_STORES buckets for these.
+    """
+    # Create new store entries for these properties
+    DATA_STORES["Emoji"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Presentation"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Modifier"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Modifier_Base"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Component"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Extended_Pictographic"] = {"ranges": [], "starts": [], "ends": []}
+    
+    return {
+        "Emoji": "Emoji",
+        "Emoji_Presentation": "Emoji_Presentation",
+        "Emoji_Modifier": "Emoji_Modifier",
+        "Emoji_Modifier_Base": "Emoji_Modifier_Base",
+        "Emoji_Component": "Emoji_Component",
+        "Extended_Pictographic": "Extended_Pictographic"
+    }
+
 def _parse_donotemit(txt: str):
     """
     Parses DoNotEmit.txt for single chars and ranges.
@@ -811,7 +885,9 @@ async def load_unicode_data():
             "DerivedNormalizationProps.txt",
             "CompositionExclusions.txt",
             "emoji-sequences.txt",
-            "emoji-zwj-sequences.txt"
+            "emoji-zwj-sequences.txt",
+            "emoji-data.txt",
+            "emoji-test.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -822,7 +898,7 @@ async def load_unicode_data():
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
          decomp_type_txt, derived_binary_txt, num_type_txt, 
          ea_width_txt, vert_orient_txt, bidi_brackets_txt,
-         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt,) = results
+         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -895,6 +971,19 @@ async def load_unicode_data():
             f"max length = {DATA_STORES['RGISequenceMaxLen']}."
         )
         # --- END (Phase 1: Emoji Bugfix) ---
+
+        # --- NEW (Phase 2: Emoji Powerhouse) ---
+        # Load single-char properties from emoji-data.txt
+        if emoji_data_txt:
+            emoji_prop_map = _define_emoji_property_map()
+            _parse_property_file(emoji_data_txt, emoji_prop_map)
+        
+        # Load qualification status for sequences
+        if emoji_test_txt:
+            DATA_STORES["EmojiQualificationMap"] = _parse_emoji_test(emoji_test_txt)
+        else:
+            DATA_STORES["EmojiQualificationMap"] = {}
+        # --- END (Phase 2: Emoji Powerhouse) ---
         
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
