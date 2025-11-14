@@ -248,6 +248,9 @@ const parseTable = (tbodyId, sectionTitle) => {
   report.push(...parseTable('provenance-matrix-body', 'Property'));
   report.push(...parseTable('script-run-matrix-body', 'Script Run'));
 
+  report.push(`\n[ Emoji Qualification Profile ]`);
+  report.push(...parseTable('emoji-qualification-body', 'Emoji'));
+
   // --- 6. Threat-Hunting ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
   
