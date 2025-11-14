@@ -250,13 +250,15 @@ const parseTable = (tbodyId, sectionTitle) => {
 
   // --- 6. Threat-Hunting ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
-  // Scrape the new threat cards
-  // Note: We're re-using the 'parseCards' helper
-  const threatCards = parseCards('threat-report-cards');
-  if (threatCards.length > 0) {
-    report.push(...threatCards);
+  
+  // 6.A - Scrape the threat flags from the correct table
+  // THIS IS THE FIX
+  const threatMatrixRows = parseTable('threat-report-body', 'Flag');
+  if (threatMatrixRows.length > 0) {
+    report.push(...threatMatrixRows);
   }
-  // Scrape the new hash table
+  
+  // 6.B - Scrape the hash table
   // Note: We re-use 'parseTable' but give it a custom title
   const hashRows = parseTable('threat-hash-report-body', 'Hash');
   if (hashRows.length > 0) {
