@@ -41,7 +41,6 @@ MINOR_CATEGORIES_29 = {
 
 # Regexes for finding *all* matches and their indices (must be 'gu')
 REGEX_MATCHER = {
-    "RGI Emoji": window.RegExp.new(r"\p{Emoji_Presentation}", "gv"), # Swapped to \p{Emoji_Presentation} for broad support
     "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
     "Marks": window.RegExp.new(r"\p{M}", "gu"),
     
@@ -557,25 +556,36 @@ def _parse_composition_exclusions(txt: str):
 def _parse_emoji_zwj_sequences(txt: str) -> set:
     """
     Parses emoji-zwj-sequences.txt into a set of RGI strings.
-    Format: 1F468 200D 1F469 200D 1F466 # (👨‍👩‍👦) man...
+    Format: 1F468 200D 1F469 200D 1F466 ; RGI_Emoji_ZWJ_Sequence ; ...
     """
     sequences = set()
     for raw in txt.splitlines():
         line = raw.split('#', 1)[0].strip()
         if not line:
             continue
-            
+
         try:
-            # Some files use ';', some don't. Split on first non-hex char.
-            parts = re.split(r'\s*#|;', line, 1)
-            hex_codes = parts[0].strip().split()
-            
-            if len(hex_codes) > 1: # We only want sequences
-                sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+            parts = line.split(';', 2)
+            if len(parts) < 2:
+                continue
+
+            hex_codes_str = parts[0].strip()
+            type_field = parts[1].strip()
+
+            # --- THIS IS THE FIX ---
+            # Only true RGI ZWJ sequences
+            if type_field != "RGI_Emoji_ZWJ_Sequence":
+                continue
+            # --- END FIX ---
+
+            hex_codes = hex_codes_str.split()
+            if len(hex_codes) > 1:
+                sequence_str = "".join(chr(int(h, 16)) for h in hex_codes)
                 sequences.add(sequence_str)
         except Exception:
-            pass # Ignore malformed lines
-            
+            # Ignore malformed lines
+            pass
+
     print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
     return sequences
 
@@ -840,7 +850,7 @@ async def load_unicode_data():
         print(f"--- DIAGNOSTIC: Final combined 'VariantBase' frozenset size: {len(DATA_STORES['VariantBase'])}")
         # --- End Feature 1 Logic ---
 
-        # --- NEW (Phase 1: Emoji Bugfix) ---
+        # --- NEW (Phase 1: Emoji Bugfix - Optimized) ---
         # Build the RGI Sequence Set from Tiers 1-3
         set_zwj = set()
         set_non_zwj = set()
@@ -851,19 +861,32 @@ async def load_unicode_data():
         
         if emoji_seq_txt:
             set_non_zwj = _parse_emoji_sequences(emoji_seq_txt)
-        
+            
         if emoji_variants_txt:
             # We re-use the file we already loaded for variants
             set_variations = _parse_emoji_variation_sequences(emoji_variants_txt)
-        
+            
         # Combine all sequences into one master set
         combined_rgi_sequences = set_zwj.union(set_non_zwj).union(set_variations)
         
-        # Store the sequences, sorted by length (descending)
-        # This is CRITICAL for our greedy-match parser
-        DATA_STORES["RGISequenceList"] = sorted(list(combined_rgi_sequences), key=len, reverse=True)
+        # --- THIS IS THE OPTIMIZATION ---
+        # Store as a set (fast membership) + max length (for sliding window)
+        DATA_STORES["RGISequenceSet"] = combined_rgi_sequences
+        DATA_STORES["RGISequenceMaxLen"] = max((len(s) for s in combined_rgi_sequences), default=0)
+        # --- END OPTIMIZATION ---
         
-        print(f"--- Emoji Engine: Created RGISequenceList with {len(DATA_STORES['RGISequenceList'])} total sequences.")
+        # Store the sorted list (optional, but good for debugging)
+        DATA_STORES["RGISequenceList"] = sorted(
+            list(combined_rgi_sequences),
+            key=len,
+            reverse=True
+        )
+        
+        print(
+            f"--- Emoji Engine: Created RGISequenceSet with "
+            f"{len(DATA_STORES['RGISequenceSet'])} total sequences; "
+            f"max length = {DATA_STORES['RGISequenceMaxLen']}."
+        )
         # --- END (Phase 1: Emoji Bugfix) ---
         
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
@@ -928,6 +951,47 @@ async def load_unicode_data():
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
+
+def count_rgi_emoji_sequences(text: str) -> int:
+    """
+    Count RGI emoji *sequences* in the string `text`, using a greedy scan.
+    This function ONLY counts sequences (length > 1).
+    It does NOT count single-character emoji.
+    """
+    rgi_set = DATA_STORES.get("RGISequenceSet")
+    max_len = DATA_STORES.get("RGISequenceMaxLen", 0)
+
+    # Exit if no sequences are loaded or they are all single chars
+    if not rgi_set or max_len <= 1:
+        return 0
+
+    total = 0
+    i = 0
+    n = len(text)
+    js_array = window.Array.from_(text) # Use JS array for correct string length
+
+    while i < n:
+        matched = False
+
+        # Try longest possible sequence first, down to length 2
+        # We check from min(max_len, remaining_chars)
+        max_window = min(max_len, n - i)
+        for L in range(max_window, 1, -1):
+            
+            # Use JS-style slicing on the array
+            candidate_chars = js_array[i : i + L]
+            candidate = "".join(candidate_chars)
+            
+            if candidate in rgi_set:
+                total += 1
+                i += L # Critically, advance index by the *length* of the sequence
+                matched = True
+                break # Stop checking smaller lengths
+
+        if not matched:
+            i += 1 # No sequence found, advance by one char
+
+    return total
 
 def _parse_script_extensions(txt: str):
     """Custom parser for ScriptExtensions.txt (which uses ';')."""
@@ -1047,15 +1111,20 @@ def _find_matches_with_indices(regex_key: str, text: str):
 def compute_code_point_stats(t: str):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
 
-    # 1. Get derived stats (from full string)
+# 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
-    _, emoji_count = _find_matches_with_indices("RGI Emoji", t)
+    
+    # --- NEW (Phase 1: Emoji Bugfix) ---
+    # We now call our sequence-aware scanner instead of the regex
+    emoji_sequence_count = count_rgi_emoji_sequences(t)
+    # --- END (Phase 1: Emoji Bugfix) ---
+    
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
-
+    
     derived_stats = {
         "Total Code Points": total_code_points,
-        "RGI Emoji Sequences": emoji_count,
+        "RGI Emoji Sequences": emoji_sequence_count, # <-- NEW VALUE
         "Whitespace (Total)": whitespace_count
     }
 
