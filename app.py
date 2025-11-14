@@ -2381,9 +2381,25 @@ def render_status(message, is_error=False):
 def render_cards(stats_dict, element_id):
     """Generates and injects HTML for standard stat cards."""
     html = []
-    for k, v in stats_dict.items():
-        if v > 0 or (isinstance(v, (int, float)) and v == 0 and k in ["Total Graphemes", "Total Code Points"]):
-             html.append(f'<div class="card"><strong>{k}</strong><div>{v}</div></div>')
+    
+    # Sort for consistent order
+    for k in sorted(stats_dict.keys()):
+        v = stats_dict[k]
+        
+        # --- THIS IS THE FIX ---
+        # Check if v is a dictionary (like the new threat flags)
+        if isinstance(v, dict):
+            # Extract the count from the dict
+            count = v.get('count', 0)
+        elif isinstance(v, (int, float)):
+            # It's a simple number (like from meta_cards)
+            count = v
+        else:
+            count = 0
+        # --- END OF FIX ---
+
+        if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
+             html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
     
     element = document.getElementById(element_id)
     if element:
