@@ -1077,6 +1077,8 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_component = []
     flag_forced_text = [] # <-- NEW (Phase 3)
     flag_fully_qualified = []
+    # --- NEW: Master list for the report ---
+    emoji_details_list = []
 
     i = 0
     js_array = window.Array.from_(text)
@@ -1095,6 +1097,14 @@ def compute_emoji_analysis(text: str) -> dict:
                 if candidate in rgi_set:
                     rgi_sequences_count += 1
                     matched_sequence = True
+                    status = qual_map.get(candidate, "fully-qualified") # Default to FQ if in RGI set but not test file
+
+                # --- NEW: Store the sequence and its status ---
+                emoji_details_list.append({
+                    "sequence": candidate,
+                    "status": status,
+                    "index": i
+                })
                     
                     # Check qualification status for the sequence
                     status = qual_map.get(candidate)
@@ -1132,6 +1142,14 @@ def compute_emoji_analysis(text: str) -> dict:
             # (e.g., 😀, which is Emoji_Presentation=Yes)
             if _find_in_ranges(cp, "Emoji_Presentation"):
                 rgi_singles_count += 1
+
+            # --- NEW: Store the single char and its status ---
+            if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
+                emoji_details_list.append({
+                    "sequence": char,
+                    "status": status,
+                    "index": i
+                })
             
             # 2. Check for qualification status (Unqualified, Component, etc.)
             # This is now *independent* and will run for '©' (U+00A9)
@@ -1163,7 +1181,8 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
             "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text}, # <-- NEW (Phase 3)
             "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified}
-        }
+        },
+        "emoji_list": emoji_details_list
     }
 
 def _parse_script_extensions(txt: str):
