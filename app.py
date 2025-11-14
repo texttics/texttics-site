@@ -2236,11 +2236,12 @@ def compute_threat_analysis(t: str):
                 cp = ord(char)
                 
                 # --- A. Bidi Check ---
+                # This will find the RLO (U+202E) from Test 2
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
                 # --- B. Mixed-Script Detection ---
-                # This global set will correctly find 'Latin' and 'Cyrillic'
+                # This global set will find 'Latin' and 'Cyrillic' from Test 1
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -2300,7 +2301,7 @@ def compute_threat_analysis(t: str):
             # --- End of TypeError fix ---
 
         # --- 5. Implement UTS #39 Skeleton ---
-        skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
+        skeleton_string = _generate_uts3_skeleton(nf_casefold_string)
 
         # --- 6. Generate Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
