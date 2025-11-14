@@ -554,6 +554,98 @@ def _parse_composition_exclusions(txt: str):
         
     print(f"Loaded {len(ranges_list)} composition exclusion ranges.")
 
+def _parse_emoji_zwj_sequences(txt: str) -> set:
+    """
+    Parses emoji-zwj-sequences.txt into a set of RGI strings.
+    Format: 1F468 200D 1F469 200D 1F466 # (👨‍👩‍👦) man...
+    """
+    sequences = set()
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        try:
+            # Some files use ';', some don't. Split on first non-hex char.
+            parts = re.split(r'\s*#|;', line, 1)
+            hex_codes = parts[0].strip().split()
+            
+            if len(hex_codes) > 1: # We only want sequences
+                sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                sequences.add(sequence_str)
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
+    return sequences
+
+def _parse_emoji_sequences(txt: str) -> set:
+    """
+    Parses emoji-sequences.txt for RGI sequences.
+    We ONLY want RGI sequences, not Basic_Emoji (which are single chars).
+    Format: 1F1E6 1F1E8 ; RGI_Emoji_Flag_Sequence ; ...
+    """
+    sequences = set()
+    rgi_types = {
+        "RGI_Emoji_Flag_Sequence",
+        "RGI_Emoji_Tag_Sequence",
+        "RGI_Emoji_Modifier_Sequence",
+        "Emoji_Keycap_Sequence"
+    }
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        try:
+            parts = line.split(';', 2)
+            if len(parts) < 2:
+                continue
+                
+            hex_codes_str = parts[0].strip()
+            type_field = parts[1].strip()
+            
+            # We only care about RGI *sequences*
+            if type_field in rgi_types and ' ' in hex_codes_str:
+                hex_codes = hex_codes_str.split()
+                sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                sequences.add(sequence_str)
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {len(sequences)} RGI non-ZWJ sequences (Flags, Modifiers, etc.).")
+    return sequences
+
+def _parse_emoji_variation_sequences(txt: str) -> set:
+    """
+    Parses emoji-variation-sequences.txt for *emoji-style* (FE0F) sequences.
+    Format: 0023 FE0E  ; text style;  ...
+            0023 FE0F  ; emoji style; ...
+    """
+    sequences = set()
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        try:
+            parts = line.split(';', 2)
+            if len(parts) < 2:
+                continue
+            
+            # We only care about emoji-style sequences
+            if "emoji style" in parts[1]:
+                hex_codes = parts[0].strip().split()
+                if len(hex_codes) == 2: # Should be <base> <FE0F>
+                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                    sequences.add(sequence_str)
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {len(sequences)} RGI emoji-style variation sequences.")
+    return sequences
+
 def _add_manual_data_overrides():
     """
     Manually injects security-related data that isn't in the UCD files.
@@ -700,7 +792,9 @@ async def load_unicode_data():
             "BidiBrackets.txt",
             "BidiMirroring.txt",
             "DerivedNormalizationProps.txt",
-            "CompositionExclusions.txt"
+            "CompositionExclusions.txt",
+            "emoji-sequences.txt",
+            "emoji-zwj-sequences.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -710,7 +804,7 @@ async def load_unicode_data():
          scripts_txt, emoji_variants_txt, word_break_txt, 
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
          decomp_type_txt, derived_binary_txt, num_type_txt, 
-         ea_width_txt, vert_orient_txt, bidi_brackets_txt,
+         ea_width_txt, vert_orient_txt, bidi_brackets_txt, emoji_seq_txt, emoji_zwj_seq_txt,
          bidi_mirroring_txt, norm_props_txt, comp_ex_txt) = results
     
         # Parse each file
@@ -745,6 +839,32 @@ async def load_unicode_data():
         
         print(f"--- DIAGNOSTIC: Final combined 'VariantBase' frozenset size: {len(DATA_STORES['VariantBase'])}")
         # --- End Feature 1 Logic ---
+
+        # --- NEW (Phase 1: Emoji Bugfix) ---
+        # Build the RGI Sequence Set from Tiers 1-3
+        set_zwj = set()
+        set_non_zwj = set()
+        set_variations = set()
+        
+        if emoji_zwj_seq_txt:
+            set_zwj = _parse_emoji_zwj_sequences(emoji_zwj_seq_txt)
+        
+        if emoji_seq_txt:
+            set_non_zwj = _parse_emoji_sequences(emoji_seq_txt)
+        
+        if emoji_variants_txt:
+            # We re-use the file we already loaded for variants
+            set_variations = _parse_emoji_variation_sequences(emoji_variants_txt)
+        
+        # Combine all sequences into one master set
+        combined_rgi_sequences = set_zwj.union(set_non_zwj).union(set_variations)
+        
+        # Store the sequences, sorted by length (descending)
+        # This is CRITICAL for our greedy-match parser
+        DATA_STORES["RGISequenceList"] = sorted(list(combined_rgi_sequences), key=len, reverse=True)
+        
+        print(f"--- Emoji Engine: Created RGISequenceList with {len(DATA_STORES['RGISequenceList'])} total sequences.")
+        # --- END (Phase 1: Emoji Bugfix) ---
         
         if script_ext_txt: _parse_script_extensions(script_ext_txt)
         if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
