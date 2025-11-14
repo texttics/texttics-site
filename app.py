@@ -1052,6 +1052,7 @@ def compute_emoji_analysis(text: str) -> dict:
     """
     Scans the text and returns a full report on RGI sequences,
     single-character emoji, and qualification status.
+    (Phase 3: Corrected Tier-4 scan and Forced-Text flag)
     """
     # Get all data from the stores
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -1066,6 +1067,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_unqualified = []
     flag_minimally_qualified = []
     flag_component = []
+    flag_forced_text = [] # <-- NEW (Phase 3)
 
     i = 0
     js_array = window.Array.from_(text)
@@ -1085,7 +1087,7 @@ def compute_emoji_analysis(text: str) -> dict:
                     rgi_sequences_count += 1
                     matched_sequence = True
                     
-                    # Check qualification status
+                    # Check qualification status for the sequence
                     status = qual_map.get(candidate)
                     if status == "unqualified":
                         flag_unqualified.append(f"#{i}")
@@ -1094,7 +1096,7 @@ def compute_emoji_analysis(text: str) -> dict:
                     elif status == "component":
                         flag_component.append(f"#{i}")
                         
-                    i += L # Advance past the whole sequence
+                    i += L 
                     break
 
         # --- Tier 4: Single Character Scan ---
@@ -1102,24 +1104,38 @@ def compute_emoji_analysis(text: str) -> dict:
             char = js_array[i]
             cp = ord(char)
             
-            # Check for single-character RGI emoji
-            # (Must be Emoji=Yes AND Emoji_Presentation=Yes)
+            # --- LOGIC FIX (Phase 3): Check for forced-text style FIRST ---
+            if i + 1 < n:
+                next_char = js_array[i+1]
+                if ord(next_char) == 0xFE0E: # Text Presentation Selector
+                    # Check if the base char is a default-emoji char
+                    if _find_in_ranges(cp, "Emoji_Presentation"):
+                        flag_forced_text.append(f"#{i}")
+                        i += 2 # Consume both chars
+                        continue # Skip all other checks
+            # --- END LOGIC FIX ---
+
+            # --- LOGIC FIX: Separate RGI count from Qualification check ---
+            
+            # 1. Check for single-character RGI emoji
+            # (e.g., 😀, which is Emoji_Presentation=Yes)
             if _find_in_ranges(cp, "Emoji_Presentation"):
                 rgi_singles_count += 1
+            
+            # 2. Check for qualification status (Unqualified, Component, etc.)
+            # This is now *independent* and will run for '©' (U+00A9)
+            status = qual_map.get(char)
+            if status == "unqualified":
+                flag_unqualified.append(f"#{i}")
+            elif status == "minimally-qualified":
+                flag_minimally_qualified.append(f"#{i}")
+            elif status == "component":
+                flag_component.append(f"#{i}")
                 
-                # Check qualification for this single char
-                status = qual_map.get(char)
-                if status == "unqualified":
-                    flag_unqualified.append(f"#{i}")
-                elif status == "minimally-qualified":
-                    flag_minimally_qualified.append(f"#{i}")
-                    
-            # Check if it's a standalone component (a flag!)
-            elif _find_in_ranges(cp, "Emoji_Component"):
-                 flag_component.append(f"#{i}")
-            # Check for Ideographic Variation Selectors (Steganography vector)
+            # 3. Check for Steganography (IVS)
             elif 0xE0100 <= cp <= 0xE01EF:
-                 flag_component.append(f"#{i}")
+                 flag_component.append(f"#{i}") # Add IVS to component flag
+            # --- END LOGIC FIX ---
             
             i += 1 # Advance by one char
 
@@ -1132,6 +1148,7 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Unqualified Emoji": {'count': len(flag_unqualified), 'positions': flag_unqualified},
             "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
+            "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text}, # <-- NEW (Phase 3)
         }
     }
 
