@@ -1124,7 +1124,7 @@ def compute_emoji_analysis(text: str) -> dict:
         if not matched_sequence:
             char = js_array[i]
             cp = ord(char)
-            
+            status = qual_map.get(char)
             # --- LOGIC FIX (Phase 3): Check for forced-text style FIRST ---
             if i + 1 < n:
                 next_char = js_array[i+1]
@@ -1135,7 +1135,7 @@ def compute_emoji_analysis(text: str) -> dict:
                         i += 2 # Consume both chars
                         continue # Skip all other checks
             # --- END LOGIC FIX ---
-
+            
             # --- LOGIC FIX: Separate RGI count from Qualification check ---
             
             # 1. Check for single-character RGI emoji
@@ -1153,7 +1153,7 @@ def compute_emoji_analysis(text: str) -> dict:
             
             # 2. Check for qualification status (Unqualified, Component, etc.)
             # This is now *independent* and will run for '©' (U+00A9)
-            status = qual_map.get(char)
+            
             if status == "unqualified":
                 flag_unqualified.append(f"#{i}")
             elif status == "minimally-qualified":
