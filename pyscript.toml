@@ -35,5 +35,7 @@ files = [
     "DerivedNormalizationProps.txt",
     "CompositionExclusions.txt",
     "emoji-sequences.txt",
-    "emoji-zwj-sequences.txt"
+    "emoji-zwj-sequences.txt",
+    "emoji-data.txt",
+    "emoji-test.txt"
 ]
