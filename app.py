@@ -2301,7 +2301,7 @@ def compute_threat_analysis(t: str):
             # --- End of TypeError fix ---
 
         # --- 5. Implement UTS #39 Skeleton ---
-        skeleton_string = _generate_uts3_skeleton(nf_casefold_string)
+        skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
 
         # --- 6. Generate Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
