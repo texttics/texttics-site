@@ -2179,7 +2179,7 @@ def compute_threat_analysis(t: str):
     threat_hashes = {}
     html_report_parts = []
     found_confusable = False
-    bidi_danger = False
+    bidi_danger_indices = [] # <-- FIX: Use a list to store positions
     
     # Initialize output variables with safe defaults
     nf_string = ""
@@ -2190,14 +2190,8 @@ def compute_threat_analysis(t: str):
     # --- 1. Early Exit for Empty Input ---
     if not t:
         return {
-            'flags': {},
-            'hashes': {},
-            'html_report': "",
-            'bidi_danger': False,
-            'raw': "",
-            'nfkc': "",
-            'nfkc_cf': "",
-            'skeleton': ""
+            'flags': {}, 'hashes': {}, 'html_report': "", 'bidi_danger': False,
+            'raw': "", 'nfkc': "", 'nfkc_cf': "", 'skeleton': ""
         }
 
     def _get_hash(s: str):
@@ -2210,100 +2204,96 @@ def compute_threat_analysis(t: str):
         nf_casefold_string = nf_string.casefold() # Use the already-normalized string
 
         # --- 3. Run checks on the RAW string 't' ---
-        # scripts_in_use = set()
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
-        lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
-        
-        # --- NEW: Loop over LNPS Runs (Letters, Numbers, Punct, Symbols) ---
-        lnps_matches_iter = window.String.prototype.matchAll.call(t, lnps_regex)
-        lnps_matches = window.Array.from_(lnps_matches_iter)
-        
-        mixed_script_runs_found = []
+            lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
 
-        for match in lnps_matches:
-            run_string = match[0]
-            run_index = match.index
-            scripts_in_this_run = set()
-            
-            # Analyze this specific run
-            for char_in_run in run_string:
-                cp_run = ord(char_in_run)
+            # --- LOOP 1: V2 "Per-Run" Analysis (for Bidi and Mixed-Script flags) ---
+            lnps_matches_iter = window.String.prototype.matchAll.call(t, lnps_regex)
+            lnps_matches = window.Array.from_(lnps_matches_iter)
+            mixed_script_runs_found = []
+
+            for match in lnps_matches:
+                run_string = match[0]
+                run_index = match.index
+                scripts_in_this_run = set()
                 
-                # --- Bidi Check (now per-run) ---
-                if (0x202A <= cp_run <= 0x202E) or (0x2066 <= cp_run <= 0x2069):
-                    bidi_danger = True
-                    threat_flags["DANGER: Malicious Bidi Control"] = 1 # This is still a global flag
+                # Analyze this specific run
+                for i_run, char_in_run in enumerate(window.Array.from_(run_string)):
+                    cp_run = ord(char_in_run)
+                    
+                    # --- Bidi Check ---
+                    if (0x202A <= cp_run <= 0x202E) or (0x2066 <= cp_run <= 0x2069):
+                        # Store the *absolute* index
+                        bidi_danger_indices.append(f"#{run_index + i_run}")
 
-                # --- Mixed-Script Detection (now per-run) ---
-                script_ext_val = _find_in_ranges(cp_run, "ScriptExtensions")
-                if script_ext_val:
-                    scripts_in_this_run.update(script_ext_val.split())
-                else:
-                    script_val = _find_in_ranges(cp_run, "Scripts")
-                    if script_val:
-                        scripts_in_this_run.add(script_val)
-
-            # --- Check this run for mixed scripts ---
-            scripts_in_this_run.discard("Common")
-            scripts_in_this_run.discard("Inherited")
+                    # --- Mixed-Script Detection ---
+                    script_ext_val = _find_in_ranges(cp_run, "ScriptExtensions")
+                    if script_ext_val:
+                        scripts_in_this_run.update(script_ext_val.split())
+                    else:
+                        script_val = _find_in_ranges(cp_run, "Scripts")
+                        if script_val:
+                            scripts_in_this_run.add(script_val)
+                
+                # --- Check this run for mixed scripts ---
+                scripts_in_this_run.discard("Common")
+                scripts_in_this_run.discard("Inherited")
+                
+                if len(scripts_in_this_run) > 1:
+                    scripts_label = ", ".join(sorted(scripts_in_this_run))
+                    mixed_script_runs_found.append(f"'{run_string}' @ #{run_index} ({scripts_label})")
             
-            if len(scripts_in_this_run) > 1:
-                # This is a high-risk run!
-                scripts_label = ", ".join(sorted(scripts_in_this_run))
-                mixed_script_runs_found.append(f"'{run_string}' @ #{run_index} ({scripts_label})")
-
-        # --- END OF NEW LOOP ---
-
-        # --- Add new flag to threat_flags ---
-        if mixed_script_runs_found:
-            # We can re-use render_matrix_table's <details> feature by passing a list
-            threat_flags["High-Risk: Mixed-Script Runs"] = {
-                'count': len(mixed_script_runs_found),
-                'positions': mixed_script_runs_found
-            }
-        
-        # --- This is the OLD loop, now used ONLY for the confusable HTML report ---
-        for i, char in enumerate(js_array_raw):
-            cp = ord(char)
+            # --- Add new flags to threat_flags (as dicts) ---
+            if bidi_danger_indices:
+                threat_flags["DANGER: Malicious Bidi Control"] = {
+                    'count': len(bidi_danger_indices),
+                    'positions': bidi_danger_indices
+                }
+            if mixed_script_runs_found:
+                threat_flags["High-Risk: Mixed-Script Runs"] = {
+                    'count': len(mixed_script_runs_found),
+                    'positions': mixed_script_runs_found
+                }
             
-            # --- Bidi and Script logic are now GONE from this loop ---
+            # --- LOOP 2: Original "Per-Char" Analysis (for Confusable HTML Report) ---
+            for i, char in enumerate(js_array_raw):
+                cp = ord(char)
+                
+                # This loop is now ONLY for building the HTML report
+                if lnps_regex and cp in confusables_map and lnps_regex.test(char):
+                    found_confusable = True
+                    skeleton_char_str = confusables_map[cp]
+                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
+                    skeleton_cp = ord(skeleton_char_str[0])
+                    source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
+                    target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
 
-            # --- Confusable HTML Report Builder (This stays) ---
-            if lnps_regex and cp in confusables_map and lnps_regex.test(char):
-                found_confusable = True
-                skeleton_char_str = confusables_map[cp]
-                skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
-                skeleton_cp = ord(skeleton_char_str[0])
-
-                source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
-                target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
-
-                if (source_script != target_script and
-                        target_script != "Common" and
+                    if (source_script != target_script and 
+                        target_script != "Common" and 
                         source_script != "Unknown"):
-                    risk_label = f"{source_script}–{target_script} Confusable"
-                else:
-                    risk_label = f"{source_script} Confusable"
+                        risk_label = f"{source_script}–{target_script} Confusable"
+                    else:
+                        risk_label = f"{source_script} Confusable"
 
-                title = (
-                    f"Appears as: '{char}' (U+{cp:04X})\n"
-                    f"Script: {source_script}\n"
-                    f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
-                    f"Risk: {risk_label}"
-                )
-                html_report_parts.append(
-                    f'<span class="confusable" title="{_escape_html(title)}">'
-                    f"{_escape_html(char)}</span>"
-                )
-            else:
-                # Not a confusable; just escape it
-                html_report_parts.append(_escape_html(char))
+                    title = (
+                        f"Appears as: '{char}' (U+{cp:04X})\n"
+                        f"Script: {source_script}\n"
+                        f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
+                        f"Risk: {risk_label}"
+                    )
+                    html_report_parts.append(
+                        f'<span class="confusable" title="{_escape_html(title)}">'
+                        f"{_escape_html(char)}</span>"
+                    )
+                else:
+                    html_report_parts.append(_escape_html(char))
+            
+            # --- The old global script check is now correctly removed ---
 
         # --- 4. Implement UTS #39 Skeleton ---
-        # We run the skeleton on the *already normalized and casefolded* string
         skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
 
         # --- 5. Generate Hashes ---
@@ -2316,8 +2306,6 @@ def compute_threat_analysis(t: str):
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
-        # In case of error, we return the raw text for the variants to prevent UI 'undefined'
-        # We do NOT retry normalization here, as that might be what caused the crash.
         if not nf_string: nf_string = t 
         if not nf_casefold_string: nf_casefold_string = t.casefold()
         if not skeleton_string: skeleton_string = t
@@ -2327,7 +2315,7 @@ def compute_threat_analysis(t: str):
         'flags': threat_flags,
         'hashes': threat_hashes,
         'html_report': final_html_report,
-        'bidi_danger': bidi_danger,
+        'bidi_danger': bool(bidi_danger_indices), # Return True if the list is not empty
         'raw': t,
         'nfkc': nf_string,
         'nfkc_cf': nf_casefold_string,
