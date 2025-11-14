@@ -1106,19 +1106,19 @@ def compute_emoji_analysis(text: str) -> dict:
                     "index": i
                 })
                     
-                    # Check qualification status for the sequence
-                    status = qual_map.get(candidate)
-                    if status == "unqualified":
-                        flag_unqualified.append(f"#{i}")
-                    elif status == "minimally-qualified":
-                        flag_minimally_qualified.append(f"#{i}")
-                    elif status == "component":
-                        flag_component.append(f"#{i}")
-                    elif status == "fully-qualified":
-                        flag_fully_qualified.append(f"#{i}")
-                        
-                    i += L 
-                    break
+                # Check qualification status for the sequence
+                status = qual_map.get(candidate)
+                if status == "unqualified":
+                    flag_unqualified.append(f"#{i}")
+                elif status == "minimally-qualified":
+                    flag_minimally_qualified.append(f"#{i}")
+                elif status == "component":
+                    flag_component.append(f"#{i}")
+                elif status == "fully-qualified":
+                    flag_fully_qualified.append(f"#{i}")
+                    
+                i += L 
+                break
 
         # --- Tier 4: Single Character Scan ---
         if not matched_sequence:
