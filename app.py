@@ -2500,6 +2500,7 @@ def update_all(event=None):
     emoji_report = compute_emoji_analysis(t)
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
+    emoji_list = emoji_report.get("emoji_list", [])
     
     # Module 2.A: Dual-Atom Fingerprint
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
@@ -2522,6 +2523,18 @@ def update_all(event=None):
     # print(f"BIDI STATS: {bidi_run_stats}")
     # print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
     # print("------------------------")
+
+    emoji_qualification_stats = {}
+        for item in emoji_list:
+            sequence = item["sequence"]
+            status = item["status"].replace("-", " ").title() # "fully-qualified" -> "Fully Qualified"
+            key = f"{sequence} ({status})"
+            
+            if key not in emoji_qualification_stats:
+                emoji_qualification_stats[key] = {'count': 0, 'positions': []}
+                
+            emoji_qualification_stats[key]['count'] += 1
+            emoji_qualification_stats[key]['positions'].append(f"#{item['index']}")
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
@@ -2594,6 +2607,7 @@ def update_all(event=None):
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body")
     render_matrix_table(script_run_stats, "script-run-matrix-body")
+    render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
 
     # Render 3
     render_threat_analysis(threat_results)
