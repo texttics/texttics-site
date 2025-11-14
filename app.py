@@ -1076,6 +1076,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_minimally_qualified = []
     flag_component = []
     flag_forced_text = [] # <-- NEW (Phase 3)
+    flag_fully_qualified = []
 
     i = 0
     js_array = window.Array.from_(text)
@@ -1103,6 +1104,8 @@ def compute_emoji_analysis(text: str) -> dict:
                         flag_minimally_qualified.append(f"#{i}")
                     elif status == "component":
                         flag_component.append(f"#{i}")
+                    elif status == "fully-qualified":
+                        flag_fully_qualified.append(f"#{i}")
                         
                     i += L 
                     break
@@ -1139,6 +1142,8 @@ def compute_emoji_analysis(text: str) -> dict:
                 flag_minimally_qualified.append(f"#{i}")
             elif status == "component":
                 flag_component.append(f"#{i}")
+            elif status == "fully-qualified":
+                flag_fully_qualified.append(f"#{i}")
                 
             # 3. Check for Steganography (IVS)
             elif 0xE0100 <= cp <= 0xE01EF:
@@ -1157,6 +1162,7 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
             "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text}, # <-- NEW (Phase 3)
+            "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified}
         }
     }
 
