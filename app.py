@@ -2197,9 +2197,9 @@ def compute_threat_analysis(t: str):
     html_report_parts = []
     found_confusable = False
     
-    # --- We will use lists to gather data first ---
+    # --- We use lists/sets to gather data first ---
     bidi_danger_indices = []
-    scripts_in_use = set()
+    scripts_in_use = set() # Use ONE global set
 
     # Initialize output variables with safe defaults
     nf_string = ""
@@ -2230,8 +2230,8 @@ def compute_threat_analysis(t: str):
             js_array_raw = window.Array.from_(t)
             lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
 
-            # --- LOOP 1: Single, "Per-Char" Analysis (Robust and Correct) ---
-            # This is the original, reliable loop.
+            # --- LOOP: Single, "Per-Char" Analysis (Robust and Correct) ---
+            # This is the original, reliable loop from your first app.py
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
@@ -2240,7 +2240,7 @@ def compute_threat_analysis(t: str):
                     bidi_danger_indices.append(f"#{i}")
 
                 # --- B. Mixed-Script Detection ---
-                # (This logic was flawed in the V2 refactor, but correct here)
+                # This global set will correctly find 'Latin' and 'Cyrillic'
                 script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                 if script_ext_val:
                     scripts_in_use.update(script_ext_val.split())
@@ -2280,12 +2280,15 @@ def compute_threat_analysis(t: str):
 
             # --- 4. Populate Threat Flags (This fixes the TypeError) ---
             # We build the flags *after* the loop, all as dicts.
+            
+            # Add Bidi flag
             if bidi_danger_indices:
                 threat_flags["DANGER: Malicious Bidi Control"] = {
                     'count': len(bidi_danger_indices),
                     'positions': bidi_danger_indices
                 }
             
+            # Add Mixed-Script flag (from the global set)
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
             if len(scripts_in_use) > 1:
