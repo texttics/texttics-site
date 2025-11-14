@@ -326,11 +326,44 @@ The tool now correctly implements:
 * **Quad-State Normalization:** A powerful, four-state pipeline (Raw, NFKC, NFKC-Casefold, Skeleton) that provides a definitive security fingerprint.
 * **Complete Integrity Flagging:** All integrity flags, including those for `DoNotEmit`, `BidiBrackets`, and `CompositionExclusions`, are fully functional.
 
-### 📈 Future Enhancements
+📈 Core Engine Enhancements & Future Work
+The core analysis engine is complete. The "Known Issue" previously documented in this section has been resolved and superseded by a comprehensive, forensic-grade "Emoji Powerhouse" subsystem.
 
-The core engine is complete. Future "v2" work will focus on enhancing the precision of summary metrics.
+✅ Completed Enhancement: The "Emoji Powerhouse" (UTS #51)
+The tool no longer uses a simple, inaccurate \p{Emoji_Presentation} regex. It has been upgraded to a forensic-grade, 5-file parser that is fully compliant with Unicode Technical Standard #51 (UTS #51).
 
-* **Known Issue (Cosmetic):** The `RGI Emoji Sequences` count in the "Dual-Atom Profile" is a known, minor inaccuracy. It currently uses a simple `\p{Emoji_Presentation}` regex, which incorrectly counts the components of complex ZWJ sequences (e.g., counting `👨‍👩‍👧‍👦` as 4 instead of 1). A future enhancement will replace this regex with a full RGI sequence parser (using `emoji-zwj-sequences.txt`) to make this summary count 100% accurate.
+This new subsystem provides 100% accurate sequence counting and powers a new, deeper layer of forensic analysis.
+
+1. Data-Driven Foundation
+The engine loads and cross-references all five canonical emoji data files:
+
+emoji-zwj-sequences.txt: (Tier 1) For the most complex RGI (Recommended for General Interchange) ZWJ sequences like families (👨‍👩‍👧‍👦) or professions (👩‍🔬).
+
+emoji-sequences.txt: (Tier 2) For all other RGI sequences, including flags (🇺🇦), skin-tone modifiers (👍🏻), and keycaps (7️⃣).
+
+emoji-variation-sequences.txt: (Tier 3) For RGI sequences that are defined by an explicit style selector (❤️).
+
+emoji-data.txt: (Tier 4) For all single-character emoji properties, such as Emoji_Presentation, Emoji_Component, and Emoji_Modifier_Base.
+
+emoji-test.txt: (Analysis Layer) For the RGI Qualification status of every character and sequence.
+
+2. New Forensic Capabilities
+This upgrade not only ensures the RGI Emoji Sequences count is 100% accurate (as confirmed by our test cases), but it also adds a new suite of high-value flags to the "Structural Integrity Profile":
+
+Flag: Unqualified Emoji: This flag detects text-default characters (like ©) that are missing a required variation selector. This is a critical forensic flag, as these characters will render differently (text vs. emoji) on different platforms, creating a classic "inter-layer mismatch" ambiguity.
+
+Flag: Forced Text Presentation: This flag detects the opposite attack: a default-emoji character (like 😀︎) that has been forced to a text-style presentation using an invisible FE0E selector.
+
+Flag: Standalone Emoji Component: This flag detects malformed sequences or "leftover" structural characters (like a lone ZWJ ‍ or VS16 ️) that are not part of a valid RGI sequence. This is a direct indicator of a broken or intentionally-crafted string.
+
+New Prop: Flags: The integrity profile is now also populated with Prop: Extended Pictographic, Prop: Emoji Modifier, and Prop: Emoji Modifier Base, providing a complete, data-driven picture of all emoji-related characters in the string.
+
+📈 Future Enhancements
+With the core engine and all data-loading pipelines now complete, future "v2" work can focus on enhancing the UI-level presentation of the rich data we've already collected.
+
+Display Emoji Qualification: The EmojiQualificationMap (from emoji-test.txt) is now fully loaded and used for flagging. A future enhancement will be to display this qualification status (e.g., "Fully-Qualified", "Minimally-Qualified", "Unqualified") for each emoji sequence found, providing even deeper context in a new, dedicated "Emoji Analysis" table.
+
+Enhance Script Profiling: The Script Run-Length Analysis could be enhanced to detect whole-confusable-runs based on the confusables.txt skeleton, providing a higher-level threat flag than the current per-character highlighting.
 
 ---
 
