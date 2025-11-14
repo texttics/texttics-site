@@ -1015,6 +1015,14 @@ async def load_unicode_data():
                 "Logical_Order_Exception": "LogicalOrderException"
                 # We can add more properties here later
             })
+
+        # Parse DerivedNormalizationProps.txt
+        if norm_props_txt:
+            _parse_property_file(norm_props_txt, {
+                "Changes_When_NFKC_Casefolded": "ChangesWhenNFKCCasefolded"
+                # This file also contains Changes_When_Casemapped, etc.
+                # We can add more properties here later as needed.
+            })
         
         if proplist_txt:
             _parse_property_file(proplist_txt, {
