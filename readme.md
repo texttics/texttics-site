@@ -18,7 +18,7 @@ The entire application runs 100% in the user's browser, requiring no server-side
 
 This layer uses the browser's native, Just-In-Time (JIT) compiled JavaScript engines (like Google's V8 or Mozilla's SpiderMonkey). These engines are written in high-performance C++ and are the "world-class" standard for executing high-frequency, standards-compliant operations at native speed. We delegate two critical, high-throughput tasks to this layer:
 
-* **Unicode Property Classification (UAX #18):** All 30 minor category checks (e.g., `\p{Lu}`, `\p{Po}`) and dozens of property checks (e.g., `\p{Emoji_Presentation}`, `\p{White_Space}`) are handled by the browser's native `RegExp` engine. This engine has a pre-compiled, optimized implementation of the Unicode Character Database, making it the fastest possible way to classify millions of code points per second.
+* **Unicode Property Classification (UAX #18):** All 30 minor category checks (e.g., `\p{Lu}`, `\p{Po}`) and dozens of property checks (e.g., `\p{White_Space}`) are handled by the browser's native `RegExp` engine. This engine has a pre-compiled, optimized implementation of the Unicode Character Database, making it the fastest possible way to classify millions of code points per second.
 * **Grapheme Cluster Segmentation (UAX #29):** The "perceptual" analysis is powered by the native `Intl.Segmenter` API. This is the browser's built-in, trusted implementation of **Unicode Standard Annex #29 (UAX #29)**, the official rulebook for determining "what counts as a single character" to a human user. We treat this as an authoritative black box for perceptual segmentation.
 
 ### 2. The Python Layer (Orchestration & Deep Analysis)
@@ -26,13 +26,13 @@ This layer uses the browser's native, Just-In-Time (JIT) compiled JavaScript eng
 This layer runs a full Python 3.12 runtime in the browser via PyScript. Python acts as the application's "brain" or "chief orchestrator." It is used for lower-frequency, "heavy-lifting" tasks that require deep, data-driven logic and complex state management that JavaScript alone cannot easily provide.
 
 * **State Management & Orchestration:** The main `update_all` function in `app.py` manages the entire application state and analysis pipeline, calling all computation functions and passing their results to the correct DOM renderers.
-* **Deep Unicode Analysis:** It uses the rich, built-in `unicodedata` library for some stateful operations (like `unicodedata.numeric()` for summing values or `unicodedata.bidirectional()` for UAX #9 classes). However, most deep analysis is now powered directly by file-based lookups for greater precision and performance.
-* **Data-Driven Analysis (The Core):** This is the heart of the tool's "world-class" analytical depth. Python asynchronously fetches, parses, and analyzes **25 raw data files** directly from the Unicode Character Database (UCD). This data-driven approach allows the tool to perform checks that are impossible with regular expressions or built-in functions alone. The data files currently implemented include:
+* **Deep Unicode Analysis:** The tool uses a file-first, data-driven approach for maximum precision. While built-in `unicodedata` functions are used for simple tasks (like `unicodedata.numeric()`), the core forensic engine is powered by direct lookups against a local copy of the Unicode Character Database.
+* **Data-Driven Analysis (The Core):** This is the heart of the tool's analytical depth. Python asynchronously fetches, parses, and analyzes **27 raw data files** directly from the Unicode Character Database (UCD). This data-driven approach allows the tool to perform UAX-compliant checks that are impossible with built-in functions alone. The data files implemented include:
     * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`):** For Block, Age, and Script properties.
-    * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`):** The raw data for all nine Run-Length Encoding (RLE) engines.
+    * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`):** The raw data for the six file-based Run-Length Encoding (RLE) engines.
     * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`):** A deep well of binary flags and properties used for the forensic integrity report.
-    * **Specialized Profile (`IdentifierType.txt`, `StandardizedVariants.txt`, `emoji-variation-sequences.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`):** High-precision files for specific features like the Zalgo-detector, decomposition analysis, numeric types, and variant/Bidi bracket pairing.
-    * **Threat-Hunting (`confusables.txt`):** Fetched and ready for the Group 3 (homoglyph) implementation.
+    * **Specialized Profile (`StandardizedVariants.txt`, `emoji-variation-sequences.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`):** High-precision files for features like the Zalgo-detector, decomposition analysis, numeric types, and variant/Bidi bracket pairing.
+    * **Threat-Hunting (`confusables.txt`, `IdentifierType.txt`, `IdentifierStatus.txt`, `intentional.txt`):** The data files that power the Group 3 (homoglyph) and UAX #31 (Identifier) security analysis.
 
 The final result is a multi-layered, literal, and data-driven analysis of text composition, sequence (run) shape, structural integrity, and deep provenance, all based on the official Unicode Standard.
 
@@ -121,27 +121,31 @@ Instead, our UI presents the analysis of both layers in **parallel, side-by-side
     * **Forensic Value:** This layer's entire purpose is to *contrast* with the Code Point layer. It correctly identifies `👨‍👩‍👧‍👦` as **1 single perceptual atom,** just as a user would. It also identifies `é` as **1 single perceptual atom**.
     * **The Mismatch:** The tool's core power comes from this built-in, parallel comparison. The user can instantly see the mismatch (**Total Code Points: 7** vs. **Total Graphemes: 1**) and immediately prove that invisible structural characters (the Zero Width Joiners) are present. Likewise, they can see the mismatch for `é` (**L (Letter): 1, M (Mark): 1** vs. **L (Letter): 1, M (Mark): 0**), proving the presence of a combining mark.
 
-### 2. The "Tri-State" Normalization Pipeline (The "How")
+### 2. The "Quad-State" Normalization Pipeline (The "How")
 
-This tool uses a powerful **"Tri-State" Normalization Pipeline** as its analytical framework. This model defines the *state* of the text being analyzed. The entire "Structural Profile" (Group 2) operates *only* on State 1 to preserve 100% of the evidence. The "Threat-Hunting Analysis" (Group 3) will *intentionally* use States 2 and 3 to destroy evidence and unmask deceptions.
+This tool uses a powerful **"Quad-State" Normalization Pipeline** as its analytical framework. This model defines the *state* of the text being analyzed. The "Structural Profile" (Group 2) operates *only* on State 1 to preserve 100% of the evidence. The "Threat-Hunting Analysis" (Group 3) *intentionally* uses all four states to destroy evidence and unmask deceptions.
 
 * **State 1: Forensic State (Raw String)**
     * **Algorithm:** No normalization. This is the raw, unaltered text as it was pasted (after the browser's "Great Standardizer" has sanitized it).
-    * **Purpose:** Preserves 100% of the structural evidence. This is the *only* state that can see the physical difference between a pre-composed `é` (`U+00E9`) and a decomposed `e+´` (`U+0065` `U+0301`). It is the only state that sees compatibility characters (like `ﬁ`) and case differences.
+    * **Purpose:** Preserves 100% of the structural evidence. This is the *only* state that can see the physical difference between a pre-composed `é` (`U+00E9`) and a decomposed `e`+`´` (`U+0065` `U+0301`). It is the only state that sees compatibility characters (like `ﬁ`) and case differences.
     * **Used By:** **The entire "Structural Profile" (Group 2).** All core integrity profiling is done on this raw, unaltered data.
 
 * **State 2: Compatibility State (NFKC)**
-    * **Algorithm:** `unicodedata.normalize('NFKC', string)`
-    * **Purpose:** Reveals compatibility spoofing. This state *intentionally destroys* compatibility evidence to unmask attacks. It canonicalizes *and* compat-decomposes.
-    * **Example:** The ligature `ﬁ` (`U+FB01`) is "destroyed" and becomes its two-character equivalent `f` + `i`. A single, full-width `１` (`U+FF11`) becomes a standard `1`.
+    * **Algorithm:** `normalize_extended(string)`
+    * **Purpose:** Reveals compatibility spoofing. This state *intentionally destroys* compatibility evidence to unmask attacks. It uses a custom-built normalization pipeline that first applies `NFKC` and then manually normalizes hundreds of other compatibility characters (like `⓼` $\to$ `8` and `Ｆ` $\to$ `F`) that are missed by the browser's built-in library.
     * **Used By:** **Threat-Hunting Analysis (Group 3).**
 
 * **State 3: Canonical Identity State (NFKC Casefold)**
-    * **Algorithm:** `unicodedata.normalize('NFKC', string).casefold()`
-    * **Purpose:** Reveals case-based spoofing. This is the ultimate "skeleton" for *compatibility and case* (but not homoglyphs). It destroys all compatibility *and* case evidence to create the ultimate canonical profile for comparison. It is the most aggressive normalization specified by the Unicode standard.
-    * **Example:** `PayPal` becomes `paypal`. A Greek `Σ` (Sigma) becomes `σ` (small sigma).
+    * **Algorithm:** `normalize_extended(string).casefold()`
+    * **Purpose:** Reveals case-based spoofing. This is the ultimate "skeleton" for *compatibility and case*. It destroys all compatibility *and* case evidence to create the ultimate canonical profile for comparison. It is the most aggressive normalization specified by the Unicode standard.
     * **Used By:** **Threat-Hunting Analysis (Group 3).**
 
+* **State 4: Confusable Skeleton State (UTS #39)**
+    * **Algorithm:** `_generate_uts39_skeleton(State 3)`
+    * **Purpose:** Reveals homoglyph and confusable attacks. This is the final and most secure state. It runs the **UTS #39 Skeleton algorithm** (using `confusables.txt`) on the *already normalized and case-folded* string (State 3). This process destroys all visual ambiguity, mapping characters like Cyrillic `а` to their Latin `a` equivalent.
+    * **Used By:** **Threat-Hunting Analysis (Group 3).** This state's hash is the definitive, "purest" signature of the string's intent.
+
+---
 ---
 
 ## 🏛️ Anatomy of the "Lab Instrument" (The Structural Profile)
@@ -179,7 +183,7 @@ This is the "Atomic Count" of the string—the **what**. It provides the core pa
 This is the "Structural Arrangement" of the string—the **how**. It analyzes the text as a *sequence* of runs, not just a "bag of atoms." This module leverages a powerful Run-Length Encoding (RLE) engine to profile the text's "shape."
 
 * **Why it's a profile:** A simple "bag of atoms" diff won't see a structural change. This module will. The string `"don't"` produces a Major Run profile of **L-P-L** (Letter, Punctuation, Letter) and has `3` runs. The "fixed" string `"dont"` produces a profile of **L** and has `1` run. This change in the run-count is a deterministic flag of a structural edit.
-* **Features:** This module now correctly generates **nine** separate, parallel RLE tables, providing a deep fingerprint of the text's "shape":
+* **Features:** This module now correctly generates **ten** separate, parallel RLE tables, providing a deep fingerprint of the text's "shape":
     1.  **Major Category Run Analysis**
     2.  **Minor Category Run Analysis**
     3.  **UAX #14 Line Break Run Analysis**
@@ -189,6 +193,7 @@ This is the "Structural Arrangement" of the string—the **how**. It analyzes th
     7.  **UAX #29 Grapheme Break Run Analysis**
     8.  **East Asian Width Run Analysis** (from `EastAsianWidth.txt`)
     9.  **Vertical Orientation Run Analysis** (from `VerticalOrientation.txt`)
+    10. **Script Run-Length Analysis** (from `Scripts.txt` & `ScriptExtensions.txt`)
 
 ### Group 2.C: Structural Integrity Profile
 
@@ -208,7 +213,7 @@ This is the "Flag" report. It provides a detailed, non-judgmental list of all "p
 * **Contextual & Steganography Flags:**
     * `Private Use (Co)`: "Black box" characters with no public meaning.
     * `Steganography (IVS)`: A specific check for **Ideographic Variation Selectors** (`U+E0100`–`U+E01EF`).
-    * `Variant Base Chars`: *(Implementation Buggy)* Characters that can be modified by a variation selector (from `StandardizedVariants.txt` and `emoji-variation-sequences.txt`).
+    * `Variant Base Chars`: Characters that can be modified by a variation selector (from `StandardizedVariants.txt` and `emoji-variation-sequences.txt`).
     * `Variation Selectors`: Invisible modifiers sourced from `PropList.txt` and `StandardizedVariants.txt`.
 * **Property Flags (Data-Driven):**
     * `Prop: Extender`: Flags characters from `PropList.txt` that modify the shape of others.
@@ -218,14 +223,16 @@ This is the "Flag" report. It provides a detailed, non-judgmental list of all "p
     * `Flag: Bidi Mirrored Mapping`: A high-fidelity flag (from `BidiMirroring.txt`) that shows the *exact* character a mirrored bracket (like `(`) maps to (like `)`).
     * `Prop: Bidi Mirrored`: A boolean flag (from `PropList.txt`) indicating a character can be mirrored.
     * `Prop: Logical Order Exception`: A flag (from `DerivedCoreProperties.txt`) for scripts (like Thai) that have non-sequential memory layouts.
-    * `Flag: Bidi Paired Bracket (Open/Close)`: *(Implementation Buggy)* A high-precision flag for paired punctuation (from `BidiBrackets.txt`).
-    * `Prop: Discouraged (DoNotEmit)`: *(Implementation Buggy)* A "linter" flag for discouraged characters (from `DoNotEmit.txt`).
+    * `Flag: Bidi Paired Bracket (Open/Close)`: A high-precision flag for paired punctuation (from `BidiBrackets.txt`).
+    * `Prop: Discouraged (DoNotEmit)`: A "linter" flag for discouraged characters (from `DoNotEmit.txt`).
+    * `Flag: Security Discouraged (Compatibility)`: A manually-curated flag for entire Unicode blocks (like Fullwidth Forms) known to be used in spoofing attacks.
 * **Identifier Flags (Data-Driven):**
-    * `Type: ...`: Flags from `IdentifierType.txt` like `Type: Not_XID` or `Type: Deprecated`.
+    * `Flag: Identifier Status: ...`: A UAX #31-compliant flag (from `IdentifierStatus.txt`) that correctly applies the "Default Restricted" rule to all non-allowed characters.
+    * `Type: ...`: Flags from `IdentifierType.txt` like `Type: Not_XID` or `Type: Technical`.
 * **Normalization Flags (Data-Driven):**
-    * `Decomposition (Derived): ...:** A complete, data-driven flag for all decomposition types (from `DerivedDecompositionType.txt`), such as `Wide`, `Circle`, `Compat`, etc.
-    * `Flag: Full Composition Exclusion:** *(Implementation Buggy)* A flag (from `CompositionExclusions.txt`) for characters that are explicitly excluded from Unicode composition.
-    * `Flag: Changes on NFKC Casefold:** A critical normalization flag (from `DerivedNormalizationProps.txt`) that identifies characters guaranteed to change during NFKC-Casefold normalization.
+    * `Decomposition (Derived): ...`: A complete, data-driven flag for all decomposition types (from `DerivedDecompositionType.txt`), such as `Wide`, `Circle`, `Compat`, etc.
+    * `Flag: Full Composition Exclusion`: A flag (from `CompositionExclusions.txt`) for characters that are explicitly excluded from Unicode composition.
+    * `Flag: Changes on NFKC Casefold`: A critical normalization flag (from `DerivedNormalizationProps.txt`) that identifies characters guaranteed to change during NFKC-Casefold normalization.
 
 ### Group 2.D: Provenance & Context Profile
 
@@ -244,26 +251,37 @@ This is the "Origin Story" of the atoms. It provides the deep forensic context o
     * Fetches `DerivedNumericType.txt` to show the *type* of number (`Decimal`, `Digit`, or `Numeric`), providing a deeper profile than just the total value.
 * **Total Numeric Value:**
     * A powerful, non-obvious profile. It uses `unicodedata.numeric()` to calculate the **actual mathematical sum** of all numeric characters (e.g., `V` + `¼` = `5.25`). Any change to a number, even a "confusable" one, will change this profile.
-* **Script Run-Length Analysis**
-    * A separate RLE table that provides a "shape" profile of the text's *scripts*. This is a far superior homograph detector than a simple "bag of atoms" count. For example, `paypal` (all Latin) produces a profile of `Script: Latin: 1`. The confusable string `pаypal` (with a Cyrillic 'а') produces a profile of `Script: Latin: 1, Script: Cyrillic: 1, Script: Latin: 1`, instantly flagging the attack.
- 
+
+### Group 3: Threat-Hunting Profile
+
+This is the final, high-level security assessment. It uses the "Quad-State" pipeline to unmask deceptions.
+
+* **Threat Flags (Cards):** A high-level summary of the most critical security risks, such as `DANGER: Malicious Bidi Control` (for Trojan Source attacks) and `High-Risk: Mixed Scripts` (for homoglyph attacks).
+* **Normalization Hashes (Table):** A "fingerprint" of the text in all four of its normalization states:
+    1.  **Forensic (Raw)**
+    2.  **NFKC** (Compatibility-normalized)
+    3.  **NFKC-Casefold** (Compatibility-normalized and case-folded)
+    4.  **UTS #39 Skeleton** (The ultimate security hash: normalized, folded, and confusable-mapped)
+* **Perception vs. Reality Report (Diff):** A visual report showing the *exact* transformations the string undergoes at each normalization state, allowing a human to see precisely how `pаypal.⓼` (Raw) becomes `pаypal.8` (NFKC) and finally `paypal.8` (Skeleton).
+
+---
+
 ## 💻 Tech Stack
 
 The application is a pure, serverless, single-page web application. The logic is cleanly separated for maintainability.
 
 * **`index.html`**: A single, semantic HTML5 file that defines the "skeleton" of the lab instrument. It uses ARIA roles for all components to ensure full accessibility.
 * **`styles.css`**: A single, responsive CSS3 stylesheet that provides the clean, information-dense "lab instrument" aesthetic.
-* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (like `pyodide-http`) and, crucially, the list of all **25** Unicode data files to be pre-fetched, which are grouped by purpose:
+* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (like `pyodide-http`) and, crucially, the list of all **27** Unicode data files to be pre-fetched, which are grouped by purpose:
     * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`)**
     * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`)**
     * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`)**
-    * **Specialized Profile (`IdentifierType.txt`, `StandardizedVariants.txt`, `emoji-variation-sequences.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`)**
-    * **Threat-Hunting (`confusables.txt`)**
+    * **Specialized Profile (`StandardizedVariants.txt`, `emoji-variation-sequences.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`)**
+    * **Threat-Hunting (`confusables.txt`, `IdentifierStatus.txt`, `intentional.txt`)**
 * **`app.py`**: The Python "brain." This file contains all the application's logic.
-    * It imports `unicodedata`, `asyncio`, and `pyfetch`.
-    * It defines all computation functions (e.g., `compute_code_point_stats`, `compute_bidi_class_analysis`).
-    * It defines all rendering functions (e.g., `render_matrix_table`).
+    * It defines all data-loading, computation, and rendering functions.
     * It contains the main `update_all` orchestrator.
+    * It implements the custom `normalize_extended` function to provide a robust, multi-tier normalization process.
 * **`ui-glue.js`**: The JavaScript "nerves." A lightweight, dependency-free script that manages high-performance, accessibility-driven UI components, such as the ARIA tab controls and the "Copy Report" button logic.
 * **Browser-Native APIs:**
     * `RegExp` engine: Used for all high-performance Unicode property classifications (e.g., `\p{L}`, `\p{Script=Cyrillic}`).
@@ -276,14 +294,12 @@ The application is a pure, serverless, single-page web application. The logic is
 
 ---
 
-## ⚙️ How It Works (The New Architecture)
+## ⚙️ How It Works (The Data Pipeline)
 
 1.  **On Page Load:**
     * `index.html` and `styles.css` render the static "lab instrument" skeleton.
-    * `pyscript.toml` is read by PyScript.
-    * `app.py` begins to load and immediately calls `asyncio.ensure_future(load_unicode_data())`.
-    * The `load_unicode_data` function uses `pyfetch` to fetch all **25 data files** in parallel.
-    * As files return, they are parsed into efficient Python data structures (`DATA_STORES`), including custom parsers for `BidiMirroring.txt`, `BidiBrackets.txt`, `CompositionExclusions.txt`, and variant files.
+    * `pyscript.toml` is read, and PyScript begins loading the Python runtime and the **27 data files** in parallel.
+    * As files return, `app.py` parses them into efficient Python data structures (`DATA_STORES`).
     * `ui-glue.js` runs, attaching its event listeners to the "Copy Report" button and the Tab controls.
 2.  **On Data Ready:**
     * `load_unicode_data` finishes and updates the `status-line` to "Ready."
@@ -291,68 +307,30 @@ The application is a pure, serverless, single-page web application. The logic is
     * The user types or pastes text into the `<textarea>`.
     * The `input` event triggers the main `update_all` function in `app.py`.
 4.  **`update_all` Orchestration:**
-    * The `update_all` function executes its main logic, which is a single, sequential pipeline. It gathers all the data for the "Structural Profile."
-    * It calls `compute_code_point_stats(t)` (for logical atom counts).
-    * It calls `compute_grapheme_stats(t)` (for perceptual atom counts).
-    * It calls `compute_combining_class_stats(t)` (for the "Zalgo" profile).
-    * It calls all **ten** RLE analysis functions (Major/Minor Category, Line Break, Bidi Class, Word Break, Sentence Break, Grapheme Break, Script, East Asian Width, and Vertical Orientation).
-    * It calls `compute_forensic_stats_with_positions(t)` to get all integrity flags (now checking for Bidi mirroring, decomposition types, normalization properties, etc.).
-    * It calls `compute_provenance_stats(t)` to get all script, block, age, and numeric type data.
+    * The `update_all` function executes its main logic, a single, sequential pipeline.
+    * **Group 2 (Structural Profile) compute:** It calls all compute functions for the structural profile (Grapheme, Code Point, RLEs, Integrity, Provenance).
+    * **Group 3 (Threat-Hunting) compute:** It calls `compute_threat_analysis`, which generates the four normalized states, their hashes, and the high-level threat flags.
 5.  **Render Data:**
     * The results from all `compute` functions are passed to the `render` functions.
     * `render_cards`, `render_parallel_table`, and `render_matrix_table` build HTML strings.
-    * These HTML strings are injected into their respective `<tbody>` or `<div>` elements (e.g., `#integrity-matrix-body`, `#ccc-matrix-body`, `#eawidth-run-matrix-body`).
+    * These HTML strings are injected into their respective `<tbody>` or `<div>` elements (e.g., `#integrity-matrix-body`, `#eawidth-run-matrix-body`, `#threat-hash-report-body`).
     * The UI updates in a single, efficient paint.
-  
 
-## ⚠️ Project Status: Near Complete (Known Bugs)
+## ✅ Project Status: Complete & Stable
 
-The "Structural Profile" (Group 2) is **90% complete**. We have successfully integrated **25 different Unicode data files** to create one of the most in-depth, client-side profilers available.
+The **"Structural Profile" (Group 2)** and **"Threat-Hunting" (Group 3)** modules are **100% complete, functional, and stable.** All previously-known bugs related to data access, normalization, and logic have been resolved.
 
-Many modules are **100% complete and functional**:
-* **Dual-Atom Profile:** Fully implemented, including the new **"Combining Class Profile"** (Zalgo-detector).
-* **Structural Shape Profile:** Massively expanded. This module now correctly generates **ten** separate, parallel RLE tables, providing a deep fingerprint of the text's "shape":
-    1.  **Major Category Run Analysis**
-    2.  **Minor Category Run Analysis**
-    3.  **UAX #14 Line Break Run Analysis**
-    4.  **UAX #9 Bidi Class Run Analysis**
-    5.  **Script Run-Length Analysis**
-    6.  **UAX #29 Word Break Run Analysis**
-    7.  **UAX #29 Sentence Break Run Analysis**
-    8.  **UAX #29 Grapheme Break Run Analysis**
-    9.  **East Asian Width Run Analysis**
-    10. **Vertical Orientation Run Analysis**
-* **Structural Integrity Profile:** Successfully upgraded with new, functional flags, including:
-    * **`Flag: Bidi Mirrored Mapping`** (from `BidiMirroring.txt`)
-    * **`Decomposition (Derived): ...`** (a new parallel flag from `DerivedDecompositionType.txt`)
-* **Provenance & Context Profile:** Successfully upgraded with the **`Numeric Type: ...`** profile (from `DerivedNumericType.txt`).
+The tool now correctly implements:
+* **Full Data-Driven Analysis:** All 27 UCD files are correctly loaded and used in the analysis.
+* **UAX #31 Compliance:** A robust, UAX #31-compliant "Default Restricted" model for `IdentifierStatus`.
+* **Quad-State Normalization:** A powerful, four-state pipeline (Raw, NFKC, NFKC-Casefold, Skeleton) that provides a definitive security fingerprint.
+* **Complete Integrity Flagging:** All integrity flags, including those for `DoNotEmit`, `BidiBrackets`, and `CompositionExclusions`, are fully functional.
 
-However, a persistent, systemic **data integrity bug** is currently blocking several key features.
+### 📈 Future Enhancements
 
-### 🐞 Known Bugs & Next Steps
+The core engine is complete. Future "v2" work will focus on enhancing the precision of summary metrics.
 
-A deep data-access bug in the Pyodide environment is preventing our compute functions from correctly reading *some* of the data loaded into the global `DATA_STORES`. The data is loaded successfully (confirmed via console logs), but the compute functions fail to read it, resulting in missing flags.
-
-This single bug is the only thing preventing the following features from working:
-
-* **`Flag: Variant Base Chars`** (from `VariantBase` / `emoji-variation-sequences.txt`)
-* **`Prop: Discouraged (DoNotEmit)`** (from `DoNotEmit.txt`)
-* **`Flag: Bidi Paired Bracket (Open/Close)`** (from `BidiBrackets.txt`)
-* **`Flag: Full Composition Exclusion`** (from `CompositionExclusions.txt`)
-* **`Flag: Changes on NFKC Casefold`** (from `DerivedNormalizationProps.txt`)
-
-**The immediate roadmap is now focused on one goal:**
-
-#### Task 1: Fix the Core Data Integrity Bug
-* **Goal:** Refactor the `DATA_STORES` architecture to resolve the data access bug. This is the final blocker for Group 2.
-
-#### Task 2: Implement "Threat-Hunting Analysis" (Group 3)
-* **Goal:** Begin the final, major development phase.
-* **Plan:**
-    * **Threat Flagging:** Load `IdentifierStatus.txt` to add a new, high-priority flag to the Integrity Profile, such as `Flag: Identifier Status: Restricted`.
-    * **Algorithmic Detection:** Load `confusables.txt` (which we already fetch) and `intentional.txt` (for whitelisting) to implement the **`UTS #39` skeleton algorithm**.
-    * **New "Tri-State" Hashes:** Generate hashes for `Raw`, `NFKC`, `NFKC-Casefold`, and the new **`UTS #39 Skeleton`**.
-    * **The "Defensive UI":** Implement the planned three-layer UI (Highlight, Tooltip, and Banner). We will load `confusablesSummary.txt` to power the tooltip with high-level threat labels (e.g., "Warning: Latin-Cyrillic confusable").
+* **Known Issue (Cosmetic):** The `RGI Emoji Sequences` count in the "Dual-Atom Profile" is a known, minor inaccuracy. It currently uses a simple `\p{Emoji_Presentation}` regex, which incorrectly counts the components of complex ZWJ sequences (e.g., counting `👨‍👩‍👧‍👦` as 4 instead of 1). A future enhancement will replace this regex with a full RGI sequence parser (using `emoji-zwj-sequences.txt`) to make this summary count 100% accurate.
 
 ---
 
