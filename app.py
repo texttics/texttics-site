@@ -2173,17 +2173,16 @@ def _escape_html(s: str):
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
-# REPLACE ALL CODE BELOW THIS LINE WITH THE FOLLOWING:
-
+    
     # --- 0. Initialize defaults ---
     threat_flags = {}
     threat_hashes = {}
     html_report_parts = []
     found_confusable = False
     
-    # We use lists to gather positions, which fixes the TypeError
+    # --- We will use lists to gather data first ---
     bidi_danger_indices = []
-    mixed_script_runs_found = []
+    scripts_in_use = set()
 
     # Initialize output variables with safe defaults
     nf_string = ""
@@ -2214,51 +2213,26 @@ def compute_threat_analysis(t: str):
             js_array_raw = window.Array.from_(t)
             lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
 
-            # --- LOOP 1: V2 "Per-Run" Analysis (for Mixed-Script Runs flag) ---
-            # This loop *only* analyzes runs for mixed scripts.
-            if lnps_regex:
-                lnps_matches_iter = window.String.prototype.matchAll.call(t, lnps_regex)
-                lnps_matches = window.Array.from_(lnps_matches_iter)
-
-                for match in lnps_matches:
-                    run_string = match[0]
-                    run_index = match.index
-                    scripts_in_this_run = set()
-                    
-                    # Analyze this specific run
-                    for char_in_run in window.Array.from_(run_string):
-                        cp_run = ord(char_in_run)
-                        
-                        # --- Mixed-Script Detection ---
-                        script_ext_val = _find_in_ranges(cp_run, "ScriptExtensions")
-                        if script_ext_val:
-                            scripts_in_this_run.update(script_ext_val.split())
-                        else:
-                            script_val = _find_in_ranges(cp_run, "Scripts")
-                            if script_val:
-                                scripts_in_this_run.add(script_val)
-                    
-                    # --- Check this run for mixed scripts ---
-                    scripts_in_this_run.discard("Common")
-                    scripts_in_this_run.discard("Inherited")
-                    
-                    if len(scripts_in_this_run) > 1:
-                        scripts_label = ", ".join(sorted(scripts_in_this_run))
-                        mixed_script_runs_found.append(f"'{run_string}' @ #{run_index} ({scripts_label})")
-
-            # --- LOOP 2: Original "Per-Char" Analysis (for Bidi and Confusable HTML) ---
-            # This is the most important loop. It iterates over *every* char.
-            # This is what finds the 'Cf' Bidi characters that Loop 1 misses.
+            # --- LOOP 1: Single, "Per-Char" Analysis (Robust and Correct) ---
+            # This is the original, reliable loop.
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # --- Bidi Check (THE CRITICAL FIX) ---
-                # This check is now in the correct loop.
+                # --- A. Bidi Check ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
-                # --- Confusable HTML Report Builder ---
-                # This logic also belongs in the per-char loop.
+                # --- B. Mixed-Script Detection ---
+                # (This logic was flawed in the V2 refactor, but correct here)
+                script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+                if script_ext_val:
+                    scripts_in_use.update(script_ext_val.split())
+                else:
+                    script_val = _find_in_ranges(cp, "Scripts")
+                    if script_val:
+                        scripts_in_use.add(script_val)
+                
+                # --- C. Confusable HTML Report Builder ---
                 if lnps_regex and cp in confusables_map and lnps_regex.test(char):
                     found_confusable = True
                     skeleton_char_str = confusables_map[cp]
@@ -2285,21 +2259,25 @@ def compute_threat_analysis(t: str):
                         f"{_escape_html(char)}</span>"
                     )
                 else:
-                    # Not a confusable; just escape it
                     html_report_parts.append(_escape_html(char))
-            
-            # --- 4. Populate Threat Flags (Fixes the TypeError) ---
-            # Now we add the flags as dicts, solving the crash.
+
+            # --- 4. Populate Threat Flags (This fixes the TypeError) ---
+            # We build the flags *after* the loop, all as dicts.
             if bidi_danger_indices:
                 threat_flags["DANGER: Malicious Bidi Control"] = {
                     'count': len(bidi_danger_indices),
                     'positions': bidi_danger_indices
                 }
-            if mixed_script_runs_found:
-                threat_flags["High-Risk: Mixed-Script Runs"] = {
-                    'count': len(mixed_script_runs_found),
-                    'positions': mixed_script_runs_found
+            
+            scripts_in_use.discard("Common")
+            scripts_in_use.discard("Inherited")
+            if len(scripts_in_use) > 1:
+                key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
+                threat_flags[key] = {
+                    'count': 1,
+                    'positions': ["(See Provenance Profile for details)"]
                 }
+            # --- End of TypeError fix ---
 
         # --- 5. Implement UTS #39 Skeleton ---
         skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
@@ -2314,7 +2292,6 @@ def compute_threat_analysis(t: str):
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
-        # Failsafe: return raw text for other UI elements
         if not nf_string: nf_string = t 
         if not nf_casefold_string: nf_casefold_string = t.casefold()
         if not skeleton_string: skeleton_string = t
