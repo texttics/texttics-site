@@ -1136,7 +1136,17 @@ def compute_emoji_analysis(text: str) -> dict:
             cp = ord(char)
             consumed = 1 # Default to consuming 1 char
             final_status = "unknown" # Default status
-
+        
+        # This surgically adds the lone ZWJ to the emoji table
+        if cp == 0x200D:
+            emoji_details_list.append({
+                "sequence": char,
+                "status": "component", # Manually assign status
+                "index": i,
+            })
+            i += 1
+            continue # Skip all other Tier 4 logic for this char
+            
             # --- A: Check for Forced Text (VS15) ---
             # This is a 2-char sequence that isn't in the RGI set.
             if i + 1 < n and ord(js_array[i+1]) == 0xFE0E: # Text Selector
