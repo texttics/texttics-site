@@ -1848,6 +1848,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     ext_pictographic_indices = []
     emoji_modifier_indices = []
     emoji_modifier_base_indices = []
+    invalid_vs_indices = []
     variation_selector_indices = []
     # --- End Initialization ---
     
@@ -1961,6 +1962,21 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "VariationSelector"): variation_selector_indices.append(f"#{i}")
 
+                # --- 10. Variation Selector (VS) Sanity Check ---
+                is_vs = _find_in_ranges(cp, "VariationSelector")
+                if is_vs:
+                    # It's a selector. Now check if it's valid.
+                    is_valid_vs = False
+                    if i > 0:
+                        prev_cp = ord(js_array[i-1])
+                        # Check the master set of all valid bases (from emoji + std)
+                        if prev_cp in DATA_STORES["VariantBase"]:
+                            is_valid_vs = True
+                    
+                    if not is_valid_vs:
+                        # It's either at index 0 or follows an invalid base (like 'a')
+                        invalid_vs_indices.append(f"#{i}")
+
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
 
@@ -2010,6 +2026,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Prop: Extended Pictographic"] = {'count': len(ext_pictographic_indices), 'positions': ext_pictographic_indices}
     forensic_stats["Prop: Emoji Modifier"] = {'count': len(emoji_modifier_indices), 'positions': emoji_modifier_indices}
     forensic_stats["Prop: Emoji Modifier Base"] = {'count': len(emoji_modifier_base_indices), 'positions': emoji_modifier_base_indices}
+    forensic_stats["Flag: Invalid Variation Selector"] = {'count': len(invalid_vs_indices), 'positions': invalid_vs_indices}
     forensic_stats["Prop: Variation Selector"] = {'count': len(variation_selector_indices), 'positions': variation_selector_indices}
     
     # Add Variant Stats
