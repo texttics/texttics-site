@@ -1048,46 +1048,92 @@ async def load_unicode_data():
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
         render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
 
-def count_rgi_emoji_sequences(text: str) -> int:
+def compute_emoji_analysis(text: str) -> dict:
     """
-    Count RGI emoji *sequences* in the string `text`, using a greedy scan.
-    This function ONLY counts sequences (length > 1).
-    It does NOT count single-character emoji.
+    Scans the text and returns a full report on RGI sequences,
+    single-character emoji, and qualification status.
     """
-    rgi_set = DATA_STORES.get("RGISequenceSet")
+    # Get all data from the stores
+    rgi_set = DATA_STORES.get("RGISequenceSet", set())
     max_len = DATA_STORES.get("RGISequenceMaxLen", 0)
+    qual_map = DATA_STORES.get("EmojiQualificationMap", {})
+    
+    # --- Initialize all our new counters ---
+    rgi_sequences_count = 0
+    rgi_singles_count = 0
+    
+    # Flags for the Integrity Profile
+    flag_unqualified = []
+    flag_minimally_qualified = []
+    flag_component = []
 
-    # Exit if no sequences are loaded or they are all single chars
-    if not rgi_set or max_len <= 1:
-        return 0
-
-    total = 0
     i = 0
-    n = len(text)
-    js_array = window.Array.from_(text) # Use JS array for correct string length
+    js_array = window.Array.from_(text)
+    n = len(js_array)
 
     while i < n:
-        matched = False
+        matched_sequence = False
+        
+        # --- Tiers 1-3: Greedy Sequence Scan ---
+        if max_len > 1:
+            max_window = min(max_len, n - i)
+            for L in range(max_window, 1, -1): # From max_len down to 2
+                candidate_chars = js_array[i : i + L]
+                candidate = "".join(candidate_chars)
+                
+                if candidate in rgi_set:
+                    rgi_sequences_count += 1
+                    matched_sequence = True
+                    
+                    # Check qualification status
+                    status = qual_map.get(candidate)
+                    if status == "unqualified":
+                        flag_unqualified.append(f"#{i}")
+                    elif status == "minimally-qualified":
+                        flag_minimally_qualified.append(f"#{i}")
+                    elif status == "component":
+                        flag_component.append(f"#{i}")
+                        
+                    i += L # Advance past the whole sequence
+                    break
 
-        # Try longest possible sequence first, down to length 2
-        # We check from min(max_len, remaining_chars)
-        max_window = min(max_len, n - i)
-        for L in range(max_window, 1, -1):
+        # --- Tier 4: Single Character Scan ---
+        if not matched_sequence:
+            char = js_array[i]
+            cp = ord(char)
             
-            # Use JS-style slicing on the array
-            candidate_chars = js_array[i : i + L]
-            candidate = "".join(candidate_chars)
+            # Check for single-character RGI emoji
+            # (Must be Emoji=Yes AND Emoji_Presentation=Yes)
+            if _find_in_ranges(cp, "Emoji_Presentation"):
+                rgi_singles_count += 1
+                
+                # Check qualification for this single char
+                status = qual_map.get(char)
+                if status == "unqualified":
+                    flag_unqualified.append(f"#{i}")
+                elif status == "minimally-qualified":
+                    flag_minimally_qualified.append(f"#{i}")
+                    
+            # Check if it's a standalone component (a flag!)
+            elif _find_in_ranges(cp, "Emoji_Component"):
+                 flag_component.append(f"#{i}")
+            # Check for Ideographic Variation Selectors (Steganography vector)
+            elif 0xE0100 <= cp <= 0xE01EF:
+                 flag_component.append(f"#{i}")
             
-            if candidate in rgi_set:
-                total += 1
-                i += L # Critically, advance index by the *length* of the sequence
-                matched = True
-                break # Stop checking smaller lengths
+            i += 1 # Advance by one char
 
-        if not matched:
-            i += 1 # No sequence found, advance by one char
-
-    return total
+    # --- Return the full report ---
+    return {
+        "counts": {
+            "RGI Emoji Sequences": rgi_sequences_count + rgi_singles_count,
+        },
+        "flags": {
+            "Flag: Unqualified Emoji": {'count': len(flag_unqualified), 'positions': flag_unqualified},
+            "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
+            "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
+        }
+    }
 
 def _parse_script_extensions(txt: str):
     """Custom parser for ScriptExtensions.txt (which uses ';')."""
@@ -1204,23 +1250,22 @@ def _find_matches_with_indices(regex_key: str, text: str):
         print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
         return [], 0
 
-def compute_code_point_stats(t: str):
+# Note the new argument: emoji_counts
+def compute_code_point_stats(t: str, emoji_counts: dict):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
 
 # 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
     
-    # --- NEW (Phase 1: Emoji Bugfix) ---
-    # We now call our sequence-aware scanner instead of the regex
-    emoji_sequence_count = count_rgi_emoji_sequences(t)
-    # --- END (Phase 1: Emoji Bugfix) ---
+   # We get the count directly from the emoji engine's report
+    emoji_total_count = emoji_counts.get("RGI Emoji Sequences", 0)
     
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
     
     derived_stats = {
         "Total Code Points": total_code_points,
-        "RGI Emoji Sequences": emoji_sequence_count, # <-- NEW VALUE
+        "RGI Emoji Sequences": emoji_total_count,
         "Whitespace (Total)": whitespace_count
     }
 
@@ -1735,6 +1780,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     deceptive_ps_indices = []
     deceptive_nel_indices = []
     id_type_stats = {} # For IdentifierType
+    ext_pictographic_indices = []
+    emoji_modifier_indices = []
+    emoji_modifier_base_indices = []
     # --- End Initialization ---
     
     if LOADING_STATE == "READY":
@@ -1842,6 +1890,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
 
+                if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Emoji_Modifier"): emoji_modifier_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
+
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
 
@@ -1888,46 +1940,50 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Surrogates (Broken)"] = {'count': len(surrogate_indices), 'positions': surrogate_indices}
     forensic_stats["Unassigned (Void)"] = {'count': len(unassigned_indices), 'positions': unassigned_indices}
 
+    forensic_stats["Prop: Extended Pictographic"] = {'count': len(ext_pictographic_indices), 'positions': ext_pictographic_indices}
+    forensic_stats["Prop: Emoji Modifier"] = {'count': len(emoji_modifier_indices), 'positions': emoji_modifier_indices}
+    forensic_stats["Prop: Emoji Modifier Base"] = {'count': len(emoji_modifier_base_indices), 'positions': emoji_modifier_base_indices}
+    
     # Add Variant Stats
-    variant_stats = compute_variant_stats_with_positions(t)
-    forensic_stats.update(variant_stats)
+    # variant_stats = compute_variant_stats_with_positions(t)
+    # forensic_stats.update(variant_stats)
 
     # Add IdentifierType Stats (which now includes IdentifierStatus)
     forensic_stats.update(id_type_stats)
     
     return forensic_stats
 
-def compute_variant_stats_with_positions(t: str):
-    """Part of Module 2.C: Counts variant base chars and selectors."""
-    if LOADING_STATE != "READY":
-        return {}
-        
-    base_set = DATA_STORES["VariantBase"]
-    selector_set = DATA_STORES["VariantSelectors"]
+# def compute_variant_stats_with_positions(t: str):
+#    """Part of Module 2.C: Counts variant base chars and selectors."""
+#    if LOADING_STATE != "READY":
+ #       return {}
+  #      
+   # base_set = DATA_STORES["VariantBase"]
+    #selector_set = DATA_STORES["VariantSelectors"]
     
-    base_indices = []
-    selector_indices = []
-    ivs_indices = []
+#    base_indices = []
+ #   selector_indices = []
+  #  ivs_indices = []
     
-    # We must iterate using JS-style string indices
-    js_array = window.Array.from_(t)
-    for i, char in enumerate(js_array):
-        cp = ord(char)
-        if cp in base_set:
-            base_indices.append(f"#{i}")
+#    # We must iterate using JS-style string indices
+ #   js_array = window.Array.from_(t)
+#    for i, char in enumerate(js_array):
+#        cp = ord(char)
+#        if cp in base_set:
+ #           base_indices.append(f"#{i}")
         # Check both the old set (for Mongolian) AND the new property (for Emoji)
-        is_selector = (cp in selector_set) or (_find_in_ranges(cp, "VariationSelector") is not None)
-        if is_selector:
-            selector_indices.append(f"#{i}")
+ #       is_selector = (cp in selector_set) or (_find_in_ranges(cp, "VariationSelector") is not None)
+ #       if is_selector:
+ #           selector_indices.append(f"#{i}")
         # Check for Ideographic Variation Selectors (Steganography vector)
-        if 0xE0100 <= cp <= 0xE01EF:
-            ivs_indices.append(f"#{i}")
+  #      if 0xE0100 <= cp <= 0xE01EF:
+   #         ivs_indices.append(f"#{i}")
             
-    return {
-        "Variant Base Chars": {'count': len(base_indices), 'positions': base_indices},
-        "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices},
-        "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices}
-    }
+  #  return {
+  #      "Variant Base Chars": {'count': len(base_indices), 'positions': base_indices},
+  #      "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices},
+  #      "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices}
+   # }
 
 def compute_provenance_stats(t: str):
     """Module 2.D: Runs UAX #44 and Deep Scan analysis."""
@@ -2387,9 +2443,13 @@ def update_all(event=None):
         return
 
     # --- 1. Run All Computations ---
+
+    emoji_report = compute_emoji_analysis(t)
+    emoji_counts = emoji_report.get("counts", {})
+    emoji_flags = emoji_report.get("flags", {})
     
     # Module 2.A: Dual-Atom Fingerprint
-    cp_summary, cp_major, cp_minor = compute_code_point_stats(t)
+    cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     ccc_stats = compute_combining_class_stats(t)
     
@@ -2412,6 +2472,8 @@ def update_all(event=None):
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
+
+    forensic_stats.update(emoji_flags)
     
     # Module 2.D: Provenance & Context
     provenance_stats = compute_provenance_stats(t)
@@ -2430,7 +2492,7 @@ def update_all(event=None):
     meta_cards = {
         "Total Code Points": cp_summary.get("Total Code Points", 0),
         "Total Graphemes": gr_summary.get("Total Graphemes", 0),
-        "RGI Emoji Sequences": cp_summary.get("RGI Emoji Sequences", 0),
+        "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
     }
     grapheme_cards = grapheme_forensics
