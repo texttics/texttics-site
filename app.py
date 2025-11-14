@@ -2379,6 +2379,66 @@ def render_status(message, is_error=False):
         status_line.innerText = message
         status_line.style.color = "#dc2626" if is_error else "var(--color-text-muted)"
 
+def render_emoji_qualification_table(emoji_list: list):
+    """Renders the new Emoji Qualification Profile table."""
+    element = document.getElementById("emoji-qualification-body")
+    if not element:
+        return
+
+    if not emoji_list:
+        element.innerHTML = "<tr><td colspan='3' class='placeholder-text'>No RGI emoji sequences detected.</td></tr>"
+        return
+
+    # 1. Aggregate the list by (sequence, status)
+    grouped = {}
+    for item in emoji_list:
+        seq = item.get("sequence", "?")
+        # Format status: "fully-qualified" -> "Fully Qualified"
+        status = item.get("status", "unknown").replace("-", " ").title()
+        index = item.get("index", 0)
+        
+        key = (seq, status)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(f"#{index}")
+
+    # 2. Build HTML string
+    html = []
+    
+    # Sort by the first index to keep them in order of appearance
+    try:
+        sorted_keys = sorted(grouped.keys(), key=lambda k: int(grouped[k][0][1:]))
+    except Exception:
+        sorted_keys = grouped.keys() # Failsafe sort
+
+    for (seq, status), positions in sorted_keys:
+        count = len(positions)
+        
+        # Use <details> for long position lists
+        POSITION_THRESHOLD = 5
+        if count > POSITION_THRESHOLD:
+            visible_positions = ", ".join(positions[:POSITION_THRESHOLD])
+            hidden_positions = ", ".join(positions[POSITION_THRESHOLD:])
+            pos_html = (
+                f'<details style="cursor: pointer;">'
+                f'<summary>{visible_positions} ... ({count} total)</summary>'
+                f'<div style="padding-top: 8px; user-select: all;">{hidden_positions}</div>'
+                f'</details>'
+            )
+        else:
+            pos_html = ", ".join(positions)
+
+        html.append(
+            f'<tr>'
+            # Use mono font for emoji to prevent weird spacing
+            f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq} <span style="font-family: var(--font-sans); font-size: 0.9rem; color: var(--color-text-muted);">({status})</span></th>'
+            f'<td>{count}</td>'
+            f'<td>{pos_html}</td>'
+            f'</tr>'
+        )
+    
+    element.innerHTML = "".join(html)
+
 def render_cards(stats_dict, element_id):
     """Generates and injects HTML for standard stat cards."""
     html = []
@@ -2547,6 +2607,7 @@ def update_all(event=None):
         render_matrix_table({}, "graphemebreak-run-matrix-body")
         render_matrix_table({}, "eawidth-run-matrix-body")
         render_matrix_table({}, "vo-run-matrix-body")
+        render_emoji_qualification_table([])
         render_threat_analysis({}) 
         
         render_toc_counts({})
@@ -2673,6 +2734,8 @@ def update_all(event=None):
     render_matrix_table(prov_matrix, "provenance-matrix-body")
     render_matrix_table(script_run_stats, "script-run-matrix-body")
     render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
+
+    render_emoji_qualification_table(emoji_list)
 
     # Render 3
     render_threat_analysis(threat_results)
