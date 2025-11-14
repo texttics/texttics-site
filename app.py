@@ -556,36 +556,27 @@ def _parse_composition_exclusions(txt: str):
 def _parse_emoji_zwj_sequences(txt: str) -> set:
     """
     Parses emoji-zwj-sequences.txt into a set of RGI strings.
-    Format: 1F468 200D 1F469 200D 1F466 ; RGI_Emoji_ZWJ_Sequence ; ...
+    This parser handles the common format:
+    Format: 1F468 200D 1F469 200D 1F466 # (👨‍👩‍👦) man...
     """
     sequences = set()
     for raw in txt.splitlines():
+        # 1. Split on the comment marker '#'
         line = raw.split('#', 1)[0].strip()
         if not line:
             continue
-
+            
         try:
-            parts = line.split(';', 2)
-            if len(parts) < 2:
-                continue
-
-            hex_codes_str = parts[0].strip()
-            type_field = parts[1].strip()
-
-            # --- THIS IS THE FIX ---
-            # Only true RGI ZWJ sequences
-            if type_field != "RGI_Emoji_ZWJ_Sequence":
-                continue
-            # --- END FIX ---
-
-            hex_codes = hex_codes_str.split()
-            if len(hex_codes) > 1:
-                sequence_str = "".join(chr(int(h, 16)) for h in hex_codes)
+            # 2. The remaining part is just the hex codes
+            hex_codes = line.split() # Split by space
+            
+            if len(hex_codes) > 1: # We only want sequences
+                sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
                 sequences.add(sequence_str)
-        except Exception:
-            # Ignore malformed lines
-            pass
-
+        except Exception as e:
+            # print(f"Skipping malformed ZWJ line: {line} | Error: {e}")
+            pass # Ignore malformed lines
+            
     print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
     return sequences
 
