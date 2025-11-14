@@ -1144,8 +1144,8 @@ def compute_emoji_analysis(text: str) -> dict:
           #      "status": "component", # Manually assign status
           #      "index": i,
           #  })
-            i += 1
-            continue # Skip all other Tier 4 logic for this char
+          #  i += 1
+          #  continue # Skip all other Tier 4 logic for this char
             
             # --- A: Check for Forced Text (VS15) ---
             # This is a 2-char sequence that isn't in the RGI set.
