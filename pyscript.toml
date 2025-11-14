@@ -33,5 +33,7 @@ files = [
     "BidiBrackets.txt",
     "BidiMirroring.txt",
     "DerivedNormalizationProps.txt",
-    "CompositionExclusions.txt"
+    "CompositionExclusions.txt",
+    "emoji-sequences.txt",
+    "emoji-zwj-sequences.txt"
 ]
