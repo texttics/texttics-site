@@ -1060,34 +1060,43 @@ def compute_emoji_analysis(text: str) -> dict:
     """
     Scans the text and returns a full report on RGI sequences,
     single-character emoji, and qualification status.
-    (Phase 3: Corrected Tier-4 scan and Forced-Text flag)
+
+    This is a robust, multi-tier scanner:
+    - Tiers 1-3: Greedy RGI ZWJ/Flag/Modifier sequence scan.
+    - Tier 4: Single-character scan, which correctly handles:
+        - Forced Text Presentation (e.g., ❤️︎)
+        - RGI Singles (e.g., 😀)
+        - Qualification Status (Fully, Minimally, Unqualified, Component)
+        - Anomalies (e.g., lone IVS)
     """
-    # Get all data from the stores
+    # --- 1. Get Data Stores ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
     max_len = DATA_STORES.get("RGISequenceMaxLen", 0)
     qual_map = DATA_STORES.get("EmojiQualificationMap", {})
     
-    # --- Initialize all our new counters ---
+    # --- 2. Initialize Accumulators ---
     rgi_sequences_count = 0
     rgi_singles_count = 0
     
-    # Flags for the Integrity Profile
+    # For the V2 "Emoji Qualification Profile" table
+    emoji_details_list = []
+
+    # For the T3 "Structural Integrity" flags
     flag_unqualified = []
     flag_minimally_qualified = []
     flag_component = []
-    flag_forced_text = [] # <-- NEW (Phase 3)
+    flag_forced_text = []
     flag_fully_qualified = []
-    # --- NEW: Master list for the report ---
-    emoji_details_list = []
 
-    i = 0
+    # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
     n = len(js_array)
+    i = 0
 
     while i < n:
         matched_sequence = False
         
-        # --- Tiers 1-3: Greedy Sequence Scan ---
+        # --- Tiers 1-3: Greedy RGI Sequence Scan (e.g., 👨‍👩‍👧‍👦, 👍🏾, 🇺🇦) ---
         if max_len > 1:
             max_window = min(max_len, n - i)
             for L in range(max_window, 1, -1): # From max_len down to 2
@@ -1095,82 +1104,88 @@ def compute_emoji_analysis(text: str) -> dict:
                 candidate = "".join(candidate_chars)
                 
                 if candidate in rgi_set:
-                    rgi_sequences_count += 1
                     matched_sequence = True
-                    status = qual_map.get(candidate, "fully-qualified") # Default to FQ if in RGI set but not test file
-
-                # --- NEW: Store the sequence and its status ---
-                emoji_details_list.append({
-                    "sequence": candidate,
-                    "status": status,
-                    "index": i
-                })
+                    rgi_sequences_count += 1
                     
-                # Check qualification status for the sequence
-                status = qual_map.get(candidate)
-                if status == "unqualified":
-                    flag_unqualified.append(f"#{i}")
-                elif status == "minimally-qualified":
-                    flag_minimally_qualified.append(f"#{i}")
-                elif status == "component":
-                    flag_component.append(f"#{i}")
-                elif status == "fully-qualified":
-                    flag_fully_qualified.append(f"#{i}")
-                    
-                i += L 
-                break
+                    # Get status (default to FQ for RGI sequences not in test file)
+                    status = qual_map.get(candidate, "fully-qualified")
 
-        # --- Tier 4: Single Character Scan ---
+                    # Add to V2 details list
+                    emoji_details_list.append({
+                        "sequence": candidate,
+                        "status": status,
+                        "index": i
+                    })
+                    
+                    # Add to T3 flag lists
+                    if status == "unqualified":
+                        flag_unqualified.append(f"#{i}")
+                    elif status == "minimally-qualified":
+                        flag_minimally_qualified.append(f"#{i}")
+                    elif status == "component":
+                        flag_component.append(f"#{i}")
+                    elif status == "fully-qualified":
+                        flag_fully_qualified.append(f"#{i}")
+                    
+                    i += L  # Consume the entire sequence
+                    break # Exit the `for L` loop
+
+        # --- Tier 4: Single Character Scan (if no sequence was found) ---
         if not matched_sequence:
             char = js_array[i]
             cp = ord(char)
-            status = qual_map.get(char)
-            # --- LOGIC FIX (Phase 3): Check for forced-text style FIRST ---
-            if i + 1 < n:
-                next_char = js_array[i+1]
-                if ord(next_char) == 0xFE0E: # Text Presentation Selector
-                    # Check if the base char is a default-emoji char
-                    if _find_in_ranges(cp, "Emoji_Presentation"):
-                        flag_forced_text.append(f"#{i}")
-                        i += 2 # Consume both chars
-                        continue # Skip all other checks
-            # --- END LOGIC FIX ---
-            
-            # --- LOGIC FIX: Separate RGI count from Qualification check ---
-            
-            # 1. Check for single-character RGI emoji
-            # (e.g., 😀, which is Emoji_Presentation=Yes)
-            if _find_in_ranges(cp, "Emoji_Presentation"):
-                rgi_singles_count += 1
+            consumed = 1 # Default to consuming 1 char
+            final_status = "unknown" # Default status
 
-            # --- NEW: Store the single char and its status ---
-            if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
-                emoji_details_list.append({
-                    "sequence": char,
-                    "status": status,
-                    "index": i
-                })
+            # --- A: Check for Forced Text (VS15) ---
+            # This is a 2-char sequence that isn't in the RGI set.
+            if i + 1 < n and ord(js_array[i+1]) == 0xFE0E: # Text Selector
+                if _find_in_ranges(cp, "Emoji_Presentation"): # Base is default-emoji
+                    flag_forced_text.append(f"#{i}")
+                    consumed = 2 # Consume both chars
+                    final_status = "forced-text" # Give it a special status
             
-            # 2. Check for qualification status (Unqualified, Component, etc.)
-            # This is now *independent* and will run for '©' (U+00A9)
-            
-            if status == "unqualified":
-                flag_unqualified.append(f"#{i}")
-            elif status == "minimally-qualified":
-                flag_minimally_qualified.append(f"#{i}")
-            elif status == "component":
-                flag_component.append(f"#{i}")
-            elif status == "fully-qualified":
-                flag_fully_qualified.append(f"#{i}")
+            # --- B: If not Forced Text, analyze the single char ---
+            if final_status == "unknown":
+                final_status = qual_map.get(char, "unknown")
+                is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
+                is_ivs = 0xE0100 <= cp <= 0xE01EF # Steganography
+
+                if is_rgi_single:
+                    rgi_singles_count += 1
+                    if final_status == "unknown": # Upgrade status
+                        final_status = "fully-qualified"
                 
-            # 3. Check for Steganography (IVS)
-            elif 0xE0100 <= cp <= 0xE01EF:
-                 flag_component.append(f"#{i}") # Add IVS to component flag
-            # --- END LOGIC FIX ---
-            
-            i += 1 # Advance by one char
+                if is_ivs:
+                    # Treat lone IVS as a "component"
+                    if final_status == "unknown":
+                        final_status = "component"
+                    # Add to flag list (even if it's also in qual_map)
+                    if f"#{i}" not in flag_component:
+                         flag_component.append(f"#{i}")
 
-    # --- Return the full report ---
+                # Add to V2 details list
+                if final_status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
+                    emoji_details_list.append({
+                        "sequence": char,
+                        "status": final_status,
+                        "index": i
+                    })
+                
+                # Add to T3 flag lists
+                if final_status == "unqualified":
+                    flag_unqualified.append(f"#{i}")
+                elif final_status == "minimally-qualified":
+                    flag_minimally_qualified.append(f"#{i}")
+                elif final_status == "component" and not is_ivs: # (IVS is already added)
+                    flag_component.append(f"#{i}")
+                elif final_status == "fully-qualified":
+                    flag_fully_qualified.append(f"#{i}")
+
+            # Advance the loop
+            i += consumed
+
+    # --- 4. Return the Full Report ---
     return {
         "counts": {
             "RGI Emoji Sequences": rgi_sequences_count + rgi_singles_count,
@@ -1179,7 +1194,7 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Unqualified Emoji": {'count': len(flag_unqualified), 'positions': flag_unqualified},
             "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
-            "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text}, # <-- NEW (Phase 3)
+            "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text},
             "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified}
         },
         "emoji_list": emoji_details_list
