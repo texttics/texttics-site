@@ -2582,8 +2582,8 @@ def render_toc_counts(counts):
 
 @create_proxy
 def update_all(event=None):
+    """The main function called on every input change."""
 
-# --- NEW DEBUG BLOCK ---
     from js import console
     try:
         # We will check two things:
@@ -2597,10 +2597,8 @@ def update_all(event=None):
         console.log(f"Live 'Blocks' range count: {blocks_len}")
         console.log(f"Live 'Confusables' map count: {confusables_len}")
         console.log(f"----------------------------")
-        
     except Exception as e:
         console.log(f"--- DEBUG ERROR ---: {e}")
-    # --- END DEBUG BLOCK ---
     
     """The main function called on every input change."""
     
@@ -2749,7 +2747,7 @@ def update_all(event=None):
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body")
     render_matrix_table(script_run_stats, "script-run-matrix-body")
-    render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
+    #render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
 
     render_emoji_qualification_table(emoji_list)
 
