@@ -2628,6 +2628,14 @@ def update_all(event=None):
     
     # 2.D
     prov_matrix = provenance_stats
+
+    threat_flags = threat_results.get('flags', {})
+    if forensic_matrix.get("Flag: Invalid Variation Selector", {}).get("count", 0) > 0:
+        threat_flags["Suspicious: Invalid Variation Selectors"] = forensic_matrix["Flag: Invalid Variation Selector"]
+    if forensic_matrix.get("Flag: Unqualified Emoji", {}).get("count", 0) > 0:
+        threat_flags["Suspicious: Unqualified Emoji"] = forensic_matrix["Flag: Unqualified Emoji"]
+    if forensic_matrix.get("Join Control (Structural)", {}).get("count", 0) > 0:
+        threat_flags["Suspicious: Lone Join Control (ZWJ)"] = forensic_matrix["Join Control (Structural)"]
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
