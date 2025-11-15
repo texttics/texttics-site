@@ -1231,7 +1231,8 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
             "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text},
-            "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified}
+            "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified},
+            "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier}
         },
         "emoji_list": emoji_details_list
     }
