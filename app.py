@@ -1139,15 +1139,15 @@ def compute_emoji_analysis(text: str) -> dict:
             consumed = 1 # Default to consuming 1 char
             final_status = "unknown" # Default status
         
-        # This surgically adds the lone ZWJ to the emoji table
-        #if cp == 0x200D:
-         #   emoji_details_list.append({
-          #      "sequence": char,
-          #      "status": "component", # Manually assign status
-          #      "index": i,
-          #  })
-          #  i += 1
-          #  continue # Skip all other Tier 4 logic for this char
+            # This surgically adds the lone ZWJ to the emoji table
+            #if cp == 0x200D:
+            #    emoji_details_list.append({
+            #        "sequence": char,
+            #        "status": "component", # Manually assign status
+            #        "index": i,
+            #    })
+            #    i += 1
+            #    continue # Skip all other Tier 4 logic for this char
             
             # --- A: Check for Forced Text (VS15) ---
             # This is a 2-char sequence that isn't in the RGI set.
@@ -1169,13 +1169,13 @@ def compute_emoji_analysis(text: str) -> dict:
                         "index": i
                     })
             
-             # --- B: If not Forced Text, analyze the single char ---
+            # --- B: If not Forced Text, analyze the single char ---
             if final_status == "unknown":
                 final_status = qual_map.get(char, "unknown")
                 is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
                 is_ivs = 0xE0100 <= cp <= 0xE01EF # Steganography
                 is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
-    
+
                 # --- NEW: Check for illegal modifier attachment ---
                 if is_modifier:
                     is_valid_attachment = False
@@ -1217,34 +1217,34 @@ def compute_emoji_analysis(text: str) -> dict:
 
             if is_rgi_single:
                 rgi_singles_count += 1
-                    if final_status == "unknown": # Upgrade status
-                        final_status = "fully-qualified"
-                
-                if is_ivs:
-                    # Treat lone IVS as a "component"
-                    if final_status == "unknown":
-                        final_status = "component"
-                    # Add to flag list (even if it's also in qual_map)
-                    if f"#{i}" not in flag_component:
-                         flag_component.append(f"#{i}")
-
-                # Add to V2 details list
-                if final_status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
-                    emoji_details_list.append({
-                        "sequence": char,
-                        "status": final_status,
-                        "index": i
-                    })
-                
-                # Add to T3 flag lists
-                if final_status == "unqualified":
-                    flag_unqualified.append(f"#{i}")
-                elif final_status == "minimally-qualified":
-                    flag_minimally_qualified.append(f"#{i}")
-                elif final_status == "component" and not is_ivs: # (IVS is already added)
+                if final_status == "unknown": # Upgrade status
+                    final_status = "fully-qualified"
+            
+            if is_ivs:
+                # Treat lone IVS as a "component"
+                if final_status == "unknown":
+                    final_status = "component"
+                # Add to flag list (even if it's also in qual_map)
+                if f"#{i}" not in flag_component:
                     flag_component.append(f"#{i}")
-                elif final_status == "fully-qualified":
-                    flag_fully_qualified.append(f"#{i}")
+
+            # Add to V2 details list
+            if final_status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
+                emoji_details_list.append({
+                    "sequence": char,
+                    "status": final_status,
+                    "index": i
+                })
+            
+            # Add to T3 flag lists
+            if final_status == "unqualified":
+                flag_unqualified.append(f"#{i}")
+            elif final_status == "minimally-qualified":
+                flag_minimally_qualified.append(f"#{i}")
+            elif final_status == "component" and not is_ivs: # (IVS is already added)
+                flag_component.append(f"#{i}")
+            elif final_status == "fully-qualified":
+                flag_fully_qualified.append(f"#{i}")
 
             # Advance the loop
             i += consumed
