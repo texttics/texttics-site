@@ -508,3 +508,73 @@ Group 3: Threat-Hunting
 .banner-warning[hidden] {
   display: none;
 }
+
+/* ---
+Legends & Badges
+--- */
+.legend {
+  margin-top: -0.5rem; /* Pulls it closer to the title */
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.legend-label {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+/* For Emoji Profile */
+.legend-pill {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.legend-pill-ok {
+  border-color: #a7f3d0; /* green-200 */
+  background-color: #f0fdf4; /* green-50 */
+  color: #065f46; /* green-800 */
+}
+.legend-pill-warn {
+  border-color: #fde68a; /* yellow-200 */
+  background-color: #fefce8; /* yellow-50 */
+  color: #854d0e; /* yellow-800 */
+}
+.legend-pill-neutral {
+  border-color: #e5e7eb; /* gray-200 */
+  background-color: #f9fafb; /* gray-50 */
+  color: #374151; /* gray-700 */
+}
+
+/* For Threat Profile */
+.legend-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.legend-badge-danger {
+  background-color: #fef2f2; /* red-50 */
+  color: #b91c1c; /* red-700 */
+  border-color: #fca5a5; /* red-300 */
+}
+.legend-badge-high {
+  background-color: #fffbeb; /* yellow-50 */
+  color: #b45309; /* amber-700 */
+  border-color: #fcd34d; /* yellow-300 */
+}
+.legend-badge-suspicious {
+  background-color: #eff6ff; /* blue-50 */
+  color: #1e40af; /* blue-800 */
+  border-color: #bfdbfe; /* blue-200 */
+}
