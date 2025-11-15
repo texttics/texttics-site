@@ -2096,32 +2096,25 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 }
                 # --- End Alias Map ---
 
+                # 1. Check IdentifierStatus (UAX #31)
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 status_key = ""
                 
                 if id_status_val:
-                    # It's in the file. Check if it's NOT allowed.
                     if id_status_val not in UAX31_ALLOWED_STATUSES:
-                        # It's an explicit restricted type (e.g., Technical, Uncommon_Use)
                         status_key = f"Flag: Status: {id_status_val}"
                 else:
-                    # It's NOT in the file. Apply the "Default Restricted" rule.
-                    # We must explicitly exclude Cn, Co, Cs (Other)
                     if category not in ("Cn", "Co", "Cs"):
-                        # This character is not explicitly allowed, so it's restricted by default.
                         status_key = "Flag: Identifier Status: Default Restricted"
                 
                 if status_key:
-                    key = status_key # Use the prepended "Flag:" key
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
+                    if status_key not in id_type_stats: id_type_stats[status_key] = {'count': 0, 'positions': []}
+                    id_type_stats[status_key]['count'] += 1
+                    id_type_stats[status_key]['positions'].append(f"#{i}")
 
-                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
+                # 2. Check IdentifierType (UAX #31)
                 specific_id_type = _find_in_ranges(cp, "IdentifierType")
                 if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
-                    # We found a specific restricted type
-                    # Clean the label using our alias map
                     clean_label = ID_TYPE_ALIASES.get(specific_id_type, specific_id_type)
                     key = f"Flag: Type: {clean_label}"
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
@@ -2129,7 +2122,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     id_type_stats[key]['positions'].append(f"#{i}")
                 
                 # --- END (UAX #31 Logic) ---
-
                     # --- NEW (Parallel) Specific Flag Logic ---
                 # This runs *in addition* to the blocks above to create
                 # the specific, high-value flags from IdentifierStatus.txt
