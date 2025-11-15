@@ -132,7 +132,6 @@ UAX31_RESTRICTED_STATUSES = {
     "Restricted",
     "Technical",
     "Uncommon_Use",
-    "Limited_Use",
     "Deprecated",
     "Obsolete",
 }
@@ -2024,6 +2023,31 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
+
+                    # --- NEW (Parallel) Specific Flag Logic ---
+                # This runs *in addition* to the blocks above to create
+                # the specific, high-value flags from IdentifierStatus.txt
+                
+                # 1. Check IdentifierStatus (for Obsolete, Uncommon_Use, etc.)
+                specific_id_status = _find_in_ranges(cp, "IdentifierStatus")
+                if specific_id_status and specific_id_status not in UAX31_ALLOWED_STATUSES:
+                    # We found an *explicitly* restricted status
+                    key = f"Flag: Status: {specific_id_status}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+    
+                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
+                # Note: This is separate from Status. A char can be 
+                # Status:Restricted AND Type:Obsolete
+                specific_id_type = _find_in_ranges(cp, "IdentifierType")
+                if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
+                    # We found a specific restricted type
+                    key = f"Flag: Type: {specific_id_type}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+                # --- END (Parallel) Specific Flag Logic ---
 
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
                 # --- NEW (Parallel) Specific Flag Logic ---
