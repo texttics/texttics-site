@@ -2238,63 +2238,53 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
    # }
 
 def compute_provenance_stats(t: str):
-    """Module 2.D: Runs UAX #44 and Deep Scan analysis."""
+    """Module 2.D: Runs UAX #44 and Deep Scan analysis (with positions)."""
 
-    # 1. UAX #44 Stats are now data-driven and moved to compute_forensic_stats
-    # This section is now only for Script, Block, Age, and Numeric analysis.
-
-    # These dicts will hold the counts
-    script_stats = {} 
-    script_ext_stats = {}
-    
-    # 2. Deep Scan Stats (if data is loaded)
+    # 1. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
         return {} # Return empty if data isn't ready
 
     numeric_total_value = 0
     number_script_zeros = set()
-    deep_stats = {} # for Block, Age, Type, etc.
+    final_stats = {} # This will now hold the dicts
 
-    # We loop char-by-char for all data-file properties
-    for char in t:
+    # Helper to add to our new structure
+    def _add_stat(key, index):
+        if key not in final_stats:
+            final_stats[key] = {'count': 0, 'positions': []}
+        final_stats[key]['count'] += 1
+        final_stats[key]['positions'].append(f"#{index}")
+
+    # We loop char-by-char with index
+    js_array = window.Array.from_(t)
+    for i, char in enumerate(js_array):
         cp = ord(char)
 
-        # --- THIS IS THE NEW DATA-DRIVEN SCRIPT LOGIC ---
+        # --- Script and Script-Extension ---
         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
         if script_ext_val:
-            # Case 1: Char is in ScriptExtensions.txt (e.g., the Middle Dot)
             scripts = script_ext_val.split()
             for script in scripts:
-                key = f"Script-Ext: {script}"
-                script_ext_stats[key] = script_ext_stats.get(key, 0) + 1
+                _add_stat(f"Script-Ext: {script}", i)
         else:
-            # Case 2: Char is NOT in ScriptExtensions.txt (e.g., 't' or '(')
-            # We fall back to its primary 'Script' property from Scripts.txt
             script_val = _find_in_ranges(cp, "Scripts")
             if script_val:
-                key = f"Script: {script_val}"
-                script_stats[key] = script_stats.get(key, 0) + 1
-        # --- END OF NEW LOGIC ---
+                _add_stat(f"Script: {script_val}", i)
 
-        # Block, Age, Type
+        # --- Block, Age, Type ---
         block_name = _find_in_ranges(cp, "Blocks")
         if block_name:
-            key = f"Block: {block_name}"
-            deep_stats[key] = deep_stats.get(key, 0) + 1
+            _add_stat(f"Block: {block_name}", i)
 
         age = _find_in_ranges(cp, "Age")
         if age:
-            key = f"Age: {age}"
-            deep_stats[key] = deep_stats.get(key, 0) + 1
+            _add_stat(f"Age: {age}", i)
 
-        # --- ADD THIS BLOCK ---
         num_type = _find_in_ranges(cp, "NumericType")
         if num_type:
-            key = f"Numeric Type: {num_type}"
-            deep_stats[key] = deep_stats.get(key, 0) + 1
-        # --- END ADD ---
+            _add_stat(f"Numeric Type: {num_type}", i)
 
-        # Numeric Properties
+        # --- Numeric Properties (Non-positional) ---
         try:
             value = unicodedata.numeric(char)
             numeric_total_value += value
@@ -2305,16 +2295,18 @@ def compute_provenance_stats(t: str):
         except (ValueError, TypeError):
             pass
 
+    # --- Add the non-positional stats (which don't need 'positions') ---
     if numeric_total_value > 0:
-        deep_stats["Total Numeric Value"] = round(numeric_total_value, 4)
+        final_stats["Total Numeric Value"] = {
+            'count': round(numeric_total_value, 4), 
+            'positions': ["(N/A)"]
+        }
     if len(number_script_zeros) > 1:
-        deep_stats["Mixed-Number Systems"] = len(number_script_zeros)
+        final_stats["Mixed-Number Systems"] = {
+            'count': len(number_script_zeros), 
+            'positions': ["(N/A)"]
+        }
 
-    # Combine all stats
-    final_stats = {}
-    final_stats.update(script_stats)
-    final_stats.update(script_ext_stats)
-    final_stats.update(deep_stats)
     return final_stats
 
 
@@ -2923,7 +2915,7 @@ def update_all(event=None):
     render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
     
     # Render 2.D
-    render_matrix_table(prov_matrix, "provenance-matrix-body")
+    render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True)
     render_matrix_table(script_run_stats, "script-run-matrix-body")
     #render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
 
