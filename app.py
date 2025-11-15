@@ -1098,6 +1098,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_illformed_tag = []
     flag_invalid_ri = []
     flag_broken_keycap = []
+    flag_forced_emoji = []
 
     # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
@@ -1137,7 +1138,14 @@ def compute_emoji_analysis(text: str) -> dict:
                         flag_component.append(f"#{i}")
                     elif status == "fully-qualified":
                         flag_fully_qualified.append(f"#{i}")
-                    
+                        # --- Check for Forced-Emoji Presentation (e.g., © + FE0F) ---
+                        # candidate_chars is the JS array of chars in the sequence
+                        if L == 2 and ord(candidate_chars[1]) == 0xFE0F:
+                            base_cp = ord(candidate_chars[0])
+                            # If the base char is NOT default-emoji, this is a "forced-emoji" flag
+                            if not _find_in_ranges(base_cp, "Emoji_Presentation"):
+                                flag_forced_emoji.append(f"#{i}")
+                        # --- End Check ---
                     i += L  # Consume the entire sequence
                     break # Exit the `for L` loop
 
@@ -1292,7 +1300,8 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier},
             "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag},
             "Flag: Invalid Regional Indicator": {'count': len(flag_invalid_ri), 'positions': flag_invalid_ri},
-            "Flag: Broken Keycap Sequence": {'count': len(flag_broken_keycap), 'positions': flag_broken_keycap}
+            "Flag: Broken Keycap Sequence": {'count': len(flag_broken_keycap), 'positions': flag_broken_keycap},
+            "Flag: Forced Emoji Presentation": {'count': len(flag_forced_emoji), 'positions': flag_forced_emoji}
         },
         "emoji_list": emoji_details_list
     }
