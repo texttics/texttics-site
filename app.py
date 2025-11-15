@@ -1878,35 +1878,6 @@ def compute_graphemebreak_analysis(t: str):
             
     return counters
 
-def compute_eastasianwidth_analysis(t: str):
-    """Module 2.B-EastAsianWidth: Runs Token Shape Analysis."""
-    counters = {}
-    if not t or LOADING_STATE != "READY":
-        return counters
-
-    current_state = "NONE"
-    
-    for char in t:
-        cp = ord(char)
-        eaw_class = _find_in_ranges(cp, "EastAsianWidth")
-        new_state = eaw_class if eaw_class else "N" # 'N' (Neutral) is the default
-        
-        if new_state != current_state:
-            if current_state != "NONE":
-                if current_state in counters:
-                    counters[current_state] += 1
-                else:
-                    counters[current_state] = 1
-            current_state = new_state
-    
-    # Add the final run
-    if current_state != "NONE":
-        if current_state in counters:
-            counters[current_state] += 1
-        else:
-            counters[current_state] = 1
-            
-    return counters
 
 def compute_eastasianwidth_analysis(t: str):
     """Module 2.B-EastAsianWidth: Runs Token Shape Analysis."""
@@ -2131,6 +2102,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
+                if _find_in_ranges(cp, "Emoji_Modifier"): emoji_modifier_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "VariationSelector"): variation_selector_indices.append(f"#{i}")
 
                 # --- 10. Variation Selector (VS) Sanity Check ---
