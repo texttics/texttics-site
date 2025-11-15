@@ -1088,6 +1088,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_fully_qualified = []
     flag_illegal_modifier = []
     flag_illformed_tag = []
+    flag_invalid_ri = []
 
     # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
@@ -1174,6 +1175,15 @@ def compute_emoji_analysis(text: str) -> dict:
                 is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
                 is_ivs = 0xE0100 <= cp <= 0xE01EF # Steganography
                 is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
+                is_ri = window.RegExp.new(r"^\p{Regional_Indicator}$", "u").test(char)
+
+                if is_ri:
+                    # This char is a Regional_Indicator but was NOT part of a valid
+                    # RGI sequence, making it an anomaly.
+                    flag_invalid_ri.append(f"#{i}")
+                    if final_status == "unknown": final_status = "component"
+
+            # --- NEW: Parallel checks for new flags ---
 
            # --- NEW: Parallel checks for new flags ---
                 # We run these checks *separately* from the is_rgi_single logic
@@ -1263,6 +1273,7 @@ def compute_emoji_analysis(text: str) -> dict:
             "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified},
             "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier},
             "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag}
+            "Flag: Invalid Regional Indicator": {'count': len(flag_invalid_ri), 'positions': flag_invalid_ri}
         },
         "emoji_list": emoji_details_list
     }
