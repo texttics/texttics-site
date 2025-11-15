@@ -2620,6 +2620,34 @@ def render_emoji_qualification_table(emoji_list: list):
     
     element.innerHTML = "".join(html)
 
+def render_emoji_summary(emoji_counts, emoji_list):
+    """
+    Render a one-line summary like:
+    'RGI Emoji Sequences: 4 • Emoji Components: 2'
+    """
+    summary_el = document.getElementById("emoji-summary")
+    if not summary_el:
+        return
+
+    # RGI total comes directly from the emoji_counts dict
+    rgi_total = emoji_counts.get("RGI Emoji Sequences", 0)
+
+    # Try to get component count from counts dict, or fall back to emoji_list
+    component_total = emoji_counts.get("Emoji Components", None)
+    if component_total is None:
+        # Fallback: count rows whose status starts with "Component"
+        component_total = sum(
+            e.get("count", 0)
+            for e in emoji_list
+            if str(e.get("status", "")).lower().startswith("component")
+        )
+
+    summary_el.innerText = (
+        f"RGI Emoji Sequences: {rgi_total} • "
+        f"Emoji Components: {component_total}"
+    )
+
+
 def render_cards(stats_dict, element_id):
     """Generates and injects HTML for standard stat cards."""
     html = []
@@ -2788,6 +2816,7 @@ def update_all(event=None):
         render_matrix_table({}, "eawidth-run-matrix-body")
         render_matrix_table({}, "vo-run-matrix-body")
         render_emoji_qualification_table([])
+        render_emoji_summary({}, [])
         render_threat_analysis({}) 
         
         render_toc_counts({})
@@ -2931,6 +2960,7 @@ def update_all(event=None):
     #render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
 
     render_emoji_qualification_table(emoji_list)
+    render_emoji_summary(emoji_counts, emoji_list)
 
     # Render 3
     render_threat_analysis(threat_results)
