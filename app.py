@@ -2082,15 +2082,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if _find_in_ranges(cp, "CompositionExclusions"): norm_exclusion_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"): norm_nfkc_casefold_indices.append(f"#{i}")
 
-                # --- 8. IdentifierType (from data) ---
-                id_type = _find_in_ranges(cp, "IdentifierType")
-                if id_type and id_type not in ("Recommended", "Inclusion"):
-                    key = f"Type: {id_type}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
                 
-                # --- 9. IdentifierStatus (UAX #31) ---
+                # --- 8. IdentifierStatus (UAX #31) ---
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 
                 status_key = ""
@@ -2920,6 +2913,19 @@ def update_all(event=None):
     zwj_flag = forensic_matrix.get("Join Control (Structural)", {})
     if zwj_flag.get("count", 0) > 0:
         threat_flags["Suspicious: Lone Join Control (ZWJ)"] = zwj_flag
+
+    # --- NEW: Manually add our new emoji flags to the Threat table ---
+    new_emoji_flags = {
+        "Flag: Broken Keycap Sequence": "Suspicious: Broken Keycap",
+        "Flag: Invalid Regional Indicator": "Suspicious: Invalid Regional Indicator",
+        "Flag: Forced Emoji Presentation": "Suspicious: Forced Emoji",
+        "Flag: Intent-Modifying ZWJ": "Suspicious: Intent-Modifying ZWJ"
+    }
+
+    for flag_key, threat_label in new_emoji_flags.items():
+        flag_data = emoji_flags.get(flag_key, {})
+        if flag_data.get("count", 0) > 0:
+            threat_flags[threat_label] = flag_data
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
