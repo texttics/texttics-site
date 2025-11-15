@@ -1899,7 +1899,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     terminal_punct_indices = []
     sentence_terminal_indices = []
     alphabetic_indices = []
-    decomp_stats = {}
     decomp_type_stats = {}
     bidi_mirrored_indices = []
     loe_indices = []
@@ -2050,31 +2049,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 # --- END (Parallel) Specific Flag Logic ---
 
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
-                # --- NEW (Parallel) Specific Flag Logic ---
-                # This runs *in addition* to the blocks above to create
-                # the specific, high-value flags from IdentifierStatus.txt
-                
-                # 1. Check IdentifierStatus (for Obsolete, Uncommon_Use, etc.)
-                specific_id_status = _find_in_ranges(cp, "IdentifierStatus")
-                if specific_id_status and specific_id_status not in UAX31_ALLOWED_STATUSES:
-                    # We found an *explicitly* restricted status
-                    key = f"Flag: Status: {specific_id_status}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
-    
-                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
-                # Note: This is separate from Status. A char can be 
-                # Status:Restricted AND Type:Obsolete
-                specific_id_type = _find_in_ranges(cp, "IdentifierType")
-                if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
-                    # We found a specific restricted type
-                    key = f"Flag: Type: {specific_id_type}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
-                # --- END (Parallel) Specific Flag Logic ---
-                if _find_in_ranges(cp, "Emoji_Modifier"): emoji_modifier_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "VariationSelector"): variation_selector_indices.append(f"#{i}")
 
@@ -2111,8 +2085,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
     forensic_stats["Prop: Sentence Terminal"] = {'count': len(sentence_terminal_indices), 'positions': sentence_terminal_indices}
     forensic_stats["Prop: Alphabetic"] = {'count': len(alphabetic_indices), 'positions': alphabetic_indices}
-    
-    forensic_stats.update(decomp_stats)
+
     forensic_stats.update(decomp_type_stats)
     
     forensic_stats["Prop: Bidi Mirrored"] = {'count': len(bidi_mirrored_indices), 'positions': bidi_mirrored_indices}
@@ -2332,7 +2305,7 @@ def compute_threat_analysis(t: str):
 
     def _get_hash(s: str):
         if not s: return ""
-        return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
+        return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
     try:
         # --- 2. Generate Normalized States (using Extended Normalizer) ---
@@ -2367,7 +2340,8 @@ def compute_threat_analysis(t: str):
                         scripts_in_use.add(script_val)
                 
                 # --- C. Confusable HTML Report Builder ---
-                if lnps_regex and cp in confusables_map and lnps_regex.test(char):
+                # We use a non-global regex here to avoid stateful .test() bugs
+                if cp in confusables_map and window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                     found_confusable = True
                     skeleton_char_str = confusables_map[cp]
                     skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
@@ -2408,6 +2382,7 @@ def compute_threat_analysis(t: str):
             # Add Mixed-Script flag (from the global set)
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
+            scripts_in_use.discard("Zzzz")
             if len(scripts_in_use) > 1:
                 key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
                 threat_flags[key] = {
@@ -2764,22 +2739,11 @@ def update_all(event=None):
 
    
     # Module 2.C: Forensic Integrity
+    # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
-    zwj_flag = forensic_stats.get("Join Control (Structural)", {})
-    if zwj_flag.get("count", 0) > 0:
-        # We found a lone ZWJ. Let's find its index.
-        zwj_positions = zwj_flag.get("positions", [])
-        for pos_str in zwj_positions:
-             try:
-                 # Add it to the list that the emoji table renderer uses
-                 emoji_list.append({
-                     "sequence": "‍", # The ZWJ character
-                     "status": "component",
-                     "index": int(pos_str[1:]) # Convert "#187" to 187
-                 })
-             except Exception:
-                 pass # Ignore if formatting is weird
-    forensic_stats.update(emoji_flags)
+    # NOTE:
+    # - We no longer inject lone ZWJ into the Emoji Qualification table here.
+    # - We also keep emoji_flags separate from the forensic integrity matrix.
     
     # Module 2.D: Provenance & Context
     provenance_stats = compute_provenance_stats(t)
@@ -2813,12 +2777,21 @@ def update_all(event=None):
     prov_matrix = provenance_stats
 
     threat_flags = threat_results.get('flags', {})
-    if forensic_matrix.get("Flag: Invalid Variation Selector", {}).get("count", 0) > 0:
-        threat_flags["Suspicious: Invalid Variation Selectors"] = forensic_matrix["Flag: Invalid Variation Selector"]
-    if forensic_matrix.get("Flag: Unqualified Emoji", {}).get("count", 0) > 0:
-        threat_flags["Suspicious: Unqualified Emoji"] = forensic_matrix["Flag: Unqualified Emoji"]
-    if forensic_matrix.get("Join Control (Structural)", {}).get("count", 0) > 0:
-        threat_flags["Suspicious: Lone Join Control (ZWJ)"] = forensic_matrix["Join Control (Structural)"]
+
+    # 1) Invalid variation selectors come from forensic (structural) analysis
+    invalid_vs_flag = forensic_matrix.get("Flag: Invalid Variation Selector", {})
+    if invalid_vs_flag.get("count", 0) > 0:
+        threat_flags["Suspicious: Invalid Variation Selectors"] = invalid_vs_flag
+    
+    # 2) Unqualified emoji comes from the emoji engine (emoji_flags)
+    unqualified_emoji_flag = emoji_flags.get("Flag: Unqualified Emoji", {})
+    if unqualified_emoji_flag.get("count", 0) > 0:
+        threat_flags["Suspicious: Unqualified Emoji"] = unqualified_emoji_flag
+    
+    # 3) Lone ZWJ still comes from the structural integrity profile
+    zwj_flag = forensic_matrix.get("Join Control (Structural)", {})
+    if zwj_flag.get("count", 0) > 0:
+        threat_flags["Suspicious: Lone Join Control (ZWJ)"] = zwj_flag
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
