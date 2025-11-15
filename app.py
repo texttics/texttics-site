@@ -2010,12 +2010,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
     # --- Alias map for noisy IdentifierType labels (defined once outside the loop) ---
     ID_TYPE_ALIASES = {
-        "Technical Not_XID": "Technical",
-        "Exclusion Not_XID": "Exclusion",
-        "Obsolete Not_XID": "Obsolete",
-        "Deprecated Not_XID": "Deprecated",
-        "Not_NFKC Not_XID": "Not_NFKC",
-        "Default_Ignorable Not_XID": "Default_Ignorable"
+        "Technical Not_XID": "Technical (Not_XID)",
+        "Exclusion Not_XID": "Exclusion (Not_XID)",
+        "Obsolete Not_XID": "Obsolete (Not_XID)",
+        "Deprecated Not_XID": "Deprecated (Not_XID)",
+        "Not_NFKC Not_XID": "Not_NFKC (Not_XID)",
+        "Default_Ignorable Not_XID": "Default_Ignorable (Not_XID)"
     }
     
     if LOADING_STATE == "READY":
