@@ -249,7 +249,25 @@ const parseTable = (tbodyId, sectionTitle) => {
   report.push(...parseTable('script-run-matrix-body', 'Script Run'));
 
   report.push(`\n[ Emoji Qualification Profile ]`);
-  report.push(...parseTable('emoji-qualification-body', 'Emoji'));
+
+  // CUSTOM PARSER for 4-column Emoji table
+  const emojiTbody = document.getElementById('emoji-qualification-body');
+  if (emojiTbody) {
+      emojiTbody.querySelectorAll('tr').forEach(row => {
+          // Note: The `innerText` property automatically handles the <details> logic,
+          // so we just replace newlines from the <summary>/<div> structure with a space.
+          const cells = row.querySelectorAll('th, td');
+          if (cells.length === 4) {
+              const sequence = cells[0].innerText;
+              const status = cells[1].innerText;
+              const count = cells[2].innerText;
+              const positions = cells[3].innerText.replace(/\n/g, ' '); 
+  
+              report.push(`    Emoji: ${sequence} (${status}), ${count}, Positions: ${positions}`);
+          }
+      });
+  }
+  
 
   // --- 6. Threat-Hunting ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
