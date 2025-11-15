@@ -649,62 +649,69 @@ def _parse_composition_exclusions(txt: str):
 
 def _parse_emoji_zwj_sequences(txt: str) -> set:
     """
-    Parses emoji-zwj-sequences.txt into a set of RGI emoji ZWJ strings.
+    Parse emoji-zwj-sequences.txt into a set of ZWJ emoji strings.
 
-    Handles multiple common formats, for example:
-      1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
-      1F468 200D 2695 FE0F ; Emoji_ZWJ_Sequence ; E4.0 # man health worker
-      1F468 200D 2695 FE0F ; fully-qualified ; man health worker # 👨‍⚕️
+    Supports two formats:
 
-    Strategy:
-      - Take all lines with multiple code points (sequence).
-      - Require that at least one code point is 200D (ZWJ).
-      - Treat them as RGI if the type field looks like RGI/Emoji_ZWJ/fully-qualified.
+    1) Old UTR #51-style (what you actually have now):
+       1F441 200D 1F5E8                            # (👁‍🗨) eye, zwj, left speech bubble
+
+    2) Newer TR51-style:
+       1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
     """
-    sequences = set()
+    sequences: set[str] = set()
 
     for raw in txt.splitlines():
-        # Strip comments
-        line = raw.split('#', 1)[0].strip()
+        # Strip trailing comment
+        before_hash = raw.split('#', 1)[0]
+        line = before_hash.strip()
         if not line:
             continue
 
         try:
-            # Split all columns (not just 2)
-            parts = [p.strip() for p in line.split(';')]
-            if not parts:
-                continue
+            # --- Case A: newer semicolon-based format ---
+            if ';' in line:
+                parts = [p.strip() for p in line.split(';')]
+                if not parts:
+                    continue
 
-            hex_codes_str = parts[0]
-            type_field = parts[1] if len(parts) > 1 else ""
+                hex_codes_str = parts[0]
+                type_field = parts[1] if len(parts) > 1 else ""
 
-            hex_codes = hex_codes_str.split()
-            # Must be a *sequence* (2+ code points)
-            if len(hex_codes) <= 1:
-                continue
+                hex_codes = hex_codes_str.split()
+                # Need at least 2 code points to be a sequence
+                if len(hex_codes) <= 1:
+                    continue
+                # Must contain ZWJ (200D)
+                if "200D" not in hex_codes_str:
+                    continue
 
-            # Heuristic: must contain ZWJ (200D)
-            if "200D" not in hex_codes_str:
-                continue
+                type_field_lower = type_field.lower()
+                # Be tolerant: accept the usual Unicode-style labels
+                is_rgi = (
+                    "rgi_emoji_zwj_sequence" in type_field_lower
+                    or "emoji_zwj_sequence" in type_field_lower
+                    or "fully-qualified" in type_field_lower
+                )
+                if not is_rgi:
+                    continue
 
-            # Decide whether to treat as RGI
-            # Be tolerant to different data variants
-            type_field_lower = type_field.lower()
-            is_rgi = (
-                "rgi_emoji_zwj_sequence" in type_field_lower or
-                "emoji_zwj_sequence" in type_field_lower or
-                "fully-qualified" in type_field_lower
-            )
-
-            if not is_rgi:
-                continue
-
-            # Build the actual Unicode string
+            # --- Case B: old UTR #51-style (your current file) ---
+            else:
+                # Entire line is just hex codes
+                hex_codes = line.split()
+                if len(hex_codes) <= 1:
+                    continue
+                # Heuristic: Must contain ZWJ (U+200D) to be a ZWJ sequence
+                if "200D" not in hex_codes:
+                    continue
+            
+            # Build the actual Unicode string (applies to both cases)
             seq = "".join(chr(int(h, 16)) for h in hex_codes)
             sequences.add(seq)
 
         except Exception:
-            # Ignore malformed lines silently
+            # Ignore malformed lines, don't kill the whole parse
             continue
 
     print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
