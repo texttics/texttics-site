@@ -1151,9 +1151,21 @@ def compute_emoji_analysis(text: str) -> dict:
             # This is a 2-char sequence that isn't in the RGI set.
             if i + 1 < n and ord(js_array[i+1]) == 0xFE0E: # Text Selector
                 if _find_in_ranges(cp, "Emoji_Presentation"): # Base is default-emoji
+                    # 1. Add to the main "Forced Text" flag
                     flag_forced_text.append(f"#{i}")
-                    consumed = 2 # Consume both chars
+                    
+                    # 2. Set the status and consume *both* chars
+                    consumed = 2
                     final_status = "forced-text" # Give it a special status
+                    
+                    # 3. Also add this sequence to the V2 details list
+                    # (This was the missing piece of logic)
+                    sequence_str = char + js_array[i+1]
+                    emoji_details_list.append({
+                        "sequence": sequence_str,
+                        "status": final_status,
+                        "index": i
+                    })
             
             # --- B: If not Forced Text, analyze the single char ---
             if final_status == "unknown":
