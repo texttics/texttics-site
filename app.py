@@ -103,6 +103,19 @@ VALID_KEYCAP_BASES = frozenset({
 })
 
 # Pre-compiled testers for single characters
+
+# Sequences that modify intent but are not RGI
+# (This is just an example list, you would need to curate this)
+INTENT_MODIFYING_ZWJ_SEQUENCES = {
+    "🏃‍➡️": "Directional ZWJ (Runner + Right Arrow)",
+    "➡️‍⬛": "Color ZWJ (Right Arrow + Black Square)",
+    # Add other sequences here, like Hand + ZWJ + Holding...
+}
+
+# Also create a set for fast lookup
+INTENT_MODIFYING_ZWJ_SET = frozenset(INTENT_MODIFYING_ZWJ_SEQUENCES.keys())
+INTENT_MODIFYING_MAX_LEN = max((len(s) for s in INTENT_MODIFYING_ZWJ_SET), default=0)
+
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
 TEST_MAJOR = {
     "L (Letter)": window.RegExp.new(r"^\p{L}$", "u"),
@@ -1099,13 +1112,50 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_invalid_ri = []
     flag_broken_keycap = []
     flag_forced_emoji = []
-
+    flag_intent_mod_zwj = [] # <-- ADDED FOR V2
+    
     # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
     n = len(js_array)
     i = 0
+    
+    # --- NEW: Create a "consumed" set ---
+    # We must mark indices as "consumed" so the RGI scanner
+    # doesn't re-process parts of an intent-modifying sequence.
+    consumed_indices = set()
 
+    # --- NEW: Tier 0 - Intent-Modifying ZWJ Scan ---
+    if INTENT_MODIFYING_MAX_LEN > 1:
+        # Note: We loop to n-1 because we need at least 2 chars
+        for k in range(n - 1):
+            if k in consumed_indices: continue
+            
+            max_window = min(INTENT_MODIFYING_MAX_LEN, n - k)
+            # We need L > 1 for sequences
+            for L in range(max_window, 1, -1):
+                candidate = "".join(js_array[k : k + L])
+                if candidate in INTENT_MODIFYING_ZWJ_SET:
+                    flag_intent_mod_zwj.append(f"#{k}")
+                    
+                    # Mark all indices in this sequence as consumed
+                    for j in range(k, k + L):
+                        consumed_indices.add(j)
+                    
+                    # Add to V2 details list (optional)
+                    emoji_details_list.append({
+                        "sequence": candidate,
+                        "status": "Intent-Modifying",
+                        "index": k
+                    })
+                    break # Stop inner (L) loop
+    
+    # --- Main Loop ---
     while i < n:
+        # --- NEW: Skip consumed indices ---
+        if i in consumed_indices:
+            i += 1
+            continue
+            
         matched_sequence = False
         
         # --- Tiers 1-3: Greedy RGI Sequence Scan (e.g., 👨‍👩‍👧‍👦, 👍🏾, 🇺🇦) ---
@@ -1301,7 +1351,8 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag},
             "Flag: Invalid Regional Indicator": {'count': len(flag_invalid_ri), 'positions': flag_invalid_ri},
             "Flag: Broken Keycap Sequence": {'count': len(flag_broken_keycap), 'positions': flag_broken_keycap},
-            "Flag: Forced Emoji Presentation": {'count': len(flag_forced_emoji), 'positions': flag_forced_emoji}
+            "Flag: Forced Emoji Presentation": {'count': len(flag_forced_emoji), 'positions': flag_forced_emoji},
+            "Flag: Intent-Modifying ZWJ": {'count': len(flag_intent_mod_zwj), 'positions': flag_intent_mod_zwj}
         },
         "emoji_list": emoji_details_list
     }
@@ -2085,6 +2136,38 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
+
+                # --- Alias map for noisy IdentifierType labels ---
+                ID_TYPE_ALIASES = {
+                    "Technical Not_XID": "Technical",
+                    "Exclusion Not_XID": "Exclusion",
+                    "Obsolete Not_XID": "Obsolete",
+                    "Deprecated Not_XID": "Deprecated",
+                    "Not_NFKC Not_XID": "Not_NFKC",
+                    "Default_Ignorable Not_XID": "Default_Ignorable"
+                }
+                # --- End Alias Map ---
+
+                # 1. Check IdentifierStatus (for Obsolete, Uncommon_Use, etc.)
+                specific_id_status = _find_in_ranges(cp, "IdentifierStatus")
+                if specific_id_status and specific_id_status not in UAX31_ALLOWED_STATUSES:
+                    # We found an *explicitly* restricted status
+                    key = f"Flag: Status: {specific_id_status}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+                
+                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
+                specific_id_type = _find_in_ranges(cp, "IdentifierType")
+                if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
+                    # We found a specific restricted type
+                    # Clean the label using our alias map
+                    clean_label = ID_TYPE_ALIASES.get(specific_id_type, specific_id_type)
+                    key = f"Flag: Type: {clean_label}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+                    
                 # --- END (Parallel) Specific Flag Logic ---
 
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
