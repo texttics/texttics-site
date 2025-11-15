@@ -1751,16 +1751,24 @@ def compute_bidi_class_analysis(t: str):
     return counters
 
 def compute_script_run_analysis(t: str):
-    """Module 2.D-Script: Runs Token Shape Analysis (Script Properties)."""
-    counters = {}
+    """Module 2.D-Script: Runs Token Shape Analysis (Script Properties) (with positions)."""
+    final_stats = {}
     if not t or LOADING_STATE != "READY":
-        return counters
+        return final_stats
 
     current_state = "NONE"
-    
-    # --- START: CORRECT RLE LOGIC ---
+    current_run_start_index = 0
+
+    # Helper to add a completed run to the stats
+    def _add_run(state, start_index):
+        if state == "NONE": return
+        if state not in final_stats:
+            final_stats[state] = {'count': 0, 'positions': []}
+        final_stats[state]['count'] += 1
+        final_stats[state]['positions'].append(f"#{start_index}")
+
     js_array = window.Array.from_(t)
-    for char in js_array:
+    for i, char in enumerate(js_array):
         try:
             cp = ord(char)
             new_state = _get_char_script_id(char, cp)
@@ -1768,22 +1776,16 @@ def compute_script_run_analysis(t: str):
             new_state = "Script: Unknown" # Failsafe
         
         if new_state != current_state:
-            if current_state != "NONE":
-                if current_state in counters:
-                    counters[current_state] += 1
-                else:
-                    counters[current_state] = 1
+            # End the previous run
+            _add_run(current_state, current_run_start_index)
+            # Start the new run
             current_state = new_state
+            current_run_start_index = i
     
     # Add the final run
-    if current_state != "NONE":
-        if current_state in counters:
-            counters[current_state] += 1
-        else:
-            counters[current_state] = 1
-    # --- END: CORRECT RLE LOGIC ---
-            
-    return counters
+    _add_run(current_state, current_run_start_index)
+    
+    return final_stats
 
 def compute_wordbreak_analysis(t: str):
     """Module 2.B-WordBreak: Runs Token Shape Analysis (UAX #29)."""
@@ -2887,7 +2889,7 @@ def update_all(event=None):
         'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
-        'prov': sum(1 for v in prov_matrix.values() if v > 0) + sum(1 for v in script_run_stats.values() if v > 0),
+        'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
         'threat': sum(1 for v in threat_results.get('flags', {}).values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
     }
     
@@ -2916,7 +2918,7 @@ def update_all(event=None):
     
     # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True)
-    render_matrix_table(script_run_stats, "script-run-matrix-body")
+    render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True)
     #render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
 
     render_emoji_qualification_table(emoji_list)
