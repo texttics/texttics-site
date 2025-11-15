@@ -2891,15 +2891,6 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             threat_flags[threat_label] = flag_data
 
-    # --- NEW: Calculate Emoji Row Count for TOC ---
-    # We count the unique (sequence, status) pairs to get the row count.
-    toc_emoji_count = 0
-    if emoji_list:
-        grouped_emoji_keys = set()
-        for item in emoji_list:
-            key = (item.get("sequence", "?"), item.get("status", "unknown"))
-            grouped_emoji_keys.add(key)
-        toc_emoji_count = len(grouped_emoji_keys)
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
