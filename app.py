@@ -2737,6 +2737,7 @@ def render_toc_counts(counts):
     document.getElementById("toc-shape-count").innerText = f"({counts.get('shape', 0)})"
     document.getElementById("toc-integrity-count").innerText = f"({counts.get('integrity', 0)})"
     document.getElementById("toc-prov-count").innerText = f"({counts.get('prov', 0)})"
+    document.getElementById("toc-emoji-count").innerText = f"({counts.get('emoji', 0)})"
     document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
 
 # ---
@@ -2889,6 +2890,16 @@ def update_all(event=None):
         flag_data = emoji_flags.get(flag_key, {})
         if flag_data.get("count", 0) > 0:
             threat_flags[threat_label] = flag_data
+
+    # --- NEW: Calculate Emoji Row Count for TOC ---
+    # We count the unique (sequence, status) pairs to get the row count.
+    toc_emoji_count = 0
+    if emoji_list:
+        grouped_emoji_keys = set()
+        for item in emoji_list:
+            key = (item.get("sequence", "?"), item.get("status", "unknown"))
+            grouped_emoji_keys.add(key)
+        toc_emoji_count = len(grouped_emoji_keys)
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
