@@ -123,8 +123,8 @@ ALIASES = {
 # These are explicitly "Allowed" or "Recommended"
 UAX31_ALLOWED_STATUSES = {
     "Allowed",
-    "Allowed_Limited",
     "Recommended",
+    "Limited_Use",
 }
 
 # These are the various "Restricted" types.
@@ -134,7 +134,7 @@ UAX31_RESTRICTED_STATUSES = {
     "Uncommon_Use",
     "Limited_Use",
     "Deprecated",
-    "Not_XID",
+    "Obsolete",
 }
 
 # ------------------------------------------------------------
@@ -1088,6 +1088,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_forced_text = []
     flag_fully_qualified = []
     flag_illegal_modifier = []
+    flag_illformed_tag = []
 
     # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
@@ -1185,7 +1186,34 @@ def compute_emoji_analysis(text: str) -> dict:
                 
                 if not is_valid_attachment:
                     flag_illegal_modifier.append(f"#{i}")
-            # --- END NEW ---
+
+            # --- NEW: Check for ill-formed tag sequence ---
+            elif cp == 0x1F3F4: # 🏴 (Black Flag)
+                j = i + 1
+                # Check if there is at least one tag modifier following
+                if j < n and (0xE0020 <= ord(js_array[j]) <= 0xE007E):
+                    k = j
+                    # Scan forward to find the end of the tag modifiers
+                    while k < n and (0xE0020 <= ord(js_array[k]) <= 0xE007E):
+                        k += 1
+                    
+                    # Now, check what terminated the loop
+                    # It's ill-formed if it's out of bounds OR not a CANCEL tag
+                    if k == n or ord(js_array[k]) != 0xE007F:
+                        flag_illformed_tag.append(f"#{i}")
+                        # Consume the entire bad sequence (🏴 + modifiers)
+                        consumed = k - i 
+                        final_status = "ill-formed-tag"
+                        
+                        # Also add this to the emoji list as a component
+                        sequence_str = "".join(js_array[i:k])
+                        emoji_details_list.append({
+                            "sequence": sequence_str,
+                            "status": "component",
+                            "index": i
+                        })
+                    # (If it *was* well-formed, the greedy RGI scanner
+                    # in Tiers 1-3 would have already found it.)
 
             if is_rgi_single:
                 rgi_singles_count += 1
@@ -1232,7 +1260,8 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
             "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text},
             "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified},
-            "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier}
+            "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier},
+            "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag}
         },
         "emoji_list": emoji_details_list
     }
@@ -1995,6 +2024,30 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     id_type_stats[key]['positions'].append(f"#{i}")
 
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
+                # --- NEW (Parallel) Specific Flag Logic ---
+                # This runs *in addition* to the blocks above to create
+                # the specific, high-value flags from IdentifierStatus.txt
+                
+                # 1. Check IdentifierStatus (for Obsolete, Uncommon_Use, etc.)
+                specific_id_status = _find_in_ranges(cp, "IdentifierStatus")
+                if specific_id_status and specific_id_status not in UAX31_ALLOWED_STATUSES:
+                    # We found an *explicitly* restricted status
+                    key = f"Flag: Status: {specific_id_status}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+    
+                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
+                # Note: This is separate from Status. A char can be 
+                # Status:Restricted AND Type:Obsolete
+                specific_id_type = _find_in_ranges(cp, "IdentifierType")
+                if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
+                    # We found a specific restricted type
+                    key = f"Flag: Type: {specific_id_type}"
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    id_type_stats[key]['count'] += 1
+                    id_type_stats[key]['positions'].append(f"#{i}")
+                # --- END (Parallel) Specific Flag Logic ---
                 if _find_in_ranges(cp, "Emoji_Modifier"): emoji_modifier_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "VariationSelector"): variation_selector_indices.append(f"#{i}")
