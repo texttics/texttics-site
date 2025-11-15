@@ -349,25 +349,25 @@
       <!-- Group 3: Threat-Hunting (Module 7) will go here later -->
       <section id="threat-hunting" class="fingerprint-section" aria-labelledby="threat-title">
          <h2 id="threat-title" class="section-title">Threat-Hunting Profile</h2>
-        <div class="legend legend-threat">
-           <span class="legend-label">Severity:</span>
-           <span class="legend-badge legend-badge-danger">DANGER</span>
-           <span class="legend-badge legend-badge-high">High-Risk</span>
-           <span class="legend-badge legend-badge-suspicious">Suspicious</span>
-         </div>
-         <div id="threat-banner" class="banner-warning" role="alert" hidden></div>
+        <div id="threat-banner" class="banner-warning" role="alert" hidden></div>
 
-      <h3 class="subsection-title">Threat Flags</h3>
-
-        <table class="matrix" id="threat-report-table">
-        <caption>High-level security flags and high-risk runs</caption>
-        <thead>
-          <tr>
-            <th scope="col">Metric</th>
-            <th scope="col">Count</th>
-            <th scope="col">Details / Positions</th>
-          </tr>
-        </thead>
+        <table class="matrix" id="threat-report-table">
+        <caption>
+                    <div style="font-weight: 600; color: var(--color-text);">High-level security flags</div>
+                    <div class="legend legend-threat" style="margin-top: 8px; margin-bottom: 0; font-size: 0.85rem;">
+            <span class="legend-label">Severity:</span>
+            <span class="legend-badge legend-badge-danger">DANGER</span>
+            <span class="legend-badge legend-badge-high">High-Risk</span>
+            <span class="legend-badge legend-badge-suspicious">Suspicious</span>
+          </div>
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Metric</th>
+            <th scope="col">Count</th>
+            <th scope="col">Details / Positions</th>
+          </tr>
+        </thead>
         <tbody id="threat-report-body">
           </tbody>
 
