@@ -10,6 +10,8 @@ Its secondary, but equally important, goal is to serve as a **"Structural Integr
 
 ---
 
+---
+
 ## The Architectural Model: A Hybrid, Serverless Powerhouse
 
 The entire application runs 100% in the user's browser, requiring no server-side backend or data processing. This guarantees user privacy and enables instantaneous, real-time analysis. It operates on a powerful, serverless, hybrid model that leverages the best of two different environments: the high-speed JavaScript engine and the deep-analysis Python runtime (via PyScript).
@@ -27,12 +29,13 @@ This layer runs a full Python 3.12 runtime in the browser via PyScript. Python a
 
 * **State Management & Orchestration:** The main `update_all` function in `app.py` manages the entire application state and analysis pipeline, calling all computation functions and passing their results to the correct DOM renderers.
 * **Deep Unicode Analysis:** The tool uses a file-first, data-driven approach for maximum precision. While built-in `unicodedata` functions are used for simple tasks (like `unicodedata.numeric()`), the core forensic engine is powered by direct lookups against a local copy of the Unicode Character Database.
-* **Data-Driven Analysis (The Core):** This is the heart of the tool's analytical depth. Python asynchronously fetches, parses, and analyzes **27 raw data files** directly from the Unicode Character Database (UCD). This data-driven approach allows the tool to perform UAX-compliant checks that are impossible with built-in functions alone. The data files implemented include:
+* **Data-Driven Analysis (The Core):** This is the heart of the tool's analytical depth. Python asynchronously fetches, parses, and analyzes **31 raw data files** directly from the Unicode Consortium. This data-driven approach allows the tool to perform UAX-compliant checks that are impossible with built-in functions alone. The data files implemented include:
     * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`):** For Block, Age, and Script properties.
     * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`):** The raw data for the six file-based Run-Length Encoding (RLE) engines.
     * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`):** A deep well of binary flags and properties used for the forensic integrity report.
-    * **Specialized Profile (`StandardizedVariants.txt`, `emoji-variation-sequences.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`):** High-precision files for features like the Zalgo-detector, decomposition analysis, numeric types, and variant/Bidi bracket pairing.
+    * **Specialized Profile (`StandardizedVariants.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`):** High-precision files for features like the Zalgo-detector, decomposition analysis, numeric types, and variant/Bidi bracket pairing.
     * **Threat-Hunting (`confusables.txt`, `IdentifierType.txt`, `IdentifierStatus.txt`, `intentional.txt`):** The data files that power the Group 3 (homoglyph) and UAX #31 (Identifier) security analysis.
+    * **UTS #51 Emoji Profile (`emoji-variation-sequences.txt`, `emoji-sequences.txt`, `emoji-zwj-sequences.txt`, `emoji-data.txt`, `emoji-test.txt`):** The 5 data files that power the UTS #51 "Emoji Powerhouse" subsystem.
 
 The final result is a multi-layered, literal, and data-driven analysis of text composition, sequence (run) shape, structural integrity, and deep provenance, all based on the official Unicode Standard.
 
@@ -148,6 +151,7 @@ This tool uses a powerful **"Quad-State" Normalization Pipeline** as its analyti
 ---
 ---
 
+
 ## 🏛️ Anatomy of the "Lab Instrument" (The Structural Profile)
 
 The UI is not a flat list of modules but a hierarchical "lab bench" that presents the full structural profile in a logical, facts-first order. It consists of a sticky navigation list (the "Table of Contents") and a main content feed broken into the following anchored sections.
@@ -166,7 +170,7 @@ This is the "Atomic Count" of the string—the **what**. It provides the core pa
     * `Total Code Points`: The total number of logical atoms.
     * `Total Graphemes`: The total number of perceptual atoms.
     * `Whitespace (Total)`: Total `\p{White_Space}` characters.
-    * `RGI Emoji Sequences`: Total `\p{Emoji_Presentation}` sequences.
+    * `RGI Emoji Sequences`: The total count of valid, Recommended-for-General-Interchange emoji sequences, as defined by **UTS #51**.
 * **Grapheme Structural Integrity (Cards):** A "Zalgo-detector" that analyzes the *physical structure* of the graphemes themselves.
     * `Single-Code-Point`: "Simple" graphemes (e.g., `a`).
     * `Multi-Code-Point`: "Complex" graphemes (e.g., `e+´` or `👨‍👩‍👧‍👦`).
@@ -183,7 +187,7 @@ This is the "Atomic Count" of the string—the **what**. It provides the core pa
 This is the "Structural Arrangement" of the string—the **how**. It analyzes the text as a *sequence* of runs, not just a "bag of atoms." This module leverages a powerful Run-Length Encoding (RLE) engine to profile the text's "shape."
 
 * **Why it's a profile:** A simple "bag of atoms" diff won't see a structural change. This module will. The string `"don't"` produces a Major Run profile of **L-P-L** (Letter, Punctuation, Letter) and has `3` runs. The "fixed" string `"dont"` produces a profile of **L** and has `1` run. This change in the run-count is a deterministic flag of a structural edit.
-* **Features:** This module now correctly generates **ten** separate, parallel RLE tables, providing a deep fingerprint of the text's "shape":
+* **Features:** This module correctly generates **ten** separate, parallel RLE tables, providing a deep fingerprint of the text's "shape":
     1.  **Major Category Run Analysis**
     2.  **Minor Category Run Analysis**
     3.  **UAX #14 Line Break Run Analysis**
@@ -210,11 +214,6 @@ This is the "Flag" report. It provides a detailed, non-judgmental list of all "p
     * `True Ignorable (Format/Cf)`: A flag for the *remaining* format characters (e.g., `U+200B` ZWSP).
     * `Other Default Ignorable`: A data-driven flag for other ignorable characters (a known steganography vector).
     * `Deceptive Spaces`: A check for any whitespace (`Zs`) character that is not a standard ASCII space (`U+0020`).
-* **Contextual & Steganography Flags:**
-    * `Private Use (Co)`: "Black box" characters with no public meaning.
-    * `Steganography (IVS)`: A specific check for **Ideographic Variation Selectors** (`U+E0100`–`U+E01EF`).
-    * `Variant Base Chars`: Characters that can be modified by a variation selector (from `StandardizedVariants.txt` and `emoji-variation-sequences.txt`).
-    * `Variation Selectors`: Invisible modifiers sourced from `PropList.txt` and `StandardizedVariants.txt`.
 * **Property Flags (Data-Driven):**
     * `Prop: Extender`: Flags characters from `PropList.txt` that modify the shape of others.
     * `Prop: Dash`: A data-driven flag for all characters with the `Dash` property.
@@ -228,35 +227,50 @@ This is the "Flag" report. It provides a detailed, non-judgmental list of all "p
     * `Flag: Security Discouraged (Compatibility)`: A manually-curated flag for entire Unicode blocks (like Fullwidth Forms) known to be used in spoofing attacks.
 * **Identifier Flags (Data-Driven):**
     * `Flag: Identifier Status: ...`: A UAX #31-compliant flag (from `IdentifierStatus.txt`) that correctly applies the "Default Restricted" rule to all non-allowed characters.
-    * `Type: ...`: Flags from `IdentifierType.txt` like `Type: Not_XID` or `Type: Technical`.
+    * `Flag: Type: ...`: Aliased flags from `IdentifierType.txt` like `Flag: Type: Technical (Not_XID)` or `Flag: Type: Obsolete`.
 * **Normalization Flags (Data-Driven):**
     * `Decomposition (Derived): ...`: A complete, data-driven flag for all decomposition types (from `DerivedDecompositionType.txt`), such as `Wide`, `Circle`, `Compat`, etc.
     * `Flag: Full Composition Exclusion`: A flag (from `CompositionExclusions.txt`) for characters that are explicitly excluded from Unicode composition.
     * `Flag: Changes on NFKC Casefold`: A critical normalization flag (from `DerivedNormalizationProps.txt`) that identifies characters guaranteed to change during NFKC-Casefold normalization.
+* **Emoji Integrity Flags (Data-Driven):**
+    * `Prop: Variation Selector` / `Prop: Extended Pictographic` / `Prop: Emoji Modifier`: Core property flags from `emoji-data.txt`.
+    * `Flag: Unqualified Emoji`: Detects text-default characters (like `©`) that will render ambiguously.
+    * `Flag: Forced Text Presentation`: Detects emoji-default characters (like `😀︎`) forced to a text style.
+    * `Flag: Forced Emoji Presentation`: Detects text-default characters (like `©️`) forced to an emoji style.
+    * `Flag: Standalone Emoji Component`: Detects "leftover" components (like a lone ZWJ `‍` or modifier `🏻`).
+    * `Flag: Broken Keycap Sequence`: Detects a keycap mark (`U+20E3`) attached to an invalid base (like `A⃣`).
+    * `Flag: Invalid Regional Indicator`: Detects a pair of regional indicators that do not form a valid flag (like `🇺🇽`).
+    * `Flag: Ill-formed Tag Sequence`: Detects an emoji tag sequence (like `🏴`) missing its CANCEL TAG.
+    * `Flag: Intent-Modifying ZWJ`: Detects non-RGI ZWJ sequences that modify emoji intent (like `🏃‍➡️`).
+    * `Flag: Invalid Variation Selector`: Detects a VS attached to a non-designated base character.
+    * `Steganography (IVS)`: A specific check for **Ideographic Variation Selectors** (`U+E0100`–`U+E01EF`).
 
 ### Group 2.D: Provenance & Context Profile
 
-This is the "Origin Story" of the atoms. It provides the deep forensic context of *what* the characters are and *where* they come from.
+This is the "Origin Story" of the atoms. It provides the deep forensic context of *what* the characters are and *where* they come from. Unlike the simple counters of earlier versions, this module is now a full "matrix of facts" that reports both **Count** and **Positions** for each property, allowing for precise cross-referencing.
 
-* **`Script:` & `Script-Ext:` (The Script Profile)**
-    * This is a sophisticated, two-level analysis. The tool first checks if a character is in **`ScriptExtensions.txt`**.
-    * **If YES** (it's a "shared" char like `·`), it adds to all its `Script-Ext:` counters (e.g., `Script-Ext: Latn`, `Script-Ext: Grek`).
-    * **If NO** (it's a "simple" char like `a`), it falls back to its primary `Script:` property, which is read directly from **`Scripts.txt`**.
-    * This provides a 100% accurate, non-redundant script profile and is a primary detector for homograph attacks.
-* **Block: Counters**
-    * Fetches `Blocks.txt` to find the "neighborhood" of a character (e.g., `Block: Basic Latin`, `Block: Cyrillic`). A change in this profile is a 100% reliable flag that a cross-script change (like a homograph attack) has occurred.
-* **Age: Counters**
-    * Fetches `DerivedAge.txt` to show *when* a character was introduced (e.g., `Age: 1.1`, `Age: 15.0`). A key tool for finding modern emoji or symbols.
-* **Numeric Type: Counters**
-    * Fetches `DerivedNumericType.txt` to show the *type* of number (`Decimal`, `Digit`, or `Numeric`), providing a deeper profile than just the total value.
+* **`Script:`, `Script-Ext:`, `Block:`, `Age:`, `Numeric Type:`**
+    * A sophisticated, multi-property analysis (from `Scripts.txt`, `ScriptExtensions.txt`, `Blocks.txt`, `DerivedAge.txt`, and `DerivedNumericType.txt`) that reports the count and all positions for each property found. This provides a 100% accurate, non-redundant profile for detecting homograph attacks.
 * **Total Numeric Value:**
     * A powerful, non-obvious profile. It uses `unicodedata.numeric()` to calculate the **actual mathematical sum** of all numeric characters (e.g., `V` + `¼` = `5.25`). Any change to a number, even a "confusable" one, will change this profile.
+* **Mixed-Number Systems:**
+    * A flag that triggers if characters from two different numbering systems (e.g., Latin `1` and Arabic `١`) are found in the same string.
+
+### Group 2.E: Emoji Qualification Profile
+
+This is a dedicated module powered by the UTS #51 file `emoji-test.txt`. It scans the string and renders a table listing every RGI (Recommended for General Interchange) sequence found, along with its official qualification status.
+
+* This table provides the ground truth for emoji rendering, flagging sequences as:
+    * **Fully-Qualified:** Will render as emoji consistently (e.g., `❤️`, `©️`).
+    * **Unqualified:** Will render ambiguously (e.g., `©`, `®`).
+    * **Component:** A sub-part of an emoji that is not RGI on its own (e.g., `🏻`, `‍`).
+    * **Intent-Modifying:** A non-RGI sequence that modifies an emoji's meaning (e.g., `🏃‍➡️`).
 
 ### Group 3: Threat-Hunting Profile
 
 This is the final, high-level security assessment. It uses the "Quad-State" pipeline to unmask deceptions.
 
-* **Threat Flags (Cards):** A high-level summary of the most critical security risks, such as `DANGER: Malicious Bidi Control` (for Trojan Source attacks) and `High-Risk: Mixed Scripts` (for homoglyph attacks).
+* **Threat Flags (Table):** A high-level summary of the most critical security risks. This table collects high-severity flags from the Integrity Profile (like `DANGER: Malicious Bidi Control`) and adds its own (like `High-Risk: Mixed Scripts`) to provide a single, consolidated threat report.
 * **Normalization Hashes (Table):** A "fingerprint" of the text in all four of its normalization states:
     1.  **Forensic (Raw)**
     2.  **NFKC** (Compatibility-normalized)
@@ -266,18 +280,21 @@ This is the final, high-level security assessment. It uses the "Quad-State" pipe
 
 ---
 
+---
+
 ## 💻 Tech Stack
 
 The application is a pure, serverless, single-page web application. The logic is cleanly separated for maintainability.
 
 * **`index.html`**: A single, semantic HTML5 file that defines the "skeleton" of the lab instrument. It uses ARIA roles for all components to ensure full accessibility.
 * **`styles.css`**: A single, responsive CSS3 stylesheet that provides the clean, information-dense "lab instrument" aesthetic.
-* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (like `pyodide-http`) and, crucially, the list of all **27** Unicode data files to be pre-fetched, which are grouped by purpose:
+* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (like `pyodide-http` and `unicodedata2`) and, crucially, the list of all **31** Unicode data files to be pre-fetched, which are grouped by purpose:
     * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`)**
     * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`)**
     * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`)**
-    * **Specialized Profile (`StandardizedVariants.txt`, `emoji-variation-sequences.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`)**
-    * **Threat-Hunting (`confusables.txt`, `IdentifierStatus.txt`, `intentional.txt`)**
+    * **Specialized Profile (`StandardizedVariants.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`)**
+    * **Threat-Hunting (`confusables.txt`, `IdentifierType.txt`, `IdentifierStatus.txt`, `intentional.txt`)**
+    * **UTS #51 Emoji Profile (`emoji-sequences.txt`, `emoji-zwj-sequences.txt`, `emoji-data.txt`, `emoji-test.txt`, `emoji-variation-sequences.txt`)**
 * **`app.py`**: The Python "brain." This file contains all the application's logic.
     * It defines all data-loading, computation, and rendering functions.
     * It contains the main `update_all` orchestrator.
@@ -298,7 +315,7 @@ The application is a pure, serverless, single-page web application. The logic is
 
 1.  **On Page Load:**
     * `index.html` and `styles.css` render the static "lab instrument" skeleton.
-    * `pyscript.toml` is read, and PyScript begins loading the Python runtime and the **27 data files** in parallel.
+    * `pyscript.toml` is read, and PyScript begins loading the Python runtime and the **31 data files** in parallel.
     * As files return, `app.py` parses them into efficient Python data structures (`DATA_STORES`).
     * `ui-glue.js` runs, attaching its event listeners to the "Copy Report" button and the Tab controls.
 2.  **On Data Ready:**
@@ -308,12 +325,12 @@ The application is a pure, serverless, single-page web application. The logic is
     * The `input` event triggers the main `update_all` function in `app.py`.
 4.  **`update_all` Orchestration:**
     * The `update_all` function executes its main logic, a single, sequential pipeline.
-    * **Group 2 (Structural Profile) compute:** It calls all compute functions for the structural profile (Grapheme, Code Point, RLEs, Integrity, Provenance).
+    * **Group 2 (Structural Profile) compute:** It calls all compute functions for the structural profile (Grapheme, Code Point, RLEs, Integrity, Provenance, and Emoji Qualification).
     * **Group 3 (Threat-Hunting) compute:** It calls `compute_threat_analysis`, which generates the four normalized states, their hashes, and the high-level threat flags.
 5.  **Render Data:**
     * The results from all `compute` functions are passed to the `render` functions.
     * `render_cards`, `render_parallel_table`, and `render_matrix_table` build HTML strings.
-    * These HTML strings are injected into their respective `<tbody>` or `<div>` elements (e.g., `#integrity-matrix-body`, `#eawidth-run-matrix-body`, `#threat-hash-report-body`).
+    * These HTML strings are injected into their respective `<tbody>` or `<div>` elements (e.g., `#integrity-matrix-body`, `#provenance-matrix-body`, `#emoji-qualification-body`, `#threat-hash-report-body`).
     * The UI updates in a single, efficient paint.
 
 ## ✅ Project Status: Complete & Stable
@@ -321,49 +338,44 @@ The application is a pure, serverless, single-page web application. The logic is
 The **"Structural Profile" (Group 2)** and **"Threat-Hunting" (Group 3)** modules are **100% complete, functional, and stable.** All previously-known bugs related to data access, normalization, and logic have been resolved.
 
 The tool now correctly implements:
-* **Full Data-Driven Analysis:** All 27 UCD files are correctly loaded and used in the analysis.
-* **UAX #31 Compliance:** A robust, UAX #31-compliant "Default Restricted" model for `IdentifierStatus`.
+* **Full Data-Driven Analysis:** All **31** UCD and UTS files are correctly loaded and used in the analysis.
+* **UAX #31 Compliance:** A robust, UAX #31-compliant "Default Restricted" model for `IdentifierStatus`, with aliased flags for readability.
 * **Quad-State Normalization:** A powerful, four-state pipeline (Raw, NFKC, NFKC-Casefold, Skeleton) that provides a definitive security fingerprint.
 * **Complete Integrity Flagging:** All integrity flags, including those for `DoNotEmit`, `BidiBrackets`, and `CompositionExclusions`, are fully functional.
 
-📈 Core Engine Enhancements & Future Work
-The core analysis engine is complete. The "Known Issue" previously documented in this section has been resolved and superseded by a comprehensive, forensic-grade "Emoji Powerhouse" subsystem.
+📈 Core Engine Enhancements
+The core analysis engine is complete. All "Known Issues" previously documented have been resolved and superseded by the following comprehensive, forensic-grade subsystems.
 
-✅ Completed Enhancement: The "Emoji Powerhouse" (UTS #51)
-The tool no longer uses a simple, inaccurate \p{Emoji_Presentation} regex. It has been upgraded to a forensic-grade, 5-file parser that is fully compliant with Unicode Technical Standard #51 (UTS #51).
+### ✅ Completed Enhancement: The "Emoji Powerhouse" (UTS #51)
+The tool no longer uses a simple, inaccurate regex. It has been upgraded to a forensic-grade, 5-file parser that is fully compliant with Unicode Technical Standard #51 (UTS #51).
 
 This new subsystem provides 100% accurate sequence counting and powers a new, deeper layer of forensic analysis.
 
-1. Data-Driven Foundation
+1. **Data-Driven Foundation**
 The engine loads and cross-references all five canonical emoji data files:
+* `emoji-zwj-sequences.txt`: (Tier 1) For the most complex RGI (Recommended for General Interchange) ZWJ sequences like families (👨‍👩‍👧‍👦).
+* `emoji-sequences.txt`: (Tier 2) For all other RGI sequences, including flags (🇺🇦), skin-tone modifiers (👍🏻), and keycaps (7️⃣).
+* `emoji-variation-sequences.txt`: (Tier 3) For RGI sequences defined by an explicit style selector (❤️).
+* `emoji-data.txt`: (Tier 4) For all single-character emoji properties (e.g., `Emoji_Presentation`, `Emoji_Modifier_Base`).
+* `emoji-test.txt`: (Analysis Layer) For the RGI Qualification status of every character and sequence.
 
-emoji-zwj-sequences.txt: (Tier 1) For the most complex RGI (Recommended for General Interchange) ZWJ sequences like families (👨‍👩‍👧‍👦) or professions (👩‍🔬).
+2. **New Forensic Capabilities**
+This upgrade not only ensures the RGI Emoji Sequences count is 100% accurate but also adds a new suite of high-value flags to the **Threat-Hunting Profile**:
+* **Flag: Unqualified Emoji:** Detects text-default characters (like `©`) that will render ambiguously across platforms.
+* **Flag: Forced Text Presentation:** Detects an emoji-default character (like `😀︎`) that has been forced to a text-style with an invisible `VS15`.
+* **Flag: Forced Emoji Presentation:** Detects a text-default character (like `©️`) that has been forced to an emoji-style with a `VS16`.
+* **Flag: Standalone Emoji Component:** Detects "leftover" structural characters (like a lone `‍` ZWJ or `🏻` skin-tone modifier).
+* **Flag: Invalid Regional Indicator:** Detects a pair of regional indicators (like `🇺🇽`) that do not form a valid, RGI country flag.
+* **Flag: Broken Keycap Sequence:** Detects a combining keycap (`U+20E3`) attached to an invalid base character (like `A⃣`).
+* **Flag: Ill-formed Tag Sequence:** Detects a flag tag sequence (like `🏴`) that is malformed and missing its CANCEL TAG.
+* **Flag: Intent-Modifying ZWJ:** Detects non-RGI ZWJ sequences (like `🏃‍➡️`) that modify an emoji's semantics.
 
-emoji-sequences.txt: (Tier 2) For all other RGI sequences, including flags (🇺🇦), skin-tone modifiers (👍🏻), and keycaps (7️⃣).
+### ✅ Completed Enhancement: Position-Aware Forensic Profiles
+The "Provenance" (Group 2.D) and "Script Run" modules are no longer simple counters. They have been upgraded to full forensic matrices that report both **Count** and **Positions** for every property. This enhancement makes the `(See Provenance Profile for details)` instruction in the Threat-Hunting profile fully actionable, allowing an analyst to pinpoint the exact location of cross-script characters.
 
-emoji-variation-sequences.txt: (Tier 3) For RGI sequences that are defined by an explicit style selector (❤️).
+### ✅ Completed Enhancement: Emoji Qualification Profile
+The `EmojiQualificationMap` (from `emoji-test.txt`) is now fully loaded and used to render a dedicated **"Emoji Qualification Profile"** table (Group 2.E). This table lists every RGI sequence found in the text and displays its official Unicode qualification status (e.g., "Fully-Qualified", "Unqualified", "Component"), providing a new layer of rendering and ambiguity analysis.
 
-emoji-data.txt: (Tier 4) For all single-character emoji properties, such as Emoji_Presentation, Emoji_Component, and Emoji_Modifier_Base.
-
-emoji-test.txt: (Analysis Layer) For the RGI Qualification status of every character and sequence.
-
-2. New Forensic Capabilities
-This upgrade not only ensures the RGI Emoji Sequences count is 100% accurate (as confirmed by our test cases), but it also adds a new suite of high-value flags to the "Structural Integrity Profile":
-
-Flag: Unqualified Emoji: This flag detects text-default characters (like ©) that are missing a required variation selector. This is a critical forensic flag, as these characters will render differently (text vs. emoji) on different platforms, creating a classic "inter-layer mismatch" ambiguity.
-
-Flag: Forced Text Presentation: This flag detects the opposite attack: a default-emoji character (like 😀︎) that has been forced to a text-style presentation using an invisible FE0E selector.
-
-Flag: Standalone Emoji Component: This flag detects malformed sequences or "leftover" structural characters (like a lone ZWJ ‍ or VS16 ️) that are not part of a valid RGI sequence. This is a direct indicator of a broken or intentionally-crafted string.
-
-New Prop: Flags: The integrity profile is now also populated with Prop: Extended Pictographic, Prop: Emoji Modifier, and Prop: Emoji Modifier Base, providing a complete, data-driven picture of all emoji-related characters in the string.
-
-📈 Future Enhancements
-With the core engine and all data-loading pipelines now complete, future "v2" work can focus on enhancing the UI-level presentation of the rich data we've already collected.
-
-Display Emoji Qualification: The EmojiQualificationMap (from emoji-test.txt) is now fully loaded and used for flagging. A future enhancement will be to display this qualification status (e.g., "Fully-Qualified", "Minimally-Qualified", "Unqualified") for each emoji sequence found, providing even deeper context in a new, dedicated "Emoji Analysis" table.
-
-Enhance Script Profiling: The Script Run-Length Analysis could be enhanced to detect whole-confusable-runs based on the confusables.txt skeleton, providing a higher-level threat flag than the current per-character highlighting.
 
 ---
 
