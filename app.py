@@ -2670,7 +2670,20 @@ def update_all(event=None):
     
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
-
+    zwj_flag = forensic_stats.get("Join Control (Structural)", {})
+        if zwj_flag.get("count", 0) > 0:
+            # We found a lone ZWJ. Let's find its index.
+            zwj_positions = zwj_flag.get("positions", [])
+            for pos_str in zwj_positions:
+                 try:
+                     # Add it to the list that the emoji table renderer uses
+                     emoji_list.append({
+                         "sequence": "‍", # The ZWJ character
+                         "status": "component",
+                         "index": int(pos_str[1:]) # Convert "#187" to 187
+                     })
+                 except Exception:
+                     pass # Ignore if formatting is weird
     forensic_stats.update(emoji_flags)
     
     # Module 2.D: Provenance & Context
