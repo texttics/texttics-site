@@ -676,7 +676,7 @@ def _parse_emoji_zwj_sequences(txt: str) -> set:
             
             # --- THIS IS THE FIX ---
             # Only add sequences that are explicitly marked as RGI
-            if type_field == "RGI_Emoji_ZWJ_Sequence":
+            if "RGI_Emoji_ZWJ_Sequence" in type_field:
                 hex_codes = hex_codes_str.split()
                 if len(hex_codes) > 1: # Only sequences
                     sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
