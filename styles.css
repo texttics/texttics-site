@@ -578,3 +578,14 @@ Legends & Badges
   color: #1e40af; /* blue-800 */
   border-color: #bfdbfe; /* blue-200 */
 }
+
+/* Fix spacing for the new Emoji Qualification List title */
+#emoji-forensics .subsection-title {
+    margin-top: 10px; /* Adjust as needed, less than default h3 margin */
+    margin-bottom: 5px; /* Adjust as needed, less than default h3 margin */
+}
+
+/* Ensure the table itself has a consistent top margin */
+#emoji-qualification-matrix {
+    margin-top: 10px; /* Small gap between title and table, adjust as needed */
+}
