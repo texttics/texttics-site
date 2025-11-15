@@ -2007,6 +2007,16 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     invalid_vs_indices = []
     variation_selector_indices = []
     # --- End Initialization ---
+
+    # --- Alias map for noisy IdentifierType labels (defined once outside the loop) ---
+    ID_TYPE_ALIASES = {
+        "Technical Not_XID": "Technical",
+        "Exclusion Not_XID": "Exclusion",
+        "Obsolete Not_XID": "Obsolete",
+        "Deprecated Not_XID": "Deprecated",
+        "Not_NFKC Not_XID": "Not_NFKC",
+        "Default_Ignorable Not_XID": "Default_Ignorable"
+    }
     
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
@@ -2084,44 +2094,38 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 
                 # --- 8/9. Identifier Status & Type (UAX #31) ---
-            
-                # --- Alias map for noisy IdentifierType labels ---
-                ID_TYPE_ALIASES = {
-                    "Technical Not_XID": "Technical",
-                    "Exclusion Not_XID": "Exclusion",
-                    "Obsolete Not_XID": "Obsolete",
-                    "Deprecated Not_XID": "Deprecated",
-                    "Not_NFKC Not_XID": "Not_NFKC",
-                    "Default_Ignorable Not_XID": "Default_Ignorable"
-                }
-                # --- End Alias Map ---
 
-                # 1. Check IdentifierStatus (UAX #31)
+                # 1. IdentifierStatus (UAX #31)
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 status_key = ""
-                
+
                 if id_status_val:
+                    # Explicit status from IdentifierStatus.txt
                     if id_status_val not in UAX31_ALLOWED_STATUSES:
                         status_key = f"Flag: Status: {id_status_val}"
                 else:
+                    # No explicit status → treat as "Default Restricted" (except Cn/Co/Cs)
                     if category not in ("Cn", "Co", "Cs"):
                         status_key = "Flag: Identifier Status: Default Restricted"
-                
+
                 if status_key:
-                    if status_key not in id_type_stats: id_type_stats[status_key] = {'count': 0, 'positions': []}
+                    if status_key not in id_type_stats:
+                        id_type_stats[status_key] = {'count': 0, 'positions': []}
                     id_type_stats[status_key]['count'] += 1
                     id_type_stats[status_key]['positions'].append(f"#{i}")
 
-                # 2. Check IdentifierType (UAX #31)
+                # 2. IdentifierType (UAX #31)
                 specific_id_type = _find_in_ranges(cp, "IdentifierType")
                 if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
+                    # Use the alias map defined at the top of the function
                     clean_label = ID_TYPE_ALIASES.get(specific_id_type, specific_id_type)
                     key = f"Flag: Type: {clean_label}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
+                    if key not in id_type_stats:
+                        id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
-                
                 # --- END (UAX #31 Logic) ---
+                
                     # --- NEW (Parallel) Specific Flag Logic ---
                 # This runs *in addition* to the blocks above to create
                 # the specific, high-value flags from IdentifierStatus.txt
