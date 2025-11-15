@@ -1176,18 +1176,22 @@ def compute_emoji_analysis(text: str) -> dict:
                 is_ivs = 0xE0100 <= cp <= 0xE01EF # Steganography
                 is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
 
-                # --- NEW: Check for illegal modifier attachment ---
-                if is_modifier:
-                    is_valid_attachment = False
-                    if i > 0:
-                        prev_cp = ord(js_array[i-1])
-                        if _find_in_ranges(prev_cp, "Emoji_Modifier_Base"):
-                            is_valid_attachment = True
+           # --- NEW: Parallel checks for new flags ---
+                # We run these checks *separately* from the is_rgi_single logic
+                
+            # 1. Check for illegal modifier attachment
+            if is_modifier:
+                is_valid_attachment = False
+                if i > 0:
+                    prev_cp = ord(js_array[i-1])
+                    if _find_in_ranges(prev_cp, "Emoji_Modifier_Base"):
+                        is_valid_attachment = True
                 
                 if not is_valid_attachment:
                     flag_illegal_modifier.append(f"#{i}")
-    
-            # --- NEW: Check for ill-formed tag sequence ---
+                    if final_status == "unknown": final_status = "component"
+                        
+            # 2. Check for ill-formed tag sequence
             elif cp == 0x1F3F4: # 🏴 (Black Flag)
                 j = i + 1
                 # Check if there is at least one tag modifier following
@@ -1212,8 +1216,6 @@ def compute_emoji_analysis(text: str) -> dict:
                             "status": "component",
                             "index": i
                         })
-                    # (If it *was* well-formed, the greedy RGI scanner
-                    # in Tiers 1-3 would have already found it.)
 
             if is_rgi_single:
                 rgi_singles_count += 1
