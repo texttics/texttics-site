@@ -578,3 +578,9 @@ Legends & Badges
   color: #1e40af; /* blue-800 */
   border-color: #bfdbfe; /* blue-200 */
 }
+.emoji-summary {
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
