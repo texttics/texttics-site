@@ -2561,7 +2561,7 @@ def render_emoji_qualification_table(emoji_list: list):
         return
 
     if not emoji_list:
-        element.innerHTML = "<tr><td colspan='3' class='placeholder-text'>No RGI emoji sequences detected.</td></tr>"
+        element.innerHTML = "<tr><td colspan='4' class='placeholder-text'>No RGI emoji sequences detected.</td></tr>"
         return
 
     # 1. Aggregate the list by (sequence, status)
@@ -2612,8 +2612,13 @@ def render_emoji_qualification_table(emoji_list: list):
         html.append(
             f'<tr>'
             # Use mono font for emoji to prevent weird spacing
+            # 1. Sequence Column (unchanged style)
             f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq} <span style="font-family: var(--font-sans); font-size: 0.9rem; color: var(--color-text-muted);">({status})</span></th>'
+            # 2. Status Column
+            f'<td>{status}</td>'
+            # 3. Count Column
             f'<td>{count}</td>'
+            # 4. Positions Column
             f'<td>{pos_html}</td>'
             f'</tr>'
         )
