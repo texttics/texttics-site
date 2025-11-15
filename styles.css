@@ -199,7 +199,7 @@ Column 2: Main Analysis Content
   font-weight: 600;
   color: var(--color-text-muted);
   margin-top: var(--spacing-6);
-  margin-bottom: 0;
+  margin-bottom: var(--spacing-3);
 }
 .fingerprint-section:first-of-type .subsection-title:first-of-type {
   margin-top: 0;
