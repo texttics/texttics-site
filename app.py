@@ -1169,7 +1169,7 @@ def compute_emoji_analysis(text: str) -> dict:
                         "index": i
                     })
             
-            # --- B: If not Forced Text, analyze the single char ---
+             # --- B: If not Forced Text, analyze the single char ---
             if final_status == "unknown":
                 final_status = qual_map.get(char, "unknown")
                 is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
@@ -1186,7 +1186,7 @@ def compute_emoji_analysis(text: str) -> dict:
                 
                 if not is_valid_attachment:
                     flag_illegal_modifier.append(f"#{i}")
-
+    
             # --- NEW: Check for ill-formed tag sequence ---
             elif cp == 0x1F3F4: # 🏴 (Black Flag)
                 j = i + 1
