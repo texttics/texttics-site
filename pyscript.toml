@@ -1,4 +1,5 @@
 # This file tells PyScript what to load
+# All files are Unicode Version 17 fully.
 packages = [
   "pyodide-http",
   "unicodedata2"
