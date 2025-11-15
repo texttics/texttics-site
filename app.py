@@ -2615,7 +2615,7 @@ def render_emoji_qualification_table(emoji_list: list):
             # 1. Sequence Column (unchanged style)
             f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq}</th>'
             # 2. Status Column
-            f'<td>{status}</td>'
+            f'<td style="color: var(--color-text); font-weight: normal;">{status}</td>'
             # 3. Count Column
             f'<td>{count}</td>'
             # 4. Positions Column
