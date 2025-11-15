@@ -553,6 +553,14 @@ Legends & Badges
   color: #374151; /* gray-700 */
 }
 
+/* Fix spacing for the Emoji Qualification List title */
+#emoji-forensics .subsection-title {
+  /* Pull the h3 up to be with the h2 */
+  margin-top: var(--spacing-4); 
+  /* Group the h3 with its table caption */
+  margin-bottom: 0; 
+}
+
 /* For Threat Profile */
 .legend-badge {
   padding: 0.1rem 0.5rem;
