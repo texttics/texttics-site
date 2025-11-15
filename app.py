@@ -1087,6 +1087,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_component = []
     flag_forced_text = []
     flag_fully_qualified = []
+    flag_illegal_modifier = []
 
     # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
@@ -1172,9 +1173,22 @@ def compute_emoji_analysis(text: str) -> dict:
                 final_status = qual_map.get(char, "unknown")
                 is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
                 is_ivs = 0xE0100 <= cp <= 0xE01EF # Steganography
+                is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
+    
+                # --- NEW: Check for illegal modifier attachment ---
+                if is_modifier:
+                    is_valid_attachment = False
+                    if i > 0:
+                        prev_cp = ord(js_array[i-1])
+                        if _find_in_ranges(prev_cp, "Emoji_Modifier_Base"):
+                            is_valid_attachment = True
+                
+                if not is_valid_attachment:
+                    flag_illegal_modifier.append(f"#{i}")
+            # --- END NEW ---
 
-                if is_rgi_single:
-                    rgi_singles_count += 1
+            if is_rgi_single:
+                rgi_singles_count += 1
                     if final_status == "unknown": # Upgrade status
                         final_status = "fully-qualified"
                 
