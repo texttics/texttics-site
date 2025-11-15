@@ -94,6 +94,14 @@ INVISIBLE_MAPPING = {
 }
 # Add Tag Characters (E0001, E0020-E007F) if you want, but this covers the main threats.
 
+
+# Valid base characters for U+20E3 (Combining Enclosing Keycap)
+VALID_KEYCAP_BASES = frozenset({
+    0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, # Digits 0-9
+    0x0023, # Hash
+    0x002A  # Asterisk
+})
+
 # Pre-compiled testers for single characters
 TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
 TEST_MAJOR = {
@@ -1089,6 +1097,7 @@ def compute_emoji_analysis(text: str) -> dict:
     flag_illegal_modifier = []
     flag_illformed_tag = []
     flag_invalid_ri = []
+    flag_broken_keycap = []
 
     # --- 3. Start Scan Loop ---
     js_array = window.Array.from_(text)
@@ -1182,8 +1191,17 @@ def compute_emoji_analysis(text: str) -> dict:
                     # RGI sequence, making it an anomaly.
                     flag_invalid_ri.append(f"#{i}")
                     if final_status == "unknown": final_status = "component"
-
-            # --- NEW: Parallel checks for new flags ---
+                # 3. Check for broken keycap sequence
+                elif cp == 0x20E3: # Combining Enclosing Keycap
+                    is_valid_attachment = False
+                    if i > 0:
+                        prev_cp = ord(js_array[i-1])
+                        if prev_cp in VALID_KEYCAP_BASES:
+                            is_valid_attachment = True
+                    
+                    if not is_valid_attachment:
+                        flag_broken_keycap.append(f"#{i}")
+                    if final_status == "unknown": final_status = "component"
 
            # --- NEW: Parallel checks for new flags ---
                 # We run these checks *separately* from the is_rgi_single logic
@@ -1272,8 +1290,9 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text},
             "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified},
             "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier},
-            "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag}
-            "Flag: Invalid Regional Indicator": {'count': len(flag_invalid_ri), 'positions': flag_invalid_ri}
+            "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag},
+            "Flag: Invalid Regional Indicator": {'count': len(flag_invalid_ri), 'positions': flag_invalid_ri},
+            "Flag: Broken Keycap Sequence": {'count': len(flag_broken_keycap), 'positions': flag_broken_keycap}
         },
         "emoji_list": emoji_details_list
     }
