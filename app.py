@@ -2613,7 +2613,7 @@ def render_emoji_qualification_table(emoji_list: list):
             f'<tr>'
             # Use mono font for emoji to prevent weird spacing
             # 1. Sequence Column (unchanged style)
-            f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq} <span style="font-family: var(--font-sans); font-size: 0.9rem; color: var(--color-text-muted);">({status})</span></th>'
+            f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq}</th>'
             # 2. Status Column
             f'<td>{status}</td>'
             # 3. Count Column
