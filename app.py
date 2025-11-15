@@ -2125,63 +2125,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
                 # --- END (UAX #31 Logic) ---
-                
-                    # --- NEW (Parallel) Specific Flag Logic ---
-                # This runs *in addition* to the blocks above to create
-                # the specific, high-value flags from IdentifierStatus.txt
-                
-                # 1. Check IdentifierStatus (for Obsolete, Uncommon_Use, etc.)
-                specific_id_status = _find_in_ranges(cp, "IdentifierStatus")
-                if specific_id_status and specific_id_status not in UAX31_ALLOWED_STATUSES:
-                    # We found an *explicitly* restricted status
-                    key = f"Flag: Status: {specific_id_status}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
-    
-                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
-                # Note: This is separate from Status. A char can be 
-                # Status:Restricted AND Type:Obsolete
-                specific_id_type = _find_in_ranges(cp, "IdentifierType")
-                if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
-                    # We found a specific restricted type
-                    key = f"Flag: Type: {specific_id_type}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
-
-                # --- Alias map for noisy IdentifierType labels ---
-                ID_TYPE_ALIASES = {
-                    "Technical Not_XID": "Technical",
-                    "Exclusion Not_XID": "Exclusion",
-                    "Obsolete Not_XID": "Obsolete",
-                    "Deprecated Not_XID": "Deprecated",
-                    "Not_NFKC Not_XID": "Not_NFKC",
-                    "Default_Ignorable Not_XID": "Default_Ignorable"
-                }
-                # --- End Alias Map ---
-
-                # 1. Check IdentifierStatus (for Obsolete, Uncommon_Use, etc.)
-                specific_id_status = _find_in_ranges(cp, "IdentifierStatus")
-                if specific_id_status and specific_id_status not in UAX31_ALLOWED_STATUSES:
-                    # We found an *explicitly* restricted status
-                    key = f"Flag: Status: {specific_id_status}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
-                
-                # 2. Check IdentifierType (for Obsolete, Technical, etc.)
-                specific_id_type = _find_in_ranges(cp, "IdentifierType")
-                if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
-                    # We found a specific restricted type
-                    # Clean the label using our alias map
-                    clean_label = ID_TYPE_ALIASES.get(specific_id_type, specific_id_type)
-                    key = f"Flag: Type: {clean_label}"
-                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
-                    id_type_stats[key]['count'] += 1
-                    id_type_stats[key]['positions'].append(f"#{i}")
-                    
-                # --- END (Parallel) Specific Flag Logic ---
 
                 if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
