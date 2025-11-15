@@ -2623,7 +2623,7 @@ def render_emoji_qualification_table(emoji_list: list):
 def render_emoji_summary(emoji_counts, emoji_list):
     """
     Render a one-line summary like:
-    'RGI Emoji Sequences: 4 • Emoji Components: 2'
+    'RGI Emoji Sequences: 12 • Emoji Components: 6'
     """
     summary_el = document.getElementById("emoji-summary")
     if not summary_el:
@@ -2632,23 +2632,15 @@ def render_emoji_summary(emoji_counts, emoji_list):
     # RGI total comes directly from the emoji_counts dict
     rgi_total = emoji_counts.get("RGI Emoji Sequences", 0)
 
-    # Count unique components from the emoji_list by grouping
-    # them, just like the main qualification table does.
+    # The emoji_list is a raw list of *every* occurrence.
+    # We just need to iterate it and increment a counter for
+    # every item that has the "component" status.
     component_total = 0
     if emoji_list:
-        component_keys = set()
         for item in emoji_list:
-            # Get the status from the emoji engine
-            status_str = item.get("status", "")
-            
-            # Check if status is "Component"
-            if status_str.lower() == "component":
-                # Create a unique key for this component type
-                # e.g., ("⃣", "Component")
-                key = (item.get("sequence", "?"), status_str) 
-                component_keys.add(key)
-        
-        component_total = len(component_keys)
+            if item.get("status", "").lower() == "component":
+                component_total += 1
+
 
     summary_el.innerText = (
         f"RGI Emoji Sequences: {rgi_total} • "
