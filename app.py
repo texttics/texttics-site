@@ -650,33 +650,37 @@ def _parse_composition_exclusions(txt: str):
 def _parse_emoji_zwj_sequences(txt: str) -> set:
     """
     Parses emoji-zwj-sequences.txt into a set of RGI strings.
-    This parser is robust and handles formats like:
-    Format 1: 1F468 200D ... # (👨‍👩‍👦) man...
-    Format 2: 1F468 200D ... ; RGI_Emoji_ZWJ_Sequence ; ...
+    This parser is robust and correctly handles the format:
+    <code> ; <type> ; <name> # <emoji>
+    Example:
+    1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
     """
     sequences = set()
-    # This regex will match *only* the leading hex codes and spaces
-    hex_match = re.compile(r'^([0-9a-fA-F\s]+)') 
     
     for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip() # Strip hash comments first
+        line = raw.split('#', 1)[0].strip()
         if not line:
             continue
             
         try:
-            match = hex_match.match(line)
-            if not match:
-                continue
+            # The hex codes are *everything* before the first semicolon
+            parts = line.split(';', 1)
+            if len(parts) < 2:
+                continue # Not a data line
                 
-            hex_codes_str = match.group(1).strip()
-            if not hex_codes_str:
-                continue
-                
-            hex_codes = hex_codes_str.split()
+            hex_codes_str = parts[0].strip()
             
-            if len(hex_codes) > 1: # Only sequences
-                sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
-                sequences.add(sequence_str)
+            # We must check if the *type* is RGI
+            # Get the second column (type) by splitting the remainder
+            type_field = parts[1].split(';', 1)[0].strip()
+            
+            # --- THIS IS THE FIX ---
+            # Only add sequences that are explicitly marked as RGI
+            if type_field == "RGI_Emoji_ZWJ_Sequence":
+                hex_codes = hex_codes_str.split()
+                if len(hex_codes) > 1: # Only sequences
+                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                    sequences.add(sequence_str)
         except Exception as e:
             # print(f"Skipping malformed ZWJ line: {line} | Error: {e}")
             pass # Ignore malformed lines
@@ -2061,7 +2065,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 
                 if cp in DATA_STORES["BidiMirroring"]:
                     mirrored_cp = DATA_STORES["BidiMirroring"][cp]
-                    bidi_mirroring_map[f"#{i}"] = f"'{char}' → '{chr(mirrored_cp)}'"
+                    bidi_mirroring_map[i] = f"'{char}' → '{chr(mirrored_cp)}'"
                 
                 if _find_in_ranges(cp, "CompositionExclusions"): norm_exclusion_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"): norm_nfkc_casefold_indices.append(f"#{i}")
@@ -2842,7 +2846,7 @@ def update_all(event=None):
     # 3) Lone ZWJ still comes from the structural integrity profile
     zwj_flag = forensic_matrix.get("Join Control (Structural)", {})
     if zwj_flag.get("count", 0) > 0:
-        threat_flags["Suspicious: Lone Join Control (ZWJ)"] = zwj_flag
+        threat_flags["Suspicious: Join Control Present (ZWJ)"] = zwj_flag
 
     # --- NEW: Manually add our new emoji flags to the Threat table ---
     new_emoji_flags = {
