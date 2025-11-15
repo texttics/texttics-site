@@ -2656,18 +2656,7 @@ def update_all(event=None):
     # print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
     # print("------------------------")
 
-    emoji_qualification_stats = {}
-    for item in emoji_list:
-        sequence = item["sequence"]
-        status = item["status"].replace("-", " ").title() # "fully-qualified" -> "Fully Qualified"
-        key = f"{sequence} ({status})"
-        
-        if key not in emoji_qualification_stats:
-            emoji_qualification_stats[key] = {'count': 0, 'positions': []}
-            
-        emoji_qualification_stats[key]['count'] += 1
-        emoji_qualification_stats[key]['positions'].append(f"#{item['index']}")
-    
+   
     # Module 2.C: Forensic Integrity
     forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
     zwj_flag = forensic_stats.get("Join Control (Structural)", {})
