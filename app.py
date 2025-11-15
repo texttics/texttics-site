@@ -2329,15 +2329,21 @@ def compute_threat_analysis(t: str):
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
-                # --- B. Mixed-Script Detection ---
-                # This global set will find 'Latin' and 'Cyrillic' from Test 1
-                script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-                if script_ext_val:
-                    scripts_in_use.update(script_ext_val.split())
-                else:
-                    script_val = _find_in_ranges(cp, "Scripts")
-                    if script_val:
-                        scripts_in_use.add(script_val)
+                # --- B. Mixed-Script Detection (Refined) ---
+                # Only check scripts for "visible" L, N, or S categories
+                try:
+                    category = unicodedata.category(char)[0] # Get 'L', 'N', 'S', 'C', etc.
+                    if category in ("L", "N", "S"):
+                        # This global set will find 'Latin' and 'Cyrillic' from Test 1
+                        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+                        if script_ext_val:
+                            scripts_in_use.update(script_ext_val.split())
+                        else:
+                            script_val = _find_in_ranges(cp, "Scripts")
+                            if script_val:
+                                scripts_in_use.add(script_val)
+                except Exception:
+                    pass # Failsafe
                 
                 # --- C. Confusable HTML Report Builder ---
                 # We use a non-global regex here to avoid stateful .test() bugs
