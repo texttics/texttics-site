@@ -578,9 +578,12 @@ Legends & Badges
   color: #1e40af; /* blue-800 */
   border-color: #bfdbfe; /* blue-200 */
 }
+/* NEW: Style for the RGI/Component summary line */
 .emoji-summary {
   margin-top: 0.25rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.75rem; 
   font-size: 0.9rem;
   color: var(--color-text-muted);
+  padding-left: var(--spacing-3);
+  font-weight: 600;
 }
