@@ -351,24 +351,25 @@
          <h2 id="threat-title" class="section-title">Threat-Hunting Profile</h2>
         <div id="threat-banner" class="banner-warning" role="alert" hidden></div>
 
-        <h3 class="subsection-title">Threat Flags</h3>
+       <h3 class="subsection-title">Threat Flags</h3>
 
-<div class="legend legend-threat">
-    <span class="legend-label">Severity:</span>
-    <span class="legend-badge legend-badge-danger">DANGER</span>
-    <span class="legend-badge legend-badge-high">High-Risk</span>
-    <span class="legend-badge legend-badge-suspicious">Suspicious</span>
-</div>
-
-<table class="matrix" id="threat-report-table">
-    <caption>High-level security flags and high-risk runs</caption>
-    <thead>
-        <tr>
-            <th scope="col">Metric</th>
-            <th scope="col">Count</th>
-            <th scope="col">Details / Positions</th>
-        </tr>
-    </thead>
+                <table class="matrix" id="threat-report-table">
+        <caption>
+                    High-level security flags and high-risk runs
+                    <div class="legend legend-threat" style="margin-top: 4px; font-weight: 400;">
+            <span class="legend-label">Severity:</span>
+            <span class="legend-badge">DANGER (e.g., Trojan Source)</span>,
+            <span class="legend-badge">High-Risk (e.g., Mixed Scripts)</span>,
+            <span class="legend-badge">Suspicious (e.g., Lone ZWJ)</span>
+          </div>
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Metric</th>
+            <th scope="col">Count</th>
+            <th scope="col">Details / Positions</th>
+          </tr>
+        </thead>
         <tbody id="threat-report-body">
           </tbody>
 </table>
