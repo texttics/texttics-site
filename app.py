@@ -649,42 +649,64 @@ def _parse_composition_exclusions(txt: str):
 
 def _parse_emoji_zwj_sequences(txt: str) -> set:
     """
-    Parses emoji-zwj-sequences.txt into a set of RGI strings.
-    This parser is robust and correctly handles the format:
-    <code> ; <type> ; <name> # <emoji>
-    Example:
-    1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
+    Parses emoji-zwj-sequences.txt into a set of RGI emoji ZWJ strings.
+
+    Handles multiple common formats, for example:
+      1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
+      1F468 200D 2695 FE0F ; Emoji_ZWJ_Sequence ; E4.0 # man health worker
+      1F468 200D 2695 FE0F ; fully-qualified ; man health worker # 👨‍⚕️
+
+    Strategy:
+      - Take all lines with multiple code points (sequence).
+      - Require that at least one code point is 200D (ZWJ).
+      - Treat them as RGI if the type field looks like RGI/Emoji_ZWJ/fully-qualified.
     """
     sequences = set()
-    
+
     for raw in txt.splitlines():
+        # Strip comments
         line = raw.split('#', 1)[0].strip()
         if not line:
             continue
-            
+
         try:
-            # The hex codes are *everything* before the first semicolon
-            parts = line.split(';', 1)
-            if len(parts) < 2:
-                continue # Not a data line
-                
-            hex_codes_str = parts[0].strip()
-            
-            # We must check if the *type* is RGI
-            # Get the second column (type) by splitting the remainder
-            type_field = parts[1].split(';', 1)[0].strip()
-            
-            # --- THIS IS THE FIX ---
-            # Only add sequences that are explicitly marked as RGI
-            if "RGI_Emoji_ZWJ_Sequence" in type_field:
-                hex_codes = hex_codes_str.split()
-                if len(hex_codes) > 1: # Only sequences
-                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
-                    sequences.add(sequence_str)
-        except Exception as e:
-            # print(f"Skipping malformed ZWJ line: {line} | Error: {e}")
-            pass # Ignore malformed lines
-            
+            # Split all columns (not just 2)
+            parts = [p.strip() for p in line.split(';')]
+            if not parts:
+                continue
+
+            hex_codes_str = parts[0]
+            type_field = parts[1] if len(parts) > 1 else ""
+
+            hex_codes = hex_codes_str.split()
+            # Must be a *sequence* (2+ code points)
+            if len(hex_codes) <= 1:
+                continue
+
+            # Heuristic: must contain ZWJ (200D)
+            if "200D" not in hex_codes_str:
+                continue
+
+            # Decide whether to treat as RGI
+            # Be tolerant to different data variants
+            type_field_lower = type_field.lower()
+            is_rgi = (
+                "rgi_emoji_zwj_sequence" in type_field_lower or
+                "emoji_zwj_sequence" in type_field_lower or
+                "fully-qualified" in type_field_lower
+            )
+
+            if not is_rgi:
+                continue
+
+            # Build the actual Unicode string
+            seq = "".join(chr(int(h, 16)) for h in hex_codes)
+            sequences.add(seq)
+
+        except Exception:
+            # Ignore malformed lines silently
+            continue
+
     print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
     return sequences
 
