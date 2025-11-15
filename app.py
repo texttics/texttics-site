@@ -2632,15 +2632,23 @@ def render_emoji_summary(emoji_counts, emoji_list):
     # RGI total comes directly from the emoji_counts dict
     rgi_total = emoji_counts.get("RGI Emoji Sequences", 0)
 
-    # Try to get component count from counts dict, or fall back to emoji_list
-    component_total = emoji_counts.get("Emoji Components", None)
-    if component_total is None:
-        # Fallback: count rows whose status starts with "Component"
-        component_total = sum(
-            e.get("count", 0)
-            for e in emoji_list
-            if str(e.get("status", "")).lower().startswith("component")
-        )
+    # Count unique components from the emoji_list by grouping
+    # them, just like the main qualification table does.
+    component_total = 0
+    if emoji_list:
+        component_keys = set()
+        for item in emoji_list:
+            # Get the status from the emoji engine
+            status_str = item.get("status", "")
+            
+            # Check if status is "Component"
+            if status_str.lower() == "component":
+                # Create a unique key for this component type
+                # e.g., ("⃣", "Component")
+                key = (item.get("sequence", "?"), status_str) 
+                component_keys.add(key)
+        
+        component_total = len(component_keys)
 
     summary_el.innerText = (
         f"RGI Emoji Sequences: {rgi_total} • "
