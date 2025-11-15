@@ -1152,7 +1152,7 @@ def compute_emoji_analysis(text: str) -> dict:
             # --- A: Check for Forced Text (VS15) ---
             # This is a 2-char sequence that isn't in the RGI set.
             if i + 1 < n and ord(js_array[i+1]) == 0xFE0E: # Text Selector
-                if _find_in_ranges(cp, "Emoji_Presentation"): # Base is default-emoji
+                if _find_in_ranges(cp, "Emoji"): # Base is an emoji
                     # 1. Add to the main "Forced Text" flag
                     flag_forced_text.append(f"#{i}")
                     
