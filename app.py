@@ -1798,7 +1798,8 @@ def compute_wordbreak_analysis(t: str):
     for char in t:
         cp = ord(char)
         wb_class = _find_in_ranges(cp, "WordBreak")
-        new_state = wb_class if wb_class else "XX"
+        # --- Alignment: The default property is "Other" ---
+        new_state = wb_class if wb_class else "Other"
         
         if new_state != current_state:
             if current_state != "NONE":
@@ -1828,7 +1829,7 @@ def compute_sentencebreak_analysis(t: str):
     for char in t:
         cp = ord(char)
         sb_class = _find_in_ranges(cp, "SentenceBreak")
-        new_state = sb_class if sb_class else "XX"
+        new_state = sb_class if sb_class else "Other"
         
         if new_state != current_state:
             if current_state != "NONE":
@@ -1858,7 +1859,7 @@ def compute_graphemebreak_analysis(t: str):
     for char in t:
         cp = ord(char)
         gb_class = _find_in_ranges(cp, "GraphemeBreak")
-        new_state = gb_class if gb_class else "XX"
+        new_state = gb_class if gb_class else "Other"
         
         if new_state != current_state:
             if current_state != "NONE":
