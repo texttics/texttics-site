@@ -686,3 +686,23 @@ Stage 2: Heatmap Row Classes
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* --- Status Bar --- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--header-bg, #f9f9f9);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-top: none; /* Textarea already has a bottom border */
+  border-radius: 0 0 8px 8px; /* Rounds bottom corners */
+  margin-top: -8px; /* Pulls it up to meet the textarea */
+  font-size: 0.85rem;
+  color: var(--text-color-light, #555);
+}
+
+.status-bar strong {
+  color: var(--text-color, #111);
+  font-weight: 600;
+}
