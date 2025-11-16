@@ -690,11 +690,11 @@ Stage 2: Heatmap Row Classes
 /* --- Status Bar --- */
 .status-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between; /* Pushes left/right sides apart */
-  gap: 1rem;
-  padding: 0.5rem 0.75rem;
-  background-color: var(--color-white);
+  align-items: center;
+  justify-content: space-between; /* Pushes left/right sides apart */
+  gap: 1rem;
+  padding: 0.5rem var(--spacing-4); /* <-- THIS LINE IS CHANGED */
+  background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   margin-top: 0.75rem; /* Adds space *below* the textarea */
@@ -706,6 +706,7 @@ Stage 2: Heatmap Row Classes
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-size: 0.8rem;
 }
 
 .status-bar strong {
@@ -747,13 +748,32 @@ Stage 2: Heatmap Row Classes
   text-align: center;
 }
 
-/* --- Status Bar Ready Style --- */
-.status-ready {
-  color: #000;
-  background-color: #39ff14; /* Neon green */
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  /* Neon glow effect */
-  box-shadow: 0 0 5px #39ff14, 0 0 8px #39ff14;
+/* --- Status Bar State Styles --- */
+#status-line {
+  padding: 2px 8px;
+  border-radius: 999px; /* Pill shape */
+  font-weight: 600;
+  font-family: var(--font-mono);
+  transition: all 0.2s ease;
+  border: 1px solid transparent; /* Reserve space for border */
+}
+
+/* State 1: Loading (the default) */
+#status-line.status-loading {
+  color: var(--color-text-muted);
+  background-color: var(--color-border-light);
+}
+
+/* State 2: Ready (elegant green) */
+#status-line.status-ready {
+  color: #065f46; /* Reputable dark green */
+  background-color: #f0fdf4; /* Light green */
+  border-color: #a7f3d0;
+}
+
+/* State 3: Error (elegant red) */
+#status-line.status-error {
+  color: #991b1b; /* Dark red */
+  background-color: #fef2f2; /* Light red */
+  border-color: #fca5a5;
 }
