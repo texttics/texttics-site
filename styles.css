@@ -825,4 +825,32 @@ Stage 2: Heatmap Row Classes
   font-size: 0.85rem;
 }
 
+/* === Status bar: size + left alignment polish === */
+
+/* make the whole left frame hug its contents and be clearly left-aligned */
+.status-bar-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+
+  /* slightly larger text overall */
+  font-size: 0.9rem;
+
+  /* less internal left padding so it doesn’t look “indented” */
+  padding: 0.4rem 0.9rem 0.4rem 0.6rem;
+
+  text-align: left;
+}
+
+/* “Status:” label – a bit stronger and bigger than body text */
+.status-bar-left strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* status value pill – match the button’s feel */
+#status-line {
+  font-size: 0.9rem;
+}
 
