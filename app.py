@@ -2483,13 +2483,24 @@ def _render_confusable_summary_view(
     if not tokens:
         return ""
 
-    # --- Build a set of "hot" code points from the confusables map. ---
-    # This is the key fix: we build our "hot" set from the map keys,
-    # not from the fragile confusable_indices.
-    if confusables_map:
-        hot_cps = set(confusables_map.keys())
-    else:
-        hot_cps = set()
+    # --- Build a set of "hot" code points from the pre-filtered indices ---
+    # This is the correct logic: we build our "hot" set ONLY
+    # from the confusable_indices that were passed in.
+    hot_cps: set[int] = set()
+    js_array = window.Array.from_(t) # Use JS array for correct indexing
+    text_len = len(js_array)
+
+    if confusable_indices:
+        for idx in confusable_indices:
+            try:
+                i = int(idx)
+            except Exception:
+                continue # Skip malformed indices
+
+            if 0 <= i < text_len:
+                ch = js_array[i] # Use index on the JS array
+                if ch:
+                    hot_cps.add(ord(ch))
 
     # If there are no confusable code points at all, there is
     # nothing interesting to show – return empty so the caller
