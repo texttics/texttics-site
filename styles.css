@@ -689,10 +689,10 @@ Stage 2: Heatmap Row Classes
 
 /* --- Status Bar --- */
 .status-bar {
-  display: flex;
+  display: grid; /* <-- NEW LAYOUT */
+  grid-template-columns: auto 1fr; /* Two columns: 1st fits content, 2nd takes all space */
   align-items: center;
-  justify-content: space-between; /* Pushes left/right sides apart */
-  gap: 1rem; /* This now controls the space *between* your two new frames */
+  gap: 1rem;
   margin-top: 1rem; /* Adds space *below* the textarea */
 }
 
@@ -703,24 +703,25 @@ Stage 2: Heatmap Row Classes
   font-size: 0.8rem;
   color: var(--color-text-muted);
   
-  /* --- These styles create the new, separate frame --- */
+  /* --- This is the frame for the status --- */
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 0.5rem var(--spacing-4); /* Gives it proper padding */
+  padding: 0.5rem var(--spacing-4);
 }
 
 .status-bar strong {
-  color: var(--color-text);
-  font-weight: 600;
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 /* Make the button in the status bar smaller */
 .status-bar .tool-btn {
-  flex: 0 1 auto; /* Don't grow, just fit content */
-  padding: 0.25rem 0.6rem;
-  font-size: 0.8rem;
-  margin: 0; /* Override any button margins */
+  justify-self: end; /* <-- This pushes the button to the far-right */
+  flex: 0 1 auto; /* Don't grow, just fit content */
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  margin: 0; /* Override any button margins */
 }
 
 /* --- Macro Analysis Control --- */
@@ -780,69 +781,5 @@ Stage 2: Heatmap Row Classes
 }
 
 
-/* =========================================
-   STATUS BAR: layout + separate frames
-   ========================================= */
 
-/* Full-width row, aligned with the textarea */
-.status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between; /* left & right edges */
-  width: 100%;
-  margin-top: 0.75rem;
-  gap: 0.75rem; /* small space between the two frames */
-}
-
-/* Left frame: "Status: Ready." */
-.status-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-
-  /* own frame */
-  background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.75rem;
-}
-
-/* Make the status value itself a neat pill (optional but nice) */
-#status-line {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  border: 1px solid transparent;
-}
-
-/* keep your state colors */
-#status-line.status-loading {
-  color: var(--color-text-muted);
-  background-color: var(--color-border-light);
-}
-#status-line.status-ready {
-  color: #065f46;
-  background-color: #f0fdf4;
-  border-color: #a7f3d0;
-}
-#status-line.status-error {
-  color: #991b1b;
-  background-color: #fef2f2;
-  border-color: #fca5a5;
-}
-
-/* Right frame: "Reveal Invisibles" button */
-.status-bar .tool-btn {
-  flex: 0 0 auto;              /* don't stretch, hug content */
-  margin-left: auto;           /* push it hard to the right */
-  padding: 0.35rem 0.9rem;     /* slightly taller than default */
-  font-size: 0.8rem;
-
-  background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
 
