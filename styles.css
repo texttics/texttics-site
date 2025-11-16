@@ -587,3 +587,47 @@ Legends & Badges
   padding-left: var(--spacing-3);
   font-weight: 600;
 }
+
+/*
+---
+Stage 2: Heatmap Row Classes
+---
+*/
+
+/* We set a transition on the <tbody> rows so that if the data is 
+  re-calculated, the colors will fade smoothly.
+*/
+#macro-table-body tr {
+  transition: background-color 0.3s ease-in-out;
+}
+
+/* Normal / Baseline
+  No special styling, just the default.
+*/
+.heatmap-normal {
+  /* No change */
+}
+
+/* Low Anomaly (Z-Score > 1.5)
+  A subtle, non-intrusive yellow.
+*/
+.heatmap-low {
+  background-color: #FFFBEA; /* Light yellow */
+}
+
+/* High Anomaly (Z-Score > 3.0)
+  A clear orange warning.
+*/
+.heatmap-high {
+  background-color: #FFF3E0; /* Light orange */
+  font-weight: bold;
+}
+
+/* Critical Threat (Critical Flags > 0)
+  A high-alert, unambiguous red. This overrides all other styles.
+*/
+.heatmap-critical {
+  background-color: #FFEBEE; /* Light red */
+  color: #B71C1C; /* Dark red text for high contrast */
+  font-weight: bold;
+}
