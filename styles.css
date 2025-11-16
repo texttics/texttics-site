@@ -654,35 +654,33 @@ Stage 2: Heatmap Row Classes
 
 
 /* --- Character Inspector Panel --- */
-
 #inspector-panel-wrapper {
-  margin-top: var(--spacing-6);
+  margin-top: 1.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background-color: var(--color-white);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  overflow: hidden; /* so the header background touches the top border */
+  background-color: var(--color-bg); /* same light gray as page */
 }
 
-/* Header bar – no “white stripe”, light grey band */
+/* Header bar of the inspector */
 #inspector-panel-wrapper h3 {
   margin: 0;
-  padding: 0.55rem 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-border-light);
-  border-radius: var(--radius) var(--radius) 0 0;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
-  color: var(--color-text);
-  background-color: var(--color-bg);
+  background-color: transparent; /* no white stripe */
 }
 
-/* Body */
+/* Body of the inspector */
 #inspector-panel-content {
-  padding: 0.85rem 1rem 1rem;
+  padding: 0.75rem 1rem 1rem;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.6;
-  overflow-x: auto;          /* horizontal scroll if many columns */
+  overflow-x: auto;
+  background-color: var(--color-white); /* keep the data area as a card */
 }
+
 
 /* Initial “click within the text input…” helper text */
 #inspector-panel-content > p {
