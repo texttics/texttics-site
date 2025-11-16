@@ -882,3 +882,46 @@ Stage 2: Heatmap Row Classes
 #status-line {
   font-size: 0.9rem;
 }
+
+/* Full-width bar exactly under the textarea */
+.status-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 1rem;
+
+  /* key part */
+  justify-content: space-between; /* left card at far left, button at far right */
+}
+
+/* Left frame: remove any “centering” feel */
+.status-bar-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+
+  /* keep it visually light + flush to the left edge */
+  background-color: transparent;      /* matches page bg */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.9rem;
+  margin: 0;                           /* kill any auto-centering */
+}
+
+/* Make “Status:” slightly larger & clearly left-aligned */
+.status-bar-left strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Button on the far right, same row */
+.status-bar .tool-btn {
+  flex: 0 0 auto;
+  margin-left: auto;       /* pushes it all the way to the right edge */
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+}
+
