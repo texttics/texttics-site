@@ -384,3 +384,121 @@ The `EmojiQualificationMap` (from `emoji-test.txt`) is now fully loaded and used
 This tool is **privacy-first**.
 * **No Server:** All analysis, including the "deep scan" modules, runs 100% in *your* browser. The text you paste is **never** sent to a server.
 * **No Analytics (by Default):** The application implements Google's Consent Mode v2. All analytics and ad tracking are **disabled by default** (set to 'denied') to ensure user privacy. Because there is no consent banner to "accept" tracking, this state is permanent.
+* 
+
+---
+---
+---
+app.py - Architecture & Logic Summary
+
+This file is the "brain" of the Text...tics application. It runs in the browser via PyScript and is responsible for all data loading, analysis, and rendering.
+
+1. Architecture: The "Orchestrator" Model
+
+app.py functions as a single, powerful orchestrator. Its architecture can be broken down into six main phases:
+
+Setup & Globals: Defines all constants, data structures, and native browser APIs (like RegExp and Intl.Segmenter) that will be used.
+
+Data Loading (Async): On page load, it asynchronously fetches all 31 raw Unicode data files (.txt) specified in pyscript.toml.
+
+Data Parsing: It parses these raw text files into a set of optimized Python dictionaries and lists held in a single global DATA_STORES variable.
+
+Event Listening: It attaches a main event listener (update_all) to the <textarea> input.
+
+Compute & Render Pipeline: When the user types, update_all executes the full analysis pipeline. It calls a series of compute_... functions, which analyze the text against the DATA_STORES. The results (Python dicts) are then passed to render_... functions, which generate and inject HTML into the DOM.
+
+Stage 2 Bridge: At the end of the pipeline, it packages the core results (grapheme list, flag positions) and exports them to the window.TEXTTICS_CORE_DATA object for Stage 2 to consume.
+
+2. Key Functions & Logic
+
+Globals & Setup
+
+MINOR_CATEGORIES_29, ALIASES, CCC_ALIASES: Dictionaries of constants for defining and labeling Unicode categories.
+
+REGEX_MATCHER: A dictionary that pre-compiles high-performance JavaScript RegExp objects for tasks like finding all \p{White_Space} or \p{M} (Marks).
+
+GRAPHEME_SEGMENTER: A global instance of window.Intl.Segmenter used for all Grapheme (UAX #29) analysis.
+
+DATA_STORES: The central, global dict that holds all parsed Unicode data. It contains sub-keys like "Blocks", "Confusables", "RGISequenceSet", etc.
+
+Data Loading & Parsing (async def load_unicode_data)
+
+This is the main asynchronous entry point, triggered by main().
+
+It uses pyfetch to asyncio.gather all 31 .txt files in parallel.
+
+It calls a series of specialized parser functions to populate DATA_STORES:
+
+_parse_and_store_ranges(txt, store_key): The workhorse parser for most UCD files (Blocks.txt, DerivedAge.txt, Scripts.txt, etc.). It parses 0041..005A ; Property lines into efficient range-based lookup tables.
+
+_parse_property_file(txt, property_map): A more advanced parser for multi-property files like PropList.txt, sorting different properties into their correct DATA_STORES buckets.
+
+_parse_confusables(txt): Parses confusables.txt into the DATA_STORES["Confusables"] dictionary ({cp: skeleton_string}).
+
+_parse_emoji_zwj_sequences(txt), _parse_emoji_sequences(txt), _parse_emoji_variation_sequences(txt): These three functions build the "Emoji Powerhouse" RGI (Recommended for General Interchange) database, DATA_STORES["RGISequenceSet"].
+
+_parse_emoji_test(txt): Parses emoji-test.txt into the DATA_STORES["EmojiQualificationMap"].
+
+Normalization (def normalize_extended)
+
+A custom, multi-tier function that provides a robust NFKC normalization, which is essential for the "Quad-State" analysis.
+
+Tiers 1 & 2: Tries to use the full unicodedata2 library, but falls back to the built-in unicodedata if necessary.
+
+Tier 3: Applies manual patches (like the ENCLOSED_MAP) to fix known gaps in the standard library, such as normalizing ⓼ to 8.
+
+Core "Compute" Functions (The "Microscope")
+
+These functions are called by update_all to analyze the raw text.
+
+compute_code_point_stats(t, emoji_counts): Calculates all 30 "Logical" (Code Point) category counts.
+
+compute_grapheme_stats(t): Calculates all "Perceptual" (Grapheme) category counts and the "Grapheme Structural Integrity" (Zalgo) metrics.
+
+compute_combining_class_stats(t): Computes the "Zalgo" profile by counting combining marks by their class (ccc=220, ccc=230, etc.).
+
+compute_..._analysis(t) (e.g., compute_linebreak_analysis): A suite of 10 different "Run-Length Encoding" (RLE) functions that power the "Structural Shape Profile." They iterate code-point-by-code-point and count runs of the same property (e.g., ALetter, Numeric).
+
+compute_forensic_stats_with_positions(t, cp_minor_stats): The engine for the "Structural Integrity Profile." It iterates every code point and uses _find_in_ranges to check it against dozens of property tables (e.g., BidiControl, Deprecated, IdentifierStatus, CompositionExclusions), logging the position of every flag.
+
+compute_provenance_stats(t): The engine for the "Provenance & Context Profile." It finds the Script, Block, Age, and NumericType for every code point, also logging positions.
+
+compute_emoji_analysis(t): The "Emoji Powerhouse" engine. It performs a complex, multi-tier scan to accurately find RGI sequences and identify all emoji-related anomalies (e.g., Forced Text Presentation, Broken Keycap Sequence).
+
+compute_threat_analysis(t): The engine for the "Threat-Hunting Profile." It manages the "Quad-State" pipeline, calls normalize_extended and _generate_uts39_skeleton, computes the SHA-256 hashes, and identifies high-level threats like Bidi overrides and Mixed Scripts.
+
+Core "Render" Functions (The "Hands")
+
+These functions take the dicts from the "compute" functions and build HTML strings.
+
+render_cards(stats_dict, element_id): Renders the "Core Metrics" cards.
+
+render_parallel_table(cp_stats, gr_stats, ...): Renders the side-by-side "Dual-Atom" tables.
+
+render_matrix_table(stats_dict, element_id, ...): The workhorse renderer for all "Matrix of Facts" tables (Integrity, Provenance, Shape, etc.). It correctly handles position lists and the <details> tag for long lists.
+
+render_emoji_qualification_table(emoji_list): Renders the specific UI for the "Emoji Qualification Profile."
+
+render_threat_analysis(threat_results): Renders all components of the "Threat-Hunting Profile."
+
+Orchestration & Entry Point
+
+@create_proxy def update_all(event=None): The "main brain." This is the single function attached to the <textarea> input event. It runs the entire pipeline in order:
+
+Gets the text.
+
+Calls all compute_... functions.
+
+Calls all render_... functions.
+
+Packages and exports data for Stage 2 using to_js.
+
+async def main(): The application's entry point. It is called once by asyncio.ensure_future(main()). Its only jobs are to:
+
+await load_unicode_data().
+
+Attach the update_all listener to the <textarea>.
+
+Attach the reveal_invisibles listener to its button.
+
+Enable the <textarea> and set its placeholder to "Ready."
