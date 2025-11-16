@@ -1114,7 +1114,7 @@ async def load_unicode_data():
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
-        # render_status("Ready. Paste or type text to analyze.")
+        render_status("&nbsp;")
         update_all() # Re-render with ready state
         
     except Exception as e:
