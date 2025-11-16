@@ -322,3 +322,61 @@ if (stage2Btn) {
     window.open('stage2.html', '_blank');
   });
 }
+
+
+/**
+ * ==========================================
+ * STAGE 2 INTERACTIVE BRIDGE API
+ * ==========================================
+ * This function is called by the Stage 2 popup window to highlight
+ * a specific grapheme segment in the main Stage 1 <textarea>.
+ *
+ * @param {number} startGraphemeIndex - The 0-based index of the *first* grapheme in the segment.
+ * @param {number} endGraphemeIndex - The 0-based *exclusive* index of the *end* grapheme.
+ */
+window.TEXTTICS_HIGHLIGHT_SEGMENT = (startGraphemeIndex, endGraphemeIndex) => {
+  const textArea = document.getElementById('text-input');
+  if (!textArea) {
+    console.error('Stage 1: Cannot find #text-input textarea.');
+    return;
+  }
+  
+  const text = textArea.value;
+  
+  // 1. Find the Code Unit (UTF-16) indices for the grapheme range.
+  // We must use Intl.Segmenter to be 100% consistent with the Python logic.
+  let startCodeUnitIndex = 0;
+  let endCodeUnitIndex = text.length;
+  
+  try {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const graphemes = Array.from(segmenter.segment(text));
+    
+    if (graphemes.length > 0) {
+      // Get the start index from the startGraphemeIndex-th grapheme
+      if (startGraphemeIndex < graphemes.length) {
+        startCodeUnitIndex = graphemes[startGraphemeIndex].index;
+      }
+      
+      // Get the end index. endGraphemeIndex is *exclusive*.
+      if (endGraphemeIndex < graphemes.length) {
+        // The end index is the *start* of the endGraphemeIndex-th grapheme
+        endCodeUnitIndex = graphemes[endGraphemeIndex].index;
+      } else {
+        // If it's the last segment, the end index is the total text length
+        endCodeUnitIndex = text.length;
+      }
+    }
+    
+  } catch (e) {
+    console.error('Stage 1: Error during grapheme segmentation:', e);
+    // Fallback: Just select the whole text
+    startCodeUnitIndex = 0;
+    endCodeUnitIndex = text.length;
+  }
+  
+  // 2. Select and focus the text
+  // We must focus first, *then* set selection for it to work.
+  textArea.focus();
+  textArea.setSelectionRange(startCodeUnitIndex, endCodeUnitIndex);
+};
