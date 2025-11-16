@@ -721,7 +721,6 @@ Stage 2: Heatmap Row Classes
   padding: 0.25rem 0.6rem;
   font-size: 0.8rem;
   margin: 0; /* Override any button margins */
-  margin-right: var(--spacing-4);
 }
 
 /* --- Macro Analysis Control --- */
