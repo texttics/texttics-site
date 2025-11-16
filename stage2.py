@@ -161,19 +161,46 @@ def _find_in_ranges_multi(cp: int, store_key: str):
 
 def get_grapheme_base_properties(grapheme: str) -> dict:
     """Finds all UAX properties of the *first code point* in a grapheme."""
-    props = {"wb": "Other", "sb": "Other", "pl_props": set(), "dc_props": set()}
+    props = {
+        "wb": "Other", 
+        "sb": "Other",
+        # We will check these boolean properties directly
+        "is_WhiteSpace": False, 
+        "is_Bidi_Control": False, 
+        "is_Join_Control": False,
+        "is_Default_Ignorable": False
+    }
     if not grapheme:
         return props
     
     first_char = window.Array.from_(grapheme)[0]
     cp = ord(first_char)
     
+    # --- THIS IS THE FIX ---
+    # Use the simple, reliable _find_in_ranges for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
     props["sb"] = _find_in_ranges(cp, "SentenceBreak") or "Other"
     
-    # Use the multi-finder for PropList and DerivedCore
-    props["pl_props"] = set(_find_in_ranges_multi(cp, "PropList"))
-    props["dc_props"] = set(_find_in_ranges_multi(cp, "DerivedCore"))
+    # Check PropList properties
+    # We find *all* matching properties in this file
+    pl_props = []
+    for s, e, v in STAGE2_DATA_STORES["PropList"]["ranges"]:
+        if s <= cp <= e:
+            pl_props.append(v)
+            
+    if "White_Space" in pl_props: props["is_WhiteSpace"] = True
+    if "Bidi_Control" in pl_props: props["is_Bidi_Control"] = True
+    if "Join_Control" in pl_props: props["is_Join_Control"] = True
+    
+    # Check DerivedCore properties
+    dc_props = []
+    for s, e, v in STAGE2_DATA_STORES["DerivedCore"]["ranges"]:
+        if s <= cp <= e:
+            dc_props.append(v)
+            
+    if "Default_Ignorable_Code_Point" in dc_props:
+        props["is_Default_Ignorable"] = True
+    # --- END OF FIX ---
     
     return props
 
@@ -414,36 +441,26 @@ def render_sparklines(segmented_reports):
 # 4. MAIN BOOTSTRAP FUNCTION
 # ---
 
-async def main():
+async def load_stage2_data():
+    """Fetches and parses the UAX data needed for Stage 2."""
     global DATA_LOADED
-    status_el = document.getElementById("loading-status")
-    
-    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, PropList, DerivedCore)..."
-    await load_stage2_data()
-    if not DATA_LOADED:
-        status_el.innerText = "Error: Could not load UAX data. Cannot proceed."
-        status_el.style.color = "red"
-        return
-
     try:
-        core_data_proxy = window.opener.TEXTTICS_CORE_DATA
+        # --- NEW: Add SentenceBreakProperty.txt ---
+        wb_res_task = pyfetch("./WordBreakProperty.txt")
+        sb_res_task = pyfetch("./SentenceBreakProperty.txt") # <-- ADDED
+        pl_res_task = pyfetch("./PropList.txt")
+        dc_res_task = pyfetch("./DerivedCoreProperties.txt")
         
-        if not core_data_proxy:
-            status_el.innerText = "Error: No data from Stage 1. Please run an analysis on the main app page and click 'Analyze Macrostructure' again."
-            status_el.style.color = "red"
-            return
-
-        core_data = core_data_proxy.to_py()
+        wb_res, sb_res, pl_res, dc_res = await asyncio.gather(wb_res_task, sb_res_task, pl_res_task, dc_res_task) # <-- ADDED
         
-        status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
-        
-        segmented_report = compute_segmented_profile(core_data, N=10)
-        
-        render_sparklines(segmented_report)
-        render_macro_table(segmented_report)
-        
-        status_el.innerText = "Macrostructure Profile (v1.0)"
-
+        if wb_res.ok and sb_res.ok and pl_res.ok and dc_res.ok: # <-- ADDED sb_res.ok
+            _parse_and_store_ranges(await wb_res.string(), "WordBreak")
+            _parse_and_store_ranges(await sb_res.string(), "SentenceBreak") # <-- ADDED
+            _parse_and_store_ranges(await pl_res.string(), None, property_map=PROP_MAP)
+            _parse_and_store_ranges(await dc_res.string(), None, property_map=PROP_MAP)
+            DATA_LOADED = True
+        else:
+            print(f"Stage 2: Failed to load data (WB:{wb_res.status}, SB:{sb_res.status}, PL:{pl_res.status}, DC:{dc_res.status})") # <-- UPDATED
     except Exception as e:
         status_el.innerText = f"A critical error occurred: {e}. Is the main app tab still open?"
         status_el.style.color = "red"
