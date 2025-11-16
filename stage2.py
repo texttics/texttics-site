@@ -110,20 +110,28 @@ def render_sparklines(segmented_reports):
 async def main():
     status_el = document.getElementById("loading-status")
     try:
-        # `window.opener` is the JS way to access the tab that opened this one
-        core_data = window.opener.TEXTTICS_CORE_DATA
+        # 1. Get the JsProxy from the opener window
+        core_data_proxy = window.opener.TEXTTICS_CORE_DATA
         
-        if not core_data:
+        if not core_data_proxy:
             status_el.innerText = "Error: No data from Stage 1. Please run an analysis on the main app page and click 'Analyze Macrostructure' again."
             status_el.style.color = "red"
             return
+
+        # 2. *** THIS IS THE FIX ***
+        # Convert the entire JavaScript object into a native Python dict.
+        # This automatically converts all nested arrays and objects.
+        core_data = core_data_proxy.to_py()
+        
+        # Now, core_data is a pure Python dict, and core_data['grapheme_list']
+        # is a pure Python list, which supports slicing.
         
         status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
         
-        # Run the full Stage 2 pipeline
+        # 3. Run the full Stage 2 pipeline
         segmented_report = compute_segmented_profile(core_data, N=10)
         
-        # Render the UI
+        # 4. Render the UI
         render_sparklines(segmented_report)
         render_macro_table(segmented_report)
         
