@@ -3140,6 +3140,13 @@ def update_all(event=None):
         "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
     }
+    # Define the exact display order for the cards
+    meta_cards_order = [
+        "Total Code Points",
+        "Total Graphemes",
+        "RGI Emoji Sequences",
+        "Whitespace (Total)"
+    ]
     grapheme_cards = grapheme_forensics
     
     # 2.B
@@ -3195,7 +3202,7 @@ def update_all(event=None):
     # --- 3. Call All Renderers ---
     
     # Render 2.A
-    render_cards(meta_cards, "meta-totals-cards")
+    render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
