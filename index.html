@@ -80,9 +80,10 @@
       <!-- Group 1: Analysis Configuration (Control Plane) -->
       <section id="control-plane" aria-labelledby="control-plane-title">
         <div class="section-header">
-          <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Analysis Configuration</h2>
+          <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Control Paneln</h2>
         </div>
-
+        <label for="text-input" class="visually-hidden">Text input</label>
+        <textarea id="text-input" placeholder="Loading Unicode data..." disabled></textarea>
                 <div class="control-buttons-container">
           <button id="btn-run-stage2" class="tool-btn" title="Run macro-analysis on this text">
             📊 Analyze Macrostructure
@@ -91,9 +92,6 @@
             👁️ Reveal Invisibles
           </button>
         </div>
-
-        <label for="text-input" class="visually-hidden">Text input</label>
-        <textarea id="text-input" placeholder="Loading Unicode data..." disabled></textarea>
         <div id="inspector-panel-wrapper">
 </div>
                 <p id="status-line" role="status" aria-live="polite" class="status">&nbsp;</p>
