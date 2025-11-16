@@ -139,6 +139,19 @@ ALIASES = {
     "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
 }
 
+CCC_ALIASES = {
+    # Full list is long, these are the most common "Zalgo" ones
+    "1": "Overlay",
+    "218": "Double Below",
+    "220": "Attached Below",
+    "222": "Attached Below Left",
+    "228": "Attached Above Right",
+    "230": "Attached Above",
+    "232": "Attached Above Left",
+    "233": "Below",
+    "234": "Above",
+}
+
 # 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
 # We must define all categories to correctly implement the "default-to-restricted" rule.# Source: https://www.unicode.org/reports/tr31/
 # These are explicitly "Allowed" or "Recommended"
@@ -2969,6 +2982,39 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
     if element:
         element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
 
+def render_ccc_table(stats_dict, element_id):
+    """Renders the 3-column Canonical Combining Class table."""
+    html = []
+    element = document.getElementById(element_id)
+    if not element: return
+
+    sorted_keys = sorted(stats_dict.keys())
+    
+    if not sorted_keys:
+        element.innerHTML = "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
+        return
+
+    for key in sorted_keys:
+        count = stats_dict[key]
+        if count == 0:
+            continue
+        
+        # key is "ccc=220", extract "220"
+        class_num = key.split('=')[-1]
+        # Get the description, or a simple dash as a fallback
+        description = CCC_ALIASES.get(class_num, "N/A")
+        
+        # Add inline style to 3rd column to override blue color
+        html.append(
+            f'<tr>'
+            f'<th scope="row">{key}</th>'
+            f'<td>{count}</td>'
+            f'<td style="color: var(--color-text-muted); font-weight: normal; font-family: var(--font-sans);">{description}</td>'
+            f'</tr>'
+        )
+    
+    element.innerHTML = "".join(html)
+
 def render_toc_counts(counts):
     """Updates the counts in the sticky Table of Contents."""
     document.getElementById("toc-dual-count").innerText = f"({counts.get('dual', 0)})"
@@ -3146,7 +3192,7 @@ def update_all(event=None):
     # Render 2.A
     render_cards(meta_cards, "meta-totals-cards")
     render_cards(grapheme_cards, "grapheme-integrity-cards")
-    render_matrix_table(ccc_stats, "ccc-matrix-body")
+    render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
     render_parallel_table(cp_minor, gr_minor, "minor-parallel-body", ALIASES)
     
