@@ -156,11 +156,28 @@ This tool uses a powerful **"Quad-State" Normalization Pipeline** as its analyti
 
 The UI is not a flat list of modules but a hierarchical "lab bench" that presents the full structural profile in a logical, facts-first order. It consists of a sticky navigation list (the "Table of Contents") and a main content feed broken into the following anchored sections.
 
-### Group 1: Analysis Configuration
+### Group 1: Control Panel
 
 This is the "Control Plane" for the instrument.
 * **Text Input:** The main `<textarea>` that receives the "post-clipboard" string.
 * **"Copy Report" Button:** A utility to copy the *entire* structured profile to the clipboard as a human-readable, timestamped text report.
+
+* **Character Inspector (Click-to-Inspect):** A new panel added to the "Control Plane" that completes the "lab instrument" metaphor. It directly connects the *where* (the text) to the *what* (its deep Unicode properties).
+    * **How it Works:** The inspector is a high-speed, read-only query engine. It attaches a listener to the browser's `selectionchange` event. When the user clicks or moves the cursor in the text input, the inspector:
+        1.  Gets the cursor's precise `selectionStart` position.
+        2.  Reads the code point immediately to the **right** of the cursor.
+        3.  Correctly resolves surrogate pairs (e.g., `😀`) into their full 32-bit code points.
+        4.  Queries this single code point against the **31 pre-parsed UCD files** already loaded into the `DATA_STORES`.
+    * **Displayed Properties:** The panel provides an instantaneous "deep dive" into the selected character, emulating world-class tools like BabelPad. It lists all core properties, including:
+        > * **Identity:** The character glyph, its `U+XXXX` Hex code, and its Decimal value.
+        > * **Name:** The official Unicode `unicodedata.name()`.
+        > * **Provenance:** `Block`, `Age`, and `Script`.
+        > * **Classification:** `Category` (Minor), e.g., "Lowercase Letter" (`Ll`).
+        > * **Bidi Class (UAX #9):** e.g., `L` (Left-to-Right).
+        > * **Line Break (UAX #14):** e.g., `AL` (Alphabetic).
+        > * **Word Break (UAX #29):** e.g., `ALetter`.
+        > * **Sentence Break (UAX #29):** e.g., `Lower`.
+        > * **Grapheme Break (UAX #29):** e.g., `Other`.
 
 ### Group 2.A: Dual-Atom Profile
 
