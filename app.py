@@ -8,7 +8,7 @@ except ImportError:
     # Fall back to Pyodide's built-in (incomplete) version
     import unicodedata
     print("Warning: unicodedata2 not found. Falling back to built-in unicodedata (normalization may be incomplete).")
-from pyodide.ffi import create_proxy
+from pyodide.ffi import create_proxy, to_js
 from pyodide.http import pyfetch
 from pyscript import document, window
 import hashlib
@@ -3226,7 +3226,13 @@ def update_all(event=None):
             "nfkc_casefold_text": nfkc_cf_text,
             "timestamp": window.Date.new().toISOString()
         }
-        window.TEXTTICS_CORE_DATA = core_data
+
+        # *** THIS IS THE FIX ***
+        # Convert the Python dict to a true JavaScript object (deep conversion)
+        core_data_js = to_js(core_data, dict_converter=window.Object.fromEntries)
+        window.TEXTTICS_CORE_DATA = core_data_js
+        # *** END OF FIX ***
+
         print("Stage 1 data exported for Stage 2.")
     except Exception as e:
         print(f"Error packaging data for Stage 2: {e}")
