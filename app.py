@@ -2392,22 +2392,33 @@ def _tokenize_for_pvr(text: str) -> list:
     """
     Tokenizes the text into a list of 'word' and 'gap' tokens
     using the LNPS_Runs regex.
+    
+    This version uses a while(regex.exec()) loop, which is the
+    reliable way to iterate JS regex matches while preserving
+    the .index property.
     """
     tokens = []
     last_index = 0
     js_array = window.Array.from_(text)
-    lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
     
-    matches_iter = window.String.prototype.matchAll.call(text, lnps_regex)
-    matches = window.Array.from_(matches_iter)
+    # Get the JS RegExp object (it has the 'gu' flag)
+    lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
+    if not lnps_regex:
+        return [] # Failsafe
 
-    for match in matches:
-        word_run = match.to_py()[0]
-        # Access the JS 'index' *property* using dict notation
-        # and cast the JS Number proxy to a Python int.
-        start_index = int(match["index"])
-        end_index = start_index + len(word_run)
+    # Manually loop using the .exec() method
+    while True:
+        match = lnps_regex.exec(text)
+        if not match:
+            break # No more matches
         
+        # --- This is the reliable way to get match properties ---
+        word_run = match[0]               # "pаypal"
+        start_index = int(match.index)    # 0 (as a Python int)
+        # --- End reliable access ---
+        
+        end_index = start_index + len(word_run)
+
         # 1. Add the "gap" (whitespace/other) before this word
         if start_index > last_index:
             tokens.append({
