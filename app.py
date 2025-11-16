@@ -2403,7 +2403,9 @@ def _tokenize_for_pvr(text: str) -> list:
 
     for match in matches:
         word_run = match.to_py()[0]
-        start_index = int(match.index)
+        # Access the JS 'index' *property* using dict notation
+        # and cast the JS Number proxy to a Python int.
+        start_index = int(match["index"])
         end_index = start_index + len(word_run)
         
         # 1. Add the "gap" (whitespace/other) before this word
@@ -2458,9 +2460,9 @@ def _render_confusable_summary_view(
         elif token['type'] == 'word':
             # Check if this word is "hot" (contains a confusable)
             word_has_confusable = False
-            # Cast token values to int()
-            start_idx = int(token['start'])
-            end_idx = int(token['end'])
+            # token['start'] and token['end'] are already native Python ints
+            start_idx = token['start']
+            end_idx = token['end']
         
         for i in range(start_idx, end_idx):
             if i in confusable_indices:
@@ -2471,7 +2473,7 @@ def _render_confusable_summary_view(
                 # This is an "interesting" word. Render it fully.
                 ellipsis_open = False
                 word_chars = window.Array.from_(token['text'])
-                start_idx = int(token['start']) # Get the int value once
+                start_idx = token['start'] # Get the int value once
                 
                 for i, char in enumerate(word_chars):
                     raw_index = start_idx + i # Use the native int
