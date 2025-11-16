@@ -3028,7 +3028,90 @@ def render_toc_counts(counts):
 # 5. MAIN ORCHESTRATOR
 # ---
     
+@create_proxy
+def inspect_character(event):
+    """
+    Called on 'selectionchange'. Inspects the character under the cursor.
+    """
+    try:
+        text_input = document.getElementById("text-input")
+        pos = text_input.selectionStart
+        
+        # Only run if selection is a single cursor (not a range)
+        if pos != text_input.selectionEnd:
+            return
 
+        text = text_input.value
+        if pos >= len(text):
+            # Cursor is at the end, nothing to inspect
+            render_inspector_panel(None)
+            return
+            
+        char = text[pos]
+        cp = ord(char)
+
+        # Handle astral plane characters (surrogate pairs)
+        if 0xD800 <= cp <= 0xDBFF and pos + 1 < len(text):
+            cp_low = ord(text[pos+1])
+            if 0xDC00 <= cp_low <= 0xDFFF:
+                cp = 0x10000 + (((cp - 0xD800) << 10) | (cp_low - 0xDC00))
+                char = char + text[pos+1] # The character is the pair
+
+        data = {
+            "char": char,
+            "cp_hex": f"U+{cp:04X}",
+            "cp_dec": cp,
+            "name": unicodedata.name(char, "No Name Found"),
+            "block": _find_in_ranges(cp, "Blocks") or "N/A",
+            "age": _find_in_ranges(cp, "DerivedAge") or "N/A",
+            "script": _find_in_ranges(cp, "Scripts") or "N/A",
+            "category_minor": _find_in_ranges(cp, "Minor_Categories") or "N/A",
+            "bidi_class": _find_in_ranges(cp, "Bidi_Class") or "N/A",
+            "line_break": _find_in_ranges(cp, "LineBreak") or "N/A",
+            "word_break": _find_in_ranges(cp, "WordBreak") or "N/A",
+            "sentence_break": _find_in_ranges(cp, "SentenceBreak") or "N/A",
+            "grapheme_break": _find_in_ranges(cp, "GraphemeBreak") or "N/A",
+        }
+        
+        render_inspector_panel(data)
+        
+    except Exception as e:
+        print(f"Inspector Error: {e}")
+        render_inspector_panel({"error": str(e)})
+
+def render_inspector_panel(data):
+    """
+    Renders the HTML for the Character Inspector panel.
+    """
+    panel = document.getElementById("inspector-panel-content")
+    if not panel:
+        return
+
+    if data is None:
+        panel.innerHTML = "<p>Click on any character in the text area above to see its properties.</p>"
+        return
+        
+    if "error" in data:
+        panel.innerHTML = f"<p>Error: {data['error']}</p>"
+        return
+
+    html = [
+        f'<h2>{data["char"]}</h2>',
+        '<dl class="inspector-grid">',
+        f'<dt>Code Point</dt><dd>{data["cp_hex"]} (Decimal: {data["cp_dec"]})</dd>',
+        f'<dt>Name</dt><dd>{data["name"]}</dd>',
+        f'<dt>Block</dt><dd>{data["block"]}</dd>',
+        f'<dt>Age</dt><dd>{data["age"]}</dd>',
+        f'<dt>Script</dt><dd>{data["script"]}</dd>',
+        f'<dt>Category</dt><dd>{data["category_minor"]}</dd>',
+        f'<dt>Bidi Class</dt><dd>{data["bidi_class"]}</dd>',
+        f'<dt>Line Break</dt><dd>{data["line_break"]}</dd>',
+        f'<dt>Word Break</dt><dd>{data["word_break"]}</dd>',
+        f'<dt>Sentence Break</dt><dd>{data["sentence_break"]}</dd>',
+        f'<dt>Grapheme Break</dt><dd>{data["grapheme_break"]}</dd>',
+        '</dl>'
+    ]
+    panel.innerHTML = "".join(html)
 
 @create_proxy
 def update_all(event=None):
@@ -3332,30 +3415,34 @@ def reveal_invisibles(event=None):
 # [THIS IS IN app.py]
 
 async def main():
-    """Main entry point: Loads data, then hooks the input."""
-    
-    # --- FIX 1: Get element first ---
-    text_input_element = document.getElementById("text-input")
-    
-    # Start loading the external data and wait for it to finish.
-    await load_unicode_data()
-    
-    # --- FIX 2: Bind listener *after* await ---
-    # This ensures the listener is bound in the SAME interpreter
-    # that just loaded the data.
-    text_input_element.addEventListener("input", update_all)
+    """Main entry point: Loads data, then hooks the input."""
+    
+    # --- FIX 1: Get element first ---
+    text_input_element = document.getElementById("text-input")
+    
+    # Start loading the external data and wait for it to finish.
+    await load_unicode_data()
+    
+    # --- FIX 2: Bind listener *after* await ---
+    # This ensures the listener is bound in the SAME interpreter
+    # that just loaded the data.
+    text_input_element.addEventListener("input", update_all)
+    
+    # --- NEW: Hook the Inspector Panel ---
+    # We listen on the *document* because 'selectionchange' fires on the document
+    document.addEventListener("selectionchange", create_proxy(inspect_character))
 
 # --- NEW: Hook the Reveal Button ---
-    reveal_btn = document.getElementById("btn-reveal")
-    if reveal_btn:
-        reveal_btn.addEventListener("click", reveal_invisibles)
-    
-    # --- FIX 3: Un-gate the UI ---
-    # Now that the listener is bound and data is loaded,
-    # enable the text area for the user.
-    text_input_element.disabled = False
-    text_input_element.placeholder = "Paste or type here..."
-    print("Text...tics is ready.") # A good sign to see in the console
+    reveal_btn = document.getElementById("btn-reveal")
+    if reveal_btn:
+        reveal_btn.addEventListener("click", reveal_invisibles)
+s    
+    # --- FIX 3: Un-gate the UI ---
+    # Now that the listener is bound and data is loaded,
+    # enable the text area for the user.
+  D   text_input_element.disabled = False
+    text_input_element.placeholder = "Paste or type here..."
+Sort    print("Text...tics is ready.") # A good sign to see in the console
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
