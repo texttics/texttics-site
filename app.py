@@ -2506,33 +2506,13 @@ def _render_confusable_summary_view(
         if any(ord(ch) in hot_cps for ch in token_text):
             hot_token_indices.add(i)
 
-# --- Pass 2: Expand to "Keep Set" (hot + neighbours + nearest words) ---
-    keep_indices: set[int] = set()
+    # --- Pass 2: The "Keep Set" is *only* the hot tokens ---
+    # We no longer add any neighbours, per the new requirement.
+    keep_indices: set[int] = hot_token_indices
     num_tokens = len(tokens) # Get token count once
 
-    for i in hot_token_indices:
-        # Always keep the hot word itself
-        keep_indices.add(i)
-
-        # ----- LEFT SIDE -----
-        if i > 0:
-            # immediate left neighbour (gap or word)
-            keep_indices.add(i - 1)
-
-            # if the immediate left neighbour is a gap,
-            # also keep the word just before that gap
-            if tokens[i - 1].get("type") == "gap" and (i - 2) >= 0:
-                keep_indices.add(i - 2)
-
-        # ----- RIGHT SIDE -----
-        if (i + 1) < num_tokens:
-            # immediate right neighbour (gap or word)
-            keep_indices.add(i + 1)
-
-            # if the immediate right neighbour is a gap,
-            # also keep the word just after that gap
-            if tokens[i + 1].get("type") == "gap" and (i + 2) < num_tokens:
-                keep_indices.add(i + 2)
+    # --- Pass 3: Render with Ellipsis ---
+    final_html: list[str] = []
 
     # If, for some reason, we still have nothing to keep, bail out.
     # This prevents the "pure [...]" output.
