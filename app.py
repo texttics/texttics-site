@@ -2479,103 +2479,99 @@ def _render_confusable_summary_view(
 ) -> str:
     """
     Renders the "Perception vs. Reality" HTML, collapsing "usual"
-    words into [...] blocks using the "hot word + neighbours"
+    words into [...] blocks using the "hot token + neighbours"
     algorithm.
 
-    IMPORTANT: This version detects "hot" words by codepoint,
-    not by global index, to avoid index-desync issues between
-    different string states / environments.
+    IMPORTANT: This version detects "hot" tokens purely by checking
+    code points against `confusables_map`, so it does not depend
+    on any external index bookkeeping.
     """
     tokens = _tokenize_for_pvr(t)
     if not tokens:
         return ""
 
-    # --- Build a set of "hot" codepoints from confusable_indices ---
-    hot_cps: set[int] = set()
-    js_array = window.Array.from_(t) # Use JS array for correct indexing
-    text_len = len(js_array)
+    # --- Build a set of "hot" code points from the confusables map. ---
+    # This is the key fix: we build our "hot" set from the map keys,
+    # not from the fragile confusable_indices.
+    if confusables_map:
+        hot_cps = set(confusables_map.keys())
+    else:
+        hot_cps = set()
 
-    if confusable_indices:
-        for idx in confusable_indices:
-            try:
-                # Some proxies may not be pure ints, normalise safely.
-                if not isinstance(idx, (int, float)):
-                    continue
-                i = int(idx)
-            except Exception:
-                continue
-
-            if 0 <= i < text_len:
-                ch = js_array[i] # Use index on the JS array
-                if ch:
-                    hot_cps.add(ord(ch))
-
-    # If we have no usable hot codepoints, fall back
-    # to just escaping the entire text to avoid a "pure [...]" output.
+    # If there are no confusable code points at all, there is
+    # nothing interesting to show – return empty so the caller
+    # can display "No confusable runs detected."
     if not hot_cps:
-        # Also, check if any confusables were found. If not, return empty.
-        if not confusable_indices:
-            return "" # Return empty to show "No confusable runs detected."
-        return _escape_html(t) # Failsafe: show full text
+        return ""
 
-    # --- Pass 1: Classify Tokens (hot word detection by codepoint) ---
-    hot_word_indices = set()
+    # --- Pass 1: figure out which tokens are "hot" ---
+    hot_token_indices: set[int] = set()
     for i, token in enumerate(tokens):
-        if token.get("type") != "word":
-            continue
+        token_text = token.get("text") or ""
+        # A token is "hot" if any of its characters has a code point
+        # present in the confusables map.
+        if any(ord(ch) in hot_cps for ch in token_text):
+            hot_token_indices.add(i)
 
-        segment = token.get("text") or ""
-        # A word is "hot" if any of its chars has cp in hot_cps
-        if any(ord(ch) in hot_cps for ch in segment):
-            hot_word_indices.add(i)
-
-    # --- Pass 2: Expand to "Keep Set" (hot + neighbours) ---
-    keep_indices = set()
-    for i in hot_word_indices:
-        keep_indices.add(i)  # The hot word itself
+    # --- Pass 2: expand to KEEP set (hot tokens + neighbours) ---
+    keep_indices: set[int] = set()
+    for i in hot_token_indices:
+        keep_indices.add(i)  # the hot token itself
         if i > 0:
-            keep_indices.add(i - 1)  # Left neighbour (gap or word)
+            keep_indices.add(i - 1)  # left neighbour
         if (i + 1) < len(tokens):
-            keep_indices.add(i + 1)  # Right neighbour (gap or word)
+            keep_indices.add(i + 1)  # right neighbour
 
-    # --- Pass 3: Render with Ellipsis ---
-    final_html: list[str] = []
+    # If, for some reason, we still have nothing to keep, bail out.
+    # This prevents the "pure [...]" output.
+    if not keep_indices:
+        # This fallback should now be rarely, if ever, used.
+        return _escape_html(t)
+
+    # --- Pass 3: render, collapsing everything else into [...] ---
+    final_html_parts: list[str] = []
     ellipsis_open = False
 
     for i, token in enumerate(tokens):
         token_type = token.get("type")
         token_text = token.get("text", "")
 
-        # Always keep tokens that contain a newline to preserve structure
+        # Always preserve tokens that contain a newline so that
+        # line structure stays recognizable.
         if token_type == "gap" and "\n" in token_text:
-            final_html.append(_escape_html(token_text))
-            ellipsis_open = False  # Newline resets the condenser
+            final_html_parts.append(_escape_html(token_text))
+            ellipsis_open = False  # newline resets the condenser
             continue
 
         if i in keep_indices:
-            # This is a "hot" token or its neighbour – render fully
+            # This token (or its neighbour) is interesting: render fully.
             ellipsis_open = False
 
             if token_type == "gap":
-                final_html.append(_escape_html(token_text))
+                # For gaps we don't try to highlight characters, just escape.
+                final_html_parts.append(_escape_html(token_text))
 
             elif token_type == "word":
-                # Render char-by-char to inject highlight spans
+                # For word tokens, walk character-by-character so we can
+                # wrap the confusable ones in <span> with metadata.
                 for ch in token_text:
                     cp = ord(ch)
                     if cp in hot_cps:
-                        final_html.append(_build_confusable_span(ch, cp, confusables_map))
+                        final_html_parts.append(
+                            _build_confusable_span(ch, cp, confusables_map)
+                        )
                     else:
-                        final_html.append(_escape_html(ch))
+                        final_html_parts.append(_escape_html(ch))
+            else:
+                # Any unexpected token type – just escape.
+                final_html_parts.append(_escape_html(token_text))
         else:
-            # This is a "boring" token – condense into a single [...]
+            # Boring token – compress it into a single [...]
             if not ellipsis_open:
-                final_html.append(" [...] ")
+                final_html_parts.append(" [...] ")
                 ellipsis_open = True
 
-    return "".join(final_html)
-
-
+    return "".join(final_html_parts)
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
