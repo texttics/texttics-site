@@ -707,6 +707,7 @@ Stage 2: Heatmap Row Classes
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8rem;
+  padding-left: var(--spacing-4);
 }
 
 .status-bar strong {
