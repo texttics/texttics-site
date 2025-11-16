@@ -380,9 +380,25 @@ def compute_segmented_profile(core_data, N=10):
 # 3. RENDERING FUNCTIONS
 # ---
 
+def _calculate_stats(values: list) -> (float, float):
+    """Calculates the mean and standard deviation of a list of numbers."""
+    n = len(values)
+    if n == 0:
+        return 0.0, 0.0
+    
+    mean = sum(values) / n
+    if n == 1:
+        return mean, 0.0
+        
+    variance = sum((x - mean) ** 2 for x in values) / n
+    std_dev = variance ** 0.5
+    return mean, std_dev
+
+
 def render_macro_table(segmented_reports):
     """
     Renders the main "Heatmap Table" for Stage 2.
+    This function now also computes the anomaly scores and heatmap classes.
     """
     table_el = document.getElementById("macro-table-body") # Target <tbody>
     if not table_el:
@@ -392,11 +408,75 @@ def render_macro_table(segmented_reports):
     
     if not segmented_reports or "error" in segmented_reports:
         error_msg = segmented_reports.get("error", "No data.")
-        html.append(f"<tr><td colspan='18'>{error_msg}</td></tr>") # Updated colspan
+        html.append(f"<tr><td colspan='18'>{error_msg}</td></tr>")
     else:
+        # --- v3 Anomaly Layer (Step 2.3) ---
+        
+        # 1. Define metrics to analyze
+        metrics_to_normalize = [
+            "avg_content_length", 
+            "v3_content_density", 
+            "v3_gap_density", 
+            "v3_flag_density", 
+            "v3_critical_density"
+        ]
+        
+        # 2. Extract metric vectors
+        metric_data = {key: [] for key in metrics_to_normalize}
         for report in segmented_reports:
             metrics = report['metrics']
-            html.append('<tr>')
+            for key in metrics_to_normalize:
+                metric_data[key].append(metrics.get(key, 0.0))
+        
+        # 3. Calculate stats (μ, σ) for each metric
+        metric_stats = {}
+        for key, values in metric_data.items():
+            metric_stats[key] = _calculate_stats(values) # (mean, std_dev)
+            
+        # 4. Calculate Anomaly Score and assign heatmap class to each report
+        for report in segmented_reports:
+            metrics = report['metrics']
+            z_scores_squared = []
+            
+            # Guardrail 1: Critical flags always get the highest alert
+            if metrics.get("threats_critical", 0) > 0:
+                report["heatmap_class"] = "heatmap-critical"
+                continue
+
+            # Guardrail 2: Calculate Z-scores
+            for key in metrics_to_normalize:
+                mean, std_dev = metric_stats[key]
+                
+                # Guardrail 2a: Skip if σ=0 (no variance)
+                if std_dev == 0:
+                    continue
+                    
+                value = metrics.get(key, 0.0)
+                z = (value - mean) / std_dev
+                z_scores_squared.append(z ** 2)
+            
+            if not z_scores_squared:
+                report["heatmap_class"] = "heatmap-normal"
+                continue
+                
+            # Combine into a single score: sqrt(sum(z^2))
+            anomaly_score = sum(z_scores_squared) ** 0.5
+            
+            # 5. Bin the score into a heatmap class
+            if anomaly_score > 3.0: # Arbitrary threshold for high anomaly
+                report["heatmap_class"] = "heatmap-high"
+            elif anomaly_score > 1.5: # Arbitrary threshold for low anomaly
+                report["heatmap_class"] = "heatmap-low"
+            else:
+                report["heatmap_class"] = "heatmap-normal"
+        # --- End of Anomaly Layer ---
+
+        # Now, render the table using the new heatmap classes
+        for report in segmented_reports:
+            metrics = report['metrics']
+            heatmap_class = report.get('heatmap_class', 'heatmap-normal')
+            
+            html.append(f'<tr class="{heatmap_class}">')
             # Section 1: Identification
             html.append(f"<td>{report['segment_id']}</td>")
             html.append(f"<td>{report['indices']}</td>")
