@@ -119,12 +119,10 @@ async def main():
             return
 
         # 2. *** THIS IS THE FIX ***
-        # Convert the entire JavaScript object into a native Python dict.
-        # This automatically converts all nested arrays and objects.
+        # Convert the pure JavaScript object back into a native Python dict.
         core_data = core_data_proxy.to_py()
         
-        # Now, core_data is a pure Python dict, and core_data['grapheme_list']
-        # is a pure Python list, which supports slicing.
+        # Now, core_data['grapheme_list'] is a real Python list.
         
         status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
         
