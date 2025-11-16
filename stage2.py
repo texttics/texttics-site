@@ -12,7 +12,7 @@ import bisect
 # We load the UAX files Stage 2 needs for its own logic
 STAGE2_DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
-    "SentenceBreak": {"ranges": [], "starts": [], "ends": []}, # <-- ADDED
+    "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
     "PropList": {"ranges": [], "starts": [], "ends": []},
     "DerivedCore": {"ranges": [], "starts": [], "ends": []},
 }
@@ -179,14 +179,16 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
     # --- THIS IS THE FIX ---
     # Use the simple, reliable _find_in_ranges for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
-    props["sb"] = _find_in_ranges(cp, "SentenceBreak") or "Other"
+    props["sb"] = _find_in_ranges(cp, "SentenceBreak") or "Other" # <-- This caused the KeyError
     
     # Check PropList properties
     # We find *all* matching properties in this file
     pl_props = []
-    for s, e, v in STAGE2_DATA_STORES["PropList"]["ranges"]:
-        if s <= cp <= e:
-            pl_props.append(v)
+    # We must check if the ranges list exists before iterating
+    if "ranges" in STAGE2_DATA_STORES["PropList"]:
+        for s, e, v in STAGE2_DATA_STORES["PropList"]["ranges"]:
+            if s <= cp <= e:
+                pl_props.append(v)
             
     if "White_Space" in pl_props: props["is_WhiteSpace"] = True
     if "Bidi_Control" in pl_props: props["is_Bidi_Control"] = True
@@ -194,9 +196,10 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
     
     # Check DerivedCore properties
     dc_props = []
-    for s, e, v in STAGE2_DATA_STORES["DerivedCore"]["ranges"]:
-        if s <= cp <= e:
-            dc_props.append(v)
+    if "ranges" in STAGE2_DATA_STORES["DerivedCore"]:
+        for s, e, v in STAGE2_DATA_STORES["DerivedCore"]["ranges"]:
+            if s <= cp <= e:
+                dc_props.append(v)
             
     if "Default_Ignorable_Code_Point" in dc_props:
         props["is_Default_Ignorable"] = True
@@ -272,7 +275,7 @@ def compute_segmented_profile(core_data, N=10):
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
                 current_content_run, current_space_run = 0, 0
-                continue # Go to next grapheme
+                continue 
             
             if props["is_Join_Control"]:
                 join_atom_count += 1
@@ -337,15 +340,18 @@ def compute_segmented_profile(core_data, N=10):
         start_cp_index = sum(grapheme_lengths[:start_grapheme_index])
         end_cp_index = start_cp_index + sum(grapheme_lengths_in_this_segment)
         
-        for flag, data in forensic_flags.items():
-            if data.get('count', 0) > 0:
-                for pos_str in data.get('positions', []):
-                    try:
-                        pos = int(pos_str.lstrip('#').split(' ')[0]) # Get index from "#12" or "#12 (mapping)"
-                        if start_cp_index <= pos < end_cp_index:
-                            threat_count += 1
-                    except Exception:
-                        pass # Ignore malformed position strings
+        # forensic_flags is now a dict of dicts, e.g. {"Bidi Control (UAX #9)": {"count": 1, "positions": ["#89"]}}
+        if forensic_flags: # Check if it's not None or empty
+            for flag, data in forensic_flags.items():
+                if data and data.get('count', 0) > 0:
+                    for pos_str in data.get('positions', []):
+                        try:
+                            # Handle positions like "#12" or "#12 (mapping)"
+                            pos = int(pos_str.lstrip('#').split(' ')[0]) 
+                            if start_cp_index <= pos < end_cp_index:
+                                threat_count += 1
+                        except Exception:
+                            pass # Ignore malformed position strings
 
         # 8. Store metrics
         metrics = {
@@ -353,28 +359,7 @@ def compute_segmented_profile(core_data, N=10):
             "bin_1": bins["1"],
             "bin_2": bins["2"],
             "bin_3_5": bins["3-5"],
-            "bin_6_10": bins["6-10"],
-            "bin_11_plus": bins["11+"],
-            "total_content_runs": total_content_runs,
-            "avg_content_length": round(avg_content_length, 2),
-            "space_runs": total_space_runs,
-            "line_breaks": line_break_count,
-            "avg_space_length": round(avg_space_length, 2),
-            "bidi_atoms": bidi_atom_count,
-            "join_atoms": join_atom_count,
-            "other_invisibles": other_invisible_atom_count,
-            "threat_flags": threat_count
-        }
-        
-        report = {
-            "segment_id": f"{i+1} / {N}",
-            "indices": f"{start_grapheme_index}–{end_grapheme_index-1}",
-            "metrics": metrics
-        }
-        segmented_reports.append(report)
-
-    print(f"Stage 2: Processed {len(segmented_reports)} segments.")
-    return segmented_reports
+            "bin_6_10": bins["6-1SYSTEM"]
 
 # ---
 # 3. RENDERING FUNCTIONS
@@ -457,9 +442,8 @@ async def load_stage2_data():
         else:
             print(f"Stage 2: Failed to load data (WB:{wb_res.status}, SB:{sb_res.status}, PL:{pl_res.status}, DC:{dc_res.status})") # <-- UPDATED
     except Exception as e:
-        status_el.innerText = f"A critical error occurred: {e}. Is the main app tab still open?"
-        status_el.style.color = "red"
-        print(f"Stage 2 Error: {e}")
+        print(f"Stage 2: Error loading data: {e}")
+        DATA_LOADED = False
 
 # Start the Stage 2 app
 print("Stage 2 starting...")
