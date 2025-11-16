@@ -2875,8 +2875,13 @@ def render_cards(stats_dict, element_id):
     """Generates and injects HTML for standard stat cards."""
     html = []
     
-    # Sort for consistent order
-    for k in sorted(stats_dict.keys()):
+    # Use a specific key order if provided, otherwise sort alphabetically
+    keys_to_render = key_order if key_order else sorted(stats_dict.keys())
+    
+    for k in keys_to_render:
+        # Failsafe: if key_order has a key not in the dict, skip it
+        if k not in stats_dict:
+            continue
         v = stats_dict[k]
         
         # --- THIS IS THE FIX ---
