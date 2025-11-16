@@ -4,7 +4,49 @@ from pyscript import document, window
 from pyodide.ffi import create_proxy
 
 # ---
-# 1. CORE LOGIC: THE SEGMENTED ANALYSIS PIPELINE
+# 0. NATIVE JS SEGMENTERS (for Word/Sentence counting)
+# ---
+# We create these once, globally, for performance.
+try:
+    WORD_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "word"})
+    SENTENCE_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "sentence"})
+except Exception as e:
+    print(f"Error creating Intl.Segmenter: {e}")
+    WORD_SEGMENTER = None
+    SENTENCE_SEGMENTER = None
+
+# ---
+# 1. METRIC HELPER FUNCTIONS
+# ---
+
+def compute_word_count(segment_text: str) -> int:
+    """Counts only segments that are 'words' (isWordLike: true)."""
+    if not WORD_SEGMENTER:
+        return 0
+    try:
+        segments_iterable = WORD_SEGMENTER.segment(segment_text)
+        segments = window.Array.from_(segments_iterable)
+        # Filter for segments that are actually words
+        word_count = sum(1 for seg in segments if seg.isWordLike)
+        return word_count
+    except Exception as e:
+        print(f"Error in word segmentation: {e}")
+        return 0
+
+def compute_sentence_count(segment_text: str) -> int:
+    """Counts sentence segments."""
+    if not SENTENCE_SEGMENTER:
+        return 0
+    try:
+        segments_iterable = SENTENCE_SEGMENTER.segment(segment_text)
+        segments = window.Array.from_(segments_iterable)
+        return len(segments)
+    except Exception as e:
+        print(f"Error in sentence segmentation: {e}")
+        return 0
+
+# ---
+# 2. CORE LOGIC: THE SEGMENTED ANALYSIS PIPELINE
 # ---
 
 def compute_segmented_profile(core_data, N=10):
@@ -17,7 +59,6 @@ def compute_segmented_profile(core_data, N=10):
     # 1. Get data from Stage 1
     grapheme_list = core_data.get("grapheme_list", [])
     forensic_flags = core_data.get("forensic_flags", {})
-    # nfkc_cf_text = core_data.get("nfkc_casefold_text", "") # For TTR
     
     total_graphemes = len(grapheme_list)
     if total_graphemes == 0:
@@ -33,24 +74,19 @@ def compute_segmented_profile(core_data, N=10):
     for i in range(N):
         # 3. Get the slice (chunk) for this segment
         start_index = i * chunk_size
-        # The last chunk gets all the remaining graphemes
         end_index = (i + 1) * chunk_size if i < N - 1 else total_graphemes
         
         segment_graphemes = grapheme_list[start_index:end_index]
         segment_text = "".join(segment_graphemes)
         
         # 4. Feature Extraction (Run metrics on this chunk)
-        # We will build these functions next.
         metrics = {}
-        # metrics["word_count"] = compute_word_count(segment_text)
-        # metrics["sentence_count"] = compute_sentence_count(segment_text)
-        # metrics["punct_density"] = compute_punct_density(segment_graphemes)
-        # metrics["ttr"] = compute_ttr(segment_text, nfkc_cf_text)
-        # metrics["threat_flags"] = count_flags_in_segment(forensic_flags, start_index, end_index)
-        # metrics["zalgo_score"] = compute_zalgo_score(segment_graphemes)
-        
-        # For now, just a placeholder:
         metrics["grapheme_count"] = len(segment_graphemes)
+        
+        # --- NEW: Add real metrics ---
+        metrics["word_count"] = compute_word_count(segment_text)
+        metrics["sentence_count"] = compute_sentence_count(segment_text)
+        # --- END NEW ---
         
         report = {
             "segment_id": f"{i+1} / {N}",
@@ -67,7 +103,7 @@ def compute_segmented_profile(core_data, N=10):
     return segmented_reports
 
 # ---
-# 2. RENDERING FUNCTIONS
+# 3. RENDERING FUNCTIONS
 # ---
 
 def render_macro_table(segmented_reports):
@@ -78,17 +114,27 @@ def render_macro_table(segmented_reports):
     if not table_el:
         return
 
+    # --- NEW: Update table headers ---
     html = ['<table class="matrix"><thead>']
-    html.append('<tr><th scope="col">Segment</th><th scope="col">Grapheme Count</th></tr>')
+    html.append('<tr><th scope="col">Segment</th>'
+                '<th scope="col">Grapheme Count</th>'
+                '<th scope="col">Word Count</th>'
+                '<th scope="col">Sentence Count</th></tr>')
     html.append('</thead><tbody>')
+    # --- END NEW ---
     
     if not segmented_reports or "error" in segmented_reports:
-        html.append("<tr><td colspan='2'>No data.</td></tr>")
+        html.append("<tr><td colspan='4'>No data.</td></tr>") # Updated colspan
     else:
         for report in segmented_reports:
+            metrics = report['metrics']
             html.append('<tr>')
             html.append(f"<td>{report['segment_id']}</td>")
-            html.append(f"<td>{report['metrics']['grapheme_count']}</td>")
+            html.append(f"<td>{metrics.get('grapheme_count', 0)}</td>")
+            # --- NEW: Add new metric cells ---
+            html.append(f"<td>{metrics.get('word_count', 0)}</td>")
+            html.append(f"<td>{metrics.get('sentence_count', 0)}</td>")
+            # --- END NEW ---
             html.append('</tr>')
 
     html.append('</tbody></table>')
@@ -104,7 +150,7 @@ def render_sparklines(segmented_reports):
         sparkline_el.innerHTML = "<h3>Macro-Profile (Sparklines)</h3><p>(Charts will be rendered here)</p>"
 
 # ---
-# 3. MAIN BOOTSTRAP FUNCTION
+# 4. MAIN BOOTSTRAP FUNCTION
 # ---
 
 async def main():
@@ -118,11 +164,8 @@ async def main():
             status_el.style.color = "red"
             return
 
-        # 2. *** THIS IS THE FIX ***
-        # Convert the pure JavaScript object back into a native Python dict.
+        # 2. Convert the pure JavaScript object back into a native Python dict.
         core_data = core_data_proxy.to_py()
-        
-        # Now, core_data['grapheme_list'] is a real Python list.
         
         status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
         
