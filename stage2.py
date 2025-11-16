@@ -12,6 +12,7 @@ import bisect
 # We load the UAX files Stage 2 needs for its own logic
 STAGE2_DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
+    "SentenceBreak": {"ranges": [], "starts": [], "ends": []}, # <-- ADDED
     "PropList": {"ranges": [], "starts": [], "ends": []},
     "DerivedCore": {"ranges": [], "starts": [], "ends": []},
 }
