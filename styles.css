@@ -716,36 +716,47 @@ Stage 2: Heatmap Row Classes
 
 
 /* =========================================
-   STATUS BAR: layout + separate frames
+   Status Bar: layout + left/right frames
    ========================================= */
 
-/* Full-width row, aligned with the textarea */
+/* Row directly under the textarea, full width */
 .status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* left & right edges */
+  justify-content: space-between;  /* left card vs right card */
   width: 100%;
-  margin-top: 0.75rem;
-  gap: 0.75rem; /* small space between the two frames */
+  margin-top: 1rem;
+  gap: 0.75rem;
 }
 
-/* Left frame: "Status: Ready." */
+/* Left card: "Status: Ready." */
 .status-bar-left {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
+  justify-content: flex-start;
+  gap: 0.6rem;
+
+  font-size: 0.9rem;
   color: var(--color-text-muted);
 
-  /* own frame */
-  background-color: var(--color-white);
+  background-color: var(--color-bg);     /* same as page, but framed */
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius);
+  padding: 0.4rem 0.9rem 0.4rem 0.6rem;
+  margin: 0;
+  text-align: left;
 }
 
-/* Make the status value itself a neat pill (optional but nice) */
+/* “Status:” label – a bit stronger */
+.status-bar-left strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Value pill */
 #status-line {
+  font-size: 0.9rem;
   padding: 2px 8px;
   border-radius: 999px;
   font-weight: 600;
@@ -753,175 +764,49 @@ Stage 2: Heatmap Row Classes
   border: 1px solid transparent;
 }
 
-/* keep your state colors */
+/* State colors */
 #status-line.status-loading {
   color: var(--color-text-muted);
   background-color: var(--color-border-light);
 }
+
 #status-line.status-ready {
-  color: #065f46;
+  color: #065f46;          /* dark green */
   background-color: #f0fdf4;
   border-color: #a7f3d0;
 }
+
 #status-line.status-error {
   color: #991b1b;
   background-color: #fef2f2;
   border-color: #fca5a5;
 }
 
-/* Right frame: "Reveal Invisibles" button */
-.status-bar .tool-btn {
-  flex: 0 0 auto;              /* don't stretch, hug content */
-  margin-left: auto;           /* push it hard to the right */
-  padding: 0.35rem 0.9rem;     /* slightly taller than default */
-  font-size: 0.8rem;
-
-  background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-/* === Status bar fine-tuning === */
-
-.status-bar {
-  display: flex;
+/* Right card: frame for the Reveal button */
+.status-bar-right {
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  margin-top: 0.75rem;
-  gap: 0.75rem;
+  justify-content: center;
 
-  /* left item hugs the left; button is pushed with margin-left:auto */
-  justify-content: flex-start;
-}
-
-.status-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-
-  /* a bit larger to match the button text */
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-
-  /* same background as page, but still framed */
   background-color: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.75rem;
-}
-
-/* make the "Status:" label itself slightly stronger and bigger */
-.status-bar-left strong {
-  font-size: 0.9em;
-  color: var(--color-text);
-  font-weight: 600;
-}
-
-/* button frame on the right */
-.status-bar .tool-btn {
-  margin-left: auto;          /* push fully to the right */
-  flex: 0 0 auto;
-  padding: 0.35rem 0.9rem;
-  font-size: 0.85rem;
-}
-
-/* === Status bar: size + left alignment polish === */
-
-/* make the whole left frame hug its contents and be clearly left-aligned */
-.status-bar-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-
-  /* slightly larger text overall */
-  font-size: 0.9rem;
-
-  /* less internal left padding so it doesn’t look “indented” */
-  padding: 0.4rem 0.9rem 0.4rem 0.6rem;
-
-  text-align: left;
-}
-
-/* “Status:” label – a bit stronger and bigger than body text */
-.status-bar-left strong {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-/* status value pill – match the button’s feel */
-#status-line {
-  font-size: 0.9rem;
-}
-
-/* === Status bar: hard-left content alignment === */
-
-.status-bar-left {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;   /* content starts at the left edge */
-  gap: 0.6rem;
-
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
-
-  /* pull content closer to the left border */
-  padding: 0.4rem 0.9rem 0.4rem 0.4rem;
-
-  text-align: left;
-  margin-left: 0;                /* no auto-centering tricks */
-  margin-right: auto;            /* leave space for the button on the right */
-}
-
-.status-bar-left strong {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-#status-line {
-  font-size: 0.9rem;
-}
-
-/* Full-width bar exactly under the textarea */
-.status-bar {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  margin-top: 1rem;
-
-  /* key part */
-  justify-content: space-between; /* left card at far left, button at far right */
-}
-
-/* Left frame: remove any “centering” feel */
-.status-bar-left {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
-
-  /* keep it visually light + flush to the left edge */
-  background-color: transparent;      /* matches page bg */
-  border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 0.4rem 0.9rem;
-  margin: 0;                           /* kill any auto-centering */
+  padding: 0.25rem 0.4rem;
 }
 
-/* Make “Status:” slightly larger & clearly left-aligned */
-.status-bar-left strong {
+/* Button inside the right card – remove its own frame, keep typography */
+.status-bar-right .tool-btn {
+  border: none;
+  background: transparent;
+  padding: 0.25rem 0.6rem;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-muted);
 }
 
-/* Button on the far right, same row */
-.status-bar .tool-btn {
-  flex: 0 0 auto;
-  margin-left: auto;       /* pushes it all the way to the right edge */
-  padding: 0.4rem 0.9rem;
-  font-size: 0.9rem;
+/* Optional hover tweak so it still feels clickable */
+.status-bar-right .tool-btn:hover {
+  color: var(--color-primary);
+  cursor: pointer;
 }
 
