@@ -540,6 +540,33 @@ def render_sparklines(segmented_reports):
     if sparkline_el:
         sparkline_el.innerHTML = "<h3>Macro-Profile (Sparklines)</h3><p>(Charts will be rendered here)</p>"
 
+@create_proxy
+async def copy_report_to_clipboard(event):
+    """
+    Serializes the GLOBAL_SEGMENTED_REPORT to JSON and copies
+    it to the user's clipboard.
+    """
+    global GLOBAL_SEGMENTED_REPORT
+    btn = document.getElementById("btn-copy-report")
+    if not GLOBAL_SEGMENTED_REPORT:
+        btn.innerText = "Error: No report data"
+        await asyncio.sleep(2)
+        btn.innerText = "Copy JSON Report"
+        return
+
+    try:
+        report_json = json.dumps(GLOBAL_SEGMENTED_REPORT, indent=2)
+        await window.navigator.clipboard.writeText(report_json)
+        
+        btn.innerText = "Copied!"
+        await asyncio.sleep(2)
+        btn.innerText = "Copy JSON Report"
+    except Exception as e:
+        print(f"Stage 2: Clipboard error: {e}")
+        btn.innerText = "Error: Copy failed"
+        await asyncio.sleep(2)
+        btn.innerText = "Copy JSON Report"
+
 # ---
 # 4. MAIN BOOTSTRAP FUNCTION
 # ---
@@ -570,8 +597,18 @@ async def main():
         
         segmented_report = compute_segmented_profile(core_data, N=10)
         
+        # Store for copy function
+        global GLOBAL_SEGMENTED_REPORT
+        GLOBAL_SEGMENTED_REPORT = segmented_report
+        
         render_sparklines(segmented_report)
         render_macro_table(segmented_report)
+        
+        # Enable and attach listener to the copy button
+        copy_btn = document.getElementById("btn-copy-report")
+        if copy_btn:
+            copy_btn.disabled = False
+            copy_btn.addEventListener("click", create_proxy(copy_report_to_clipboard))
         
         status_el.innerText = "Macrostructure Profile (v1.0)"
 
