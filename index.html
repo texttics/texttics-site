@@ -80,30 +80,24 @@
       <!-- Group 1: Analysis Configuration (Control Plane) -->
       <section id="control-plane" aria-labelledby="control-plane-title">
         <div class="section-header">
-          <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Source Text for Structural Profiling</h2>
-        </div>
-        
-        <label for="text-input" class="visually-hidden">Text input</label>
-        <textarea id="text-input" placeholder="Loading Unicode data..." disabled></textarea>
+          <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Analysis Configuration</h2>
+        </div>
 
-        <div class="input-actions-bottom">
-            <button id="btn-run-stage2" class="tool-btn" title="Run macro-analysis on this text">
-                📊 Analyze Macrostructure
-            </button>
-            <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
-                👁️ Reveal Invisibles
-            </button>
-        </div>
-        
-        <p id="status-line" role="status" aria-live="polite" class="status">Waiting for input…</p>
+                <div class="control-buttons-container">
+          <button id="btn-run-stage2" class="tool-btn" title="Run macro-analysis on this text">
+            📊 Analyze Macrostructure
+          </button>
+          <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
+            👁️ Reveal Invisibles
+          </button>
+        </div>
 
-        <div id="inspector-panel-wrapper">
-            <h3>Character Inspector</h3>
-            <div id="inspector-panel-content">
-                <p>Click on any character in the text area above to see its properties.</p>
-            </div>
-        </div>
-      </section>
+        <label for="text-input" class="visually-hidden">Text input</label>
+        <textarea id="text-input" placeholder="Loading Unicode data..." disabled></textarea>
+        <div id="inspector-panel-wrapper">
+</div>
+                <p id="status-line" role="status" aria-live="polite" class="status">&nbsp;</p>
+      </section>
 
       <!-- 
         GROUP 2: THE STRUCTURAL PROFILE
