@@ -12,19 +12,16 @@ import bisect
 # We load the UAX files Stage 2 needs for its own logic
 STAGE2_DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
-    "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
     "PropList": {"ranges": [], "starts": [], "ends": []},
     "DerivedCore": {"ranges": [], "starts": [], "ends": []},
 }
 DATA_LOADED = False
 
-# We need to map the property names from the files to our store keys
+# Map property names to the store key
 PROP_MAP = {
-    # From PropList.txt
     "White_Space": "PropList",
     "Bidi_Control": "PropList",
     "Join_Control": "PropList",
-    # From DerivedCoreProperties.txt
     "Default_Ignorable_Code_Point": "DerivedCore",
 }
 
@@ -35,7 +32,7 @@ def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None)
     """
     # This logic is for multi-property files like PropList.txt
     if property_map:
-        temp_ranges = {key: [] for key in STAGE2_DATA_STORES.keys()}
+        temp_ranges = {key: [] for key in STAGE2_DATA_STORES.keys() if key in property_map.values()}
         
         for raw in txt.splitlines():
             line = raw.split('#', 1)[0].strip()
@@ -54,9 +51,8 @@ def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None)
                         cp = int(code_range, 16)
                         temp_ranges[target_store_key].append((cp, cp, prop_name))
                 except Exception:
-                    pass # Ignore malformed lines
+                    pass 
         
-        # Now populate the real data stores from the temp lists
         for key, ranges_list in temp_ranges.items():
             if not ranges_list: continue
             store = STAGE2_DATA_STORES[key]
@@ -88,7 +84,8 @@ def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None)
     # After all parsing, create the fast lookup lists
     for key in STAGE2_DATA_STORES:
         store = STAGE2_DATA_STORES[key]
-        if store["ranges"] and not store["starts"]: # Only build if new
+        # Build lookup lists if they don't exist or are partial
+        if store["ranges"] and (not store.get("starts") or len(store["starts"]) != len(store["ranges"])):
             store["ranges"].sort() # Sort all ranges from all files
             store["starts"] = [s for s, e, v in store["ranges"]]
             store["ends"] = [e for s, e, v in store["ranges"]]
@@ -99,6 +96,7 @@ async def load_stage2_data():
     """Fetches and parses the UAX data needed for Stage 2."""
     global DATA_LOADED
     try:
+        # We only need these 3 files for the v3 blueprint
         wb_res_task = pyfetch("./WordBreakProperty.txt")
         pl_res_task = pyfetch("./PropList.txt")
         dc_res_task = pyfetch("./DerivedCoreProperties.txt")
@@ -114,46 +112,17 @@ async def load_stage2_data():
             print(f"Stage 2: Failed to load data (WB:{wb_res.status}, PL:{pl_res.status}, DC:{dc_res.status})")
     except Exception as e:
         print(f"Stage 2: Error loading data: {e}")
+        DATA_LOADED = False
 
 def _find_in_ranges(cp: int, store_key: str):
     """Stage 2's local copy of the range finder."""
     store = STAGE2_DATA_STORES[store_key]
-    starts_list = store["starts"]
+    starts_list = store.get("starts", []) # Use .get for safety
     if not starts_list: return None
     i = bisect.bisect_right(starts_list, cp) - 1
     if i >= 0 and cp <= store["ends"][i]:
-        # Return the *value* (e.g., "ALetter", "White_Space")
         return store["ranges"][i][2]
     return None
-
-def _find_in_ranges_multi(cp: int, store_key: str):
-    """Finds ALL matching properties for a code point in a store."""
-    store = STAGE2_DATA_STORES[store_key]
-    starts_list = store["starts"]
-    if not starts_list: return []
-    
-    props = []
-    # Find potential matches
-    i = bisect.bisect_right(starts_list, cp) - 1
-    # Check all properties that start at or before cp
-    for j in range(i, -1, -1):
-        if starts_list[j] > cp:
-            continue
-        if cp <= store["ends"][j]:
-            props.append(store["ranges"][j][2]) # Add the value
-        # Optimization: if the start is too far back, stop
-        if cp - starts_list[j] > 2000: # Heuristic
-             break
-             
-    # This is not perfect for overlapping ranges, but good enough for this
-    # A more robust way is to check all `i` where starts_list[i] <= cp
-    
-    # Let's use a simpler, correct-but-slower method
-    props = []
-    for s, e, v in store["ranges"]:
-        if s <= cp <= e:
-            props.append(v)
-    return props
 
 # ---
 # 1. METRIC HELPER FUNCTIONS (GRAPHEME-BASED)
@@ -163,8 +132,6 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
     """Finds all UAX properties of the *first code point* in a grapheme."""
     props = {
         "wb": "Other", 
-        "sb": "Other",
-        # We will check these boolean properties directly
         "is_WhiteSpace": False, 
         "is_Bidi_Control": False, 
         "is_Join_Control": False,
@@ -176,19 +143,15 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
     first_char = window.Array.from_(grapheme)[0]
     cp = ord(first_char)
     
-    # --- THIS IS THE FIX ---
-    # Use the simple, reliable _find_in_ranges for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
-    props["sb"] = _find_in_ranges(cp, "SentenceBreak") or "Other" # <-- This caused the KeyError
     
     # Check PropList properties
     # We find *all* matching properties in this file
     pl_props = []
-    # We must check if the ranges list exists before iterating
     if "ranges" in STAGE2_DATA_STORES["PropList"]:
         for s, e, v in STAGE2_DATA_STORES["PropList"]["ranges"]:
             if s <= cp <= e:
-                pl_props.append(v)
+                pl_props.append(v) # v is the property name
             
     if "White_Space" in pl_props: props["is_WhiteSpace"] = True
     if "Bidi_Control" in pl_props: props["is_Bidi_Control"] = True
@@ -203,7 +166,6 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
             
     if "Default_Ignorable_Code_Point" in dc_props:
         props["is_Default_Ignorable"] = True
-    # --- END OF FIX ---
     
     return props
 
@@ -234,8 +196,15 @@ def compute_segmented_profile(core_data, N=10):
     segmented_reports = []
     
     # --- Define our "structural types" based on UAX properties ---
-    WORD_PROPS = {"ALetter", "Numeric", "Katakana", "Hebrew_Letter"}
     LINEBREAK_PROPS = {"LF", "CR"}
+    
+    # --- Create the Grapheme-to-Code-Point index map (O(N) prefix sum) ---
+    cp_map = [0] * (total_graphemes + 1)
+    current_cp_index = 0
+    for i in range(total_graphemes):
+        cp_map[i] = current_cp_index
+        current_cp_index += grapheme_lengths[i]
+    cp_map[total_graphemes] = current_cp_index # Add final index for last segment
     
     for i in range(N):
         # 3. Get the slice (chunk) for this segment
@@ -247,29 +216,20 @@ def compute_segmented_profile(core_data, N=10):
         segment_graphemes = grapheme_list[start_grapheme_index:end_grapheme_index]
         
         # 4. Feature Extraction (Grapheme-based RLE)
-        
-        # --- Section 2: Content Run Histogram ---
         content_run_lengths = []
         current_content_run = 0
-        
-        # --- Section 3: Separator Run Profile ---
         space_run_lengths = []
         current_space_run = 0
         line_break_count = 0
-        
-        # --- Section 4: Invisible Atom Integrity ---
         bidi_atom_count = 0
         join_atom_count = 0
         other_invisible_atom_count = 0
         
         for grapheme in segment_graphemes:
-            # --- THIS IS THE UPDATED LOGIC ---
             props = get_grapheme_base_properties(grapheme)
             wb_prop = props["wb"]
 
-            # --- Classify this grapheme ---
-            
-            # Is it an Invisible Atom?
+            # Classify this grapheme
             if props["is_Bidi_Control"]:
                 bidi_atom_count += 1
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
@@ -310,9 +270,7 @@ def compute_segmented_profile(core_data, N=10):
                 if current_space_run > 0:
                     space_run_lengths.append(current_space_run)
                     current_space_run = 0
-                
                 current_content_run += 1
-            # --- END OF UPDATED LOGIC ---
 
         # End of loop, flush any remaining runs
         if current_content_run > 0: content_run_lengths.append(current_content_run)
@@ -335,23 +293,29 @@ def compute_segmented_profile(core_data, N=10):
         avg_space_length = (sum(space_run_lengths) / total_space_runs) if total_space_runs > 0 else 0
         
         # 7. Aggregate Stage 1 Threats
-        threat_count = 0
-        grapheme_lengths_in_this_segment = grapheme_lengths[start_grapheme_index:end_grapheme_index]
-        start_cp_index = sum(grapheme_lengths[:start_grapheme_index])
-        end_cp_index = start_cp_index + sum(grapheme_lengths_in_this_segment)
+        # Get the CP index range for this segment using our O(1) map
+        start_cp_index = cp_map[start_grapheme_index]
+        end_cp_index = cp_map[end_grapheme_index]
         
-        # forensic_flags is now a dict of dicts, e.g. {"Bidi Control (UAX #9)": {"count": 1, "positions": ["#89"]}}
-        if forensic_flags: # Check if it's not None or empty
-            for flag, data in forensic_flags.items():
+        critical_flag_positions = set()
+        all_flag_positions = set()
+        
+        if forensic_flags:
+            for flag_name, data in forensic_flags.items():
                 if data and data.get('count', 0) > 0:
-                    for pos_str in data.get('positions', []):
-                        try:
-                            # Handle positions like "#12" or "#12 (mapping)"
-                            pos = int(pos_str.lstrip('#').split(' ')[0]) 
-                            if start_cp_index <= pos < end_cp_index:
-                                threat_count += 1
-                        except Exception:
-                            pass # Ignore malformed position strings
+                    is_critical = flag_name.startswith("DANGER:")
+                    is_flag = is_critical or flag_name.startswith("Flag:")
+                    
+                    if is_flag: # Only loop if it's a flag we care about
+                        for pos_str in data.get('positions', []):
+                            try:
+                                pos = int(pos_str.lstrip('#').split(' ')[0]) 
+                                if start_cp_index <= pos < end_cp_index:
+                                    all_flag_positions.add(pos)
+                                    if is_critical:
+                                        critical_flag_positions.add(pos)
+                            except Exception:
+                                pass # Ignore malformed position strings
 
         # 8. Store metrics
         metrics = {
@@ -369,7 +333,8 @@ def compute_segmented_profile(core_data, N=10):
             "bidi_atoms": bidi_atom_count,
             "join_atoms": join_atom_count,
             "other_invisibles": other_invisible_atom_count,
-            "threat_flags": threat_count
+            "threats_critical": len(critical_flag_positions),
+            "threats_all": len(all_flag_positions)
         }
         
         report = {
@@ -428,7 +393,8 @@ def render_macro_table(segmented_reports):
             html.append(f"<td>{metrics.get('other_invisibles', 0)}</td>")
             
             # Section 5: Threat Location
-            html.append(f"<td>{metrics.get('threat_flags', 0)}</td>")
+            html.append(f"<td>{metrics.get('threats_critical', 0)}</td>")
+            html.append(f"<td>{metrics.get('threats_all', 0)}</td>")
             
             html.append('</tr>')
 
@@ -443,17 +409,12 @@ def render_sparklines(segmented_reports):
 # 4. MAIN BOOTSTRAP FUNCTION
 # ---
 
-# ---
-# 4. MAIN BOOTSTRAP FUNCTION
-# ---
-
 async def main():
     global DATA_LOADED
     status_el = document.getElementById("loading-status")
     
+    # Update status to reflect all files
     status_el.innerText = "Loading Stage 2 UAX data (WordBreak, PropList, DerivedCore)..."
-    # --- FIX: We must also load SentenceBreak ---
-    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, SentenceBreak, PropList, DerivedCore)..."
     await load_stage2_data()
     if not DATA_LOADED:
         status_el.innerText = "Error: Could not load UAX data. Cannot proceed."
