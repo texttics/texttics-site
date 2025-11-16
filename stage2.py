@@ -260,30 +260,28 @@ def compute_segmented_profile(core_data, N=10):
         other_invisible_atom_count = 0
         
         for grapheme in segment_graphemes:
+            # --- THIS IS THE UPDATED LOGIC ---
             props = get_grapheme_base_properties(grapheme)
             wb_prop = props["wb"]
-            pl_props = props["pl_props"]
-            dc_props = props["dc_props"]
 
             # --- Classify this grapheme ---
             
             # Is it an Invisible Atom?
-            if "Bidi_Control" in pl_props:
+            if props["is_Bidi_Control"]:
                 bidi_atom_count += 1
-                # It's an invisible, so it *ends* other runs
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
                 current_content_run, current_space_run = 0, 0
                 continue # Go to next grapheme
             
-            if "Join_Control" in pl_props:
+            if props["is_Join_Control"]:
                 join_atom_count += 1
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
                 current_content_run, current_space_run = 0, 0
                 continue
 
-            if "Default_Ignorable_Code_Point" in dc_props:
+            if props["is_Default_Ignorable"]:
                 other_invisible_atom_count += 1
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
@@ -291,30 +289,27 @@ def compute_segmented_profile(core_data, N=10):
                 continue
             
             # Is it a Separator?
-            if "White_Space" in pl_props or wb_prop in LINEBREAK_PROPS:
-                # It's a separator, so it *ends* a content run
+            if props["is_WhiteSpace"] or wb_prop in LINEBREAK_PROPS:
                 if current_content_run > 0:
                     content_run_lengths.append(current_content_run)
                     current_content_run = 0
                 
                 if wb_prop in LINEBREAK_PROPS:
                     line_break_count += 1
-                    # Line breaks also end space runs
                     if current_space_run > 0:
                         space_run_lengths.append(current_space_run)
                         current_space_run = 0
-                elif "White_Space" in pl_props: # Must be a \p{Zs}
+                elif props["is_WhiteSpace"]: # Must be a \p{Zs}
                     current_space_run += 1
             
             # Is it Content?
             else:
-                # It's content, so it *ends* a space run
                 if current_space_run > 0:
                     space_run_lengths.append(current_space_run)
                     current_space_run = 0
                 
-                # And it *continues* a content run
                 current_content_run += 1
+            # --- END OF UPDATED LOGIC ---
 
         # End of loop, flush any remaining runs
         if current_content_run > 0: content_run_lengths.append(current_content_run)
