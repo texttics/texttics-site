@@ -854,3 +854,31 @@ Stage 2: Heatmap Row Classes
   font-size: 0.9rem;
 }
 
+/* === Status bar: hard-left content alignment === */
+
+.status-bar-left {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;   /* content starts at the left edge */
+  gap: 0.6rem;
+
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+
+  /* pull content closer to the left border */
+  padding: 0.4rem 0.9rem 0.4rem 0.4rem;
+
+  text-align: left;
+  margin-left: 0;                /* no auto-centering tricks */
+  margin-right: auto;            /* leave space for the button on the right */
+}
+
+.status-bar-left strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+#status-line {
+  font-size: 0.9rem;
+}
