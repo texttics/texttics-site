@@ -3415,34 +3415,34 @@ def reveal_invisibles(event=None):
 # [THIS IS IN app.py]
 
 async def main():
-    """Main entry point: Loads data, then hooks the input."""
-    
-    # --- FIX 1: Get element first ---
-    text_input_element = document.getElementById("text-input")
-    
-  . # Start loading the external data and wait for it to finish.
-S   await load_unicode_data()
-    
-    # --- FIX 2: Bind listener *after* await ---
-    # This ensures the listener is bound in the SAME interpreter
-    # that just loaded the data.
-    text_input_element.addEventListener("input", update_all)
-    
-    # --- NEW: Hook the Inspector Panel ---
-    # We listen on the *document* because 'selectionchange' fires on the document
-    document.addEventListener("selectionchange", create_proxy(inspect_character))
+    """Main entry point: Loads data, then hooks the input."""
+    
+    # --- FIX 1: Get element first ---
+    text_input_element = document.getElementById("text-input")
+    
+    # Start loading the external data and wait for it to finish.
+    await load_unicode_data()
+    
+    # --- FIX 2: Bind listener *after* await ---
+    # This ensures the listener is bound in the SAME interpreter
+    # that just loaded the data.
+    text_input_element.addEventListener("input", update_all)
+    
+    # --- NEW: Hook the Inspector Panel ---
+    # We listen on the *document* because 'selectionchange' fires on the document
+    document.addEventListener("selectionchange", create_proxy(inspect_character))
 
-# --- NEW: Hook the Reveal Button ---
-    reveal_btn = document.getElementById("btn-reveal")
-    if reveal_btn:
-        reveal_btn.addEventListener("click", reveal_invisibles)
-.   
-    # --- FIX 3: Un-gate the UI ---
-    # Now that the listener is bound and data is loaded,
-    # enable the text area for the user.
-    text_input_element.disabled = False
-    text_input_element.placeholder = "Paste or type here..."
-S   print("Text...tics is ready.") # A good sign to see in the console
+    # --- NEW: Hook the Reveal Button ---
+    reveal_btn = document.getElementById("btn-reveal")
+    if reveal_btn:
+        reveal_btn.addEventListener("click", reveal_invisibles)
+    
+    # --- FIX 3: Un-gate the UI ---
+    # Now that the listener is bound and data is loaded,
+    # enable the text area for the user.
+    text_input_element.disabled = False
+    text_input_element.placeholder = "Paste or type here..."
+    print("Text...tics is ready.") # A good sign to see in the console
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
