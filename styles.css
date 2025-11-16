@@ -249,8 +249,8 @@ Group 1: Control Plane
 /* This is your modified class */
 .tool-btn {
   /* --- Core Layout (New) --- */
-  flex: 1; /* Each button will grow to fill the space */
-  justify-content: center; /* Centers content since the button is growing */
+  /* flex: 1; We no longer need this by default */
+  justify-content: center; /* Centers content */
   
   /* --- Increased Size (Modified) --- */
   font-size: 0.9rem; /* Slightly larger text */
@@ -691,18 +691,57 @@ Stage 2: Heatmap Row Classes
 .status-bar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between; /* This pushes items to the left and right */
+  gap: 1rem; /* Space between left/right items */
   padding: 0.5rem 0.75rem;
   background-color: var(--header-bg, #f9f9f9);
   border: 1px solid var(--border-color, #e0e0e0);
-  border-top: none; /* Textarea already has a bottom border */
-  border-radius: 0 0 8px 8px; /* Rounds bottom corners */
-  margin-top: -8px; /* Pulls it up to meet the textarea */
+  border-radius: var(--radius); /* Standard border radius */
+  margin-top: 0.75rem; /* This adds the space you wanted */
   font-size: 0.85rem;
   color: var(--text-color-light, #555);
+}
+
+.status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .status-bar strong {
   color: var(--text-color, #111);
   font-weight: 600;
+}
+
+/* The button in the status bar should be smaller */
+.status-bar .tool-btn {
+  flex: 0 1 auto; /* Don't grow, just fit content */
+  padding: 0.25rem 0.6rem; /* Make it smaller */
+  font-size: 0.8rem;
+}
+
+/* --- Macro Analysis Control --- */
+.macro-analysis-control {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--color-white);
+  
+  display: flex;
+  flex-direction: column; /* Stack button on top of text */
+  gap: 0.75rem;
+}
+
+/* Make the button itself full width */
+.macro-analysis-control .tool-btn {
+  flex-grow: 1;
+}
+
+.macro-analysis-description {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  margin: 0;
+  text-align: center;
 }
