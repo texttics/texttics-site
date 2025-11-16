@@ -294,7 +294,10 @@ def compute_segmented_profile(core_data, N=10):
         all_flag_positions = set()
         
         # Define "Critical" based on the *actual* keys in the forensic_flags object
-        CRITICAL_FLAGS_SET = {"Bidi Control (UAX #9)"}
+        CRITICAL_FLAGS_SET = {
+            "Bidi Control (UAX #9)",
+            "Join Control (Structural)"
+        }
         
         if forensic_flags:
             for flag_name, data in forensic_flags.items():
