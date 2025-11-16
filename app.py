@@ -3445,7 +3445,7 @@ async def main():
     # Now that the listener is bound and data is loaded,
     # enable the text area for the user.
     text_input_element.disabled = False
-    text_input_element.placeholder = "Paste or type here..."
+    text_input_element.placeholder = "Ready. Paste or type text to analyze..."
     print("Text...tics is ready.") # A good sign to see in the console
 
 # Start the main asynchronous task
