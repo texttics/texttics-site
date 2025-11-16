@@ -2226,37 +2226,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     
     return forensic_stats
 
-# def compute_variant_stats_with_positions(t: str):
-#    """Part of Module 2.C: Counts variant base chars and selectors."""
-#    if LOADING_STATE != "READY":
- #       return {}
-  #      
-   # base_set = DATA_STORES["VariantBase"]
-    #selector_set = DATA_STORES["VariantSelectors"]
-    
-#    base_indices = []
- #   selector_indices = []
-  #  ivs_indices = []
-    
-#    # We must iterate using JS-style string indices
- #   js_array = window.Array.from_(t)
-#    for i, char in enumerate(js_array):
-#        cp = ord(char)
-#        if cp in base_set:
- #           base_indices.append(f"#{i}")
-        # Check both the old set (for Mongolian) AND the new property (for Emoji)
- #       is_selector = (cp in selector_set) or (_find_in_ranges(cp, "VariationSelector") is not None)
- #       if is_selector:
- #           selector_indices.append(f"#{i}")
-        # Check for Ideographic Variation Selectors (Steganography vector)
-  #      if 0xE0100 <= cp <= 0xE01EF:
-   #         ivs_indices.append(f"#{i}")
-            
-  #  return {
-  #      "Variant Base Chars": {'count': len(base_indices), 'positions': base_indices},
-  #      "Variation Selectors": {'count': len(selector_indices), 'positions': selector_indices},
-  #      "Steganography (IVS)": {'count': len(ivs_indices), 'positions': ivs_indices}
-   # }
 
 def compute_provenance_stats(t: str):
     """Module 2.D: Runs UAX #44 and Deep Scan analysis (with positions)."""
