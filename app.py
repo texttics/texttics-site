@@ -2506,14 +2506,23 @@ def _render_confusable_summary_view(
         if any(ord(ch) in hot_cps for ch in token_text):
             hot_token_indices.add(i)
 
-    # --- Pass 2: expand to KEEP set (hot tokens + neighbours) ---
+# --- Pass 2: Expand to "Keep Set" (hot + 2 neighbours) ---
     keep_indices: set[int] = set()
+    num_tokens = len(tokens)
     for i in hot_token_indices:
-        keep_indices.add(i)  # the hot token itself
+        keep_indices.add(i)  # The hot token
+        
+        # Keep 2 neighbours to the left
         if i > 0:
-            keep_indices.add(i - 1)  # left neighbour
-        if (i + 1) < len(tokens):
-            keep_indices.add(i + 1)  # right neighbour
+            keep_indices.add(i - 1)
+        if i > 1:
+            keep_indices.add(i - 2)
+            
+        # Keep 2 neighbours to the right
+        if (i + 1) < num_tokens:
+            keep_indices.add(i + 1)
+        if (i + 2) < num_tokens:
+            keep_indices.add(i + 2)
 
     # If, for some reason, we still have nothing to keep, bail out.
     # This prevents the "pure [...]" output.
