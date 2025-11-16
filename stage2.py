@@ -3,66 +3,58 @@ import asyncio
 from pyscript import document, window
 from pyodide.ffi import create_proxy
 
-# ---
-# 0. NATIVE JS SEGMENTERS (for Word/Sentence counting)
-# ---
 
-# *** THIS IS FIX #1 ***
-# We use `None` for the locale to use the browser's default.
-# This is more robust than assuming "en" is available.
-try:
-    WORD_SEGMENTER = window.Intl.Segmenter.new(None, {"granularity": "word"})
-    SENTENCE_SEGMENTER = window.Intl.Segmenter.new(None, {"granularity": "sentence"})
-    print("Stage 2: Segmenters initialized.")
-except Exception as e:
-    print(f"Error creating Intl.Segmenter: {e}")
-    WORD_SEGMENTER = None
-    SENTENCE_SEGMENTER = None
 
 # ---
 # 1. METRIC HELPER FUNCTIONS
 # ---
 
-def compute_word_count(segment_text: str) -> int:
-    """Counts only segments that are 'words' (isWordLike: true)."""
-    if not WORD_SEGMENTER:
-        return 0
-    try:
-        segments_iterable = WORD_SEGMENTER.segment(segment_text)
+def compute_word_count(word_break_properties: list) -> int:
+    """
+    Counts deterministic "word" runs based on UAX #29 Word Break properties.
+    A "word" is a continuous run of ALetter, Numeric, Katakana, or Hebrew_Letter.
+    """
+    word_count = 0
+    in_word = False
+    
+    # Define what properties constitute a "word"
+    # This matches the properties you'd see in your RLE table
+    WORD_PROPS = {"ALetter", "Numeric", "Katakana", "Hebrew_Letter"}
+    
+    for prop in word_break_properties:
+        is_word_char = prop in WORD_PROPS
         
-        # *** THIS IS FIX #2 ***
-        # We must iterate the JsProxy explicitly and use getattr()
-        # to safely access the JavaScript property.
-        word_count = 0
-        for seg in segments_iterable:
-            if getattr(seg, "isWordLike", False):
-                word_count += 1
-        return word_count
-        # --- END OF FIX ---
+        if is_word_char and not in_word:
+            # This is the start of a new word
+            word_count += 1
+            in_word = True
+        elif not is_word_char:
+            # This is a break (like a space or punctuation), so reset
+            in_word = False
+            
+    return word_count
 
-    except Exception as e:
-        print(f"Error in word segmentation: {e}")
-        return 0
-
-def compute_sentence_count(segment_text: str) -> int:
-    """Counts sentence segments."""
-    if not SENTENCE_SEGMENTER:
-        return 0
-    try:
-        segments_iterable = SENTENCE_SEGMENTER.segment(segment_text)
+def compute_sentence_count(sentence_break_properties: list) -> int:
+    """
+    Counts deterministic "sentence terminators" based on UAX #29.
+    This is a "Terminator Count" metric, not a full linguistic count.
+    """
+    sentence_terminator_count = 0
+    
+    # STerm = Sentence Terminal (e.g., '!')
+    # ATerm = Ambiguous Terminal (e.g., '.')
+    TERMINATOR_PROPS = {"STerm", "ATerm"}
+    
+    for prop in sentence_break_properties:
+        if prop in TERMINATOR_PROPS:
+            sentence_terminator_count += 1
+            
+    # If no terminators are found, but the text is not empty,
+    # it still constitutes one "sentence segment".
+    if sentence_terminator_count == 0 and len(sentence_break_properties) > 0:
+        return 1
         
-        # *** THIS IS FIX #3 ***
-        # We will also iterate this manually to be robust,
-        # just in case len() is also failing on this proxy.
-        sentence_count = 0
-        for seg in segments_iterable:
-            sentence_count += 1
-        return sentence_count
-        # --- END OF FIX ---
-
-    except Exception as e:
-        print(f"Error in sentence segmentation: {e}")
-        return 0
+    return sentence_terminator_count
 
 # ---
 # 2. CORE LOGIC: THE SEGMENTED ANALYSIS PIPELINE
@@ -77,11 +69,13 @@ def compute_segmented_profile(core_data, N=10):
     
     # 1. Get data from Stage 1
     grapheme_list = core_data.get("grapheme_list", [])
-    forensic_flags = core_data.get("forensic_flags", {})
+    grapheme_lengths = core_data.get("grapheme_lengths_codepoints", [])
+    wb_props = core_data.get("word_break_properties", [])
+    sb_props = core_data.get("sentence_break_properties", [])
     
     total_graphemes = len(grapheme_list)
-    if total_graphemes == 0:
-        return {"error": "No graphemes to analyze."}
+    if total_graphemes == 0 or total_graphemes != len(grapheme_lengths):
+        return {"error": "No graphemes or mismatched data."}
 
     # 2. Segmentation (by Grapheme index)
     chunk_size = total_graphemes // N
@@ -90,38 +84,57 @@ def compute_segmented_profile(core_data, N=10):
         
     segmented_reports = []
     
+    # This tracks our position in the *code point* property lists
+    current_codepoint_index = 0
+    
     for i in range(N):
         # 3. Get the slice (chunk) for this segment
-        start_index = i * chunk_size
-        end_index = (i + 1) * chunk_size if i < N - 1 else total_graphemes
+        start_grapheme_index = i * chunk_size
+        end_grapheme_index = (i + 1) * chunk_size if i < N - 1 else total_graphemes
         
-        # Skip empty segments (can happen if N > total_graphemes)
-        if start_index >= total_graphemes:
+        if start_grapheme_index >= total_graphemes:
             continue
             
-        segment_graphemes = grapheme_list[start_index:end_index]
-        segment_text = "".join(segment_graphemes)
+        # 4. ***NEW*** Map Grapheme indices to Code Point indices
         
-        # 4. Feature Extraction (Run metrics on this chunk)
+        # Calculate the start CP index
+        # This sums the lengths of all graphemes *before* this chunk
+        start_codepoint_index = sum(grapheme_lengths[:start_grapheme_index])
+        
+        # Get the list of graphemes in this chunk
+        segment_graphemes = grapheme_list[start_grapheme_index:end_grapheme_index]
+        
+        # Calculate the end CP index
+        # This is just the start_cp_index + the sum of lengths of graphemes *in* this chunk
+        graphemes_in_this_segment = grapheme_lengths[start_grapheme_index:end_grapheme_index]
+        end_codepoint_index = start_codepoint_index + sum(graphemes_in_this_segment)
+
+        # 5. Feature Extraction (Run metrics on the *sliced property lists*)
         metrics = {}
         metrics["grapheme_count"] = len(segment_graphemes)
-        metrics["word_count"] = compute_word_count(segment_text)
-        metrics["sentence_count"] = compute_sentence_count(segment_text)
+        
+        # Slice the UAX property lists using our new CP indices
+        segment_wb_props = wb_props[start_codepoint_index:end_codepoint_index]
+        segment_sb_props = sb_props[start_codepoint_index:end_codepoint_index]
+
+        # --- NEW: Call the UAX-based counters ---
+        metrics["word_count"] = compute_word_count(segment_wb_props)
+        metrics["sentence_count"] = compute_sentence_count(segment_sb_props)
+        # --- END NEW ---
         
         report = {
             "segment_id": f"{i+1} / {N}",
-            "start_index": start_index,
-            "end_index": end_index,
+            "start_index": start_grapheme_index,
+            "end_index": end_grapheme_index,
             "metrics": metrics
         }
         segmented_reports.append(report)
 
-    # 5. Anomaly Detection (Z-Score)
+    # 6. Anomaly Detection (Z-Score)
     # (We will add the z-score calculation here later)
     
     print(f"Stage 2: Processed {len(segmented_reports)} segments.")
     return segmented_reports
-
 # ---
 # 3. RENDERING FUNCTIONS
 # ---
