@@ -1114,7 +1114,7 @@ async def load_unicode_data():
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
-        render_status("Ready. Paste or type text to analyze.")
+        render_status("Ready.")
         update_all() # Re-render with ready state
         
     except Exception as e:
@@ -3445,7 +3445,7 @@ async def main():
     # Now that the listener is bound and data is loaded,
     # enable the text area for the user.
     text_input_element.disabled = False
-    text_input_element.placeholder = "Ready. Paste or type text to analyze..."
+    text_input_element.placeholder = "Paste or type here..."
     print("Text...tics is ready.") # A good sign to see in the console
 
 # Start the main asynchronous task
