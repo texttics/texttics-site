@@ -1986,6 +1986,32 @@ def compute_verticalorientation_analysis(t: str):
             
     return counters
 
+def _get_codepoint_properties(t: str):
+    """
+    A fast, single-pass helper to get the UAX properties needed for Stage 2.
+    This iterates by code point, not grapheme.
+    """
+    if LOADING_STATE != "READY":
+        return [], []
+
+    word_break_props = []
+    sentence_break_props = []
+    
+    # We must iterate by code point (char)
+    for char in t:
+        cp = ord(char)
+        
+        # 1. Get Word Break Property
+        wb_prop = _find_in_ranges(cp, "WordBreak")
+        word_break_props.append(wb_prop if wb_prop else "Other")
+        
+        # 2. Get Sentence Break Property
+        sb_prop = _find_in_ranges(cp, "SentenceBreak")
+        sentence_break_props.append(sb_prop if sb_prop else "Other")
+
+    return word_break_props, sentence_break_props
+
+
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Module 2.C: Runs Forensic Analysis and finds positions."""
@@ -3207,31 +3233,35 @@ def update_all(event=None):
 
 # --- NEW: Package data for Stage 2 ---
     try:
-        # 1. Get the grapheme segments (a fast operation)
+        # 1. Get grapheme segments (for segmentation)
         segments_iterable = GRAPHEME_SEGMENTER.segment(t)
         grapheme_list = [seg.segment for seg in window.Array.from_(segments_iterable)]
         
-        # 2. Get all forensic flags (already computed)
+        # 2. Get forensic flags (for threat counting)
         all_flags = forensic_stats
         all_flags.update(emoji_flags) # Combine structural and emoji flags
 
-        # 3. Get the normalized text (already computed)
+        # 3. Get normalized text (for TTR)
         nfkc_cf_text = threat_results.get('nfkc_cf', "")
         
-        # 4. Expose all core data to the JavaScript window
+        # 4. ***NEW*** Get UAX Break properties (for word/sentence counting)
+        wb_props, sb_props = _get_codepoint_properties(t)
+        
+        # 5. Expose all core data to the JavaScript window
         core_data = {
             "raw_text": t,
             "grapheme_list": grapheme_list,
+            "grapheme_lengths_codepoints": [len(g) for g in grapheme_list], # Crucial for mapping
             "forensic_flags": all_flags,
             "nfkc_casefold_text": nfkc_cf_text,
+            "word_break_properties": wb_props,
+            "sentence_break_properties": sb_props,
             "timestamp": window.Date.new().toISOString()
         }
 
-        # *** THIS IS THE FIX ***
         # Convert the Python dict to a true JavaScript object (deep conversion)
         core_data_js = to_js(core_data, dict_converter=window.Object.fromEntries)
         window.TEXTTICS_CORE_DATA = core_data_js
-        # *** END OF FIX ***
 
         print("Stage 1 data exported for Stage 2.")
     except Exception as e:
