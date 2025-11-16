@@ -3057,21 +3057,25 @@ def inspect_character(event):
                 cp = 0x10000 + (((cp - 0xD800) << 10) | (cp_low - 0xDC00))
                 char = char + text[pos+1] # The character is the pair
 
+        # --- FIXES APPLIED HERE ---
+        minor_cat_abbr = unicodedata.category(char)
+        
         data = {
             "char": char,
             "cp_hex": f"U+{cp:04X}",
             "cp_dec": cp,
             "name": unicodedata.name(char, "No Name Found"),
             "block": _find_in_ranges(cp, "Blocks") or "N/A",
-            "age": _find_in_ranges(cp, "DerivedAge") or "N/A",
+            "age": _find_in_ranges(cp, "Age") or "N/A", # <--- FIX 1: Changed "DerivedAge" to "Age"
             "script": _find_in_ranges(cp, "Scripts") or "N/A",
-            "category_minor": _find_in_ranges(cp, "Minor_Categories") or "N/A",
-            "bidi_class": _find_in_ranges(cp, "Bidi_Class") or "N/A",
+            "category_minor": ALIASES.get(minor_cat_abbr, minor_cat_abbr), # <--- FIX 2: Using ALIASES for minor category name
+            "bidi_class": unicodedata.bidirectional(char) or "N/A", # <--- FIX 3: Using standard Python func for bidi
             "line_break": _find_in_ranges(cp, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp, "WordBreak") or "N/A",
             "sentence_break": _find_in_ranges(cp, "SentenceBreak") or "N/A",
             "grapheme_break": _find_in_ranges(cp, "GraphemeBreak") or "N/A",
         }
+        # --- END FIXES ---
         
         render_inspector_panel(data)
         
