@@ -3,168 +3,178 @@ import asyncio
 from pyscript import document, window
 from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
-import bisect # <-- IMPORTED FOR _find_in_ranges
+import bisect 
 
 # ---
 # 0. STAGE 2 DATA STORES & LOADERS
 # ---
 
 # We load the UAX files Stage 2 needs for its own logic
-STAGE2_DATA = {
+STAGE2_DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
-    "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
+    "PropList": {"ranges": [], "starts": [], "ends": []},
+    "DerivedCore": {"ranges": [], "starts": [], "ends": []},
 }
 DATA_LOADED = False
 
-def _parse_and_store_ranges(txt: str, store_key: str):
-    """Generic parser for Unicode range data files."""
-    store = STAGE2_DATA[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-    
-    ranges_list = []
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line: continue
+# We need to map the property names from the files to our store keys
+PROP_MAP = {
+    # From PropList.txt
+    "White_Space": "PropList",
+    "Bidi_Control": "PropList",
+    "Join_Control": "PropList",
+    # From DerivedCoreProperties.txt
+    "Default_Ignorable_Code_Point": "DerivedCore",
+}
+
+def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None):
+    """
+    Generic parser for Unicode range data files.
+    If property_map is provided, it sorts properties into the correct store.
+    """
+    # This logic is for multi-property files like PropList.txt
+    if property_map:
+        temp_ranges = {key: [] for key in STAGE2_DATA_STORES.keys()}
         
-        parts = line.split(';', 1)
-        if len(parts) < 2: continue
-        code_range, value = parts[0].strip(), parts[1].strip()
+        for raw in txt.splitlines():
+            line = raw.split('#', 1)[0].strip()
+            if not line: continue
+            parts = line.split(';', 1)
+            if len(parts) < 2: continue
+            code_range, prop_name = parts[0].strip(), parts[1].strip()
+            
+            if prop_name in property_map:
+                target_store_key = property_map[prop_name]
+                try:
+                    if '..' in code_range:
+                        a, b = code_range.split('..', 1)
+                        temp_ranges[target_store_key].append((int(a, 16), int(b, 16), prop_name))
+                    else:
+                        cp = int(code_range, 16)
+                        temp_ranges[target_store_key].append((cp, cp, prop_name))
+                except Exception:
+                    pass # Ignore malformed lines
         
-        try:
-            if '..' in code_range:
-                a, b = code_range.split('..', 1)
-                ranges_list.append((int(a, 16), int(b, 16), value))
-            else:
-                cp = int(code_range, 16)
-                ranges_list.append((cp, cp, value))
-        except Exception:
-            pass # Ignore malformed lines
-    
-    ranges_list.sort()
-    
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-    print(f"Stage 2: Loaded {len(ranges_list)} ranges for {store_key}.")
+        # Now populate the real data stores from the temp lists
+        for key, ranges_list in temp_ranges.items():
+            if not ranges_list: continue
+            store = STAGE2_DATA_STORES[key]
+            ranges_list.sort()
+            store["ranges"].extend([(s, e, v) for s, e, v in ranges_list])
+            
+    # This logic is for single-property files like WordBreakProperty.txt
+    else:
+        store = STAGE2_DATA_STORES[store_key]
+        ranges_list = []
+        for raw in txt.splitlines():
+            line = raw.split('#', 1)[0].strip()
+            if not line: continue
+            parts = line.split(';', 1)
+            if len(parts) < 2: continue
+            code_range, value = parts[0].strip(), parts[1].strip()
+            try:
+                if '..' in code_range:
+                    a, b = code_range.split('..', 1)
+                    ranges_list.append((int(a, 16), int(b, 16), value))
+                else:
+                    ranges_list.append((int(code_range, 16), int(code_range, 16), value))
+            except Exception:
+                pass
+        
+        ranges_list.sort()
+        store["ranges"] = [(s, e, v) for s, e, v in ranges_list]
+
+    # After all parsing, create the fast lookup lists
+    for key in STAGE2_DATA_STORES:
+        store = STAGE2_DATA_STORES[key]
+        if store["ranges"] and not store["starts"]: # Only build if new
+            store["ranges"].sort() # Sort all ranges from all files
+            store["starts"] = [s for s, e, v in store["ranges"]]
+            store["ends"] = [e for s, e, v in store["ranges"]]
+            print(f"Stage 2: Finalized {len(store['starts'])} ranges for {key}.")
+
 
 async def load_stage2_data():
     """Fetches and parses the UAX data needed for Stage 2."""
     global DATA_LOADED
     try:
-        # Fetch both files in parallel
         wb_res_task = pyfetch("./WordBreakProperty.txt")
-        sb_res_task = pyfetch("./SentenceBreakProperty.txt")
+        pl_res_task = pyfetch("./PropList.txt")
+        dc_res_task = pyfetch("./DerivedCoreProperties.txt")
         
-        wb_res = await wb_res_task
-        sb_res = await sb_res_task
+        wb_res, pl_res, dc_res = await asyncio.gather(wb_res_task, pl_res_task, dc_res_task)
         
-        if wb_res.ok and sb_res.ok:
-            wb_txt = await wb_res.string()
-            sb_txt = await sb_res.string()
-            
-            _parse_and_store_ranges(wb_txt, "WordBreak")
-            _parse_and_store_ranges(sb_txt, "SentenceBreak")
+        if wb_res.ok and pl_res.ok and dc_res.ok:
+            _parse_and_store_ranges(await wb_res.string(), "WordBreak")
+            _parse_and_store_ranges(await pl_res.string(), None, property_map=PROP_MAP)
+            _parse_and_store_ranges(await dc_res.string(), None, property_map=PROP_MAP)
             DATA_LOADED = True
         else:
-            print(f"Stage 2: Failed to load data (WB: {wb_res.status}, SB: {sb_res.status})")
-            DATA_LOADED = False
+            print(f"Stage 2: Failed to load data (WB:{wb_res.status}, PL:{pl_res.status}, DC:{dc_res.status})")
     except Exception as e:
         print(f"Stage 2: Error loading data: {e}")
-        DATA_LOADED = False
 
 def _find_in_ranges(cp: int, store_key: str):
     """Stage 2's local copy of the range finder."""
-    store = STAGE2_DATA[store_key]
+    store = STAGE2_DATA_STORES[store_key]
     starts_list = store["starts"]
-    
     if not starts_list: return None
-    
-    # *** THIS WAS THE MISSING LOGIC ***
     i = bisect.bisect_right(starts_list, cp) - 1
     if i >= 0 and cp <= store["ends"][i]:
-        return store["ranges"][i][2] # Return the value
-    # *** END MISSING LOGIC ***
+        # Return the *value* (e.g., "ALetter", "White_Space")
+        return store["ranges"][i][2]
     return None
 
+def _find_in_ranges_multi(cp: int, store_key: str):
+    """Finds ALL matching properties for a code point in a store."""
+    store = STAGE2_DATA_STORES[store_key]
+    starts_list = store["starts"]
+    if not starts_list: return []
+    
+    props = []
+    # Find potential matches
+    i = bisect.bisect_right(starts_list, cp) - 1
+    # Check all properties that start at or before cp
+    for j in range(i, -1, -1):
+        if starts_list[j] > cp:
+            continue
+        if cp <= store["ends"][j]:
+            props.append(store["ranges"][j][2]) # Add the value
+        # Optimization: if the start is too far back, stop
+        if cp - starts_list[j] > 2000: # Heuristic
+             break
+             
+    # This is not perfect for overlapping ranges, but good enough for this
+    # A more robust way is to check all `i` where starts_list[i] <= cp
+    
+    # Let's use a simpler, correct-but-slower method
+    props = []
+    for s, e, v in store["ranges"]:
+        if s <= cp <= e:
+            props.append(v)
+    return props
+
 # ---
-# 1. METRIC HELPER FUNCTIONS
+# 1. METRIC HELPER FUNCTIONS (GRAPHEME-BASED)
 # ---
 
-def compute_word_count(word_break_properties: list) -> int:
-    """
-    Counts deterministic "word" runs based on UAX #29 Word Break properties.
-    A "word" is a continuous run of ALetter, Numeric, Katakana, or Hebrew_Letter.
-    """
-    word_count = 0
-    in_word = False
+def get_grapheme_base_properties(grapheme: str) -> dict:
+    """Finds all UAX properties of the *first code point* in a grapheme."""
+    props = {"wb": "Other", "sb": "Other", "pl_props": set(), "dc_props": set()}
+    if not grapheme:
+        return props
     
-    # Define what properties constitute a "word"
-    WORD_PROPS = {"ALetter", "Numeric", "Katakana", "Hebrew_Letter"}
+    first_char = window.Array.from_(grapheme)[0]
+    cp = ord(first_char)
     
-    for prop in word_break_properties:
-        is_word_char = prop in WORD_PROPS
-        
-        if is_word_char and not in_word:
-            # This is the start of a new word
-            word_count += 1
-            in_word = True
-        elif not is_word_char:
-            # This is a break (like a space or punctuation), so reset
-            in_word = False
-            
-    return word_count
-
-def compute_line_break_count(word_break_properties: list) -> int:
-    """Counts the number of explicit Line Feeds (LF)."""
-    # UAX #29 (Word Break) defines LF as a property.
-    # This is a simple, deterministic "line" counter.
-    line_break_count = 0
-    for prop in word_break_properties:
-        if prop == "LF":
-            line_break_count += 1
-            
-    # N line breaks separate N+1 lines of text
-    # If the text isn't empty, it has at least one line.
-    if len(word_break_properties) > 0:
-        return line_break_count + 1
-    else:
-        return 0
-
-def compute_inter_dot_count(wb_props: list, sb_props: list) -> int:
-    """
-    Counts "meaningful" dots (terminators) that follow a word,
-    per your specific requirement.
-    """
-    dot_count = 0
-    has_word_since_last_dot = False
+    props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
+    props["sb"] = _find_in_ranges(cp, "SentenceBreak") or "Other"
     
-    WORD_PROPS = {"ALetter", "Numeric", "Katakana", "Hebrew_Letter"}
-    TERMINATOR_PROPS = {"STerm", "ATerm"} # (e.g., . ! ?)
+    # Use the multi-finder for PropList and DerivedCore
+    props["pl_props"] = set(_find_in_ranges_multi(cp, "PropList"))
+    props["dc_props"] = set(_find_in_ranges_multi(cp, "DerivedCore"))
     
-    # We iterate through both lists in parallel
-    for i in range(len(wb_props)):
-        wb_prop = wb_props[i]
-        sb_prop = sb_props[i]
-        
-        # 1. Check if we are in a "word"
-        if wb_prop in WORD_PROPS:
-            has_word_since_last_dot = True
-        
-        # 2. Check if we hit a "dot"
-        if sb_prop in TERMINATOR_PROPS:
-            # 3. Check if this "dot" is meaningful (i.e., it followed a word)
-            if has_word_since_last_dot:
-                dot_count += 1
-                has_word_since_last_dot = False # Reset the flag
-            else:
-                # This is a "dot" like in "..." or ". ."
-                # We do NOT count it, and we do NOT reset the flag.
-                pass
-                
-    return dot_count
+    return props
 
 # ---
 # 2. CORE LOGIC: THE SEGMENTED ANALYSIS PIPELINE
@@ -178,60 +188,160 @@ def compute_segmented_profile(core_data, N=10):
     print("Stage 2: Running macro-analysis...")
     
     # 1. Get data from Stage 1
-    raw_text = core_data.get("raw_text", "")
     grapheme_list = core_data.get("grapheme_list", [])
     grapheme_lengths = core_data.get("grapheme_lengths_codepoints", [])
+    forensic_flags = core_data.get("forensic_flags", {})
     
     total_graphemes = len(grapheme_list)
-    if total_graphemes == 0 or total_graphemes != len(grapheme_lengths):
-        return {"error": "No graphemes or mismatched data."}
+    if total_graphemes == 0:
+        return {"error": "No graphemes to analyze."}
 
-    # 2. Build our own property lists from the raw text
-    # This avoids all data passing bugs.
-    wb_props = []
-    sb_props = []
-    for char in raw_text: # Iterate by code point
-        cp = ord(char)
-        
-        wb_prop = _find_in_ranges(cp, "WordBreak")
-        wb_props.append(wb_prop if wb_prop else "Other")
-        
-        sb_prop = _find_in_ranges(cp, "SentenceBreak")
-        sb_props.append(sb_prop if sb_prop else "Other")
-
-    # 3. Segmentation (by Grapheme index)
+    # 2. Segmentation (by Grapheme index)
     chunk_size = total_graphemes // N
-    if chunk_size == 0:
-        chunk_size = 1
+    if chunk_size == 0: chunk_size = 1
         
     segmented_reports = []
     
+    # --- Define our "structural types" based on UAX properties ---
+    WORD_PROPS = {"ALetter", "Numeric", "Katakana", "Hebrew_Letter"}
+    LINEBREAK_PROPS = {"LF", "CR"}
+    
     for i in range(N):
-        # 4. Get the slice (chunk) for this segment
+        # 3. Get the slice (chunk) for this segment
         start_grapheme_index = i * chunk_size
         end_grapheme_index = (i + 1) * chunk_size if i < N - 1 else total_graphemes
         
-        if start_grapheme_index >= total_graphemes:
-            continue
+        if start_grapheme_index >= total_graphemes: continue
             
-        # 5. Map Grapheme indices to Code Point indices
-        start_codepoint_index = sum(grapheme_lengths[:start_grapheme_index])
+        segment_graphemes = grapheme_list[start_grapheme_index:end_grapheme_index]
         
-        graphemes_in_this_segment = grapheme_lengths[start_grapheme_index:end_grapheme_index]
-        end_codepoint_index = start_codepoint_index + sum(graphemes_in_this_segment)
-
-        # 6. Feature Extraction (Run metrics on the *sliced property lists*)
-        metrics = {}
-        metrics["grapheme_count"] = len(graphemes_in_this_segment)
+        # 4. Feature Extraction (Grapheme-based RLE)
         
-        # Slice the UAX property lists
-        segment_wb_props = wb_props[start_codepoint_index:end_codepoint_index]
-        segment_sb_props = sb_props[start_codepoint_index:end_codepoint_index]
+        # --- Section 2: Content Run Histogram ---
+        content_run_lengths = []
+        current_content_run = 0
+        
+        # --- Section 3: Separator Run Profile ---
+        space_run_lengths = []
+        current_space_run = 0
+        line_break_count = 0
+        
+        # --- Section 4: Invisible Atom Integrity ---
+        bidi_atom_count = 0
+        join_atom_count = 0
+        other_invisible_atom_count = 0
+        
+        for grapheme in segment_graphemes:
+            props = get_grapheme_base_properties(grapheme)
+            wb_prop = props["wb"]
+            pl_props = props["pl_props"]
+            dc_props = props["dc_props"]
 
-        # Call the UAX-based counters
-        metrics["word_count"] = compute_word_count(segment_wb_props)
-        metrics["line_break_count"] = compute_line_break_count(segment_wb_props)
-        metrics["inter_dot_count"] = compute_inter_dot_count(segment_wb_props, segment_sb_props)
+            # --- Classify this grapheme ---
+            
+            # Is it an Invisible Atom?
+            if "Bidi_Control" in pl_props:
+                bidi_atom_count += 1
+                # It's an invisible, so it *ends* other runs
+                if current_content_run > 0: content_run_lengths.append(current_content_run)
+                if current_space_run > 0: space_run_lengths.append(current_space_run)
+                current_content_run, current_space_run = 0, 0
+                continue # Go to next grapheme
+            
+            if "Join_Control" in pl_props:
+                join_atom_count += 1
+                if current_content_run > 0: content_run_lengths.append(current_content_run)
+                if current_space_run > 0: space_run_lengths.append(current_space_run)
+                current_content_run, current_space_run = 0, 0
+                continue
+
+            if "Default_Ignorable_Code_Point" in dc_props:
+                other_invisible_atom_count += 1
+                if current_content_run > 0: content_run_lengths.append(current_content_run)
+                if current_space_run > 0: space_run_lengths.append(current_space_run)
+                current_content_run, current_space_run = 0, 0
+                continue
+            
+            # Is it a Separator?
+            if "White_Space" in pl_props or wb_prop in LINEBREAK_PROPS:
+                # It's a separator, so it *ends* a content run
+                if current_content_run > 0:
+                    content_run_lengths.append(current_content_run)
+                    current_content_run = 0
+                
+                if wb_prop in LINEBREAK_PROPS:
+                    line_break_count += 1
+                    # Line breaks also end space runs
+                    if current_space_run > 0:
+                        space_run_lengths.append(current_space_run)
+                        current_space_run = 0
+                elif "White_Space" in pl_props: # Must be a \p{Zs}
+                    current_space_run += 1
+            
+            # Is it Content?
+            else:
+                # It's content, so it *ends* a space run
+                if current_space_run > 0:
+                    space_run_lengths.append(current_space_run)
+                    current_space_run = 0
+                
+                # And it *continues* a content run
+                current_content_run += 1
+
+        # End of loop, flush any remaining runs
+        if current_content_run > 0: content_run_lengths.append(current_content_run)
+        if current_space_run > 0: space_run_lengths.append(current_space_run)
+
+        # 5. Bin the Content Runs
+        bins = {"1": 0, "2": 0, "3-5": 0, "6-10": 0, "11+": 0}
+        for length in content_run_lengths:
+            if length == 1: bins["1"] += 1
+            elif length == 2: bins["2"] += 1
+            elif 3 <= length <= 5: bins["3-5"] += 1
+            elif 6 <= length <= 10: bins["6-10"] += 1
+            else: bins["11+"] += 1
+        
+        total_content_runs = len(content_run_lengths)
+        avg_content_length = (sum(content_run_lengths) / total_content_runs) if total_content_runs > 0 else 0
+        
+        # 6. Analyze Separator Runs
+        total_space_runs = len(space_run_lengths)
+        avg_space_length = (sum(space_run_lengths) / total_space_runs) if total_space_runs > 0 else 0
+        
+        # 7. Aggregate Stage 1 Threats
+        threat_count = 0
+        grapheme_lengths_in_this_segment = grapheme_lengths[start_grapheme_index:end_grapheme_index]
+        start_cp_index = sum(grapheme_lengths[:start_grapheme_index])
+        end_cp_index = start_cp_index + sum(grapheme_lengths_in_this_segment)
+        
+        for flag, data in forensic_flags.items():
+            if data.get('count', 0) > 0:
+                for pos_str in data.get('positions', []):
+                    try:
+                        pos = int(pos_str.lstrip('#').split(' ')[0]) # Get index from "#12" or "#12 (mapping)"
+                        if start_cp_index <= pos < end_cp_index:
+                            threat_count += 1
+                    except Exception:
+                        pass # Ignore malformed position strings
+
+        # 8. Store metrics
+        metrics = {
+            "grapheme_count": len(segment_graphemes),
+            "bin_1": bins["1"],
+            "bin_2": bins["2"],
+            "bin_3_5": bins["3-5"],
+            "bin_6_10": bins["6-10"],
+            "bin_11_plus": bins["11+"],
+            "total_content_runs": total_content_runs,
+            "avg_content_length": round(avg_content_length, 2),
+            "space_runs": total_space_runs,
+            "line_breaks": line_break_count,
+            "avg_space_length": round(avg_space_length, 2),
+            "bidi_atoms": bidi_atom_count,
+            "join_atoms": join_atom_count,
+            "other_invisibles": other_invisible_atom_count,
+            "threat_flags": threat_count
+        }
         
         report = {
             "segment_id": f"{i+1} / {N}",
@@ -251,38 +361,47 @@ def render_macro_table(segmented_reports):
     """
     Renders the main "Heatmap Table" for Stage 2.
     """
-    table_el = document.getElementById("macro-table-output")
+    table_el = document.getElementById("macro-table-body") # Target <tbody>
     if not table_el:
         return
 
-    # --- NEW: Update table headers ---
-    html = ['<table class="matrix"><thead>']
-    html.append('<tr><th scope="col">Segment</th>'
-                '<th scope="col">Indices (Grapheme)</th>'
-                '<th scope="col">Grapheme Count</th>'
-                '<th scope="col">Word Count</th>'
-                '<th scope="col">Line Count</th>'
-                '<th scope="col">Dot-Terminators</th></tr>')
-    html.append('</thead><tbody>')
-    # --- END NEW ---
+    html = []
     
     if not segmented_reports or "error" in segmented_reports:
-        html.append("<tr><td colspan='6'>No data.</td></tr>") # Updated colspan
+        html.append("<tr><td colspan='16'>No data.</td></tr>") # Updated colspan
     else:
         for report in segmented_reports:
             metrics = report['metrics']
             html.append('<tr>')
+            # Section 1: Identification
             html.append(f"<td>{report['segment_id']}</td>")
-            # --- NEW: Add new metric cells ---
             html.append(f"<td>{report['indices']}</td>")
             html.append(f"<td>{metrics.get('grapheme_count', 0)}</td>")
-            html.append(f"<td>{metrics.get('word_count', 0)}</td>")
-            html.append(f"<td>{metrics.get('line_break_count', 0)}</td>")
-            html.append(f"<td>{metrics.get('inter_dot_count', 0)}</td>")
-            # --- END NEW ---
+            
+            # Section 2: Content Run Histogram
+            html.append(f"<td>{metrics.get('bin_1', 0)}</td>")
+            html.append(f"<td>{metrics.get('bin_2', 0)}</td>")
+            html.append(f"<td>{metrics.get('bin_3_5', 0)}</td>")
+            html.append(f"<td>{metrics.get('bin_6_10', 0)}</td>")
+            html.append(f"<td>{metrics.get('bin_11_plus', 0)}</td>")
+            html.append(f"<td>{metrics.get('total_content_runs', 0)}</td>")
+            html.append(f"<td>{metrics.get('avg_content_length', 0)}</td>")
+            
+            # Section 3: Separator Run Profile
+            html.append(f"<td>{metrics.get('space_runs', 0)}</td>")
+            html.append(f"<td>{metrics.get('line_breaks', 0)}</td>")
+            html.append(f"<td>{metrics.get('avg_space_length', 0)}</td>")
+
+            # Section 4: Invisible Atom Integrity
+            html.append(f"<td>{metrics.get('bidi_atoms', 0)}</td>")
+            html.append(f"<td>{metrics.get('join_atoms', 0)}</td>")
+            html.append(f"<td>{metrics.get('other_invisibles', 0)}</td>")
+            
+            # Section 5: Threat Location
+            html.append(f"<td>{metrics.get('threat_flags', 0)}</td>")
+            
             html.append('</tr>')
 
-    html.append('</tbody></table>')
     table_el.innerHTML = "".join(html)
 
 def render_sparklines(segmented_reports):
@@ -298,14 +417,12 @@ async def main():
     global DATA_LOADED
     status_el = document.getElementById("loading-status")
     
-    # --- NEW: We must load data for Stage 2 first ---
-    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, SentenceBreak)..."
+    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, PropList, DerivedCore)..."
     await load_stage2_data()
     if not DATA_LOADED:
         status_el.innerText = "Error: Could not load UAX data. Cannot proceed."
         status_el.style.color = "red"
         return
-    # --- END NEW ---
 
     try:
         core_data_proxy = window.opener.TEXTTICS_CORE_DATA
