@@ -1,5 +1,6 @@
 # stage2.py
 import asyncio
+import json
 from pyscript import document, window
 from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
@@ -8,6 +9,9 @@ import bisect
 # ---
 # 0. STAGE 2 DATA STORES & LOADERS
 # ---
+
+# Global variable to hold the final report for the copy function
+GLOBAL_SEGMENTED_REPORT = None
 
 # We load the UAX files Stage 2 needs for its own logic
 STAGE2_DATA_STORES = {
