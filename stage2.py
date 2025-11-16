@@ -359,7 +359,28 @@ def compute_segmented_profile(core_data, N=10):
             "bin_1": bins["1"],
             "bin_2": bins["2"],
             "bin_3_5": bins["3-5"],
-            "bin_6_10": bins["6-1SYSTEM"]
+            "bin_6_10": bins["6-10"],
+            "bin_11_plus": bins["11+"],
+            "total_content_runs": total_content_runs,
+            "avg_content_length": round(avg_content_length, 2),
+            "space_runs": total_space_runs,
+            "line_breaks": line_break_count,
+            "avg_space_length": round(avg_space_length, 2),
+            "bidi_atoms": bidi_atom_count,
+            "join_atoms": join_atom_count,
+            "other_invisibles": other_invisible_atom_count,
+            "threat_flags": threat_count
+        }
+        
+        report = {
+            "segment_id": f"{i+1} / {N}",
+            "indices": f"{start_grapheme_index}–{end_grapheme_index-1}",
+            "metrics": metrics
+        }
+        segmented_reports.append(report)
+
+    print(f"Stage 2: Processed {len(segmented_reports)} segments.")
+    return segmented_reports
 
 # ---
 # 3. RENDERING FUNCTIONS
@@ -376,7 +397,8 @@ def render_macro_table(segmented_reports):
     html = []
     
     if not segmented_reports or "error" in segmented_reports:
-        html.append("<tr><td colspan='16'>No data.</td></tr>") # Updated colspan
+        error_msg = segmented_reports.get("error", "No data.")
+        html.append(f"<tr><td colspan='17'>{error_msg}</td></tr>") # Updated colspan
     else:
         for report in segmented_reports:
             metrics = report['metrics']
@@ -421,29 +443,46 @@ def render_sparklines(segmented_reports):
 # 4. MAIN BOOTSTRAP FUNCTION
 # ---
 
-async def load_stage2_data():
-    """Fetches and parses the UAX data needed for Stage 2."""
+# ---
+# 4. MAIN BOOTSTRAP FUNCTION
+# ---
+
+async def main():
     global DATA_LOADED
+    status_el = document.getElementById("loading-status")
+    
+    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, PropList, DerivedCore)..."
+    # --- FIX: We must also load SentenceBreak ---
+    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, SentenceBreak, PropList, DerivedCore)..."
+    await load_stage2_data()
+    if not DATA_LOADED:
+        status_el.innerText = "Error: Could not load UAX data. Cannot proceed."
+        status_el.style.color = "red"
+        return
+
     try:
-        # --- NEW: Add SentenceBreakProperty.txt ---
-        wb_res_task = pyfetch("./WordBreakProperty.txt")
-        sb_res_task = pyfetch("./SentenceBreakProperty.txt") # <-- ADDED
-        pl_res_task = pyfetch("./PropList.txt")
-        dc_res_task = pyfetch("./DerivedCoreProperties.txt")
+        core_data_proxy = window.opener.TEXTTICS_CORE_DATA
         
-        wb_res, sb_res, pl_res, dc_res = await asyncio.gather(wb_res_task, sb_res_task, pl_res_task, dc_res_task) # <-- ADDED
+        if not core_data_proxy:
+            status_el.innerText = "Error: No data from Stage 1. Please run an analysis on the main app page and click 'Analyze Macrostructure' again."
+            status_el.style.color = "red"
+            return
+
+        core_data = core_data_proxy.to_py()
         
-        if wb_res.ok and sb_res.ok and pl_res.ok and dc_res.ok: # <-- ADDED sb_res.ok
-            _parse_and_store_ranges(await wb_res.string(), "WordBreak")
-            _parse_and_store_ranges(await sb_res.string(), "SentenceBreak") # <-- ADDED
-            _parse_and_store_ranges(await pl_res.string(), None, property_map=PROP_MAP)
-            _parse_and_store_ranges(await dc_res.string(), None, property_map=PROP_MAP)
-            DATA_LOADED = True
-        else:
-            print(f"Stage 2: Failed to load data (WB:{wb_res.status}, SB:{sb_res.status}, PL:{pl_res.status}, DC:{dc_res.status})") # <-- UPDATED
+        status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
+        
+        segmented_report = compute_segmented_profile(core_data, N=10)
+        
+        render_sparklines(segmented_report)
+        render_macro_table(segmented_report)
+        
+        status_el.innerText = "Macrostructure Profile (v1.0)"
+
     except Exception as e:
-        print(f"Stage 2: Error loading data: {e}")
-        DATA_LOADED = False
+        status_el.innerText = f"A critical error occurred: {e}. Is the main app tab still open?"
+        status_el.style.color = "red"
+        print(f"Stage 2 Error: {e}")
 
 # Start the Stage 2 app
 print("Stage 2 starting...")
