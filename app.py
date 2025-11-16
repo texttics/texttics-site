@@ -2403,7 +2403,7 @@ def _tokenize_for_pvr(text: str) -> list:
 
     for match in matches:
         word_run = match.to_py()[0]
-        start_index = match.index
+        start_index = int(match.index)
         end_index = start_index + len(word_run)
         
         # 1. Add the "gap" (whitespace/other) before this word
@@ -2456,19 +2456,25 @@ def _render_confusable_summary_view(
                 ellipsis_open = False
         
         elif token['type'] == 'word':
-            # Check if this word is "hot" (contains a confusable)
-            word_has_confusable = False
-            for i in range(token['start'], token['end']):
-                if i in confusable_indices:
-                    word_has_confusable = True
-                    break
+        # Check if this word is "hot" (contains a confusable)
+        word_has_confusable = False
+        # Cast token values to int()
+        start_idx = int(token['start'])
+        end_idx = int(token['end'])
+        
+        for i in range(start_idx, end_idx):
+            if i in confusable_indices:
+                word_has_confusable = True
+                break
             
             if word_has_confusable:
                 # This is an "interesting" word. Render it fully.
                 ellipsis_open = False
                 word_chars = window.Array.from_(token['text'])
+                start_idx = int(token['start']) # Get the int value once
+                
                 for i, char in enumerate(word_chars):
-                    raw_index = token['start'] + i
+                    raw_index = start_idx + i # Use the native int
                     if raw_index in confusable_indices:
                         cp = ord(char)
                         final_html.append(_build_confusable_span(char, cp, confusables_map))
