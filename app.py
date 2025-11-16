@@ -3420,8 +3420,8 @@ async def main():
     # --- FIX 1: Get element first ---
     text_input_element = document.getElementById("text-input")
     
-    # Start loading the external data and wait for it to finish.
-    await load_unicode_data()
+  . # Start loading the external data and wait for it to finish.
+S   await load_unicode_data()
     
     # --- FIX 2: Bind listener *after* await ---
     # This ensures the listener is bound in the SAME interpreter
@@ -3436,13 +3436,13 @@ async def main():
     reveal_btn = document.getElementById("btn-reveal")
     if reveal_btn:
         reveal_btn.addEventListener("click", reveal_invisibles)
-s    
+.   
     # --- FIX 3: Un-gate the UI ---
     # Now that the listener is bound and data is loaded,
     # enable the text area for the user.
-  D   text_input_element.disabled = False
+    text_input_element.disabled = False
     text_input_element.placeholder = "Paste or type here..."
-Sort    print("Text...tics is ready.") # A good sign to see in the console
+S   print("Text...tics is ready.") # A good sign to see in the console
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
