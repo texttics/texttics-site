@@ -781,4 +781,48 @@ Stage 2: Heatmap Row Classes
   border-radius: var(--radius-sm);
 }
 
+/* === Status bar fine-tuning === */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 0.75rem;
+  gap: 0.75rem;
+
+  /* left item hugs the left; button is pushed with margin-left:auto */
+  justify-content: flex-start;
+}
+
+.status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  /* a bit larger to match the button text */
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+
+  /* same background as page, but still framed */
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.75rem;
+}
+
+/* make the "Status:" label itself slightly stronger and bigger */
+.status-bar-left strong {
+  font-size: 0.9em;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* button frame on the right */
+.status-bar .tool-btn {
+  margin-left: auto;          /* push fully to the right */
+  flex: 0 0 auto;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
 
