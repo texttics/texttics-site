@@ -2761,19 +2761,26 @@ def render_threat_analysis(threat_results):
 # ---
 
 def render_status(message):
-    """
-    Updates the #status-line element with a message.
-    Applies special styling if the message is 'Ready.'
-    """
-    panel = document.getElementById("status-line")
-    if not panel:
-        return
+    """Updates the status line with text and CSS class."""
+    status_line = document.getElementById("status-line")
+    if status_line:
+        # Use .innerText for safety and to let the CSS handle styling
+        status_line.innerText = message
         
-    if message == "Ready.":
-        panel.innerHTML = '<strong class="status-ready">Ready.</strong>'
-    else:
-        # Clear any special classes and set the text
-        panel.innerHTML = message
+        # Determine the new class by *inferring* the state from the message
+        if message.startswith("Error:"):
+            new_class = "status-error"
+        elif message.startswith("Ready"):
+            new_class = "status-ready"
+        else:
+            new_class = "status-loading"
+        
+        # Update the class list
+        status_line.classList.remove("status-loading", "status-ready", "status-error")
+        status_line.classList.add(new_class)
+        
+        # Clear any old inline styles
+        status_line.style.color = ""
 
 def render_emoji_qualification_table(emoji_list: list):
     """Renders the new Emoji Qualification Profile table."""
