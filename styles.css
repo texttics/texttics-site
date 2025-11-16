@@ -239,13 +239,28 @@ Group 1: Control Plane
   padding-bottom: var(--spacing-2);
 }
 
+/* --- Control Plane Buttons --- */
+.control-buttons-container {
+  display: flex; /* Arranges buttons in a row */
+  gap: 0.75rem; /* Adds space *between* buttons */
+  margin: 0.5rem 0 1rem 0; /* Adds space above/below the button bar */
+}
+
+/* This is your modified class */
 .tool-btn {
+  /* --- Core Layout (New) --- */
+  flex: 1; /* Each button will grow to fill the space */
+  justify-content: center; /* Centers content since the button is growing */
+  
+  /* --- Increased Size (Modified) --- */
+  font-size: 0.9rem; /* Slightly larger text */
+  padding: 0.65rem 1rem; /* Increased padding for a 'reputable' feel */
+
+  /* --- Your Existing Styles (Kept) --- */
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  font-size: 0.85rem;
   font-weight: 600;
-  padding: var(--spacing-1) var(--spacing-3);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -255,13 +270,18 @@ Group 1: Control Plane
 }
 
 .tool-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background-color: #eff6ff; /* Light blue tint */
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: #eff6ff; /* Light blue tint */
 }
 
 .tool-btn:active {
-  transform: translateY(1px);
+  transform: translateY(1px);
+}
+.tool-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--border-color);
 }
 
 /* ---
