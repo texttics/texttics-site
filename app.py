@@ -3205,6 +3205,33 @@ def update_all(event=None):
     # Render TOC
     render_toc_counts(toc_counts)
 
+# --- NEW: Package data for Stage 2 ---
+    try:
+        # 1. Get the grapheme segments (a fast operation)
+        segments_iterable = GRAPHEME_SEGMENTER.segment(t)
+        grapheme_list = [seg.segment for seg in window.Array.from_(segments_iterable)]
+        
+        # 2. Get all forensic flags (already computed)
+        all_flags = forensic_stats
+        all_flags.update(emoji_flags) # Combine structural and emoji flags
+
+        # 3. Get the normalized text (already computed)
+        nfkc_cf_text = threat_results.get('nfkc_cf', "")
+        
+        # 4. Expose all core data to the JavaScript window
+        core_data = {
+            "raw_text": t,
+            "grapheme_list": grapheme_list,
+            "forensic_flags": all_flags,
+            "nfkc_casefold_text": nfkc_cf_text,
+            "timestamp": window.Date.new().toISOString()
+        }
+        window.TEXTTICS_CORE_DATA = core_data
+        print("Stage 1 data exported for Stage 2.")
+    except Exception as e:
+        print(f"Error packaging data for Stage 2: {e}")
+    # --- End of new block ---
+
 @create_proxy
 def reveal_invisibles(event=None):
     """
