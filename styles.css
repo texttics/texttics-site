@@ -697,8 +697,8 @@ Stage 2: Heatmap Row Classes
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  margin-top: 0.75rem; /* Adds space *below* the textarea */
-  font-size: 0.9rem; /* Slightly larger font */
+  margin-top: 1rem; /* Adds space *below* the textarea */
+  font-size: 0.8rem;
   color: var(--color-text-muted);
 }
 
@@ -707,7 +707,6 @@ Stage 2: Heatmap Row Classes
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8rem;
-  padding-left: var(--spacing-4);
 }
 
 .status-bar strong {
