@@ -2435,10 +2435,11 @@ def _tokenize_for_pvr(text: str) -> list:
         if token_type != current_type:
             # Flush the previous run
             segment_text = "".join(js_array[current_start:i])
-            if current_type == 'gap':
-                tokens.append({
-                    'type': 'gap',
-                    'text': segment_text,
+            if segment_text: # <-- ADDED GUARD
+                if current_type == 'gap':
+                    tokens.append({
+                        'type': 'gap',
+                        'text': segment_text,
                 })
             else: # 'word'
                 tokens.append({
@@ -2455,11 +2456,12 @@ def _tokenize_for_pvr(text: str) -> list:
     # Flush the final run
     end_index = len(js_array)
     segment_text = "".join(js_array[current_start:end_index])
-    if current_type == 'gap':
-        tokens.append({
-            'type': 'gap',
-            'text': segment_text,
-        })
+    if segment_text: # <-- ADDED GUARD
+        if current_type == 'gap':
+            tokens.append({
+                'type': 'gap',
+                'text': segment_text,
+            })
     else: # 'word'
         tokens.append({
             'type': 'word',
@@ -2484,24 +2486,41 @@ def _render_confusable_summary_view(
     ellipsis_open = False
     
     for token in tokens:
-        if token['type'] == 'gap':
+        # Use .get() for safe access
+        token_type = token.get('type')
+        token_text = token.get('text', '')
+    
+        if token_type == 'gap':
             # Always keep gaps (spaces, newlines)
-            gap_text = _escape_html(token['text'])
+            gap_text = _escape_html(token_text)
             final_html.append(gap_text)
             
             # If the gap contains a newline, reset the ellipsis
-            if '\n' in token['text']:
+            if '\n' in token_text:
                 ellipsis_open = False
         
-        elif token['type'] == 'word':
+        elif token_type == 'word':
+            start_idx = token.get('start')
+            end_idx = token.get('end')
+
+            # Failsafe: if a 'word' token is malformed, skip it
+            if start_idx is None or end_idx is None:
+                continue
+                
             # Check if this word is "hot" (contains a confusable)
             word_has_confusable = False
-            # token['start'] and token['end'] are already native Python ints
-            start_idx = token['start']
-            end_idx = token['end']
-        
-        for i in range(start_idx, end_idx):
-            if i in confusable_indices:
+            for i in range(start_idx, end_idx):
+                if i in confusable_indices:
+                    word_has_confusable = True
+                    break
+            
+            if word_has_confusable:
+                # This is an "interesting" word. Render it fully.
+                ellipsis_open = False
+                word_chars = window.Array.from_(token_text)
+                for i, char in enumerate(word_chars):
+                    raw_index = start_idx + i
+                    if raw_index in confusable_indices:
                 word_has_confusable = True
                 break
             
