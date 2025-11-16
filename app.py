@@ -2391,58 +2391,83 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
 def _tokenize_for_pvr(text: str) -> list:
     """
     Tokenizes the text into a list of 'word' and 'gap' tokens
-    using the LNPS_Runs regex.
+    for the Perception vs. Reality view.
     
-    This version uses a while(regex.exec()) loop, which is the
-    reliable way to iterate JS regex matches while preserving
-    the .index property.
+    This is a pure-Python tokenizer that avoids JS proxy errors.
+    
+    Implementation detail:
+      - We work over window.Array.from_(text), so indices are in
+        codepoint space (the same as confusable_indices).
+      - A 'word' is a maximal run of L, N, P, or S (from TEST_MAJOR).
+      - A 'gap' is a maximal run of anything else (Z, C, M).
     """
     tokens = []
-    last_index = 0
     js_array = window.Array.from_(text)
-    
-    # Get the JS RegExp object (it has the 'gu' flag)
-    lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
-    if not lnps_regex:
-        return [] # Failsafe
 
-    # Manually loop using the .exec() method
-    while True:
-        match = lnps_regex.exec(text)
-        if not match:
-            break # No more matches
-        
-        # --- This is the reliable way to get match properties ---
-        word_run = match[0]               # "pаypal"
-        start_index = int(match.index)    # 0 (as a Python int)
-        # --- End reliable access ---
-        
-        end_index = start_index + len(word_run)
+    if not js_array:
+        return tokens
 
-        # 1. Add the "gap" (whitespace/other) before this word
-        if start_index > last_index:
-            tokens.append({
-                'type': 'gap',
-                'text': "".join(js_array[last_index:start_index])
-            })
-        
-        # 2. Add the "word"
-        tokens.append({
-            'type': 'word',
-            'text': word_run,
-            'start': start_index,
-            'end': end_index
-        })
-        
-        last_index = end_index
+    # Pre-get the testers for speed
+    l_test = TEST_MAJOR.get("L (Letter)")
+    n_test = TEST_MAJOR.get("N (Number)")
+    p_test = TEST_MAJOR.get("P (Punctuation)")
+    s_test = TEST_MAJOR.get("S (Symbol)")
     
-    # 3. Add the final "gap" (any text after the last match)
-    if last_index < len(js_array):
+    current_type = None    # 'word' or 'gap'
+    current_start = 0
+
+    for i, ch in enumerate(js_array):
+        # Check if char is L, N, P, or S
+        is_word_char = (
+            l_test.test(ch) or
+            n_test.test(ch) or
+            p_test.test(ch) or
+            s_test.test(ch)
+        )
+        token_type = 'word' if is_word_char else 'gap'
+
+        if current_type is None:
+            # First character
+            current_type = token_type
+            current_start = i
+            continue
+
+        if token_type != current_type:
+            # Flush the previous run
+            segment_text = "".join(js_array[current_start:i])
+            if current_type == 'gap':
+                tokens.append({
+                    'type': 'gap',
+                    'text': segment_text,
+                })
+            else: # 'word'
+                tokens.append({
+                    'type': 'word',
+                    'text': segment_text,
+                    'start': current_start,
+                    'end': i,
+                })
+
+            # Start new run
+            current_type = token_type
+            current_start = i
+
+    # Flush the final run
+    end_index = len(js_array)
+    segment_text = "".join(js_array[current_start:end_index])
+    if current_type == 'gap':
         tokens.append({
             'type': 'gap',
-            'text': "".join(js_array[last_index:])
+            'text': segment_text,
         })
-    
+    else: # 'word'
+        tokens.append({
+            'type': 'word',
+            'text': segment_text,
+            'start': current_start,
+            'end': end_index,
+        })
+
     return tokens
 
 def _render_confusable_summary_view(
