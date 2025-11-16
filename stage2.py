@@ -293,22 +293,30 @@ def compute_segmented_profile(core_data, N=10):
         critical_flag_positions = set()
         all_flag_positions = set()
         
+        # Define "Critical" based on the *actual* keys in the forensic_flags object
+        CRITICAL_FLAGS_SET = {"Bidi Control (UAX #9)"}
+        
         if forensic_flags:
             for flag_name, data in forensic_flags.items():
                 if data and data.get('count', 0) > 0:
-                    is_critical = flag_name.startswith("DANGER:")
-                    is_flag = is_critical or flag_name.startswith("Flag:")
                     
-                    if is_flag: # Only loop if it's a flag we care about
-                        for pos_str in data.get('positions', []):
-                            try:
-                                pos = int(pos_str.lstrip('#').split(' ')[0]) 
-                                if start_cp_index <= pos < end_cp_index:
-                                    all_flag_positions.add(pos)
-                                    if is_critical:
-                                        critical_flag_positions.add(pos)
-                            except Exception:
-                                pass # Ignore malformed position strings
+                    # Ignore "Prop:" flags, which are informational, not "flags"
+                    if flag_name.startswith("Prop:"):
+                        continue
+                        
+                    # This flag is a "threat" or "flag"
+                    is_critical = flag_name in CRITICAL_FLAGS_SET
+                    
+                    for pos_str in data.get('positions', []):
+                        try:
+                            pos = int(pos_str.lstrip('#').split(' ')[0]) 
+                            if start_cp_index <= pos < end_cp_index:
+                                # Add to all non-Prop: flags
+                                all_flag_positions.add(pos) 
+                                if is_critical:
+                                    critical_flag_positions.add(pos)
+                        except Exception:
+                            pass # Ignore malformed position strings
 
         # 8. Store metrics
         metrics = {
