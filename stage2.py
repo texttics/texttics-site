@@ -6,10 +6,14 @@ from pyodide.ffi import create_proxy
 # ---
 # 0. NATIVE JS SEGMENTERS (for Word/Sentence counting)
 # ---
-# We create these once, globally, for performance.
+
+# *** THIS IS FIX #1 ***
+# We use `None` for the locale to use the browser's default.
+# This is more robust than assuming "en" is available.
 try:
-    WORD_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "word"})
-    SENTENCE_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "sentence"})
+    WORD_SEGMENTER = window.Intl.Segmenter.new(None, {"granularity": "word"})
+    SENTENCE_SEGMENTER = window.Intl.Segmenter.new(None, {"granularity": "sentence"})
+    print("Stage 2: Segmenters initialized.")
 except Exception as e:
     print(f"Error creating Intl.Segmenter: {e}")
     WORD_SEGMENTER = None
@@ -25,10 +29,17 @@ def compute_word_count(segment_text: str) -> int:
         return 0
     try:
         segments_iterable = WORD_SEGMENTER.segment(segment_text)
-        segments = window.Array.from_(segments_iterable)
-        # Filter for segments that are actually words
-        word_count = sum(1 for seg in segments if seg.isWordLike)
+        
+        # *** THIS IS FIX #2 ***
+        # We must iterate the JsProxy explicitly and use getattr()
+        # to safely access the JavaScript property.
+        word_count = 0
+        for seg in segments_iterable:
+            if getattr(seg, "isWordLike", False):
+                word_count += 1
         return word_count
+        # --- END OF FIX ---
+
     except Exception as e:
         print(f"Error in word segmentation: {e}")
         return 0
@@ -39,8 +50,16 @@ def compute_sentence_count(segment_text: str) -> int:
         return 0
     try:
         segments_iterable = SENTENCE_SEGMENTER.segment(segment_text)
-        segments = window.Array.from_(segments_iterable)
-        return len(segments)
+        
+        # *** THIS IS FIX #3 ***
+        # We will also iterate this manually to be robust,
+        # just in case len() is also failing on this proxy.
+        sentence_count = 0
+        for seg in segments_iterable:
+            sentence_count += 1
+        return sentence_count
+        # --- END OF FIX ---
+
     except Exception as e:
         print(f"Error in sentence segmentation: {e}")
         return 0
@@ -76,17 +95,18 @@ def compute_segmented_profile(core_data, N=10):
         start_index = i * chunk_size
         end_index = (i + 1) * chunk_size if i < N - 1 else total_graphemes
         
+        # Skip empty segments (can happen if N > total_graphemes)
+        if start_index >= total_graphemes:
+            continue
+            
         segment_graphemes = grapheme_list[start_index:end_index]
         segment_text = "".join(segment_graphemes)
         
         # 4. Feature Extraction (Run metrics on this chunk)
         metrics = {}
         metrics["grapheme_count"] = len(segment_graphemes)
-        
-        # --- NEW: Add real metrics ---
         metrics["word_count"] = compute_word_count(segment_text)
         metrics["sentence_count"] = compute_sentence_count(segment_text)
-        # --- END NEW ---
         
         report = {
             "segment_id": f"{i+1} / {N}",
@@ -114,27 +134,23 @@ def render_macro_table(segmented_reports):
     if not table_el:
         return
 
-    # --- NEW: Update table headers ---
     html = ['<table class="matrix"><thead>']
     html.append('<tr><th scope="col">Segment</th>'
                 '<th scope="col">Grapheme Count</th>'
                 '<th scope="col">Word Count</th>'
                 '<th scope="col">Sentence Count</th></tr>')
     html.append('</thead><tbody>')
-    # --- END NEW ---
     
     if not segmented_reports or "error" in segmented_reports:
-        html.append("<tr><td colspan='4'>No data.</td></tr>") # Updated colspan
+        html.append("<tr><td colspan='4'>No data.</td></tr>")
     else:
         for report in segmented_reports:
             metrics = report['metrics']
             html.append('<tr>')
             html.append(f"<td>{report['segment_id']}</td>")
             html.append(f"<td>{metrics.get('grapheme_count', 0)}</td>")
-            # --- NEW: Add new metric cells ---
             html.append(f"<td>{metrics.get('word_count', 0)}</td>")
             html.append(f"<td>{metrics.get('sentence_count', 0)}</td>")
-            # --- END NEW ---
             html.append('</tr>')
 
     html.append('</tbody></table>')
