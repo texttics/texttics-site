@@ -631,3 +631,38 @@ Stage 2: Heatmap Row Classes
   color: #B71C1C; /* Dark red text for high contrast */
   font-weight: bold;
 }
+
+/* --- Inspector Panel --- */
+#inspector-panel-wrapper {
+  margin-top: 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+#inspector-panel-wrapper h3 {
+  background-color: var(--header-bg);
+  padding: 0.75rem 1rem;
+  margin: 0;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 8px 8px 0 0;
+}
+#inspector-panel-content {
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+#inspector-panel-content .inspector-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+}
+#inspector-panel-content .inspector-grid dt {
+  font-weight: bold;
+  color: var(--text-color);
+}
+#inspector-panel-content .inspector-grid dd {
+  margin: 0;
+  color: var(--text-color-light);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
