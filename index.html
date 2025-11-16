@@ -83,25 +83,31 @@
           <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Control Panel</h2>
         </div>
         <label for="text-input" class="visually-hidden">Text input</label>
-        <textarea id="text-input" placeholder="Loading Unicode data..." disabled></textarea>
-        <div class="status-bar">
-          <strong>Status:</strong>
-          <span id="status-line" role="status" aria-live="polite">Loading Unicode data files...</span>
+        <textarea id="text-input" placeholder="Loading Unicode data files..." disabled></textarea>
+
+                <div class="status-bar">
+            <div class="status-bar-left">
+              <strong>Status:</strong>
+              <span id="status-line" role="status" aria-live="polite">Loading Unicode data files...</span>
+            </div>
+            <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags"> 👁️ Reveal Invisibles</button>
         </div>
-                <div class="control-buttons-container">
-          <button id="btn-run-stage2" class="tool-btn" title="Run macro-analysis on this text">
-            📊 Analyze Macrostructure
-          </button>
-          <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
-            👁️ Reveal Invisibles
-          </button>
-        </div>
-        <div id="inspector-panel-wrapper">
+        
+        <div id="inspector-panel-wrapper">
           <h3>Character Inspector</h3>
           <div id="inspector-panel-content">
               <p>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</p>
           </div>
         </div>
+
+        <div class="macro-analysis-control">
+          <button id="btn-run-stage2" class="tool-btn" title="Run macro-analysis on this text">
+            📊 Analyze Macrostructure
+          </button>
+          <p class="macro-analysis-description">
+            Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution of the current text.
+          </p>
+        </div>
       </section>
 
       <!-- 
