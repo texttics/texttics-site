@@ -2456,11 +2456,11 @@ def _render_confusable_summary_view(
                 ellipsis_open = False
         
         elif token['type'] == 'word':
-        # Check if this word is "hot" (contains a confusable)
-        word_has_confusable = False
-        # Cast token values to int()
-        start_idx = int(token['start'])
-        end_idx = int(token['end'])
+            # Check if this word is "hot" (contains a confusable)
+            word_has_confusable = False
+            # Cast token values to int()
+            start_idx = int(token['start'])
+            end_idx = int(token['end'])
         
         for i in range(start_idx, end_idx):
             if i in confusable_indices:
