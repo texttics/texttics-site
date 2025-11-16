@@ -368,7 +368,9 @@ def compute_segmented_profile(core_data, N=10):
         
         report = {
             "segment_id": f"{i+1} / {N}",
-            "indices": f"{start_grapheme_index}–{end_grapheme_index-1}",
+            "indices_str": f"{start_grapheme_index}–{end_grapheme_index-1}",
+            "start_grapheme_index": start_grapheme_index,
+            "end_grapheme_index": end_grapheme_index, # This is an exclusive index
             "metrics": metrics
         }
         segmented_reports.append(report)
@@ -478,8 +480,28 @@ def render_macro_table(segmented_reports):
             
             html.append(f'<tr class="{heatmap_class}">')
             # Section 1: Identification
+            start_g_idx = report.get('start_grapheme_index', 0)
+            end_g_idx = report.get('end_grapheme_index', 0) # Exclusive index
+            indices_str = report.get('indices_str', f"{start_g_idx}–{end_g_idx-1}")
+            
+            # Defensive JS for the onclick handler.
+            # We escape quotes for the HTML attribute.
+            onclick_js = (
+                f"event.preventDefault(); "
+                f"if (window.opener && !window.opener.closed) {{ "
+                f"try {{ "
+                f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({start_g_idx}, {end_g_idx}); "
+                f"}} catch (e) {{ "
+                f"console.error('Error calling Stage 1 API:', e); "
+                f"alert('Stage 1 tab is open, but API failed. See console.'); "
+                f"}}"
+                f"}} else {{ "
+                f"alert('Stage 1 tab is closed. Please re-run analysis.'); "
+                f"}}"
+            ).replace("\"", "&quot;")
+
             html.append(f"<td>{report['segment_id']}</td>")
-            html.append(f"<td>{report['indices']}</td>")
+            html.append(f'<td><a href="#" onclick="{onclick_js}" title="Highlight this segment in Stage 1">{indices_str}</a></td>')
             html.append(f"<td>{metrics.get('grapheme_count', 0)}</td>")
             
             # Section 2: Content Run Histogram
