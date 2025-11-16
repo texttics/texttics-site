@@ -653,39 +653,83 @@ Stage 2: Heatmap Row Classes
 }
 
 /* --- Inspector Panel --- */
+
 #inspector-panel-wrapper {
-  margin-top: 1.5rem;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  margin-top: var(--spacing-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background-color: var(--color-white);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
+
+/* Header bar */
 #inspector-panel-wrapper h3 {
-  background-color: var(--header-bg);
-  padding: 0.75rem 1rem;
   margin: 0;
-  border-bottom: 1px solid var(--border-color);
-  border-radius: 8px 8px 0 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border-light);
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 }
+
+/* Body */
 #inspector-panel-content {
-  padding: 1rem;
-  font-family: var(--font-mono);
+  padding: 1rem 1.25rem 1.25rem;
   font-size: 0.9rem;
   line-height: 1.6;
 }
+
+/* Placeholder message (no selection yet) */
+#inspector-panel-content > p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+/* Main grid (when Python injects data) */
 #inspector-panel-content .inspector-grid {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.5rem 1rem;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 0.75rem 2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+
+/* One property block (label + value stacked) */
+#inspector-panel-content .inspector-item {
+  border-radius: var(--radius-sm);
+}
+
+/* Label */
+#inspector-panel-content .inspector-item-label,
 #inspector-panel-content .inspector-grid dt {
-  font-weight: bold;
-  color: var(--text-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.15rem;
 }
+
+/* Value */
+#inspector-panel-content .inspector-item-value,
 #inspector-panel-content .inspector-grid dd {
   margin: 0;
-  color: var(--text-color-light);
+  font-family: var(--font-mono);
+  color: var(--color-text);
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* On narrow screens – fall back to single column */
+@media (max-width: 800px) {
+  #inspector-panel-content .inspector-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 
 /* --- Macro Analysis Control --- */
