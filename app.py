@@ -2871,7 +2871,7 @@ def render_emoji_summary(emoji_counts, emoji_list):
     )
 
 
-def render_cards(stats_dict, element_id):
+def render_cards(stats_dict, element_id, key_order=None):
     """Generates and injects HTML for standard stat cards."""
     html = []
     
