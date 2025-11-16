@@ -2355,13 +2355,142 @@ def _escape_html(s: str):
     s = s.replace(">", "&gt;")
     return s
 
+def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
+    """
+    Helper to build the <span class="confusable" title="...">...</span> HTML.
+    This logic is extracted from the original compute_threat_analysis loop.
+    """
+    try:
+        skeleton_char_str = confusables_map[cp]
+        skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
+        skeleton_cp = ord(skeleton_char_str[0])
+        source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
+        target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
+
+        if (source_script != target_script and 
+            target_script != "Common" and 
+            source_script != "Unknown"):
+            risk_label = f"{source_script}–{target_script} Confusable"
+        else:
+            risk_label = f"{source_script} Confusable"
+
+        title = (
+            f"Appears as: '{char}' (U+{cp:04X})\n"
+            f"Script: {source_script}\n"
+            f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
+            f"Risk: {risk_label}"
+        )
+        return (
+            f'<span class="confusable" title="{_escape_html(title)}">'
+            f"{_escape_html(char)}</span>"
+        )
+    except Exception:
+        # Failsafe
+        return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
+
+def _tokenize_for_pvr(text: str) -> list:
+    """
+    Tokenizes the text into a list of 'word' and 'gap' tokens
+    using the LNPS_Runs regex.
+    """
+    tokens = []
+    last_index = 0
+    js_array = window.Array.from_(text)
+    lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
+    
+    matches_iter = window.String.prototype.matchAll.call(text, lnps_regex)
+    matches = window.Array.from_(matches_iter)
+
+    for match in matches:
+        word_run = match.to_py()[0]
+        start_index = match.index
+        end_index = start_index + len(word_run)
+        
+        # 1. Add the "gap" (whitespace/other) before this word
+        if start_index > last_index:
+            tokens.append({
+                'type': 'gap',
+                'text': "".join(js_array[last_index:start_index])
+            })
+        
+        # 2. Add the "word"
+        tokens.append({
+            'type': 'word',
+            'text': word_run,
+            'start': start_index,
+            'end': end_index
+        })
+        
+        last_index = end_index
+    
+    # 3. Add the final "gap" (any text after the last match)
+    if last_index < len(js_array):
+        tokens.append({
+            'type': 'gap',
+            'text': "".join(js_array[last_index:])
+        })
+    
+    return tokens
+
+def _render_confusable_summary_view(
+    t: str, 
+    confusable_indices: set[int], 
+    confusables_map: dict
+) -> str:
+    """
+    Renders the "Perception vs. Reality" HTML, collapsing "usual"
+    words into [...] blocks.
+    """
+    tokens = _tokenize_for_pvr(t)
+    final_html = []
+    ellipsis_open = False
+    
+    for token in tokens:
+        if token['type'] == 'gap':
+            # Always keep gaps (spaces, newlines)
+            gap_text = _escape_html(token['text'])
+            final_html.append(gap_text)
+            
+            # If the gap contains a newline, reset the ellipsis
+            if '\n' in token['text']:
+                ellipsis_open = False
+        
+        elif token['type'] == 'word':
+            # Check if this word is "hot" (contains a confusable)
+            word_has_confusable = False
+            for i in range(token['start'], token['end']):
+                if i in confusable_indices:
+                    word_has_confusable = True
+                    break
+            
+            if word_has_confusable:
+                # This is an "interesting" word. Render it fully.
+                ellipsis_open = False
+                word_chars = window.Array.from_(token['text'])
+                for i, char in enumerate(word_chars):
+                    raw_index = token['start'] + i
+                    if raw_index in confusable_indices:
+                        cp = ord(char)
+                        final_html.append(_build_confusable_span(char, cp, confusables_map))
+                    else:
+                        final_html.append(_escape_html(char))
+            else:
+                # This is a "boring" word. Condense it.
+                if not ellipsis_open:
+                    final_html.append(" [...] ")
+                    ellipsis_open = True
+    
+    return "".join(final_html)
+
+
+
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
     # --- 0. Initialize defaults ---
     threat_flags = {}
     threat_hashes = {}
-    html_report_parts = []
+    confusable_indices = []
     found_confusable = False
     
     # --- We use lists/sets to gather data first ---
@@ -2424,34 +2553,11 @@ def compute_threat_analysis(t: str):
                     pass # Failsafe
                 
                 # --- C. Confusable HTML Report Builder ---
-                # We use a non-global regex here to avoid stateful .test() bugs
+                # We no longer build HTML here. We just collect "hot" indices.
                 if cp in confusables_map and window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                     found_confusable = True
-                    skeleton_char_str = confusables_map[cp]
-                    skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
-                    skeleton_cp = ord(skeleton_char_str[0])
-                    source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
-                    target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
-
-                    if (source_script != target_script and 
-                        target_script != "Common" and 
-                        source_script != "Unknown"):
-                        risk_label = f"{source_script}–{target_script} Confusable"
-                    else:
-                        risk_label = f"{source_script} Confusable"
-
-                    title = (
-                        f"Appears as: '{char}' (U+{cp:04X})\n"
-                        f"Script: {source_script}\n"
-                        f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
-                        f"Risk: {risk_label}"
-                    )
-                    html_report_parts.append(
-                        f'<span class="confusable" title="{_escape_html(title)}">'
-                        f"{_escape_html(char)}</span>"
-                    )
-                else:
-                    html_report_parts.append(_escape_html(char))
+                    confusable_indices.append(i)
+                
 
             # --- 4. Populate Threat Flags (This fixes the TypeError) ---
             # We build the flags *after* the loop, all as dicts.
@@ -2484,7 +2590,14 @@ def compute_threat_analysis(t: str):
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        final_html_report = "".join(html_report_parts) if found_confusable else ""
+        # --- NEW: Call the new summary renderer ---
+        if found_confusable:
+            # Pass the map so the helper can build the spans
+            final_html_report = _render_confusable_summary_view(
+                t, set(confusable_indices), confusables_map
+            )
+        else:
+            final_html_report = ""
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
