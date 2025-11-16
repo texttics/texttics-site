@@ -12,17 +12,19 @@ import bisect
 # We load the UAX files Stage 2 needs for its own logic
 STAGE2_DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
-    "PropList": {"ranges": [], "starts": [], "ends": []},
-    "DerivedCore": {"ranges": [], "starts": [], "ends": []},
+    "White_Space": {"ranges": [], "starts": [], "ends": []},
+    "Bidi_Control": {"ranges": [], "starts": [], "ends": []},
+    "Join_Control": {"ranges": [], "starts": [], "ends": []},
+    "Default_Ignorable_Code_Point": {"ranges": [], "starts": [], "ends": []},
 }
 DATA_LOADED = False
 
 # Map property names to the store key
 PROP_MAP = {
-    "White_Space": "PropList",
-    "Bidi_Control": "PropList",
-    "Join_Control": "PropList",
-    "Default_Ignorable_Code_Point": "DerivedCore",
+    "White_Space": "White_Space",
+    "Bidi_Control": "Bidi_Control",
+    "Join_Control": "Join_Control",
+    "Default_Ignorable_Code_Point": "Default_Ignorable_Code_Point",
 }
 
 def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None):
@@ -143,29 +145,12 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
     first_char = window.Array.from_(grapheme)[0]
     cp = ord(first_char)
     
+    # Use fast O(log N) bisect lookups for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
-    
-    # Check PropList properties
-    # We find *all* matching properties in this file
-    pl_props = []
-    if "ranges" in STAGE2_DATA_STORES["PropList"]:
-        for s, e, v in STAGE2_DATA_STORES["PropList"]["ranges"]:
-            if s <= cp <= e:
-                pl_props.append(v) # v is the property name
-            
-    if "White_Space" in pl_props: props["is_WhiteSpace"] = True
-    if "Bidi_Control" in pl_props: props["is_Bidi_Control"] = True
-    if "Join_Control" in pl_props: props["is_Join_Control"] = True
-    
-    # Check DerivedCore properties
-    dc_props = []
-    if "ranges" in STAGE2_DATA_STORES["DerivedCore"]:
-        for s, e, v in STAGE2_DATA_STORES["DerivedCore"]["ranges"]:
-            if s <= cp <= e:
-                dc_props.append(v)
-            
-    if "Default_Ignorable_Code_Point" in dc_props:
-        props["is_Default_Ignorable"] = True
+    props["is_WhiteSpace"] = _find_in_ranges(cp, "White_Space") is not None
+    props["is_Bidi_Control"] = _find_in_ranges(cp, "Bidi_Control") is not None
+    props["is_Join_Control"] = _find_in_ranges(cp, "Join_Control") is not None
+    props["is_Default_Ignorable"] = _find_in_ranges(cp, "Default_Ignorable_Code_Point") is not None
     
     return props
 
@@ -371,7 +356,7 @@ def render_macro_table(segmented_reports):
     
     if not segmented_reports or "error" in segmented_reports:
         error_msg = segmented_reports.get("error", "No data.")
-        html.append(f"<tr><td colspan='17'>{error_msg}</td></tr>") # Updated colspan
+        html.append(f"<tr><td colspan='18'>{error_msg}</td></tr>") # Updated colspan
     else:
         for report in segmented_reports:
             metrics = report['metrics']
