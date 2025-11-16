@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stage 2: Macrostructure Profile</title>
+
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css">
+    <script type="module" config="pyscript.toml" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <h1 class="app-title">Stage 2</h1>
+    <p class="spec">The "Altitude View": Macrostructure Profile</p>
+    <p><a href="index.html" title="Go back to the main app">← Back to Stage 1 (Microscope)</a></p>
+  </header>
+
+  <main id="main" style="padding: 2rem;">
+    <div id="loading-status">Loading Stage 2...</div>
+    
+    <div id="sparkline-output">
+        </div>
+    
+    <div id="macro-table-output">
+        </div>
+  </main>
+  
+    <script type="py" src="stage2.py"></script>
+</body>
+</html>
