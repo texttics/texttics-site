@@ -2398,8 +2398,8 @@ def _tokenize_for_pvr(text: str) -> list:
     Implementation detail:
       - We work over window.Array.from_(text), so indices are in
         codepoint space (the same as confusable_indices).
-      - A 'word' is a maximal run of L, N, P, or S (from TEST_MAJOR).
-      - A 'gap' is a maximal run of anything else (Z, C, M).
+      - A 'word' is a maximal run of NON-WHITESPACE.
+      - A 'gap' is a maximal run of WHITESPACE.
     """
     tokens = []
     js_array = window.Array.from_(text)
@@ -2407,24 +2407,15 @@ def _tokenize_for_pvr(text: str) -> list:
     if not js_array:
         return tokens
 
-    # Pre-get the testers for speed
-    l_test = TEST_MAJOR.get("L (Letter)")
-    n_test = TEST_MAJOR.get("N (Number)")
-    p_test = TEST_MAJOR.get("P (Punctuation)")
-    s_test = TEST_MAJOR.get("S (Symbol)")
-    
     current_type = None    # 'word' or 'gap'
     current_start = 0
 
     for i, ch in enumerate(js_array):
-        # Check if char is L, N, P, or S
-        is_word_char = (
-            l_test.test(ch) or
-            n_test.test(ch) or
-            p_test.test(ch) or
-            s_test.test(ch)
-        )
-        token_type = 'word' if is_word_char else 'gap'
+        # Python's str.isspace() is Unicode-aware and handles
+        # basic spaces, tabs, and newlines (Zl, Zp, Zs).
+        # This is the correct logic for this tokenizer.
+        is_gap_char = ch.isspace()
+        token_type = 'gap' if is_gap_char else 'word'
 
         if current_type is None:
             # First character
@@ -2435,19 +2426,20 @@ def _tokenize_for_pvr(text: str) -> list:
         if token_type != current_type:
             # Flush the previous run
             segment_text = "".join(js_array[current_start:i])
-            if segment_text: # <-- ADDED GUARD
+            
+            if segment_text:
                 if current_type == 'gap':
                     tokens.append({
                         'type': 'gap',
                         'text': segment_text,
-                })
-            else: # 'word'
-                tokens.append({
-                    'type': 'word',
-                    'text': segment_text,
-                    'start': current_start,
-                    'end': i,
-                })
+                    })
+                else: # 'word'
+                    tokens.append({
+                        'type': 'word',
+                        'text': segment_text,
+                        'start': current_start,
+                        'end': i,
+                    })
 
             # Start new run
             current_type = token_type
@@ -2456,19 +2448,20 @@ def _tokenize_for_pvr(text: str) -> list:
     # Flush the final run
     end_index = len(js_array)
     segment_text = "".join(js_array[current_start:end_index])
-    if segment_text: # <-- ADDED GUARD
+    
+    if segment_text:
         if current_type == 'gap':
             tokens.append({
                 'type': 'gap',
                 'text': segment_text,
             })
-    else: # 'word'
-        tokens.append({
-            'type': 'word',
-            'text': segment_text,
-            'start': current_start,
-            'end': end_index,
-        })
+        else: # 'word'
+            tokens.append({
+                'type': 'word',
+                'text': segment_text,
+                'start': current_start,
+                'end': end_index,
+            })
 
     return tokens
 
