@@ -2760,12 +2760,20 @@ def render_threat_analysis(threat_results):
 # 4. DOM RENDERER FUNCTIONS
 # ---
 
-def render_status(message, is_error=False):
-    """Updates the status line."""
-    status_line = document.getElementById("status-line")
-    if status_line:
-        status_line.innerText = message
-        status_line.style.color = "#dc2626" if is_error else "var(--color-text-muted)"
+def render_status(message):
+    """
+    Updates the #status-line element with a message.
+    Applies special styling if the message is 'Ready.'
+    """
+    panel = document.getElementById("status-line")
+    if not panel:
+        return
+        
+    if message == "Ready.":
+        panel.innerHTML = '<strong class="status-ready">Ready.</strong>'
+    else:
+        # Clear any special classes and set the text
+        panel.innerHTML = message
 
 def render_emoji_qualification_table(emoji_list: list):
     """Renders the new Emoji Qualification Profile table."""
