@@ -2521,7 +2521,7 @@ def _render_confusable_summary_view(
                 for i, char in enumerate(word_chars):
                     raw_index = start_idx + i
                     if raw_index in confusable_indices:
-                word_has_confusable = True
+                        word_has_confusable = True
                 break
             
             if word_has_confusable:
