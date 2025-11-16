@@ -188,6 +188,15 @@ const parseTable = (tbodyId, sectionTitle) => {
 
       // ✅ Build prefix only if sectionTitle is non-empty
       const prefix = sectionTitle ? `${sectionTitle}: ` : '';
+      
+      // --- START: Special case for CCC Table ---
+      if (tbodyId === 'ccc-matrix-body' && cells.length === 3) {
+        const description = cells[2].innerText;
+        // Format as: "Combining Class: ccc=220 (Attached Below), 6"
+        lines.push(`  ${prefix}${metric} (${description}), ${count}`);
+        return; // Done with this row
+      }
+      // --- END: Special case ---
 
       if (hasPositions) {
         lines.push(`  ${prefix}${metric}, ${count}, Positions: ${positions}`);
