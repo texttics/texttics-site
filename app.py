@@ -2506,23 +2506,33 @@ def _render_confusable_summary_view(
         if any(ord(ch) in hot_cps for ch in token_text):
             hot_token_indices.add(i)
 
-# --- Pass 2: Expand to "Keep Set" (hot + 2 neighbours) ---
+# --- Pass 2: Expand to "Keep Set" (hot + neighbours + nearest words) ---
     keep_indices: set[int] = set()
-    num_tokens = len(tokens)
+    num_tokens = len(tokens) # Get token count once
+
     for i in hot_token_indices:
-        keep_indices.add(i)  # The hot token
-        
-        # Keep 2 neighbours to the left
+        # Always keep the hot word itself
+        keep_indices.add(i)
+
+        # ----- LEFT SIDE -----
         if i > 0:
+            # immediate left neighbour (gap or word)
             keep_indices.add(i - 1)
-        if i > 1:
-            keep_indices.add(i - 2)
-            
-        # Keep 2 neighbours to the right
+
+            # if the immediate left neighbour is a gap,
+            # also keep the word just before that gap
+            if tokens[i - 1].get("type") == "gap" and (i - 2) >= 0:
+                keep_indices.add(i - 2)
+
+        # ----- RIGHT SIDE -----
         if (i + 1) < num_tokens:
+            # immediate right neighbour (gap or word)
             keep_indices.add(i + 1)
-        if (i + 2) < num_tokens:
-            keep_indices.add(i + 2)
+
+            # if the immediate right neighbour is a gap,
+            # also keep the word just after that gap
+            if tokens[i + 1].get("type") == "gap" and (i + 2) < num_tokens:
+                keep_indices.add(i + 2)
 
     # If, for some reason, we still have nothing to keep, bail out.
     # This prevents the "pure [...]" output.
