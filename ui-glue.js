@@ -310,3 +310,15 @@ const parseTable = (tbodyId, sectionTitle) => {
 
   return report.join('\n');
 }
+
+// ---
+// 5. Stage 2 "Macrostructure" Button
+// ---
+const stage2Btn = document.getElementById('btn-run-stage2');
+if (stage2Btn) {
+  stage2Btn.addEventListener('click', () => {
+    // Open the new page in a new tab.
+    // Its Python script will look for `window.opener` to find this tab.
+    window.open('stage2.html', '_blank');
+  });
+}
