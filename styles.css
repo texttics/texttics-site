@@ -689,25 +689,25 @@ Stage 2: Heatmap Row Classes
 
 /* --- Status Bar --- */
 .status-bar {
-  display: flex;
+  display: flex;
   align-items: center;
   justify-content: space-between; /* Pushes left/right sides apart */
-  gap: 1rem;
-  padding: 0.5rem 0;
-  background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  margin-top: 1rem; /* Adds space *below* the textarea */
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
+  gap: 1rem; /* This now controls the space *between* your two new frames */
+  margin-top: 1rem; /* Adds space *below* the textarea */
 }
 
 .status-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  padding-left: var(--spacing-4);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  
+  /* --- These styles create the new, separate frame --- */
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem var(--spacing-4); /* Gives it proper padding */
 }
 
 .status-bar strong {
