@@ -2479,69 +2479,73 @@ def _render_confusable_summary_view(
 ) -> str:
     """
     Renders the "Perception vs. Reality" HTML, collapsing "usual"
-    words into [...] blocks.
+    words into [...] blocks using the "hot word + neighbours"
+    algorithm.
     """
     tokens = _tokenize_for_pvr(t)
+    if not tokens:
+        return ""
+
+    # --- Pass 1: Classify Tokens ---
+    hot_word_indices = set()
+    for i, token in enumerate(tokens):
+        if token.get('type') == 'word':
+            start_idx = token.get('start')
+            end_idx = token.get('end')
+            if start_idx is None or end_idx is None:
+                continue # Skip malformed token
+            
+            # Check if this word is "hot"
+            for char_idx in range(start_idx, end_idx):
+                if char_idx in confusable_indices:
+                    hot_word_indices.add(i)
+                    break
+
+    # --- Pass 2: Expand to "Keep Set" (hot + neighbours) ---
+    keep_indices = set()
+    for i in hot_word_indices:
+        keep_indices.add(i) # The hot word
+        if i > 0:
+            keep_indices.add(i - 1) # Left neighbour (gap or word)
+        if (i + 1) < len(tokens):
+            keep_indices.add(i + 1) # Right neighbour (gap or word)
+    
+    # --- Pass 3: Render with Ellipsis ---
     final_html = []
     ellipsis_open = False
     
-    for token in tokens:
-        # Use .get() for safe access
+    for i, token in enumerate(tokens):
         token_type = token.get('type')
         token_text = token.get('text', '')
     
-        if token_type == 'gap':
-            # Always keep gaps (spaces, newlines)
-            gap_text = _escape_html(token_text)
-            final_html.append(gap_text)
-            
-            # If the gap contains a newline, reset the ellipsis
-            if '\n' in token_text:
-                ellipsis_open = False
-        
-        elif token_type == 'word':
-            start_idx = token.get('start')
-            end_idx = token.get('end')
+        # Always keep tokens that contain a newline to preserve structure
+        if token_type == 'gap' and '\n' in token_text:
+            final_html.append(_escape_html(token_text))
+            ellipsis_open = False # Newline resets the condenser
+            continue
 
-            # Failsafe: if a 'word' token is malformed, skip it
-            if start_idx is None or end_idx is None:
-                continue
-                
-            # Check if this word is "hot" (contains a confusable)
-            word_has_confusable = False
-            for i in range(start_idx, end_idx):
-                if i in confusable_indices:
-                    word_has_confusable = True
-                    break
+        if i in keep_indices:
+            # This is a "hot" token or its neighbour, render it fully
+            ellipsis_open = False
+            if token_type == 'gap':
+                final_html.append(_escape_html(token_text))
             
-            if word_has_confusable:
-                # This is an "interesting" word. Render it fully.
-                ellipsis_open = False
+            elif token_type == 'word':
+                start_idx = token.get('start')
+                # Render word char-by-char to add highlights
                 word_chars = window.Array.from_(token_text)
-                for i, char in enumerate(word_chars):
-                    raw_index = start_idx + i
-                    if raw_index in confusable_indices:
-                        word_has_confusable = True
-                break
-            
-            if word_has_confusable:
-                # This is an "interesting" word. Render it fully.
-                ellipsis_open = False
-                word_chars = window.Array.from_(token['text'])
-                start_idx = token['start'] # Get the int value once
-                
-                for i, char in enumerate(word_chars):
-                    raw_index = start_idx + i # Use the native int
+                for j, char in enumerate(word_chars):
+                    raw_index = start_idx + j
                     if raw_index in confusable_indices:
                         cp = ord(char)
                         final_html.append(_build_confusable_span(char, cp, confusables_map))
                     else:
                         final_html.append(_escape_html(char))
-            else:
-                # This is a "boring" word. Condense it.
-                if not ellipsis_open:
-                    final_html.append(" [...] ")
-                    ellipsis_open = True
+        else:
+            # This is a "boring" token. Condense it.
+            if not ellipsis_open:
+                final_html.append(" [...] ")
+                ellipsis_open = True
     
     return "".join(final_html)
 
