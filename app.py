@@ -3092,7 +3092,7 @@ def render_inspector_panel(data):
         return
 
     if data is None:
-        panel.innerHTML = "<p>Click on any character in the text area above to see its properties.</p>"
+        panel.innerHTML = "<p>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</p>"
         return
         
     if "error" in data:
