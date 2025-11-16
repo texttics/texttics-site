@@ -652,7 +652,8 @@ Stage 2: Heatmap Row Classes
   font-weight: bold;
 }
 
-/* --- Inspector Panel --- */
+
+/* --- Inspector Panel (2-row horizontal) --- */
 
 #inspector-panel-wrapper {
   margin-top: var(--spacing-6);
@@ -679,6 +680,7 @@ Stage 2: Heatmap Row Classes
   padding: 1rem 1.25rem 1.25rem;
   font-size: 0.9rem;
   line-height: 1.6;
+  overflow-x: auto;            /* horizontal scroll if many columns */
 }
 
 /* Placeholder message (no selection yet) */
@@ -687,41 +689,47 @@ Stage 2: Heatmap Row Classes
   color: var(--color-text-muted);
 }
 
-/* Main grid (when Python injects data) */
+/* === 2-row horizontal layout for dt/dd pairs === */
+/* Row 1 = labels, Row 2 = values, each pair is its own column */
+
 #inspector-panel-content .inspector-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 0.75rem 2rem;
+  grid-auto-flow: column;                      /* fill by columns */
+  grid-auto-columns: minmax(140px, 1fr);       /* one column per property */
+  column-gap: 1.5rem;
+  row-gap: 0.4rem;
   margin: 0;
   padding: 0;
   list-style: none;
+  align-items: flex-start;
+  min-width: max-content;                      /* keep them in a horizontal strip */
 }
 
-/* One property block (label + value stacked) */
-#inspector-panel-content .inspector-item {
-  border-radius: var(--radius-sm);
+#inspector-panel-content .inspector-grid dt,
+#inspector-panel-content .inspector-grid dd {
+  margin: 0;
 }
 
-/* Label */
-#inspector-panel-content .inspector-item-label,
+/* Row 1: labels */
 #inspector-panel-content .inspector-grid dt {
+  grid-row: 1;
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  margin-bottom: 0.15rem;
 }
 
-/* Value */
-#inspector-panel-content .inspector-item-value,
+/* Row 2: values */
 #inspector-panel-content .inspector-grid dd {
-  margin: 0;
+  grid-row: 2;
+  font-size: 0.9rem;
   font-family: var(--font-mono);
   color: var(--color-text);
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: nowrap;         /* keeps value right under its header */
+  word-break: normal;
 }
+
 
 /* On narrow screens – fall back to single column */
 @media (max-width: 800px) {
