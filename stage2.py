@@ -229,13 +229,16 @@ def compute_segmented_profile(core_data, N=10):
             props = get_grapheme_base_properties(grapheme)
             wb_prop = props["wb"]
 
-            # Classify this grapheme
+            # --- *** NEW, CLEANER LOGIC *** ---
+            
+            # 1. Check for Invisibles first
             if props["is_Bidi_Control"]:
                 bidi_atom_count += 1
+                # An invisible atom *breaks* both runs
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
                 current_content_run, current_space_run = 0, 0
-                continue 
+                continue # Go to next grapheme
             
             if props["is_Join_Control"]:
                 join_atom_count += 1
@@ -251,26 +254,32 @@ def compute_segmented_profile(core_data, N=10):
                 current_content_run, current_space_run = 0, 0
                 continue
             
-            # Is it a Separator?
-            if props["is_WhiteSpace"] or wb_prop in LINEBREAK_PROPS:
+            # 2. Check for Separators (Line Breaks)
+            if wb_prop in LINEBREAK_PROPS:
+                line_break_count += 1
+                # A line break *breaks* both runs
+                if current_content_run > 0: content_run_lengths.append(current_content_run)
+                if current_space_run > 0: space_run_lengths.append(current_space_run)
+                current_content_run, current_space_run = 0, 0
+            
+            # 3. Check for Separators (Spaces)
+            elif props["is_WhiteSpace"]:
+                # A space *breaks* a content run
                 if current_content_run > 0:
                     content_run_lengths.append(current_content_run)
                     current_content_run = 0
-                
-                if wb_prop in LINEBREAK_PROPS:
-                    line_break_count += 1
-                    if current_space_run > 0:
-                        space_run_lengths.append(current_space_run)
-                        current_space_run = 0
-                elif props["is_WhiteSpace"]: # Must be a \p{Zs}
-                    current_space_run += 1
+                # And it *continues* a space run
+                current_space_run += 1
             
-            # Is it Content?
+            # 4. Else, it must be Content
             else:
+                # Content *breaks* a space run
                 if current_space_run > 0:
                     space_run_lengths.append(current_space_run)
                     current_space_run = 0
+                # And it *continues* a content run
                 current_content_run += 1
+            # --- *** END OF NEW LOGIC *** ---
 
         # End of loop, flush any remaining runs
         if current_content_run > 0: content_run_lengths.append(current_content_run)
@@ -293,7 +302,6 @@ def compute_segmented_profile(core_data, N=10):
         avg_space_length = (sum(space_run_lengths) / total_space_runs) if total_space_runs > 0 else 0
         
         # 7. Aggregate Stage 1 Threats
-        # Get the CP index range for this segment using our O(1) map
         start_cp_index = cp_map[start_grapheme_index]
         end_cp_index = cp_map[end_grapheme_index]
         
