@@ -321,9 +321,27 @@ def compute_segmented_profile(core_data, N=10):
                         except Exception:
                             pass # Ignore malformed position strings
 
+        # 7.5. Compute v3 Density Metrics (for anomaly layer)
+        grapheme_count_val = len(segment_graphemes)
+        total_content_graphemes = sum(content_run_lengths)
+        total_gap_graphemes = sum(space_run_lengths) + line_break_count
+        all_flags_count = len(all_flag_positions)
+        critical_flags_count = len(critical_flag_positions)
+
+        # Use a small epsilon to avoid divide-by-zero if a segment is somehow empty
+        epsilon = 1e-9
+        
+        content_density = total_content_graphemes / (grapheme_count_val + epsilon)
+        gap_density = total_gap_graphemes / (grapheme_count_val + epsilon)
+        flag_density = all_flags_count / (grapheme_count_val + epsilon)
+        critical_density = critical_flags_count / (grapheme_count_val + epsilon)
+        opacity_index = gap_density + flag_density
+
+        
         # 8. Store metrics
         metrics = {
-            "grapheme_count": len(segment_graphemes),
+            # --- Core UI Metrics ---
+            "grapheme_count": grapheme_count_val,
             "bin_1": bins["1"],
             "bin_2": bins["2"],
             "bin_3_5": bins["3-5"],
@@ -337,8 +355,15 @@ def compute_segmented_profile(core_data, N=10):
             "bidi_atoms": bidi_atom_count,
             "join_atoms": join_atom_count,
             "other_invisibles": other_invisible_atom_count,
-            "threats_critical": len(critical_flag_positions),
-            "threats_all": len(all_flag_positions)
+            "threats_critical": critical_flags_count,
+            "threats_all": all_flags_count,
+            
+            # --- v3 Analytics Layer Metrics (for internal use) ---
+            "v3_content_density": content_density,
+            "v3_gap_density": gap_density,
+            "v3_flag_density": flag_density,
+            "v3_critical_density": critical_density,
+            "v3_opacity_index": opacity_index
         }
         
         report = {
