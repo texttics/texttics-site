@@ -1525,37 +1525,43 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
 # 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
-    # --- NEW: Repertoire Analysis (ASCII, Latin-1, BMP, Supplementary) ---
-    # We use JS RegExp for high-performance, C++ speed matching.
+    # This is robust and avoids all formatting/JS bridge errors.
     epsilon = 1e-9 # Avoid division by zero on empty string
     
-    # Count of code points U+0000-U+007F
-    ascii_count = len(window.RegExp.new(r"[\u0000-\u007F]", "gu").exec(t) or [])
-    # Count of code points U+0000-U+00FF
-    latin1_count = len(window.RegExp.new(r"[\u0000-\u00FF]", "gu").exec(t) or [])
-    # Count of code points U+0000-U+FFFF (All BMP)
-    bmp_count = len(window.RegExp.new(r"[\u0000-\uFFFF]", "gu").exec(t) or [])
-    # Count of code points U+10000+ (Supplementary Planes)
-    # We pass the string &#39;[\\u{10000}-\\u{10FFFF}]&#39; to the JS RegExp constructor.
-    # The &#39;u&#39; flag tells JS to understand the \u{...} syntax.
-    # Using single quotes &#39;&#39; to avoid &amp;quot; formatting bugs.
-    supplementary_count = len(window.RegExp.new(&#39;[\\u{10000}-\\u{10FFFF}]&#39;, &#39;gu&#39;).exec(t) or [])
+    # 1. Initialize counters
+    ascii_count = 0
+    latin1_count = 0
+    bmp_count = 0
+    supplementary_count = 0
     
+    # 2. Iterate and count in a single pass
+    for char in t:
+        cp = ord(char)
+        if cp <= 0x7F:
+            ascii_count += 1
+        if cp <= 0xFF:
+            latin1_count += 1
+        if cp <= 0xFFFF:
+            bmp_count += 1
+        else:
+            supplementary_count += 1
+            
+    # 3. Build the repertoire stats dictionary
     repertoire_stats = {
         "ASCII-Compatible": {
             "count": ascii_count,
             "pct": round((ascii_count / (total_code_points + epsilon)) * 100, 2),
-            "is_full": ascii_count == total_code_points
+            "is_full": ascii_count == total_code_points and total_code_points > 0
         },
         "Latin-1-Compatible": {
             "count": latin1_count,
             "pct": round((latin1_count / (total_code_points + epsilon)) * 100, 2),
-            "is_full": latin1_count == total_code_points
+            "is_full": latin1_count == total_code_points and total_code_points > 0
         },
         "BMP Coverage": {
             "count": bmp_count,
             "pct": round((bmp_count / (total_code_points + epsilon)) * 100, 2),
-            "is_full": bmp_count == total_code_points
+            "is_full": supplementary_count == 0 and total_code_points > 0
         },
         "Supplementary Planes": {
             "count": supplementary_count,
