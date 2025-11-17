@@ -655,7 +655,7 @@ Stage 2: Heatmap Row Classes
 
 /* --- Character Inspector Panel --- */
 #inspector-panel-wrapper {
-  margin-top: 1.75rem;
+
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background-color: var(--color-bg); /* same light gray as page */
