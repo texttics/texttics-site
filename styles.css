@@ -695,6 +695,8 @@ Stage 2: Heatmap Row Classes
 #inspector-panel-content > p {
   margin: 0;
   color: var(--color-text-muted);
+  justify-content: center;     
+  align-items: flex-start;
 }
 
 /* Big inspected glyph (the actual character, e.g. "e") */
