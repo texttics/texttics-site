@@ -792,8 +792,8 @@ Stage 2: Heatmap Row Classes
 }
 
 .macro-btn:hover {
-  background-color: var(--color-primary-focus);
-  color: var(--color-white);
+  background-color: var(--color-white);
+  color: var(--color-primary-focus);
   border-color: var(--color-primary-focus);
 }
 
