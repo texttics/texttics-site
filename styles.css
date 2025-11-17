@@ -788,10 +788,12 @@ Stage 2: Heatmap Row Classes
   width: 100%;
   background-color: var(--color-primary);
   border-color: var(--color-primary);
+  color: var(--color-white);
 }
 
 .macro-btn:hover {
   background-color: var(--color-primary-focus);
+  color: var(--color-white);
   border-color: var(--color-primary-focus);
 }
 
