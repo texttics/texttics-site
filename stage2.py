@@ -1,6 +1,6 @@
-# stage2.py
 import asyncio
 import json
+import math
 from pyscript import document, window
 from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
@@ -10,10 +10,8 @@ import bisect
 # 0. STAGE 2 DATA STORES & LOADERS
 # ---
 
-# Global variable to hold the final report for the copy function
 GLOBAL_SEGMENTED_REPORT = None
 
-# We load the UAX files Stage 2 needs for its own logic
 STAGE2_DATA_STORES = {
     "WordBreak": {"ranges": [], "starts": [], "ends": []},
     "White_Space": {"ranges": [], "starts": [], "ends": []},
@@ -23,7 +21,6 @@ STAGE2_DATA_STORES = {
 }
 DATA_LOADED = False
 
-# Map property names to the store key
 PROP_MAP = {
     "White_Space": "White_Space",
     "Bidi_Control": "Bidi_Control",
@@ -32,21 +29,15 @@ PROP_MAP = {
 }
 
 def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None):
-    """
-    Generic parser for Unicode range data files.
-    If property_map is provided, it sorts properties into the correct store.
-    """
-    # This logic is for multi-property files like PropList.txt
+    """Generic parser for Unicode range data files."""
     if property_map:
         temp_ranges = {key: [] for key in STAGE2_DATA_STORES.keys() if key in property_map.values()}
-        
         for raw in txt.splitlines():
             line = raw.split('#', 1)[0].strip()
             if not line: continue
             parts = line.split(';', 1)
             if len(parts) < 2: continue
             code_range, prop_name = parts[0].strip(), parts[1].strip()
-            
             if prop_name in property_map:
                 target_store_key = property_map[prop_name]
                 try:
@@ -56,16 +47,12 @@ def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None)
                     else:
                         cp = int(code_range, 16)
                         temp_ranges[target_store_key].append((cp, cp, prop_name))
-                except Exception:
-                    pass 
-        
+                except Exception: pass 
         for key, ranges_list in temp_ranges.items():
             if not ranges_list: continue
             store = STAGE2_DATA_STORES[key]
             ranges_list.sort()
             store["ranges"].extend([(s, e, v) for s, e, v in ranges_list])
-            
-    # This logic is for single-property files like WordBreakProperty.txt
     else:
         store = STAGE2_DATA_STORES[store_key]
         ranges_list = []
@@ -81,32 +68,23 @@ def _parse_and_store_ranges(txt: str, store_key: str, property_map: dict = None)
                     ranges_list.append((int(a, 16), int(b, 16), value))
                 else:
                     ranges_list.append((int(code_range, 16), int(code_range, 16), value))
-            except Exception:
-                pass
-        
+            except Exception: pass
         ranges_list.sort()
         store["ranges"] = [(s, e, v) for s, e, v in ranges_list]
 
-    # After all parsing, create the fast lookup lists
     for key in STAGE2_DATA_STORES:
         store = STAGE2_DATA_STORES[key]
-        # Build lookup lists if they don't exist or are partial
         if store["ranges"] and (not store.get("starts") or len(store["starts"]) != len(store["ranges"])):
-            store["ranges"].sort() # Sort all ranges from all files
+            store["ranges"].sort()
             store["starts"] = [s for s, e, v in store["ranges"]]
             store["ends"] = [e for s, e, v in store["ranges"]]
-            print(f"Stage 2: Finalized {len(store['starts'])} ranges for {key}.")
-
 
 async def load_stage2_data():
-    """Fetches and parses the UAX data needed for Stage 2."""
     global DATA_LOADED
     try:
-        # We only need these 3 files for the v3 blueprint
         wb_res_task = pyfetch("./WordBreakProperty.txt")
         pl_res_task = pyfetch("./PropList.txt")
         dc_res_task = pyfetch("./DerivedCoreProperties.txt")
-        
         wb_res, pl_res, dc_res = await asyncio.gather(wb_res_task, pl_res_task, dc_res_task)
         
         if wb_res.ok and pl_res.ok and dc_res.ok:
@@ -114,16 +92,13 @@ async def load_stage2_data():
             _parse_and_store_ranges(await pl_res.string(), None, property_map=PROP_MAP)
             _parse_and_store_ranges(await dc_res.string(), None, property_map=PROP_MAP)
             DATA_LOADED = True
-        else:
-            print(f"Stage 2: Failed to load data (WB:{wb_res.status}, PL:{pl_res.status}, DC:{dc_res.status})")
     except Exception as e:
         print(f"Stage 2: Error loading data: {e}")
         DATA_LOADED = False
 
 def _find_in_ranges(cp: int, store_key: str):
-    """Stage 2's local copy of the range finder."""
     store = STAGE2_DATA_STORES[store_key]
-    starts_list = store.get("starts", []) # Use .get for safety
+    starts_list = store.get("starts", []) 
     if not starts_list: return None
     i = bisect.bisect_right(starts_list, cp) - 1
     if i >= 0 and cp <= store["ends"][i]:
@@ -131,84 +106,80 @@ def _find_in_ranges(cp: int, store_key: str):
     return None
 
 # ---
-# 1. METRIC HELPER FUNCTIONS (GRAPHEME-BASED)
+# 1. METRIC HELPER FUNCTIONS
 # ---
 
 def get_grapheme_base_properties(grapheme: str) -> dict:
-    """Finds all UAX properties of the *first code point* in a grapheme."""
-    props = {
-        "wb": "Other",
-        "is_WhiteSpace": False,
-        "is_Bidi_Control": False,
-        "is_Join_Control": False,
-        "is_Default_Ignorable": False,
-    }
-    if not grapheme:
-        return props
-
-    # Stage 2 receives grapheme_list from Stage 1 via .to_py(),
-    # so each grapheme is a native Python str. Index 0 gives
-    # the first Unicode code point even for emoji.
+    props = {"wb": "Other", "is_WhiteSpace": False, "is_Bidi_Control": False, "is_Join_Control": False, "is_Default_Ignorable": False}
+    if not grapheme: return props
+    # Native Python string access
     first_char = grapheme[0]
     cp = ord(first_char)
-
-    # Use fast O(log N) bisect lookups for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
     props["is_WhiteSpace"] = _find_in_ranges(cp, "White_Space") is not None
     props["is_Bidi_Control"] = _find_in_ranges(cp, "Bidi_Control") is not None
     props["is_Join_Control"] = _find_in_ranges(cp, "Join_Control") is not None
     props["is_Default_Ignorable"] = _find_in_ranges(cp, "Default_Ignorable_Code_Point") is not None
-
     return props
 
+def _calculate_entropy(run_lengths):
+    """Calculates Shannon Entropy (H) for the run length distribution."""
+    if not run_lengths: return 0.0
+    total = len(run_lengths)
+    counts = {}
+    for x in run_lengths:
+        counts[x] = counts.get(x, 0) + 1
+    entropy = 0.0
+    for count in counts.values():
+        p = count / total
+        entropy -= p * math.log2(p)
+    return entropy
+
+def _calculate_stats(values: list) -> (float, float):
+    """Returns Mean and StdDev."""
+    n = len(values)
+    if n == 0: return 0.0, 0.0
+    mean = sum(values) / n
+    if n == 1: return mean, 0.0
+    variance = sum((x - mean) ** 2 for x in values) / n
+    std_dev = variance ** 0.5
+    return mean, std_dev
+
 # ---
-# 2. CORE LOGIC: THE SEGMENTED ANALYSIS PIPELINE
+# 2. CORE ANALYSIS PIPELINE
 # ---
 
 def compute_segmented_profile(core_data, N=10):
-    """
-    The main Stage 2 pipeline.
-    Takes core data from Stage 1 and runs all macro-analysis.
-    """
     print("Stage 2: Running macro-analysis...")
-    
-    # 1. Get data from Stage 1
     grapheme_list = core_data.get("grapheme_list", [])
     grapheme_lengths = core_data.get("grapheme_lengths_codepoints", [])
     forensic_flags = core_data.get("forensic_flags", {})
     
     total_graphemes = len(grapheme_list)
-    if total_graphemes == 0:
-        return {"error": "No graphemes to analyze."}
+    if total_graphemes == 0: return {"error": "No graphemes to analyze."}
 
-    # 2. Segmentation (Linear Interpolation)
-    # Adjust N if text is shorter than the requested segment count
+    # --- Interpolated Segmentation Logic ---
     actual_N = min(N, total_graphemes)
     if actual_N < 1: actual_N = 1
-        
-    segmented_reports = []
     
-    # --- Define our "structural types" based on UAX properties ---
-    # We must include "Newline" (NEL, LS, PS) from UAX #29 WordBreak
+    segmented_reports = []
     LINEBREAK_PROPS = {"LF", "CR", "Newline"}
     
-    # --- Create the Grapheme-to-Code-Point index map (O(N) prefix sum) ---
+    # O(N) prefix sum map for mapping
     cp_map = [0] * (total_graphemes + 1)
     current_cp_index = 0
     for i in range(total_graphemes):
         cp_map[i] = current_cp_index
         current_cp_index += grapheme_lengths[i]
-    cp_map[total_graphemes] = current_cp_index # Add final index for last segment
+    cp_map[total_graphemes] = current_cp_index
     
     for i in range(actual_N):
-        # 3. Get the slice (chunk) for this segment using Linear Interpolation
-        # This ensures remainders are distributed evenly across segments
+        # Linear Interpolation for smooth slicing
         start_grapheme_index = (i * total_graphemes) // actual_N
         end_grapheme_index = ((i + 1) * total_graphemes) // actual_N
-        
         segment_graphemes = grapheme_list[start_grapheme_index:end_grapheme_index]
         
-        # 4. Feature Extraction (Grapheme-based RLE)
+        # RLE Analysis
         content_run_lengths = []
         current_content_run = 0
         space_run_lengths = []
@@ -222,16 +193,12 @@ def compute_segmented_profile(core_data, N=10):
             props = get_grapheme_base_properties(grapheme)
             wb_prop = props["wb"]
 
-            # --- *** NEW, CLEANER LOGIC *** ---
-            
-            # 1. Check for Invisibles first
             if props["is_Bidi_Control"]:
                 bidi_atom_count += 1
-                # An invisible atom *breaks* both runs
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
                 current_content_run, current_space_run = 0, 0
-                continue # Go to next grapheme
+                continue 
             
             if props["is_Join_Control"]:
                 join_atom_count += 1
@@ -247,383 +214,312 @@ def compute_segmented_profile(core_data, N=10):
                 current_content_run, current_space_run = 0, 0
                 continue
             
-            # 2. Check for Separators (Line Breaks)
             if wb_prop in LINEBREAK_PROPS:
                 line_break_count += 1
-                # A line break *breaks* both runs
                 if current_content_run > 0: content_run_lengths.append(current_content_run)
                 if current_space_run > 0: space_run_lengths.append(current_space_run)
                 current_content_run, current_space_run = 0, 0
             
-            # 3. Check for Separators (Spaces)
             elif props["is_WhiteSpace"]:
-                # A space *breaks* a content run
                 if current_content_run > 0:
                     content_run_lengths.append(current_content_run)
                     current_content_run = 0
-                # And it *continues* a space run
                 current_space_run += 1
             
-            # 4. Else, it must be Content
             else:
-                # Content *breaks* a space run
                 if current_space_run > 0:
                     space_run_lengths.append(current_space_run)
                     current_space_run = 0
-                # And it *continues* a content run
                 current_content_run += 1
-            # --- *** END OF NEW LOGIC *** ---
 
-        # End of loop, flush any remaining runs
         if current_content_run > 0: content_run_lengths.append(current_content_run)
         if current_space_run > 0: space_run_lengths.append(current_space_run)
 
-        # 5. Bin the Content Runs
-        bins = {"1": 0, "2": 0, "3-5": 0, "6-10": 0, "11+": 0}
-        for length in content_run_lengths:
-            if length == 1: bins["1"] += 1
-            elif length == 2: bins["2"] += 1
-            elif 3 <= length <= 5: bins["3-5"] += 1
-            elif 6 <= length <= 10: bins["6-10"] += 1
-            else: bins["11+"] += 1
-        
+        # --- Advanced Statistics ---
         total_content_runs = len(content_run_lengths)
-        avg_content_length = (sum(content_run_lengths) / total_content_runs) if total_content_runs > 0 else 0
-        
-        # 6. Analyze Separator Runs
+        mean_len, std_dev = _calculate_stats(content_run_lengths)
+        max_run = max(content_run_lengths) if content_run_lengths else 0
+        entropy = _calculate_entropy(content_run_lengths)
+
+        # --- Granular Bins (1-16+) ---
+        # Bins are now keys 1..16, where 16 represents 16+
+        bins = {x: 0 for x in range(1, 17)}
+        for length in content_run_lengths:
+            if length >= 16: bins[16] += 1
+            else: bins[length] += 1
+
         total_space_runs = len(space_run_lengths)
         avg_space_length = (sum(space_run_lengths) / total_space_runs) if total_space_runs > 0 else 0
         
-        # 7. Aggregate Stage 1 Threats
+        # --- Threat Integration ---
         start_cp_index = cp_map[start_grapheme_index]
         end_cp_index = cp_map[end_grapheme_index]
         
         critical_flag_positions = set()
         all_flag_positions = set()
-        
-        # Define "Critical" based on the *actual* keys in the forensic_flags object
-        CRITICAL_FLAGS_SET = {
-            "Bidi Control (UAX #9)",
-            "Join Control (Structural)"
-        }
+        CRITICAL_FLAGS_SET = {"Bidi Control (UAX #9)", "Join Control (Structural)"}
         
         if forensic_flags:
             for flag_name, data in forensic_flags.items():
                 if data and data.get('count', 0) > 0:
-                    
-                    # Ignore "Prop:" flags, which are informational, not "flags"
-                    if flag_name.startswith("Prop:"):
-                        continue
-                        
-                    # This flag is a "threat" or "flag"
+                    if flag_name.startswith("Prop:"): continue
                     is_critical = flag_name in CRITICAL_FLAGS_SET
-                    
                     for pos_str in data.get('positions', []):
                         try:
                             pos = int(pos_str.lstrip('#').split(' ')[0]) 
                             if start_cp_index <= pos < end_cp_index:
-                                # Add to all non-Prop: flags
                                 all_flag_positions.add(pos) 
-                                if is_critical:
-                                    critical_flag_positions.add(pos)
-                        except Exception:
-                            pass # Ignore malformed position strings
+                                if is_critical: critical_flag_positions.add(pos)
+                        except Exception: pass
 
-        # 7.5. Compute v3 Density Metrics (for anomaly layer)
-        grapheme_count_val = len(segment_graphemes)
+        # --- Density & Share Metrics ---
+        vol = len(segment_graphemes)
+        epsilon = 1e-9
         total_content_graphemes = sum(content_run_lengths)
         total_gap_graphemes = sum(space_run_lengths) + line_break_count
-        all_flags_count = len(all_flag_positions)
-        critical_flags_count = len(critical_flag_positions)
-
-        # Use a small epsilon to avoid divide-by-zero if a segment is somehow empty
-        epsilon = 1e-9
         
-        content_density = total_content_graphemes / (grapheme_count_val + epsilon)
-        gap_density = total_gap_graphemes / (grapheme_count_val + epsilon)
-        flag_density = all_flags_count / (grapheme_count_val + epsilon)
-        critical_density = critical_flags_count / (grapheme_count_val + epsilon)
-        opacity_index = gap_density + flag_density
-
+        content_density_pct = round((total_content_graphemes / (vol + epsilon)) * 100, 1)
+        gap_density_pct = round((total_gap_graphemes / (vol + epsilon)) * 100, 1)
         
         # 8. Store metrics
         metrics = {
-            # --- Core UI Metrics ---
-            "grapheme_count": grapheme_count_val,
-            "bin_1": bins["1"],
-            "bin_2": bins["2"],
-            "bin_3_5": bins["3-5"],
-            "bin_6_10": bins["6-10"],
-            "bin_11_plus": bins["11+"],
-            "total_content_runs": total_content_runs,
-            "avg_content_length": round(avg_content_length, 2),
+            # Metadata
+            "volume": vol,
+            
+            # Texture / Bins
+            "bins": bins, # Dict 1..16
+            
+            # Stats
+            "mean_run": round(mean_len, 2),
+            "std_dev": round(std_dev, 2),
+            "max_run": max_run,
+            "entropy": round(entropy, 2),
+            
+            # Separators / Gaps
             "space_runs": total_space_runs,
             "line_breaks": line_break_count,
             "avg_space_length": round(avg_space_length, 2),
+            
+            # Integrity (Counts)
             "bidi_atoms": bidi_atom_count,
             "join_atoms": join_atom_count,
             "other_invisibles": other_invisible_atom_count,
-            "threats_critical": critical_flags_count,
-            "threats_all": all_flags_count,
+            "threats_critical": len(critical_flag_positions),
+            "threats_all": len(all_flag_positions),
             
-            # --- v3 Analytics Layer Metrics (for internal use) ---
-            "v3_content_density": content_density,
-            "v3_gap_density": gap_density,
-            "v3_flag_density": flag_density,
-            "v3_critical_density": critical_density,
-            "v3_opacity_index": opacity_index
+            # Densities (Percentages)
+            "content_density_pct": content_density_pct,
+            "gap_density_pct": gap_density_pct
         }
         
         report = {
             "segment_id": f"{i+1} / {actual_N}",
             "indices_str": f"{start_grapheme_index}–{end_grapheme_index-1}",
             "start_grapheme_index": start_grapheme_index,
-            "end_grapheme_index": end_grapheme_index, # This is an exclusive index
+            "end_grapheme_index": end_grapheme_index,
             "metrics": metrics
         }
         segmented_reports.append(report)
 
-    print(f"Stage 2: Processed {len(segmented_reports)} segments.")
     return segmented_reports
 
 # ---
 # 3. RENDERING FUNCTIONS
 # ---
 
-def _calculate_stats(values: list) -> (float, float):
-    """Calculates the mean and standard deviation of a list of numbers."""
-    n = len(values)
-    if n == 0:
-        return 0.0, 0.0
+def _get_heat_style(value, max_val, color_tuple="13, 110, 253"):
+    """
+    Returns an inline style string for Excel-like heatmaps.
+    color_tuple: RGB string e.g. "13, 110, 253" (Bootstrap Primary Blue)
+    """
+    if max_val == 0 or value == 0: return ""
+    # Calculate intensity (0.0 to 1.0)
+    ratio = value / max_val
+    # Cap opacity at 0.5 so text remains readable
+    opacity = 0.05 + (0.45 * ratio) 
+    return f'style="background-color: rgba({color_tuple}, {opacity});"'
+
+def render_tables(segmented_reports):
+    """Renders BOTH the Macro-Overview and the Texture-MRI tables."""
     
-    mean = sum(values) / n
-    if n == 1:
-        return mean, 0.0
-        
-    variance = sum((x - mean) ** 2 for x in values) / n
-    std_dev = variance ** 0.5
-    return mean, std_dev
-
-
-def render_macro_table(segmented_reports):
-    """
-    Renders the main "Heatmap Table" for Stage 2.
-    This function now also computes the anomaly scores and heatmap classes.
-    """
-    table_el = document.getElementById("macro-table-body")  # Target <tbody>
-    if not table_el:
+    # Handle Errors
+    if isinstance(segmented_reports, dict) and "error" in segmented_reports:
+        err = segmented_reports['error']
+        document.getElementById("macro-table-output").innerHTML = f"<div class='alert'>{err}</div>"
+        return
+    elif not segmented_reports:
+        document.getElementById("macro-table-output").innerHTML = "<div>No Data</div>"
         return
 
-    html = []
-
-    # Handle error objects and empty results explicitly
-    if isinstance(segmented_reports, dict) and "error" in segmented_reports:
-        error_msg = segmented_reports.get("error", "No data.")
-        html.append(f"<tr><td colspan='18'>{error_msg}</td></tr>")
-    elif not segmented_reports:
-        html.append("<tr><td colspan='18'>No data.</td></tr>")
-    else:
-        # --- v3 Anomaly Layer (Step 2.3) ---
+    # --- PRE-CALCULATION: FIND COLUMN MAXIMA FOR HEATMAPS ---
+    # We need the max value for every column to normalize colors
+    max_vals = {
+        "content_density_pct": 0, "gap_density_pct": 0,
+        "space_runs": 0, "line_breaks": 0, "avg_space_length": 0,
+        "bins": {i: 0 for i in range(1, 17)}
+    }
+    
+    for r in segmented_reports:
+        m = r['metrics']
+        max_vals["content_density_pct"] = max(max_vals["content_density_pct"], m["content_density_pct"])
+        max_vals["gap_density_pct"] = max(max_vals["gap_density_pct"], m["gap_density_pct"])
+        max_vals["space_runs"] = max(max_vals["space_runs"], m["space_runs"])
+        max_vals["line_breaks"] = max(max_vals["line_breaks"], m["line_breaks"])
+        max_vals["avg_space_length"] = max(max_vals["avg_space_length"], m["avg_space_length"])
         
-        # 1. Define metrics to analyze
-        metrics_to_normalize = [
-            "avg_content_length", 
-            "v3_content_density", 
-            "v3_gap_density", 
-            "v3_flag_density", 
-            "v3_critical_density"
-        ]
+        for k, v in m["bins"].items():
+            max_vals["bins"][k] = max(max_vals["bins"][k], v)
+
+    # --- TABLE 1: MACRO-MRI (Overview) ---
+    html_macro = [
+        '<table class="matrix">',
+        '<thead><tr>',
+        '<th rowspan="2">Segment</th><th rowspan="2">Indices</th><th rowspan="2">Vol.</th>',
+        '<th colspan="2">Density Metrics</th>',
+        '<th colspan="3">Gap Structure</th>',
+        '<th colspan="3">Integrity (Atoms)</th>',
+        '<th colspan="2">Threats</th>',
+        '</tr><tr>',
+        # Sub-headers
+        '<th>Content %</th><th>Gap %</th>',
+        '<th>Space Runs</th><th>Lines</th><th>Avg Gap</th>',
+        '<th>Bidi</th><th>Join</th><th>Other</th>',
+        '<th>Critical</th><th>All Flags</th>',
+        '</tr></thead><tbody>'
+    ]
+
+    for rep in segmented_reports:
+        m = rep['metrics']
         
-        # 2. Extract metric vectors
-        metric_data = {key: [] for key in metrics_to_normalize}
-        for report in segmented_reports:
-            metrics = report['metrics']
-            for key in metrics_to_normalize:
-                metric_data[key].append(metrics.get(key, 0.0))
+        # Bridge Logic
+        s_idx, e_idx = rep['start_grapheme_index'], rep['end_grapheme_index']
+        click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({s_idx},{e_idx}); return false;"
+        link = f'<a href="#" class="bridge-link" onclick="{click_js}">{rep["indices_str"]}</a>'
         
-        # 3. Calculate stats (μ, σ) for each metric
-        metric_stats = {}
-        for key, values in metric_data.items():
-            metric_stats[key] = _calculate_stats(values) # (mean, std_dev)
-            
-        # 4. Calculate Anomaly Score and assign heatmap class to each report
-        for report in segmented_reports:
-            metrics = report['metrics']
-            z_scores_squared = []
-            
-            # Guardrail 1: Critical flags always get the highest alert
-            if metrics.get("threats_critical", 0) > 0:
-                report["heatmap_class"] = "heatmap-critical"
-                continue
+        # Styles
+        style_cont = _get_heat_style(m['content_density_pct'], max_vals['content_density_pct'], "25, 135, 84") # Green
+        style_gap = _get_heat_style(m['gap_density_pct'], max_vals['gap_density_pct'], "108, 117, 125") # Grey
+        style_space = _get_heat_style(m['space_runs'], max_vals['space_runs'], "13, 202, 240") # Cyan
+        
+        # Threat Coloring (Threshold, not Gradient)
+        cls_bidi = "cell-critical" if m['bidi_atoms'] > 0 else ""
+        cls_join = "cell-warning" if m['join_atoms'] > 0 else ""
+        cls_crit = "cell-critical" if m['threats_critical'] > 0 else ""
+        cls_all = "cell-warning" if m['threats_all'] > 0 else ""
 
-            # Guardrail 2: Calculate Z-scores
-            for key in metrics_to_normalize:
-                mean, std_dev = metric_stats[key]
-                
-                # Guardrail 2a: Skip if σ=0 (no variance)
-                if std_dev == 0:
-                    continue
-                    
-                value = metrics.get(key, 0.0)
-                z = (value - mean) / std_dev
-                z_scores_squared.append(z ** 2)
-            
-            if not z_scores_squared:
-                report["heatmap_class"] = "heatmap-normal"
-                continue
-                
-            # Combine into a single score: sqrt(sum(z^2))
-            anomaly_score = sum(z_scores_squared) ** 0.5
-            
-            # 5. Bin the score into a heatmap class
-            if anomaly_score > 3.0: # Arbitrary threshold for high anomaly
-                report["heatmap_class"] = "heatmap-high"
-            elif anomaly_score > 1.5: # Arbitrary threshold for low anomaly
-                report["heatmap_class"] = "heatmap-low"
-            else:
-                report["heatmap_class"] = "heatmap-normal"
-        # --- End of Anomaly Layer ---
+        html_macro.append(f'<tr>')
+        html_macro.append(f'<td>{rep["segment_id"]}</td>')
+        html_macro.append(f'<td>{link}</td>')
+        html_macro.append(f'<td>{m["volume"]}</td>')
+        
+        html_macro.append(f'<td {style_cont}>{m["content_density_pct"]}%</td>')
+        html_macro.append(f'<td {style_gap}>{m["gap_density_pct"]}%</td>')
+        
+        html_macro.append(f'<td {style_space}>{m["space_runs"]}</td>')
+        html_macro.append(f'<td>{m["line_breaks"]}</td>')
+        html_macro.append(f'<td>{m["avg_space_length"]}</td>')
+        
+        html_macro.append(f'<td class="{cls_bidi}">{m["bidi_atoms"]}</td>')
+        html_macro.append(f'<td class="{cls_join}">{m["join_atoms"]}</td>')
+        html_macro.append(f'<td>{m["other_invisibles"]}</td>')
+        
+        html_macro.append(f'<td class="{cls_crit}">{m["threats_critical"]}</td>')
+        html_macro.append(f'<td class="{cls_all}">{m["threats_all"]}</td>')
+        html_macro.append('</tr>')
+    
+    html_macro.append('</tbody></table>')
+    document.getElementById("macro-table-output").innerHTML = "".join(html_macro)
 
-        # Now, render the table using the new heatmap classes
-        for report in segmented_reports:
-            metrics = report['metrics']
-            heatmap_class = report.get('heatmap_class', 'heatmap-normal')
-            
-            html.append(f'<tr class="{heatmap_class}">')
-            # Section 1: Identification
-            start_g_idx = report.get('start_grapheme_index', 0)
-            end_g_idx = report.get('end_grapheme_index', 0) # Exclusive index
-            indices_str = report.get('indices_str', f"{start_g_idx}–{end_g_idx-1}")
-            
-            # Defensive JS for the onclick handler.
-            # We escape quotes for the HTML attribute.
-            onclick_js = (
-                f"event.preventDefault(); "
-                f"if (window.opener && !window.opener.closed) {{ "
-                f"try {{ "
-                f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({start_g_idx}, {end_g_idx}); "
-                f"}} catch (e) {{ "
-                f"console.error('Error calling Stage 1 API:', e); "
-                f"alert('Stage 1 tab is open, but API failed. See console.'); "
-                f"}}"
-                f"}} else {{ "
-                f"alert('Stage 1 tab is closed. Please re-run analysis.'); "
-                f"}}"
-            ).replace("\"", "&quot;")
+    # --- TABLE 2: TEXTURE-MRI (1-16+ Bins) ---
+    html_tex = [
+        '<table class="matrix">',
+        '<thead><tr>',
+        '<th rowspan="2">Segment</th>',
+        '<th colspan="16">Content Run-Length Distribution (Graphemes)</th>',
+        '<th colspan="4">Texture Statistics</th>',
+        '</tr><tr>'
+    ]
+    # Header numbers 1..15, 16+
+    for i in range(1, 16): html_tex.append(f'<th>{i}</th>')
+    html_tex.append('<th>16+</th>')
+    html_tex.append('<th>Mean (&mu;)</th><th>StdDev (&sigma;)</th><th>Max Run</th><th>Entropy (H)</th>')
+    html_tex.append('</tr></thead><tbody>')
 
-            html.append(f"<td>{report['segment_id']}</td>")
-            html.append(f'<td><a href="#" onclick="{onclick_js}" title="Highlight this segment in Stage 1">{indices_str}</a></td>')
-            html.append(f"<td>{metrics.get('grapheme_count', 0)}</td>")
+    for rep in segmented_reports:
+        m = rep['metrics']
+        html_tex.append(f'<tr><td>{rep["segment_id"]}</td>')
+        
+        # Bins 1..16
+        for i in range(1, 17):
+            val = m['bins'][i]
+            # Blue Heatmap
+            style = _get_heat_style(val, max_vals['bins'][i], "13, 110, 253")
+            html_tex.append(f'<td {style} class="texture-cell">{val}</td>')
             
-            # Section 2: Content Run Histogram
-            html.append(f"<td>{metrics.get('bin_1', 0)}</td>")
-            html.append(f"<td>{metrics.get('bin_2', 0)}</td>")
-            html.append(f"<td>{metrics.get('bin_3_5', 0)}</td>")
-            html.append(f"<td>{metrics.get('bin_6_10', 0)}</td>")
-            html.append(f"<td>{metrics.get('bin_11_plus', 0)}</td>")
-            html.append(f"<td>{metrics.get('total_content_runs', 0)}</td>")
-            html.append(f"<td>{metrics.get('avg_content_length', 0)}</td>")
-            
-            # Section 3: Separator Run Profile
-            html.append(f"<td>{metrics.get('space_runs', 0)}</td>")
-            html.append(f"<td>{metrics.get('line_breaks', 0)}</td>")
-            html.append(f"<td>{metrics.get('avg_space_length', 0)}</td>")
+        # Statistics
+        html_tex.append(f'<td class="stat-cell">{m["mean_run"]}</td>')
+        html_tex.append(f'<td class="stat-cell">{m["std_dev"]}</td>')
+        html_tex.append(f'<td class="stat-cell">{m["max_run"]}</td>')
+        html_tex.append(f'<td class="stat-cell">{m["entropy"]}</td>')
+        html_tex.append('</tr>')
 
-            # Section 4: Invisible Atom Integrity
-            html.append(f"<td>{metrics.get('bidi_atoms', 0)}</td>")
-            html.append(f"<td>{metrics.get('join_atoms', 0)}</td>")
-            html.append(f"<td>{metrics.get('other_invisibles', 0)}</td>")
-            
-            # Section 5: Threat Location
-            html.append(f"<td>{metrics.get('threats_critical', 0)}</td>")
-            html.append(f"<td>{metrics.get('threats_all', 0)}</td>")
-            
-            html.append('</tr>')
+    html_tex.append('</tbody></table>')
+    document.getElementById("texture-table-output").innerHTML = "".join(html_tex)
 
-    table_el.innerHTML = "".join(html)
-
-def render_sparklines(segmented_reports):
-    sparkline_el = document.getElementById("sparkline-output")
-    if sparkline_el:
-        sparkline_el.innerHTML = "<h3>Macro-Profile (Sparklines)</h3><p>(Charts will be rendered here)</p>"
 
 @create_proxy
 async def copy_report_to_clipboard(event):
-    """
-    Serializes the GLOBAL_SEGMENTED_REPORT to JSON and copies
-    it to the user's clipboard.
-    """
     global GLOBAL_SEGMENTED_REPORT
     btn = document.getElementById("btn-copy-report")
-    if not GLOBAL_SEGMENTED_REPORT:
-        btn.innerText = "Error: No report data"
-        await asyncio.sleep(2)
-        btn.innerText = "Copy JSON Report"
-        return
+    if not GLOBAL_SEGMENTED_REPORT: return
 
     try:
         report_json = json.dumps(GLOBAL_SEGMENTED_REPORT, indent=2)
         await window.navigator.clipboard.writeText(report_json)
-        
         btn.innerText = "Copied!"
         await asyncio.sleep(2)
         btn.innerText = "Copy JSON Report"
-    except Exception as e:
-        print(f"Stage 2: Clipboard error: {e}")
-        btn.innerText = "Error: Copy failed"
-        await asyncio.sleep(2)
-        btn.innerText = "Copy JSON Report"
-
-# ---
-# 4. MAIN BOOTSTRAP FUNCTION
-# ---
+    except Exception:
+        btn.innerText = "Error"
 
 async def main():
     global DATA_LOADED
     status_el = document.getElementById("loading-status")
     
-    # Update status to reflect all files
-    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, PropList, DerivedCore)..."
+    status_el.innerText = "Loading Stage 2 UAX data..."
     await load_stage2_data()
     if not DATA_LOADED:
-        status_el.innerText = "Error: Could not load UAX data. Cannot proceed."
+        status_el.innerText = "Error: Could not load UAX data."
         status_el.style.color = "red"
         return
 
     try:
         core_data_proxy = window.opener.TEXTTICS_CORE_DATA
-        
         if not core_data_proxy:
-            status_el.innerText = "Error: No data from Stage 1. Please run an analysis on the main app page and click 'Analyze Macrostructure' again."
+            status_el.innerText = "Error: No data from Stage 1."
             status_el.style.color = "red"
             return
 
         core_data = core_data_proxy.to_py()
-        
-        status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
+        status_el.innerText = "Analyzing..."
         
         segmented_report = compute_segmented_profile(core_data, N=10)
         
-        # Store for copy function
         global GLOBAL_SEGMENTED_REPORT
         GLOBAL_SEGMENTED_REPORT = segmented_report
         
-        render_sparklines(segmented_report)
-        render_macro_table(segmented_report)
+        render_tables(segmented_report)
         
-        # Enable and attach listener to the copy button
         copy_btn = document.getElementById("btn-copy-report")
         if copy_btn:
             copy_btn.disabled = False
             copy_btn.addEventListener("click", create_proxy(copy_report_to_clipboard))
         
-        status_el.innerText = "Macrostructure Profile (v1.0)"
+        status_el.style.display = "none"
 
     except Exception as e:
-        status_el.innerText = f"A critical error occurred: {e}. Is the main app tab still open?"
+        status_el.innerText = f"Error: {e}"
         status_el.style.color = "red"
-        print(f"Stage 2 Error: {e}")
 
-# Start the Stage 2 app
 print("Stage 2 starting...")
 asyncio.ensure_future(main())
