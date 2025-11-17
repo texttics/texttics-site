@@ -263,12 +263,30 @@ def compute_segmented_profile(core_data, N=10):
         max_run = max(content_run_lengths) if content_run_lengths else 0
         entropy = _calculate_entropy(content_run_lengths)
 
-        # --- Granular Bins (1-16+) ---
-        # Bins are now keys 1..16, where 16 represents 16+
-        bins = {x: 0 for x in range(1, 17)}
+        # --- Granular Bins (1-16+) & Volume Shares ---
+        # Bins: Raw Counts
+        bins_counts = {x: 0 for x in range(1, 17)}
+        # Bins: Volume (Total Graphemes in this bin)
+        bins_volume = {x: 0 for x in range(1, 17)}
+        
         for length in content_run_lengths:
-            if length >= 16: bins[16] += 1
-            else: bins[length] += 1
+            target_bin = 16 if length >= 16 else length
+            bins_counts[target_bin] += 1
+            bins_volume[target_bin] += length
+
+        # Calculate Percentages
+        # p_vol: % of total content graphemes in this slice that belong to this bin
+        # p_run: % of total runs in this slice that belong to this bin
+        bins_p_vol = {}
+        bins_p_run = {}
+        
+        total_content_graphemes_slice = sum(content_run_lengths)
+        total_runs_slice = len(content_run_lengths)
+        epsilon = 1e-9
+
+        for k in range(1, 17):
+            bins_p_vol[k] = round((bins_volume[k] / (total_content_graphemes_slice + epsilon)) * 100, 1)
+            bins_p_run[k] = round((bins_counts[k] / (total_runs_slice + epsilon)) * 100, 1)
 
         total_space_runs = len(space_run_lengths)
         avg_space_length = (sum(space_run_lengths) / total_space_runs) if total_space_runs > 0 else 0
@@ -309,7 +327,10 @@ def compute_segmented_profile(core_data, N=10):
             "volume": vol,
             
             # Texture / Bins
-            "bins": bins, # Dict 1..16
+            "bins_counts": bins_counts,
+            "bins_volume": bins_volume,
+            "bins_p_vol": bins_p_vol, # This drives the heatmap cell number
+            "bins_p_run": bins_p_run, # This is for the tooltip
             
             # Stats
             "mean_run": round(mean_len, 2),
@@ -391,7 +412,7 @@ def render_tables(segmented_reports):
         max_vals["line_breaks"] = max(max_vals["line_breaks"], m["line_breaks"])
         max_vals["avg_space_length"] = max(max_vals["avg_space_length"], m["avg_space_length"])
         
-        for k, v in m["bins"].items():
+        for k, v in m["bins_p_vol"].items():
             max_vals["bins"][k] = max(max_vals["bins"][k], v)
 
     # --- TABLE 1: MACRO-MRI (Overview) ---
@@ -473,12 +494,25 @@ def render_tables(segmented_reports):
         m = rep['metrics']
         html_tex.append(f'<tr><td>{rep["segment_id"]}</td>')
         
-        # Bins 1..16
+        # Bins 1..16 (Showing Volume % Share)
         for i in range(1, 17):
-            val = m['bins'][i]
-            # Blue Heatmap
-            style = _get_heat_style(val, max_vals['bins'][i], "13, 110, 253")
-            html_tex.append(f'<td {style} class="texture-cell">{val}</td>')
+            val_vol_pct = m['bins_p_vol'][i]
+            
+            # Data for Tooltip
+            count = m['bins_counts'][i]
+            run_pct = m['bins_p_run'][i]
+            vol_abs = m['bins_volume'][i]
+            
+            tooltip = f"Length: {i if i < 16 else '16+'}&#10;Runs: {count} ({run_pct}%)&#10;Volume: {vol_abs} gr. ({val_vol_pct}%)"
+            
+            # Blue Heatmap based on Volume %
+            style = _get_heat_style(val_vol_pct, max_vals['bins'][i], "13, 110, 253")
+            
+            # Render cell
+            # If 0%, show empty or dash for cleaner look? Or just 0.0? Let's show number if > 0.
+            display_val = f"{val_vol_pct}%" if val_vol_pct > 0 else '<span style="color:#ccc; font-size:0.8em;">0</span>'
+            
+            html_tex.append(f'<td {style} class="texture-cell" title="{tooltip}">{display_val}</td>')
             
         # Statistics
         html_tex.append(f'<td class="stat-cell">{m["mean_run"]}</td>')
@@ -489,6 +523,33 @@ def render_tables(segmented_reports):
         html_tex.append(f'<td class="stat-cell">{m["entropy"]}</td>')
         html_tex.append('</tr>')
 
+    # --- Global Summary Row (The Fingerprint) ---
+    # 1. Aggregate totals across all slices
+    global_bins_vol = {x: 0 for x in range(1, 17)}
+    total_global_content = 0
+    
+    for r in segmented_reports:
+        m = r['metrics']
+        # Ensure we are summing the VOLUME (content mass), not raw counts
+        for k, v in m['bins_volume'].items():
+            global_bins_vol[k] += v
+            total_global_content += v
+            
+    # 2. Render the Summary Row
+    html_tex.append('<tr style="border-top: 2px solid #333; background-color: #e9ecef; font-weight: bold;">')
+    html_tex.append('<td>Global %</td>')
+    
+    for i in range(1, 17):
+        epsilon = 1e-9
+        g_pct = round((global_bins_vol[i] / (total_global_content + epsilon)) * 100, 1)
+        # Display formatting: Show dash if 0 for cleaner look
+        disp = f"{g_pct}%" if g_pct > 0 else '<span style="color:#ccc; font-weight:normal;">-</span>'
+        html_tex.append(f'<td>{disp}</td>')
+        
+    # Spanning the 6 statistics columns (Mean, Median, Mode, StdDev, Max, Entropy)
+    html_tex.append('<td colspan="6" style="text-align:center; color:#666; font-style:italic;">(Global Content Fingerprint)</td>')
+    html_tex.append('</tr>')
+                        
     html_tex.append('</tbody></table>')
     document.getElementById("texture-table-output").innerHTML = "".join(html_tex)
 
