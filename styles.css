@@ -927,3 +927,57 @@ details[open].profile-section > summary::before {
 details.profile-section > summary:hover {
   color: var(--color-primary-focus);
 }
+
+/* --- Repertoire Card Styling --- */
+
+/* 1. Make the new repertoire card a layout container */
+.card.card-repertoire {
+  position: relative; /* Allows absolute positioning for the badge */
+  padding-bottom: 2rem; /* Add more bottom padding to fit the badge */
+}
+
+/* 2. Style the main count (the number) */
+.card-main-value {
+  font-size: 2rem; /* Make the number large */
+  font-weight: 600;
+  color: #0d6efd; /* Your app's primary blue color */
+  line-height: 1.2;
+  margin-top: 0.5rem;
+}
+
+/* 3. Style the "Fully" badge */
+.card-badge-full {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #198754; /* Green */
+  background-color: #e9f7ef; /* Light green */
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+/* 4. Style the percentage badge */
+.card-percentage {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6c757d; /* Muted grey */
+  background-color: #f8f9fa; /* Light grey */
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+}
+
+/* 5. Override default card layout for the new structure */
+/* The original cards are simple flex, we need to adjust */
+.card.card-repertoire {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* Align title and count to the left */
+}
