@@ -482,44 +482,57 @@ async def copy_report_to_clipboard(event):
     except Exception:
         btn.innerText = "Error"
 
+# ---
+# 4. MAIN BOOTSTRAP FUNCTION
+# ---
+
 async def main():
     global DATA_LOADED
     status_el = document.getElementById("loading-status")
     
-    status_el.innerText = "Loading Stage 2 UAX data..."
+    status_el.innerText = "Loading Stage 2 UAX data (WordBreak, PropList, DerivedCore)..."
     await load_stage2_data()
     if not DATA_LOADED:
-        status_el.innerText = "Error: Could not load UAX data."
+        status_el.innerText = "Error: Could not load UAX data. Cannot proceed."
         status_el.style.color = "red"
         return
 
     try:
         core_data_proxy = window.opener.TEXTTICS_CORE_DATA
+        
         if not core_data_proxy:
-            status_el.innerText = "Error: No data from Stage 1."
+            status_el.innerText = "Error: No data from Stage 1. Please run an analysis on the main app page and click 'Analyze Macrostructure' again."
             status_el.style.color = "red"
             return
 
         core_data = core_data_proxy.to_py()
-        status_el.innerText = "Analyzing..."
+        
+        status_el.innerText = f"Successfully loaded data from Stage 1 (Timestamp: {core_data.get('timestamp')}). Running macro-analysis..."
         
         segmented_report = compute_segmented_profile(core_data, N=10)
         
+        # Store for copy function
         global GLOBAL_SEGMENTED_REPORT
         GLOBAL_SEGMENTED_REPORT = segmented_report
         
-        render_tables(segmented_report)
+        render_sparklines(segmented_report)
         
+        # --- FIX IS HERE: Calling the correct new function ---
+        render_tables(segmented_report) 
+        
+        # Enable and attach listener to the copy button
         copy_btn = document.getElementById("btn-copy-report")
         if copy_btn:
             copy_btn.disabled = False
             copy_btn.addEventListener("click", create_proxy(copy_report_to_clipboard))
         
-        status_el.style.display = "none"
+        status_el.innerText = "Macrostructure Profile (v1.0)"
 
     except Exception as e:
-        status_el.innerText = f"Error: {e}"
+        status_el.innerText = f"A critical error occurred: {e}. Is the main app tab still open?"
         status_el.style.color = "red"
+        print(f"Stage 2 Error: {e}")
 
+# Start the Stage 2 app
 print("Stage 2 starting...")
 asyncio.ensure_future(main())
