@@ -770,64 +770,67 @@ def render_sparklines(segmented_reports):
             }});
         }}
 
-    function handleSparklineHover(segmentIndex, isActive) {{
-                // Highlight vertical overlay in all sparklines
-                document.querySelectorAll('.spark-hover-overlay-' + segmentIndex).forEach(overlay => {{
-                    overlay.classList.toggle('active', isActive);
-                }});
-    
-                // Robustly find and highlight table rows using data-segment-index
-                // Note: segmentIndex is 0-based, data-segment-index is 1-based
-                const targetSegmentId = segmentIndex + 1;
-                
-                // De-highlight all non-target rows
-                document.querySelectorAll('.matrix tbody tr.highlight-row').forEach(row => {{
-                    if (row.dataset.segmentIndex != targetSegmentId) {{
-                        row.classList.remove('highlight-row');
-                        const link = row.querySelector('.bridge-link');
-                        if (link) {{ link.classList.remove('highlight-link'); }}
-                    }}
-                }});
-    
-                // Highlight all target rows (in both tables)
-                // Note: We use a JS template literal `${...}` here, which Python's f-string ignores.
-                document.querySelectorAll(`.matrix tbody tr[data-segment-index="${targetSegmentId}"]`).forEach(row => {{
-                    row.classList.toggle('highlight-row', isActive);
+        function handleSparklineHover(segmentIndex, isActive) {{
+            // Highlight vertical overlay in all sparklines
+            document.querySelectorAll('.spark-hover-overlay-' + segmentIndex).forEach(overlay => {{
+                overlay.classList.toggle('active', isActive);
+            }});
+
+            // Robustly find and highlight table rows using data-segment-index
+            // Note: segmentIndex is 0-based, data-segment-index is 1-based
+            const targetSegmentId = segmentIndex + 1;
+            
+            // De-highlight all non-target rows
+            document.querySelectorAll('.matrix tbody tr.highlight-row').forEach(row => {{
+                if (row.dataset.segmentIndex != targetSegmentId) {{
+                    row.classList.remove('highlight-row');
                     const link = row.querySelector('.bridge-link');
-                    if (link) {{ link.classList.toggle('highlight-link', isActive); }}
-                }});
-            }}
-    
-            function handleSparklineClick(segmentIndex) {{
-                // Robustly find the corresponding table row and click its bridge link
-                // Note: segmentIndex is 0-based, data-segment-index is 1-based
-                const targetSegmentId = segmentIndex + 1;
-                
-                // Find the link in the *first* table (Macro-MRI)
-                const targetRow = document.querySelector(`#macro-table-output .matrix tbody tr[data-segment-index="${targetSegmentId}"]`);
-                
-                if (targetRow) {{
-                    const bridgeLink = targetRow.querySelector('a.bridge-link');
-                    if (bridgeLink) {{
-                        // Programmatically click the link. This triggers the
-                        // onclick="window.opener.TEXTTICS_HIGHLIGHT_SEGMENT(...)"
-                        // which is the correct, working bridge logic.
-                        bridgeLink.click();
-                    }}
-                    
-                    // Also manually trigger the hover highlight for visual feedback
-                    handleSparklineHover(segmentIndex, true);
-    
-                    // Scroll the clicked row into view
-                    targetRow.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
-    
-                }} else {{
-                    // Use JS template literal, not f-string
-                    console.warn(`Stage 2: Sparkline click for segment ${targetSegmentId} found no matching table row.`);
+                    if (link) {{ link.classList.remove('highlight-link'); }}
                 }}
+            }});
+
+            // Highlight all target rows (in both tables)
+            // **** FIX IS HERE: Escape ${...} as ${{...}} ****
+            document.querySelectorAll(`.matrix tbody tr[data-segment-index="${{targetSegmentId}}"]`).forEach(row => {{
+                row.classList.toggle('highlight-row', isActive);
+                const link = row.querySelector('.bridge-link');
+                if (link) {{ link.classList.toggle('highlight-link', isActive); }}
+            }});
+        }}
+
+        function handleSparklineClick(segmentIndex) {{
+            // Robustly find the corresponding table row and click its bridge link
+            // Note: segmentIndex is 0-based, data-segment-index is 1-based
+            const targetSegmentId = segmentIndex + 1;
+            
+            // Find the link in the *first* table (Macro-MRI)
+            // **** FIX IS HERE: Escape ${...} as ${{...}} ****
+            const targetRow = document.querySelector(`#macro-table-output .matrix tbody tr[data-segment-index="${{targetSegmentId}}"]`);
+            
+            if (targetRow) {{
+                const bridgeLink = targetRow.querySelector('a.bridge-link');
+                if (bridgeLink) {{
+                    // Programmatically click the link. This triggers the
+                    // onclick="window.opener.TEXTTICS_HIGHLIGHT_SEGMENT(...)"
+                    // which is the correct, working bridge logic.
+                    bridgeLink.click();
+                }}
+                
+                // Also manually trigger the hover highlight for visual feedback
+                handleSparklineHover(segmentIndex, true);
+
+                // Scroll the clicked row into view
+                targetRow.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+
+            }} else {{
+                // Use JS template literal, not f-string
+                // **** FIX IS HERE: Escape ${...} as ${{...}} ****
+                console.warn(`Stage 2: Sparkline click for segment ${{targetSegmentId}} found no matching table row.`);
             }}
+        }}
 
         // Initialize interactivity after rendering
+        // **** FIX IS HERE: Correctly interpolate the Python {count} variable ****
         window.setTimeout(() => setupSparklineInteractivity({count}), 0); 
     </script>
     """
