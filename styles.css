@@ -760,7 +760,7 @@ Stage 2: Heatmap Row Classes
   padding: 1rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  background: var(--color-white);
+  background: var(--color-bg);
   
   display: flex;
   flex-direction: column; /* Stack button on top of text */
@@ -770,14 +770,28 @@ Stage 2: Heatmap Row Classes
 /* Make the button itself full width */
 .macro-analysis-control .tool-btn {
   flex-grow: 1;
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 .macro-analysis-description {
-  font-size: 0.85rem;
+  font-size: 1.25rem;
   color: var(--color-text-muted);
   line-height: 1.4;
   margin: 0;
   text-align: center;
+}
+
+.macro-btn {
+  width: 100%;
+  background-color: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.macro-btn:hover {
+  background-color: var(--color-primary-focus);
+  border-color: var(--color-primary-focus);
 }
 
 
