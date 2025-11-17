@@ -423,13 +423,13 @@ def render_tables(segmented_reports):
     else:
         # --- v3 Anomaly Layer ---
         
-        # 1. Define metrics to analyze
+        # 1. Define metrics to analyze (using ACTUAL computed keys)
         metrics_to_normalize = [
-            "avg_content_length", 
-            "v3_content_density", 
-            "v3_gap_density", 
-            "v3_flag_density", 
-            "v3_critical_density"
+            "content_density_pct", # How solid is the text?
+            "gap_density_pct",     # How much is whitespace?
+            "mean_run",            # What is the average word length?
+            "entropy",             # How complex is the rhythm?
+            "threat_density"       # How many flags per 100 graphemes?
         ]
         
         # 2. Extract metric vectors
@@ -442,12 +442,23 @@ def render_tables(segmented_reports):
         # 3. Calculate stats (μ, σ) for each metric
         metric_stats = {}
         for key, values in metric_data.items():
-            metric_stats[key] = _calculate_stats(values) # (mean, std_dev)
+            # _calculate_stats returns (mean, std_dev, median, mode)
+            mean, std_dev, _, _ = _calculate_stats(values)
+            metric_stats[key] = (mean, std_dev)
             
         # --- GUARDRAIL: Check Total Volume ---
         # If text is too short (< 100 graphemes), Z-score is noisy. Disable it.
         total_vol = sum(r['metrics']['volume'] for r in segmented_reports)
         suppress_zscore = total_vol < 100
+
+        # --- FIX: Calculate normalized "threat density" for Z-Score analysis ---
+        # We calculate (flags per 100 graphemes) to get a stable, comparable number.
+        for report in segmented_reports:
+            metrics = report['metrics']
+            vol = metrics.get('volume', 0)
+            epsilon = 1e-9
+            # Normalize to "threats per 100 graphemes"
+            metrics['threat_density'] = (metrics.get('threats_all', 0) / (vol + epsilon)) * 100
 
         # 4. Calculate Anomaly Score and assign heatmap class to each report
         for report in segmented_reports:
