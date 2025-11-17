@@ -31,7 +31,19 @@
         /* Critical Threats (Binary) */
         .cell-critical { background-color: #ffebee !important; color: #c62828; font-weight: bold; }
         .cell-warning  { background-color: #fff3e0 !important; color: #e65100; }
-        
+
+        /* Z-Score Anomaly Heatmap (Applied to <tr>) */
+        .heatmap-critical { background-color: #ffebee !important; } /* Makes entire row red */
+        .heatmap-critical a.bridge-link { color: #c62828; border-color: #c62828; font-weight: bold; }
+
+        .heatmap-normal { /* No style needed */ }
+
+        .heatmap-low   { background-color: #fff8e1; } /* Light Yellow */
+        .heatmap-low a.bridge-link { color: #f57f17; border-color: #f57f17; } /* Highlights link */
+
+        .heatmap-high  { background-color: #ffebcc; } /* Light Orange */
+        .heatmap-high a.bridge-link { color: #e65100; border-color: #e65100; }
+      
         /* Texture Map (Gradient calculated in Python) */
         .texture-cell { color: #000; } /* Always black text for contrast */
         
