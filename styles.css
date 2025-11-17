@@ -459,7 +459,7 @@ Section Header & Copy Button
 }
 
 .copy-btn {
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--color-text);
   background-color: transparent;
