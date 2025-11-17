@@ -668,20 +668,21 @@ def render_sparklines(segmented_reports):
     container = document.getElementById("sparkline-output")
     if not container or not segmented_reports: return
 
-    # 1. Extract Data Vectors
-    entropies = [r['metrics']['entropy'] for r in segmented_reports]
-    densities = [r['metrics']['content_density_pct'] for r in segmented_reports]
-    threats   = [r['metrics']['threats_all'] for r in segmented_reports]
+    # 1. Extract Data Vectors (Using keys defined in compute_segmented_profile)
+    # Fallback to 0 if key is missing to prevent crash
+    entropies = [r['metrics'].get('entropy', 0) for r in segmented_reports]
+    densities = [r['metrics'].get('content_density_pct', 0) for r in segmented_reports]
+    threats   = [r['metrics'].get('threats_all', 0) for r in segmented_reports]
     
     count = len(segmented_reports)
     if count < 2:
-        container.innerHTML = "<p style='color:#999; font-style:italic;'>Insufficient segments for trend analysis.</p>"
+        container.innerHTML = "<p style='color:#999; font-style:italic; font-size:0.9rem;'>Insufficient segments for trend analysis.</p>"
         return
 
     # 2. Helper: SVG Builder
     def build_svg(values, type='line', color='#0d6efd', y_max=None):
         # Dimensions
-        w, h = 100, 60 # Percent / Pixels (Internal coordinate system)
+        w, h = 100, 50 # Percent / Pixels (Internal coordinate system)
         points = []
         
         # Normalize Y
@@ -699,10 +700,7 @@ def render_sparklines(segmented_reports):
             y = round(h - ((val / mx) * h), 1) # Invert Y (0 is top in SVG)
             points.append((x, y))
             
-            if type == 'bar':
-                # For bars, we define rects later
-                pass
-            else:
+            if type == 'line' or type == 'area':
                 path_d.append(f"{x},{y}")
                 area_d.append(f"L{x},{y}")
 
@@ -710,17 +708,17 @@ def render_sparklines(segmented_reports):
         area_d.append(f"L{w},{h} Z")
         
         # Construct SVG XML
-        svg = [f'<svg viewBox="0 0 {w} {h}" class="spark-svg" preserveAspectRatio="none">']
+        svg = [f'<svg viewBox="0 0 {w} {h}" class="spark-svg" preserveAspectRatio="none" style="width:100%; height:50px; display:block;">']
         
         # Grid Lines (0%, 50%, 100%)
-        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" class="spark-grid" />')
-        svg.append(f'<line x1="0" y1="{h/2}" x2="{w}" y2="{h/2}" class="spark-grid" />')
-        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" class="spark-axis" />')
+        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" stroke="#e9ecef" stroke-width="1" />')
+        svg.append(f'<line x1="0" y1="{h/2}" x2="{w}" y2="{h/2}" stroke="#e9ecef" stroke-width="1" stroke-dasharray="2,2" />')
+        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" stroke="#adb5bd" stroke-width="1" />')
 
         if type == 'line':
             # Stroke
             poly = " ".join(path_d)
-            svg.append(f'<polyline points="{poly}" class="spark-line" stroke="{color}" />')
+            svg.append(f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="2" />')
             # Fill dots
             for px, py in points:
                 svg.append(f'<circle cx="{px}" cy="{py}" r="1.5" fill="{color}" />')
@@ -728,10 +726,10 @@ def render_sparklines(segmented_reports):
         elif type == 'area':
             path_str = " ".join(area_d).replace("M", "M ").replace("L", " L ").replace("Z", " Z")
             # Polygon for area
-            svg.append(f'<path d="{path_str}" class="spark-area" fill="{color}" />')
+            svg.append(f'<path d="{path_str}" stroke="none" fill="{color}" opacity="0.2" />')
             # Line on top
             poly = " ".join(path_d)
-            svg.append(f'<polyline points="{poly}" class="spark-line" stroke="{color}" stroke-width="1.5" />')
+            svg.append(f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="1.5" />')
 
         elif type == 'bar':
             bar_w = (w / count) * 0.8
@@ -742,7 +740,7 @@ def render_sparklines(segmented_reports):
                     by = h - bar_h
                     # Highlight critical threats in darker red
                     bar_col = "#dc3545" if val > 0 else color
-                    svg.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" class="spark-bar" />')
+                    svg.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" shape-rendering="crispEdges" />')
 
         svg.append('</svg>')
         return "".join(svg)
@@ -760,19 +758,19 @@ def render_sparklines(segmented_reports):
     scale_threat = max(5, max_threat) 
     svg_threat = build_svg(threats, 'bar', '#dc3545', y_max=scale_threat)
 
-    # 4. Inject HTML
+    # 4. Inject HTML (Grid Layout)
     html = f"""
-    <div class="sparkline-container">
-        <div class="spark-card">
-            <div class="spark-title">Run-Length Entropy (Rhythm)</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+        <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:8px; font-weight:600; border-bottom:1px solid #eee;">Run-Length Entropy (Rhythm)</div>
             {svg_entropy}
         </div>
-        <div class="spark-card">
-            <div class="spark-title">Content Density (Mass)</div>
+        <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:8px; font-weight:600; border-bottom:1px solid #eee;">Content Density (Mass)</div>
             {svg_density}
         </div>
-        <div class="spark-card">
-            <div class="spark-title">Threat Events (Pulse)</div>
+        <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:8px; font-weight:600; border-bottom:1px solid #eee;">Threat Events (Pulse)</div>
             {svg_threat}
         </div>
     </div>
