@@ -685,7 +685,7 @@ Stage 2: Heatmap Row Classes
   line-height: 1.6;
   overflow-x: auto;
   background-color: var(--color-bg); /* keep the data area as a card */
-  height: 125px;
+  height: 140px;
 }
 
 
