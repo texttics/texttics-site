@@ -664,9 +664,13 @@ Stage 2: Heatmap Row Classes
 /* Header bar of the inspector */
 #inspector-panel-wrapper h3 {
   margin: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border-light);
+  border-radius: var(--radius) var(--radius) 0 0;
   font-size: 1rem;
   font-weight: 600;
-  background-color: transparent; /* no white stripe */
+  color: var(--color-text);
+  background-color: var(--color-bg);
 }
 
 /* Body of the inspector */
