@@ -194,6 +194,9 @@ def compute_segmented_profile(core_data, N=10):
         cp_map[i] = current_cp_index
         current_cp_index += grapheme_lengths[i]
     cp_map[total_graphemes] = current_cp_index
+
+    # --- Accumulator for Global Stats ---
+    all_content_run_lengths = []
     
     for i in range(actual_N):
         # Linear Interpolation for smooth slicing
@@ -256,6 +259,9 @@ def compute_segmented_profile(core_data, N=10):
 
         if current_content_run > 0: content_run_lengths.append(current_content_run)
         if current_space_run > 0: space_run_lengths.append(current_space_run)
+
+        # --- Accumulate for Global Stats ---
+        all_content_run_lengths.extend(content_run_lengths)
 
         # --- Advanced Statistics ---
         total_content_runs = len(content_run_lengths)
@@ -366,6 +372,25 @@ def compute_segmented_profile(core_data, N=10):
         }
         segmented_reports.append(report)
 
+    # --- Compute Global Stats for the Summary Row ---
+    g_mean, g_std, g_med, g_mode = _calculate_stats(all_content_run_lengths)
+    g_max = max(all_content_run_lengths) if all_content_run_lengths else 0
+    g_entropy = _calculate_entropy(all_content_run_lengths)
+    
+    # Attach global stats to the first report (or a metadata object) 
+    # hacky but effective way to pass it to the renderer without changing return signature
+    if segmented_reports:
+        segmented_reports[0]['global_stats'] = {
+            "mean": round(g_mean, 2),
+            "std": round(g_std, 2),
+            "median": g_med,
+            "mode": g_mode,
+            "max": g_max,
+            "entropy": round(g_entropy, 2)
+        }
+
+    print(f"Stage 2: Processed {len(segmented_reports)} segments.")
+    
     return segmented_reports
 
 # ---
@@ -396,6 +421,24 @@ def render_tables(segmented_reports):
         document.getElementById("macro-table-output").innerHTML = "<div>No Data</div>"
         return
 
+    # 3. Calculate stats (μ, σ) for each metric
+        metric_stats = {}
+        for key, values in metric_data.items():
+            metric_stats[key] = _calculate_stats(values) # (mean, std_dev)
+            
+        # --- GUARDRAIL: Check Total Volume ---
+        # If text is too short (< 100 graphemes), Z-score is noisy. Disable it.
+        total_vol = sum(r['metrics']['volume'] for r in segmented_reports)
+        suppress_zscore = total_vol < 100
+
+    # Guardrail 2: Small Sample Suppression
+            if suppress_zscore:
+                report["heatmap_class"] = "heatmap-normal"
+                continue
+
+            # Guardrail 3: Calculate Z-scores
+            for key in metrics_to_normalize:
+    
     # --- PRE-CALCULATION: FIND COLUMN MAXIMA FOR HEATMAPS ---
     # We need the max value for every column to normalize colors
     max_vals = {
@@ -546,8 +589,18 @@ def render_tables(segmented_reports):
         disp = f"{g_pct}%" if g_pct > 0 else '<span style="color:#ccc; font-weight:normal;">-</span>'
         html_tex.append(f'<td>{disp}</td>')
         
-    # Spanning the 6 statistics columns (Mean, Median, Mode, StdDev, Max, Entropy)
-    html_tex.append('<td colspan="6" style="text-align:center; color:#666; font-style:italic;">(Global Content Fingerprint)</td>')
+    # Spanning the 6 statistics columns with REAL GLOBAL DATA
+    gs = segmented_reports[0].get('global_stats', {})
+    if gs:
+        html_tex.append(f'<td class="stat-cell" style="background-color:#e9ecef;">{gs.get("mean", "-")}</td>')
+        html_tex.append(f'<td class="stat-cell" style="background-color:#e9ecef;">{gs.get("median", "-")}</td>')
+        html_tex.append(f'<td class="stat-cell" style="background-color:#e9ecef;">{gs.get("mode", "-")}</td>')
+        html_tex.append(f'<td class="stat-cell" style="background-color:#e9ecef;">{gs.get("std", "-")}</td>')
+        html_tex.append(f'<td class="stat-cell" style="background-color:#e9ecef;">{gs.get("max", "-")}</td>')
+        html_tex.append(f'<td class="stat-cell" style="background-color:#e9ecef;">{gs.get("entropy", "-")}</td>')
+    else:
+        html_tex.append('<td colspan="6"></td>')
+        
     html_tex.append('</tr>')
                         
     html_tex.append('</tbody></table>')
