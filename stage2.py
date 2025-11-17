@@ -137,25 +137,28 @@ def _find_in_ranges(cp: int, store_key: str):
 def get_grapheme_base_properties(grapheme: str) -> dict:
     """Finds all UAX properties of the *first code point* in a grapheme."""
     props = {
-        "wb": "Other", 
-        "is_WhiteSpace": False, 
-        "is_Bidi_Control": False, 
+        "wb": "Other",
+        "is_WhiteSpace": False,
+        "is_Bidi_Control": False,
         "is_Join_Control": False,
-        "is_Default_Ignorable": False
+        "is_Default_Ignorable": False,
     }
     if not grapheme:
         return props
-    
-    # Native Python string handling (faster and safer than window.Array)
-    cp = ord(grapheme[0])
-    
+
+    # Stage 2 receives grapheme_list from Stage 1 via .to_py(),
+    # so each grapheme is a native Python str. Index 0 gives
+    # the first Unicode code point even for emoji.
+    first_char = grapheme[0]
+    cp = ord(first_char)
+
     # Use fast O(log N) bisect lookups for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
     props["is_WhiteSpace"] = _find_in_ranges(cp, "White_Space") is not None
     props["is_Bidi_Control"] = _find_in_ranges(cp, "Bidi_Control") is not None
     props["is_Join_Control"] = _find_in_ranges(cp, "Join_Control") is not None
     props["is_Default_Ignorable"] = _find_in_ranges(cp, "Default_Ignorable_Code_Point") is not None
-    
+
     return props
 
 # ---
@@ -407,15 +410,18 @@ def render_macro_table(segmented_reports):
     Renders the main "Heatmap Table" for Stage 2.
     This function now also computes the anomaly scores and heatmap classes.
     """
-    table_el = document.getElementById("macro-table-body") # Target <tbody>
+    table_el = document.getElementById("macro-table-body")  # Target <tbody>
     if not table_el:
         return
 
     html = []
-    
-    if not segmented_reports or "error" in segmented_reports:
+
+    # Handle error objects and empty results explicitly
+    if isinstance(segmented_reports, dict) and "error" in segmented_reports:
         error_msg = segmented_reports.get("error", "No data.")
         html.append(f"<tr><td colspan='18'>{error_msg}</td></tr>")
+    elif not segmented_reports:
+        html.append("<tr><td colspan='18'>No data.</td></tr>")
     else:
         # --- v3 Anomaly Layer (Step 2.3) ---
         
