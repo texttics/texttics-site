@@ -786,7 +786,6 @@ Stage 2: Heatmap Row Classes
 .macro-btn {
   width: 100%;
   background-color: var(--color-primary);
-  color: #fff;
   border-color: var(--color-primary);
 }
 
