@@ -466,6 +466,12 @@ def render_tables(segmented_reports):
     html_tex.append('</tbody></table>')
     document.getElementById("texture-table-output").innerHTML = "".join(html_tex)
 
+def render_sparklines(segmented_reports):
+    """Placeholder for future sparkline charts."""
+    sparkline_el = document.getElementById("sparkline-output")
+    if sparkline_el:
+        # Currently just a placeholder, can be expanded later
+        sparkline_el.innerHTML = ""
 
 @create_proxy
 async def copy_report_to_clipboard(event):
