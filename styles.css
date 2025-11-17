@@ -654,31 +654,32 @@ Stage 2: Heatmap Row Classes
 
 
 /* --- Character Inspector Panel --- */
+
+/* Wrapper: no border, just radius for clipping */
 #inspector-panel-wrapper {
-  margin-top: 0.05rem;
-  border: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  border: none;
   border-radius: var(--radius);
-  background-color: var(--color-bg); /* same light gray as page */
+  background-color: transparent;
 }
 
 /* Header bar of the inspector */
 
-
+/* Header: looks like a section heading, no top line */
 #inspector-panel-wrapper h3 {
-  border-bottom: 1px solid var(--color-border-light);
-  border-top: none;
-  border-left: none;
-  border-right: none;
-  margin: 0;                          /* убираем внешние отступы */
-  padding-top: 0rem !important;    /* почти вплотную к верхней границе */
-  padding-right: 1rem;
-  padding-bottom: 0.5rem;
-  padding-left: 1rem;
-  line-height: 1.2;
+  margin: 0;
+  padding: 0.35rem 1rem 0.6rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background-color: transparent;
+  border: none;                       /* no lines at all */
 }
 
 /* Body of the inspector */
 #inspector-panel-content {
+  margin-top: 0.25rem;
+  border: 1px solid var(--color-border);
   padding: 0.75rem 1rem 1rem;
   font-family: var(--font-mono);
   font-size: 0.9rem;
