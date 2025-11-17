@@ -663,12 +663,12 @@ def render_tables(segmented_reports):
 
 def render_sparklines(segmented_reports):
     """
-    Generates three SVG sparklines: Entropy (Line), Density (Area), Threats (Bar).
+    Generates three interactive SVG sparklines with tooltips, hover states, and scale labels.
     """
     container = document.getElementById("sparkline-output")
     if not container or not segmented_reports: return
 
-    # 1. Extract Data Vectors (Using keys defined in compute_segmented_profile)
+    # 1. Extract Data Vectors
     # Fallback to 0 if key is missing to prevent crash
     entropies = [r['metrics'].get('entropy', 0) for r in segmented_reports]
     densities = [r['metrics'].get('content_density_pct', 0) for r in segmented_reports]
@@ -679,98 +679,129 @@ def render_sparklines(segmented_reports):
         container.innerHTML = "<p style='color:#999; font-style:italic; font-size:0.9rem;'>Insufficient segments for trend analysis.</p>"
         return
 
-    # 2. Helper: SVG Builder
-    def build_svg(values, type='line', color='#0d6efd', y_max=None):
-        # Dimensions
-        w, h = 100, 50 # Percent / Pixels (Internal coordinate system)
-        points = []
+    # 2. CSS for Hover Effects (Injected directly for portability)
+    style_block = """
+    <style>
+        .spark-svg { overflow: visible; }
+        .spark-point { transition: r 0.1s ease-out, stroke-width 0.1s; cursor: crosshair; }
+        .spark-point:hover { r: 4px; stroke: #fff; stroke-width: 2px; }
+        .spark-bar { transition: opacity 0.1s; cursor: crosshair; }
+        .spark-bar:hover { opacity: 0.7; }
+        .spark-val-label { font-size: 10px; font-family: monospace; font-weight: bold; fill: #6c757d; }
+        .spark-grid { stroke: #e9ecef; stroke-width: 1; }
+        .spark-axis { stroke: #adb5bd; stroke-width: 1; }
+    </style>
+    """
+
+    # 3. Helper: Interactive SVG Builder
+    def build_svg(values, type='line', color='#0d6efd', y_max=None, unit=""):
+        # Dimensions (ViewBox coordinates)
+        w, h = 300, 60 
         
         # Normalize Y
-        mx = y_max if y_max is not None else (max(values) if values else 1)
+        data_max = max(values) if values else 0
+        mx = y_max if y_max is not None else data_max
         if mx == 0: mx = 1 # Avoid div zero
         
         step_x = w / (count - 1) if count > 1 else w
         
-        # Build Point String
+        # Build Point List & Path Strings
         path_d = []
-        area_d = [f"M0,{h}"] # Start bottom-left for area
+        area_d = [f"M0,{h}"] 
+        
+        rects_html = []
+        circles_html = []
         
         for i, val in enumerate(values):
             x = round(i * step_x, 1)
-            y = round(h - ((val / mx) * h), 1) # Invert Y (0 is top in SVG)
-            points.append((x, y))
+            y = round(h - ((val / mx) * h), 1)
             
-            if type == 'line' or type == 'area':
-                path_d.append(f"{x},{y}")
-                area_d.append(f"L{x},{y}")
-
-        # Close area
-        area_d.append(f"L{w},{h} Z")
-        
-        # Construct SVG XML
-        svg = [f'<svg viewBox="0 0 {w} {h}" class="spark-svg" preserveAspectRatio="none" style="width:100%; height:50px; display:block;">']
-        
-        # Grid Lines (0%, 50%, 100%)
-        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" stroke="#e9ecef" stroke-width="1" />')
-        svg.append(f'<line x1="0" y1="{h/2}" x2="{w}" y2="{h/2}" stroke="#e9ecef" stroke-width="1" stroke-dasharray="2,2" />')
-        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" stroke="#adb5bd" stroke-width="1" />')
-
-        if type == 'line':
-            # Stroke
-            poly = " ".join(path_d)
-            svg.append(f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="2" />')
-            # Fill dots
-            for px, py in points:
-                svg.append(f'<circle cx="{px}" cy="{py}" r="1.5" fill="{color}" />')
-                
-        elif type == 'area':
-            path_str = " ".join(area_d).replace("M", "M ").replace("L", " L ").replace("Z", " Z")
-            # Polygon for area
-            svg.append(f'<path d="{path_str}" stroke="none" fill="{color}" opacity="0.2" />')
-            # Line on top
-            poly = " ".join(path_d)
-            svg.append(f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="1.5" />')
-
-        elif type == 'bar':
-            bar_w = (w / count) * 0.8
-            for i, val in enumerate(values):
+            # Tooltip Text
+            tooltip = f"Segment {i+1}: {val}{unit}"
+            
+            if type == 'bar':
+                bar_w = (w / count) * 0.8
+                # Bar logic
                 if val > 0:
                     bar_h = (val / mx) * h
                     bx = (i * (w / count)) + ((w/count)*0.1)
                     by = h - bar_h
-                    # Highlight critical threats in darker red
                     bar_col = "#dc3545" if val > 0 else color
-                    svg.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" shape-rendering="crispEdges" />')
+                    rects_html.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" class="spark-bar"><title>{tooltip}</title></rect>')
+                else:
+                     # Invisible hit target for zero values to show tooltip
+                    bx = (i * (w / count))
+                    rects_html.append(f'<rect x="{bx}" y="0" width="{w/count}" height="{h}" fill="transparent"><title>{tooltip}</title></rect>')
+
+            else:
+                # Line/Area logic
+                path_d.append(f"{x},{y}")
+                area_d.append(f"L{x},{y}")
+                
+                # Interactive circle (visible dot + tooltip)
+                circles_html.append(f'<circle cx="{x}" cy="{y}" r="2.5" fill="{color}" class="spark-point"><title>{tooltip}</title></circle>')
+
+        # Finish Path Strings
+        area_d.append(f"L{w},{h} Z")
+        poly_line = " ".join(path_d)
+        poly_area = " ".join(area_d).replace("M", "M ").replace("L", " L ").replace("Z", " Z")
+        
+        # --- Construct SVG ---
+        # ViewBox shifted to allow labels at the top
+        svg = [f'<svg viewBox="0 -15 {w} {h+20}" class="spark-svg" preserveAspectRatio="none" style="width:100%; height:75px; display:block;">']
+        
+        # Scale Label (Max Y)
+        svg.append(f'<text x="0" y="-5" class="spark-val-label">Max: {mx}{unit}</text>')
+        
+        # Grid Lines
+        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" class="spark-grid" stroke-dasharray="4,4" />') # Top
+        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" class="spark-axis" />') # Bottom axis
+
+        # Chart Content
+        if type == 'area':
+            svg.append(f'<path d="{poly_area}" stroke="none" fill="{color}" opacity="0.15" />')
+            svg.append(f'<polyline points="{poly_line}" fill="none" stroke="{color}" stroke-width="1.5" />')
+            svg.append("".join(circles_html)) # Add dots on top
+            
+        elif type == 'line':
+            svg.append(f'<polyline points="{poly_line}" fill="none" stroke="{color}" stroke-width="2" />')
+            svg.append("".join(circles_html))
+            
+        elif type == 'bar':
+            svg.append("".join(rects_html))
 
         svg.append('</svg>')
         return "".join(svg)
 
-    # 3. Generate Charts
-    # Chart 1: Entropy (Purple for complexity)
-    svg_entropy = build_svg(entropies, 'line', '#6f42c1')
+    # 4. Generate Charts with Contextual Scaling
     
-    # Chart 2: Density (Green for mass)
-    svg_density = build_svg(densities, 'area', '#198754', y_max=100) # Fixed 100% scale
+    # Entropy: Min scale of 1.0 to avoid visual noise on flat-zero data
+    max_ent = max(entropies) if entropies else 0
+    scale_ent = max(1.0, max_ent) 
+    svg_entropy = build_svg(entropies, 'line', '#6f42c1', y_max=scale_ent)
     
-    # Chart 3: Threats (Red for danger)
+    # Density: Fixed 100% scale for direct comparability
+    svg_density = build_svg(densities, 'area', '#198754', y_max=100, unit="%")
+    
+    # Threats: Min scale of 5 so single flags don't look like massive spikes
     max_threat = max(threats) if threats else 0
-    # Scale Y max to at least 5 so small threats don't look huge
     scale_threat = max(5, max_threat) 
     svg_threat = build_svg(threats, 'bar', '#dc3545', y_max=scale_threat)
 
-    # 4. Inject HTML (Grid Layout)
+    # 5. Inject HTML (Grid Layout)
     html = f"""
+    {style_block}
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
         <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:8px; font-weight:600; border-bottom:1px solid #eee;">Run-Length Entropy (Rhythm)</div>
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:4px; font-weight:600; border-bottom:1px solid #eee;">Run-Length Entropy</div>
             {svg_entropy}
         </div>
         <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:8px; font-weight:600; border-bottom:1px solid #eee;">Content Density (Mass)</div>
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:4px; font-weight:600; border-bottom:1px solid #eee;">Content Density (Mass)</div>
             {svg_density}
         </div>
         <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:8px; font-weight:600; border-bottom:1px solid #eee;">Threat Events (Pulse)</div>
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:4px; font-weight:600; border-bottom:1px solid #eee;">Threat Events (Pulse)</div>
             {svg_threat}
         </div>
     </div>
