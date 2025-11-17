@@ -679,15 +679,19 @@ Stage 2: Heatmap Row Classes
 #inspector-panel-content {
   margin-top: 0.25rem;
   border: 1px solid var(--color-border);
-  padding: 0.75rem 1rem 1rem;
+  padding: 0 1rem;
   font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.6;
   overflow-x: auto;
   background-color: var(--color-bg); /* keep the data area as a card */
   height: 150px;
-  justify-content: center;
-  align-items: flex-start;
+  box-sizing: border-box;
+  /* flexbox: column = vertical axis, so justify-content controls vertical centering */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;   /* vertical centering */
+  align-items: flex-start;   /* keep text left-aligned */
 }
 
 
