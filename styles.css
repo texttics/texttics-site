@@ -904,3 +904,21 @@ Stage 2: Heatmap Row Classes
   cursor: pointer;
 }
 
+/* --- Collapsible Profile Styling --- */
+
+/* Style the clickable summary (the header) */
+/* We add .profile-section to our tags to target them */
+details.profile-section > summary {
+  cursor: pointer;
+  list-style: none; /* Hide default triangle (Firefox) */
+}
+
+/* Hide default triangle (Chrome, Safari, Edge) */
+details.profile-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Optional: Add a subtle hover effect for feedback */
+details.profile-section > summary:hover {
+  opacity: 0.8;
+}
