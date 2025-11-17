@@ -692,9 +692,9 @@ Stage 2: Heatmap Row Classes
 
 /* Big inspected glyph (the actual character, e.g. "e") */
 #inspector-panel-content .inspector-glyph {
-  font-size: 3rem;
+  font-size: 5rem;
   line-height: 1.1;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0 0 0.75rem;
 }
 
@@ -704,7 +704,7 @@ Stage 2: Heatmap Row Classes
   grid-auto-flow: column;                  /* one column per property */
   grid-auto-columns: minmax(150px, 1fr);
   column-gap: 1rem;
-  row-gap: 0.5rem;
+  row-gap: 0.25rem;
   align-items: flex-start;
   margin: 0;
   padding: 0;
@@ -720,7 +720,7 @@ Stage 2: Heatmap Row Classes
 /* Row 1: property labels */
 #inspector-panel-content .inspector-grid dt {
   grid-row: 1;
-  font-size: 0.7rem;
+  font-size: 1rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
