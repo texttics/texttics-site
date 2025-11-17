@@ -1525,7 +1525,41 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
 # 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
+    # --- NEW: Repertoire Analysis (ASCII, Latin-1, BMP, Supplementary) ---
+    # We use JS RegExp for high-performance, C++ speed matching.
+    epsilon = 1e-9 # Avoid division by zero on empty string
     
+    # Count of code points U+0000-U+007F
+    ascii_count = len(window.RegExp.new(r"[\u0000-\u007F]", "gu").exec(t) or [])
+    # Count of code points U+0000-U+00FF
+    latin1_count = len(window.RegExp.new(r"[\u0000-\u00FF]", "gu").exec(t) or [])
+    # Count of code points U+0000-U+FFFF (All BMP)
+    bmp_count = len(window.RegExp.new(r"[\u0000-\uFFFF]", "gu").exec(t) or [])
+    # Count of code points U+10000+ (Supplementary Planes)
+    supplementary_count = len(window.RegExp.new(r"[\U00010000-\U0010FFFF]", "gu").exec(t) or [])
+    
+    repertoire_stats = {
+        "ASCII-Compatible": {
+            "count": ascii_count,
+            "pct": round((ascii_count / (total_code_points + epsilon)) * 100, 2),
+            "is_full": ascii_count == total_code_points
+        },
+        "Latin-1-Compatible": {
+            "count": latin1_count,
+            "pct": round((latin1_count / (total_code_points + epsilon)) * 100, 2),
+            "is_full": latin1_count == total_code_points
+        },
+        "BMP Coverage": {
+            "count": bmp_count,
+            "pct": round((bmp_count / (total_code_points + epsilon)) * 100, 2),
+            "is_full": bmp_count == total_code_points
+        },
+        "Supplementary Planes": {
+            "count": supplementary_count,
+            "pct": round((supplementary_count / (total_code_points + epsilon)) * 100, 2),
+            "is_full": False # This badge doesn't make sense here
+        }
+    }
    # We get the count directly from the emoji engine's report
     emoji_total_count = emoji_counts.get("RGI Emoji Sequences", 0)
     
@@ -2885,29 +2919,70 @@ def render_cards(stats_dict, element_id, key_order=None):
     """Generates and injects HTML for standard stat cards."""
     html = []
     
-    # Use a specific key order if provided, otherwise sort alphabetically
+    # --- NEW: Smart Rendering Loop for Repertoire Cards ---
+
+    # Define the keys for our new complex cards
+    REPERTOIRE_KEYS = {
+        "ASCII-Compatible",
+        "Latin-1-Compatible",
+        "BMP Coverage",
+        "Supplementary Planes"
+    }
+    
     keys_to_render = key_order if key_order else sorted(stats_dict.keys())
     
     for k in keys_to_render:
         # Failsafe: if key_order has a key not in the dict, skip it
-        if k not in stats_dict:
+        if k not in stats_dict or stats_dict[k] is None:
             continue
+    
         v = stats_dict[k]
-        
-        # --- THIS IS THE FIX ---
-        # Check if v is a dictionary (like the new threat flags)
-        if isinstance(v, dict):
-            # Extract the count from the dict
+    
+        # --- RENDER PATH 1: New Repertoire Cards (Complex) ---
+        if k in REPERTOIRE_KEYS:
+            # 'v' is the dict {'count': ..., 'pct': ..., 'is_full': ...}
+            count = v.get("count", 0)
+    
+            # Only render the card if the count is > 0
+            if count > 0:
+                pct = v.get("pct", 0)
+                is_full = v.get("is_full", False)
+    
+                if k == "Supplementary Planes":
+                    # Special case: "Fully" badge doesn't apply
+                    badge_html = f'<div class="card-percentage">{pct}%</div>'
+                else:
+                    badge_html = (
+                        f'<div class="card-badge-full">Fully</div>'
+                        if is_full
+                        else f'<div class="card-percentage">{pct}%</div>'
+                    )
+    
+                # Build the complex card HTML
+                html.append(
+                    f'<div class="card card-repertoire">'
+                    f'<strong>{k}</strong>'
+                    f'<div class="card-main-value">{count}</div>'
+                    f'{badge_html}'
+                    f'</div>'
+                )
+    
+        # --- RENDER PATH 2: Grapheme Forensic Cards (Dict) ---
+        elif isinstance(v, dict):
             count = v.get('count', 0)
+            if count > 0:
+                html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+    
+        # --- RENDER PATH 3: Simple Cards (Int/Float) ---
         elif isinstance(v, (int, float)):
-            # It's a simple number (like from meta_cards)
             count = v
+            # Always render 0-count for these key totals
+            if count > 0 or (k in ["Total Graphemes", "Total Code Points", "RGI Emoji Sequences", "Whitespace (Total)"]):
+                html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+    
         else:
-            count = 0
-        # --- END OF FIX ---
-
-        if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
-             html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+            # Skip unknown data types
+            continue
     
     element = document.getElementById(element_id)
     if element:
@@ -3236,13 +3311,24 @@ def update_all(event=None):
         "Total Graphemes": gr_summary.get("Total Graphemes", 0),
         "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
+        # --- NEW: Repertoire Stats ---
+        # We pass the whole dict, render_cards will handle it
+        "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
+        "Latin-1-Compatible": cp_summary.get("Latin-1-Compatible"),
+        "BMP Coverage": cp_summary.get("BMP Coverage"),
+        "Supplementary Planes": cp_summary.get("Supplementary Planes"),
     }
     # Define the exact display order for the cards
     meta_cards_order = [
         "Total Code Points",
         "Total Graphemes",
         "RGI Emoji Sequences",
-        "Whitespace (Total)"
+        "Whitespace (Total)",
+        # --- NEW: Repertoire Order ---
+        "ASCII-Compatible",
+        "Latin-1-Compatible",
+        "BMP Coverage",
+        "Supplementary Planes"
     ]
     grapheme_cards = grapheme_forensics
     
