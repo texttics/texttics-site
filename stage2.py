@@ -466,7 +466,8 @@ def render_tables(segmented_reports):
             # Guardrail 3: Calculate Z-scores
             z_scores_squared = []
             for key in metrics_to_normalize:
-                mean, std_dev = metric_stats[key]
+                # Unpack all 4 values, ignore Median/Mode for Z-score
+                mean, std_dev, _, _ = metric_stats[key]
                 
                 # Guardrail 3a: Skip if σ=0 (no variance)
                 if std_dev == 0:
