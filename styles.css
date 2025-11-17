@@ -772,10 +772,11 @@ Stage 2: Heatmap Row Classes
   flex-grow: 1;
   border-color: var(--color-border);
   color: var(--color-text);
+  font-size: 2rem;
 }
 
 .macro-analysis-description {
-  font-size: 1.25rem;
+  font-size: 1rem;
   color: var(--color-text-muted);
   line-height: 1.4;
   margin: 0;
