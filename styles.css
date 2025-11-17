@@ -665,6 +665,7 @@ Stage 2: Heatmap Row Classes
 
 
 #inspector-panel-wrapper h3 {
+  border-bottom: 1px solid var(--color-border-light);
   margin: 0;                          /* убираем внешние отступы */
   padding-top: 0rem !important;    /* почти вплотную к верхней границе */
   padding-right: 1rem;
