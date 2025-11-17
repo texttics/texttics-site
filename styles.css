@@ -903,3 +903,37 @@ Stage 2: Heatmap Row Classes
   color: var(--color-primary);
   cursor: pointer;
 }
+
+/* --- Collapsible Profile Styling --- */
+
+/* The clickable summary header */
+details.profile-section > summary {
+  cursor: pointer; /* This adds the "hand" cursor on hover */
+  list-style: none; /* Hide default triangle (Firefox) */
+  display: flex; /* Use flexbox to align our icon and text */
+  align-items: center; /* Vertically center the icon and text */
+}
+
+/* Hide default triangle (Chrome, Safari, Edge) */
+details.profile-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Add our own custom indicator (a rotating chevron) */
+details.profile-section > summary::before {
+  content: '▶'; /* A right-pointing triangle/chevron */
+  font-size: 0.7em; /* Make it a bit smaller than the text */
+  margin-right: 0.75rem; /* Add some space before the title */
+  color: #6c757d; /* A neutral grey, non-distracting */
+  transition: transform 0.2s ease-in-out; /* Smooth rotation */
+}
+
+/* When the <details> element is open, rotate the indicator */
+details[open].profile-section > summary::before {
+  transform: rotate(90deg); /* Point the chevron down */
+}
+
+/* Optional: Add a subtle hover effect for feedback */
+details.profile-section > summary:hover {
+  opacity: 0.8;
+}
