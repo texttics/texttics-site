@@ -902,6 +902,7 @@ Stage 2: Heatmap Row Classes
 .status-bar-right .tool-btn:hover {
   color: var(--color-primary);
   cursor: pointer;
+  color: var(--color-primary-focus);
 }
 
 /* --- Collapsible Profile Styling --- */
@@ -925,4 +926,5 @@ details[open].profile-section > summary::before {
 /* Optional: Add a subtle hover effect for feedback */
 details.profile-section > summary:hover {
   opacity: 0.8;
+  color: var(--color-primary-focus);
 }
