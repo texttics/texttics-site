@@ -662,11 +662,122 @@ def render_tables(segmented_reports):
     document.getElementById("texture-table-output").innerHTML = "".join(html_tex)
 
 def render_sparklines(segmented_reports):
-    """Placeholder for future sparkline charts."""
-    sparkline_el = document.getElementById("sparkline-output")
-    if sparkline_el:
-        # Currently just a placeholder, can be expanded later
-        sparkline_el.innerHTML = ""
+    """
+    Generates three SVG sparklines: Entropy (Line), Density (Area), Threats (Bar).
+    """
+    container = document.getElementById("sparkline-output")
+    if not container or not segmented_reports: return
+
+    # 1. Extract Data Vectors
+    entropies = [r['metrics']['entropy'] for r in segmented_reports]
+    densities = [r['metrics']['content_density_pct'] for r in segmented_reports]
+    threats   = [r['metrics']['threats_all'] for r in segmented_reports]
+    
+    count = len(segmented_reports)
+    if count < 2:
+        container.innerHTML = "<p style='color:#999; font-style:italic;'>Insufficient segments for trend analysis.</p>"
+        return
+
+    # 2. Helper: SVG Builder
+    def build_svg(values, type='line', color='#0d6efd', y_max=None):
+        # Dimensions
+        w, h = 100, 60 # Percent / Pixels (Internal coordinate system)
+        points = []
+        
+        # Normalize Y
+        mx = y_max if y_max is not None else (max(values) if values else 1)
+        if mx == 0: mx = 1 # Avoid div zero
+        
+        step_x = w / (count - 1) if count > 1 else w
+        
+        # Build Point String
+        path_d = []
+        area_d = [f"M0,{h}"] # Start bottom-left for area
+        
+        for i, val in enumerate(values):
+            x = round(i * step_x, 1)
+            y = round(h - ((val / mx) * h), 1) # Invert Y (0 is top in SVG)
+            points.append((x, y))
+            
+            if type == 'bar':
+                # For bars, we define rects later
+                pass
+            else:
+                path_d.append(f"{x},{y}")
+                area_d.append(f"L{x},{y}")
+
+        # Close area
+        area_d.append(f"L{w},{h} Z")
+        
+        # Construct SVG XML
+        svg = [f'<svg viewBox="0 0 {w} {h}" class="spark-svg" preserveAspectRatio="none">']
+        
+        # Grid Lines (0%, 50%, 100%)
+        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" class="spark-grid" />')
+        svg.append(f'<line x1="0" y1="{h/2}" x2="{w}" y2="{h/2}" class="spark-grid" />')
+        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" class="spark-axis" />')
+
+        if type == 'line':
+            # Stroke
+            poly = " ".join(path_d)
+            svg.append(f'<polyline points="{poly}" class="spark-line" stroke="{color}" />')
+            # Fill dots
+            for px, py in points:
+                svg.append(f'<circle cx="{px}" cy="{py}" r="1.5" fill="{color}" />')
+                
+        elif type == 'area':
+            path_str = " ".join(area_d).replace("M", "M ").replace("L", " L ").replace("Z", " Z")
+            # Polygon for area
+            svg.append(f'<path d="{path_str}" class="spark-area" fill="{color}" />')
+            # Line on top
+            poly = " ".join(path_d)
+            svg.append(f'<polyline points="{poly}" class="spark-line" stroke="{color}" stroke-width="1.5" />')
+
+        elif type == 'bar':
+            bar_w = (w / count) * 0.8
+            for i, val in enumerate(values):
+                if val > 0:
+                    bar_h = (val / mx) * h
+                    bx = (i * (w / count)) + ((w/count)*0.1)
+                    by = h - bar_h
+                    # Highlight critical threats in darker red
+                    bar_col = "#dc3545" if val > 0 else color
+                    svg.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" class="spark-bar" />')
+
+        svg.append('</svg>')
+        return "".join(svg)
+
+    # 3. Generate Charts
+    # Chart 1: Entropy (Purple for complexity)
+    svg_entropy = build_svg(entropies, 'line', '#6f42c1')
+    
+    # Chart 2: Density (Green for mass)
+    svg_density = build_svg(densities, 'area', '#198754', y_max=100) # Fixed 100% scale
+    
+    # Chart 3: Threats (Red for danger)
+    max_threat = max(threats) if threats else 0
+    # Scale Y max to at least 5 so small threats don't look huge
+    scale_threat = max(5, max_threat) 
+    svg_threat = build_svg(threats, 'bar', '#dc3545', y_max=scale_threat)
+
+    # 4. Inject HTML
+    html = f"""
+    <div class="sparkline-container">
+        <div class="spark-card">
+            <div class="spark-title">Run-Length Entropy (Rhythm)</div>
+            {svg_entropy}
+        </div>
+        <div class="spark-card">
+            <div class="spark-title">Content Density (Mass)</div>
+            {svg_density}
+        </div>
+        <div class="spark-card">
+            <div class="spark-title">Threat Events (Pulse)</div>
+            {svg_threat}
+        </div>
+    </div>
+    """
+    container.innerHTML = html
 
 @create_proxy
 async def copy_report_to_clipboard(event):
