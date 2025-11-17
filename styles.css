@@ -925,6 +925,5 @@ details[open].profile-section > summary::before {
 
 /* Optional: Add a subtle hover effect for feedback */
 details.profile-section > summary:hover {
-  opacity: 0.8;
   color: var(--color-primary-focus);
 }
