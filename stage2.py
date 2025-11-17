@@ -420,8 +420,26 @@ def render_tables(segmented_reports):
     elif not segmented_reports:
         document.getElementById("macro-table-output").innerHTML = "<div>No Data</div>"
         return
-
-    # 3. Calculate stats (μ, σ) for each metric
+    else:
+        # --- v3 Anomaly Layer ---
+        
+        # 1. Define metrics to analyze
+        metrics_to_normalize = [
+            "avg_content_length", 
+            "v3_content_density", 
+            "v3_gap_density", 
+            "v3_flag_density", 
+            "v3_critical_density"
+        ]
+        
+        # 2. Extract metric vectors
+        metric_data = {key: [] for key in metrics_to_normalize}
+        for report in segmented_reports:
+            metrics = report['metrics']
+            for key in metrics_to_normalize:
+                metric_data[key].append(metrics.get(key, 0.0))
+        
+        # 3. Calculate stats (μ, σ) for each metric
         metric_stats = {}
         for key, values in metric_data.items():
             metric_stats[key] = _calculate_stats(values) # (mean, std_dev)
@@ -431,14 +449,49 @@ def render_tables(segmented_reports):
         total_vol = sum(r['metrics']['volume'] for r in segmented_reports)
         suppress_zscore = total_vol < 100
 
-    # Guardrail 2: Small Sample Suppression
+        # 4. Calculate Anomaly Score and assign heatmap class to each report
+        for report in segmented_reports:
+            metrics = report['metrics']
+            
+            # Guardrail 1: Critical flags always get the highest alert
+            if metrics.get("threats_critical", 0) > 0:
+                report["heatmap_class"] = "heatmap-critical"
+                continue
+
+            # Guardrail 2: Small Sample Suppression
             if suppress_zscore:
                 report["heatmap_class"] = "heatmap-normal"
                 continue
 
             # Guardrail 3: Calculate Z-scores
+            z_scores_squared = []
             for key in metrics_to_normalize:
-    
+                mean, std_dev = metric_stats[key]
+                
+                # Guardrail 3a: Skip if σ=0 (no variance)
+                if std_dev == 0:
+                    continue
+                    
+                value = metrics.get(key, 0.0)
+                z = (value - mean) / std_dev
+                z_scores_squared.append(z ** 2)
+            
+            if not z_scores_squared:
+                report["heatmap_class"] = "heatmap-normal"
+                continue
+                
+            # Combine into a single score: sqrt(sum(z^2))
+            anomaly_score = sum(z_scores_squared) ** 0.5
+            
+            # 5. Bin the score into a heatmap class
+            if anomaly_score > 3.0: # Arbitrary threshold for high anomaly
+                report["heatmap_class"] = "heatmap-high"
+            elif anomaly_score > 1.5: # Arbitrary threshold for low anomaly
+                report["heatmap_class"] = "heatmap-low"
+            else:
+                report["heatmap_class"] = "heatmap-normal"
+        # --- End of Anomaly Layer ---
+
     # --- PRE-CALCULATION: FIND COLUMN MAXIMA FOR HEATMAPS ---
     # We need the max value for every column to normalize colors
     max_vals = {
@@ -490,12 +543,15 @@ def render_tables(segmented_reports):
         style_space = _get_heat_style(m['space_runs'], max_vals['space_runs'], "13, 202, 240") # Cyan
         
         # Threat Coloring (Threshold, not Gradient)
+        # Use heatmap class from Anomaly Layer as base row style
+        row_cls = rep.get('heatmap_class', '')
+        
         cls_bidi = "cell-critical" if m['bidi_atoms'] > 0 else ""
         cls_join = "cell-warning" if m['join_atoms'] > 0 else ""
         cls_crit = "cell-critical" if m['threats_critical'] > 0 else ""
         cls_all = "cell-warning" if m['threats_all'] > 0 else ""
 
-        html_macro.append(f'<tr>')
+        html_macro.append(f'<tr class="{row_cls}">')
         html_macro.append(f'<td>{rep["segment_id"]}</td>')
         html_macro.append(f'<td>{link}</td>')
         html_macro.append(f'<td>{m["volume"]}</td>')
@@ -523,8 +579,8 @@ def render_tables(segmented_reports):
         '<table class="matrix">',
         '<thead><tr>',
         '<th rowspan="2">Segment</th>',
-        '<th colspan="16">Content Run-Length Distribution (Graphemes)</th>',
-        '<th colspan="4">Texture Statistics</th>',
+        '<th colspan="16">Content Run-Length Distribution (Volume Share %)</th>',
+        '<th colspan="6">Texture Statistics</th>',
         '</tr><tr>'
     ]
     # Header numbers 1..15, 16+
@@ -552,15 +608,14 @@ def render_tables(segmented_reports):
             style = _get_heat_style(val_vol_pct, max_vals['bins'][i], "13, 110, 253")
             
             # Render cell
-            # If 0%, show empty or dash for cleaner look? Or just 0.0? Let's show number if > 0.
-            display_val = f"{val_vol_pct}%" if val_vol_pct > 0 else '<span style="color:#ccc; font-size:0.8em;">0</span>'
+            display_val = f"{val_vol_pct}%" if val_vol_pct > 0 else '<span style="color:#ccc; font-size:0.8em;">-</span>'
             
             html_tex.append(f'<td {style} class="texture-cell" title="{tooltip}">{display_val}</td>')
             
         # Statistics
         html_tex.append(f'<td class="stat-cell">{m["mean_run"]}</td>')
         html_tex.append(f'<td class="stat-cell">{m["median_run"]}</td>')
-        html_tex.append(f'<td class="stat-cell">{m["mode_run"]}</td>'
+        html_tex.append(f'<td class="stat-cell">{m["mode_run"]}</td>')
         html_tex.append(f'<td class="stat-cell">{m["std_dev"]}</td>')
         html_tex.append(f'<td class="stat-cell">{m["max_run"]}</td>')
         html_tex.append(f'<td class="stat-cell">{m["entropy"]}</td>')
@@ -602,7 +657,7 @@ def render_tables(segmented_reports):
         html_tex.append('<td colspan="6"></td>')
         
     html_tex.append('</tr>')
-                        
+
     html_tex.append('</tbody></table>')
     document.getElementById("texture-table-output").innerHTML = "".join(html_tex)
 
