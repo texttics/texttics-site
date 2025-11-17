@@ -4,7 +4,8 @@ import math
 from pyscript import document, window
 from pyodide.ffi import create_proxy
 from pyodide.http import pyfetch
-import bisect 
+import bisect
+import statistics
 
 # ---
 # 0. STAGE 2 DATA STORES & LOADERS
@@ -135,15 +136,36 @@ def _calculate_entropy(run_lengths):
         entropy -= p * math.log2(p)
     return entropy
 
-def _calculate_stats(values: list) -> (float, float):
-    """Returns Mean and StdDev."""
+def _calculate_stats(values: list):
+    """Returns Mean, StdDev, Median, and Mode."""
     n = len(values)
-    if n == 0: return 0.0, 0.0
+    if n == 0: return 0.0, 0.0, 0, 0
+    
+    # Mean
     mean = sum(values) / n
-    if n == 1: return mean, 0.0
-    variance = sum((x - mean) ** 2 for x in values) / n
-    std_dev = variance ** 0.5
-    return mean, std_dev
+    
+    # StdDev
+    if n == 1:
+        std_dev = 0.0
+    else:
+        variance = sum((x - mean) ** 2 for x in values) / n
+        std_dev = variance ** 0.5
+        
+    # Median
+    median = statistics.median(values)
+    
+    # Mode (Robust handling for multi-modal data - takes the smallest mode)
+    try:
+        mode = statistics.mode(values)
+    except statistics.StatisticsError:
+        # If multiple modes, statistics.mode might raise error in older Py versions
+        # or return the first one. We fallback to a simple counter.
+        counts = {}
+        for v in values: counts[v] = counts.get(v, 0) + 1
+        max_freq = max(counts.values())
+        mode = min([k for k, v in counts.items() if v == max_freq])
+
+    return mean, std_dev, median, mode
 
 # ---
 # 2. CORE ANALYSIS PIPELINE
@@ -237,7 +259,7 @@ def compute_segmented_profile(core_data, N=10):
 
         # --- Advanced Statistics ---
         total_content_runs = len(content_run_lengths)
-        mean_len, std_dev = _calculate_stats(content_run_lengths)
+        mean_len, std_dev, median, mode = _calculate_stats(content_run_lengths)
         max_run = max(content_run_lengths) if content_run_lengths else 0
         entropy = _calculate_entropy(content_run_lengths)
 
@@ -292,6 +314,8 @@ def compute_segmented_profile(core_data, N=10):
             # Stats
             "mean_run": round(mean_len, 2),
             "std_dev": round(std_dev, 2),
+            "median_run": median,
+            "mode_run": mode,
             "max_run": max_run,
             "entropy": round(entropy, 2),
             
@@ -442,7 +466,7 @@ def render_tables(segmented_reports):
     # Header numbers 1..15, 16+
     for i in range(1, 16): html_tex.append(f'<th>{i}</th>')
     html_tex.append('<th>16+</th>')
-    html_tex.append('<th>Mean (&mu;)</th><th>StdDev (&sigma;)</th><th>Max Run</th><th>Entropy (H)</th>')
+    html_tex.append('<th>Mean (&mu;)</th><th>Median</th><th>Mode</th><th>StdDev (&sigma;)</th><th>Max Run</th><th>Entropy (H)</th>')
     html_tex.append('</tr></thead><tbody>')
 
     for rep in segmented_reports:
@@ -458,6 +482,8 @@ def render_tables(segmented_reports):
             
         # Statistics
         html_tex.append(f'<td class="stat-cell">{m["mean_run"]}</td>')
+        html_tex.append(f'<td class="stat-cell">{m["median_run"]}</td>')
+        html_tex.append(f'<td class="stat-cell">{m["mode_run"]}</td>'
         html_tex.append(f'<td class="stat-cell">{m["std_dev"]}</td>')
         html_tex.append(f'<td class="stat-cell">{m["max_run"]}</td>')
         html_tex.append(f'<td class="stat-cell">{m["entropy"]}</td>')
