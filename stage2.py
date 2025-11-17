@@ -181,9 +181,10 @@ def compute_segmented_profile(core_data, N=10):
     if total_graphemes == 0:
         return {"error": "No graphemes to analyze."}
 
-    # 2. Segmentation (by Grapheme index)
-    chunk_size = total_graphemes // N
-    if chunk_size == 0: chunk_size = 1
+    # 2. Segmentation (Linear Interpolation)
+    # Adjust N if text is shorter than the requested segment count
+    actual_N = min(N, total_graphemes)
+    if actual_N < 1: actual_N = 1
         
     segmented_reports = []
     
@@ -199,13 +200,12 @@ def compute_segmented_profile(core_data, N=10):
         current_cp_index += grapheme_lengths[i]
     cp_map[total_graphemes] = current_cp_index # Add final index for last segment
     
-    for i in range(N):
-        # 3. Get the slice (chunk) for this segment
-        start_grapheme_index = i * chunk_size
-        end_grapheme_index = (i + 1) * chunk_size if i < N - 1 else total_graphemes
+    for i in range(actual_N):
+        # 3. Get the slice (chunk) for this segment using Linear Interpolation
+        # This ensures remainders are distributed evenly across segments
+        start_grapheme_index = (i * total_graphemes) // actual_N
+        end_grapheme_index = ((i + 1) * total_graphemes) // actual_N
         
-        if start_grapheme_index >= total_graphemes: continue
-            
         segment_graphemes = grapheme_list[start_grapheme_index:end_grapheme_index]
         
         # 4. Feature Extraction (Grapheme-based RLE)
@@ -375,7 +375,7 @@ def compute_segmented_profile(core_data, N=10):
         }
         
         report = {
-            "segment_id": f"{i+1} / {N}",
+            "segment_id": f"{i+1} / {actual_N}",
             "indices_str": f"{start_grapheme_index}–{end_grapheme_index-1}",
             "start_grapheme_index": start_grapheme_index,
             "end_grapheme_index": end_grapheme_index, # This is an exclusive index
