@@ -771,6 +771,7 @@ Stage 2: Heatmap Row Classes
 .macro-analysis-control .tool-btn {
   flex-grow: 1;
   border-color: var(--color-border);
+  background-color: var(--color-primary);
   color: var(--color-white);
   font-size: 1.5rem;
 }
