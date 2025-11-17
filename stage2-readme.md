@@ -1,222 +1,160 @@
 # Stage 2: The Macrostructure Profile ("Structural MRI")
-
 ## 1. 🔬 Core Philosophy: From "Microscope" to "Altitude"
-
-The Text...tics project is a unified, two-part analysis system. Each part serves a distinct, complementary purpose, following a "Microscope-to-Altitude" philosophy.
-
-* **Stage 1 (The Microscope):** This is the core `app.py` application. It functions as a "microscope," performing a deep, *atomic-level* integrity analysis. It examines every individual **Code Point** and **Grapheme** to find specific, known *threats*.
-    * **It Answers:** "Does this text contain a threat? Is there a single `U+202E` Bidi override? Is there a lone `U+200D` Zero Width Joiner? Is this emoji sequence valid?"
-    * **Its Goal:** **Threat Identification**. It provides a definitive, granular report of all atomic-level integrity flags.
-
-* **Stage 2 (The Altitude View):** This is the new `stage2.py` macro-profile, which opens in a separate tab. It functions as an "altitude view" or a "structural MRI," performing a *macro-shape* analysis. It slices the text into segments and analyzes the *distribution* and *concentration* of structural properties.
-    * **It Answers:** "**Where** in the text are the anomalies? Is there a segment with unusually high punctuation density? Is there a "normal" looking segment that contains 5 critical invisible threats? Does the *shape* of the text (e.g., average word length) change suddenly?"
-    * **Its Goal:** **Anomaly & Distribution Analysis**.
-
-Stage 2 is not just a summary of Stage 1; it is a new analytical dimension. It provides the "where" (the altitude) to Stage 1's "what" (the microscope), allowing an analyst to pinpoint the exact location of structural anomalies and threat concentrations.
-
+The **Text...tics** project operates on a unified, two-tier analytical philosophy known as the "Microscope-to-Altitude" model. While Stage 1 provides the atomic ground truth, Stage 2 provides the structural context.
+### The Limits of the Microscope (Stage 1)
+**Stage 1** acts as a high-powered **"Microscope."** It performs a deep, atomic-level integrity analysis. It examines every individual **Code Point** and **Grapheme** in isolation to identify specific, known threats.
+* **It Answers:** "Does this text contain a threat? Is there a `U+202E` Bidi override at index 45? Is this emoji sequence valid?"
+* **The Blind Spot:** A microscope cannot see *shape*. A text can be composed entirely of "safe" characters (e.g., Latin letters and numbers) yet be structured in a way that indicates a malicious payload (e.g., a Base64 blob hidden inside a paragraph of prose). Stage 1 sees "safe characters"; it misses the **anomaly of distribution**.
+### The Power of Altitude (Stage 2)
+**Stage 2** acts as the **"Altitude View"** or **"Structural MRI."** It does not look at atoms in isolation; it looks at the **distribution of properties** across time (the length of the string). It slices the text into segments and analyzes the *rhythm, density, and texture* of the data.
+* **It Answers:** "Where in the text does the *texture* change? Is there a segment that is statistically too dense? Is there a 'normal' looking segment that contains a sudden drop in entropy? Does the rhythm of the text shift from 'human prose' to 'machine code' halfway through?"
+* **Its Goal:** **Anomaly Detection via Pattern Recognition.** It allows the analyst to spot "outliers of form" even when the "content" appears valid.
+Stage 2 is not a summary of Stage 1. It is a distinct analytical dimension. It provides the **"Where"** (the location and shape) to Stage 1's **"What"** (the specific character identity).
 ---
-
-## 2. 🧬 The Analytical Model: The Dual-Atom "Slice"
-
-The Macrostructure Profile is built on two core concepts: **Grapheme-Based Slicing** (for human-perceived volume) and a **Hybrid RLE Engine** (for dual-atom analysis).
-
-### The Grapheme-Based "Slice" (Segmentation)
-
-To create a "structural MRI," we must first slice the text into segments of equal "volume." In text analysis, there are three ways to slice: by byte, by code point, or by grapheme.
-
-Slicing by byte or code point is a machine-centric view that is meaningless to a human. It could cut an emoji (`👨‍👩‍👧‍👦`) or a complex character (`é`) in half, corrupting the analysis.
-
-The primary unit of "volume" for a human is the **Grapheme Cluster**, as defined by **Unicode Standard Annex #29 (UAX #29)**. This is what a user *perceives* as a single "character."
-
-Therefore, Stage 2's first and most critical step is to use the browser's native `Intl.Segmenter` to segment the entire text into its full list of graphemes. This list is then split into `N` equal-sized segments (e.g., 10 "slices" of 100 graphemes each).
-
-This ensures that each "MRI slice" represents an equal portion of the *user-perceived text*, providing a meaningful and consistent basis for comparison.
-
-### The "Grapheme-RLE" Engine (The 3-Way Classification)
-
-This is the core "brain" of `compute_segmented_profile` in `stage2.py`. It extends Stage 1's "Dual-Atom" philosophy by using a hybrid Grapheme/Code Point model to analyze the *shape* of each slice.
-
-The engine iterates through each grapheme in a slice and performs a **3-way classification** to determine its structural purpose. This robust model can analyze prose, source code, or "garbage" text with equal, deterministic precision.
-
-1.  **Is it an "Invisible Atom"?**
-    * **Logic:** The engine first checks if the grapheme's base code point has a property like `Bidi_Control`, `Join_Control`, or `Default_Ignorable_Code_Point`.
-    * **Behavior:** These are not "content" or "gaps"; they are a third category of "structural junk." They are counted in their respective "Invisible Atom" bins (`Bidi Atoms`, `Join Atoms`, `Other Cf/Cc`).
-    * **Crucially, they *break* any active Content or Separator run.** This correctly identifies them as "run-breaking" atoms that add hidden structural cost.
-
-2.  **Is it a "Separator"?**
-    * **Logic:** If not an invisible, the engine checks if the grapheme is a `White_Space` or a Line Break (`LF`, `CR`).
-    * **Behavior:** A separator *breaks* an active "Content Run." It is then counted, either by incrementing `line_break_count` or by starting/continuing a "Space Run."
-
-3.  **Is it "Content"?**
-    * **Logic:** If the grapheme is neither an invisible nor a separator, it is classified as "Content."
-    * **Behavior:** A content grapheme *breaks* an active "Space Run" and starts/continues a "Content Run."
-    * **Examples:** This logic correctly identifies `aaa'a` (with an apostrophe) as a *single* Content Run. It also correctly identifies `if(x==1):` as a *single* Content Run, making it a robust "token" finder for analyzing source code.
-
-This 3-way classification engine allows Stage 2 to profile two distinct layers simultaneously:
-
-* **Visible Structure (Grapheme-Based Runs):** It profiles the "shape" of what the user can see by analyzing "Content Runs" (the tokens) and "Separator Runs" (the gaps).
-* **Invisible Integrity (Code Point-Based Atoms):** It profiles the "hidden" machine-level structure by counting the raw Code Points of invisible characters.
-
+## 2. 🧬 The Analytical Model: Interpolated Dual-Atom Slicing
+The Macrostructure Profile is built on a rigorous mathematical foundation designed to normalize texts of any length into a comparable "standardized view."
+### 2.1 The Unit of Volume: The Grapheme Cluster
+To create a "Structural MRI," we must first slice the text into segments of equal "volume." In text analysis, strictly slicing by **byte** or **code point** is a machine-centric error that corrupts human-perceived meaning.
+* Slicing by code point splits surrogate pairs (destroying the character).
+* Slicing by code point splits grapheme clusters (e.g., severing a "Family" emoji `👨‍👩‍👧‍👦` into four separate people and three invisible joiners).
+Stage 2 utilizes the browser's native `Intl.Segmenter` (UAX #29 compliant) to determine the **Grapheme Cluster** as the fundamental unit of volume. This ensures that every slice represents an equal portion of *user-perceived text*, regardless of the underlying byte complexity.
+### 2.2 The Slicing Algorithm: Linear Interpolation
+Previous iterations used "naive chunking" (e.g., `total // 10`), which resulted in "remainder dumping"—where the final segment would be significantly larger or smaller than the others, creating false statistical anomalies.
+Stage 2 (v3) implements **Linear Interpolation Slicing**. This algorithm distributes the "remainder" characters evenly across the segments, ensuring maximum uniformity.
+$$\text{Start}_i = \lfloor \frac{i \times \text{Total}}{N} \rfloor, \quad \text{End}_i = \lfloor \frac{(i+1) \times \text{Total}}{N} \rfloor$$
+This ensures that a 17-character string sliced into 10 segments results in a balanced distribution (e.g., 2, 1, 2, 2, 1...) rather than a lopsided one (1, 1, ... 8). This mathematical smoothing is critical for the accuracy of the heatmap.
+### 2.3 The "3-Way" RLE Classification Engine
+Once sliced, the engine performs a **Run-Length Encoding (RLE)** analysis on every grapheme to determine the "Texture" of the segment. It classifies every atom into one of three structural bins:
+1. **The Invisible Atom (Structural Integrity):**
+    * **Definition:** Characters that have no visual width but alter the text state. Includes `Bidi_Control`, `Join_Control` (ZWJ/ZWNJ), and `Default_Ignorable`.
+    * **Behavior:** These are treated as **"Run Breakers."** They interrupt the flow of both Content and Separators. They represent "hidden structural cost."
+2. **The Separator (The Void):**
+    * **Definition:** Characters that create visual space. Includes `White_Space` and the UAX #29 `Newline` set (CR, LF, LS, PS).
+    * **Behavior:** These create "Gaps." A sequence of separators forms a **"Space Run."**
+3. **The Content (The Mass):**
+    * **Definition:** Anything that is visible and not a separator. Letters, Numbers, Punctuation, Symbols, Emoji.
+    * **Behavior:** These create "Mass." A sequence of content characters forms a **"Content Run."**
+    * **Significance:** This logic correctly identifies `aaa'a` as a *single* run (prose token) and `if(x==1):` as a *single* run (code token), making it robust across different text types.
 ---
-
-## 3. 📊 The "MRI" Table: Anatomy of a Segment Profile
-
-The primary UI is a table where each row is one "slice" of the text, presenting its complete structural story. This table is the "UI Contract" rendered by `render_macro_table`.
-
-### Section 1: Identification
-*What and where this slice is.*
-
-* **Segment:** The slice number (e.g., `1 / 10`).
-* **Indices (Grapheme):** The `start–end` grapheme index range for this slice. This is not just text; it is a **clickable link** that forms the "Interactive Bridge" back to Stage 1, allowing a user to instantly highlight this segment in the main text editor.
-* **Grapheme Count (Volume):** The total number of graphemes in this slice (the `N` for this segment).
-
-### Section 2: Visible Content Run Histogram
-*The "shape" of the "tokens" in this slice.*
-
-* **1 gr. / 2 gr. / 3-5 gr. / 6-10 gr. / 11+ gr.:** These columns form a 5-bin histogram of "Content Run" lengths. A sudden spike in the `1 gr.` or `2 gr.` bins in a prose segment is a strong anomaly signal, often indicating fragmented text or source code.
-* **Total Runs:** The total count of Content Runs in the slice.
-* **Avg. Length (μ):** The mean length (in graphemes) of a Content Run. This is a key metric for the anomaly detector.
-
-### Section 3: Visible Separator Run Profile
-*The "shape" of the "gaps" between the content.*
-
-* **Space Runs:** The number of `Space` sequences.
-* **Line Breaks:** A raw count of Line Break characters.
-* **Avg. Space (μ):** The mean length of a Space Run. A value of `1.0` indicates single-spacing, while a value of `2.0` would indicate consistent double-spacing.
-
-### Section 4: Invisible Atom Integrity (Code Point Count)
-*The hidden structural cost of this slice, as observed by Stage 2.*
-
-These columns represent the *raw physical observation* from the Stage 2 "MRI" (i.e., `stage2.py`'s *own* analysis of its local UAX data files).
-
-* **Bidi Atoms:** Raw count of `Bidi_Control` code points.
-* **Join Atoms:** Raw count of `Join_Control` (ZWJ, ZWNJ) code points.
-* **Other (Cf/Cc):** Raw count of all other Format, Control, and Ignorable code points (e.g., ZWSP, Soft Hyphen).
-
-### Section 5: Threat Location (Stage 1 Bridge)
-*The interpreted threat level, as diagnosed by Stage 1.*
-
-These columns represent the *interpreted diagnosis* from the Stage 1 "Pathologist" (i.e., `app.py`). Stage 2 counts how many of Stage 1's `forensic_flags` fall within this segment's code point boundaries.
-
-* **Threats (Critical):** This is the most important column. It is **not** a simple sum of Section 4. It is a de-duplicated count of all code points in this slice that were flagged by Stage 1 with a *semantically critical* flag. This is defined in the `CRITICAL_FLAGS_SET` in `stage2.py` and includes high-risk attack vectors like:
-    * `Bidi Control (UAX #9)`
-    * `Join Control (Structural)`
-* **Threats (All Flags):** A de-duplicated count of all other code points in this slice that were flagged by Stage 1 (e.g., `Flag: Invalid Variation Selector`, `Flag: Deceptive Spaces`), excluding purely informational `Prop:` flags.
-
+## 3. 📈 The Visual Layer: "The Structural Seismograph"
+The first thing the analyst sees is not a table, but a **"Structural Triptych."** This is a set of three synchronized, interactive sparklines that visualize the **Narrative Flow** of the text.
+Tables are excellent for values, but poor for trends. The Seismograph provides an immediate visual "ECG" of the text, allowing the user to spot sudden changes in authorship, inserted payloads, or structural corruption before reading a single number.
+### Track 1: Run-Length Entropy (The Rhythm)
+* **Visual:** A Purple Line Chart.
+* **Metric:** **Shannon Entropy ($H$)**, normalized to a scale of **0 to 4.0 bits**.
+* **The Question:** *"How complex is the pattern of word lengths?"*
+* **Forensic Interpretation:**
+    * **High/Volatile ($H \approx 3.5$):** Natural Language. Humans use a mix of short (`a`, `the`) and long (`extraordinary`) words, creating high entropy.
+    * **Low/Flat ($H < 1.0$):** Machine Data or Padding. A sequence like `AAAA BBBB CCCC` has very low entropy. A drop in this line indicates a "dead zone" of repetitive data.
+    * **Sudden Spike:** An encrypted block or Base64 string (which maximizes randomness).
+### Track 2: Content Density (The Mass)
+* **Visual:** A Green Filled Area Chart.
+* **Metric:** **Content Density %** (Percentage of the segment composed of visible graphemes vs. gaps).
+* **The Question:** *"How solid is this text?"*
+* **Forensic Interpretation:**
+    * **High Plateau (~90-100%):** Dense prose or a "Wall of Text."
+    * **Low Valley (~50%):** A list, poetry, or code with heavy indentation.
+    * **Dip:** If a dense text suddenly dips in the middle, it suggests a format shift (e.g., an inserted table or list).
+### Track 3: Threat Events (The Pulse)
+* **Visual:** A Red Bar Chart.
+* **Metric:** **Threat Count** (Absolute count of Stage 1 forensic flags in that segment).
+* **The Question:** *"Is this segment radioactive?"*
+* **Forensic Interpretation:**
+    * **Flat Line:** Clean text.
+    * **Single Spike:** A specific, localized attack (e.g., a Bidi override inserted in the middle of a sentence).
+    * **Rising Bar:** A concentration of anomalies (e.g., a cluster of invisible separators).
+### The "Cross-Marking" System
+This is the killer feature of the Triptych.
+* **Logic:** Whenever `Track 3 (Threats)` registers a value $> 0$, the system draws a **faint red vertical line** through `Track 1 (Entropy)` and `Track 2 (Density)` at that exact X-coordinate.
+* **Value:** This creates an instant **Visual Correlation.** The analyst can see, at a glance: *"The Entropy line dropped exactly where the Red Threat line appeared."* This binds the structural symptom to the forensic cause.
 ---
-
-## 4. 🔥 The v3 Analytics Layer (The "Heatmap")
-
-A table of 180 numbers is data. A *heatmap* is an answer. The v3 Analytics Layer is a system built into `render_macro_table` that runs a final statistical analysis on the `segmented_reports` list to *automatically find and highlight anomalies*.
-
-This turns the "MRI" from a static table into a dynamic, "heat-seeking" anomaly detector.
-
-### Core Density Metrics
-First, the system calculates four "Core Density Metrics" for each segment. These normalize the raw counts by the segment's volume (`grapheme_count`), making them comparable.
-
-1.  **`content_density`:** `total_content_graphemes / grapheme_count`
-    * **Meaning:** "How much 'text' is in this slice?" (A value of 1.0 would be pure content).
-2.  **`gap_density`:** `(sum(space_run_lengths) + line_breaks) / grapheme_count`
-    * **Meaning:** "How much 'visible separation' is in this slice?"
-3.  **`flag_density`:** `all_flags / grapheme_count`
-    * **Meaning:** "How much 'hidden structural junk' is in this slice?"
-4.  **`critical_density`:** `threats_critical / grapheme_count`
-    * **Meaning:** "What is the concentration of 'high-risk threats' in this slice?"
-
-### The Structural Opacity Index
-These metrics are combined to create the **Structural Opacity Index**, a key heuristic for finding anomalies:
-
-> **`Opacity Index = gap_density + flag_density`**
-
-This index captures the classic anomaly signal: a slice with **low `content_density`** but a **high `opacity_index`** is a segment filled with "structural junk" (gaps, invisibles, flags) but very little visible content.
-
-### The Anomaly Score (Z-Score)
-Next, the system identifies *statistical* outliers using a Z-score calculation:
-1.  **Collect Vectors:** It builds a list of values for each of the Core Density Metrics and `avg_content_length` across all `N` segments.
-2.  **Calculate Stats:** It finds the mean (`μ`) and standard deviation (`σ`) for each metric's vector.
-3.  **Calculate Z-Scores:** For each segment, it calculates a Z-score for *each metric* (`z = (value - μ) / σ`).
-4.  **Combine:** It combines these into a single, unified `Anomaly Score` for the segment, representing its total statistical deviation from the norm:
-    $$
-    \text{Anomaly Score}_i = \sqrt{ \sum_{m} (z^m_i)^2 }
-    $$
-
-### The Final Readout (Guardrails & Heatmap)
-Finally, the system uses two critical "guardrails" to assign a final CSS heatmap class to each `<tr>` row:
-
-1.  **Guardrail 1 (The Override):** The system *first* checks if `metrics.get("threats_critical", 0) > 0`. If `true`, the segment is *always* and *immediately* assigned `heatmap-critical`. A known threat is, by definition, the most important anomaly and overrides any statistical score.
-2.  **Guardrail 2 (The Statistics):** If no critical threat is found, the system uses the `Anomaly Score` to assign a statistical class:
-    * `heatmap-high` (e.g., `Anomaly Score > 3.0`)
-    * `heatmap-low` (e.g., `Anomaly Score > 1.5`)
-    * `heatmap-normal` (for all others)
-
-This layered logic ensures the user's eye is drawn *first* to known, high-risk threats, and *second* to statistically "weird" segments.
-
+## 4. 📊 Table 1: The Macro-MRI (Overview)
+Following the Seismograph is the **Macro-MRI Table**. This is the "Triage" view. It breaks the text down into segments and analyzes their **Density** and **Integrity**.
+### The Logic: "Density vs. Quantity"
+In Stage 2, we move away from raw counts (which are misleading if segments vary in size) and focus on **Density Metrics**.
+* **Content %:** How much of this slice is text?
+* **Gap %:** How much is whitespace?
+* **Space Runs:** The number of distinct gaps.
+* **Avg Gap:** The average width of those gaps.
+### The "Heatmap" Anomaly Detector
+This table utilizes a sophisticated **Z-Score Anomaly Detector** to highlight deviations.
+1. **The Baseline:** It calculates the Mean ($\mu$) and Standard Deviation ($\sigma$) for the entire text.
+2. **The Z-Score:** For each segment, it calculates how many standard deviations it is from the mean.
+3. **The Paint:**
+    * **Green/White:** Within normal parameters.
+    * **Yellow/Orange:** Statistically significant deviation ($Z > 1.5$).
+    * **Red (Critical):** **Threshold Override.** If any *Critical Threat* (Bidi/Join control) is found, the row is painted Red regardless of statistics.
+### The "Small Sample" Guardrail
+Statistical analysis is noisy on very short texts. If the total volume is **< 100 graphemes**, the system automatically **suppresses the Z-Score Heatmap** (painting the rows neutral). This prevents "False Alarms" where a standard sentence looks like a statistical outlier simply because the dataset is too small to establish a baseline.
 ---
-
-## 5. 🏗️ Architectural Model: The "Provider-Consumer" Pipeline
-
-To ensure 100% data consistency and prevent redundant calculations, the entire Stage 1 / Stage 2 system operates on a clean "Provider-Consumer" model.
-
-### Stage 1 (Provider)
-The main `app.py` is the "Provider." When `update_all()` finishes its analysis, it packages a complete "Core Data" payload and exposes it to the browser.
-1.  **Event:** `update_all()` runs on every text input.
-2.  **Payload:** It gathers `grapheme_list`, `grapheme_lengths_codepoints` (a critical prefix-sum array), the full `forensic_flags` dictionary (including all emoji and integrity flags), and the `nfkc_casefold_text`.
-3.  **Export:** It packages this into a Python `dict`, converts it to a pure JavaScript object (using `to_js(..., dict_converter=window.Object.fromEntries)` to prevent proxy errors), and saves it to `window.TEXTTICS_CORE_DATA`.
-
-### User Action
-1.  The user clicks the "Analyze Macrostructure" button (`btn-run-stage2`).
-2.  A simple JavaScript listener calls `window.open('stage2.html', '_blank')`.
-
-### Stage 2 (Consumer)
-The new `stage2.html` tab opens, and `stage2.py` boots as the "Consumer." Its `async def main()` function executes a clear, linear pipeline:
-
-1.  **`await load_stage2_data()`:** The consumer *first* asynchronously fetches its *own* set of required UAX data files (`WordBreakProperty.txt`, `PropList.txt`, `DerivedCoreProperties.txt`). This is a critical design choice that makes Stage 2 self-sufficient and solely responsible for its own RLE logic.
-2.  **Read Payload:** It reads the data from the first tab using `window.opener.TEXTTICS_CORE_DATA` and converts it back to a native Python `dict` using `.to_py()`.
-3.  **`compute_segmented_profile(core_data)`:** This is the main analysis.
-    * It first builds the `grapheme_to_cp_map` from the `grapheme_lengths_codepoints` payload. This O(N) operation enables O(1) lookups for mapping Stage 1 flags.
-    * It loops `N` times to create each "slice."
-    * In each slice, it inner-loops through `segment_graphemes`, calling `get_grapheme_base_properties()` to query its *local* `DATA_STORES` and perform the 3-way RLE classification ("Invisible," "Separator," "Content").
-    * It bins the run lengths (`content_run_lengths`, `space_run_lengths`).
-    * It uses the `grapheme_to_cp_map` to find the `start_cp_index` and `end_cp_index` for this slice.
-    * It iterates through the `forensic_flags` payload from Stage 1, using the index map to count all flags that fall within its boundaries.
-    * It calculates all Core Density Metrics.
-    * It returns the complete `segmented_reports` list of dictionaries.
-4.  **`render_macro_table(segmented_reports)`:**
-    * The renderer receives the raw report data.
-    * It performs the **v3 Analytics (Z-Score)** calculations.
-    * It applies the **Heatmap Guardrails** (`heatmap-critical`, etc.).
-    * It builds and injects the final HTML, including the clickable "Interactive Bridge" links.
-
+## 5. 🔬 Table 2: The Texture-MRI (Forensic Fingerprint)
+This is the deepest layer of the analysis. The **Texture-MRI** moves beyond "how much text is there" to answer "what is the *shape* of that text?"
+It profiles the **Content Run-Length Distribution**. (i.e., "How many 3-letter words vs. 10-letter words are in this segment?").
+### 5.1 The "1–15 + 16+" Binning Strategy
+Based on linguistic stylometry and forensic needs, we use a specific granular binning strategy:
+* **Columns 1–15:** Individual bins for run lengths from 1 to 15 graphemes. This captures the "fingerprint" of almost all natural language (average word length ~5) and source code (average token length ~4).
+* **Column 16+:** A "Tail Bin" for anything longer than 15 graphemes.
+    * **Forensic Value:** Natural text rarely hits this bin. **Encrypted strings, Hashes, and Base64 payloads** almost *always* hit this bin. A spike in "16+" is a primary indicator of a non-human payload.
+### 5.2 The Metric: Volume Share % (Not Raw Counts)
+This table does not show raw counts (which deceive the eye). It shows **Volume Share Percentage ($p_{vol}$)**.
+* **Definition:** *"What percentage of the visible text mass in this segment is composed of runs of this length?"*
+* **Why:** This normalizes the data. A "Wall of Text" segment and a "Short Sentence" segment can be compared directly.
+* **Visual:** The background of each cell is heat-mapped based on this percentage (Excel-style conditional formatting). This creates a "Visual Ribbon" flowing down the table.
+    * **Prose:** The ribbon flows down the middle (Columns 4–7).
+    * **Code:** The ribbon clings to the left (Columns 1–3).
+    * **Payloads:** The ribbon jumps to the far right (Column 16+).
+### 5.3 World-Class Descriptive Statistics
+To the right of the distribution matrix, we provide four high-fidelity statistical descriptors for the segment's texture:
+1. **Mean ($\mu$):** The average run length. (Baseline).
+2. **Median ($\tilde{x}$):** The middle value. Crucial for detecting skew. If Mean is 10 but Median is 3, you have hidden outliers (payloads).
+3. **Mode (Mo):** The most common run length. The "Beat" of the text.
+4. **StdDev ($\sigma$):** The variety. Low $\sigma$ = machine repetition. High $\sigma$ = human variance.
+5. **Max Run:** The absolute length of the longest run. This disambiguates the "16+" bin. (Is it a 17-letter German word, or a 500-letter API key?).
+6. **Entropy ($H$):** The complexity of the distribution.
+### 5.4 The Global Summary Row (The Fingerprint)
+At the very bottom, a **Global Summary Row** aggregates all data to provide a single, master fingerprint for the entire text. This serves as the "Control Sample" against which individual segments can be judged.
 ---
-
-## 6. 🌉 The "Altitude-to-Microscope" Workflow
-
-Stage 2 is not just a report; it's an *interactive tool*. It provides two key features to bridge the "Altitude" view back to the "Microscope" (Stage 1).
-
-### Feature 1: The Interactive Bridge (Click-to-Highlight)
-This feature allows a user to "click-to-inspect" an anomaly.
-
-* **Stage 2 (The Call):** The `Indices (Grapheme)` column in the MRI table is rendered as an `<a>` tag with an `onclick` handler. This handler is defensively coded to check if the opener tab is still available:
-    > `if (window.opener && !window.opener.closed) { ... }`
-* **The API Call:** The click fires `window.opener.TEXTTICS_HIGHLIGHT_SEGMENT(start_grapheme_index, end_grapheme_index)`.
-* **Stage 1 (The API):** A new public function, `window.TEXTTICS_HIGHLIGHT_SEGMENT`, is defined in Stage 1's `ui-glue.js`. When called, it:
-    1.  Grabs the *current* text from the Stage 1 `<textarea>`.
-    2.  Runs `Intl.Segmenter` *again* on this text to create a fresh array of grapheme segments.
-    3.  Finds the *code unit* (`.index`) of the `startGraphemeIndex`-th grapheme.
-    4.  Finds the *code unit* (`.index`) of the `endGraphemeIndex`-th grapheme (or the end of the text).
-    5.  Calls `textArea.focus()` and `textArea.setSelectionRange()` to instantly select the corresponding text in the main app.
-
-> **The "Aha!" Moment: Visualizing Bidi Attacks**
-> This bridge does more than just highlight; it *visually proves* inter-layer mismatch attacks.
->
-> When analyzing a string with a `U+202E` (Right-to-Left Override), the *logical* order of the text (in memory) is different from the *perceptual* order (on screen).
->
-> When a user clicks the *last* segment in the Stage 2 table (e.g., indices `333-375`), the Interactive Bridge correctly finds the *logical* text at that position. However, the browser renders this selection on the *perceptually corrupted* text. The user sees a "broken" selection highlighting text in the middle of the input, **visually proving** that the Bidi attack has successfully broken the text's logical-to-perceptual mapping.
-
-### Feature 2: Exportable Macro-Profile (Structural Diff)
-This feature provides a machine-readable copy of the analysis, enabling the "Structural Diff" use case.
-
-* **The Button:** A "Copy JSON Report" button (`btn-copy-report`) is included in `stage2.html`.
-* **The Logic:** This button triggers a `copy_report_to_clipboard` proxy function in `stage2.py`.
-* **The Payload:** The function `json.dumps()` the `GLOBAL_SEGMENTED_REPORT` (the final list of segment dictionaries) to the clipboard.
-* **The Goal:** This enables the tool's ultimate "Structural Integrity" check. A user can run the report on "version 1" of a text, save the JSON, then run it on "version 2." By diffing the two JSON files, they can deterministically prove *if* and *where* any structural changes (in shape, density, or threat level) have occurred, even if the text looks perceptually identical.
+## 6. 🌉 The Interactive Bridge (Stage 2 $\to$ Stage 1)
+Stage 2 is not a passive report; it is a navigation tool for Stage 1. It implements a bidirectional **Interactive Bridge**.
+1. **Click-to-Highlight:**
+    * Clicking the **Segment Index** (e.g., "Indices 0-50") in the table...
+    * OR clicking any **Data Point** in the Sparklines...
+    * ...triggers a command sent to the opening window (`window.opener`).
+    * The Main App (Stage 1) receives this command, calculates the exact UTF-16 offsets for that grapheme range, focuses the textarea, and **physically selects/highlights** that specific text segment.
+2. **Visual Feedback:**
+    * Hovering over a Sparkline point instantly highlights the corresponding row in **both** tables (Macro and Texture), linking the visual trend to the numerical data.
+    * A vertical "Guide Bar" appears across all three sparklines to align the metrics visually.
+### The "Aha!" Moment: Visualizing Inter-Layer Attacks
+This bridge visually proves **Inter-Layer Mismatch Attacks** (like Bidi overrides).
+* *Scenario:* You have a text with a `U+202E` (Right-to-Left Override) that scrambles the visual order of characters.
+* *Action:* You click "Segment 10" (the end of the string) in Stage 2.
+* *Result:* Because Stage 2 operates on the *Logical* backing store, it selects the *Logical* end of the string. However, due to the Bidi attack, the browser highlights text that appears in the *Middle* or *Beginning* of the visual line.
+* *Conclusion:* The user sees a "broken selection," providing irrefutable visual proof that the text they *see* is not the text the machine *reads*.
+---
+## 7. 🧠 Forensic Use Cases: How to Read the MRI
+### Case A: The Hidden Payload (Steganography/Injection)
+* **Sparklines:** Entropy is flat, then suddenly drops (if padding) or spikes (if encrypted). Threat bar spikes red.
+* **Macro-MRI:** A segment shows normal density but high "Flag Density."
+* **Texture-MRI:** The "Ribbon" flows normally (cols 4-7), then one row has a massive block in **Column 16+**.
+* **Diagnosis:** A block of non-natural data has been inserted.
+### Case B: The "Trojan Source" (Bidi Attack)
+* **Sparklines:** Entropy and Density look normal (it's just code). **Threat Pulse** has a single, thin red line.
+* **Macro-MRI:** One segment shows `Bidi: 1`.
+* **Texture-MRI:** Normal code profile (left-skewed).
+* **Action:** Click the segment. See the selection jump to the wrong visual location in Stage 1.
+* **Diagnosis:** Bidi control character reordering logic.
+### Case C: The "Invisible Wall" (Homoglyphs/Formatting)
+* **Sparklines:** Content Density drops slightly (invisible chars take up logical space but no visual space).
+* **Macro-MRI:** A segment shows **Gap %: 0** but **Other Invisibles: 50**.
+* **Texture-MRI:** Normal.
+* **Diagnosis:** The text is padded with invisible characters (e.g., ZWSP) to break filters or fingerprinting.
+---
+## 8. Technical Architecture
+* **File:** `stage2.py` (Python via PyScript).
+* **Dependency:** Zero server-side code. Runs 100% in-browser.
+* **Data Source:** `window.opener.TEXTTICS_CORE_DATA`. It consumes a "frozen" snapshot of the analysis from Stage 1.
+* **Rendering:**
+    * **Tables:** Dynamic HTML generation with Python f-strings.
+    * **Sparklines:** Dynamic SVG generation with Python strings (no external charting libraries for maximum speed and security).
+    * **Styling:** CSS Grid for layout, `rgba` transparency for heatmaps to ensure text legibility.
+This architecture ensures that Stage 2 is a robust, standalone forensic instrument that enhances, rather than duplicates, the capabilities of Stage 1. 
