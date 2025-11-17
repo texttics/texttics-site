@@ -3356,8 +3356,7 @@ def update_all(event=None):
             "grapheme_lengths_codepoints": [len(g) for g in grapheme_list], # Crucial for mapping
             "forensic_flags": all_flags,
             "nfkc_casefold_text": nfkc_cf_text,
-            "word_break_properties": wb_props,
-            "sentence_break_properties": sb_props,
+            # Stage 2 loads its own WB/SB properties, so we don't send them
             "timestamp": window.Date.new().toISOString()
         }
 
