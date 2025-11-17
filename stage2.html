@@ -1,70 +1,72 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stage 2: Macrostructure Profile</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stage 2: Macrostructure Profile</title>
 
-    <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css">
-    <script type="module" config="pyscript.toml" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css">
+    <script type="module" config="pyscript.toml" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
 
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* --- Stage 2 Layout & Typography --- */
+        body { background-color: #f8f9fa; color: #212529; }
+        .masthead { background: #fff; border-bottom: 1px solid #e9ecef; padding: 1rem 2rem; }
+        
+        h2.table-title { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 0.5rem; color: #495057; border-left: 4px solid #0d6efd; padding-left: 0.75rem; }
+        p.table-desc { font-size: 0.9rem; color: #6c757d; margin-bottom: 1rem; margin-left: 1rem; }
+
+        /* --- Table Base --- */
+        table.matrix { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 3rem; }
+        table.matrix th, table.matrix td { padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; }
+        table.matrix thead th { background-color: #f1f3f5; color: #495057; font-weight: 600; position: sticky; top: 0; }
+        table.matrix tbody tr:hover { background-color: #f8f9fa; }
+
+        /* --- Interactive Bridge Link --- */
+        a.bridge-link { color: #0d6efd; font-family: monospace; text-decoration: none; border-bottom: 1px dashed currentColor; cursor: pointer; }
+        a.bridge-link:hover { border-bottom: 1px solid currentColor; font-weight: bold; }
+
+        /* --- Heatmap & Conditional Formatting --- */
+        /* Critical Threats (Binary) */
+        .cell-critical { background-color: #ffebee !important; color: #c62828; font-weight: bold; }
+        .cell-warning  { background-color: #fff3e0 !important; color: #e65100; }
+        
+        /* Texture Map (Gradient calculated in Python) */
+        .texture-cell { color: #000; } /* Always black text for contrast */
+        
+        /* Statistics Columns */
+        .stat-cell { background-color: #f8f9fa; font-family: monospace; font-weight: 600; color: #343a40; }
+        
+    </style>
 </head>
 <body>
-  <header class="masthead">
-    <h1 class="app-title">Stage 2</h1>
-    <p class="spec">The "Altitude View": Macrostructure Profile</p>
+  <header class="masthead">
+    <h1 class="app-title">Stage 2</h1>
+    <p class="spec">The "Altitude View": Macrostructure Profile</p>
     <p><a href="index.html" title="Go back to the main app">← Back to Stage 1 (Microscope)</a></p>
     <div class="controls">
         <button id="btn-copy-report" type="button" class="app-button" disabled>Copy JSON Report</button>
     </div>
-  </header>
+  </header>
 
-<main id="main" style="padding: 2rem;">
-    <div id="loading-status">Loading Stage 2...</div>
+<main id="main" style="padding: 0 2rem 4rem 2rem;">
+    <div id="loading-status" style="margin: 2rem 0; font-weight: bold;">Loading Stage 2...</div>
     
-    <div id="sparkline-output" style="margin-bottom: 2rem;">
-        </div>
+    <div id="sparkline-output"></div>
     
+    <h2 class="table-title">1. Macro-MRI: Density & Integrity Overview</h2>
+    <p class="table-desc">High-level scan for structural density, invisible gaps, and threat concentrations.</p>
     <div id="macro-table-output">
-        <table class="matrix">
-            <thead>
-                <tr>
-                    <th scope="col" rowspan="2">Segment</th>
-                    <th scope="col" rowspan="2">Indices (Grapheme)</th>
-                    <th scope="col" rowspan="2">Grapheme Count (Volume)</th>
-                    <th scope="colgroup" colspan="7">Visible Content Runs (Length Distribution)</th>
-                    <th scope="colgroup" colspan="3">Visible Separator Runs (Gaps)</th>
-                    <th scope="colgroup" colspan="3">Invisible Atoms (Integrity)</th>
-                    <th scope="colgroup" colspan="2">Threat Location (Flags)</th>
-                </tr>
-                <tr>
-                    <th scope="col">1 gr.</th>
-                    <th scope="col">2 gr.</th>
-                    <th scope="col">3-5 gr.</th>
-                    <th scope="col">6-10 gr.</th>
-                    <th scope="col">11+ gr.</th>
-                    <th scope="col">Total Runs</th>
-                    <th scope="col">Avg. Length</th>
-                    
-                    <th scope="col">Space Runs</th>
-                    <th scope="col">Line Breaks</th>
-                    <th scope="col">Avg. Space</th>
-                    
-                    <th scope="col">Bidi</th>
-                    <th scope="col">Join</th>
-                    <th scope="col">Other Cf/Cc</th>
-                    
-                    <th scope="col">Critical</th>
-                    <th scope="col">All Flags</th>
-                </tr>
-            </thead>
-            <tbody id="macro-table-body">
-                </tbody>
-        </table>
-    </div>
-  </main>
-  
-    <script type="py" src="stage2.py"></script>
+        </div>
+
+    <h2 class="table-title">2. Texture-MRI: Content Rhythm & Entropy</h2>
+    <p class="table-desc">Forensic fingerprint of content runs (1–15+ graphemes). Detecting machine-generated patterns and hidden payloads.</p>
+    <div id="texture-table-output">
+        </div>
+
+  </main>
+  
+  <script type="py" src="stage2.py"></script>
 </body>
 </html>
