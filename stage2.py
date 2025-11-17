@@ -664,18 +664,17 @@ def render_tables(segmented_reports):
 
 def render_sparklines(segmented_reports):
     """
-    Generates three interactive SVG sparklines with Normalized Entropy, Subtitles, and Threat Cross-Marking.
+    Generates three fully interactive SVG sparklines with Normalized Entropy, Subtitles, Threat Cross-Marking,
+    and cross-chart/table highlighting on hover and click. Charts are 1.75x taller.
     """
     container = document.getElementById("sparkline-output")
     if not container or not segmented_reports: return
 
     # 1. Extract Data Vectors
-    # Fallback to 0 if key is missing to prevent crash
     entropies = [r['metrics'].get('entropy', 0) for r in segmented_reports]
     densities = [r['metrics'].get('content_density_pct', 0) for r in segmented_reports]
     threats   = [r['metrics'].get('threats_all', 0) for r in segmented_reports]
     
-    # Identify Threat Segments for Cross-Marking (List of indices where threats > 0)
     threat_indices = [i for i, t in enumerate(threats) if t > 0]
     
     count = len(segmented_reports)
@@ -683,26 +682,138 @@ def render_sparklines(segmented_reports):
         container.innerHTML = "<p style='color:#999; font-style:italic; font-size:0.9rem;'>Insufficient segments for trend analysis.</p>"
         return
 
-    # 2. CSS for Hover Effects (Injected directly for portability)
-    style_block = """
+    # 2. CSS & JS for Interactivity (Injected directly)
+    # Note: Using explicit px values for SVG width/height to make sure they are consistent.
+    # The spark-svg class will now handle responsiveness via `width: 100%`
+    style_and_script_block = f"""
     <style>
-        .spark-svg { overflow: visible; }
-        .spark-point { transition: r 0.1s ease-out, stroke-width 0.1s; cursor: crosshair; }
-        .spark-point:hover { r: 4px; stroke: #fff; stroke-width: 2px; }
-        .spark-bar { transition: opacity 0.1s; cursor: crosshair; }
-        .spark-bar:hover { opacity: 0.7; }
-        .spark-val-label { font-size: 10px; font-family: monospace; font-weight: bold; fill: #6c757d; }
-        .spark-grid { stroke: #e9ecef; stroke-width: 1; }
-        .spark-axis { stroke: #adb5bd; stroke-width: 1; }
-        .spark-threat-mark { stroke: #dc3545; stroke-width: 1; stroke-dasharray: 2,2; opacity: 0.4; }
-        .spark-subtitle { font-size: 0.75rem; color: #999; margin-top: -4px; margin-bottom: 8px; font-style: italic; }
+        .spark-svg-wrapper {{
+            position: relative;
+            width: 100%;
+            padding-bottom: {round(75/300 * 100, 2)}%; /* Aspect ratio 300:75 for intrinsic sizing */
+            height: 0;
+            overflow: visible; /* Allow tooltips and hover effects outside the bounds */
+        }}
+        .spark-svg {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }}
+        .spark-point {{ transition: r 0.1s ease-out, stroke-width 0.1s; cursor: crosshair; }}
+        .spark-point:hover {{ r: 4.5px; stroke: #fff; stroke-width: 2px; }}
+        .spark-bar {{ transition: opacity 0.1s; cursor: crosshair; }}
+        .spark-bar:hover {{ opacity: 0.7; }}
+        .spark-val-label {{ font-size: 10px; font-family: monospace; font-weight: bold; fill: #6c757d; }}
+        .spark-grid {{ stroke: #e9ecef; stroke-width: 1; }}
+        .spark-axis {{ stroke: #adb5bd; stroke-width: 1; }}
+        .spark-threat-mark {{ stroke: #dc3545; stroke-width: 1; stroke-dasharray: 2,2; opacity: 0.4; }}
+        .spark-subtitle {{ font-size: 0.75rem; color: #999; margin-top: -4px; margin-bottom: 8px; font-style: italic; }}
+        
+        /* Interactive highlight column */
+        .spark-hover-overlay {{
+            fill: #66b3ff; /* Light blue */
+            opacity: 0;
+            transition: opacity 0.1s ease-in-out;
+            pointer-events: none; /* Don't block interactions */
+        }}
+        .spark-hover-overlay.active {{
+            opacity: 0.15;
+        }}
+
+        /* Table highlighting */
+        .highlight-row {{ background-color: #e6f7ff !important; transition: background-color 0.1s ease-in-out; }}
+        .highlight-link {{ font-weight: bold; color: #007bff !important; }}
     </style>
+
+    <script>
+        function setupSparklineInteractivity(segmentCount) {{
+            const svgWidth = 300; // Matches internal SVG coordinate width
+            const segmentWidthInSvg = svgWidth / segmentCount;
+
+            document.querySelectorAll('.spark-card').forEach((card, chartIndex) => {{
+                const svgElement = card.querySelector('.spark-svg');
+                if (!svgElement) return;
+
+                // Create a transparent rect for segment hover detection
+                for (let i = 0; i < segmentCount; i++) {{
+                    const hoverRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    hoverRect.setAttribute('x', i * segmentWidthInSvg);
+                    hoverRect.setAttribute('y', -15); // Start above to cover labels
+                    hoverRect.setAttribute('width', segmentWidthInSvg);
+                    hoverRect.setAttribute('height', svgElement.getAttribute('viewBox').split(' ')[3]); // Full viewBox height
+                    hoverRect.setAttribute('fill', 'transparent');
+                    hoverRect.setAttribute('class', 'spark-segment-hover-area');
+                    hoverRect.dataset.segmentIndex = i;
+                    svgElement.appendChild(hoverRect);
+
+                    hoverRect.addEventListener('mouseenter', (event) => handleSparklineHover(i, true));
+                    hoverRect.addEventListener('mouseleave', (event) => handleSparklineHover(i, false));
+                    hoverRect.addEventListener('click', (event) => handleSparklineClick(i));
+                }}
+            }});
+        }}
+
+        function handleSparklineHover(segmentIndex, isActive) {{
+            // Highlight vertical overlay in all sparklines
+            document.querySelectorAll('.spark-hover-overlay-' + segmentIndex).forEach(overlay => {{
+                overlay.classList.toggle('active', isActive);
+            }});
+
+            // Highlight table rows
+            document.querySelectorAll('.matrix tbody tr').forEach((row, rowIndex) => {{
+                // Segment ID in table is 1-based, sparkline index is 0-based
+                const tableSegmentId = parseInt(row.querySelector('td:first-child').textContent.split(' ')[0]);
+                if (tableSegmentId === segmentIndex + 1) {{
+                    row.classList.toggle('highlight-row', isActive);
+                    const link = row.querySelector('.bridge-link');
+                    if (link) link.classList.toggle('highlight-link', isActive);
+                }} else {{
+                    row.classList.remove('highlight-row'); // Ensure others are off
+                    const link = row.querySelector('.bridge-link');
+                    if (link) link.classList.remove('highlight-link');
+                }}
+            }});
+        }}
+
+        function handleSparklineClick(segmentIndex) {{
+            const segmentReport = window.opener.TEXTTICS_CORE_DATA.segmented_reports[segmentIndex];
+            if (segmentReport && window.opener.TEXTTICS_HIGHLIGHT_SEGMENT) {{
+                // Call the existing segment highlighting function
+                window.opener.TEXTTICS_HIGHLIGHT_SEGMENT(segmentReport.start_grapheme_index, segmentReport.end_grapheme_index);
+            }}
+            
+            // Also ensure the table row is clicked/highlighted as if manually clicked
+            document.querySelectorAll('.matrix tbody tr').forEach((row, rowIndex) => {{
+                const tableSegmentId = parseInt(row.querySelector('td:first-child').textContent.split(' ')[0]);
+                if (tableSegmentId === segmentIndex + 1) {{
+                    row.classList.add('highlight-row');
+                    const link = row.querySelector('.bridge-link');
+                    if (link) link.classList.add('highlight-link');
+                    row.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                }} else {{
+                    row.classList.remove('highlight-row');
+                    const link = row.querySelector('.bridge-link');
+                    if (link) link.classList.remove('highlight-link');
+                }}
+            }});
+        }}
+
+        // Initialize interactivity after rendering
+        window.setTimeout(() => setupSparklineInteractivity({count}), 0); 
+    </script>
     """
 
-    # 3. Helper: Interactive SVG Builder
+    # 3. Helper: Interactive SVG Builder (Adjusted for 1.75x height and hover overlays)
+    # internal SVG coordinate system for consistency
+    svg_internal_width = 300
+    svg_internal_height = round(60 * 1.75) # 1.75 times original height
+    
     def build_svg(values, type='line', color='#0d6efd', y_max=None, unit="", cross_marks=None):
-        # Dimensions (ViewBox coordinates)
-        w, h = 300, 60 
+        # ViewBox dimensions for actual content drawing
+        w, h = svg_internal_width, svg_internal_height
         
         # Normalize Y
         data_max = max(values) if values else 0
@@ -711,10 +822,8 @@ def render_sparklines(segmented_reports):
         
         step_x = w / (count - 1) if count > 1 else w
         
-        # Build Point List & Path Strings
         path_d = []
         area_d = [f"M0,{h}"] 
-        
         rects_html = []
         circles_html = []
         
@@ -722,12 +831,10 @@ def render_sparklines(segmented_reports):
             x = round(i * step_x, 1)
             y = round(h - ((val / mx) * h), 1)
             
-            # Tooltip Text
             tooltip = f"Segment {i+1}: {val}{unit}"
             
             if type == 'bar':
                 bar_w = (w / count) * 0.8
-                # Bar logic
                 if val > 0:
                     bar_h = (val / mx) * h
                     bx = (i * (w / count)) + ((w/count)*0.1)
@@ -735,39 +842,40 @@ def render_sparklines(segmented_reports):
                     bar_col = "#dc3545" if val > 0 else color
                     rects_html.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" class="spark-bar"><title>{tooltip}</title></rect>')
                 else:
-                     # Invisible hit target for zero values
                     bx = (i * (w / count))
                     rects_html.append(f'<rect x="{bx}" y="0" width="{w/count}" height="{h}" fill="transparent"><title>{tooltip}</title></rect>')
 
             else:
-                # Line/Area logic
                 path_d.append(f"{x},{y}")
                 area_d.append(f"L{x},{y}")
-                
-                # Interactive circle (visible dot + tooltip)
-                # Increased radius slightly for better visibility
                 circles_html.append(f'<circle cx="{x}" cy="{y}" r="3" fill="{color}" class="spark-point"><title>{tooltip}</title></circle>')
 
-        # Finish Path Strings
         area_d.append(f"L{w},{h} Z")
         poly_line = " ".join(path_d)
         poly_area = " ".join(area_d).replace("M", "M ").replace("L", " L ").replace("Z", " Z")
         
         # --- Construct SVG ---
-        svg = [f'<svg viewBox="0 -15 {w} {h+20}" class="spark-svg" preserveAspectRatio="none" style="width:100%; height:75px; display:block;">']
+        # ViewBox shifted to allow labels at the top (-15) and some padding at the bottom for hover effects (+20)
+        svg = [f'<div class="spark-svg-wrapper"><svg viewBox="0 -15 {w} {h+20}" class="spark-svg" preserveAspectRatio="xMinYMin meet">'] # Use meet for scaling
         
+        # Add transparent hover overlay for the entire segment for consistency across charts
+        for i in range(count):
+            svg_segment_x = i * (w / count)
+            svg.append(f'<rect x="{svg_segment_x}" y="-15" width="{w / count}" height="{h + 20}" fill="transparent" class="spark-hover-overlay spark-hover-overlay-{i}"></rect>')
+
+
         # Scale Label (Max Y)
         svg.append(f'<text x="0" y="-5" class="spark-val-label">Max: {mx}{unit}</text>')
         
         # Grid Lines
-        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" class="spark-grid" stroke-dasharray="4,4" />') # Top
-        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" class="spark-axis" />') # Bottom axis
+        svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" class="spark-grid" stroke-dasharray="4,4" />')
+        svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" class="spark-axis" />')
         
         # Threat Cross-Marks (Vertical Lines)
         if cross_marks:
             for t_idx in cross_marks:
                 tx = round(t_idx * step_x, 1)
-                # For bars, shift to center of bar
+                # For bars, shift to center of bar for visual alignment
                 if type == 'bar': tx += ((w / count) * 0.5) 
                 svg.append(f'<line x1="{tx}" y1="0" x2="{tx}" y2="{h}" class="spark-threat-mark" />')
 
@@ -784,39 +892,37 @@ def render_sparklines(segmented_reports):
         elif type == 'bar':
             svg.append("".join(rects_html))
 
-        svg.append('</svg>')
+        svg.append('</svg></div>') # Close svg and its wrapper
         return "".join(svg)
 
     # 4. Generate Charts with Normalized Scaling & Cross-Marks
     
     # Entropy: Normalized to 4.0 bits (Log2(16))
-    # This makes the scale consistent across ALL texts.
     svg_entropy = build_svg(entropies, 'line', '#6f42c1', y_max=4.0, cross_marks=threat_indices)
     
     # Density: Fixed 100% scale
     svg_density = build_svg(densities, 'area', '#198754', y_max=100, unit="%", cross_marks=threat_indices)
     
-    # Threats: Min scale of 5
+    # Threats: Min scale of 5 (or actual max if higher)
     max_threat = max(threats) if threats else 0
     scale_threat = max(5, max_threat) 
-    # No cross-marks needed on the threat chart itself (redundant)
     svg_threat = build_svg(threats, 'bar', '#dc3545', y_max=scale_threat)
 
     # 5. Inject HTML (Grid Layout with Subtitles)
     html = f"""
-    {style_block}
+    {style_and_script_block}
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
-        <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+        <div class="spark-card" style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
             <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; font-weight:600; border-bottom:1px solid #eee; margin-bottom:2px;">Run-Length Entropy</div>
             <div class="spark-subtitle">Rhythm Variety (Scale: 0-4 bits)</div>
             {svg_entropy}
         </div>
-        <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+        <div class="spark-card" style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
             <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; font-weight:600; border-bottom:1px solid #eee; margin-bottom:2px;">Content Density</div>
             <div class="spark-subtitle">Visible Mass vs. Gaps</div>
             {svg_density}
         </div>
-        <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+        <div class="spark-card" style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
             <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; font-weight:600; border-bottom:1px solid #eee; margin-bottom:2px;">Threat Events</div>
             <div class="spark-subtitle">Forensic Flags (Count)</div>
             {svg_threat}
