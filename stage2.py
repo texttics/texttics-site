@@ -146,8 +146,8 @@ def get_grapheme_base_properties(grapheme: str) -> dict:
     if not grapheme:
         return props
     
-    first_char = window.Array.from_(grapheme)[0]
-    cp = ord(first_char)
+    # Native Python string handling (faster and safer than window.Array)
+    cp = ord(grapheme[0])
     
     # Use fast O(log N) bisect lookups for all properties
     props["wb"] = _find_in_ranges(cp, "WordBreak") or "Other"
@@ -185,7 +185,8 @@ def compute_segmented_profile(core_data, N=10):
     segmented_reports = []
     
     # --- Define our "structural types" based on UAX properties ---
-    LINEBREAK_PROPS = {"LF", "CR"}
+    # We must include "Newline" (NEL, LS, PS) from UAX #29 WordBreak
+    LINEBREAK_PROPS = {"LF", "CR", "Newline"}
     
     # --- Create the Grapheme-to-Code-Point index map (O(N) prefix sum) ---
     cp_map = [0] * (total_graphemes + 1)
