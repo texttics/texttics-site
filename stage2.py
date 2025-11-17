@@ -563,7 +563,9 @@ def render_tables(segmented_reports):
         cls_crit = "cell-critical" if m['threats_critical'] > 0 else ""
         cls_all = "cell-warning" if m['threats_all'] > 0 else ""
 
-        html_macro.append(f'<tr class="{row_cls}">')
+        # Add a data-segment-index for robust JS highlighting (1-based)
+        html_macro.append(f'<tr class="{row_cls}" data-segment-index="{rep["segment_id"].split(" ")[0]}">')
+        
         html_macro.append(f'<td>{rep["segment_id"]}</td>')
         html_macro.append(f'<td>{link}</td>')
         html_macro.append(f'<td>{m["volume"]}</td>')
@@ -603,7 +605,8 @@ def render_tables(segmented_reports):
 
     for rep in segmented_reports:
         m = rep['metrics']
-        html_tex.append(f'<tr><td>{rep["segment_id"]}</td>')
+        # Add a data-segment-index for robust JS highlighting (1-based)
+        html_tex.append(f'<tr data-segment-index="{rep["segment_id"].split(" ")[0]}"><td>{rep["segment_id"]}</td>')
         
         # Bins 1..16 (Showing Volume % Share)
         for i in range(1, 17):
@@ -767,50 +770,60 @@ def render_sparklines(segmented_reports):
             }});
         }}
 
-        function handleSparklineHover(segmentIndex, isActive) {{
+function handleSparklineHover(segmentIndex, isActive) {
             // Highlight vertical overlay in all sparklines
-            document.querySelectorAll('.spark-hover-overlay-' + segmentIndex).forEach(overlay => {{
+            document.querySelectorAll('.spark-hover-overlay-' + segmentIndex).forEach(overlay => {
                 overlay.classList.toggle('active', isActive);
-            }});
+            });
 
-            // Highlight table rows
-            document.querySelectorAll('.matrix tbody tr').forEach((row, rowIndex) => {{
-                // Segment ID in table is 1-based, sparkline index is 0-based
-                const tableSegmentId = parseInt(row.querySelector('td:first-child').textContent.split(' ')[0]);
-                if (tableSegmentId === segmentIndex + 1) {{
-                    row.classList.toggle('highlight-row', isActive);
-                    const link = row.querySelector('.bridge-link');
-                    if (link) link.classList.toggle('highlight-link', isActive);
-                }} else {{
-                    row.classList.remove('highlight-row'); // Ensure others are off
-                    const link = row.querySelector('.bridge-link');
-                    if (link) link.classList.remove('highlight-link');
-                }}
-            }});
-        }}
-
-        function handleSparklineClick(segmentIndex) {{
-            const segmentReport = window.opener.TEXTTICS_CORE_DATA.segmented_reports[segmentIndex];
-            if (segmentReport && window.opener.TEXTTICS_HIGHLIGHT_SEGMENT) {{
-                // Call the existing segment highlighting function
-                window.opener.TEXTTICS_HIGHLIGHT_SEGMENT(segmentReport.start_grapheme_index, segmentReport.end_grapheme_index);
-            }}
+            // Robustly find and highlight table rows using data-segment-index
+            // Note: segmentIndex is 0-based, data-segment-index is 1-based
+            const targetSegmentId = segmentIndex + 1;
             
-            // Also ensure the table row is clicked/highlighted as if manually clicked
-            document.querySelectorAll('.matrix tbody tr').forEach((row, rowIndex) => {{
-                const tableSegmentId = parseInt(row.querySelector('td:first-child').textContent.split(' ')[0]);
-                if (tableSegmentId === segmentIndex + 1) {{
-                    row.classList.add('highlight-row');
-                    const link = row.querySelector('.bridge-link');
-                    if (link) link.classList.add('highlight-link');
-                    row.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
-                }} else {{
+            // De-highlight all non-target rows
+            document.querySelectorAll('.matrix tbody tr.highlight-row').forEach(row => {
+                if (row.dataset.segmentIndex != targetSegmentId) {
                     row.classList.remove('highlight-row');
                     const link = row.querySelector('.bridge-link');
                     if (link) link.classList.remove('highlight-link');
-                }}
-            }});
-        }}
+                }
+            });
+
+            // Highlight all target rows (in both tables)
+            document.querySelectorAll(`.matrix tbody tr[data-segment-index="${targetSegmentId}"]`).forEach(row => {
+                row.classList.toggle('highlight-row', isActive);
+                const link = row.querySelector('.bridge-link');
+                if (link) link.classList.toggle('highlight-link', isActive);
+            });
+        }
+
+        function handleSparklineClick(segmentIndex) {
+            // Robustly find the corresponding table row and click its bridge link
+            // Note: segmentIndex is 0-based, data-segment-index is 1-based
+            const targetSegmentId = segmentIndex + 1;
+            
+            // Find the link in the *first* table (Macro-MRI)
+            const targetRow = document.querySelector(`#macro-table-output .matrix tbody tr[data-segment-index="${targetSegmentId}"]`);
+            
+            if (targetRow) {
+                const bridgeLink = targetRow.querySelector('a.bridge-link');
+                if (bridgeLink) {
+                    // Programmatically click the link. This triggers the
+                    // onclick="window.opener.TEXTTICS_HIGHLIGHT_SEGMENT(...)"
+                    // which is the correct, working bridge logic.
+                    bridgeLink.click();
+                }
+                
+                // Also manually trigger the hover highlight for visual feedback
+                handleSparklineHover(segmentIndex, true);
+
+                // Scroll the clicked row into view
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            } else {
+                console.warn(`Stage 2: Sparkline click for segment ${targetSegmentId} found no matching table row.`);
+            }
+        }
 
         // Initialize interactivity after rendering
         window.setTimeout(() => setupSparklineInteractivity({count}), 0); 
