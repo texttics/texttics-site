@@ -1536,8 +1536,10 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     # Count of code points U+0000-U+FFFF (All BMP)
     bmp_count = len(window.RegExp.new(r"[\u0000-\uFFFF]", "gu").exec(t) or [])
     # Count of code points U+10000+ (Supplementary Planes)
-    # We use JS RegExp \u{...} syntax, which requires the &#39;u&#39; flag.
-    supplementary_count = len(window.RegExp.new(r&quot;[\u{10000}-\u{10FFFF}]&quot;, &quot;gu&quot;).exec(t) or [])
+    # We pass the string &#39;[\\u{10000}-\\u{10FFFF}]&#39; to the JS RegExp constructor.
+    # The &#39;u&#39; flag tells JS to understand the \u{...} syntax.
+    # Using single quotes &#39;&#39; to avoid &amp;quot; formatting bugs.
+    supplementary_count = len(window.RegExp.new(&#39;[\\u{10000}-\\u{10FFFF}]&#39;, &#39;gu&#39;).exec(t) or [])
     
     repertoire_stats = {
         "ASCII-Compatible": {
