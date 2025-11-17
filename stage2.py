@@ -663,7 +663,7 @@ def render_tables(segmented_reports):
 
 def render_sparklines(segmented_reports):
     """
-    Generates three interactive SVG sparklines with tooltips, hover states, and scale labels.
+    Generates three interactive SVG sparklines with Normalized Entropy, Subtitles, and Threat Cross-Marking.
     """
     container = document.getElementById("sparkline-output")
     if not container or not segmented_reports: return
@@ -673,6 +673,9 @@ def render_sparklines(segmented_reports):
     entropies = [r['metrics'].get('entropy', 0) for r in segmented_reports]
     densities = [r['metrics'].get('content_density_pct', 0) for r in segmented_reports]
     threats   = [r['metrics'].get('threats_all', 0) for r in segmented_reports]
+    
+    # Identify Threat Segments for Cross-Marking (List of indices where threats > 0)
+    threat_indices = [i for i, t in enumerate(threats) if t > 0]
     
     count = len(segmented_reports)
     if count < 2:
@@ -690,11 +693,13 @@ def render_sparklines(segmented_reports):
         .spark-val-label { font-size: 10px; font-family: monospace; font-weight: bold; fill: #6c757d; }
         .spark-grid { stroke: #e9ecef; stroke-width: 1; }
         .spark-axis { stroke: #adb5bd; stroke-width: 1; }
+        .spark-threat-mark { stroke: #dc3545; stroke-width: 1; stroke-dasharray: 2,2; opacity: 0.4; }
+        .spark-subtitle { font-size: 0.75rem; color: #999; margin-top: -4px; margin-bottom: 8px; font-style: italic; }
     </style>
     """
 
     # 3. Helper: Interactive SVG Builder
-    def build_svg(values, type='line', color='#0d6efd', y_max=None, unit=""):
+    def build_svg(values, type='line', color='#0d6efd', y_max=None, unit="", cross_marks=None):
         # Dimensions (ViewBox coordinates)
         w, h = 300, 60 
         
@@ -729,7 +734,7 @@ def render_sparklines(segmented_reports):
                     bar_col = "#dc3545" if val > 0 else color
                     rects_html.append(f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bar_h}" fill="{bar_col}" class="spark-bar"><title>{tooltip}</title></rect>')
                 else:
-                     # Invisible hit target for zero values to show tooltip
+                     # Invisible hit target for zero values
                     bx = (i * (w / count))
                     rects_html.append(f'<rect x="{bx}" y="0" width="{w/count}" height="{h}" fill="transparent"><title>{tooltip}</title></rect>')
 
@@ -739,7 +744,8 @@ def render_sparklines(segmented_reports):
                 area_d.append(f"L{x},{y}")
                 
                 # Interactive circle (visible dot + tooltip)
-                circles_html.append(f'<circle cx="{x}" cy="{y}" r="2.5" fill="{color}" class="spark-point"><title>{tooltip}</title></circle>')
+                # Increased radius slightly for better visibility
+                circles_html.append(f'<circle cx="{x}" cy="{y}" r="3" fill="{color}" class="spark-point"><title>{tooltip}</title></circle>')
 
         # Finish Path Strings
         area_d.append(f"L{w},{h} Z")
@@ -747,7 +753,6 @@ def render_sparklines(segmented_reports):
         poly_area = " ".join(area_d).replace("M", "M ").replace("L", " L ").replace("Z", " Z")
         
         # --- Construct SVG ---
-        # ViewBox shifted to allow labels at the top
         svg = [f'<svg viewBox="0 -15 {w} {h+20}" class="spark-svg" preserveAspectRatio="none" style="width:100%; height:75px; display:block;">']
         
         # Scale Label (Max Y)
@@ -756,12 +761,20 @@ def render_sparklines(segmented_reports):
         # Grid Lines
         svg.append(f'<line x1="0" y1="0" x2="{w}" y2="0" class="spark-grid" stroke-dasharray="4,4" />') # Top
         svg.append(f'<line x1="0" y1="{h}" x2="{w}" y2="{h}" class="spark-axis" />') # Bottom axis
+        
+        # Threat Cross-Marks (Vertical Lines)
+        if cross_marks:
+            for t_idx in cross_marks:
+                tx = round(t_idx * step_x, 1)
+                # For bars, shift to center of bar
+                if type == 'bar': tx += ((w / count) * 0.5) 
+                svg.append(f'<line x1="{tx}" y1="0" x2="{tx}" y2="{h}" class="spark-threat-mark" />')
 
         # Chart Content
         if type == 'area':
             svg.append(f'<path d="{poly_area}" stroke="none" fill="{color}" opacity="0.15" />')
             svg.append(f'<polyline points="{poly_line}" fill="none" stroke="{color}" stroke-width="1.5" />')
-            svg.append("".join(circles_html)) # Add dots on top
+            svg.append("".join(circles_html)) 
             
         elif type == 'line':
             svg.append(f'<polyline points="{poly_line}" fill="none" stroke="{color}" stroke-width="2" />')
@@ -773,35 +786,38 @@ def render_sparklines(segmented_reports):
         svg.append('</svg>')
         return "".join(svg)
 
-    # 4. Generate Charts with Contextual Scaling
+    # 4. Generate Charts with Normalized Scaling & Cross-Marks
     
-    # Entropy: Min scale of 1.0 to avoid visual noise on flat-zero data
-    max_ent = max(entropies) if entropies else 0
-    scale_ent = max(1.0, max_ent) 
-    svg_entropy = build_svg(entropies, 'line', '#6f42c1', y_max=scale_ent)
+    # Entropy: Normalized to 4.0 bits (Log2(16))
+    # This makes the scale consistent across ALL texts.
+    svg_entropy = build_svg(entropies, 'line', '#6f42c1', y_max=4.0, cross_marks=threat_indices)
     
-    # Density: Fixed 100% scale for direct comparability
-    svg_density = build_svg(densities, 'area', '#198754', y_max=100, unit="%")
+    # Density: Fixed 100% scale
+    svg_density = build_svg(densities, 'area', '#198754', y_max=100, unit="%", cross_marks=threat_indices)
     
-    # Threats: Min scale of 5 so single flags don't look like massive spikes
+    # Threats: Min scale of 5
     max_threat = max(threats) if threats else 0
     scale_threat = max(5, max_threat) 
+    # No cross-marks needed on the threat chart itself (redundant)
     svg_threat = build_svg(threats, 'bar', '#dc3545', y_max=scale_threat)
 
-    # 5. Inject HTML (Grid Layout)
+    # 5. Inject HTML (Grid Layout with Subtitles)
     html = f"""
     {style_block}
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
         <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:4px; font-weight:600; border-bottom:1px solid #eee;">Run-Length Entropy</div>
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; font-weight:600; border-bottom:1px solid #eee; margin-bottom:2px;">Run-Length Entropy</div>
+            <div class="spark-subtitle">Rhythm Variety (Scale: 0-4 bits)</div>
             {svg_entropy}
         </div>
         <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:4px; font-weight:600; border-bottom:1px solid #eee;">Content Density (Mass)</div>
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; font-weight:600; border-bottom:1px solid #eee; margin-bottom:2px;">Content Density</div>
+            <div class="spark-subtitle">Visible Mass vs. Gaps</div>
             {svg_density}
         </div>
         <div style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:10px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; margin-bottom:4px; font-weight:600; border-bottom:1px solid #eee;">Threat Events (Pulse)</div>
+            <div style="font-size:0.8rem; text-transform:uppercase; color:#6c757d; font-weight:600; border-bottom:1px solid #eee; margin-bottom:2px;">Threat Events</div>
+            <div class="spark-subtitle">Forensic Flags (Count)</div>
             {svg_threat}
         </div>
     </div>
