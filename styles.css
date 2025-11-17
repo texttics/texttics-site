@@ -761,6 +761,7 @@ Stage 2: Heatmap Row Classes
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   background: var(--color-bg);
+  align-items: center;
   
   display: flex;
   flex-direction: column; /* Stack button on top of text */
