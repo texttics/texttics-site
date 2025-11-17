@@ -208,8 +208,8 @@
       </details>
 
       <!-- Group 2.B: Structural Shape Profile (Module 2) -->
-      <section id="structural-shape" class="fingerprint-section" aria-labelledby="shape-title">
-    <h2 id="shape-title" class="section-title">Structural Shape Profile</h2>
+      <details class="fingerprint-section profile-section" id="structural-shape" aria-labelledby="shape-title">
+    <summary><h2 id="shape-title" class="section-title">Structural Shape Profile</h2></summary>
 
     <h3 class="subsection-title">Major Category Run Analysis</h3>
     <table class="matrix" id="shape-matrix">
@@ -307,12 +307,12 @@
       </tbody>
     </table>
         
-  </section>
+  </details>
 
 
       <!-- Group 2.C: Forensic Integrity Profile (Modules 4, 6, 8) -->
-      <section id="structural-integrity" class="fingerprint-section" aria-labelledby="integrity-title">
-      <h2 id="integrity-title" class="section-title">Structural Integrity Profile</h2>
+      <details class="fingerprint-section profile-section" id="structural-integrity" aria-labelledby="integrity-title">
+      <summary><h2 id="integrity-title" class="section-title">Structural Integrity Profile</h2></summary>
       <table class="matrix" id="integrity-matrix">
         <caption>Integrity Flags (Invisibles, Modifiers, IVS)</caption>
           <thead>
@@ -326,11 +326,11 @@
             <!-- Python will inject <tr> rows here -->
           </tbody>
         </table>
-      </section>
+      </details>
 
       <!-- Group 2.D: Provenance & Context Profile (Modules 5, 6) -->
-      <section id="provenance-context" class="fingerprint-section" aria-labelledby="prov-title">
-        <h2 id="prov-title" class="section-title">Provenance &amp; Context Profile</h2>
+      <details class="fingerprint-section profile-section" id="provenance-context" aria-labelledby="prov-title">
+        <summary><h2 id="prov-title" class="section-title">Provenance &amp; Context Profile</h2></summary>
         <table class="matrix" id="provenance-matrix">
           <caption>Script, Script-Extension, Block, Age &amp; Numeric Properties</caption>
           <thead>
@@ -359,10 +359,10 @@
         </tbody>
     </table>
         
-      </section>
+      </details>
 
-<section id="emoji-forensics" class="fingerprint-section" aria-labelledby="emoji-title">
-  <h2 id="emoji-title" class="section-title">Emoji Qualification Profile</h2>
+<details class="fingerprint-section profile-section" id="emoji-forensics" aria-labelledby="emoji-title">
+  <summary><h2 id="emoji-title" class="section-title">Emoji Qualification Profile</h2></summary>
   <h3 class="subsection-title">RGI Sequence Analysis</h3>
   <p id="emoji-summary" class="emoji-summary"></p>
   <table class="matrix" id="emoji-qualification-matrix">
@@ -377,12 +377,12 @@
     </thead>
     <tbody id="emoji-qualification-body"></tbody>
   </table>
-</section>
+</details>
 
 
 <!-- Group 3: Threat-Hunting (Module 7)-->
-<section id="threat-hunting" class="fingerprint-section" aria-labelledby="threat-title">
-        <h2 id="threat-title" class="section-title">Threat-Hunting Profile</h2>
+<details class="fingerprint-section profile-section" id="threat-hunting" aria-labelledby="threat-title">
+        <summary><h2 id="threat-title" class="section-title">Threat-Hunting Profile</h2></summary>
         <div id="threat-banner" class="banner-warning" role="alert" hidden></div>
         <h3 class="subsection-title">Threat Flags</h3>
         <table class="matrix" id="threat-report-table">
@@ -414,7 +414,7 @@
     
         <h3 class="subsection-title">Perceived vs Encoded Character(s)</h3>
         <pre id="confusable-diff-report" class="confusable-report"><p class="placeholder-text">No confusable runs detected.</p></pre>
-    </section>
+    </details>
       
       
     </main>
