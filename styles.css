@@ -664,7 +664,7 @@ Stage 2: Heatmap Row Classes
 /* Header bar of the inspector */
 #inspector-panel-wrapper h3 {
   margin: 0.1rem;
-  padding: 0.35rem 1rem 0.5rem;
+  padding: 0.1rem 0.1rem 0.1rem;
   border-bottom: 1px solid var(--color-border-light);
   border-radius: var(--radius) var(--radius) 0 0;
   font-size: 1.25rem;
@@ -680,7 +680,7 @@ Stage 2: Heatmap Row Classes
   font-size: 0.9rem;
   line-height: 1.6;
   overflow-x: auto;
-  background-color: var(--color-white); /* keep the data area as a card */
+  background-color: var(--color-bg); /* keep the data area as a card */
 }
 
 
@@ -693,7 +693,7 @@ Stage 2: Heatmap Row Classes
 /* Big inspected glyph (the actual character, e.g. "e") */
 #inspector-panel-content .inspector-glyph {
   font-size: 5rem;
-  line-height: 1.1;
+  line-height: 2;
   font-weight: 700;
   margin: 0 0 0.75rem;
 }
