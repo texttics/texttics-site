@@ -687,6 +687,7 @@ Stage 2: Heatmap Row Classes
   background-color: var(--color-bg); /* keep the data area as a card */
   height: 150px;
   justify-content: center;
+  align-items: flex-start;
 }
 
 
