@@ -1034,7 +1034,7 @@ details.profile-section > summary:hover {
     color: var(--color-white);
     border-bottom: none;
     border-radius: 2px;
-    cursor: crosshair; /* Adds a "targeting" feel */
+    cursor: zoom-in; /* <--- The Forensic Magnifying Glass */
 }
 
 /* Visually distinct focus state for accessibility */
