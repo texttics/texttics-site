@@ -2260,19 +2260,46 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 print(f"Error processing char at index {i} ('{char}'): {e}")
 
     # 1. Normalization (NFC) Check
-    # Note: built-in unicodedata cannot get a "count" of changes easily,
-    # so we do a simple boolean check.
+    # We treat this as a global "status" flag, not a per-code-point flag.
     is_nfc = False
-    changes_count_nfc = "N/A"
+    approx_changes = "N/A"
+
     try:
-        normalized_t = unicodedata.normalize('NFC', t)
+        normalized_t = unicodedata.normalize("NFC", t)
         is_nfc = (t == normalized_t)
-        changes_count_nfc = 0 if is_nfc else "N/A"
+
+        if not is_nfc:
+            # Crude but useful estimate of how many code points differ after NFC.
+            diffs = 0
+            min_len = min(len(t), len(normalized_t))
+            for idx in range(min_len):
+                if t[idx] != normalized_t[idx]:
+                    diffs += 1
+            diffs += abs(len(t) - len(normalized_t))
+            approx_changes = diffs
+        else:
+            approx_changes = 0
     except Exception as e:
         print(f"NFC normalization check failed: {e}")
-        changes_count_nfc = "Error"
-        
-    nfc_stat = {"is_nfc": is_nfc, "changes_count": changes_count_nfc}
+        approx_changes = "Error"
+
+    # Represent this like other flags: count + positions, but positions carry a status message.
+    if is_nfc:
+        # Text is already NFC – this "Not NFC" flag is not triggered.
+        nfc_stat = {
+            "count": 0,
+            "positions": ["Status: Text is already NFC (no normalization changes)."]
+        }
+    else:
+        # Text would change under NFC – surface as a single global flag.
+        detail_msg = (
+            "Status: Text is NOT NFC; NFC normalization would change "
+            f"≈{approx_changes} code points."
+        )
+        nfc_stat = {
+            "count": 1,
+            "positions": [detail_msg]
+        }
     
     # 2. PUA Percentage
     total_cp = len(js_array)
@@ -3124,22 +3151,8 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
                 f'<td colspan="2"><span class="integrity-badge {grade_class}">{grade}</span></td></tr>'
             )
         
-        # --- RENDER PATH 2: Normalization Flag ---
-        elif key == "Flag: Normalization (Not NFC)":
-            is_nfc = data.get("is_nfc", False)
-            count = data.get("changes_count", "N/A")
-            if is_nfc:
-                badge = '<span class="integrity-badge integrity-badge-ok">Yes</span>'
-                count_html = "0"
-            else:
-                badge = '<span class="integrity-badge integrity-badge-warn">No</span>'
-                count_html = f"Change count: {count}"
-            
-            html.append(
-                f'<tr><th scope="row">{label}</th><td>{badge}</td><td>{count_html}</td></tr>'
-            )
 
-        # --- RENDER PATH 3: Standard `has_positions` flags ---
+        # --- RENDER PATH 2: Standard `has_positions` flags ---
         elif has_positions:
             # Data is a dict: {'count': 1, 'positions': ['#42'], 'pct': 0.5}
             count = data.get('count', 0)
@@ -3177,7 +3190,7 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
                 f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{position_html}</td></tr>'
             )
         
-        # --- RENDER PATH 4: Simple 2-column tables ---
+        # --- RENDER PATH 3: Simple 2-column tables ---
         else:
             count = data
             if count == 0:
