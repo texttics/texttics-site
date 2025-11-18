@@ -56,7 +56,10 @@ def build_invis_table():
                 INVIS_TABLE[cp] |= mask
 
     # 1. Default Ignorable (The Baseline)
-    apply_mask(DATA_STORES["DerivedCoreProperties"].get("Default_Ignorable_Code_Point", []), INVIS_DEFAULT_IGNORABLE)
+    # --- FIX: Look for the specific "DefaultIgnorable" bucket ---
+    # We use .get() with a chain to be safe against missing data
+    ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
+    apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
 
     # 2. Join Controls (U+200C, U+200D)
     apply_mask([(0x200C, 0x200D)], INVIS_JOIN_CONTROL)
@@ -75,7 +78,7 @@ def build_invis_table():
     apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
 
     # 7. Do Not Emit
-    apply_mask(DATA_STORES["DoNotEmit"], INVIS_DO_NOT_EMIT)
+    apply_mask(DATA_STORES["DoNotEmit"].get("ranges", []), INVIS_DO_NOT_EMIT)
 
     # 8. Soft Hyphen
     apply_mask([(0x00AD, 0x00AD)], INVIS_SOFT_HYPHEN)
@@ -1178,18 +1181,28 @@ async def load_unicode_data():
                 "Variation_Selector": "VariationSelector",
                 "Bidi_Mirrored": "BidiMirrored"
             })
+
+        # --- CRITICAL FIX: Create the bucket dynamically ---
         if derivedcore_txt:
+            # 1. Initialize the new bucket
+            DATA_STORES["DefaultIgnorable"] = {"ranges": [], "starts": [], "ends": []}
+            
+            # 2. Map the file properties
             _parse_property_file(derivedcore_txt, {
+                # Map the specific property name to our new bucket key
+                "Default_Ignorable_Code_Point": "DefaultIgnorable",
                 "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
-                "Alphabetic": "Alphabetic", "Logical_Order_Exception": "LogicalOrderException"
+                "Alphabetic": "Alphabetic", 
+                "Logical_Order_Exception": "LogicalOrderException"
             })
+
         # --- Add Manual Security Overrides ---
         _add_manual_data_overrides()    
-
-        # --- NEW: Build Forensic Bitmask Table ---
-        # PASTE IT HERE (After all data stores are populated)
-        build_invis_table() 
         
+        # --- NEW: Build Forensic Bitmask Table ---
+        # This must happen AFTER all parsing is done
+        build_invis_table()
+            
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
         render_status("Ready.")
@@ -1198,7 +1211,7 @@ async def load_unicode_data():
     except Exception as e:
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
-        # The function automatically detects "Error:" prefix and adds red styling
+        # --- CRITICAL FIX: Remove 'is_error=True' ---
         render_status("Error: Failed to load Unicode data. Please refresh.")
 
 def compute_emoji_analysis(text: str) -> dict:
