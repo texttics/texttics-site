@@ -981,3 +981,40 @@ details.profile-section > summary:hover {
     flex-direction: column;
     align-items: flex-start; /* Align title and count to the left */
 }
+
+/* --- Integrity Badge Styling --- */
+
+/* Base class for all badges */
+.integrity-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* OK / Good / Yes */
+.integrity-badge-ok {
+  color: #198754; /* Green */
+  background-color: #e9f7ef;
+}
+
+/* Warning / No */
+.integrity-badge-warn {
+  color: #ffc107; /* Yellow/Orange */
+  background-color: #fff9e6;
+  border: 1px solid #ffecb3;
+}
+
+/* Critical / Danger */
+.integrity-badge-crit {
+  color: #dc3545; /* Red */
+  background-color: #fdebee;
+}
+
+/* Special styling for critical flag rows */
+.matrix .flag-row-critical th {
+  color: #dc3545;
+  font-weight: 600;
+}
