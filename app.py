@@ -2067,14 +2067,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     surrogate_indices = []
     unassigned_indices = []
     bidi_control_indices = []
-    # --- NEW: Decode Health ---
     replacement_char_indices = []
     other_control_indices = []
     nul_indices = []
     internal_bom_indices = []
-    
     join_control_indices = []
     true_ignorable_indices = []
+    tag_char_indices = []
     other_ignorable_indices = []
     extender_indices = []
     deprecated_indices = []
@@ -2142,8 +2141,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
-                if category == "Cf" and not _find_in_ranges(cp, "BidiControl") and not _find_in_ranges(cp, "JoinControl"):
-                    true_ignorable_indices.append(f"#{i}") 
+                # We check for Tags *before* the generic &#39;Cf&#39; bucket.
+                if 0xE0000 &lt;= cp &lt;= 0xE007F:
+                  tag_char_indices.append(f&quot;#{i}&quot;)
+                # --- MODIFIED: &#39;Cf&#39; check now *excludes* Bidi, Join, and Tags ---
+                elif category == &quot;Cf&quot; and not _find_in_ranges(cp, &quot;BidiControl&quot;) and not _find_in_ranges(cp, &quot;JoinControl&quot;):
+                  true_ignorable_indices.append(f&quot;#{i}&quot;) 
 
                 if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
 
@@ -2330,6 +2333,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Bidi Control (UAX #9)"] = {'count': len(bidi_control_indices), 'positions': bidi_control_indices}
     forensic_stats["Join Control (Structural)"] = {'count': len(join_control_indices), 'positions': join_control_indices}
     forensic_stats["True Ignorable (Format/Cf)"] = {'count': len(true_ignorable_indices), 'positions': true_ignorable_indices}
+    forensic_stats["Flag: Unicode Tags"] = {'count': len(tag_char_indices), 'positions': tag_char_indices}
     forensic_stats["Other Default Ignorable"] = {'count': len(other_ignorable_indices), 'positions': other_ignorable_indices}
     forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
     forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
