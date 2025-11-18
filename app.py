@@ -2775,6 +2775,7 @@ def compute_threat_analysis(t: str):
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
             lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
+            is_non_ascii_LNS = False # NEW: Flag to track if we are ASCII-Only
 
             # --- LOOP: Single, "Per-Char" Analysis (Robust and Correct) ---
             # This is the original, reliable loop from your first app.py
@@ -2791,6 +2792,7 @@ def compute_threat_analysis(t: str):
                 try:
                     category = unicodedata.category(char)[0] # Get 'L', 'N', 'S', 'C', etc.
                     if category in ("L", "N", "S"):
+                        if cp > 0x7F: is_non_ascii_LNS = True # NEW: Check for non-ASCII
                         # This global set will find 'Latin' and 'Cyrillic' from Test 1
                         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                         if script_ext_val:
@@ -2819,17 +2821,45 @@ def compute_threat_analysis(t: str):
                     'positions': bidi_danger_indices
                 }
             
-            # Add Mixed-Script flag (from the global set)
+            # --- Graded Script-Mix Severity Flag ---
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
             scripts_in_use.discard("Zzzz")
-            if len(scripts_in_use) > 1:
-                key = f"High-Risk: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
+            num_scripts = len(scripts_in_use)
+
+            if num_scripts > 1:
+                # CRITICAL: More than one primary script. This is the classic attack.
+                key = f"CRITICAL: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
                 threat_flags[key] = {
-                    'count': 1,
+                    'count': num_scripts,
                     'positions': ["(See Provenance Profile for details)"]
                 }
-            # --- End of TypeError fix ---
+            elif num_scripts == 1:
+                # OK: Only one primary script.
+                script_name = list(scripts_in_use)[0]
+                # Check if it's "Latin" but also contains non-ASCII characters.
+                if script_name == "Latin" and is_non_ascii_LNS:
+                    # This is like "A é". Still one script, but not pure ASCII.
+                    threat_flags["Script Mix: Single Script (Latin, w/ non-ASCII)"] = {
+                        'count': 0, 'positions': ["Text uses one script (Latin) but includes non-ASCII characters."]
+                    }
+                else:
+                    # This is "Cyrillic" only, or "Greek" only, etc.
+                    threat_flags[f"Script Mix: Single Script ({script_name})"] = {
+                        'count': 0, 'positions': ["Text uses one primary script."]
+                    }
+            else:
+                # num_scripts == 0. This means only Common/Inherited or no L/N/S chars.
+                if not is_non_ascii_LNS:
+                    # This is the "pure" ASCII case (like "A1?$").
+                    threat_flags["Script Mix: ASCII-Only"] = {
+                        'count': 0, 'positions': ["All L/N/S characters are 7-bit ASCII."]
+                    }
+                else:
+                    # This is a "safe" non-ASCII case (like "©®™").
+                    threat_flags["Script Mix: Safe (Common/Inherited)"] = {
+                        'count': 0, 'positions': ["No primary script mix detected."]
+                    }
 
         # --- 5. Implement UTS #39 Skeleton ---
         skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
