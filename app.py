@@ -2830,7 +2830,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
 
-    ef add_row(label, count, positions, severity="warn", badge=None, pct=None):
+    def add_row(label, count, positions, severity="warn", badge=None, pct=None):
         if count > 0:
             row = {"label": label, "count": count, "positions": positions, "severity": severity, "badge": badge}
             if pct is not None: row["pct"] = pct
