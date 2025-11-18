@@ -2830,6 +2830,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
 
+    # Initializing 'rows' BEFORE defining the helper that uses it
+    rows = []
+    
     def add_row(label, count, positions, severity="warn", badge=None, pct=None):
         if count > 0:
             row = {"label": label, "count": count, "positions": positions, "severity": severity, "badge": badge}
