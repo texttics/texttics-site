@@ -1042,3 +1042,23 @@ details.profile-section > summary:hover {
     outline: 2px solid var(--color-primary-focus);
     outline-offset: 1px;
 }
+
+/* --- Integrity Badges & Rows --- */
+
+.integrity-badge {
+  white-space: nowrap; /* Prevents "NOTICE (SCORE: 3)" from breaking */
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+}
+
+/* Row Styling for the "Integrity Level" Header */
+/* These make the top row look like a summary header */
+tr.flag-row-ok {
+  background-color: #f0fdf4; /* Light Green */
+}
+tr.flag-row-warn {
+  background-color: #fffbeb; /* Light Yellow */
+}
+tr.flag-row-crit {
+  background-color: #fef2f2; /* Light Red */
+}
