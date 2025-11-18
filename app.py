@@ -1191,8 +1191,6 @@ async def load_unicode_data():
         build_invis_table() 
         
         LOADING_STATE = "READY"
-        
-        LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
         render_status("Ready.")
         update_all() # Re-render with ready state
