@@ -3861,7 +3861,7 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
         
 
         # --- RENDER PATH 1: Standard `has_positions` flags ---
-        elif has_positions:
+        if has_positions:
             count = data.get('count', 0)
             if count == 0: continue
             
