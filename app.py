@@ -3859,25 +3859,8 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             
         label = aliases.get(key, key) if aliases else key
         
-        # --- RENDER PATH 1: Decode Health Grade ---
-        if key == "Decode Health Grade":
-            severity = data.get("severity", "ok")
-            badge = data.get("badge", "OK")
-            reasons_list = data.get("positions", []) or ["No issues detected"]
-            reason = reasons_list[0] 
 
-            badge_class = f"integrity-badge integrity-badge-{severity}"
-            tooltip = "Health = Is the Unicode well-formed / decodable? (Not a safety guarantee)"
-
-            html.append(
-                f'<tr title="{tooltip}">'
-                f'<th scope="row" style="font-weight:600;cursor:help;">{label} ℹ️</th>'
-                f'<td><span class="{badge_class}">{badge}</span></td>'
-                f'<td style="font-style:italic;color:var(--color-text-muted);">{reason}</td>'
-                f'</tr>'
-            )
-
-        # --- RENDER PATH 2: Standard `has_positions` flags ---
+        # --- RENDER PATH 1: Standard `has_positions` flags ---
         elif has_positions:
             count = data.get('count', 0)
             if count == 0: continue
@@ -3907,7 +3890,7 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             
             html.append(f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{pos_html}</td></tr>')
         
-        # --- RENDER PATH 3: Simple 2-column ---
+        # --- RENDER PATH 2: Simple 2-column ---
         else:
             count = data
             if count == 0: continue
@@ -4361,8 +4344,8 @@ def update_all(event=None):
     def get_count(label):
         return forensic_map.get(label, {}).get("count", 0)
 
-    decode_grade_row = forensic_map.get("Decode Health Grade", {})
-    decode_grade = decode_grade_row.get("badge", "OK") if decode_grade_row else "OK"
+    decode_grade_row = forensic_map.get("Integrity Level (Heuristic)", {})
+    decode_grade = decode_grade_row.get("badge", "OK").split(' ')[0] # Extract just "CRITICAL"/"WARNING" from badge string
     
     malicious_bidi = threat_results.get('bidi_danger', False)
     script_mix_class = threat_results.get('script_mix_class', "")
