@@ -643,6 +643,42 @@ We refined the presentation layer to ensure the data is interpretable and consis
 * **Hybrid Integrity Profile:** The profile now combines the broad bitmask detections (`Flag: Any Invisible...`) with specific legacy checks (`Flag: Deceptive Newline (LS)`), ensuring no granular detail is lost while maintaining total coverage.
 * **Copy Report Fidelity:** Fixed the "Flag: Flag:" duplication bug in the clipboard copy function, ensuring clean, professional reports.
 
+---
+
+**Forensic Polish (v1.1)
+
+**Summary:** This update transitions the tool from "functional detection" to **"formal specification."** We have implemented a rigorous **Threat Model & Data Model** that eliminates ambiguity, standardizes reporting grammar, and enforces a strict ontology for complex threats like Mixed Scripts and Zalgo.
+
+### 1. Formalized Threat Model & Data Schema
+The **Threat-Hunting Profile** is no longer just a list of flags; it is now backed by a structured **Data Model Specification**.
+
+* **Separation of Concerns:**
+    * **Banners (Exploit Detectors):** Hard-coded, signature-based alerts for specific CVE-class patterns (e.g., "Trojan Source" Bidi overrides). These trigger independently of the score.
+    * **Heuristic Score (Health Assessment):** A weighted, additive score based on a "sum of sins" (Invisibles, Drift, Zalgo, etc.).
+* **The "Reason" Schema:**
+    * The Threat Score is derived from a list of structured reasons, now enforced by a strict grammar: `{Metric} {Relation} {Threshold} (actual={Value})`.
+    * *Example:* Instead of generic text, the engine reports: `invisible run ≥ 4 (actual=17); deceptive spaces ≥ 5 (actual=19)`. This ensures the output is machine-parsable and auditable.
+
+### 2. Mixed-Script Ontology (Base vs. Extensions)
+We resolved the ambiguity in mixed-script detection by implementing a dual-layer ontology. The tool now explicitly distinguishes between **Physical Mixing** and **Confusable Contexts**:
+
+* **CRITICAL: Mixed Scripts (Base):** Triggered by the **`Script`** property. This indicates a text containing characters that *physically belong* to different writing systems (e.g., a string mixing Latin `p` and Cyrillic `а`).
+* **CRITICAL: Highly Mixed Scripts (Extensions):** Triggered by the **`Script_Extensions`** property. This flags characters that are valid in multiple scripts but are being used in a "confusable" or high-density context (e.g., mixing Greek, Latin, and Cyrillic-compatible symbols in a way that obscures intent).
+* **Result:** No more duplicate flags. A string can now be diagnosed as having a Base Mix, an Extension Mix, or both, providing precise forensic clarity.
+
+### 3. Zalgo Synchronization (Global vs. Local)
+We unified the "Zalgo" (Excessive Combining Marks) detection logic into a single source of truth (`nsm_stats`) while maintaining distinct reporting scopes:
+
+* **Global Scope (Threat Profile):** "Is this text malicious?" The flag `Flag: Excessive Combining Marks (Zalgo)` represents the **Verdict**. It contributes to the Threat Score based on a global heuristic (Density, Max Marks).
+* **Local Scope (Integrity Profile):** "Where is the noise?" The flag `Flag: Excessive Combining Marks (Zalgo – Local Scan)` represents the **Map**. It provides the specific positions of clusters that exceed the visual safety threshold.
+* **Consistency:** Both scopes now rely on the exact same Grapheme Cluster analysis, ensuring that a High Threat score always corresponds to specific, locatable integrity flags.
+
+### 4. Precision & Robustness Standards
+To meet the "Lab Instrument" standard, we enforced strict numeric and logical precision across the engine:
+
+* **Decimal Standardization:** All percentages (e.g., Repertoire coverage, PUA density) are now strictly formatted to **two decimal places** (`.2f`). This eliminates false equivalence (e.g., distinguishing `0.40%` from `0.00%`).
+* **Wiring Verification:** The orchestration layer (`update_all`) was refactored to ensure that all calculated metrics—specifically `script_mix_class` and `malicious_bidi`—are correctly passed to the scoring engine, ensuring the visual banner and the calculated score never drift apart.
+
 ### 5. Coverage Verification (The "Stress Test")
 The engine was validated against an **"Ultimate Invisible Stress Test"** string containing:
 * Contiguous runs of 12+ invisible characters (ZWSP, ZWNJ, ZWJ, WJ, BOM, SHY).
