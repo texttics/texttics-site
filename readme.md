@@ -482,3 +482,74 @@ These functions take the `dict`s from the "compute" functions and build HTML str
     2.  Attach the `update_all` listener to the `<textarea>`.
     3.  Attach the `reveal_invisibles` listener to its button.
     4.  Enable the `<textarea>` and set its placeholder to "Ready."
+
+
+
+---
+
+## ✅ README ADDENDUM: Repertoire & Decode Health Enhancements
+
+This addendum details the "Repertoire Analysis" and "Decode Health" subsystems, which were added to enhance the tool's forensic capabilities. These features are 100% compliant with the "Post-Clipboard" philosophy, analyzing the *results* of the browser's sanitization process to provide a deeper integrity report.
+
+### 1. New in Group 2.A: The "Repertoire Footprint" (Core Metrics)
+
+To provide an immediate, high-level context of the text's "shape," the **Core Metrics** (Group 2.A) have been enhanced with four **Repertoire Analysis Cards**.
+
+**Philosophy:** This is **not** encoding detection. Encoding (the byte-level format) is lost "pre-clipboard." This is **Repertoire Analysis**—a structural "footprint" of the *decoded characters themselves*. It answers the forensic question: "What Unicode 'era' or 'tech level' does this text belong to?"
+
+The new cards provide a 7-bit, 8-bit, 16-bit, and 21-bit profile:
+
+* **`ASCII-Compatible (U+0000–U+007F)`**
+    * **What it is:** The 7-bit baseline. This shows the count and percentage of "pure ASCII" characters.
+    * **Forensic Value:** The `Fully` badge provides a definitive "Yes/No" answer. If "Fully," this text could be safely stored and transmitted in any 7-bit ASCII-only system without data loss.
+
+* **`Latin-1-Compatible (U+0000–U+00FF)`**
+    * **What it is:** The 8-bit baseline, covering the first 256 code points.
+    * **Forensic Value:** This range represents the entire "legacy" world of 8-bit encodings (like ISO-8859-1 and Windows-1252). The `Fully` badge indicates the text *could* have originated from one of these systems. If the text is *not* "Fully" Latin-1, it is definitively a "modern" Unicode string.
+
+* **`BMP Coverage (U+0000–U+FFFF)`**
+    * **What it is:** The 16-bit **Basic Multilingual Plane**. This covers all "classic" Unicode characters, including most of the world's living languages (Latin, Cyrillic, Greek, CJK, etc.).
+    * **Forensic Value:** The `Fully` badge indicates the text is "BMP-only." This was the limit for many older systems (like UCS-2).
+
+* **`Supplementary Planes (U+10000+)`**
+    * **What it is:** The "modern" 21-bit Unicode world. This includes all code points *above* the BMP.
+    * **Forensic Value:** This is the "emoji plane." A non-zero count here is a definitive sign of modern text, as it includes all modern emoji (`😀`), rare CJK characters, historic scripts, and special notations (like musical symbols).
+
+### 2. New in Group 2.C: The "Decode Health Dashboard" (Integrity Profile)
+
+The **Structural Integrity Profile** (Group 2.C) has been upgraded with a comprehensive **Decode Health Dashboard**.
+
+**Philosophy:** These flags are the *symptoms* and *forensic artifacts* of the text's journey *before* it reached our textarea. They signal that the browser's "Great Standardizer" had to handle a "dirty" or corrupt input.
+
+This dashboard adds seven new high-value metrics, which work in concert with the existing `Surrogates (Broken)` and `Noncharacter` flags:
+
+* **`Decode Health Grade` (Summary Row)**
+    * **What it is:** A high-level, synthetic "grade" (OK, Warning, Critical) that summarizes the *entire* decode health profile.
+    * **Rule:**
+        * **`Critical`**: Triggered by unambiguous data loss or corruption (`U+FFFD`, `Surrogates`, `Noncharacters`).
+        * **`Warning`**: Triggered by interoperability risks or integrity artifacts (`PUA`, `NUL`, `C0/C1`, `Internal BOM`, `Not NFC`).
+        * **`OK`**: The absence of all the above.
+
+* **`Flag: Replacement Char (U+FFFD)`**
+    * **What it is:** This is the *most critical* decode-health flag.
+    * **Forensic Value:** `U+FFFD` (``) is the canonical, unambiguous symbol that a decoder encountered an invalid or unmappable byte sequence and *data was permanently lost*. Its presence is a "Critical" grade event.
+
+* **`Flag: NUL (U+0000)`**
+    * **What it is:** A specific flag for the `NUL` character.
+    * **Forensic Value:** This is not a "normal" control character. In C-based languages, it is the string terminator. Its presence in text is a massive red flag, indicating either **binary data pasted as text** or a **deliberate truncation attack**.
+
+* **`Flag: Internal BOM (U+FEFF)`**
+    * **What it is:** A flag for the Byte Order Mark (`U+FEFF`) *when it appears at any position other than index 0*.
+    * **Forensic Value:** A BOM at the start is fine. A BOM in the *middle* of a string is a classic "structural integrity artifact" that proves the text is the result of a **broken file concatenation** or a **corrupt copy-paste operation**.
+
+* **`Flag: Private Use Area (PUA)`**
+    * **What it is:** A flag for any character in the PUA ranges (e.g., `U+E000`–`U+F8FF`).
+    * **Forensic Value:** PUA characters have no meaning in Unicode. They are "custom fonts" (like icon fonts) or system-specific glyphs. They are **non-interoperable** and will render as junk on any system that doesn't share the exact same custom font.
+
+* **`Flag: Other Control Chars (C0/C1)`**
+    * **What it is:** A count of all C0/C1 control characters *excluding* the common ones (`TAB`, `LF`, `CR`) and the high-severity ones (`NUL`).
+    * **Forensic Value:** This is a "junk" filter. It catches "binary garbage" like `[ACK]`, `[BEL]`, `[ESC]`, etc., which often results from copy-pasting from a terminal or a corrupted binary file.
+
+* **`Flag: Normalization (Not NFC)`**
+    * **What it is:** A boolean check (Yes/No) on the text's canonical integrity.
+    * **Forensic Value:** It answers, "Is this text in Unicode Normalization Form C?" If the answer is `No`, it's a structural integrity flag. It proves the text is a "mixed" composition (e.g., it contains both a pre-composed `é` and a decomposed `e`+`´`), likely from multiple copy-paste operations. The flag also provides an **"approximate changes" count** to show the *scale* of the non-NFC data.
