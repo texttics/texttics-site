@@ -376,3 +376,90 @@ window.TEXTTICS_HIGHLIGHT_SEGMENT = (startGraphemeIndex, endGraphemeIndex) => {
   textArea.focus();
   textArea.setSelectionRange(startCodeUnitIndex, endCodeUnitIndex);
 };
+
+/**
+ * =============================================================================
+ * TEXTTICS INTERACTIVE BRIDGE (HIGHLIGHTER ENGINE)
+ * =============================================================================
+ */
+
+const getTextArea = () => document.getElementById('text-input');
+
+/**
+ * Mode A: Highlight by Grapheme Index (For Stage 2 / Macro View)
+ * Used when the source is a "Visual Block" (e.g., "Grapheme #5")
+ */
+window.TEXTTICS_HIGHLIGHT_SEGMENT = (startGraphemeIndex, endGraphemeIndex) => {
+  const textArea = getTextArea();
+  if (!textArea) return;
+  const text = textArea.value;
+
+  // Use Intl.Segmenter to map Visual Index -> Code Unit Index
+  try {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const graphemes = Array.from(segmenter.segment(text));
+    
+    let startUnit = 0;
+    let endUnit = text.length;
+
+    if (graphemes.length > 0) {
+      // Clamp and find start
+      const safeStart = Math.min(startGraphemeIndex, graphemes.length - 1);
+      startUnit = graphemes[safeStart].index;
+
+      // Clamp and find end
+      if (endGraphemeIndex < graphemes.length) {
+        endUnit = graphemes[endGraphemeIndex].index;
+      } else {
+        endUnit = text.length; // End of string
+      }
+    }
+    
+    // Execute Selection
+    textArea.focus();
+    textArea.setSelectionRange(startUnit, endUnit);
+
+  } catch (e) {
+    console.error('Highlight Error (Grapheme):', e);
+  }
+};
+
+/**
+ * Mode B: Highlight by Code Point Index (For Stage 1 / Micro View)
+ * Used when the source is a "Logical Atom" (e.g., "#52" in Integrity Profile)
+ */
+window.TEXTTICS_HIGHLIGHT_CODEPOINT = (codePointIndex) => {
+  const textArea = getTextArea();
+  if (!textArea) return;
+  const text = textArea.value;
+
+  try {
+    // 1. Convert string to Array of Code Points (handles Surrogates correctly)
+    // This is O(N), but unavoidable for accurate UTF-16 mapping without a map
+    const codePoints = Array.from(text);
+
+    // 2. Validate Index
+    if (codePointIndex < 0 || codePointIndex >= codePoints.length) {
+        console.warn(`Index ${codePointIndex} out of bounds.`);
+        return;
+    }
+
+    // 3. Calculate UTF-16 Offset (The "Code Unit" Index)
+    // We sum the length of all previous code points.
+    // e.g., '😀' is 1 code point, but length 2.
+    let startUnit = 0;
+    for (let i = 0; i < codePointIndex; i++) {
+        startUnit += codePoints[i].length;
+    }
+
+    // 4. Determine length of the target code point
+    const length = codePoints[codePointIndex].length;
+
+    // 5. Execute Selection
+    textArea.focus();
+    textArea.setSelectionRange(startUnit, startUnit + length);
+
+  } catch (e) {
+    console.error('Highlight Error (CodePoint):', e);
+  }
+};
