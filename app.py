@@ -354,7 +354,7 @@ def analyze_combining_structure(t: str, rows: list):
     # Add Rows
     if zalgo_indices:
         rows.append({
-            "label": "Flag: Excessive Combining Marks (Zalgo)",
+            "label": "Flag: Excessive Combining Marks (Zalgo – Local Scan)",
             "count": len(zalgo_indices),
             "positions": zalgo_indices,
             "severity": "warn",
@@ -516,13 +516,14 @@ def compute_threat_score(t):
 
     # 2. Invisible Runs
     max_run = t.get("max_invis_run", 0)
-    if max_run >= 4: reasons.append(f"Invisible run length {max_run}")
+    if max_run >= 4: reasons.append(f"invisible run ≥ 4 (len={max_run})")
     if max_run >= 8: score += 3
     elif max_run >= 4: score += 1
 
     # 3. Invisible Share
     if invis_share >= 0.30:
-        reasons.append(f"{int(invis_share*100)}% invisible/ignorable")
+        # Standardize to 1 decimal place
+        reasons.append(f"invisibles ≥ 30% (≈{invis_share*100:.1f}%)")
         score += 3
     elif invis_share >= 0.10:
         score += 1
@@ -530,14 +531,14 @@ def compute_threat_score(t):
     # 4. Deceptive Spaces
     dec_spaces = t.get("deceptive_spaces", 0)
     if dec_spaces >= 5:
-        reasons.append(f"Deceptive spaces: {dec_spaces}")
+        reasons.append(f"deceptive spaces ≥ 5 (found {dec_spaces})")
         score += 2
     elif dec_spaces >= 1:
         score += 1
 
     # 5. Skeleton Drift
     drift = t.get("skeleton_drift", 0)
-    if drift >= 1: reasons.append(f"Skeleton drift ({drift} positions)")
+    if drift >= 1: reasons.append(f"skeleton drift ≥ 1 ({drift} positions)")
     if drift >= 5: score += 2
     if drift >= 15: score += 1
 
@@ -3560,8 +3561,22 @@ def render_threat_analysis(threat_results):
     banner_el = document.getElementById("threat-banner")
     if banner_el:
         bidi_danger = threat_results.get('bidi_danger', False)
+        
+        # Extract Threat Level Badge if available
+        level_key = "Threat Level (Heuristic)"
+        level_str = ""
+        if level_key in flags:
+             badge = flags[level_key].get("badge", "").split(' ')[0] # Get "HIGH"/"MEDIUM"
+             if badge in ("HIGH", "MEDIUM"):
+                 level_str = f" Threat Level: {badge}."
+
         if bidi_danger:
-            banner_el.innerText = "WARNING: This text contains malicious Bidi control characters (like RLO) designed to reverse text order. This is a vector for 'Trojan Source' attacks."
+            base_msg = "WARNING: This text contains malicious Bidi control characters (like RLO) designed to reverse text order. This is a vector for 'Trojan Source' attacks."
+            banner_el.innerText = base_msg + level_str
+            banner_el.removeAttribute("hidden")
+        elif level_str:
+            # Show banner for High Threat even without Bidi
+            banner_el.innerText = f"WARNING: Security anomalies detected.{level_str} See Threat-Hunting Profile."
             banner_el.removeAttribute("hidden")
         else:
             banner_el.setAttribute("hidden", "true")
@@ -3874,6 +3889,12 @@ def render_integrity_matrix(rows):
         # 2. Count / Badge
         td_count = document.createElement("td")
         if row["badge"]:
+            # Show Count AND Badge
+            # Check if count is non-zero/meaningful
+            if row["count"] > 0 and row["label"] != "Decode Health Grade":
+                 text_node = document.createTextNode(f"{row['count']} ")
+                 td_count.appendChild(text_node)
+            
             span = document.createElement("span")
             span.className = f"integrity-badge integrity-badge-{row['severity']}"
             span.textContent = row["badge"]
