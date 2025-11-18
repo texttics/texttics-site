@@ -382,75 +382,71 @@ def analyze_combining_structure(t: str, rows: list):
 def analyze_nsm_overload(graphemes):
     """
     Analyzes graphemes for excessive combining marks (Zalgo).
-    Returns severity level (0, 1, 2), counts, and positions.
+    Returns severity level (0, 1, 2) and details.
     """
     total_g = len(graphemes)
     if total_g == 0:
-        return {"level": 0, "max_marks": 0, "mark_density": 0.0, "max_marks_positions": []}
+        return {"level": 0, "max_marks": 0, "count": 0, "positions": []}
 
+    max_marks = 0
     total_marks = 0
     g_with_marks = 0
-    max_marks = 0
     max_repeat_run = 0
-    max_marks_positions = []
     
-    for i, glyph in enumerate(graphemes):
+    zalgo_indices = []
+    
+    # Track global codepoint index for correct positions
+    current_cp_index = 0
+
+    for glyph in graphemes:
         marks_in_g = 0
         current_repeat = 1
         max_g_repeat = 0
         last_cp = -1
         
-        # Iterate chars in the grapheme
+        # Save start index of this grapheme
+        grapheme_start_index = current_cp_index
+        
         for char in glyph:
             cp = ord(char)
-            # Check if combining mark (Mn, Me or ccc != 0)
-            is_combining = unicodedata.category(char) in ('Mn', 'Me')
-            if not is_combining:
-                 # Fallback to CCC check
-                 is_combining = _find_in_ranges(cp, "CombiningClass") != "0"
-
-            if is_combining:
+            is_comb = unicodedata.category(char) in ('Mn', 'Me') or _find_in_ranges(cp, "CombiningClass") != "0"
+            
+            if is_comb:
                 marks_in_g += 1
                 if cp == last_cp:
                     current_repeat += 1
                 else:
                     max_g_repeat = max(max_g_repeat, current_repeat)
                     current_repeat = 1
-            
             last_cp = cp
+            
+            # Advance global index
+            current_cp_index += 1
         
         max_g_repeat = max(max_g_repeat, current_repeat)
-        
         total_marks += marks_in_g
         if marks_in_g > 0: g_with_marks += 1
-        
-        if marks_in_g > max_marks:
-            max_marks = marks_in_g
-            max_marks_positions = [f"#{i}"]
-        elif marks_in_g == max_marks and marks_in_g > 0:
-            max_marks_positions.append(f"#{i}")
-
+        max_marks = max(max_marks, marks_in_g)
         max_repeat_run = max(max_repeat_run, max_g_repeat)
+        
+        # Threshold: 3+ marks
+        if marks_in_g >= 3:
+            # Use the codepoint index, not grapheme index!
+            zalgo_indices.append(f"#{grapheme_start_index}")
 
     mark_density = g_with_marks / total_g
-
-    # Determine Severity Level
-    # Level 0 (Normal): max<=2, density<=0.35, repeat<=2
-    level = 0
     
-    # Level 2 (Extreme / Zalgo)
+    level = 0
     if (max_marks >= 7 or mark_density > 0.7 or total_marks >= 64 or max_repeat_run >= 6):
         level = 2
-    # Level 1 (Suspicious)
     elif not (max_marks <= 2 and mark_density <= 0.35 and max_repeat_run <= 2):
         level = 1
 
     return {
         "level": level,
         "max_marks": max_marks,
-        "mark_density": round(mark_density, 2),
-        "max_repeat_run": max_repeat_run,
-        "max_marks_positions": max_marks_positions
+        "count": len(zalgo_indices),
+        "positions": zalgo_indices
     }
 
 def compute_threat_score(t):
@@ -2651,10 +2647,9 @@ def _get_codepoint_properties(t: str):
 
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
-    """
-    Module 2.C: Hybrid Forensic Analysis.
-    """
-    # --- 1. Initialize Buckets ---
+    """Hybrid Forensic Analysis."""
+    # ... [Initialization blocks remain unchanged] ...
+    # (Assume standard bucket initialization here)
     legacy_indices = {
         "deceptive_ls": [], "deceptive_ps": [], "deceptive_nel": [],
         "bidi_bracket_open": [], "bidi_bracket_close": [],
@@ -2698,7 +2693,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 category = unicodedata.category(char)
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
 
-                # Decode Health
                 if cp == 0xFFFD: health_issues["fffd"].append(i)
                 if 0xD800 <= cp <= 0xDFFF: health_issues["surrogate"].append(i)
                 if cp == 0x0000: health_issues["nul"].append(i)
@@ -2709,7 +2703,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     health_issues["nonchar"].append(i)
                 if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
 
-                # Legacy & Bitmask Checks (Condensed for brevity, logic identical to previous)
                 if cp == 0x2028: legacy_indices["deceptive_ls"].append(i)
                 elif cp == 0x2029: legacy_indices["deceptive_ps"].append(i)
                 elif cp == 0x0085: legacy_indices["deceptive_nel"].append(i)
@@ -2766,7 +2759,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
                 if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
 
-                # UAX #31
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 status_key = ""
                 if id_status_val:
@@ -2789,7 +2781,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
 
-    # --- 4. Construct Output Rows ---
     rows = []
     def add_row(label, count, positions, severity="warn", badge=None, pct=None):
         if count > 0:
@@ -2797,12 +2788,11 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
-    # 4a. Decode Health Grade (Expanded Logic)
+    # --- Decode Health Logic ---
     health_reasons = []
     crit_errs = 0
     warn_errs = 0
     
-    # Criticals
     if health_issues["fffd"]: 
         crit_errs += len(health_issues["fffd"]); health_reasons.append("Replacement Char (U+FFFD)")
     if health_issues["surrogate"]: 
@@ -2812,7 +2802,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if health_issues["nul"]: 
         crit_errs += len(health_issues["nul"]); health_reasons.append("NUL (U+0000)")
 
-    # Warnings
     if health_issues["pua"]: 
         warn_errs += len(health_issues["pua"]); health_reasons.append("Private Use Area")
     if health_issues["bom_mid"]: 
@@ -2828,27 +2817,21 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if not is_nfc: 
         warn_errs += 1; health_reasons.append("Text is not NFC")
 
-    health_sev = "ok"; health_bdg = "OK"; health_pos = []
-    if crit_errs > 0:
-        health_sev = "crit"; health_bdg = "CRIT"
-    elif warn_errs > 0:
-        health_sev = "warn"; health_bdg = "WARN"
+    health_sev = "ok"; health_bdg = "OK"
+    if crit_errs > 0: health_sev = "crit"; health_bdg = "CRIT"
+    elif warn_errs > 0: health_sev = "warn"; health_bdg = "WARN"
     
-    # Collect all health positions
-    for k in health_issues: health_pos.extend(health_issues[k])
-    if legacy_indices["other_ctrl"]: health_pos.extend(legacy_indices["other_ctrl"])
-    health_pos.sort()
+    # FIX: Store the reason string in 'positions' for the renderer
+    health_details = ["; ".join(health_reasons)] if health_reasons else ["—"]
 
     rows.append({
         "label": "Decode Health Grade",
         "count": crit_errs + warn_errs,
-        "positions": health_pos,
+        "positions": health_details, 
         "severity": health_sev,
-        "badge": health_bdg,
-        "reasons": health_reasons # Pass reasons to renderer
+        "badge": health_bdg
     })
 
-    # 4b. Add Flags
     add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
     add_row("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)", len(flags["join"]), flags["join"], "warn")
     add_row("Flag: Zero-Width Spacing (ZWSP / WJ / BOM)", len(flags["zw_space"]), flags["zw_space"], "warn")
@@ -3458,8 +3441,43 @@ def render_threat_analysis(threat_results):
     
     # 1. Render Flags
     flags = threat_results.get('flags', {})
+    
+    # --- FIX: Force 'Threat Level' to top ---
+    html_rows = []
+    threat_level_key = "Threat Level (Heuristic)"
+    
+    if threat_level_key in flags:
+        data = flags[threat_level_key]
+        badge = data.get("badge", "")
+        severity = data.get("severity", "ok")
+        # Safe access to details
+        positions = data.get("positions", [])
+        details = positions[0] if positions else ""
+        
+        badge_class = f"integrity-badge integrity-badge-{severity}"
+        
+        row_html = (
+            f'<tr class="flag-row-{severity}" style="border-bottom: 2px solid var(--color-border);">'
+            f'<th scope="row" style="font-weight:700; font-size:1.05em;">{threat_level_key}</th>'
+            f'<td><span class="{badge_class}" style="font-size:0.9em;">{badge}</span></td>'
+            f'<td style="font-style:italic; color:var(--color-text-muted);">{details}</td>'
+            f'</tr>'
+        )
+        html_rows.append(row_html)
+        
+        # Remove from dict copy so it doesn't duplicate
+        flags_copy = flags.copy()
+        del flags_copy[threat_level_key]
+        flags = flags_copy
+
+    # Render the rest
     render_matrix_table(flags, "threat-report-body", has_positions=True)
     
+    # Prepend the custom row
+    if html_rows:
+        existing_html = document.getElementById("threat-report-body").innerHTML
+        document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
+
     # 2. Render Hashes
     hashes = threat_results.get('hashes', {})
     hash_html = []
@@ -3470,16 +3488,15 @@ def render_threat_analysis(threat_results):
     else:
         document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
 
-    # 3. Render Confusable Report (Smarter Message)
+    # 3. Render Confusable Report
     html_report = threat_results.get('html_report', "")
     report_el = document.getElementById("confusable-diff-report")
     
     if html_report:
         report_el.innerHTML = html_report
     else:
-        # Check Skeleton Drift to give a better message
         drift_count = 0
-        drift_flag = flags.get("Flag: Skeleton Drift")
+        drift_flag = flags.get("Flag: Skeleton Drift") # Check the copied flags dict
         if drift_flag:
             drift_count = drift_flag.get("count", 0)
             
@@ -3491,7 +3508,7 @@ def render_threat_analysis(threat_results):
         report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
     
 
-    # 4. Render Banner
+    # 4. Banner
     banner_el = document.getElementById("threat-banner")
     if banner_el:
         bidi_danger = threat_results.get('bidi_danger', False)
@@ -3729,29 +3746,23 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             
         label = aliases.get(key, key) if aliases else key
         
-        # --- RENDER PATH 1: Decode Health Grade (Self-Explanatory) ---
+        # --- RENDER PATH 1: Decode Health Grade ---
         if key == "Decode Health Grade":
-            grade = data.get("grade", "N/A")
-            reasons = data.get("reasons", [])
-            
-            grade_class = "integrity-badge-ok"
-            if grade == "Warning": grade_class = "integrity-badge-warn"
-            elif grade == "Critical": grade_class = "integrity-badge-crit"
-            
-            # Build the reason text
-            reason_html = ""
-            if reasons:
-                reason_text = "; ".join(reasons)
-                # Styled small and muted next to the badge
-                reason_html = f'<span style="color:#6b7280; font-size:0.85em; margin-left:8px; font-weight:normal;">— {reason_text}</span>'
-            
+            severity = data.get("severity", "ok")
+            badge = data.get("badge", "OK")
+            # Get reasons from the 'positions' field (where we stored them)
+            reasons_list = data.get("positions", []) or ["No issues detected"]
+            reason = reasons_list[0] # The pre-joined string
+
+            badge_class = f"integrity-badge integrity-badge-{severity}"
+            tooltip = "Health = Is the Unicode well-formed / decodable? (Not a safety guarantee)"
+
             html.append(
-                f'<tr title="Health = Structural decoding sanity (not semantic safety).">'
-                f'<th scope="row" style="font-weight: 600; cursor: help;">{label} ℹ️</th>'
-                f'<td colspan="2">'
-                f'<span class="integrity-badge {grade_class}">{grade}</span>'
-                f'{reason_html}'
-                f'</td></tr>'
+                f'<tr title="{tooltip}">'
+                f'<th scope="row" style="font-weight:600;cursor:help;">{label} ℹ️</th>'
+                f'<td><span class="{badge_class}">{badge}</span></td>'
+                f'<td style="font-style:italic;color:var(--color-text-muted);">{reason}</td>'
+                f'</tr>'
             )
 
         # --- RENDER PATH 2: Standard `has_positions` flags ---
