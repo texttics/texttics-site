@@ -3272,6 +3272,49 @@ def _render_confusable_summary_view(
 
     return "".join(final_html_parts)
 
+
+def _generate_uts39_skeleton_metrics(t: str):
+    """
+    Generates the skeleton AND granular drift metrics deterministically.
+    Returns: (skeleton_string, metrics_dict)
+    """
+    if LOADING_STATE != "READY":
+        return "", {}
+        
+    confusables_map = DATA_STORES.get("Confusables", {})
+    
+    mapped_chars = []
+    metrics = {
+        "total_drift": 0,
+        "drift_ascii": 0,        # Safe-ish (1 -> l)
+        "drift_cross_script": 0, # Dangerous (Cyrillic a -> Latin a)
+        "drift_other": 0         # Neutral (Accents, etc.)
+    }
+    
+    for char in t:
+        cp = ord(char)
+        skeleton_char_str = confusables_map.get(cp)
+        
+        if skeleton_char_str:
+            mapped_chars.append(skeleton_char_str)
+            metrics["total_drift"] += 1
+            
+            # 1. ASCII Drift
+            if cp < 128 and all(ord(c) < 128 for c in skeleton_char_str):
+                metrics["drift_ascii"] += 1
+            # 2. Cross-Script Drift
+            else:
+                input_script = _find_in_ranges(cp, "Scripts")
+                target_is_latin = any(_find_in_ranges(ord(c), "Scripts") == "Latin" for c in skeleton_char_str)
+                if input_script not in ("Latin", "Common", "Inherited") and target_is_latin:
+                    metrics["drift_cross_script"] += 1
+                else:
+                    metrics["drift_other"] += 1
+        else:
+            mapped_chars.append(char)
+            
+    return "".join(mapped_chars), metrics
+
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
@@ -3283,8 +3326,6 @@ def compute_threat_analysis(t: str):
     
     # --- Trackers ---
     bidi_danger_indices = []
-    
-    # NEW: Split trackers for the "Mixed Scripts" Ontology
     base_scripts_in_use = set() 
     ext_scripts_in_use = set()
     is_non_ascii_LNS = False 
@@ -3293,13 +3334,14 @@ def compute_threat_analysis(t: str):
     nf_string = ""
     nf_casefold_string = ""
     skeleton_string = ""
+    skel_metrics = {} # [NEW]
     final_html_report = ""
 
     # --- 1. Early Exit ---
     if not t:
         return {
             'flags': {}, 'hashes': {}, 'html_report': "", 'bidi_danger': False,
-            'raw': "", 'nfkc': "", 'nfkc_cf': "", 'skeleton': ""
+            'raw': "", 'nfkc': "", 'nfkc_cf': "", 'skeleton': "", 'skel_metrics': {}
         }
 
     def _get_hash(s: str):
@@ -3326,23 +3368,19 @@ def compute_threat_analysis(t: str):
 
                 # --- B. Mixed-Script Detection (Spec-Compliant) ---
                 try:
-                    category = unicodedata.category(char)[0] # 'L', 'N', 'S'
+                    category = unicodedata.category(char)[0] 
                     if category in ("L", "N", "S"):
                         if cp > 0x7F: is_non_ascii_LNS = True
                         
-                        # 1. Base Script (The "Hard" Property)
                         script_val = _find_in_ranges(cp, "Scripts")
                         if script_val:
                             base_scripts_in_use.add(script_val)
                         
-                        # 2. Script Extensions (The "Soft" Property)
-                        # If extensions exist, use them. If not, fallback to Base.
                         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                         if script_ext_val:
                             ext_scripts_in_use.update(script_ext_val.split())
                         elif script_val:
                             ext_scripts_in_use.add(script_val)
-                            
                 except Exception:
                     pass 
                 
@@ -3360,19 +3398,14 @@ def compute_threat_analysis(t: str):
                     'count': len(bidi_danger_indices),
                     'positions': bidi_danger_indices
                 }
-            
 
             # --- Script Mix Logic (Ontology Applied) ---
-            # Filter out noise
             ignored = {"Common", "Inherited", "Zzzz", "Unknown"}
-            
             clean_base = {s for s in base_scripts_in_use if s not in ignored}
             clean_ext = {s for s in ext_scripts_in_use if s not in ignored}
-            
-            # Variable to capture the highest severity mix for the Scorer
             script_mix_class = "" 
 
-            # 1. Base Script Mix (The "Physical" Mix)
+            # 1. Base Script Mix
             if len(clean_base) > 1:
                 sorted_base = sorted(list(clean_base))
                 key = f"CRITICAL: Mixed Scripts (Base: {', '.join(sorted_base)})"
@@ -3380,10 +3413,9 @@ def compute_threat_analysis(t: str):
                     'count': len(clean_base),
                     'positions': ["(See Provenance Profile for details)"]
                 }
-                script_mix_class = "Mixed Scripts (Base)" # Capture for scorer
+                script_mix_class = "Mixed Scripts (Base)"
                 
-            # 2. Extension Mix (The "Confusable" Mix)
-            # Only flag this if it ADDS information or is "Highly Mixed"
+            # 2. Extension Mix
             if len(clean_ext) > 2:
                  sorted_ext = sorted(list(clean_ext))
                  key = f"CRITICAL: Highly Mixed Scripts (Extensions: {', '.join(sorted_ext)})"
@@ -3391,14 +3423,10 @@ def compute_threat_analysis(t: str):
                     'count': len(clean_ext),
                     'positions': ["(See Provenance Profile for details)"]
                  }
-                 # Upgrade severity if base wasn't already critical
-                 if "Mixed" not in script_mix_class:
-                     script_mix_class = "Highly Mixed Scripts (Extensions)"
-                 else:
-                     # If both, mark as Highly Mixed to ensure max score
-                     script_mix_class = "Highly Mixed Scripts (Extensions)"
+                 # Upgrade severity
+                 script_mix_class = "Highly Mixed Scripts (Extensions)"
             
-            # 3. Single Script / ASCII status (Info only)
+            # 3. Single Script / ASCII status
             if len(clean_base) == 0:
                 if is_non_ascii_LNS:
                      threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': ["No specific script letters found."]}
@@ -3408,27 +3436,30 @@ def compute_threat_analysis(t: str):
                 s_name = list(clean_base)[0]
                 if s_name == "Latin" and is_non_ascii_LNS:
                      threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': ["Latin script with non-ASCII characters."]}
-                elif not threat_flags: # Only add if no Critical flags
+                elif not threat_flags: 
                      threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': ["Text is consistent."]}
 
 
-        # --- 5. Skeleton Drift ---
-        skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
-        skeleton_drift_count = 0
-        try:
-            min_len = min(len(t), len(skeleton_string))
-            for idx in range(min_len):
-                if t[idx] != skeleton_string[idx]:
-                    skeleton_drift_count += 1
-            skeleton_drift_count += abs(len(t) - len(skeleton_string))
+        # --- 5. Skeleton Drift (METRICS ENGINE) ---
+        skeleton_string, skel_metrics = _generate_uts39_skeleton_metrics(nf_casefold_string)
+        
+        # [IMPORTANT] We ALWAYS flag drift if it exists, because this is a forensic tool.
+        # The SCORING engine decides if it matters, but the USER always sees the data.
+        if skel_metrics["total_drift"] > 0:
+            drift_desc = f"{skel_metrics['total_drift']} total"
+            details = []
+            if skel_metrics['drift_cross_script'] > 0:
+                details.append(f"{skel_metrics['drift_cross_script']} cross-script")
+            if skel_metrics['drift_ascii'] > 0:
+                details.append(f"{skel_metrics['drift_ascii']} ASCII")
             
-            if skeleton_drift_count > 0:
-                threat_flags["Flag: Skeleton Drift"] = {
-                    'count': skeleton_drift_count,
-                    'positions': [f"{skeleton_drift_count} positions differ from raw string"]
-                }
-        except Exception:
-            pass
+            if details:
+                drift_desc += f" ({', '.join(details)})"
+            
+            threat_flags["Flag: Skeleton Drift"] = {
+                'count': skel_metrics["total_drift"],
+                'positions': [drift_desc]
+            }
 
         # --- 6. Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
@@ -3455,6 +3486,7 @@ def compute_threat_analysis(t: str):
         'html_report': final_html_report,
         'bidi_danger': bool(bidi_danger_indices),
         'script_mix_class': script_mix_class,
+        'skel_metrics': skel_metrics, # [KEY] Pass metrics to scorer
         'raw': t, 'nfkc': nf_string, 'nfkc_cf': nf_casefold_string, 'skeleton': skeleton_string
     }
     
@@ -4054,84 +4086,83 @@ def render_inspector_panel(data):
 
 def compute_threat_score(inputs):
     """
-    Computes the heuristic Threat Level based on the Data Model Spec.
-    Returns: {score, level, reasons[]}
+    Computes Dual Scores: Exploit Likelihood & Structural Complexity.
     """
-    score = 0
+    # --- 1. Exploit Likelihood (The Security Threat) ---
+    exploit_score = 0
     reasons = []
-    
-    # Helper for Spec-Compliant Reason Grammar
-    def add_reason(metric, relation, threshold, actual, weight, summary_key=None):
-        nonlocal score
-        # Check condition
-        triggered = False
-        if relation == ">=" and actual >= threshold: triggered = True
-        elif relation == ">" and actual > threshold: triggered = True
-        elif relation == "==" and actual == threshold: triggered = True
-        elif relation == "bool" and actual: triggered = True
-            
-        if triggered:
-            score += weight
-            # Spec format: "{Metric} {Relation} {Threshold} (actual={Value})"
-            key_text = summary_key if summary_key else metric
-            
-            if relation == "bool":
-                reasons.append(f"{key_text}")
-            else:
-                reasons.append(f"{key_text} {relation} {threshold} (actual={actual})")
 
-    # 1. Decode Health (Critical)
-    if inputs.get("decode_grade") == "CRIT":
-        score += 10
-        reasons.append("Decode Health is CRIT")
-    elif inputs.get("decode_grade") == "WARN":
-        score += 2
-        reasons.append("Decode Health is WARN")
+    def add_exploit(reason, points):
+        nonlocal exploit_score
+        exploit_score += points
+        reasons.append(reason)
 
-    # 2. Invisibles & Obfuscation
-    add_reason("invisible run", ">=", 4, inputs.get("max_invis_run", 0), 5)
-    add_reason("deceptive spaces", ">=", 5, inputs.get("deceptive_spaces", 0), 3)
-    add_reason("invisible clusters", ">=", 2, inputs.get("invis_cluster_count", 0), 3)
-    
-    # 3. Structural Integrity
-    add_reason("skeleton drift", ">=", 1, inputs.get("skeleton_drift", 0), 3)
-    add_reason("internal BOM", "bool", True, inputs.get("has_internal_bom", False), 4)
-    add_reason("unclosed bidi", "bool", True, inputs.get("has_unclosed_bidi", False), 3)
-    add_reason("invalid VS", "bool", True, inputs.get("has_invalid_vs", False), 2)
-    
-    # 4. Trojan Source (Explicit)
+    # A. Hard Security Failures (Trojan Source / Corrupt Data)
     if inputs.get("malicious_bidi"):
-        score += 10
-        reasons.append("Malicious Bidi Control detected")
+        add_exploit("Malicious Bidi Control (Trojan Source)", 10)
+    if inputs.get("has_unclosed_bidi"):
+        add_exploit("Unclosed Bidi Sequence", 3)
+    if inputs.get("decode_grade") == "CRIT":
+        add_exploit("Critical Decode Health Issues", 5)
 
-    # 5. Zalgo (Global Heuristic)
-    nsm_level = inputs.get("nsm_level", 0)
-    if nsm_level == 2:
-        score += 5
-        reasons.append("Zalgo Level 2 (High Density)")
-    elif nsm_level == 1:
-        score += 1
-        reasons.append("Zalgo Level 1 (Mild)")
+    # B. Cross-Script Drift (The Real Homoglyph Attack)
+    # We penalize this HEAVILY because it is the definition of spoofing.
+    drift_cross = inputs.get("drift_cross_script", 0)
+    if drift_cross > 0:
+        add_exploit(f"Cross-Script Confusables (count={drift_cross})", 4)
 
-    # 6. Mixed Scripts
-    sm_class = inputs.get("script_mix_class", "")
-    if "Highly Mixed" in sm_class:
-        score += 5
-        reasons.append("Highly Mixed Scripts (Extensions)")
-    elif "Mixed Scripts" in sm_class:
-        score += 4
-        reasons.append("Mixed Scripts (Base)")
-
-    # 7. PUA / Nonchar
-    add_reason("PUA usage", ">=", 1.0, inputs.get("pua_pct", 0), 2)
-    add_reason("Noncharacters", ">=", 1, inputs.get("nonchar_count", 0), 5)
-
-    # Calculate Level
-    level = "LOW"
-    if score >= 10: level = "HIGH"
-    elif score >= 5: level = "MEDIUM"
+    # C. High-Risk Invisibles
+    # A cluster of invisibles is almost always a payload or obfuscation.
+    if inputs.get("invis_cluster_count", 0) > 0:
+        add_exploit("Invisible Character Clusters", 3)
     
-    return {"score": score, "level": level, "reasons": reasons}
+    # D. Script Mixing (Base)
+    # Mixing Latin + Cyrillic is inherently suspicious.
+    if "Mixed Scripts" in inputs.get("script_mix_class", ""):
+        add_exploit(inputs.get("script_mix_class"), 4)
+
+    # E. PUA / Nonchar
+    if inputs.get("pua_pct", 0) > 0:
+        add_exploit("Private Use Area characters", 2)
+    if inputs.get("nonchar_count", 0) > 0:
+        add_exploit("Noncharacters", 3)
+        
+    # --- 2. Structural Complexity (The Weirdness Metric) ---
+    # This captures ASCII Drift, Zalgo, and Ratio. 
+    # It doesn't trigger "THREAT" but it warns the user the text is "Complex".
+    complexity_score = 0
+    
+    # ASCII Drift (Visual Ambiguity)
+    drift_ascii = inputs.get("drift_ascii", 0)
+    total_len = inputs.get("total_code_points", 1)
+    
+    if drift_ascii > 0:
+        ratio = drift_ascii / total_len if total_len > 0 else 0
+        if ratio > 0.5: complexity_score += 3 
+        elif ratio > 0.1: complexity_score += 1
+        
+    # Zalgo / NSM Overload
+    if inputs.get("nsm_level") == 2: complexity_score += 3
+    elif inputs.get("nsm_level") == 1: complexity_score += 1
+    
+    # Inherit some risk from Exploit score (Malicious things are also Complex)
+    if exploit_score > 0:
+        complexity_score += 2
+
+    # Cap scores
+    exploit_score = min(exploit_score, 10)
+    complexity_score = min(complexity_score, 10)
+    
+    # Calculate Level Label (Based on EXPLOIT score)
+    level = "LOW"
+    if exploit_score >= 7: level = "HIGH"
+    elif exploit_score >= 4: level = "MEDIUM"
+    
+    # Annotation if Complexity is high but Threat is low
+    if complexity_score > 2 and exploit_score < 4:
+        reasons.append(f"(Note: High Complexity {complexity_score}/10 due to visual ambiguity)")
+        
+    return {"score": exploit_score, "level": level, "reasons": reasons}
 
 # ---
 # 6. MAIN ORCHESTRATOR
@@ -4261,6 +4292,8 @@ def update_all(event=None):
     # Build the Inputs Object (Aligned with Spec)
     score_inputs = {
         "total_code_points": cp_summary.get("Total Code Points", 0),
+        "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
+        "drift_ascii": skel_metrics.get("drift_ascii", 0),
         "invis_or_ignorable": get_count("Flag: Any Invisible or Default-Ignorable (Union)"),
         "deceptive_spaces": get_count("Deceptive Spaces (Non-ASCII)"),
         "has_internal_bom": get_count("Flag: Internal BOM (U+FEFF)") > 0,
