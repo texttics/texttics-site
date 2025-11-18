@@ -553,3 +553,24 @@ This dashboard adds seven new high-value metrics, which work in concert with the
 * **`Flag: Normalization (Not NFC)`**
     * **What it is:** A boolean check (Yes/No) on the text's canonical integrity.
     * **Forensic Value:** It answers, "Is this text in Unicode Normalization Form C?" If the answer is `No`, it's a structural integrity flag. It proves the text is a "mixed" composition (e.g., it contains both a pre-composed `é` and a decomposed `e`+`´`), likely from multiple copy-paste operations. The flag also provides an **"approximate changes" count** to show the *scale* of the non-NFC data.
+
+---
+
+### 3. New in Group 2.C & 3: Threat-Hunting & Triage Upgrades
+
+This update adds three high-value "triage" flags. One enhances the forensic clarity of the "Structural Integrity Profile," while the other two add a powerful "executive summary" layer to the "Threat-Hunting Profile," allowing an analyst to spot complex threats at a single glance.
+
+#### 1. `Flag: Unicode Tags` (in Group 2.C)
+
+* **What it is:** A new, high-precision flag in the "Structural Integrity Profile" that specifically isolates and counts characters from the Unicode Tag block (`U+E0000`–`U+E007F`).
+* **Forensic Value (The Nuance):** This is a critical **"forensic clarity"** enhancement. These Tag characters were previously counted in the generic `True Ignorable (Format/Cf)` bucket. This patch "promotes" them to their own line item. This is crucial because Tags are not just "ignorable junk" (like a Zero-Width Space); they are **active structural components** of complex, modern emoji sequences (like regional flags, e.g., `🏴󠁧󠁢󠁥󠁮󠁧󠁿`). This allows an analyst to instantly distinguish between "ignorable whitespace" and "ignorable structural tags."
+
+#### 2. `Script-Mix Severity Flag` (in Group 3)
+
+* **What it is:** A high-level "triage" flag in the "Threat-Hunting Profile" that automatically analyzes the `Script Run` data from Group 2.D and produces a single, graded "badge" of the threat level.
+* **Forensic Value (The Nuance):** This is a powerful **"executive summary"** for the #1 classic homoglyph attack. Instead of forcing an analyst to manually scan the noisy "Script Run" table (in Group 2.D) to find a mix of `Latin` and `Cyrillic` characters, this flag does the work for them. It automatically filters out "safe" scripts (like `Common` and `Inherited`) and hoists a single, clear severity badge (e.g., `ASCII-Only`, `Single-Script`, or `CRITICAL: Mixed Scripts (Cyrillic, Latin)`) directly into the main threat report.
+
+#### 3. `Flag: Skeleton Drift` (in Group 3)
+
+* **What it is:** A "capstone" flag for the entire "Quad-State" normalization pipeline. It calculates and quantifies the "drift" between the `State 1: Forensic (Raw)` string and the final `State 4: UTS #39 Skeleton`.
+* **Forensic Value (The Nuance):** This flag is the **"executive summary" of the entire "Perception vs. Reality" report**. It provides a single, hard number (e.g., "5 positions differ") that proves *why* the normalization pipeline is so critical. This "drift count" instantly quantifies the total, combined impact of all case-folding, compatibility normalization, and homoglyph skeleton-mapping, showing an analyst *exactly how much* the string "shapeshifted" from its raw, deceptive form to its final, secure state.
