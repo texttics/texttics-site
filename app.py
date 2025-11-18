@@ -3211,13 +3211,10 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             continue
             
         # If aliases are provided and the key is in them, use the alias.
-        # Otherwise, just use the key itself.
         if aliases and key in aliases:
             label = aliases[key]
         else:
             label = key
-        
-        # --- NEW: Smart Renderer for Integrity Table ---
         
         # --- RENDER PATH 1: Decode Health Grade ---
         if key == "Decode Health Grade":
@@ -3230,7 +3227,6 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
                 f'<tr><th scope="row" style="font-weight: 600;">{label}</th>'
                 f'<td colspan="2"><span class="integrity-badge {grade_class}">{grade}</span></td></tr>'
             )
-        
 
         # --- RENDER PATH 2: Standard `has_positions` flags ---
         elif has_positions:
@@ -3249,8 +3245,17 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             if 'pct' in data:
                 count_html = f"{count} ({data['pct']}%)"
             
-            # Position list rendering (existing logic)
-            position_list = data.get('positions', [])
+            # --- FIX: Normalize positions to strings (Handle Integers from new engine) ---
+            raw_positions = data.get('positions', [])
+            position_list = []
+            for p in raw_positions:
+                # If it's an int (index), add #. If string (msg), keep as is.
+                if isinstance(p, int):
+                    position_list.append(f"#{p}")
+                else:
+                    position_list.append(str(p))
+            # --- END FIX ---
+
             total_positions = len(position_list)
             POSITION_THRESHOLD = 5
             
@@ -3318,10 +3323,7 @@ def render_integrity_matrix(rows):
         td_pos = document.createElement("td")
         positions = row["positions"]
         
-        # Format list
         if positions:
-            # If positions are integers, format them as #0, #1...
-            # If strings (like error messages), leave as is.
             formatted_list = []
             for p in positions:
                 formatted_list.append(f"#{p}" if isinstance(p, int) else str(p))
@@ -3333,11 +3335,13 @@ def render_integrity_matrix(rows):
                 summary = document.createElement("summary")
                 summary.textContent = f"{len(formatted_list)} locations"
                 details.appendChild(summary)
+                
                 div = document.createElement("div")
                 div.textContent = ", ".join(formatted_list)
                 div.style.fontSize = "0.85em"
                 div.style.marginTop = "0.25rem"
                 details.appendChild(div)
+                
                 td_pos.appendChild(details)
         else:
             td_pos.textContent = "—"
@@ -3346,7 +3350,7 @@ def render_integrity_matrix(rows):
         tr.appendChild(td_count)
         tr.appendChild(td_pos)
         tbody.appendChild(tr)
-        
+
 def render_ccc_table(stats_dict, element_id):
     """Renders the 3-column Canonical Combining Class table."""
     html = []
