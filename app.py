@@ -2067,6 +2067,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     surrogate_indices = []
     unassigned_indices = []
     bidi_control_indices = []
+    # --- NEW: Decode Health ---
+    replacement_char_indices = []
+    other_control_indices = []
+    nul_indices = []
+    internal_bom_indices = []
+    
     join_control_indices = []
     true_ignorable_indices = []
     other_ignorable_indices = []
@@ -2119,6 +2125,20 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if cp == 0x2028: deceptive_ls_indices.append(f"#{i}")
                 elif cp == 0x2029: deceptive_ps_indices.append(f"#{i}")
                 elif cp == 0x0085: deceptive_nel_indices.append(f"#{i}")
+
+                # --- NEW: Decode Health Checks ---
+                if cp == 0xFFFD: replacement_char_indices.append(f"#{i}")
+                if cp == 0x0000: nul_indices.append(f"#{i}")
+                if cp == 0xFEFF and i > 0: internal_bom_indices.append(f"#{i}")
+                
+                # C0/C1 Controls (excluding TAB, LF, CR, and NUL which is handled)
+                if (
+                    (0x0001 <= cp <= 0x0008) or # C0 (skip NUL=0, TAB=9, LF=10, CR=13)
+                    (0x000B <= cp <= 0x000C) or
+                    (0x000E <= cp <= 0x001F) or
+                    (0x0080 <= cp <= 0x009F)   # C1 (skip NEL=85, handled as newline)
+                ) and cp != 0x0085:
+                    other_control_indices.append(f"#{i}")
 
                 if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
@@ -2239,6 +2259,45 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             except Exception as e:
                 print(f"Error processing char at index {i} ('{char}'): {e}")
 
+    # 1. Normalization (NFC) Check
+    # Note: built-in unicodedata cannot get a "count" of changes easily,
+    # so we do a simple boolean check.
+    is_nfc = False
+    changes_count_nfc = "N/A"
+    try:
+        normalized_t = unicodedata.normalize('NFC', t)
+        is_nfc = (t == normalized_t)
+        changes_count_nfc = 0 if is_nfc else "N/A"
+    except Exception as e:
+        print(f"NFC normalization check failed: {e}")
+        changes_count_nfc = "Error"
+        
+    nfc_stat = {"is_nfc": is_nfc, "changes_count": changes_count_nfc}
+    
+    # 2. PUA Percentage
+    total_cp = len(js_array)
+    pua_count = len(private_use_indices)
+    pua_pct = round((pua_count / (total_cp + 1e-9)) * 100, 1)
+
+    # 3. Decode Health Grade
+    grade = "OK" # Default
+    if (
+        len(surrogate_indices) > 0 or
+        len(nonchar_indices) > 0 or
+        len(replacement_char_indices) > 0
+    ):
+        grade = "Critical"
+    elif (
+        pua_count > 0 or
+        len(other_control_indices) > 0 or
+        len(internal_bom_indices) > 0 or
+        len(nul_indices) > 0 or
+        not is_nfc
+    ):
+        grade = "Warning"
+        
+    grade_stat = {"grade": grade}
+
     # --- Build final report ---
     forensic_stats = {}
     forensic_stats["Bidi Control (UAX #9)"] = {'count': len(bidi_control_indices), 'positions': bidi_control_indices}
@@ -2280,6 +2339,21 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     forensic_stats["Private Use"] = {'count': len(private_use_indices), 'positions': private_use_indices}
     forensic_stats["Surrogates (Broken)"] = {'count': len(surrogate_indices), 'positions': surrogate_indices}
     forensic_stats["Unassigned (Void)"] = {'count': len(unassigned_indices), 'positions': unassigned_indices}
+
+    # We add 'pct' to PUA
+    forensic_stats["Flag: Private Use Area (PUA)"] = {'count': pua_count, 'positions': private_use_indices, 'pct': pua_pct}
+    forensic_stats["Flag: Replacement Char (U+FFFD)"] = {'count': len(replacement_char_indices), 'positions': replacement_char_indices}
+    forensic_stats["Flag: NUL (U+0000)"] = {'count': len(nul_indices), 'positions': nul_indices}
+    forensic_stats["Flag: Internal BOM (U+FEFF)"] = {'count': len(internal_bom_indices), 'positions': internal_bom_indices}
+    forensic_stats["Flag: Other Control Chars (C0/C1)"] = {'count': len(other_control_indices), 'positions': other_control_indices}
+    
+    # Synthetic flags (no positions)
+    forensic_stats["Flag: Normalization (Not NFC)"] = nfc_stat
+    forensic_stats["Decode Health Grade"] = grade_stat
+    
+    # Overwrite the old "Private Use" key if it exists
+    if "Private Use" in forensic_stats:
+        del forensic_stats["Private Use"]
 
     forensic_stats["Prop: Extended Pictographic"] = {'count': len(ext_pictographic_indices), 'positions': ext_pictographic_indices}
     forensic_stats["Prop: Emoji Modifier"] = {'count': len(emoji_modifier_indices), 'positions': emoji_modifier_indices}
@@ -3029,33 +3103,67 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
         if not data:
             continue
             
-        # --- THIS IS THE FIX ---
         # If aliases are provided and the key is in them, use the alias.
         # Otherwise, just use the key itself.
         if aliases and key in aliases:
             label = aliases[key]
         else:
             label = key
-        # --- END OF FIX ---
         
-        if has_positions:
-            # Data is a dict: {'count': 1, 'positions': ['#42']}
+        # --- NEW: Smart Renderer for Integrity Table ---
+        
+        # --- RENDER PATH 1: Decode Health Grade ---
+        if key == "Decode Health Grade":
+            grade = data.get("grade", "N/A")
+            grade_class = "integrity-badge-ok"
+            if grade == "Warning": grade_class = "integrity-badge-warn"
+            elif grade == "Critical": grade_class = "integrity-badge-crit"
+            
+            html.append(
+                f'<tr><th scope="row" style="font-weight: 600;">{label}</th>'
+                f'<td colspan="2"><span class="integrity-badge {grade_class}">{grade}</span></td></tr>'
+            )
+        
+        # --- RENDER PATH 2: Normalization Flag ---
+        elif key == "Flag: Normalization (Not NFC)":
+            is_nfc = data.get("is_nfc", False)
+            count = data.get("changes_count", "N/A")
+            if is_nfc:
+                badge = '<span class="integrity-badge integrity-badge-ok">Yes</span>'
+                count_html = "0"
+            else:
+                badge = '<span class="integrity-badge integrity-badge-warn">No</span>'
+                count_html = f"Change count: {count}"
+            
+            html.append(
+                f'<tr><th scope="row">{label}</th><td>{badge}</td><td>{count_html}</td></tr>'
+            )
+
+        # --- RENDER PATH 3: Standard `has_positions` flags ---
+        elif has_positions:
+            # Data is a dict: {'count': 1, 'positions': ['#42'], 'pct': 0.5}
             count = data.get('count', 0)
             if count == 0:
                 continue
             
+            # Check for critical row flag
+            row_class = ""
+            if key in ("Flag: NUL (U+0000)", "Flag: Replacement Char (U+FFFD)", "Surrogates (Broken)"):
+                row_class = "flag-row-critical"
+            
+            # Check for percentage
+            count_html = str(count)
+            if 'pct' in data:
+                count_html = f"{count} ({data['pct']}%)"
+            
+            # Position list rendering (existing logic)
             position_list = data.get('positions', [])
             total_positions = len(position_list)
-            
-            # --- New Logic: Use <details> for long lists ---
-            POSITION_THRESHOLD = 5 
+            POSITION_THRESHOLD = 5
             
             if total_positions > POSITION_THRESHOLD:
                 visible_positions = ", ".join(position_list[:POSITION_THRESHOLD])
-                # We put the rest of the list in a simple <div> inside <details>
-                # It will be hidden by default but still copied
                 hidden_positions = ", ".join(position_list[POSITION_THRESHOLD:])
-                
                 position_html = (
                     f'<details style="cursor: pointer;">'
                     f'<summary>{visible_positions} ... ({total_positions} total)</summary>'
@@ -3064,13 +3172,13 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
                 )
             else:
                 position_html = ", ".join(position_list)
-            # --- End of New Logic ---
-
+            
             html.append(
-                f'<tr><th scope="row">{label}</th><td>{count}</td><td>{position_html}</td></tr>'
+                f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{position_html}</td></tr>'
             )
+        
+        # --- RENDER PATH 4: Simple 2-column tables ---
         else:
-            # Data is a simple value: 11
             count = data
             if count == 0:
                 continue
