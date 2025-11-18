@@ -385,23 +385,23 @@ def analyze_nsm_overload(graphemes):
     Returns a severity level (0, 1, 2) and details.
     """
     total_g = len(graphemes)
+    # FIX: Ensure 'max_marks_positions' is included in the empty return
     if total_g == 0:
-        # FIX: Add "max_marks_positions": [] to the return dict
-        return {"level": 0, "max_marks": 0, "mark_density": 0.0, "max_marks_positions": []}
+        return {
+            "level": 0, 
+            "max_marks": 0, 
+            "mark_density": 0.0, 
+            "max_repeat_run": 0, 
+            "max_marks_positions": []
+        }
 
     total_marks = 0
     g_with_marks = 0
     max_marks = 0
     max_repeat_run = 0
+    max_marks_positions = []
     
-    # Thresholds
-    # Level 1: Suspicious (Decorative)
-    # Level 2: Extreme (Zalgo/Abuse)
-
-    for glyph in graphemes:
-        # Glyphs are already segmented strings
-        # We need to count combining marks (Mn, Me)
-        # Iterate the string directly
+    for i, glyph in enumerate(graphemes):
         marks_in_g = 0
         current_repeat = 1
         max_g_repeat = 0
@@ -411,44 +411,43 @@ def analyze_nsm_overload(graphemes):
             cp = ord(char)
             cat = unicodedata.category(char)
             
-            # Check if combining
             if cat in ('Mn', 'Me') or _find_in_ranges(cp, "CombiningClass") != "0":
                 marks_in_g += 1
-                
-                # Check repetition
                 if cp == last_cp:
                     current_repeat += 1
                 else:
                     max_g_repeat = max(max_g_repeat, current_repeat)
                     current_repeat = 1
-            
             last_cp = cp
         
         max_g_repeat = max(max_g_repeat, current_repeat)
         
-        # Aggregate stats
         total_marks += marks_in_g
         if marks_in_g > 0: g_with_marks += 1
-        max_marks = max(max_marks, marks_in_g)
+        
+        if marks_in_g > max_marks:
+            max_marks = marks_in_g
+            max_marks_positions = [f"#{i}"]
+        elif marks_in_g == max_marks and marks_in_g > 0:
+            max_marks_positions.append(f"#{i}")
+
         max_repeat_run = max(max_repeat_run, max_g_repeat)
 
     mark_density = g_with_marks / total_g
 
-    # Determine Severity Level
     level = 0
-    
-    # Check Level 2 (Extreme)
     if (max_marks >= 7 or mark_density > 0.7 or total_marks >= 64 or max_repeat_run >= 6):
         level = 2
-    # Check Level 1 (Suspicious)
     elif not (max_marks <= 2 and mark_density <= 0.35 and max_repeat_run <= 2):
         level = 1
 
+    # FIX: Ensure 'max_marks_positions' is included in the final return
     return {
         "level": level,
         "max_marks": max_marks,
         "mark_density": round(mark_density, 2),
-        "max_repeat_run": max_repeat_run
+        "max_repeat_run": max_repeat_run,
+        "max_marks_positions": max_marks_positions
     }
 
 def compute_threat_score(inputs):
