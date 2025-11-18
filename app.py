@@ -99,6 +99,194 @@ def build_invis_table():
     ]
     apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE)
 
+def run_self_tests():
+    """
+    PARANOID MODE: Verify that INVIS_TABLE bitmasks strictly match the UCD data.
+    This runs once at startup. If it fails, it prints critical warnings to the console.
+    """
+    print("--- Running Forensic Self-Tests ---")
+    
+    def check_property(store_key, mask_bit, name):
+        """Verifies that every CP in DATA_STORES[store_key] has mask_bit set."""
+        store = DATA_STORES.get(store_key, {})
+        ranges = store.get("ranges", [])
+        
+        missing_count = 0
+        checked_count = 0
+        
+        for item in ranges:
+            start, end = item[0], item[1]
+            start, end = max(0, start), min(1114111, end)
+            
+            for cp in range(start, end + 1):
+                checked_count += 1
+                if not (INVIS_TABLE[cp] & mask_bit):
+                    missing_count += 1
+                    if missing_count <= 5: # Print first 5 failures
+                        print(f"TEST FAIL [{name}]: U+{cp:04X} missing bit.")
+                        
+        if missing_count == 0:
+            print(f"PASS: {name} ({checked_count} codepoints verified)")
+        else:
+            print(f"CRITICAL FAIL: {name} has {missing_count} missing coverage!")
+
+    # 1. Verify Bidi Controls
+    check_property("BidiControl", INVIS_BIDI_CONTROL, "Bidi Controls")
+
+    # 2. Verify Join Controls
+    # We loaded this into "JoinControl" bucket from PropList
+    check_property("JoinControl", INVIS_JOIN_CONTROL, "Join Controls")
+
+    # 3. Verify Tags (if available in PropList, otherwise we rely on range)
+    # Note: PropList might call it "Pattern_Syntax" or "Depreciated" depending on version
+    # We manually mapped 0xE0000..0xE007F, so we check that range directly
+    tag_missing = 0
+    for cp in range(0xE0000, 0xE0080):
+        if not (INVIS_TABLE[cp] & INVIS_TAG):
+            tag_missing += 1
+    if tag_missing == 0:
+        print(f"PASS: Tags Plane 14 (128 codepoints verified)")
+    else:
+        print(f"CRITICAL FAIL: Tags has {tag_missing} missing coverage!")
+
+    # 4. Verify Default Ignorables (The Big One)
+    check_property("DefaultIgnorable", INVIS_DEFAULT_IGNORABLE, "Default Ignorables")
+
+    # 5. Verify Do Not Emit
+    check_property("DoNotEmit", INVIS_DO_NOT_EMIT, "Do Not Emit")
+
+    print("--- Self-Tests Complete ---")
+
+
+def analyze_invisible_clusters(t: str):
+    """
+    Walks the text once and returns a list of invisible clusters.
+    """
+    clusters = []
+    if LOADING_STATE != "READY": return clusters
+
+    # Use Python's built-in iteration over string (unicode code points)
+    # This avoids JS bridge overhead for the loop
+    
+    in_cluster = False
+    start_idx = None
+    mask_union = 0
+    high_risk = False
+    has_alpha = False
+
+    for i, ch in enumerate(t):
+        cp = ord(ch)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        invisible = (mask & INVIS_ANY_MASK) != 0
+
+        if invisible:
+            if not in_cluster:
+                # Start new cluster
+                in_cluster = True
+                start_idx = i
+                mask_union = 0
+                high_risk = False
+                has_alpha = False
+
+            mask_union |= mask
+            if mask & INVIS_HIGH_RISK_MASK:
+                high_risk = True
+            
+            # Check for 'Alpha' property (Semi-invisible sandwich)
+            # We can use the _find_in_ranges helper, but for speed we might skip it
+            # or use a simpler check. Let's use the helper for accuracy.
+            if _find_in_ranges(cp, "Alphabetic"):
+                has_alpha = True
+
+        else:
+            if in_cluster:
+                # Close cluster
+                end_idx = i - 1
+                length = end_idx - start_idx + 1
+                clusters.append({
+                    "start": start_idx,
+                    "end": end_idx,
+                    "length": length,
+                    "mask_union": mask_union,
+                    "high_risk": high_risk,
+                    "has_alpha": has_alpha,
+                })
+                in_cluster = False
+
+    # Close trailing cluster
+    if in_cluster:
+        end_idx = len(t) - 1
+        length = end_idx - start_idx + 1
+        clusters.append({
+            "start": start_idx,
+            "end": end_idx,
+            "length": length,
+            "mask_union": mask_union,
+            "high_risk": high_risk,
+            "has_alpha": has_alpha,
+        })
+
+    return clusters
+
+def summarize_invisible_clusters(t: str, rows: list):
+    """Adds cluster-level analysis rows to the integrity matrix."""
+    clusters = analyze_invisible_clusters(t)
+    if not clusters:
+        return
+
+    total_clusters = len(clusters)
+    max_run = max(c["length"] for c in clusters)
+    high_risk_clusters = [c for c in clusters if c["high_risk"]]
+    semi_invisible = [c for c in clusters if c["has_alpha"]]
+
+    def format_cluster(c):
+        start = c["start"]
+        end = c["end"]
+        length = c["length"]
+        tags = []
+        m = c["mask_union"]
+        if m & INVIS_BIDI_CONTROL: tags.append("BIDI")
+        if m & INVIS_JOIN_CONTROL: tags.append("JOIN")
+        if m & INVIS_ZERO_WIDTH_SPACING: tags.append("ZW")
+        if m & INVIS_TAG: tags.append("TAG")
+        if m & INVIS_VARIATION_STANDARD: tags.append("VS")
+        if m & INVIS_NON_ASCII_SPACE: tags.append("SPACE")
+        if m & INVIS_NONSTANDARD_NL: tags.append("NL")
+        if m & INVIS_SOFT_HYPHEN: tags.append("SHY")
+        tag_str = "|".join(tags) if tags else "IGN"
+        return f"#{start}-#{end} (len={length}, {tag_str})"
+
+    # Sort: High risk first, then longest
+    sorted_clusters = sorted(
+        clusters,
+        key=lambda c: (not c["high_risk"], -c["length"], c["start"])
+    )
+    top3 = sorted_clusters[:3]
+
+    # 1. Cluster Count
+    sev = "warn"
+    bdg = None
+    if high_risk_clusters:
+        sev = "crit"
+        bdg = "DANGER"
+    
+    rows.append({
+        "label": "Invisible Clusters (All)",
+        "count": total_clusters,
+        "positions": [format_cluster(c) for c in top3],
+        "severity": sev,
+        "badge": bdg
+    })
+
+    # 2. Max Run
+    rows.append({
+        "label": "Max Invisible Run Length",
+        "count": max_run,
+        "positions": [format_cluster(sorted_clusters[0])] if sorted_clusters else [],
+        "severity": "crit" if max_run >= 4 else "warn",
+        "badge": None
+    })
+
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
 # ---
@@ -1208,7 +1396,10 @@ async def load_unicode_data():
         # --- NEW: Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
         build_invis_table()
-            
+        
+        # --- NEW: Run Paranoid Self-Tests ---
+        run_self_tests()
+        
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
         render_status("Ready.")
@@ -2425,6 +2616,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         
     for k, v in id_type_stats.items():
         add_row(k, v['count'], v['positions'], "warn")
+
+    # --- NEW: Cluster Analysis ---
+    summarize_invisible_clusters(t, rows)
 
     return rows
 
