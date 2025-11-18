@@ -3999,8 +3999,17 @@ def render_inspector_panel(data):
 @create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
+    
+    # --- 0. Debug Logging (Optional) ---
+    try:
+        blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
+        confusables_len = len(DATA_STORES.get("Confusables", {}))
+    except Exception:
+        pass
+
     t = document.getElementById("text-input").value
     
+    # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
         render_cards({}, "meta-totals-cards")
         render_cards({}, "grapheme-integrity-cards")
@@ -4023,16 +4032,20 @@ def update_all(event=None):
         render_toc_counts({})
         return
 
-    # --- 1. Run All Computations ---
+    # --- 2. Run All Computations ---
+
+    # Emoji Engine
     emoji_report = compute_emoji_analysis(t)
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
     emoji_list = emoji_report.get("emoji_list", [])
     
+    # Module 2.A: Dual-Atom
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     ccc_stats = compute_combining_class_stats(t)
     
+    # Module 2.B: Shape
     major_seq_stats = compute_sequence_stats(t)
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
@@ -4043,16 +4056,44 @@ def update_all(event=None):
     eaw_run_stats = compute_eastasianwidth_analysis(t)
     vo_run_stats = compute_verticalorientation_analysis(t)
 
+    # Module 2.C: Forensic Integrity (HYBRID ENGINE)
     forensic_rows = compute_forensic_stats_with_positions(t, cp_minor)
     forensic_map = {row['label']: row for row in forensic_rows}
 
+    # Module 2.D: Provenance
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
 
+    # Module 3: Threat-Hunting
     threat_results = compute_threat_analysis(t)
     window.latest_threat_data = threat_results
     
-    # --- Gather Inputs for Threat Score ---
+    # --- 3. Prepare Data for Renderers ---
+    
+    # 2.A Cards
+    meta_cards = {
+        "Total Code Points": cp_summary.get("Total Code Points", 0),
+        "Total Graphemes": gr_summary.get("Total Graphemes", 0),
+        "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
+        "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
+        "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
+        "Latin-1-Compatible": cp_summary.get("Latin-1-Compatible"),
+        "BMP Coverage": cp_summary.get("BMP Coverage"),
+        "Supplementary Planes": cp_summary.get("Supplementary Planes"),
+    }
+    meta_cards_order = [
+        "Total Code Points", "Total Graphemes", "RGI Emoji Sequences", "Whitespace (Total)",
+        "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
+    ]
+    grapheme_cards = grapheme_forensics
+    
+    # 2.B Matrices
+    shape_matrix = major_seq_stats
+    prov_matrix = provenance_stats
+
+    # --- THREAT FLAGS & SCORE LOGIC ---
+    
+    # Gather inputs for Threat Score
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
     nsm_stats = analyze_nsm_overload(grapheme_strings)
 
@@ -4170,7 +4211,17 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
 
-    # --- Render ---
+    # --- TOC Counts (Calculated AFTER all data is ready) ---
+    toc_counts = {
+        'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
+        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
+        'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
+        'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
+        'emoji': meta_cards.get("RGI Emoji Sequences", 0),
+        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
+    }
+
+    # --- 4. Call All Renderers ---
     render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
@@ -4198,14 +4249,6 @@ def update_all(event=None):
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results)
     
-    toc_counts = {
-        'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
-        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
-        'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
-        'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
-        'emoji': meta_cards.get("RGI Emoji Sequences", 0),
-        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
-    }
     render_toc_counts(toc_counts)
 
     # Stage 2 Bridge
