@@ -1018,3 +1018,27 @@ details.profile-section > summary:hover {
   color: #dc3545;
   font-weight: 600;
 }
+
+/* Position Links in Matrix Tables */
+.pos-link {
+    font-family: var(--font-mono);
+    color: var(--color-primary);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--color-primary);
+    transition: all 0.1s ease;
+    margin-right: 1px;
+}
+
+.pos-link:hover {
+    background-color: var(--color-primary);
+    color: var(--color-white);
+    border-bottom: none;
+    border-radius: 2px;
+    cursor: crosshair; /* Adds a "targeting" feel */
+}
+
+/* Visually distinct focus state for accessibility */
+.pos-link:focus {
+    outline: 2px solid var(--color-primary-focus);
+    outline-offset: 1px;
+}
