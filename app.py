@@ -2830,55 +2830,82 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
 
-    rows = []
-    def add_row(label, count, positions, severity="warn", badge=None, pct=None):
+    ef add_row(label, count, positions, severity="warn", badge=None, pct=None):
         if count > 0:
             row = {"label": label, "count": count, "positions": positions, "severity": severity, "badge": badge}
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
-    # --- Decode Health Logic ---
-    health_reasons = []
-    crit_errs = 0
-    warn_errs = 0
+    # --- Integrity Level (Heuristic) Calculation ---
+    integrity_score = 0
+    integrity_reasons = []
+
+    def add_integrity_hit(reason, points):
+        nonlocal integrity_score
+        integrity_score += points
+        integrity_reasons.append(reason)
+
+    # 1. FATAL: Data Loss or Corruption (Max Score immediately)
+    if len(health_issues["fffd"]) > 0:
+        add_integrity_hit(f"Data Loss (Replacement Chars: {len(health_issues['fffd'])})", 10)
+    if len(health_issues["surrogate"]) > 0:
+        add_integrity_hit(f"Broken Encoding (Surrogates: {len(health_issues['surrogate'])})", 10)
+
+    # 2. CRITICAL: Illegal Interchange
+    if len(health_issues["nul"]) > 0:
+        add_integrity_hit("Null Bytes (Binary Data)", 8)
+    if len(health_issues["nonchar"]) > 0:
+        add_integrity_hit("Noncharacters (Illegal for Interchange)", 6)
+
+    # 3. WARNING: Structural Artifacts
+    if len(health_issues["bom_mid"]) > 0:
+        add_integrity_hit("Internal BOM (Stitching Artifact)", 4)
+    if len(health_issues["donotemit"]) > 0:
+        add_integrity_hit("Do-Not-Emit Characters", 4)
     
-    if health_issues["fffd"]: 
-        crit_errs += len(health_issues["fffd"]); health_reasons.append("Replacement Char (U+FFFD)")
-    if health_issues["surrogate"]: 
-        crit_errs += len(health_issues["surrogate"]); health_reasons.append("Surrogates")
-    if health_issues["nonchar"]: 
-        crit_errs += len(health_issues["nonchar"]); health_reasons.append("Noncharacters")
-    if health_issues["nul"]: 
-        crit_errs += len(health_issues["nul"]); health_reasons.append("NUL (U+0000)")
+    # 4. NOTICE: Proprietary or Sloppy
+    if len(health_issues["pua"]) > 0:
+        # PUA is valid but risky/proprietary
+        add_integrity_hit(f"Private Use Area ({len(health_issues['pua'])} chars)", 3)
+    
+    if len(legacy_indices["other_ctrl"]) > 0:
+        add_integrity_hit("Legacy Control Chars (C0/C1)", 2)
 
-    if health_issues["pua"]: 
-        warn_errs += len(health_issues["pua"]); health_reasons.append("Private Use Area")
-    if health_issues["bom_mid"]: 
-        warn_errs += len(health_issues["bom_mid"]); health_reasons.append("Internal BOM")
-    if health_issues["donotemit"]: 
-        warn_errs += len(health_issues["donotemit"]); health_reasons.append("Do-Not-Emit Chars")
-    if legacy_indices["other_ctrl"]: 
-        warn_errs += len(legacy_indices["other_ctrl"]); health_reasons.append("C0/C1 Controls")
-
+    # NFC Check
     is_nfc = True
     try: is_nfc = (t == unicodedata.normalize("NFC", t))
     except: pass
-    if not is_nfc: 
-        warn_errs += 1; health_reasons.append("Text is not NFC")
-
-    health_sev = "ok"; health_bdg = "OK"
-    if crit_errs > 0: health_sev = "crit"; health_bdg = "CRIT"
-    elif warn_errs > 0: health_sev = "warn"; health_bdg = "WARN"
     
-    # FIX: Store the reason string in 'positions' for the renderer
-    health_details = ["; ".join(health_reasons)] if health_reasons else ["—"]
+    if not is_nfc: 
+        add_integrity_hit("Text is not NFC (Normalization Drift)", 1)
 
+    # Cap Score
+    integrity_score = min(integrity_score, 10)
+
+    # Determine Level Badge
+    int_level = "OK"
+    int_sev = "ok"
+    if integrity_score >= 8:
+        int_level = "CRITICAL"
+        int_sev = "crit"
+    elif integrity_score >= 4:
+        int_level = "WARNING"
+        int_sev = "warn"
+    elif integrity_score > 0:
+        int_level = "NOTICE"
+        int_sev = "warn" # Use warn color for notice to ensure visibility
+    
+    # Format the Badge String
+    int_badge_str = f"{int_level} (Score: {integrity_score})" if integrity_score > 0 else "OK"
+    int_details_str = f"Reasons: {'; '.join(integrity_reasons)}" if integrity_reasons else "Structure is sound."
+
+    # Add the Top-Level Row
     rows.append({
-        "label": "Decode Health Grade",
-        "count": crit_errs + warn_errs,
-        "positions": health_details, 
-        "severity": health_sev,
-        "badge": health_bdg
+        "label": "Integrity Level (Heuristic)", # [RENAMED]
+        "count": integrity_score, # Use score as count for sorting/logic
+        "positions": [int_details_str], # Store reasons here for renderer
+        "severity": int_sev,
+        "badge": int_badge_str
     })
 
     add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
@@ -2891,6 +2918,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "crit")
     add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
     add_row("Flag: Any Invisible or Default-Ignorable (Union)", len(flags["any_invis"]), flags["any_invis"], "warn")
+    add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
 
     pua_pct = round((len(health_issues["pua"]) / (len(t) + 1e-9)) * 100, 2)
     add_row("Flag: Private Use Area (PUA)", len(health_issues["pua"]), health_issues["pua"], "warn", pct=pua_pct)
@@ -3892,70 +3920,122 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
 def render_integrity_matrix(rows):
     """
     Renders the forensic integrity matrix.
+    Handles special styling for 'Integrity Level' row.
     """
     tbody = document.getElementById("integrity-matrix-body")
     tbody.innerHTML = ""
     
-    for row in rows:
+    # Define the key name to look for
+    INTEGRITY_KEY = "Integrity Level (Heuristic)"
+    
+    # Sort rows: Force Integrity Level to top, others alphabetical
+    def sort_key(r):
+        if r["label"] == INTEGRITY_KEY: return "000" # Force top
+        return r["label"]
+    
+    sorted_rows = sorted(rows, key=sort_key)
+    
+    for row in sorted_rows:
         tr = document.createElement("tr")
-        if row["severity"] == "crit":
-            tr.classList.add("flag-row-critical")
-            
-        # 1. Metric Name
-        th = document.createElement("th")
-        th.textContent = row["label"]
-        th.scope = "row"
         
-        # 2. Count / Badge
-        td_count = document.createElement("td")
-        if row["badge"]:
-            if row["count"] > 0 and row["label"] != "Decode Health Grade":
-                 text_node = document.createTextNode(f"{row['count']} ")
-                 td_count.appendChild(text_node)
+        # --- Special Styling for the Score Row ---
+        if row["label"] == INTEGRITY_KEY:
+            # Apply the full row styling (background color)
+            tr.className = f"flag-row-{row['severity']}"
+            tr.style.borderBottom = "2px solid var(--color-border)"
             
+            # 1. Label
+            th = document.createElement("th")
+            th.textContent = row["label"]
+            th.scope = "row"
+            th.style.fontWeight = "700"
+            th.style.fontSize = "1.05em"
+            
+            # 2. Badge (No count number, just the badge)
+            td_count = document.createElement("td")
             span = document.createElement("span")
             span.className = f"integrity-badge integrity-badge-{row['severity']}"
+            span.style.fontSize = "0.9em"
             span.textContent = row["badge"]
             td_count.appendChild(span)
-        else:
-            count_text = str(row["count"])
-            if "pct" in row:
-                 count_text += f" ({row['pct']}%)"
-            td_count.textContent = count_text
             
-        # 3. Positions
-        td_pos = document.createElement("td")
-        raw_positions = row["positions"]
+            # 3. Details (The Reasons)
+            td_pos = document.createElement("td")
+            # It's stored as a list with 1 string
+            details_text = row["positions"][0] if row["positions"] else ""
+            td_pos.textContent = details_text
+            td_pos.style.fontStyle = "italic"
+            td_pos.style.color = "var(--color-text-muted)"
+            
+            tr.appendChild(th)
+            tr.appendChild(td_count)
+            tr.appendChild(td_pos)
         
-        if raw_positions:
-            # [ACTIVE UPDATE] Linkify Positions
-            formatted_list = [_create_position_link(p) for p in raw_positions]
-            
-            if len(formatted_list) <= 10:
-                # We must use innerHTML because _create_position_link returns an <a> tag
-                td_pos.innerHTML = ", ".join(formatted_list)
-            else:
-                details = document.createElement("details")
-                summary = document.createElement("summary")
-                # Note: Using innerHTML for the summary might be risky if not careful, 
-                # but our links are safe. However, standard <summary> text is safer.
-                # We'll just put text in summary, links in details.
-                summary.textContent = f"{len(formatted_list)} locations"
-                details.appendChild(summary)
-                
-                div = document.createElement("div")
-                div.innerHTML = ", ".join(formatted_list) # Links go here
-                div.style.fontSize = "0.85em"
-                div.style.marginTop = "0.25rem"
-                details.appendChild(div)
-                
-                td_pos.appendChild(details)
+        # --- Standard Rows ---
         else:
-            td_pos.textContent = "—"
+            if row["severity"] == "crit":
+                tr.classList.add("flag-row-critical")
+                
+            # 1. Metric Name
+            th = document.createElement("th")
+            th.textContent = row["label"]
+            th.scope = "row"
             
-        tr.appendChild(th)
-        tr.appendChild(td_count)
-        tr.appendChild(td_pos)
+            # 2. Count / Badge
+            td_count = document.createElement("td")
+            # Logic for badge vs plain count
+            if row["badge"] and row["badge"] != "OK": 
+                # Show "Count + Badge"
+                if row["count"] > 0:
+                     text_node = document.createTextNode(f"{row['count']} ")
+                     td_count.appendChild(text_node)
+                
+                span = document.createElement("span")
+                span.className = f"integrity-badge integrity-badge-{row['severity']}"
+                span.textContent = row["badge"]
+                td_count.appendChild(span)
+            else:
+                # Plain count
+                count_text = str(row["count"])
+                if "pct" in row:
+                     count_text += f" ({row['pct']}%)"
+                td_count.textContent = count_text
+                
+            # 3. Positions / Details
+            td_pos = document.createElement("td")
+            raw_positions = row["positions"]
+            
+            if raw_positions:
+                # Check if these are numeric positions or string details
+                is_numeric_pos = isinstance(raw_positions[0], int) or (isinstance(raw_positions[0], str) and raw_positions[0].startswith("#"))
+                
+                if is_numeric_pos:
+                    formatted_list = [_create_position_link(p) for p in raw_positions]
+                    if len(formatted_list) <= 10:
+                        td_pos.innerHTML = ", ".join(formatted_list)
+                    else:
+                        details = document.createElement("details")
+                        summary = document.createElement("summary")
+                        summary.textContent = f"{len(formatted_list)} locations"
+                        details.appendChild(summary)
+                        
+                        div = document.createElement("div")
+                        div.innerHTML = ", ".join(formatted_list)
+                        div.style.fontSize = "0.85em"
+                        div.style.marginTop = "0.25rem"
+                        details.appendChild(div)
+                        td_pos.appendChild(details)
+                else:
+                    # It's text details (e.g. from Invisible Cluster summary)
+                    td_pos.textContent = ", ".join([str(p) for p in raw_positions])
+
+            else:
+                td_pos.textContent = "—"
+                
+            tr.appendChild(th)
+            tr.appendChild(td_count)
+            tr.appendChild(td_pos)
+
         tbody.appendChild(tr)
 
 def render_ccc_table(stats_dict, element_id):
