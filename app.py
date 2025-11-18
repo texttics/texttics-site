@@ -4171,8 +4171,12 @@ def compute_threat_score(inputs):
         add_exploit("Malicious Bidi Control (Trojan Source)", 10)
     if inputs.get("has_unclosed_bidi"):
         add_exploit("Unclosed Bidi Sequence", 3)
-    if inputs.get("decode_grade") == "CRIT":
+    
+    grade = inputs.get("decode_grade", "OK")
+    if grade in ("CRITICAL", "CRIT"): # Handle both just in case
         add_exploit("Critical Decode Health Issues", 5)
+    elif grade in ("WARNING", "WARN"):
+        add_exploit("Decode Health Warning", 2)
 
     # B. Cross-Script Drift (The Real Homoglyph Attack)
     # We penalize this HEAVILY because it is the definition of spoofing.
