@@ -574,3 +574,81 @@ This update adds three high-value "triage" flags. One enhances the forensic clar
 
 * **What it is:** A "capstone" flag for the entire "Quad-State" normalization pipeline. It calculates and quantifies the "drift" between the `State 1: Forensic (Raw)` string and the final `State 4: UTS #39 Skeleton`.
 * **Forensic Value (The Nuance):** This flag is the **"executive summary" of the entire "Perception vs. Reality" report**. It provides a single, hard number (e.g., "5 positions differ") that proves *why* the normalization pipeline is so critical. This "drift count" instantly quantifies the total, combined impact of all case-folding, compatibility normalization, and homoglyph skeleton-mapping, showing an analyst *exactly how much* the string "shapeshifted" from its raw, deceptive form to its final, secure state.
+
+---
+
+## 📈 Addendum: The "Forensic Depth" Upgrade (Stage 1 Enhanced)
+
+**Summary:** This update transitions the tool from a "Passive Detector" (counting characters) to an "Active Analyst" (evaluating structure, clusters, and intent). It introduces an O(1) Bitmask Engine, a Paranoid Self-Test suite, and three new structural analyzers (Bidi Stack, Invisible Clusters, Zalgo/NSM).
+
+### 1. Core Architecture: The Bitmask Engine & Self-Verification
+To handle the complexity of "Invisible" and "Default Ignorable" characters without performance loss or coverage gaps, we replaced the linear lookup model with a **Global Forensic Bitmask**.
+
+* **The `INVIS_TABLE` (O(1) Lookup):**
+    * A global array covering the full Unicode space (0x110000).
+    * Each code point is mapped to a bitmask combining 11 properties: `INVIS_DEFAULT_IGNORABLE`, `INVIS_BIDI_CONTROL`, `INVIS_TAG`, `INVIS_JOIN_CONTROL`, `INVIS_ZERO_WIDTH_SPACING`, etc.
+    * **Forensic Value:** This allows us to define complex threat signatures (e.g., `INVIS_HIGH_RISK_MASK`) that are checked instantly per character.
+
+* **"Paranoid Mode" Self-Tests (`run_self_tests`):**
+    * **Philosophy:** "Don't assume the data loader works; prove it."
+    * **Mechanism:** Immediately after loading Unicode data, the engine runs a self-test suite. It iterates through the raw UCD ranges (e.g., `BidiControl` in `PropList.txt`) and asserts that the corresponding bits are set in `INVIS_TABLE`.
+    * **Coverage:** Verifies Bidi, Join Controls, Tags (Plane 14), Default Ignorables, and Do-Not-Emit characters. If a single bit is missing, the console logs a critical failure.
+
+### 2. New Structural Analyzers (Beyond "Bag of Atoms")
+We introduced three new analyzers that look at the *relationship* between characters, not just the characters themselves.
+
+#### A. The Invisible Cluster Analyzer
+* **The Problem:** A single Zero-Width Space is noise; a run of 10 mixed invisible characters is a payload.
+* **The Solution:** `analyze_invisible_clusters` scans for contiguous runs of any invisible/ignorable characters.
+* **Metrics:**
+    * **Cluster Count:** Total number of invisible islands.
+    * **Max Run Length:** The size of the largest contiguous invisible sequence.
+    * **Composition Tags:** e.g., `TAG|VS|SPACE` (identifies exactly *what* kinds of invisibles are mixed in the cluster).
+
+#### B. The Bidi Stack Analyzer
+* **The Problem:** Simply counting "Right-to-Left Overrides" doesn't detect broken syntax or "stack underflow" attacks.
+* **The Solution:** `analyze_bidi_structure` simulates a Bidi stack machine. It pushes Isolates/Embeddings/Overrides and pops on PDF/PDI.
+* **New Flags:**
+    * `Flag: Unclosed Bidi Sequence`: Detects overrides that are opened but never closed (bleeding directionality).
+    * `Flag: Unmatched PDF/PDI`: Detects stack underflows (formatting characters with no matching opener).
+
+#### C. The Zalgo / NSM Analyzer
+* **The Problem:** "Zalgo" text (stacking millions of combining marks) causes rendering DoS and obfuscation.
+* **The Solution:** `analyze_nsm_overload` iterates through Grapheme Clusters to measure "Mark Density."
+* **Metrics:**
+    * **Frequency:** Counts how many graphemes exceed the safety threshold.
+    * **Intensity:** Measures the max marks on a single base.
+    * **Heuristics:** Flags `Flag: Excessive Combining Marks (Zalgo)` if marks per grapheme ≥ 3, or `Flag: Repeated Nonspacing Mark Sequence` if the same mark is repeated (e.g., `x` + 10 grave accents).
+
+### 3. Threat Scoring & Heuristics (The "Executive Summary")
+We introduced a synthesis layer that aggregates the disparate flags into a single, actionable verdict.
+
+* **The Threat Score:**
+    * A weighted algorithm (`compute_threat_score`) that assigns points to specific risks:
+        * **+4:** Critical Decode Health (e.g., Replacement Char).
+        * **+3:** Malicious Bidi, Huge Invisible Runs, Steganography (Tags).
+        * **+2:** Internal BOM, Zalgo, Invalid VS.
+        * **+1:** Minor anomalies (e.g., Non-NFC).
+* **The Threat Level:**
+    * **HIGH (Score ≥ 10):** Active obfuscation or structural attacks detected.
+    * **MEDIUM (Score ≥ 5):** Suspicious formatting or compatibility issues.
+    * **LOW:** Clean or trivial anomalies.
+* **Presentation:** The Threat Level is forced to the top of the **Threat-Hunting Profile**, providing an immediate "Red/Yellow/Green" signal with a list of top contributing reasons (e.g., *"Reasons: Invisible run length 24; Bidi controls present"*).
+
+### 4. UI & Reporting Polish (Forensic Clarity)
+We refined the presentation layer to ensure the data is interpretable and consistent.
+
+* **Explanatory Decode Health:** The "Decode Health Grade" row now includes the specific reasons for the grade (e.g., *"WARN — Internal BOM; Text is not NFC"*) directly in the details column.
+* **Smart "No Confusables" Message:** The "Perception vs. Reality" report now distinguishes between "Clean text" and "Text with Invisibles." If **Skeleton Drift** is high but no homoglyphs are found, it explicitly warns: *"No lookalike confusables; differences come from invisibles, format controls, or normalization."*
+* **Hybrid Integrity Profile:** The profile now combines the broad bitmask detections (`Flag: Any Invisible...`) with specific legacy checks (`Flag: Deceptive Newline (LS)`), ensuring no granular detail is lost while maintaining total coverage.
+* **Copy Report Fidelity:** Fixed the "Flag: Flag:" duplication bug in the clipboard copy function, ensuring clean, professional reports.
+
+### 5. Coverage Verification (The "Stress Test")
+The engine was validated against an **"Ultimate Invisible Stress Test"** string containing:
+* Contiguous runs of 12+ invisible characters (ZWSP, ZWNJ, ZWJ, WJ, BOM, SHY).
+* Hidden Plane 14 Tags (Steganography).
+* Malicious Bidi Overrides (Trojan Source).
+* Invalid Variation Selectors.
+* Deceptive non-ASCII spaces.
+
+**Result:** The tool correctly identified, clustered, and flagged every single anomaly, yielding a **HIGH** threat score and a perfect forensic breakdown.
