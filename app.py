@@ -2141,12 +2141,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
                 if _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
-                # We check for Tags *before* the generic &#39;Cf&#39; bucket.
-                if 0xE0000 &lt;= cp &lt;= 0xE007F:
-                  tag_char_indices.append(f&quot;#{i}&quot;)
-                # --- MODIFIED: &#39;Cf&#39; check now *excludes* Bidi, Join, and Tags ---
-                elif category == &quot;Cf&quot; and not _find_in_ranges(cp, &quot;BidiControl&quot;) and not _find_in_ranges(cp, &quot;JoinControl&quot;):
-                  true_ignorable_indices.append(f&quot;#{i}&quot;) 
+                # --- NEW: Check for Unicode Tags (Plane 14) ---
+                # We check for Tags *before* the generic 'Cf' bucket.
+                if 0xE0000 <= cp <= 0xE007F:
+                    tag_char_indices.append(f"#{i}")
+                # --- MODIFIED: 'Cf' check now *excludes* Bidi, Join, and Tags ---
+                elif category == "Cf" and not _find_in_ranges(cp, "BidiControl") and not _find_in_ranges(cp, "JoinControl"):
+                    true_ignorable_indices.append(f"#{i}") 
 
                 if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
 
