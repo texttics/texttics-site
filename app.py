@@ -155,6 +155,18 @@ def run_self_tests():
     # 5. Verify Do Not Emit
     check_property("DoNotEmit", INVIS_DO_NOT_EMIT, "Do Not Emit")
 
+    # 6. Verify WhiteSpace (PropList) -> INVIS_NON_ASCII_SPACE
+    # Note: Our mask excludes ASCII space, so we test logic, not direct mapping
+    # This is complex to test strictly without replicating logic, so we skip for now 
+    # to avoid false failures on 0x20.
+
+    # 7. Verify Variation Selectors
+    # Check a few known ones
+    if (INVIS_TABLE[0xFE0F] & INVIS_VARIATION_STANDARD) and (INVIS_TABLE[0xE0100] & INVIS_VARIATION_IDEOG):
+        print("PASS: Variation Selectors (Sample check)")
+    else:
+        print("CRITICAL FAIL: Variation Selector bits missing!")
+
     print("--- Self-Tests Complete ---")
 
 
@@ -286,6 +298,298 @@ def summarize_invisible_clusters(t: str, rows: list):
         "severity": "crit" if max_run >= 4 else "warn",
         "badge": None
     })
+
+def analyze_combining_structure(t: str, rows: list):
+    """
+    Scans for 'Zalgo' (excessive combining marks) and repeated marks.
+    Adds rows directly to the list.
+    """
+    if LOADING_STATE != "READY": return
+
+    zalgo_indices = []
+    repeated_mark_indices = []
+    invisible_mark_indices = [] # Marks on non-base characters
+
+    segments_iterable = GRAPHEME_SEGMENTER.segment(t)
+    segments = window.Array.from_(segments_iterable)
+
+    for seg in segments:
+        g_str = seg.segment
+        index = seg.index
+        
+        # Count combining marks (Category Mn, Me)
+        # We iterate manually to be fast and safe
+        mark_count = 0
+        last_cp = -1
+        
+        # Check base char (first char)
+        base_char = g_str[0]
+        base_cat = unicodedata.category(base_char)
+        is_valid_base = base_cat[0] in ('L', 'N', 'S', 'P') # Letter, Number, Symbol, Punct
+        
+        js_chars = window.Array.from_(g_str)
+        for i, char in enumerate(js_chars):
+            cp = ord(char)
+            cat = unicodedata.category(char)
+            
+            if cat in ('Mn', 'Me'):
+                mark_count += 1
+                
+                # Check for repeated mark (Spoofing vector)
+                if cp == last_cp:
+                    # We flag the start of the grapheme for context
+                    if f"#{index}" not in repeated_mark_indices:
+                        repeated_mark_indices.append(f"#{index}")
+            
+            last_cp = cp
+
+        # Thresholds
+        if mark_count >= 4:
+            zalgo_indices.append(f"#{index}")
+            
+        if mark_count > 0 and not is_valid_base and base_cat != "Co": # Ignore Private Use base
+             # Marks on control chars, format chars, etc.
+             invisible_mark_indices.append(f"#{index}")
+
+    # Add Rows
+    if zalgo_indices:
+        rows.append({
+            "label": "Flag: Excessive Combining Marks (Zalgo)",
+            "count": len(zalgo_indices),
+            "positions": zalgo_indices,
+            "severity": "warn",
+            "badge": "ZALGO"
+        })
+        
+    if repeated_mark_indices:
+        rows.append({
+            "label": "Flag: Repeated Nonspacing Mark Sequence",
+            "count": len(repeated_mark_indices),
+            "positions": repeated_mark_indices,
+            "severity": "warn",
+            "badge": None
+        })
+        
+    if invisible_mark_indices:
+         rows.append({
+            "label": "Flag: Marks on Non-Visual Base",
+            "count": len(invisible_mark_indices),
+            "positions": invisible_mark_indices,
+            "severity": "crit",
+            "badge": "HIDDEN"
+        })
+
+def analyze_nsm_overload(graphemes):
+    """
+    Analyzes graphemes for excessive combining marks (Zalgo).
+    Returns a severity level (0, 1, 2) and details.
+    """
+    total_g = len(graphemes)
+    if total_g == 0:
+        return {"level": 0, "max_marks": 0, "mark_density": 0.0}
+
+    total_marks = 0
+    g_with_marks = 0
+    max_marks = 0
+    max_repeat_run = 0
+    
+    # Thresholds
+    # Level 1: Suspicious (Decorative)
+    # Level 2: Extreme (Zalgo/Abuse)
+
+    for glyph in graphemes:
+        # Glyphs are already segmented strings
+        # We need to count combining marks (Mn, Me)
+        # Iterate the string directly
+        marks_in_g = 0
+        current_repeat = 1
+        max_g_repeat = 0
+        last_cp = -1
+        
+        for char in glyph:
+            cp = ord(char)
+            cat = unicodedata.category(char)
+            
+            # Check if combining
+            if cat in ('Mn', 'Me') or _find_in_ranges(cp, "CombiningClass") != "0":
+                marks_in_g += 1
+                
+                # Check repetition
+                if cp == last_cp:
+                    current_repeat += 1
+                else:
+                    max_g_repeat = max(max_g_repeat, current_repeat)
+                    current_repeat = 1
+            
+            last_cp = cp
+        
+        max_g_repeat = max(max_g_repeat, current_repeat)
+        
+        # Aggregate stats
+        total_marks += marks_in_g
+        if marks_in_g > 0: g_with_marks += 1
+        max_marks = max(max_marks, marks_in_g)
+        max_repeat_run = max(max_repeat_run, max_g_repeat)
+
+    mark_density = g_with_marks / total_g
+
+    # Determine Severity Level
+    level = 0
+    
+    # Check Level 2 (Extreme)
+    if (max_marks >= 7 or mark_density > 0.7 or total_marks >= 64 or max_repeat_run >= 6):
+        level = 2
+    # Check Level 1 (Suspicious)
+    elif not (max_marks <= 2 and mark_density <= 0.35 and max_repeat_run <= 2):
+        level = 1
+
+    return {
+        "level": level,
+        "max_marks": max_marks,
+        "mark_density": round(mark_density, 2),
+        "max_repeat_run": max_repeat_run
+    }
+
+def compute_threat_score(inputs):
+    """
+    Aggregates all forensic signals into a single Threat Level (Low/Medium/High).
+    """
+    score = 0
+    contributors = []
+
+    # 1. Decode Health
+    dg = inputs.get("decode_grade", "OK")
+    if dg == "Critical": 
+        score += 4
+        contributors.append("Critical Decode Health")
+    elif dg == "Warning": 
+        score += 2
+        contributors.append("Decode Health Warning")
+
+    # 2. Bidi
+    if inputs.get("malicious_bidi"): 
+        score += 3
+        contributors.append("Malicious Bidi")
+    elif inputs.get("bidi_count", 0) > 0: 
+        score += 1
+
+    # 3. Invisible Clusters
+    mir = inputs.get("max_invis_run", 0)
+    if mir >= 12: 
+        score += 3
+        contributors.append(f"Huge Invisible Run ({mir})")
+    elif mir >= 6: 
+        score += 2
+    elif mir >= 3: 
+        score += 1
+        
+    icc = inputs.get("invis_cluster_count", 0)
+    if icc >= 8: score += 2
+    elif icc >= 3: score += 1
+
+    # 4. Skeleton / Normalization
+    sd = inputs.get("skeleton_drift", 0)
+    if sd >= 10: 
+        score += 3
+        contributors.append(f"Massive Skeleton Drift ({sd})")
+    elif sd >= 3: 
+        score += 1
+        
+    if inputs.get("not_nfc"): score += 1
+
+    # 5. Script Mix
+    sm = inputs.get("script_mix_class", "ASCII")
+    if "Highly Mixed" in sm: 
+        score += 2
+        contributors.append("Highly Mixed Scripts")
+    elif "Mixed" in sm: 
+        score += 1
+
+    # 6. NSM / Zalgo
+    nsm = inputs.get("nsm_level", 0)
+    if nsm == 2: 
+        score += 2
+        contributors.append("Extreme Zalgo/Combining Marks")
+    elif nsm == 1: 
+        score += 1
+
+    # 7. PUA / Nonchar
+    pua = inputs.get("pua_pct", 0)
+    if pua >= 30: score += 3
+    elif pua >= 5: score += 1
+    
+    bad_scalars = inputs.get("nonchar_count", 0) + inputs.get("unassigned_count", 0)
+    if bad_scalars >= 5: score += 2
+    elif bad_scalars > 0: score += 1
+
+    # Map to Level
+    if score >= 9: level = "HIGH"
+    elif score >= 4: level = "MEDIUM"
+    else: level = "LOW"
+    
+    return {
+        "level": level,
+        "score": score,
+        "contributors": contributors[:3] # Top 3 reasons
+    }
+
+def analyze_bidi_structure(t: str, rows: list):
+    """
+    Checks for broken Bidi structure (Unclosed overrides, Unmatched PDFs).
+    """
+    if LOADING_STATE != "READY": return
+
+    # Bidi Control Code Points
+    # LRE=202A, RLE=202B, PDF=202C, LRO=202D, RLO=202E
+    # LRI=2066, RLI=2067, FSI=2068, PDI=2069
+    
+    stack = []
+    unmatched_pdfs = []
+    unclosed_isolates = []
+    
+    js_array = window.Array.from_(t)
+    for i, char in enumerate(js_array):
+        cp = ord(char)
+        
+        # Push (Embeddings/Overrides/Isolates)
+        if cp in (0x202A, 0x202B, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068):
+            stack.append(i)
+            
+        # Pop (PDF - Legacy)
+        elif cp == 0x202C: 
+            if stack:
+                stack.pop()
+            else:
+                unmatched_pdfs.append(f"#{i}")
+                
+        # Pop (PDI - Isolate)
+        elif cp == 0x2069:
+            if stack:
+                stack.pop()
+            else:
+                unmatched_pdfs.append(f"#{i}")
+
+    # If stack is not empty, we have unclosed sequences
+    if stack:
+        unclosed_pos = [f"#{x}" for x in stack]
+        rows.append({
+            "label": "Flag: Unclosed Bidi Sequence",
+            "count": len(stack),
+            "positions": unclosed_pos,
+            "severity": "crit",
+            "badge": "BROKEN"
+        })
+        
+    if unmatched_pdfs:
+        rows.append({
+            "label": "Flag: Unmatched PDF/PDI (Stack Underflow)",
+            "count": len(unmatched_pdfs),
+            "positions": unmatched_pdfs,
+            "severity": "warn",
+            "badge": "BROKEN"
+        })
+
+
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
@@ -2620,6 +2924,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     # --- NEW: Cluster Analysis ---
     summarize_invisible_clusters(t, rows)
 
+    # --- NEW: Zalgo & Bidi Structure Analysis ---
+    analyze_combining_structure(t, rows)
+    analyze_bidi_structure(t, rows)
+
     return rows
 
 
@@ -3044,8 +3352,38 @@ def compute_threat_analysis(t: str):
             # --- Graded Script-Mix Severity Flag ---
             scripts_in_use.discard("Common")
             scripts_in_use.discard("Inherited")
-            scripts_in_use.discard("Zzzz")
+            scripts_in_use.discard("Zzzz") # Unknown
             num_scripts = len(scripts_in_use)
+            
+            sorted_scripts = sorted(list(scripts_in_use))
+            script_label = ", ".join(sorted_scripts)
+
+            if num_scripts == 0:
+                if is_non_ascii_LNS:
+                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': ["Text contains symbols/numbers but no specific script letters."]}
+                else:
+                     threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': ["Text is pure 7-bit ASCII."]}
+            
+            elif num_scripts == 1:
+                script_name = sorted_scripts[0]
+                if script_name == "Latin" and is_non_ascii_LNS:
+                    threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': ["Latin script with non-ASCII characters (e.g. accents)."]}
+                else:
+                    threat_flags[f"Script Profile: Single Script ({script_name})"] = {'count': 0, 'positions': ["Text is consistent in one script."]}
+
+            elif num_scripts == 2:
+                # Mixed (2 scripts) - Common spoofing vector (e.g. Latin + Cyrillic)
+                threat_flags[f"CRITICAL: Mixed Scripts ({script_label})"] = {
+                    'count': num_scripts,
+                    'positions': ["(See Provenance Profile for details)"]
+                }
+            
+            else:
+                 # Highly Mixed (3+)
+                 threat_flags[f"CRITICAL: Highly Mixed Scripts ({script_label})"] = {
+                    'count': num_scripts,
+                    'positions': ["(See Provenance Profile for details)"]
+                }
 
             if num_scripts > 1:
                 # CRITICAL: More than one primary script. This is the classic attack.
@@ -3680,6 +4018,10 @@ def render_inspector_panel(data):
     ]
     panel.innerHTML = "".join(html)
 
+# ---
+# 6. MAIN ORCHESTRATOR
+# ---
+
 @create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
@@ -3689,7 +4031,6 @@ def update_all(event=None):
     try:
         blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
         confusables_len = len(DATA_STORES.get("Confusables", {}))
-        # console.log(f"--- DEBUG (update_all) --- Blocks: {blocks_len}, Confusables: {confusables_len}")
     except Exception:
         pass
 
@@ -3814,6 +4155,100 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             threat_flags[threat_label] = flag_data
 
+    # --- NEW: Zalgo Analysis (Needed for Score) ---
+    # Re-segment to get list of strings for the analyzer
+    grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
+    nsm_stats = analyze_nsm_overload(grapheme_strings)
+
+    # --- NEW: Compute Threat Score ---
+    # Gather inputs from the disparate modules
+    
+    # 1. Extract metrics from Forensic Map
+    decode_grade_row = forensic_map.get("Decode Health Grade", {})
+    decode_grade = decode_grade_row.get("badge", "OK") if decode_grade_row else "OK"
+    
+    bidi_row = forensic_map.get("Flag: Bidi Controls (UAX #9)", {})
+    bidi_count = bidi_row.get("count", 0) if bidi_row else 0
+    
+    max_run_row = forensic_map.get("Max Invisible Run Length", {})
+    max_invis_run = max_run_row.get("count", 0) if max_run_row else 0
+    
+    cluster_row = forensic_map.get("Invisible Clusters (All)", {})
+    invis_cluster_count = cluster_row.get("count", 0) if cluster_row else 0
+    
+    nonchar_row = forensic_map.get("Noncharacter", {})
+    nonchar_count = nonchar_row.get("count", 0) if nonchar_row else 0
+    
+    unassigned_row = forensic_map.get("Unassigned (Void)", {})
+    unassigned_count = unassigned_row.get("count", 0) if unassigned_row else 0
+    
+    pua_row = forensic_map.get("Flag: Private Use Area (PUA)", {})
+    pua_pct = pua_row.get("pct", 0) if pua_row else 0
+    
+    nfc_row = forensic_map.get("Flag: Normalization (Not NFC)", {})
+    not_nfc = nfc_row.get("count", 0) > 0 if nfc_row else False
+
+    # 2. Extract from Threat Results
+    threat_flags_raw = threat_results.get('flags', {})
+    malicious_bidi = "DANGER: Malicious Bidi Control" in threat_flags_raw
+    
+    # Find script mix class from keys
+    script_mix_class = "ASCII"
+    for key in threat_flags_raw.keys():
+        if "Mixed Scripts" in key:
+            script_mix_class = key # e.g. "CRITICAL: Mixed Scripts..."
+            break
+            
+    skeleton_drift = 0
+    drift_flag = threat_flags_raw.get("Flag: Skeleton Drift")
+    if drift_flag: skeleton_drift = drift_flag.get("count", 0)
+
+    # 3. Calculate
+    score_inputs = {
+        "decode_grade": decode_grade,
+        "malicious_bidi": malicious_bidi,
+        "bidi_count": bidi_count,
+        "max_invis_run": max_invis_run,
+        "invis_cluster_count": invis_cluster_count,
+        "skeleton_drift": skeleton_drift,
+        "not_nfc": not_nfc,
+        "script_mix_class": script_mix_class,
+        "nsm_level": nsm_stats["level"],
+        "pua_pct": pua_pct,
+        "nonchar_count": nonchar_count,
+        "unassigned_count": unassigned_count
+    }
+    
+    final_score = compute_threat_score(score_inputs)
+    
+    # --- Inject Score into Threat Flags ---
+    # We construct a synthetic flag for the UI
+    score_badge = f"{final_score['level']} (Score: {final_score['score']})"
+    
+    # Create a new dict for display (Score First)
+    final_threat_flags = {}
+    
+    # Add Score Row
+    final_threat_flags["Threat Level"] = {
+        'count': 0, # Ignored by badge renderer usually, but we can use it
+        'positions': [f"Top factors: {', '.join(final_score['contributors'])}"] if final_score['contributors'] else [],
+        'severity': "crit" if final_score['level'] == "HIGH" else ("warn" if final_score['level'] == "MEDIUM" else "ok"),
+        'badge': score_badge
+    }
+    
+    # Add Zalgo Row if needed
+    if nsm_stats["level"] > 0:
+        sev = "crit" if nsm_stats["level"] == 2 else "warn"
+        label = "Flag: Excessive Combining Marks (Zalgo)"
+        final_threat_flags[label] = {
+            'count': nsm_stats["max_marks"],
+            'positions': nsm_stats["max_marks_positions"],
+            'severity': sev,
+            'badge': "ZALGO"
+        }
+
+    # Add remaining threat flags
+    final_threat_flags.update(threat_flags) # This contains the previously calculated flags
     
     # TOC Counts
     # Logic update: 'integrity' sums the rows in the list that have count > 0
@@ -3823,7 +4258,7 @@ def update_all(event=None):
         'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
         'emoji': meta_cards.get("RGI Emoji Sequences", 0),
-        'threat': sum(1 for v in threat_results.get('flags', {}).values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
+        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
     }
     
     # --- 4. Call All Renderers ---
@@ -3853,7 +4288,10 @@ def update_all(event=None):
     render_emoji_qualification_table(emoji_list)
     render_emoji_summary(emoji_counts, emoji_list)
 
+    # Pass the ENHANCED threat flags (with score) to the renderer
+    threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results)
+    
     render_toc_counts(toc_counts)
 
     # --- 5. Package Data for Stage 2 (Bridge) ---
