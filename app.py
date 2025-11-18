@@ -4175,11 +4175,12 @@ def update_all(event=None):
     # --- 0. Debug Logging (Optional) ---
     try:
         blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
-        confusables_len = len(DATA_STORES.get("Confusables", {}))
     except Exception:
         pass
 
-    t = document.getElementById("text-input").value
+    t_input = document.getElementById("text-input")
+    if not t_input: return
+    t = t_input.value
     
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
@@ -4237,6 +4238,7 @@ def update_all(event=None):
     script_run_stats = compute_script_run_analysis(t)
 
     # Module 3: Threat-Hunting
+    # [CRITICAL] Compute this first so we have the metrics!
     threat_results = compute_threat_analysis(t)
     window.latest_threat_data = threat_results
     
@@ -4263,10 +4265,9 @@ def update_all(event=None):
     shape_matrix = major_seq_stats
     prov_matrix = provenance_stats
 
-# --- THREAT FLAGS & SCORE LOGIC ---
+    # --- THREAT FLAGS & SCORE LOGIC ---
     
     # 1. Gather inputs for Threat Score
-    # [CRITICAL WIRING FIX]: Single source of truth for Zalgo
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
     nsm_stats = analyze_nsm_overload(grapheme_strings)
 
@@ -4277,23 +4278,15 @@ def update_all(event=None):
     decode_grade_row = forensic_map.get("Decode Health Grade", {})
     decode_grade = decode_grade_row.get("badge", "OK") if decode_grade_row else "OK"
     
-    # [CRITICAL WIRING FIX]: Map bidi_danger from analysis to malicious_bidi input
     malicious_bidi = threat_results.get('bidi_danger', False)
-    
-    # [CRITICAL WIRING FIX]: Get script_mix_class from analysis
     script_mix_class = threat_results.get('script_mix_class', "")
 
-    # Get Skeleton Drift from the threat flags (it was computed there)
-    skeleton_drift = 0
-    drift_flag = threat_results['flags'].get("Flag: Skeleton Drift")
-    if drift_flag: 
-        skeleton_drift = drift_flag.get("count", 0)
-
-    # Build the Inputs Object (Aligned with Spec)
+    # [FIX] Retrieve metrics safely from the ALREADY COMPUTED threat_results
+    skel_metrics = threat_results.get("skel_metrics", {})
+    
+    # Build the Inputs Object
     score_inputs = {
         "total_code_points": cp_summary.get("Total Code Points", 0),
-        "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
-        "drift_ascii": skel_metrics.get("drift_ascii", 0),
         "invis_or_ignorable": get_count("Flag: Any Invisible or Default-Ignorable (Union)"),
         "deceptive_spaces": get_count("Deceptive Spaces (Non-ASCII)"),
         "has_internal_bom": get_count("Flag: Internal BOM (U+FEFF)") > 0,
@@ -4304,10 +4297,15 @@ def update_all(event=None):
         "bidi_count": get_count("Flag: Bidi Controls (UAX #9)"),
         "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
         "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
-        "skeleton_drift": skeleton_drift,
+        
+        # [CRITICAL FIX] Pass specific drift metrics here
+        "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
+        "drift_ascii": skel_metrics.get("drift_ascii", 0),
+        "skeleton_drift": skel_metrics.get("total_drift", 0),
+        
         "not_nfc": get_count("Flag: Normalization (Not NFC)") > 0,
-        "script_mix_class": script_mix_class, # Wired!
-        "nsm_level": nsm_stats["level"],      # Wired!
+        "script_mix_class": script_mix_class,
+        "nsm_level": nsm_stats["level"],
         "pua_pct": forensic_map.get("Flag: Private Use Area (PUA)", {}).get("pct", 0),
         "nonchar_count": get_count("Noncharacter"),
         "unassigned_count": get_count("Unassigned (Void)"),
@@ -4319,16 +4317,20 @@ def update_all(event=None):
     # --- Construct Display Flags ---
     final_threat_flags = {}
     
-    # 1. Score Row
+    # 1. Score Row (Exploit Likelihood)
     score_badge = f"{final_score['level']} (Score: {final_score['score']})"
+    
+    # Append Complexity note if present
+    details = final_score['reasons']
+    
     final_threat_flags["Threat Level (Heuristic)"] = {
         'count': 0,
-        'positions': [f"Reasons: {'; '.join(final_score['reasons'][:5])}" if final_score['reasons'] else "None"],
+        'positions': [f"Reasons: {'; '.join(details)}" if details else "None"],
         'severity': "crit" if final_score['level'] == "HIGH" else ("warn" if final_score['level'] == "MEDIUM" else "ok"),
         'badge': score_badge
     }
     
-    # 2. Zalgo Row (Global View - Sourced from the SAME nsm_stats)
+    # 2. Zalgo Row
     if nsm_stats["count"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
         label = "Flag: Excessive Combining Marks (Zalgo)"
@@ -4339,7 +4341,7 @@ def update_all(event=None):
             'badge': "ZALGO"
         }
 
-    # 3. Merge existing threat flags (from compute_threat_analysis)
+    # 3. Merge existing threat flags
     final_threat_flags.update(threat_results['flags'])
     
     # 4. Merge mapped forensic flags
@@ -4366,7 +4368,7 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
 
-    # --- TOC Counts (Calculated AFTER all data is ready) ---
+    # --- TOC Counts ---
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
@@ -4400,7 +4402,6 @@ def update_all(event=None):
     render_emoji_qualification_table(emoji_list)
     render_emoji_summary(emoji_counts, emoji_list)
 
-    # Pass updated flags to renderer
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results)
     
