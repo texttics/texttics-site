@@ -948,7 +948,7 @@ details.profile-section > summary:hover {
 /* 3. Style the "Fully" badge */
 .card-badge-full {
   position: absolute;
-  top: 8px;
+  bottom: 8px;
   right: 8px;
   
   font-size: 0.25rem;
@@ -962,7 +962,7 @@ details.profile-section > summary:hover {
 /* 4. Style the percentage badge */
 .card-percentage {
   position: absolute;
-  top: 8px;
+  bottom: 8px;
   right: 8px;
   
   font-size: 0.25rem;
