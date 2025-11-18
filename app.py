@@ -3328,7 +3328,7 @@ def render_integrity_matrix(rows):
         tr.appendChild(td_pos)
         tbody.appendChild(tr)
         
-        def render_ccc_table(stats_dict, element_id):
+def render_ccc_table(stats_dict, element_id):
     """Renders the 3-column Canonical Combining Class table."""
     html = []
     element = document.getElementById(element_id)
