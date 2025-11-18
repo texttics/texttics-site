@@ -50,14 +50,19 @@ def build_invis_table():
     
     def apply_mask(ranges, mask):
         if not ranges: return
-        for start, end in ranges:
+        for item in ranges:
+            # FIX: Handle both (start, end) and (start, end, value) tuples safely
+            start = item[0]
+            end = item[1]
+            
+            # Safety clamp
             start, end = max(0, start), min(1114111, end)
+            
             for cp in range(start, end + 1):
                 INVIS_TABLE[cp] |= mask
 
     # 1. Default Ignorable (The Baseline)
-    # --- FIX: Look for the specific "DefaultIgnorable" bucket ---
-    # We use .get() with a chain to be safe against missing data
+    # We use .get() chains to be safe against missing data
     ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
     apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
 
