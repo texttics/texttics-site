@@ -15,6 +15,81 @@ import hashlib
 import re
 
 
+# --- INVISIBILITY BITMASKS (Forensic Grade) ---
+INVIS_DEFAULT_IGNORABLE  = 1 << 0
+INVIS_JOIN_CONTROL       = 1 << 1
+INVIS_ZERO_WIDTH_SPACING = 1 << 2  # ZWSP, WJ, BOM
+INVIS_BIDI_CONTROL       = 1 << 3
+INVIS_TAG                = 1 << 4
+INVIS_VARIATION_STANDARD = 1 << 5
+INVIS_VARIATION_IDEOG    = 1 << 6
+INVIS_DO_NOT_EMIT        = 1 << 7
+INVIS_SOFT_HYPHEN        = 1 << 8
+INVIS_NON_ASCII_SPACE    = 1 << 9
+INVIS_NONSTANDARD_NL     = 1 << 10
+
+# Aggregates
+INVIS_ANY_MASK = (
+    INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL | INVIS_ZERO_WIDTH_SPACING |
+    INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_VARIATION_STANDARD |
+    INVIS_VARIATION_IDEOG | INVIS_DO_NOT_EMIT | INVIS_SOFT_HYPHEN |
+    INVIS_NON_ASCII_SPACE | INVIS_NONSTANDARD_NL
+)
+INVIS_HIGH_RISK_MASK = INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DO_NOT_EMIT
+
+# The O(1) Lookup Table (Populated in load_unicode_data)
+INVIS_TABLE = [0] * 1114112  # Covers all of Unicode (0x110000)
+
+
+def build_invis_table():
+    """
+    Populates the global INVIS_TABLE with forensic bitmasks based on 
+    loaded DATA_STORES. Runs once at startup.
+    """
+    global INVIS_TABLE
+    
+    def apply_mask(ranges, mask):
+        if not ranges: return
+        for start, end in ranges:
+            start, end = max(0, start), min(1114111, end)
+            for cp in range(start, end + 1):
+                INVIS_TABLE[cp] |= mask
+
+    # 1. Default Ignorable (The Baseline)
+    apply_mask(DATA_STORES["DerivedCoreProperties"].get("Default_Ignorable_Code_Point", []), INVIS_DEFAULT_IGNORABLE)
+
+    # 2. Join Controls (U+200C, U+200D)
+    apply_mask([(0x200C, 0x200D)], INVIS_JOIN_CONTROL)
+
+    # 3. Zero Width Spacing (ZWSP, WJ, BOM)
+    apply_mask([(0x200B, 0x200B), (0x2060, 0x2060), (0xFEFF, 0xFEFF)], INVIS_ZERO_WIDTH_SPACING)
+
+    # 4. Bidi Controls (UAX #9)
+    apply_mask(DATA_STORES["PropList"].get("Bidi_Control", []), INVIS_BIDI_CONTROL)
+
+    # 5. Tags (Plane 14)
+    apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
+
+    # 6. Variation Selectors (Standard vs Ideographic)
+    apply_mask([(0xFE00, 0xFE0F)], INVIS_VARIATION_STANDARD)
+    apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
+
+    # 7. Do Not Emit
+    apply_mask(DATA_STORES["DoNotEmit"], INVIS_DO_NOT_EMIT)
+
+    # 8. Soft Hyphen
+    apply_mask([(0x00AD, 0x00AD)], INVIS_SOFT_HYPHEN)
+
+    # 9. Non-Standard Newlines (LS, PS)
+    apply_mask([(0x2028, 0x2029)], INVIS_NONSTANDARD_NL)
+
+    # 10. Non-ASCII Spaces (Zs != 0x20)
+    zs_ranges = [
+        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x2000, 0x200A),
+        (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000)
+    ]
+    apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE)
+
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
 # ---
@@ -996,8 +1071,12 @@ async def load_unicode_data():
         DATA_STORES["VariantBase"] = frozenset(combined_base_set)
         DATA_STORES["VariantSelectors"] = frozenset(std_selector_set) # Make this one immutable too
         
-        print(f"--- DIAGNOSTIC: Final combined 'VariantBase' frozenset size: {len(DATA_STORES['VariantBase'])}")
         # --- End Feature 1 Logic ---
+        
+        # --- NEW: Build Forensic Bitmask Table ---
+        build_invis_table()
+            
+        status_elem.innerHTML = "Ready."
 
         # --- NEW (Phase 1: Emoji Bugfix - Optimized) ---
         # Build the RGI Sequence Set from Tiers 1-3
@@ -2058,52 +2137,44 @@ def _get_codepoint_properties(t: str):
 
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
-    """Module 2.C: Runs Forensic Analysis and finds positions."""
-
-    # --- Re-initialize all lists to prevent stale state ---
-    deceptive_space_indices = []
-    nonchar_indices = []
-    private_use_indices = []
-    surrogate_indices = []
-    unassigned_indices = []
-    bidi_control_indices = []
-    replacement_char_indices = []
-    other_control_indices = []
-    nul_indices = []
-    internal_bom_indices = []
-    join_control_indices = []
-    true_ignorable_indices = []
-    tag_char_indices = []
-    other_ignorable_indices = []
-    extender_indices = []
-    deprecated_indices = []
-    donotemit_indices = []
-    discouraged_indices = []
-    dash_indices = []
-    quote_indices = []
-    terminal_punct_indices = []
-    sentence_terminal_indices = []
-    alphabetic_indices = []
+    """
+    Module 2.C: Hybrid Forensic Analysis.
+    Combines Legacy Logic (Specific Flags) with Bitmask Engine (Deep Invisibles).
+    Returns a List of Row Objects for the new render_integrity_matrix.
+    """
+    
+    # --- 1. Initialize Legacy Buckets (Preserving your exact metrics) ---
+    legacy_indices = {
+        "deceptive_ls": [], "deceptive_ps": [], "deceptive_nel": [],
+        "bidi_bracket_open": [], "bidi_bracket_close": [],
+        "extender": [], "deprecated": [], "dash": [], "quote": [], 
+        "term_punct": [], "sent_term": [], "alpha": [], 
+        "norm_excl": [], "norm_fold": [],
+        "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
+        "vs_all": [], "invalid_vs": [],
+        "discouraged": [], # Security Discouraged
+        "other_ctrl": [],  # C0/C1
+        "bidi_mirrored": [], "loe": [],
+        "unassigned": []
+    }
+    
     decomp_type_stats = {}
-    bidi_mirrored_indices = []
-    loe_indices = []
-    bidi_bracket_open_indices = []
-    bidi_bracket_close_indices = []
     bidi_mirroring_map = {}
-    norm_exclusion_indices = []
-    norm_nfkc_casefold_indices = []
-    deceptive_ls_indices = []
-    deceptive_ps_indices = []
-    deceptive_nel_indices = []
-    id_type_stats = {} # For IdentifierType
-    ext_pictographic_indices = []
-    emoji_modifier_indices = []
-    emoji_modifier_base_indices = []
-    invalid_vs_indices = []
-    variation_selector_indices = []
-    # --- End Initialization ---
+    id_type_stats = {} 
+    
+    # --- 2. Initialize Bitmask Buckets (The new engine) ---
+    flags = {
+        "default_ign": [], "join": [], "zw_space": [], "bidi": [],
+        "tags": [], "vs_std": [], "vs_ideo": [], "shy": [],
+        "non_ascii_space": [], "bad_nl": [], "any_invis": [], "high_risk": []
+    }
+    
+    # Decode Health Specifics
+    health_issues = {
+        "fffd": [], "surrogate": [], "nonchar": [], 
+        "pua": [], "nul": [], "bom_mid": [], "donotemit": []
+    }
 
-    # --- Alias map for noisy IdentifierType labels (defined once outside the loop) ---
     ID_TYPE_ALIASES = {
         "Technical Not_XID": "Technical (Not_XID)",
         "Exclusion Not_XID": "Exclusion (Not_XID)",
@@ -2112,295 +2183,231 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         "Not_NFKC Not_XID": "Not_NFKC (Not_XID)",
         "Default_Ignorable Not_XID": "Default_Ignorable (Not_XID)"
     }
-    
+
+    # --- 3. The Main Analysis Loop ---
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
         for i, char in enumerate(js_array):
             try:
-                category = unicodedata.category(char)
                 cp = ord(char)
+                category = unicodedata.category(char)
                 
-                # --- Deceptive Newline Check ---
-                if cp == 0x2028: deceptive_ls_indices.append(f"#{i}")
-                elif cp == 0x2029: deceptive_ps_indices.append(f"#{i}")
-                elif cp == 0x0085: deceptive_nel_indices.append(f"#{i}")
+                # --- A. Bitmask Lookup (Fast) ---
+                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
 
-                # --- NEW: Decode Health Checks ---
-                if cp == 0xFFFD: replacement_char_indices.append(f"#{i}")
-                if cp == 0x0000: nul_indices.append(f"#{i}")
-                if cp == 0xFEFF and i > 0: internal_bom_indices.append(f"#{i}")
+                # --- B. Decode Health & Criticals ---
+                if cp == 0xFFFD: health_issues["fffd"].append(i)
+                if 0xD800 <= cp <= 0xDFFF: health_issues["surrogate"].append(i)
+                if cp == 0x0000: health_issues["nul"].append(i)
+                if cp == 0xFEFF and i > 0: health_issues["bom_mid"].append(i)
                 
-                # C0/C1 Controls (excluding TAB, LF, CR, and NUL which is handled)
-                if (
-                    (0x0001 <= cp <= 0x0008) or # C0 (skip NUL=0, TAB=9, LF=10, CR=13)
-                    (0x000B <= cp <= 0x000C) or
-                    (0x000E <= cp <= 0x001F) or
-                    (0x0080 <= cp <= 0x009F)   # C1 (skip NEL=85, handled as newline)
-                ) and cp != 0x0085:
-                    other_control_indices.append(f"#{i}")
-
-                if _find_in_ranges(cp, "BidiControl"): bidi_control_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "JoinControl"): join_control_indices.append(f"#{i}")
-                # --- NEW: Check for Unicode Tags (Plane 14) ---
-                # We check for Tags *before* the generic 'Cf' bucket.
-                if 0xE0000 <= cp <= 0xE007F:
-                    tag_char_indices.append(f"#{i}")
-                # --- MODIFIED: 'Cf' check now *excludes* Bidi, Join, and Tags ---
-                elif category == "Cf" and not _find_in_ranges(cp, "BidiControl") and not _find_in_ranges(cp, "JoinControl"):
-                    true_ignorable_indices.append(f"#{i}") 
-
-                if _find_in_ranges(cp, "OtherDefaultIgnorable"): other_ignorable_indices.append(f"#{i}")
-
-        
-                # --- 4. Other Properties (from data) ---
-                if _find_in_ranges(cp, "Extender"): extender_indices.append(f"#{i}")
+                if (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD):
+                    health_issues["pua"].append(i)
                 
-                # --- BUG FIX for 'Deprecated' ---
-                deprecated_val = _find_in_ranges(cp, "Deprecated")
-                if deprecated_val and "Deprecated" in deprecated_val:
-                    deprecated_indices.append(f"#{i}")
-                # --- END FIX ---
-                    
-                if _find_in_ranges(cp, "DoNotEmit"): donotemit_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "Discouraged"): discouraged_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "Dash"): dash_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "QuotationMark"): quote_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "TerminalPunctuation"): terminal_punct_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "SentenceTerminal"): sentence_terminal_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "Alphabetic"): alphabetic_indices.append(f"#{i}")
+                if (0xFDD0 <= cp <= 0xFDEF) or ((cp & 0xFFFF) >= 0xFFFE):
+                    health_issues["nonchar"].append(i)
                 
-                # --- 5. General Category checks ---
-                if category == "Zs" and cp != 0x0020:
-                    deceptive_space_indices.append(f"#{i}")
-                elif _find_in_ranges(cp, "WhiteSpace") and cp != 0x0020 and category not in ("Zl", "Zp", "Cc"):
-                        if f"#{i}" not in deceptive_space_indices:
-                            deceptive_space_indices.append(f"#{i}")
+                if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
+
+                # --- C. Legacy Logic (Preserved) ---
                 
-                if category == "Co": private_use_indices.append(f"#{i}")
-                if category == "Cs": surrogate_indices.append(f"#{i}")
-                if category == "Cn": unassigned_indices.append(f"#{i}")
+                # Deceptive Newlines (Explicit)
+                if cp == 0x2028: legacy_indices["deceptive_ls"].append(i)
+                elif cp == 0x2029: legacy_indices["deceptive_ps"].append(i)
+                elif cp == 0x0085: legacy_indices["deceptive_nel"].append(i)
 
-                if (cp >= 0xFDD0 and cp <= 0xFDEF) or (cp & 0xFFFF) in (0xFFFE, 0xFFFF):
-                    nonchar_indices.append(f"#{i}")
+                # C0/C1 Controls
+                if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or 
+                    (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085:
+                    legacy_indices["other_ctrl"].append(i)
 
-                # --- 6. Derived Properties (from data) ---
+                # Invalid VS Check
+                if _find_in_ranges(cp, "VariationSelector"):
+                    legacy_indices["vs_all"].append(i)
+                    is_valid_vs = False
+                    if i > 0:
+                        prev_cp = ord(js_array[i-1])
+                        if prev_cp in DATA_STORES["VariantBase"]:
+                            is_valid_vs = True
+                    if not is_valid_vs:
+                        legacy_indices["invalid_vs"].append(i)
+
+                # Properties
+                if _find_in_ranges(cp, "Discouraged"): legacy_indices["discouraged"].append(i)
+                if _find_in_ranges(cp, "Extender"): legacy_indices["extender"].append(i)
+                if _find_in_ranges(cp, "Dash"): legacy_indices["dash"].append(i)
+                if _find_in_ranges(cp, "QuotationMark"): legacy_indices["quote"].append(i)
+                if _find_in_ranges(cp, "TerminalPunctuation"): legacy_indices["term_punct"].append(i)
+                if _find_in_ranges(cp, "SentenceTerminal"): legacy_indices["sent_term"].append(i)
+                if _find_in_ranges(cp, "Alphabetic"): legacy_indices["alpha"].append(i)
+                
+                # Normalization
+                if _find_in_ranges(cp, "CompositionExclusions"): legacy_indices["norm_excl"].append(i)
+                if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"): legacy_indices["norm_fold"].append(i)
+                
+                # Bidi Brackets
+                bracket_type = _find_in_ranges(cp, "BidiBracketType")
+                if bracket_type == "o": legacy_indices["bidi_bracket_open"].append(i)
+                elif bracket_type == "c": legacy_indices["bidi_bracket_close"].append(i)
+                
+                # Bidi Mirroring
+                if _find_in_ranges(cp, "BidiMirrored"): legacy_indices["bidi_mirrored"].append(i)
+                if _find_in_ranges(cp, "LogicalOrderException"): legacy_indices["loe"].append(i)
+                if cp in DATA_STORES["BidiMirroring"]:
+                    mirrored_cp = DATA_STORES["BidiMirroring"][cp]
+                    bidi_mirroring_map[i] = f"'{char}' → '{chr(mirrored_cp)}'"
+
+                # Emoji
+                if _find_in_ranges(cp, "Extended_Pictographic"): legacy_indices["ext_picto"].append(i)
+                if _find_in_ranges(cp, "Emoji_Modifier_Base"): legacy_indices["emoji_mod_base"].append(i)
+                if _find_in_ranges(cp, "Emoji_Modifier"): legacy_indices["emoji_mod"].append(i)
+
+                # Decomposition
                 decomp_type = _find_in_ranges(cp, "DecompositionType")
                 if decomp_type and decomp_type != "Canonical":
                     key = f"Decomposition (Derived): {decomp_type.title()}"
                     if key not in decomp_type_stats: decomp_type_stats[key] = {'count': 0, 'positions': []}
                     decomp_type_stats[key]['count'] += 1
                     decomp_type_stats[key]['positions'].append(f"#{i}")
-                
-                if _find_in_ranges(cp, "BidiMirrored"): bidi_mirrored_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "LogicalOrderException"): loe_indices.append(f"#{i}")
 
-                # --- 7. GEM properties (from data) ---
-                bracket_type = _find_in_ranges(cp, "BidiBracketType")
-                if bracket_type == "o": bidi_bracket_open_indices.append(f"#{i}")
-                elif bracket_type == "c": bidi_bracket_close_indices.append(f"#{i}")
-                
-                if cp in DATA_STORES["BidiMirroring"]:
-                    mirrored_cp = DATA_STORES["BidiMirroring"][cp]
-                    bidi_mirroring_map[i] = f"'{char}' → '{chr(mirrored_cp)}'"
-                
-                if _find_in_ranges(cp, "CompositionExclusions"): norm_exclusion_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"): norm_nfkc_casefold_indices.append(f"#{i}")
+                if category == "Cn": legacy_indices["unassigned"].append(i)
 
-                
-                # --- 8/9. Identifier Status & Type (UAX #31) ---
+                # --- D. Bitmask Flags (Filling the gaps) ---
+                if mask & INVIS_DEFAULT_IGNORABLE: flags["default_ign"].append(i)
+                if mask & INVIS_JOIN_CONTROL: flags["join"].append(i)
+                if mask & INVIS_ZERO_WIDTH_SPACING: flags["zw_space"].append(i)
+                if mask & INVIS_BIDI_CONTROL: flags["bidi"].append(i)
+                if mask & INVIS_TAG: flags["tags"].append(i)
+                if mask & INVIS_SOFT_HYPHEN: flags["shy"].append(i)
+                if mask & INVIS_NON_ASCII_SPACE: flags["non_ascii_space"].append(i)
+                if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
+                if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
 
-                # 1. IdentifierStatus (UAX #31)
+                # --- E. UAX #31 (Preserved) ---
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 status_key = ""
-
                 if id_status_val:
-                    # Explicit status from IdentifierStatus.txt
                     if id_status_val not in UAX31_ALLOWED_STATUSES:
                         status_key = f"Flag: Status: {id_status_val}"
                 else:
-                    # No explicit status → treat as "Default Restricted" (except Cn/Co/Cs)
                     if category not in ("Cn", "Co", "Cs"):
                         status_key = "Flag: Identifier Status: Default Restricted"
-
                 if status_key:
-                    if status_key not in id_type_stats:
-                        id_type_stats[status_key] = {'count': 0, 'positions': []}
+                    if status_key not in id_type_stats: id_type_stats[status_key] = {'count': 0, 'positions': []}
                     id_type_stats[status_key]['count'] += 1
                     id_type_stats[status_key]['positions'].append(f"#{i}")
 
-                # 2. IdentifierType (UAX #31)
                 specific_id_type = _find_in_ranges(cp, "IdentifierType")
                 if specific_id_type and specific_id_type not in ("Recommended", "Inclusion"):
-                    # Use the alias map defined at the top of the function
                     clean_label = ID_TYPE_ALIASES.get(specific_id_type, specific_id_type)
                     key = f"Flag: Type: {clean_label}"
-                    if key not in id_type_stats:
-                        id_type_stats[key] = {'count': 0, 'positions': []}
+                    if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
-                # --- END (UAX #31 Logic) ---
-
-                if _find_in_ranges(cp, "Extended_Pictographic"): ext_pictographic_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "Emoji_Modifier_Base"): emoji_modifier_base_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "Emoji_Modifier"): emoji_modifier_indices.append(f"#{i}")
-                if _find_in_ranges(cp, "VariationSelector"): variation_selector_indices.append(f"#{i}")
-
-                # --- 10. Variation Selector (VS) Sanity Check ---
-                is_vs = _find_in_ranges(cp, "VariationSelector")
-                if is_vs:
-                    # It's a selector. Now check if it's valid.
-                    is_valid_vs = False
-                    if i > 0:
-                        prev_cp = ord(js_array[i-1])
-                        # Check the master set of all valid bases (from emoji + std)
-                        if prev_cp in DATA_STORES["VariantBase"]:
-                            is_valid_vs = True
-                    
-                    if not is_valid_vs:
-                        # It's either at index 0 or follows an invalid base (like 'a')
-                        invalid_vs_indices.append(f"#{i}")
 
             except Exception as e:
-                print(f"Error processing char at index {i} ('{char}'): {e}")
+                print(f"Error in forensic loop index {i}: {e}")
 
-    # 1. Normalization (NFC) Check
-    # We treat this as a global "status" flag, not a per-code-point flag.
-    is_nfc = False
-    approx_changes = "N/A"
+    # --- 4. Construct Output Rows (Mapping EVERYTHING to New Schema) ---
+    rows = []
+    
+    def add_row(label, count, positions, severity="warn", badge=None, pct=None):
+        if count > 0:
+            row = {
+                "label": label,
+                "count": count,
+                "positions": positions,
+                "severity": severity,
+                "badge": badge
+            }
+            if pct is not None: row["pct"] = pct
+            rows.append(row)
 
+    # 4a. Decode Health Grade
+    crit_errs = len(health_issues["fffd"]) + len(health_issues["surrogate"]) + len(health_issues["nonchar"]) + len(health_issues["nul"])
+    warn_errs = len(health_issues["pua"]) + len(health_issues["bom_mid"]) + len(health_issues["donotemit"]) + len(legacy_indices["other_ctrl"])
+    
+    is_nfc = True
     try:
-        normalized_t = unicodedata.normalize("NFC", t)
-        is_nfc = (t == normalized_t)
+        is_nfc = (t == unicodedata.normalize("NFC", t))
+    except: pass
+    if not is_nfc: warn_errs += 1
 
-        if not is_nfc:
-            # Crude but useful estimate of how many code points differ after NFC.
-            diffs = 0
-            min_len = min(len(t), len(normalized_t))
-            for idx in range(min_len):
-                if t[idx] != normalized_t[idx]:
-                    diffs += 1
-            diffs += abs(len(t) - len(normalized_t))
-            approx_changes = diffs
-        else:
-            approx_changes = 0
-    except Exception as e:
-        print(f"NFC normalization check failed: {e}")
-        approx_changes = "Error"
+    health_sev = "ok"; health_bdg = "OK"; health_pos = []
 
-    # Represent this like other flags: count + positions, but positions carry a status message.
-    if is_nfc:
-        # Text is already NFC – this "Not NFC" flag is not triggered.
-        nfc_stat = {
-            "count": 0,
-            "positions": ["Status: Text is already NFC (no normalization changes)."]
-        }
-    else:
-        # Text would change under NFC – surface as a single global flag.
-        detail_msg = (
-            "Status: Text is NOT NFC; NFC normalization would change "
-            f"≈{approx_changes} code points."
-        )
-        nfc_stat = {
-            "count": 1,
-            "positions": [detail_msg]
-        }
+    if crit_errs > 0:
+        health_sev = "crit"; health_bdg = "CRIT"
+        for k in ["fffd", "surrogate", "nonchar", "nul"]: health_pos.extend(health_issues[k])
+    elif warn_errs > 0:
+        health_sev = "warn"; health_bdg = "WARN"
+        for k in ["pua", "bom_mid", "donotemit"]: health_pos.extend(health_issues[k])
+        if legacy_indices["other_ctrl"]: health_pos.extend(legacy_indices["other_ctrl"])
     
-    # 2. PUA Percentage
-    total_cp = len(js_array)
-    pua_count = len(private_use_indices)
-    pua_pct = round((pua_count / (total_cp + 1e-9)) * 100, 1)
+    health_pos.sort()
+    rows.append({"label": "Decode Health Grade", "count": crit_errs + warn_errs, "positions": health_pos, "severity": health_sev, "badge": health_bdg})
 
-    # 3. Decode Health Grade
-    grade = "OK" # Default
-    if (
-        len(surrogate_indices) > 0 or
-        len(nonchar_indices) > 0 or
-        len(replacement_char_indices) > 0
-    ):
-        grade = "Critical"
-    elif (
-        pua_count > 0 or
-        len(other_control_indices) > 0 or
-        len(internal_bom_indices) > 0 or
-        len(nul_indices) > 0 or
-        not is_nfc
-    ):
-        grade = "Warning"
+    # 4b. Add Bitmask Flags
+    add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
+    add_row("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)", len(flags["join"]), flags["join"], "warn")
+    add_row("Flag: Zero-Width Spacing (ZWSP / WJ / BOM)", len(flags["zw_space"]), flags["zw_space"], "warn")
+    add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "crit")
+    add_row("Flag: Unicode Tags (Plane 14)", len(flags["tags"]), flags["tags"], "crit")
+    add_row("Flag: Soft Hyphen (SHY)", len(flags["shy"]), flags["shy"], "warn")
+    add_row("Deceptive Spaces (Non-ASCII)", len(flags["non_ascii_space"]), flags["non_ascii_space"], "warn")
+    add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "crit")
+    add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
+    add_row("Flag: Any Invisible or Default-Ignorable", len(flags["any_invis"]), flags["any_invis"], "warn")
+
+    # 4c. Add Legacy Flags (Restored!)
+    pua_pct = round((len(health_issues["pua"]) / (len(t) + 1e-9)) * 100, 1)
+    add_row("Flag: Private Use Area (PUA)", len(health_issues["pua"]), health_issues["pua"], "warn", pct=pua_pct)
+    add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
+    add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
+    add_row("Flag: Internal BOM (U+FEFF)", len(health_issues["bom_mid"]), health_issues["bom_mid"], "warn")
+    add_row("Flag: Other Control Chars (C0/C1)", len(legacy_indices["other_ctrl"]), legacy_indices["other_ctrl"], "warn")
+    add_row("Surrogates (Broken)", len(health_issues["surrogate"]), health_issues["surrogate"], "crit")
+    add_row("Unassigned (Void)", len(legacy_indices["unassigned"]), legacy_indices["unassigned"], "crit")
+    add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "crit")
+
+    if not is_nfc:
+        add_row("Flag: Normalization (Not NFC)", 1, ["Status: Text is NOT NFC"], "warn")
+
+    # Restored Specific Metrics
+    add_row("Flag: Deceptive Newline (LS)", len(legacy_indices["deceptive_ls"]), legacy_indices["deceptive_ls"], "warn")
+    add_row("Flag: Deceptive Newline (PS)", len(legacy_indices["deceptive_ps"]), legacy_indices["deceptive_ps"], "warn")
+    add_row("Flag: Deceptive Newline (NEL)", len(legacy_indices["deceptive_nel"]), legacy_indices["deceptive_nel"], "warn")
+    add_row("Flag: Security Discouraged (Compatibility)", len(legacy_indices["discouraged"]), legacy_indices["discouraged"], "warn")
+    add_row("Flag: Invalid Variation Selector", len(legacy_indices["invalid_vs"]), legacy_indices["invalid_vs"], "crit")
+    add_row("Flag: Bidi Paired Bracket (Open)", len(legacy_indices["bidi_bracket_open"]), legacy_indices["bidi_bracket_open"], "ok")
+    add_row("Flag: Bidi Paired Bracket (Close)", len(legacy_indices["bidi_bracket_close"]), legacy_indices["bidi_bracket_close"], "ok")
+
+    # Restored Properties
+    add_row("Prop: Extender", len(legacy_indices["extender"]), legacy_indices["extender"], "ok")
+    add_row("Prop: Deprecated", len(legacy_indices["deprecated"]), legacy_indices["deprecated"], "warn")
+    add_row("Prop: Dash", len(legacy_indices["dash"]), legacy_indices["dash"], "ok")
+    add_row("Prop: Quotation Mark", len(legacy_indices["quote"]), legacy_indices["quote"], "ok")
+    add_row("Prop: Terminal Punctuation", len(legacy_indices["term_punct"]), legacy_indices["term_punct"], "ok")
+    add_row("Prop: Alphabetic", len(legacy_indices["alpha"]), legacy_indices["alpha"], "ok")
+    add_row("Prop: Bidi Mirrored", len(legacy_indices["bidi_mirrored"]), legacy_indices["bidi_mirrored"], "ok")
+    add_row("Prop: Logical Order Exception", len(legacy_indices["loe"]), legacy_indices["loe"], "warn")
+    add_row("Prop: Extended Pictographic", len(legacy_indices["ext_picto"]), legacy_indices["ext_picto"], "ok")
+    add_row("Prop: Variation Selector", len(legacy_indices["vs_all"]), legacy_indices["vs_all"], "ok")
+    
+    if bidi_mirroring_map:
+        m_pos = [f"#{idx} ({m})" for idx, m in bidi_mirroring_map.items()]
+        add_row("Flag: Bidi Mirrored Mapping", len(m_pos), m_pos, "ok")
         
-    grade_stat = {"grade": grade}
+    add_row("Flag: Full Composition Exclusion", len(legacy_indices["norm_excl"]), legacy_indices["norm_excl"], "warn")
+    add_row("Flag: Changes on NFKC Casefold", len(legacy_indices["norm_fold"]), legacy_indices["norm_fold"], "warn")
 
-    # --- Build final report ---
-    forensic_stats = {}
-    forensic_stats["Bidi Control (UAX #9)"] = {'count': len(bidi_control_indices), 'positions': bidi_control_indices}
-    forensic_stats["Join Control (Structural)"] = {'count': len(join_control_indices), 'positions': join_control_indices}
-    forensic_stats["True Ignorable (Format/Cf)"] = {'count': len(true_ignorable_indices), 'positions': true_ignorable_indices}
-    forensic_stats["Flag: Unicode Tags"] = {'count': len(tag_char_indices), 'positions': tag_char_indices}
-    forensic_stats["Other Default Ignorable"] = {'count': len(other_ignorable_indices), 'positions': other_ignorable_indices}
-    forensic_stats["Prop: Extender"] = {'count': len(extender_indices), 'positions': extender_indices}
-    forensic_stats["Prop: Deprecated"] = {'count': len(deprecated_indices), 'positions': deprecated_indices}
-    forensic_stats["Prop: Discouraged (DoNotEmit)"] = {'count': len(donotemit_indices), 'positions': donotemit_indices}
-    forensic_stats["Flag: Security Discouraged (Compatibility)"] = {'count': len(discouraged_indices), 'positions': discouraged_indices}
-    forensic_stats["Prop: Dash"] = {'count': len(dash_indices), 'positions': dash_indices}
-    forensic_stats["Prop: Quotation Mark"] = {'count': len(quote_indices), 'positions': quote_indices}
-    forensic_stats["Prop: Terminal Punctuation"] = {'count': len(terminal_punct_indices), 'positions': terminal_punct_indices}
-    forensic_stats["Prop: Sentence Terminal"] = {'count': len(sentence_terminal_indices), 'positions': sentence_terminal_indices}
-    forensic_stats["Prop: Alphabetic"] = {'count': len(alphabetic_indices), 'positions': alphabetic_indices}
+    # Append dynamic lists (Decomp, ID Types)
+    for k, v in decomp_type_stats.items():
+        add_row(k, v['count'], v['positions'], "ok")
+        
+    for k, v in id_type_stats.items():
+        add_row(k, v['count'], v['positions'], "warn")
 
-    forensic_stats.update(decomp_type_stats)
-    
-    forensic_stats["Prop: Bidi Mirrored"] = {'count': len(bidi_mirrored_indices), 'positions': bidi_mirrored_indices}
-    forensic_stats["Prop: Logical Order Exception"] = {'count': len(loe_indices), 'positions': loe_indices}
-
-    forensic_stats["Flag: Deceptive Newline (LS)"] = {'count': len(deceptive_ls_indices), 'positions': deceptive_ls_indices}
-    forensic_stats["Flag: Deceptive Newline (PS)"] = {'count': len(deceptive_ps_indices), 'positions': deceptive_ps_indices}
-    forensic_stats["Flag: Deceptive Newline (NEL)"] = {'count': len(deceptive_nel_indices), 'positions': deceptive_nel_indices}
-    
-    forensic_stats["Flag: Bidi Paired Bracket (Open)"] = {'count': len(bidi_bracket_open_indices), 'positions': bidi_bracket_open_indices}
-    forensic_stats["Flag: Bidi Paired Bracket (Close)"] = {'count': len(bidi_bracket_close_indices), 'positions': bidi_bracket_close_indices}
-
-    mirror_count = len(bidi_mirroring_map)
-    if mirror_count > 0:
-        mirror_positions = [f"#{idx} ({mapping})" for idx, mapping in bidi_mirroring_map.items()]
-        forensic_stats["Flag: Bidi Mirrored Mapping"] = {'count': mirror_count, 'positions': mirror_positions}
-    
-    forensic_stats["Flag: Full Composition Exclusion"] = {'count': len(norm_exclusion_indices), 'positions': norm_exclusion_indices}
-    forensic_stats["Flag: Changes on NFKC Casefold"] = {'count': len(norm_nfkc_casefold_indices), 'positions': norm_nfkc_casefold_indices}
-    
-    forensic_stats["Deceptive Spaces"] = {'count': len(deceptive_space_indices), 'positions': deceptive_space_indices}
-    forensic_stats["Noncharacter"] = {'count': len(nonchar_indices), 'positions': nonchar_indices}
-    forensic_stats["Private Use"] = {'count': len(private_use_indices), 'positions': private_use_indices}
-    forensic_stats["Surrogates (Broken)"] = {'count': len(surrogate_indices), 'positions': surrogate_indices}
-    forensic_stats["Unassigned (Void)"] = {'count': len(unassigned_indices), 'positions': unassigned_indices}
-
-    # We add 'pct' to PUA
-    forensic_stats["Flag: Private Use Area (PUA)"] = {'count': pua_count, 'positions': private_use_indices, 'pct': pua_pct}
-    forensic_stats["Flag: Replacement Char (U+FFFD)"] = {'count': len(replacement_char_indices), 'positions': replacement_char_indices}
-    forensic_stats["Flag: NUL (U+0000)"] = {'count': len(nul_indices), 'positions': nul_indices}
-    forensic_stats["Flag: Internal BOM (U+FEFF)"] = {'count': len(internal_bom_indices), 'positions': internal_bom_indices}
-    forensic_stats["Flag: Other Control Chars (C0/C1)"] = {'count': len(other_control_indices), 'positions': other_control_indices}
-    
-    # Synthetic flags (no positions)
-    forensic_stats["Flag: Normalization (Not NFC)"] = nfc_stat
-    forensic_stats["Decode Health Grade"] = grade_stat
-    
-    # Overwrite the old "Private Use" key if it exists
-    if "Private Use" in forensic_stats:
-        del forensic_stats["Private Use"]
-
-    forensic_stats["Prop: Extended Pictographic"] = {'count': len(ext_pictographic_indices), 'positions': ext_pictographic_indices}
-    forensic_stats["Prop: Emoji Modifier"] = {'count': len(emoji_modifier_indices), 'positions': emoji_modifier_indices}
-    forensic_stats["Prop: Emoji Modifier Base"] = {'count': len(emoji_modifier_base_indices), 'positions': emoji_modifier_base_indices}
-    forensic_stats["Flag: Invalid Variation Selector"] = {'count': len(invalid_vs_indices), 'positions': invalid_vs_indices}
-    forensic_stats["Prop: Variation Selector"] = {'count': len(variation_selector_indices), 'positions': variation_selector_indices}
-    
-    # Add Variant Stats
-    # variant_stats = compute_variant_stats_with_positions(t)
-    # forensic_stats.update(variant_stats)
-
-    # Add IdentifierType Stats (which now includes IdentifierStatus)
-    forensic_stats.update(id_type_stats)
-    
-    return forensic_stats
+    return rows
 
 
 def compute_provenance_stats(t: str):
@@ -3257,7 +3264,71 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
     if element:
         element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
 
-def render_ccc_table(stats_dict, element_id):
+def render_integrity_matrix(rows):
+    """
+    Renders the forensic integrity matrix.
+    Handles 'severity' for row coloring and 'badge' for the count column.
+    """
+    tbody = document.getElementById("integrity-matrix-body")
+    tbody.innerHTML = ""
+    
+    for row in rows:
+        tr = document.createElement("tr")
+        if row["severity"] == "crit":
+            tr.classList.add("flag-row-critical")
+            
+        # 1. Metric Name
+        th = document.createElement("th")
+        th.textContent = row["label"]
+        th.scope = "row"
+        
+        # 2. Count / Badge
+        td_count = document.createElement("td")
+        if row["badge"]:
+            span = document.createElement("span")
+            span.className = f"integrity-badge integrity-badge-{row['severity']}"
+            span.textContent = row["badge"]
+            td_count.appendChild(span)
+        else:
+            count_text = str(row["count"])
+            if "pct" in row:
+                 count_text += f" ({row['pct']}%)"
+            td_count.textContent = count_text
+            
+        # 3. Positions
+        td_pos = document.createElement("td")
+        positions = row["positions"]
+        
+        # Format list
+        if positions:
+            # If positions are integers, format them as #0, #1...
+            # If strings (like error messages), leave as is.
+            formatted_list = []
+            for p in positions:
+                formatted_list.append(f"#{p}" if isinstance(p, int) else str(p))
+                
+            if len(formatted_list) <= 10:
+                 td_pos.textContent = ", ".join(formatted_list)
+            else:
+                details = document.createElement("details")
+                summary = document.createElement("summary")
+                summary.textContent = f"{len(formatted_list)} locations"
+                details.appendChild(summary)
+                div = document.createElement("div")
+                div.textContent = ", ".join(formatted_list)
+                div.style.fontSize = "0.85em"
+                div.style.marginTop = "0.25rem"
+                details.appendChild(div)
+                td_pos.appendChild(details)
+        else:
+            td_pos.textContent = "—"
+            
+        tr.appendChild(th)
+        tr.appendChild(td_count)
+        tr.appendChild(td_pos)
+        tbody.appendChild(tr)
+        
+        def render_ccc_table(stats_dict, element_id):
     """Renders the 3-column Canonical Combining Class table."""
     html = []
     element = document.getElementById(element_id)
@@ -3395,36 +3466,30 @@ def render_inspector_panel(data):
 @create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
-
+    
+    # --- 0. Debug Logging (Optional, kept from your code) ---
     from js import console
     try:
-        # We will check two things:
-        # 1. A store that loads early (Blocks)
-        # 2. A store that loads late (Confusables)
         blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
         confusables_len = len(DATA_STORES.get("Confusables", {}))
-        
-        console.log(f"--- DEBUG (update_all) ---")
-        console.log(f"Interpreter ID: {id(DATA_STORES)}")
-        console.log(f"Live 'Blocks' range count: {blocks_len}")
-        console.log(f"Live 'Confusables' map count: {confusables_len}")
-        console.log(f"----------------------------")
-    except Exception as e:
-        console.log(f"--- DEBUG ERROR ---: {e}")
-    
-    """The main function called on every input change."""
-    
+        # console.log(f"--- DEBUG (update_all) --- Blocks: {blocks_len}, Confusables: {confusables_len}")
+    except Exception:
+        pass
+
     t = document.getElementById("text-input").value
     
+    # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
-        # Render empty state
         render_cards({}, "meta-totals-cards")
         render_cards({}, "grapheme-integrity-cards")
         render_matrix_table({}, "ccc-matrix-body")
         render_parallel_table({}, {}, "major-parallel-body")
         render_parallel_table({}, {}, "minor-parallel-body", ALIASES)
         render_matrix_table({}, "shape-matrix-body")
-        render_matrix_table({}, "integrity-matrix-body", has_positions=True)
+        
+        # Use new renderer for empty state too
+        render_integrity_matrix([]) 
+        
         render_matrix_table({}, "provenance-matrix-body")
         render_matrix_table({}, "linebreak-run-matrix-body")
         render_matrix_table({}, "bidi-run-matrix-body")
@@ -3436,23 +3501,23 @@ def update_all(event=None):
         render_emoji_qualification_table([])
         render_emoji_summary({}, [])
         render_threat_analysis({}) 
-        
         render_toc_counts({})
         return
 
-    # --- 1. Run All Computations ---
+    # --- 2. Run All Computations ---
 
+    # Emoji Engine
     emoji_report = compute_emoji_analysis(t)
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
     emoji_list = emoji_report.get("emoji_list", [])
     
-    # Module 2.A: Dual-Atom Fingerprint
+    # Module 2.A: Dual-Atom
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     ccc_stats = compute_combining_class_stats(t)
     
-    # Module 2.B: Structural Shape
+    # Module 2.B: Shape
     major_seq_stats = compute_sequence_stats(t)
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
@@ -3463,120 +3528,95 @@ def update_all(event=None):
     eaw_run_stats = compute_eastasianwidth_analysis(t)
     vo_run_stats = compute_verticalorientation_analysis(t)
 
-    # --- NEW: DIAGNOSTIC LOGGING ---
-    # print("--- DEBUGGING BIDI ---")
-    # print(f"BIDI STATS: {bidi_run_stats}")
-    # print(f"BIDI ELEMENT EXISTS: {bool(document.getElementById('bidi-run-matrix-body'))}")
-    # print("------------------------")
-
-   
-    # Module 2.C: Forensic Integrity
-    # Module 2.C: Forensic Integrity
-    forensic_stats = compute_forensic_stats_with_positions(t, cp_minor)
-    # NOTE:
-    # - We no longer inject lone ZWJ into the Emoji Qualification table here.
-    # - We also keep emoji_flags separate from the forensic integrity matrix.
+    # Module 2.C: Forensic Integrity (HYBRID ENGINE)
+    # Returns a LIST of row objects (for the renderer)
+    forensic_rows = compute_forensic_stats_with_positions(t, cp_minor)
     
-    # Module 2.D: Provenance & Context
+    # --- ADAPTER: Create a Dict Map for internal lookups (Threats, etc.) ---
+    # This bridges the gap between the new List format and old Dict logic
+    forensic_map = {row['label']: row for row in forensic_rows}
+
+    # Module 2.D: Provenance
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
 
     # Module 3: Threat-Hunting
     threat_results = compute_threat_analysis(t)
-
-    # --- NEW: Pass the full data object to JavaScript ---
-    # This allows ui-glue.js to read the raw/skeleton strings directly
     window.latest_threat_data = threat_results
     
-    # --- 2. Prepare Data for Renderers ---
+    # --- 3. Prepare Data for Renderers ---
     
-    # 2.A
+    # 2.A Cards
     meta_cards = {
         "Total Code Points": cp_summary.get("Total Code Points", 0),
         "Total Graphemes": gr_summary.get("Total Graphemes", 0),
         "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
-        # --- NEW: Repertoire Stats ---
-        # We pass the whole dict, render_cards will handle it
         "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
         "Latin-1-Compatible": cp_summary.get("Latin-1-Compatible"),
         "BMP Coverage": cp_summary.get("BMP Coverage"),
         "Supplementary Planes": cp_summary.get("Supplementary Planes"),
     }
-    # Define the exact display order for the cards
     meta_cards_order = [
-        "Total Code Points",
-        "Total Graphemes",
-        "RGI Emoji Sequences",
-        "Whitespace (Total)",
-        # --- NEW: Repertoire Order ---
-        "ASCII-Compatible",
-        "Latin-1-Compatible",
-        "BMP Coverage",
-        "Supplementary Planes"
+        "Total Code Points", "Total Graphemes", "RGI Emoji Sequences", "Whitespace (Total)",
+        "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
     ]
     grapheme_cards = grapheme_forensics
     
-    # 2.B
+    # 2.B Matrices
     shape_matrix = major_seq_stats
-    
-    # 2.C
-    forensic_matrix = forensic_stats
-    
-    # 2.D
     prov_matrix = provenance_stats
 
+    # --- THREAT FLAGS LOGIC (Updated to use forensic_map) ---
     threat_flags = threat_results.get('flags', {})
 
-    # 1) Invalid variation selectors come from forensic (structural) analysis
-    invalid_vs_flag = forensic_matrix.get("Flag: Invalid Variation Selector", {})
-    if invalid_vs_flag.get("count", 0) > 0:
-        threat_flags["Suspicious: Invalid Variation Selectors"] = invalid_vs_flag
+    # 1) Invalid VS (Look up in forensic_map)
+    inv_vs = forensic_map.get("Flag: Invalid Variation Selector")
+    if inv_vs and inv_vs.get("count", 0) > 0:
+        threat_flags["Suspicious: Invalid Variation Selectors"] = inv_vs
     
-    # 2) Unqualified emoji comes from the emoji engine (emoji_flags)
-    unqualified_emoji_flag = emoji_flags.get("Flag: Unqualified Emoji", {})
-    if unqualified_emoji_flag.get("count", 0) > 0:
-        threat_flags["Suspicious: Unqualified Emoji"] = unqualified_emoji_flag
+    # 2) Unqualified Emoji (From Emoji Engine)
+    unq_emo = emoji_flags.get("Flag: Unqualified Emoji", {})
+    if unq_emo.get("count", 0) > 0:
+        threat_flags["Suspicious: Unqualified Emoji"] = unq_emo
     
-    # 3) Lone ZWJ still comes from the structural integrity profile
-    zwj_flag = forensic_matrix.get("Join Control (Structural)", {})
-    if zwj_flag.get("count", 0) > 0:
+    # 3) Lone ZWJ (Look up in forensic_map)
+    zwj_flag = forensic_map.get("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)")
+    if zwj_flag and zwj_flag.get("count", 0) > 0:
         threat_flags["Suspicious: Join Control Present (ZWJ)"] = zwj_flag
 
-    # --- NEW: Manually add our new emoji flags to the Threat table ---
+    # 4) New Emoji Flags
     new_emoji_flags = {
         "Flag: Broken Keycap Sequence": "Suspicious: Broken Keycap",
         "Flag: Invalid Regional Indicator": "Suspicious: Invalid Regional Indicator",
         "Flag: Forced Emoji Presentation": "Suspicious: Forced Emoji",
         "Flag: Intent-Modifying ZWJ": "Suspicious: Intent-Modifying ZWJ"
     }
-
     for flag_key, threat_label in new_emoji_flags.items():
         flag_data = emoji_flags.get(flag_key, {})
         if flag_data.get("count", 0) > 0:
             threat_flags[threat_label] = flag_data
 
     
-    # TOC Counts (count non-zero entries)
+    # TOC Counts
+    # Logic update: 'integrity' sums the rows in the list that have count > 0
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
-        'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
+        'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
         'emoji': meta_cards.get("RGI Emoji Sequences", 0),
         'threat': sum(1 for v in threat_results.get('flags', {}).values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
     }
     
-    # --- 3. Call All Renderers ---
+    # --- 4. Call All Renderers ---
     
-    # Render 2.A
     render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
     render_parallel_table(cp_minor, gr_minor, "minor-parallel-body", ALIASES)
     
-    # Render 2.B
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
@@ -3587,58 +3627,47 @@ def update_all(event=None):
     render_matrix_table(eaw_run_stats, "eawidth-run-matrix-body")
     render_matrix_table(vo_run_stats, "vo-run-matrix-body")
     
-    # Render 2.C
-    render_matrix_table(forensic_matrix, "integrity-matrix-body", has_positions=True)
+    # --- RENDER 2.C (New Renderer) ---
+    render_integrity_matrix(forensic_rows)
     
-    # Render 2.D
     render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True)
     render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True)
-    #render_matrix_table(emoji_qualification_stats, "emoji-qualification-body", has_positions=True)
 
     render_emoji_qualification_table(emoji_list)
     render_emoji_summary(emoji_counts, emoji_list)
 
-    # Render 3
     render_threat_analysis(threat_results)
-    
-    # Render TOC
     render_toc_counts(toc_counts)
 
-# --- NEW: Package data for Stage 2 ---
+    # --- 5. Package Data for Stage 2 (Bridge) ---
     try:
-        # 1. Get grapheme segments (for segmentation)
+        # 1. Get grapheme segments
         segments_iterable = GRAPHEME_SEGMENTER.segment(t)
         grapheme_list = [seg.segment for seg in window.Array.from_(segments_iterable)]
         
-        # 2. Get forensic flags (for threat counting)
-        all_flags = forensic_stats
-        all_flags.update(emoji_flags) # Combine structural and emoji flags
+        # 2. Get forensic flags (Use the MAP, not the list)
+        all_flags = forensic_map.copy()
+        all_flags.update(emoji_flags)
 
-        # 3. Get normalized text (for TTR)
+        # 3. Get normalized text
         nfkc_cf_text = threat_results.get('nfkc_cf', "")
         
-        # 4. ***NEW*** Get UAX Break properties (for word/sentence counting)
-        wb_props, sb_props = _get_codepoint_properties(t)
-        
-        # 5. Expose all core data to the JavaScript window
+        # 4. Expose core data
         core_data = {
             "raw_text": t,
             "grapheme_list": grapheme_list,
-            "grapheme_lengths_codepoints": [len(g) for g in grapheme_list], # Crucial for mapping
+            "grapheme_lengths_codepoints": [len(g) for g in grapheme_list],
             "forensic_flags": all_flags,
             "nfkc_casefold_text": nfkc_cf_text,
-            # Stage 2 loads its own WB/SB properties, so we don't send them
             "timestamp": window.Date.new().toISOString()
         }
 
-        # Convert the Python dict to a true JavaScript object (deep conversion)
         core_data_js = to_js(core_data, dict_converter=window.Object.fromEntries)
         window.TEXTTICS_CORE_DATA = core_data_js
 
-        print("Stage 1 data exported for Stage 2.")
+        # print("Stage 1 data exported for Stage 2.")
     except Exception as e:
         print(f"Error packaging data for Stage 2: {e}")
-    # --- End of new block ---
 
 @create_proxy
 def reveal_invisibles(event=None):
