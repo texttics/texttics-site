@@ -43,43 +43,37 @@ INVIS_TABLE = [0] * 1114112  # Covers all of Unicode (0x110000)
 
 def build_invis_table():
     """
-    Populates the global INVIS_TABLE with forensic bitmasks based on 
-    loaded DATA_STORES. Runs once at startup.
+    Populates the global INVIS_TABLE with forensic bitmasks.
     """
     global INVIS_TABLE
     
     def apply_mask(ranges, mask):
         if not ranges: return
         for item in ranges:
-            # FIX: Handle both (start, end) and (start, end, value) tuples safely
             start = item[0]
             end = item[1]
-            
-            # Safety clamp
             start, end = max(0, start), min(1114111, end)
-            
             for cp in range(start, end + 1):
                 INVIS_TABLE[cp] |= mask
 
-    # 1. Default Ignorable (The Baseline)
+    # 1. Default Ignorable
     ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
     apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
 
-    # 2. Join Controls (U+200C, U+200D)
+    # 2. Join Controls
     apply_mask([(0x200C, 0x200D)], INVIS_JOIN_CONTROL)
 
-    # 3. Zero Width Spacing (ZWSP, WJ, BOM)
+    # 3. Zero Width Spacing
     apply_mask([(0x200B, 0x200B), (0x2060, 0x2060), (0xFEFF, 0xFEFF)], INVIS_ZERO_WIDTH_SPACING)
 
-    # 4. Bidi Controls (UAX #9)
-    # --- FIX: Look in "BidiControl" bucket, NOT "PropList" ---
+    # 4. Bidi Controls
     bidi_ranges = DATA_STORES.get("BidiControl", {}).get("ranges", [])
     apply_mask(bidi_ranges, INVIS_BIDI_CONTROL)
 
-    # 5. Tags (Plane 14)
+    # 5. Tags
     apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
 
-    # 6. Variation Selectors (Standard vs Ideographic)
+    # 6. Variation Selectors
     apply_mask([(0xFE00, 0xFE0F)], INVIS_VARIATION_STANDARD)
     apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
 
@@ -89,13 +83,15 @@ def build_invis_table():
     # 8. Soft Hyphen
     apply_mask([(0x00AD, 0x00AD)], INVIS_SOFT_HYPHEN)
 
-    # 9. Non-Standard Newlines (LS, PS)
+    # 9. Non-Standard Newlines
     apply_mask([(0x2028, 0x2029)], INVIS_NONSTANDARD_NL)
 
     # 10. Non-ASCII Spaces (Zs != 0x20)
+    # [UPDATE] Explicitly included MVS (0x180E) and Ogham (0x1680) per Deep Research
     zs_ranges = [
-        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x2000, 0x200A),
-        (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000)
+        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E), 
+        (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), 
+        (0x3000, 0x3000)
     ]
     apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE)
 
@@ -241,25 +237,17 @@ def analyze_invisible_clusters(t: str):
     return clusters
 
 def summarize_invisible_clusters(t: str, rows: list):
-    """
-    Adds cluster-level analysis rows to the integrity matrix.
-    Returns: max_run_length (int)
-    """
+    """Adds cluster-level analysis rows. Returns: max_run_length (int)."""
     clusters = analyze_invisible_clusters(t)
     if not clusters:
-        return 0 # [FIX] Return 0 if no clusters found
+        return 0 
 
     total_clusters = len(clusters)
     max_run = max(c["length"] for c in clusters)
-    high_risk_clusters = [c for c in clusters if c["high_risk"]]
-    # semi_invisible = [c for c in clusters if c["has_alpha"]] # Unused, but harmless
-
+    
     def format_cluster(c):
-        start = c["start"]
-        end = c["end"]
-        length = c["length"]
+        start, length, m = c["start"], c["length"], c["mask_union"]
         tags = []
-        m = c["mask_union"]
         if m & INVIS_BIDI_CONTROL: tags.append("BIDI")
         if m & INVIS_JOIN_CONTROL: tags.append("JOIN")
         if m & INVIS_ZERO_WIDTH_SPACING: tags.append("ZW")
@@ -269,28 +257,20 @@ def summarize_invisible_clusters(t: str, rows: list):
         if m & INVIS_NONSTANDARD_NL: tags.append("NL")
         if m & INVIS_SOFT_HYPHEN: tags.append("SHY")
         tag_str = "|".join(tags) if tags else "IGN"
-        return f"#{start}-#{end} (len={length}, {tag_str})"
+        return f"#{start} (len={length}, {tag_str})"
 
     # Sort: High risk first, then longest
-    sorted_clusters = sorted(
-        clusters,
-        key=lambda c: (not c["high_risk"], -c["length"], c["start"])
-    )
+    sorted_clusters = sorted(clusters, key=lambda c: (not c["high_risk"], -c["length"]))
     top3 = sorted_clusters[:3]
 
     # 1. Cluster Count
-    sev = "warn"
-    bdg = None
-    if high_risk_clusters:
-        sev = "crit"
-        bdg = "DANGER"
-    
+    sev = "crit" if any(c["high_risk"] for c in clusters) else "warn"
     rows.append({
         "label": "Invisible Clusters (All)",
         "count": total_clusters,
         "positions": [format_cluster(c) for c in top3],
         "severity": sev,
-        "badge": bdg
+        "badge": "DANGER" if sev == "crit" else None
     })
 
     # 2. Max Run
@@ -302,7 +282,7 @@ def summarize_invisible_clusters(t: str, rows: list):
         "badge": None
     })
     
-    return max_run # [FIX] Return the integer value
+    return max_run
 
 def analyze_combining_structure(t: str, rows: list):
     """
@@ -584,10 +564,7 @@ def compute_threat_score(t):
     }
 
 def analyze_bidi_structure(t: str, rows: list):
-    """
-    Checks for broken Bidi structure (Unclosed overrides, Unmatched PDFs).
-    Returns: total_broken_count (int)
-    """
+    """Checks for broken Bidi structure. Returns: total_broken_count (int)."""
     if LOADING_STATE != "READY": return 0
 
     stack = []
@@ -596,35 +573,22 @@ def analyze_bidi_structure(t: str, rows: list):
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
         cp = ord(char)
-        
         # Push (Embeddings/Overrides/Isolates)
         if cp in (0x202A, 0x202B, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068):
             stack.append(i)
-            
-        # Pop (PDF - Legacy)
-        elif cp == 0x202C: 
-            if stack:
-                stack.pop()
-            else:
-                unmatched_pdfs.append(f"#{i}")
-                
-        # Pop (PDI - Isolate)
-        elif cp == 0x2069:
-            if stack:
-                stack.pop()
-            else:
-                unmatched_pdfs.append(f"#{i}")
+        # Pop (PDF/PDI)
+        elif cp in (0x202C, 0x2069): 
+            if stack: stack.pop()
+            else: unmatched_pdfs.append(f"#{i}")
 
-    # If stack is not empty, we have unclosed sequences
     unclosed_count = len(stack)
     unmatched_count = len(unmatched_pdfs)
     
     if unclosed_count > 0:
-        unclosed_pos = [f"#{x}" for x in stack]
         rows.append({
             "label": "Flag: Unclosed Bidi Sequence",
             "count": unclosed_count,
-            "positions": unclosed_pos,
+            "positions": [f"#{x}" for x in stack],
             "severity": "crit",
             "badge": "BROKEN"
         })
@@ -638,7 +602,7 @@ def analyze_bidi_structure(t: str, rows: list):
             "badge": "BROKEN"
         })
 
-    return unclosed_count + unmatched_count # [FIX] Return the sum of errors
+    return unclosed_count + unmatched_count
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
@@ -693,6 +657,8 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
+    0x0000: "[NUL]",           # Null Byte
+    0x001B: "[ESC]",           # Escape (Terminal Injection)
     0x00AD: "[SHY]",           # Soft Hyphen
     0x034F: "[CGJ]",           # Combining Grapheme Joiner
     0x061C: "[ALM]",           # Arabic Letter Mark
@@ -716,9 +682,19 @@ INVISIBLE_MAPPING = {
     0x2069: "[PDI]",           # Pop Directional Isolate
     0xFEFF: "[BOM]",           # Byte Order Mark
     0x180E: "[MVS]",           # Mongolian Vowel Separator
+    0xFFF9: "[IAA]",           # Interlinear Annotation Anchor
+    0xFFFA: "[IAS]",           # Interlinear Annotation Separator
+    0xFFFB: "[IAT]",           # Interlinear Annotation Terminator
 }
-# Add Tag Characters (E0001, E0020-E007F) if you want, but this covers the main threats.
-
+# Tag Characters (E0001, E0020-E007F)
+# Non-ASCII Spaces (Zs != 0x20)
+    # [UPDATE] Explicitly included MVS (0x180E) and Ogham (0x1680) per Deep Research
+    zs_ranges = [
+        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E), 
+        (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), 
+        (0x3000, 0x3000)
+    ]
+    apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE
 
 # Valid base characters for U+20E3 (Combining Enclosing Keycap)
 VALID_KEYCAP_BASES = frozenset({
@@ -2702,8 +2678,7 @@ def _get_codepoint_properties(t: str):
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
     
-    # ... [Initialization: legacy_indices, decomp_type_stats, bidi_mirroring_map, flags, health_issues] ...
-    # (Keep lines 1-25 of your current function exactly as they are)
+    # --- 1. Init Trackers ---
     legacy_indices = {
         "deceptive_ls": [], "deceptive_ps": [], "deceptive_nel": [],
         "bidi_bracket_open": [], "bidi_bracket_close": [],
@@ -2711,7 +2686,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         "term_punct": [], "sent_term": [], "alpha": [], 
         "norm_excl": [], "norm_fold": [],
         "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
-        "vs_all": [], "invalid_vs": [], "discouraged": [], "other_ctrl": [],
+        "vs_all": [], "invalid_vs": [], "discouraged": [], 
+        "other_ctrl": [], "esc": [], "interlinear": [], # [NEW] Specific trackers
         "bidi_mirrored": [], "loe": [], "unassigned": []
     }
     
@@ -2742,13 +2718,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
         for i, char in enumerate(js_array):
-            # ... [Keep the main analysis loop exactly as it is in your current file] ...
-            # (Assume standard loop processing here)
             try:
                 cp = ord(char)
                 category = unicodedata.category(char)
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
 
+                # --- Decode Health ---
                 if cp == 0xFFFD: health_issues["fffd"].append(i)
                 if 0xD800 <= cp <= 0xDFFF: health_issues["surrogate"].append(i)
                 if cp == 0x0000: health_issues["nul"].append(i)
@@ -2759,12 +2734,22 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                     health_issues["nonchar"].append(i)
                 if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
 
+                # --- Specific Dangerous Controls [NEW] ---
+                if cp == 0x001B: # ESC (Terminal Injection)
+                    legacy_indices["esc"].append(i)
+                
+                if 0xFFF9 <= cp <= 0xFFFB: # Interlinear Controls
+                    legacy_indices["interlinear"].append(i)
+
+                if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085 and cp != 0x001B:
+                    legacy_indices["other_ctrl"].append(i)
+
+                # --- Line Breaks ---
                 if cp == 0x2028: legacy_indices["deceptive_ls"].append(i)
                 elif cp == 0x2029: legacy_indices["deceptive_ps"].append(i)
                 elif cp == 0x0085: legacy_indices["deceptive_nel"].append(i)
-                if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085:
-                    legacy_indices["other_ctrl"].append(i)
                 
+                # --- VS Logic ---
                 if _find_in_ranges(cp, "VariationSelector"):
                     legacy_indices["vs_all"].append(i)
                     is_valid_vs = False
@@ -2773,6 +2758,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                         if prev_cp in DATA_STORES["VariantBase"]: is_valid_vs = True
                     if not is_valid_vs: legacy_indices["invalid_vs"].append(i)
 
+                # --- Properties ---
                 if _find_in_ranges(cp, "Discouraged"): legacy_indices["discouraged"].append(i)
                 if _find_in_ranges(cp, "Extender"): legacy_indices["extender"].append(i)
                 if _find_in_ranges(cp, "Dash"): legacy_indices["dash"].append(i)
@@ -2805,6 +2791,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 if category == "Cn": legacy_indices["unassigned"].append(i)
 
+                # --- Bitmasks ---
                 if mask & INVIS_DEFAULT_IGNORABLE: flags["default_ign"].append(i)
                 if mask & INVIS_JOIN_CONTROL: flags["join"].append(i)
                 if mask & INVIS_ZERO_WIDTH_SPACING: flags["zw_space"].append(i)
@@ -2815,6 +2802,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
                 if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
 
+                # --- Identifiers ---
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 status_key = ""
                 if id_status_val:
@@ -2845,7 +2833,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             rows.append(row)
 
     # --- [UNCAPPED INTEGRITY SCORE LOGIC] ---
-    # We accumulate points without a ceiling.
     
     integrity_score = 0
     integrity_reasons = []
@@ -2856,32 +2843,29 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         integrity_reasons.append(reason)
 
     # 1. STRUCTURAL FEEDBACK LOOP
-    # We run the structural analyzers FIRST to capture their findings
     struct_rows = []
     
-    # Bidi Structure Analysis (The heavy lifter for Trojan Source)
     bidi_broken_count = analyze_bidi_structure(t, struct_rows)
     if bidi_broken_count > 0:
-        add_hit(f"Unclosed/Broken Bidi Chains ({bidi_broken_count})", 15) # High penalty for broken syntax
+        add_hit(f"Unclosed/Broken Bidi Chains ({bidi_broken_count})", 15) 
 
-    # Cluster Analysis (Massive invisibles)
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
     if cluster_max_len > 4:
-        # Scale score by severity of cluster
         points = min(20, 5 + cluster_max_len)
         add_hit(f"Massive Invisible Cluster (len={cluster_max_len})", points)
     elif cluster_max_len > 1:
         add_hit("Invisible Clusters", 3)
 
-    # Combining Structure (Zalgo)
     analyze_combining_structure(t, struct_rows)
-    # (Zalgo is usually visual noise, handled by Threat Score, but we check health here)
-    # If we wanted to penalize excessive combining marks in Integrity, we could add it here.
 
-    # 2. TIER 1: FATAL DATA CORRUPTION & MALICIOUS (High Points)
+    # 2. TIER 1: FATAL / MALICIOUS (20+ points)
     
+    # [NEW] Terminal Injection Risk
+    if len(legacy_indices["esc"]) > 0:
+        add_hit(f"Terminal Injection Risk (ESC detected)", 25) # Maximally Severe
+
     if len(health_issues["fffd"]) > 0:
-        add_hit(f"Data Loss (Replacement Chars: {len(health_issues['fffd'])})", 20) # 20 pts per existence (could be per char)
+        add_hit(f"Data Loss (Replacement Chars: {len(health_issues['fffd'])})", 20)
     
     if len(health_issues["surrogate"]) > 0:
         add_hit(f"Broken Encoding (Surrogates: {len(health_issues['surrogate'])})", 20)
@@ -2892,16 +2876,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if len(health_issues["nonchar"]) > 0:
         add_hit("Noncharacters (Illegal Interchange)", 15)
 
-    # 3. TIER 2: SECURITY & PROTOCOL RISKS
+    # 3. TIER 2: SECURITY & PROTOCOL RISKS (5-15 points)
     
     if len(flags["bidi"]) > 0:
-        # Distinguish: Is it just Bidi (text) or Broken Bidi (code)?
-        # We already added points for Broken Bidi above.
-        # Here we add base points for Bidi presence if it wasn't broken.
         if bidi_broken_count == 0:
              add_hit(f"Bidi Controls Present ({len(flags['bidi'])})", 5)
         else:
-             # If broken, we already penalized, but add small extra for volume
              integrity_score += len(flags["bidi"]) 
 
     if len(flags["tags"]) > 0:
@@ -2913,10 +2893,14 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if len(health_issues["donotemit"]) > 0:
         add_hit("Do-Not-Emit Characters", 8)
 
-    # 4. TIER 3: SUSPICIOUS ARTIFACTS
+    # 4. TIER 3: SUSPICIOUS ARTIFACTS (3-5 points)
     
     if len(health_issues["bom_mid"]) > 0:
         add_hit("Internal BOM", 5)
+    
+    # [NEW] Interlinear Controls
+    if len(legacy_indices["interlinear"]) > 0:
+         add_hit("Interlinear Annotation Controls", 5)
         
     if len(flags["non_ascii_space"]) > 0:
         add_hit(f"Deceptive Spaces ({len(flags['non_ascii_space'])})", 3)
@@ -2925,7 +2909,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if deceptive_nl > 0:
         add_hit("Deceptive Newlines", 3)
 
-    # 5. TIER 4: STRUCTURAL NOISE
+    # 5. TIER 4: STRUCTURAL NOISE (1-2 points)
     
     if len(health_issues["pua"]) > 0:
         add_hit(f"Private Use Area ({len(health_issues['pua'])})", 2)
@@ -2940,18 +2924,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         add_hit("Text is not NFC", 1)
 
 
-    # --- DETERMINE BADGE (With Saturation Fix) ---
-    # 0      = OK
-    # 1-4    = NOTICE
-    # 5-19   = WARNING
-    # 20-49  = CRITICAL
-    # 50+    = CORRUPT (New Level)
-
+    # --- DETERMINE BADGE ---
     int_level = "OK"
     int_sev = "ok"
     
     if integrity_score >= 50:
-        int_level = "CORRUPT" # The "Nuclear" option
+        int_level = "CORRUPT"
         int_sev = "crit"
     elif integrity_score >= 20:
         int_level = "CRITICAL"
@@ -2965,7 +2943,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     
     int_badge_str = f"{int_level} (Score: {integrity_score})" if integrity_score > 0 else "OK"
     
-    # Limit reasons for display
     display_reasons = integrity_reasons[:5]
     if len(integrity_reasons) > 5:
         display_reasons.append(f"... +{len(integrity_reasons)-5} more")
@@ -2982,6 +2959,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     })
 
     # --- Add Detail Rows ---
+    # [NEW] Flag High-Risk Items
+    add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
+    add_row("Flag: Interlinear Annotation Controls", len(legacy_indices["interlinear"]), legacy_indices["interlinear"], "warn")
+    
     add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "crit")
     add_row("Flag: Unicode Tags (Plane 14)", len(flags["tags"]), flags["tags"], "crit")
     add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
