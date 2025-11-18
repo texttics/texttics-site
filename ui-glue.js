@@ -285,16 +285,25 @@ const parseTable = (tbodyId, sectionTitle) => {
   const emojiTbody = document.getElementById('emoji-qualification-body');
   if (emojiTbody) {
       emojiTbody.querySelectorAll('tr').forEach(row => {
-          // Note: The `innerText` property automatically handles the <details> logic,
-          // so we just replace newlines from the <summary>/<div> structure with a space.
           const cells = row.querySelectorAll('th, td');
           if (cells.length === 4) {
-              const sequence = cells[0].innerText;
-              const status = cells[1].innerText;
-              const count = cells[2].innerText;
-              const positions = cells[3].innerText.replace(/\n/g, ' '); 
+              // FIX: Use textContent instead of innerText. 
+              // innerText returns empty strings if the <details> panel is closed/collapsed.
+              // textContent retrieves the data regardless of visibility.
+              const sequence = cells[0].textContent.trim();
+              const status = cells[1].textContent.trim();
+              const count = cells[2].textContent.trim();
+              
+              // Clean up newlines/tabs from positions list and collapse multiple spaces
+              const positions = cells[3].textContent
+                  .replace(/[\n\r]+/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim(); 
   
-              report.push(`    Emoji: ${sequence} (${status}), ${count}, Positions: ${positions}`);
+              // Only push if we actually found a sequence
+              if (sequence) {
+                  report.push(`    Emoji: ${sequence} (${status}), ${count}, Positions: ${positions}`);
+              }
           }
       });
   }
