@@ -3464,7 +3464,6 @@ def render_threat_analysis(threat_results):
     # 1. Render Flags
     flags = threat_results.get('flags', {})
     
-    # --- FIX: Force 'Threat Level' to top ---
     html_rows = []
     threat_level_key = "Threat Level (Heuristic)"
     
@@ -3472,7 +3471,6 @@ def render_threat_analysis(threat_results):
         data = flags[threat_level_key]
         badge = data.get("badge", "")
         severity = data.get("severity", "ok")
-        # Safe access to details
         positions = data.get("positions", [])
         details = positions[0] if positions else ""
         
@@ -3487,12 +3485,12 @@ def render_threat_analysis(threat_results):
         )
         html_rows.append(row_html)
         
-        # Remove from dict copy so it doesn't duplicate
         flags_copy = flags.copy()
         del flags_copy[threat_level_key]
         flags = flags_copy
 
-    # Render the rest
+    # Render the rest using the enhanced matrix renderer
+    # This will automatically linkify the positions because we updated render_matrix_table
     render_matrix_table(flags, "threat-report-body", has_positions=True)
     
     # Prepend the custom row
@@ -3518,7 +3516,7 @@ def render_threat_analysis(threat_results):
         report_el.innerHTML = html_report
     else:
         drift_count = 0
-        drift_flag = flags.get("Flag: Skeleton Drift") # Check the copied flags dict
+        drift_flag = flags.get("Flag: Skeleton Drift")
         if drift_flag:
             drift_count = drift_flag.get("count", 0)
             
@@ -3529,17 +3527,20 @@ def render_threat_analysis(threat_results):
             
         report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
     
-
     # 4. Banner
     banner_el = document.getElementById("threat-banner")
     if banner_el:
         bidi_danger = threat_results.get('bidi_danger', False)
         
-        # Extract Threat Level Badge if available
         level_key = "Threat Level (Heuristic)"
         level_str = ""
-        if level_key in flags:
-             badge = flags[level_key].get("badge", "").split(' ')[0] # Get "HIGH"/"MEDIUM"
+        # Note: We must check the *original* flags dict passed in, or reload it, 
+        # because we deleted the key from the copy above. 
+        # But threat_results['flags'] still has it if we didn't modify it in place.
+        # To be safe, check the passed argument.
+        orig_flags = threat_results.get('flags', {})
+        if level_key in orig_flags:
+             badge = orig_flags[level_key].get("badge", "").split(' ')[0] 
              if badge in ("HIGH", "MEDIUM"):
                  level_str = f" Threat Level: {badge}."
 
@@ -3548,7 +3549,6 @@ def render_threat_analysis(threat_results):
             banner_el.innerText = base_msg + level_str
             banner_el.removeAttribute("hidden")
         elif level_str:
-            # Show banner for High Threat even without Bidi
             banner_el.innerText = f"WARNING: Security anomalies detected.{level_str} See Threat-Hunting Profile."
             banner_el.removeAttribute("hidden")
         else:
@@ -3557,7 +3557,36 @@ def render_threat_analysis(threat_results):
 # ---
 # 4. DOM RENDERER FUNCTIONS
 # ---
+def _create_position_link(val):
+    """
+    Helper: Transforms an index (int or '#123' string) into a clickable HTML link.
+    Calls window.TEXTTICS_HIGHLIGHT_CODEPOINT(idx).
+    Returns plain text if val is a description/reason.
+    """
+    txt = str(val)
+    idx = None
 
+    # Case A: It is an integer (e.g., 52)
+    if isinstance(val, int):
+        idx = val
+        txt = f"#{val}"
+    
+    # Case B: It is a string (e.g., "#52" or "52")
+    elif isinstance(val, str):
+        clean = val.strip()
+        if clean.startswith("#") and clean[1:].isdigit():
+            idx = int(clean[1:])
+        elif clean.isdigit():
+            idx = int(clean)
+            txt = f"#{idx}"
+    
+    # If we successfully extracted an index, wrap it in the JS bridge call
+    if idx is not None:
+        return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({idx}); return false;">{txt}</a>'
+
+    # Otherwise, return the text as-is (e.g., "Status: Text is NOT NFC")
+    return txt
+    
 def render_status(message):
     """Updates the status line with text and CSS class."""
     status_line = document.getElementById("status-line")
@@ -3601,23 +3630,31 @@ def render_emoji_qualification_table(emoji_list: list):
         key = (seq, status)
         if key not in grouped:
             grouped[key] = []
-        grouped[key].append(f"#{index}")
+        
+        # [ACTIVE UPDATE] Use the link helper
+        grouped[key].append(_create_position_link(index))
 
     # 2. Build HTML string
     html = []
     
     # Sort by the first index to keep them in order of appearance
     try:
-        # Sort the keys by the numeric value of their first position
-        sorted_keys = sorted(grouped.keys(), key=lambda k: int(grouped[k][0][1:]))
+        # We need to strip html tags to sort by the number inside
+        def get_sort_idx(k):
+            raw_link = grouped[k][0] # e.g. <a...>#10</a>
+            # Quick hack to extract number: split by '#' and take the digits
+            try:
+                return int(raw_link.split('#')[1].split('<')[0])
+            except:
+                return 0
+                
+        sorted_keys = sorted(grouped.keys(), key=get_sort_idx)
     except Exception:
-        # Failsafe sort (alphabetical by sequence)
         sorted_keys = sorted(grouped.keys())
 
     for key in sorted_keys:
-        # Unpack the key, AND LOOK UP the value from the dict
         seq, status = key
-        positions = grouped[key]
+        positions = grouped[key] # These are now HTML links
         
         count = len(positions)
         
@@ -3637,14 +3674,9 @@ def render_emoji_qualification_table(emoji_list: list):
 
         html.append(
             f'<tr>'
-            # Use mono font for emoji to prevent weird spacing
-            # 1. Sequence Column (unchanged style)
             f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq}</th>'
-            # 2. Status Column
             f'<td style="color: var(--color-text); font-weight: normal;">{status}</td>'
-            # 3. Count Column
             f'<td>{count}</td>'
-            # 4. Positions Column
             f'<td>{pos_html}</td>'
             f'</tr>'
         )
@@ -3660,18 +3692,13 @@ def render_emoji_summary(emoji_counts, emoji_list):
     if not summary_el:
         return
 
-    # RGI total comes directly from the emoji_counts dict
     rgi_total = emoji_counts.get("RGI Emoji Sequences", 0)
 
-    # The emoji_list is a raw list of *every* occurrence.
-    # We just need to iterate it and increment a counter for
-    # every item that has the "component" status.
     component_total = 0
     if emoji_list:
         for item in emoji_list:
             if item.get("status", "").lower() == "component":
                 component_total += 1
-
 
     summary_el.innerText = (
         f"RGI Emoji Sequences: {rgi_total} • "
@@ -3683,37 +3710,27 @@ def render_cards(stats_dict, element_id, key_order=None):
     """Generates and injects HTML for standard stat cards."""
     html = []
     
-    # --- NEW: Smart Rendering Loop for Repertoire Cards ---
-
-    # Define the keys for our new complex cards
     REPERTOIRE_KEYS = {
-        "ASCII-Compatible",
-        "Latin-1-Compatible",
-        "BMP Coverage",
-        "Supplementary Planes"
+        "ASCII-Compatible", "Latin-1-Compatible", 
+        "BMP Coverage", "Supplementary Planes"
     }
     
     keys_to_render = key_order if key_order else sorted(stats_dict.keys())
     
     for k in keys_to_render:
-        # Failsafe: if key_order has a key not in the dict, skip it
         if k not in stats_dict or stats_dict[k] is None:
             continue
-    
+        
         v = stats_dict[k]
-    
-        # --- RENDER PATH 1: New Repertoire Cards (Complex) ---
+        
+        # --- RENDER PATH 1: New Repertoire Cards ---
         if k in REPERTOIRE_KEYS:
-            # 'v' is the dict {'count': ..., 'pct': ..., 'is_full': ...}
             count = v.get("count", 0)
-    
-            # Only render the card if the count is > 0
             if count > 0:
                 pct = v.get("pct", 0)
                 is_full = v.get("is_full", False)
-    
+                
                 if k == "Supplementary Planes":
-                    # Special case: "Fully" badge doesn't apply
                     badge_html = f'<div class="card-percentage">{pct}%</div>'
                 else:
                     badge_html = (
@@ -3721,8 +3738,7 @@ def render_cards(stats_dict, element_id, key_order=None):
                         if is_full
                         else f'<div class="card-percentage">{pct}%</div>'
                     )
-    
-                # Build the complex card HTML
+                
                 html.append(
                     f'<div class="card card-repertoire">'
                     f'<strong>{k}</strong>'
@@ -3730,24 +3746,19 @@ def render_cards(stats_dict, element_id, key_order=None):
                     f'{badge_html}'
                     f'</div>'
                 )
-    
-        # --- RENDER PATH 2: Grapheme Forensic Cards (Dict) ---
+        
+        # --- RENDER PATH 2: Dict Cards ---
         elif isinstance(v, dict):
             count = v.get('count', 0)
             if count > 0:
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
-    
-        # --- RENDER PATH 3: Simple Cards (Int/Float) ---
+        
+        # --- RENDER PATH 3: Simple Cards ---
         elif isinstance(v, (int, float)):
             count = v
-            # Always render 0-count for these key totals
             if count > 0 or (k in ["Total Graphemes", "Total Code Points", "RGI Emoji Sequences", "Whitespace (Total)"]):
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
-    
-        else:
-            # Skip unknown data types
-            continue
-    
+        
     element = document.getElementById(element_id)
     if element:
         element.innerHTML = "".join(html) if html else "<p class='placeholder-text' style='grid-column: 1 / -1;'>No data.</p>"
@@ -3772,7 +3783,7 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
         element.innerHTML = "".join(html)
 
 def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None):
-    """Renders a generic "Matrix of Facts" table."""
+    """Renders a generic 'Matrix of Facts' table."""
     html = []
     sorted_keys = sorted(stats_dict.keys())
     
@@ -3786,9 +3797,8 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
         if key == "Decode Health Grade":
             severity = data.get("severity", "ok")
             badge = data.get("badge", "OK")
-            # Get reasons from the 'positions' field (where we stored them)
             reasons_list = data.get("positions", []) or ["No issues detected"]
-            reason = reasons_list[0] # The pre-joined string
+            reason = reasons_list[0] 
 
             badge_class = f"integrity-badge integrity-badge-{severity}"
             tooltip = "Health = Is the Unicode well-formed / decodable? (Not a safety guarantee)"
@@ -3813,9 +3823,9 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             count_html = str(count)
             if 'pct' in data: count_html = f"{count} ({data['pct']}%)"
             
-            # Normalize positions
+            # [ACTIVE UPDATE] Linkify Positions
             raw_positions = data.get('positions', [])
-            position_list = [f"#{p}" if isinstance(p, int) else str(p) for p in raw_positions]
+            position_list = [_create_position_link(p) for p in raw_positions]
 
             if len(position_list) > 5:
                 visible = ", ".join(position_list[:5])
@@ -3844,7 +3854,6 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
 def render_integrity_matrix(rows):
     """
     Renders the forensic integrity matrix.
-    Handles 'severity' for row coloring and 'badge' for the count column.
     """
     tbody = document.getElementById("integrity-matrix-body")
     tbody.innerHTML = ""
@@ -3862,8 +3871,6 @@ def render_integrity_matrix(rows):
         # 2. Count / Badge
         td_count = document.createElement("td")
         if row["badge"]:
-            # Show Count AND Badge
-            # Check if count is non-zero/meaningful
             if row["count"] > 0 and row["label"] != "Decode Health Grade":
                  text_node = document.createTextNode(f"{row['count']} ")
                  td_count.appendChild(text_node)
@@ -3880,23 +3887,26 @@ def render_integrity_matrix(rows):
             
         # 3. Positions
         td_pos = document.createElement("td")
-        positions = row["positions"]
+        raw_positions = row["positions"]
         
-        if positions:
-            formatted_list = []
-            for p in positions:
-                formatted_list.append(f"#{p}" if isinstance(p, int) else str(p))
-                
+        if raw_positions:
+            # [ACTIVE UPDATE] Linkify Positions
+            formatted_list = [_create_position_link(p) for p in raw_positions]
+            
             if len(formatted_list) <= 10:
-                 td_pos.textContent = ", ".join(formatted_list)
+                # We must use innerHTML because _create_position_link returns an <a> tag
+                td_pos.innerHTML = ", ".join(formatted_list)
             else:
                 details = document.createElement("details")
                 summary = document.createElement("summary")
+                # Note: Using innerHTML for the summary might be risky if not careful, 
+                # but our links are safe. However, standard <summary> text is safer.
+                # We'll just put text in summary, links in details.
                 summary.textContent = f"{len(formatted_list)} locations"
                 details.appendChild(summary)
                 
                 div = document.createElement("div")
-                div.textContent = ", ".join(formatted_list)
+                div.innerHTML = ", ".join(formatted_list) # Links go here
                 div.style.fontSize = "0.85em"
                 div.style.marginTop = "0.25rem"
                 details.appendChild(div)
@@ -3927,12 +3937,9 @@ def render_ccc_table(stats_dict, element_id):
         if count == 0:
             continue
         
-        # key is "ccc=220", extract "220"
         class_num = key.split('=')[-1]
-        # Get the description, or a simple dash as a fallback
         description = CCC_ALIASES.get(class_num, "N/A")
         
-        # Add inline style to 3rd column to override blue color
         html.append(
             f'<tr>'
             f'<th scope="row">{key}</th>'
