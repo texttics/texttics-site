@@ -157,4 +157,4 @@ This bridge visually proves **Inter-Layer Mismatch Attacks** (like Bidi override
     * **Tables:** Dynamic HTML generation with Python f-strings.
     * **Sparklines:** Dynamic SVG generation with Python strings (no external charting libraries for maximum speed and security).
     * **Styling:** CSS Grid for layout, `rgba` transparency for heatmaps to ensure text legibility.
-This architecture ensures that Stage 2 is a robust, standalone forensic instrument that enhances, rather than duplicates, the capabilities of Stage 1. 
+This architecture makes Stage 2 a robust, standalone forensic instrument. It minimizes its dependency on Stage 1 by consuming only the core data snapshot and performing its own lightweight UAX-based analysis for RLE classification.
