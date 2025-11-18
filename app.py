@@ -381,21 +381,36 @@ def analyze_combining_structure(t: str, rows: list):
 
 def analyze_nsm_overload(graphemes):
     """
-    Analyzes graphemes for excessive combining marks (Zalgo).
-    Returns severity level (0, 1, 2) and details.
+    Analyze graphemes for excessive combining marks ("Zalgo"-style overload).
+    Returns a dict with stable shape, using codepoint indices for positions.
     """
     total_g = len(graphemes)
-    if total_g == 0:
-        return {"level": 0, "max_marks": 0, "count": 0, "positions": []}
 
-    max_marks = 0
+    # Solid default: always return all keys so callers never KeyError.
+    if total_g == 0:
+        return {
+            "level": 0,
+            "max_marks": 0,
+            "mark_density": 0.0,
+            "max_repeat_run": 0,
+            "total_marks": 0,
+            "count": 0,
+            "positions": [],
+            "max_marks_positions": [],
+        }
+
     total_marks = 0
     g_with_marks = 0
+    max_marks = 0
     max_repeat_run = 0
-    
+
+    # Graphemes whose combining load crosses our "Zalgo" threshold.
     zalgo_indices = []
-    
-    # Track global codepoint index for correct positions
+
+    # Graphemes that realise the global maximum intensity.
+    max_intensity_indices = []
+
+    # Global codepoint index (to report positions in the same space as other flags).
     current_cp_index = 0
 
     for glyph in graphemes:
@@ -403,14 +418,19 @@ def analyze_nsm_overload(graphemes):
         current_repeat = 1
         max_g_repeat = 0
         last_cp = -1
-        
-        # Save start index of this grapheme
-        grapheme_start_index = current_cp_index
-        
-        for char in glyph:
-            cp = ord(char)
-            is_comb = unicodedata.category(char) in ('Mn', 'Me') or _find_in_ranges(cp, "CombiningClass") != "0"
-            
+
+        grapheme_start_pos = current_cp_index
+
+        for ch in glyph:
+            cp = ord(ch)
+
+            # Robust combining detection: category OR non-zero CCC.
+            ccc = _find_in_ranges(cp, "CombiningClass")
+            is_comb = (
+                unicodedata.category(ch) in ("Mn", "Me")
+                or (ccc is not None and str(ccc) != "0")
+            )
+
             if is_comb:
                 marks_in_g += 1
                 if cp == last_cp:
@@ -418,35 +438,63 @@ def analyze_nsm_overload(graphemes):
                 else:
                     max_g_repeat = max(max_g_repeat, current_repeat)
                     current_repeat = 1
+
             last_cp = cp
-            
-            # Advance global index
             current_cp_index += 1
-        
+
         max_g_repeat = max(max_g_repeat, current_repeat)
         total_marks += marks_in_g
-        if marks_in_g > 0: g_with_marks += 1
-        max_marks = max(max_marks, marks_in_g)
-        max_repeat_run = max(max_repeat_run, max_g_repeat)
-        
-        # Threshold: 3+ marks
-        if marks_in_g >= 3:
-            # Use the codepoint index, not grapheme index!
-            zalgo_indices.append(f"#{grapheme_start_index}")
 
-    mark_density = g_with_marks / total_g
-    
+        if marks_in_g > 0:
+            g_with_marks += 1
+
+        # Track global max intensity.
+        if marks_in_g > max_marks:
+            max_marks = marks_in_g
+            max_intensity_indices = [f"#{grapheme_start_pos}"]
+        elif marks_in_g == max_marks and marks_in_g > 0:
+            max_intensity_indices.append(f"#{grapheme_start_pos}")
+
+        max_repeat_run = max(max_repeat_run, max_g_repeat)
+
+        # Zalgo threshold: 3+ combining marks on a *single* grapheme.
+        if marks_in_g >= 3:
+            zalgo_indices.append(f"#{grapheme_start_pos}")
+
+    mark_density = g_with_marks / total_g if total_g > 0 else 0.0
+
+    # Heuristic severity:
+    #  - level 2 (strong): clearly abusive use of combining marks
+    #  - level 1 (mild): something odd but not extreme
     level = 0
-    if (max_marks >= 7 or mark_density > 0.7 or total_marks >= 64 or max_repeat_run >= 6):
+    if (
+        max_marks >= 7              # one grapheme is overloaded
+        or mark_density > 0.7       # most graphemes carry marks
+        or total_marks >= 64        # global "wall of marks"
+        or max_repeat_run >= 6      # long run of same combining mark
+    ):
         level = 2
-    elif not (max_marks <= 2 and mark_density <= 0.35 and max_repeat_run <= 2):
+    elif not (
+        max_marks <= 2
+        and mark_density <= 0.35
+        and max_repeat_run <= 2
+    ):
+        # Anything outside the "safe" zone but below strong threshold -> mild.
         level = 1
 
     return {
         "level": level,
         "max_marks": max_marks,
+        "mark_density": round(mark_density, 2),
+        "max_repeat_run": max_repeat_run,
+        "total_marks": total_marks,
+
+        # What the flag row should actually show:
         "count": len(zalgo_indices),
-        "positions": zalgo_indices
+        "positions": zalgo_indices,
+
+        # Where the worst cluster(s) live (for future use / debugging):
+        "max_marks_positions": max_intensity_indices,
     }
 
 def compute_threat_score(t):
@@ -4185,12 +4233,12 @@ def update_all(event=None):
     }
     
     # 2. Zalgo Row
-    if nsm_stats["level"] > 0:
+    if nsm_stats["count"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
         label = "Flag: Excessive Combining Marks (Zalgo)"
         final_threat_flags[label] = {
-            'count': nsm_stats["max_marks"],
-            'positions': nsm_stats["max_marks_positions"],
+            'count': nsm_stats["count"],         # CORRECT: Frequency of bad graphemes
+            'positions': nsm_stats["positions"], # CORRECT: Locations of bad graphemes
             'severity': sev,
             'badge': "ZALGO"
         }
