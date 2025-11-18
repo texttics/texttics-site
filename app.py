@@ -62,7 +62,6 @@ def build_invis_table():
                 INVIS_TABLE[cp] |= mask
 
     # 1. Default Ignorable (The Baseline)
-    # We use .get() chains to be safe against missing data
     ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
     apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
 
@@ -73,7 +72,9 @@ def build_invis_table():
     apply_mask([(0x200B, 0x200B), (0x2060, 0x2060), (0xFEFF, 0xFEFF)], INVIS_ZERO_WIDTH_SPACING)
 
     # 4. Bidi Controls (UAX #9)
-    apply_mask(DATA_STORES["PropList"].get("Bidi_Control", []), INVIS_BIDI_CONTROL)
+    # --- FIX: Look in "BidiControl" bucket, NOT "PropList" ---
+    bidi_ranges = DATA_STORES.get("BidiControl", {}).get("ranges", [])
+    apply_mask(bidi_ranges, INVIS_BIDI_CONTROL)
 
     # 5. Tags (Plane 14)
     apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
@@ -83,7 +84,7 @@ def build_invis_table():
     apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
 
     # 7. Do Not Emit
-    apply_mask(DATA_STORES["DoNotEmit"].get("ranges", []), INVIS_DO_NOT_EMIT)
+    apply_mask(DATA_STORES.get("DoNotEmit", {}).get("ranges", []), INVIS_DO_NOT_EMIT)
 
     # 8. Soft Hyphen
     apply_mask([(0x00AD, 0x00AD)], INVIS_SOFT_HYPHEN)
