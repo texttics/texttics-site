@@ -280,7 +280,9 @@ function buildStructuredReport() {
   report.push(`\n[ ${getText('#threat-title')} ]`);
   
   // 1. Threat Flags
-  const threats = parseTable('threat-report-body', 'Flag: ');
+  // We pass an empty prefix because the keys (e.g. "Flag: ...", "DANGER: ...")
+  // already contain their own labels.
+  const threats = parseTable('threat-report-body', '');
   if (threats.length > 0) report.push(...threats);
   
   // 2. Hashes
