@@ -1198,7 +1198,8 @@ async def load_unicode_data():
     except Exception as e:
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
-        render_status("Error: Failed to load Unicode data. Please refresh.", is_error=True)
+        # The function automatically detects "Error:" prefix and adds red styling
+        render_status("Error: Failed to load Unicode data. Please refresh.")
 
 def compute_emoji_analysis(text: str) -> dict:
     """
