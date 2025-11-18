@@ -1608,6 +1608,7 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     # 5. Build Summary (for Meta-Analysis cards)
     summary_stats = {
         **derived_stats,
+        **repertoire_stats,
         "L (Letter)": major_stats["L (Letter)"],
         "N (Number)": major_stats["N (Number)"],
         "P (Punctuation)": major_stats["P (Punctuation)"],
@@ -3383,7 +3384,7 @@ def update_all(event=None):
     
     # TOC Counts (count non-zero entries)
     toc_counts = {
-        'dual': sum(1 for v in meta_cards.values() if v > 0) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
+        'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
         'integrity': sum(1 for v in forensic_matrix.values() if v.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
