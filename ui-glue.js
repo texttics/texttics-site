@@ -156,34 +156,34 @@ function buildStructuredReport() {
   const getText = (selector) => document.querySelector(selector)?.innerText || '';
   const getVal = (selector) => document.querySelector(selector)?.value || '';
 
-  const parseCards = (elementId) =&gt; {
-      const lines = [];
-      const cardContainer = document.getElementById(elementId);
-      if (cardContainer) {
-        cardContainer.querySelectorAll(&#39;.card&#39;).forEach(card =&gt; {
-          const label = card.querySelector(&#39;strong&#39;)?.innerText || &#39;Unknown&#39;;
+  const parseCards = (elementId) => {
+    const lines = [];
+    const cardContainer = document.getElementById(elementId);
+    if (cardContainer) {
+      cardContainer.querySelectorAll('.card').forEach(card => {
+        const label = card.querySelector('strong')?.innerText || 'Unknown';
   
-          // --- NEW: Smart Scraper ---
-          // Check for new Repertoire Card structure first
-          const mainValueEl = card.querySelector('.card-main-value');
-          const badgeEl = card.querySelector('.card-badge-full, .card-percentage');
+        // --- NEW: Smart Scraper ---
+        // Check for new Repertoire Card structure first
+        const mainValueEl = card.querySelector('.card-main-value');
+        const badgeEl = card.querySelector('.card-badge-full, .card-percentage');
   
-          if (mainValueEl) {
-            // It's a new Repertoire Card
-            const value = mainValueEl.innerText;
-            const badge = badgeEl ? `(${badgeEl.innerText})` : '';
-            // Format: "ASCII-Compatible: 147 (Fully)"
-            lines.push(`  ${label}: ${value} ${badge}`);
-          } else {
-            // It's an old-style simple card
-            const value = card.querySelector('div')?.innerText || 'N/A';
-            lines.push(`  ${label}: ${value}`);
-          }
-          // --- END NEW ---
-        });
-      }
-      return lines;
-    };
+        if (mainValueEl) {
+          // It's a new Repertoire Card
+          const value = mainValueEl.innerText;
+          const badge = badgeEl ? `(${badgeEl.innerText})` : '';
+          // Format: "ASCII-Compatible: 147 (Fully)"
+          lines.push(`  ${label}: ${value} ${badge}`);
+        } else {
+          // It's an old-style simple card
+          const value = card.querySelector('div')?.innerText || 'N/A';
+          lines.push(`  ${label}: ${value}`);
+        }
+        // --- END NEW ---
+      });
+    }
+    return lines;
+  };
 
 const parseTable = (tbodyId, sectionTitle) => {
   const lines = [];
