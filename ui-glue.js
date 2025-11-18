@@ -149,194 +149,157 @@ async function handleCopyReport() {
 }
 
 function buildStructuredReport() {
-  // This helper builds the structured text string you wanted
-  let report = [];
+  const report = [];
 
-  // --- Helper Functions ---
-  const getText = (selector) => document.querySelector(selector)?.innerText || '';
-  const getVal = (selector) => document.querySelector(selector)?.value || '';
-
-  const parseCards = (elementId) => {
-    const lines = [];
-    const cardContainer = document.getElementById(elementId);
-    if (cardContainer) {
-      cardContainer.querySelectorAll('.card').forEach(card => {
-        const label = card.querySelector('strong')?.innerText || 'Unknown';
-  
-        // --- NEW: Smart Scraper ---
-        // Check for new Repertoire Card structure first
-        const mainValueEl = card.querySelector('.card-main-value');
-        const badgeEl = card.querySelector('.card-badge-full, .card-percentage');
-  
-        if (mainValueEl) {
-          // It's a new Repertoire Card
-          const value = mainValueEl.innerText;
-          const badge = badgeEl ? `(${badgeEl.innerText})` : '';
-          // Format: "ASCII-Compatible: 147 (Fully)"
-          lines.push(`  ${label}: ${value} ${badge}`);
-        } else {
-          // It's an old-style simple card
-          const value = card.querySelector('div')?.innerText || 'N/A';
-          lines.push(`  ${label}: ${value}`);
-        }
-        // --- END NEW ---
-      });
-    }
-    return lines;
+  // --- Helper: safely get text from an element ---
+  const getText = (selector) => {
+    const el = document.querySelector(selector);
+    return el ? el.textContent.trim() : '';
   };
 
-const parseTable = (tbodyId, sectionTitle) => {
-  const lines = [];
-  const tbody = document.getElementById(tbodyId);
-  if (tbody) {
-    tbody.querySelectorAll('tr').forEach(row => {
-      const cells = row.querySelectorAll('th, td');
-      if (cells.length === 0 || row.querySelector('.placeholder-text')) {
-        return;
-      }
+  // --- Helper: safely get value from inputs ---
+  const getVal = (selector) => {
+    const el = document.querySelector(selector);
+    return el ? el.value : '';
+  };
 
-      const metric = cells[0].innerText;
+  // --- Helper: Smart Card Scraper (Handles Standard & Repertoire Cards) ---
+  const parseCards = (containerId) => {
+    const lines = [];
+    const container = document.getElementById(containerId);
+    if (!container) return lines;
 
-      // --- Validation to prevent noisy empty lines ---
-      if (!metric || metric.trim() === '') {
-        return; // Skip this row if the metric name is empty
-      }
+    container.querySelectorAll('.card').forEach(card => {
+      // 1. Get the Label (always in <strong>)
+      const label = card.querySelector('strong')?.textContent.trim() || 'Metric';
+
+      // 2. Check for NEW "Repertoire Card" structure (Value class + Badge)
+      const mainValueEl = card.querySelector('.card-main-value');
       
-      const count = cells[1].innerText;
-
-      // optional Positions column
-      const hasPositions = cells.length > 2 && cells[2].innerText;
-      const positions = hasPositions ? cells[2].innerText : null;
-
-      // ✅ Build prefix only if sectionTitle is non-empty
-      const prefix = sectionTitle ? `${sectionTitle}: ` : '';
-      
-      // --- START: Special case for CCC Table ---
-      if (tbodyId === 'ccc-matrix-body' && cells.length === 3) {
-        const description = cells[2].innerText;
-        // Format as: "Combining Class: ccc=220 (Attached Below), 6"
-        lines.push(`  ${prefix}${metric} (${description}), ${count}`);
-        return; // Done with this row
-      }
-      // --- END: Special case ---
-
-      if (hasPositions) {
-        lines.push(`  ${prefix}${metric}, ${count}, Positions: ${positions}`);
+      if (mainValueEl) {
+        // It's a Repertoire Card (e.g., "ASCII: 8 (38.1%)")
+        const val = mainValueEl.textContent.trim();
+        // Try to find a percentage badge OR a "Fully" badge
+        const badgeEl = card.querySelector('.card-percentage') || card.querySelector('.card-badge-full');
+        const badge = badgeEl ? `(${badgeEl.textContent.trim()})` : '';
+        
+        lines.push(`  ${label}: ${val} ${badge}`);
       } else {
-        lines.push(`  ${prefix}${metric}, ${count}`);
+        // 3. Fallback to "Standard Card" structure (Old style)
+        // The value is usually in a <div> that isn't the strong label
+        const divVal = card.querySelector('div')?.textContent.trim();
+        if (divVal) {
+           lines.push(`  ${label}: ${divVal}`);
+        }
       }
     });
-  }
-  return lines;
-};
-
-  const parseParallelTable = (tbodyId, sectionTitle) => {
-    const lines = [];
-    const tbody = document.getElementById(tbodyId);
-    if (tbody) {
-      tbody.querySelectorAll('tr').forEach(row => {
-        const cells = row.querySelectorAll('th, td');
-        if (cells.length === 3) {
-          lines.push(`  ${sectionTitle}: ${cells[0].innerText} (Code Points: ${cells[1].innerText}, Graphemes: ${cells[2].innerText})`);
-        }
-      });
-    }
     return lines;
   };
 
-  // --- 1. Build the Report ---
+  // --- Helper: Universal Table Scraper ---
+  // Works for 2-col, 3-col, and 4-col tables. Uses textContent to handle hidden details.
+  const parseTable = (tbodyId, prefix = '') => {
+    const lines = [];
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return lines;
+
+    tbody.querySelectorAll('tr').forEach(row => {
+      // Skip rows that are just "No data" placeholders
+      if (row.querySelector('.placeholder-text')) return;
+
+      const cells = Array.from(row.querySelectorAll('th, td'));
+      if (cells.length === 0) return;
+
+      // Map cell content to text, cleaning up newlines/tabs
+      const cellTexts = cells.map(c => 
+        c.textContent
+         .replace(/[\n\r]+/g, ' ') // Replace newlines with space
+         .replace(/\s+/g, ' ')     // Collapse multiple spaces
+         .trim()
+      );
+
+      // Filter out empty rows (rare artifact protection)
+      if (!cellTexts[0]) return;
+
+      // Construct line: "Prefix: Metric, Count, Positions"
+      // We join all detected columns with comma-space
+      lines.push(`  ${prefix}${cellTexts.join(', ')}`);
+    });
+    return lines;
+  };
+
+  // ==========================================
+  // BUILD THE REPORT SECTIONS
+  // ==========================================
+
   report.push('--- Text...tics Structural Profile ---');
   report.push(`Timestamp: ${new Date().toISOString()}`);
+  
   report.push('\n[ Analysis Configuration ]');
   report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
 
-  // --- 2. Dual-Atom Profile ---
+  // --- Dual-Atom Fingerprint ---
   report.push('\n[ Dual-Atom Fingerprint ]');
   report.push(...parseCards('meta-totals-cards'));
   report.push(...parseCards('grapheme-integrity-cards'));
-  report.push(...parseTable('ccc-matrix-body', 'Combining Class'));
-  report.push(...parseParallelTable('major-parallel-body', 'Major Category'));
-  report.push(...parseParallelTable('minor-parallel-body', 'Minor Category'));
+  // The CCC table is a standard matrix now
+  report.push(...parseTable('ccc-matrix-body', 'Combining Class: ')); 
+  // The Parallel tables are standard matrices now
+  report.push(...parseTable('major-parallel-body', 'Major Category: '));
+  report.push(...parseTable('minor-parallel-body', 'Minor Category: '));
 
-  // --- 3. Structural Shape ---
+  // --- Structural Shape ---
   report.push(`\n[ ${getText('#shape-title')} ]`);
-  report.push(...parseTable('shape-matrix-body', 'Major Run'));
-  report.push(...parseTable('minor-shape-matrix-body', 'Minor Run'));
-  report.push(...parseTable('linebreak-run-matrix-body', 'LineBreak Run'));
-  report.push(...parseTable('bidi-run-matrix-body', 'Bidi Class Run'));
-  report.push(...parseTable('wordbreak-run-matrix-body', 'WordBreak Run'));
-  report.push(...parseTable('sentencebreak-run-matrix-body', 'SentenceBreak Run'));
-  report.push(...parseTable('graphemebreak-run-matrix-body', 'GraphemeBreak Run'));
-  report.push(...parseTable('eawidth-run-matrix-body', 'EastAsianWidth Run'));
-  report.push(...parseTable('vo-run-matrix-body', 'VerticalOrientation Run'));
+  report.push(...parseTable('shape-matrix-body', 'Major Run: '));
+  report.push(...parseTable('minor-shape-matrix-body', 'Minor Run: '));
+  report.push(...parseTable('linebreak-run-matrix-body', 'LineBreak: '));
+  report.push(...parseTable('bidi-run-matrix-body', 'Bidi Class: '));
+  report.push(...parseTable('wordbreak-run-matrix-body', 'WordBreak: '));
+  report.push(...parseTable('sentencebreak-run-matrix-body', 'SentenceBreak: '));
+  report.push(...parseTable('graphemebreak-run-matrix-body', 'GraphemeBreak: '));
+  report.push(...parseTable('eawidth-run-matrix-body', 'EA Width: '));
+  report.push(...parseTable('vo-run-matrix-body', 'Vertical Orientation: '));
 
-  // --- 4. Forensic Integrity ---
+  // --- Structural Integrity ---
   report.push(`\n[ ${getText('#integrity-title')} ]`);
+  // Note: This handles the "Decode Health Grade" badge row automatically
+  // because parseTable extracts textContent from the <td> containing the badge.
   report.push(...parseTable('integrity-matrix-body', ''));
 
-  // --- 5. Provenance & Context ---
+  // --- Provenance ---
   report.push(`\n[ ${getText('#prov-title')} ]`);
-  report.push(...parseTable('provenance-matrix-body', 'Property'));
-  report.push(...parseTable('script-run-matrix-body', 'Script Run'));
+  report.push(...parseTable('provenance-matrix-body', ''));
+  report.push(...parseTable('script-run-matrix-body', ''));
 
-  report.push(`\n[ Emoji Qualification Profile ]`);
+  // --- Emoji Qualification ---
+  report.push('\n[ Emoji Qualification Profile ]');
+  report.push(`  ${getText('#emoji-summary')}`); // "RGI Sequences: X..."
+  report.push(...parseTable('emoji-qualification-body', '  Emoji: '));
 
-  // CUSTOM PARSER for 4-column Emoji table
-  const emojiTbody = document.getElementById('emoji-qualification-body');
-  if (emojiTbody) {
-      emojiTbody.querySelectorAll('tr').forEach(row => {
-          const cells = row.querySelectorAll('th, td');
-          if (cells.length === 4) {
-              // FIX: Use textContent instead of innerText. 
-              // innerText returns empty strings if the <details> panel is closed/collapsed.
-              // textContent retrieves the data regardless of visibility.
-              const sequence = cells[0].textContent.trim();
-              const status = cells[1].textContent.trim();
-              const count = cells[2].textContent.trim();
-              
-              // Clean up newlines/tabs from positions list and collapse multiple spaces
-              const positions = cells[3].textContent
-                  .replace(/[\n\r]+/g, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim(); 
-  
-              // Only push if we actually found a sequence
-              if (sequence) {
-                  report.push(`    Emoji: ${sequence} (${status}), ${count}, Positions: ${positions}`);
-              }
-          }
-      });
-  }
-  
-
-  // --- 6. Threat-Hunting ---
+  // --- Threat Hunting ---
   report.push(`\n[ ${getText('#threat-title')} ]`);
   
-  // 6.A - Scrape the threat flags from the correct table
-  // THIS IS THE FIX
-  const threatMatrixRows = parseTable('threat-report-body', 'Flag');
-  if (threatMatrixRows.length > 0) {
-    report.push(...threatMatrixRows);
-  }
+  // 1. Threat Flags
+  const threats = parseTable('threat-report-body', 'Flag: ');
+  if (threats.length > 0) report.push(...threats);
   
-  // 6.B - Scrape the hash table
-  // Note: We re-use 'parseTable' but give it a custom title
-  const hashRows = parseTable('threat-hash-report-body', 'Hash');
-  if (hashRows.length > 0) {
-    report.push(...hashRows);
-  }
+  // 2. Hashes
+  const hashes = parseTable('threat-hash-report-body', 'Hash: ');
+  if (hashes.length > 0) report.push(...hashes);
 
-// --- 7. Perception vs. Reality (Forensic States) ---
-  if (window.latest_threat_data) {
-      const t = window.latest_threat_data;
-      
-      // Note: 't' is a Python Dictionary Proxy, so we must use .get() 
-      // instead of dot notation (t.raw)
-      report.push('\n[ Perception vs. Reality (Forensic States) ]');
-      report.push(`1. Forensic (Raw):   ${t.get('raw')}`);
-      report.push(`2. NFKC:             ${t.get('nfkc')}`);
-      report.push(`3. NFKC-Casefold:    ${t.get('nfkc_cf')}`);
-      report.push(`4. UTS #39 Skeleton: ${t.get('skeleton')}`);
+  // 3. Perception vs Reality (Confusables)
+  report.push('\n[ Perception vs. Reality (Forensic States) ]');
+  // We grab the text directly from the PRE block to preserve the formatting
+  const confusableText = getText('#confusable-diff-report');
+  if (confusableText) {
+    report.push(confusableText);
+  } else if (window.latest_threat_data) {
+    // Fallback to Python data if DOM is empty (rare)
+    const t = window.latest_threat_data;
+    report.push(`1. Forensic (Raw):   ${t.get('raw')}`);
+    report.push(`2. NFKC:             ${t.get('nfkc')}`);
+    report.push(`3. NFKC-Casefold:    ${t.get('nfkc_cf')}`);
+    report.push(`4. UTS #39 Skeleton: ${t.get('skeleton')}`);
   }
 
   return report.join('\n');
