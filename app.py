@@ -382,18 +382,11 @@ def analyze_combining_structure(t: str, rows: list):
 def analyze_nsm_overload(graphemes):
     """
     Analyzes graphemes for excessive combining marks (Zalgo).
-    Returns a severity level (0, 1, 2) and details.
+    Returns severity level (0, 1, 2), counts, and positions.
     """
     total_g = len(graphemes)
-    # FIX: Ensure 'max_marks_positions' is included in the empty return
     if total_g == 0:
-        return {
-            "level": 0, 
-            "max_marks": 0, 
-            "mark_density": 0.0, 
-            "max_repeat_run": 0, 
-            "max_marks_positions": []
-        }
+        return {"level": 0, "max_marks": 0, "mark_density": 0.0, "max_marks_positions": []}
 
     total_marks = 0
     g_with_marks = 0
@@ -407,17 +400,23 @@ def analyze_nsm_overload(graphemes):
         max_g_repeat = 0
         last_cp = -1
         
+        # Iterate chars in the grapheme
         for char in glyph:
             cp = ord(char)
-            cat = unicodedata.category(char)
-            
-            if cat in ('Mn', 'Me') or _find_in_ranges(cp, "CombiningClass") != "0":
+            # Check if combining mark (Mn, Me or ccc != 0)
+            is_combining = unicodedata.category(char) in ('Mn', 'Me')
+            if not is_combining:
+                 # Fallback to CCC check
+                 is_combining = _find_in_ranges(cp, "CombiningClass") != "0"
+
+            if is_combining:
                 marks_in_g += 1
                 if cp == last_cp:
                     current_repeat += 1
                 else:
                     max_g_repeat = max(max_g_repeat, current_repeat)
                     current_repeat = 1
+            
             last_cp = cp
         
         max_g_repeat = max(max_g_repeat, current_repeat)
@@ -435,13 +434,17 @@ def analyze_nsm_overload(graphemes):
 
     mark_density = g_with_marks / total_g
 
+    # Determine Severity Level
+    # Level 0 (Normal): max<=2, density<=0.35, repeat<=2
     level = 0
+    
+    # Level 2 (Extreme / Zalgo)
     if (max_marks >= 7 or mark_density > 0.7 or total_marks >= 64 or max_repeat_run >= 6):
         level = 2
+    # Level 1 (Suspicious)
     elif not (max_marks <= 2 and mark_density <= 0.35 and max_repeat_run <= 2):
         level = 1
 
-    # FIX: Ensure 'max_marks_positions' is included in the final return
     return {
         "level": level,
         "max_marks": max_marks,
@@ -450,87 +453,84 @@ def analyze_nsm_overload(graphemes):
         "max_marks_positions": max_marks_positions
     }
 
-def compute_threat_score(inputs):
+def compute_threat_score(t):
     """
     Aggregates all forensic signals into a single Threat Level (Low/Medium/High).
+    't' is a dictionary of core stats extracted from the analysis modules.
     """
     score = 0
-    contributors = []
-
-    # 1. Decode Health
-    dg = inputs.get("decode_grade", "OK")
-    if dg == "Critical": 
-        score += 4
-        contributors.append("Critical Decode Health")
-    elif dg == "Warning": 
-        score += 2
-        contributors.append("Decode Health Warning")
-
-    # 2. Bidi
-    if inputs.get("malicious_bidi"): 
-        score += 3
-        contributors.append("Malicious Bidi")
-    elif inputs.get("bidi_count", 0) > 0: 
-        score += 1
-
-    # 3. Invisible Clusters
-    mir = inputs.get("max_invis_run", 0)
-    if mir >= 12: 
-        score += 3
-        contributors.append(f"Huge Invisible Run ({mir})")
-    elif mir >= 6: 
-        score += 2
-    elif mir >= 3: 
-        score += 1
-        
-    icc = inputs.get("invis_cluster_count", 0)
-    if icc >= 8: score += 2
-    elif icc >= 3: score += 1
-
-    # 4. Skeleton / Normalization
-    sd = inputs.get("skeleton_drift", 0)
-    if sd >= 10: 
-        score += 3
-        contributors.append(f"Massive Skeleton Drift ({sd})")
-    elif sd >= 3: 
-        score += 1
-        
-    if inputs.get("not_nfc"): score += 1
-
-    # 5. Script Mix
-    sm = inputs.get("script_mix_class", "ASCII")
-    if "Highly Mixed" in sm: 
-        score += 2
-        contributors.append("Highly Mixed Scripts")
-    elif "Mixed" in sm: 
-        score += 1
-
-    # 6. NSM / Zalgo
-    nsm = inputs.get("nsm_level", 0)
-    if nsm == 2: 
-        score += 2
-        contributors.append("Extreme Zalgo/Combining Marks")
-    elif nsm == 1: 
-        score += 1
-
-    # 7. PUA / Nonchar
-    pua = inputs.get("pua_pct", 0)
-    if pua >= 30: score += 3
-    elif pua >= 5: score += 1
+    reasons = []
     
-    bad_scalars = inputs.get("nonchar_count", 0) + inputs.get("unassigned_count", 0)
-    if bad_scalars >= 5: score += 2
-    elif bad_scalars > 0: score += 1
+    total_cps = max(1, t.get("total_code_points", 1))
+    invis_share = t.get("invis_or_ignorable", 0) / total_cps
+
+    # 1. Bidi Controls (Trojan Source)
+    bidi = t.get("bidi_controls", 0)
+    if bidi >= 1: reasons.append(f"Bidi controls present ({bidi})")
+    if bidi >= 3: score += 2
+    if bidi >= 6: score += 1
+
+    # 2. Invisible Runs
+    max_run = t.get("max_invis_run", 0)
+    if max_run >= 4: reasons.append(f"Invisible run length {max_run}")
+    if max_run >= 8: score += 3
+    elif max_run >= 4: score += 1
+
+    # 3. Invisible Share
+    if invis_share >= 0.30:
+        reasons.append(f"{int(invis_share*100)}% invisible/ignorable")
+        score += 3
+    elif invis_share >= 0.10:
+        score += 1
+
+    # 4. Deceptive Spaces
+    dec_spaces = t.get("deceptive_spaces", 0)
+    if dec_spaces >= 5:
+        reasons.append(f"Deceptive spaces: {dec_spaces}")
+        score += 2
+    elif dec_spaces >= 1:
+        score += 1
+
+    # 5. Skeleton Drift
+    drift = t.get("skeleton_drift", 0)
+    if drift >= 1: reasons.append(f"Skeleton drift ({drift} positions)")
+    if drift >= 5: score += 2
+    if drift >= 15: score += 1
+
+    # 6. Hard Indicators
+    if t.get("has_internal_bom"):
+        reasons.append("Internal BOM")
+        score += 2
+    if t.get("has_invalid_vs"):
+        reasons.append("Invalid Variation Selector")
+        score += 2
+    if t.get("has_unclosed_bidi"):
+        reasons.append("Unclosed Bidi Sequence")
+        score += 3
+    if t.get("is_not_nfc"):
+        reasons.append("Not NFC")
+        score += 1
+    if t.get("has_hidden_marks"):
+        reasons.append("Marks on non-visual base")
+        score += 1
+        
+    # 7. Zalgo
+    nsm_level = t.get("nsm_level", 0)
+    if nsm_level == 2:
+        reasons.append("Extreme Combining Marks (Zalgo)")
+        score += 2
+    elif nsm_level == 1:
+        score += 1
 
     # Map to Level
-    if score >= 9: level = "HIGH"
-    elif score >= 4: level = "MEDIUM"
+    if score >= 10: level = "HIGH"
+    elif score >= 5: level = "MEDIUM"
     else: level = "LOW"
-    
+
     return {
         "level": level,
         "score": score,
-        "contributors": contributors[:3] # Top 3 reasons
+        "reasons": reasons
     }
 
 def analyze_bidi_structure(t: str, rows: list):
@@ -2653,11 +2653,8 @@ def _get_codepoint_properties(t: str):
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     """
     Module 2.C: Hybrid Forensic Analysis.
-    Combines Legacy Logic (Specific Flags) with Bitmask Engine (Deep Invisibles).
-    Returns a List of Row Objects for the new render_integrity_matrix.
     """
-    
-    # --- 1. Initialize Legacy Buckets (Preserving your exact metrics) ---
+    # --- 1. Initialize Buckets ---
     legacy_indices = {
         "deceptive_ls": [], "deceptive_ps": [], "deceptive_nel": [],
         "bidi_bracket_open": [], "bidi_bracket_close": [],
@@ -2665,25 +2662,20 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         "term_punct": [], "sent_term": [], "alpha": [], 
         "norm_excl": [], "norm_fold": [],
         "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
-        "vs_all": [], "invalid_vs": [],
-        "discouraged": [], # Security Discouraged
-        "other_ctrl": [],  # C0/C1
-        "bidi_mirrored": [], "loe": [],
-        "unassigned": []
+        "vs_all": [], "invalid_vs": [], "discouraged": [], "other_ctrl": [],
+        "bidi_mirrored": [], "loe": [], "unassigned": []
     }
     
     decomp_type_stats = {}
     bidi_mirroring_map = {}
     id_type_stats = {} 
     
-    # --- 2. Initialize Bitmask Buckets (The new engine) ---
     flags = {
         "default_ign": [], "join": [], "zw_space": [], "bidi": [],
         "tags": [], "vs_std": [], "vs_ideo": [], "shy": [],
         "non_ascii_space": [], "bad_nl": [], "any_invis": [], "high_risk": []
     }
     
-    # Decode Health Specifics
     health_issues = {
         "fffd": [], "surrogate": [], "nonchar": [], 
         "pua": [], "nul": [], "bom_mid": [], "donotemit": []
@@ -2698,55 +2690,40 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         "Default_Ignorable Not_XID": "Default_Ignorable (Not_XID)"
     }
 
-    # --- 3. The Main Analysis Loop ---
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
         for i, char in enumerate(js_array):
             try:
                 cp = ord(char)
                 category = unicodedata.category(char)
-                
-                # --- A. Bitmask Lookup (Fast) ---
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
 
-                # --- B. Decode Health & Criticals ---
+                # Decode Health
                 if cp == 0xFFFD: health_issues["fffd"].append(i)
                 if 0xD800 <= cp <= 0xDFFF: health_issues["surrogate"].append(i)
                 if cp == 0x0000: health_issues["nul"].append(i)
                 if cp == 0xFEFF and i > 0: health_issues["bom_mid"].append(i)
-                
                 if (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD):
                     health_issues["pua"].append(i)
-                
                 if (0xFDD0 <= cp <= 0xFDEF) or ((cp & 0xFFFF) >= 0xFFFE):
                     health_issues["nonchar"].append(i)
-                
                 if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
 
-                # --- C. Legacy Logic (Preserved) ---
-                
-                # Deceptive Newlines (Explicit)
+                # Legacy & Bitmask Checks (Condensed for brevity, logic identical to previous)
                 if cp == 0x2028: legacy_indices["deceptive_ls"].append(i)
                 elif cp == 0x2029: legacy_indices["deceptive_ps"].append(i)
                 elif cp == 0x0085: legacy_indices["deceptive_nel"].append(i)
-
-                # C0/C1 Controls
-                if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or 
-                    (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085:
+                if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085:
                     legacy_indices["other_ctrl"].append(i)
-
-                # Invalid VS Check
+                
                 if _find_in_ranges(cp, "VariationSelector"):
                     legacy_indices["vs_all"].append(i)
                     is_valid_vs = False
                     if i > 0:
                         prev_cp = ord(js_array[i-1])
-                        if prev_cp in DATA_STORES["VariantBase"]:
-                            is_valid_vs = True
-                    if not is_valid_vs:
-                        legacy_indices["invalid_vs"].append(i)
+                        if prev_cp in DATA_STORES["VariantBase"]: is_valid_vs = True
+                    if not is_valid_vs: legacy_indices["invalid_vs"].append(i)
 
-                # Properties
                 if _find_in_ranges(cp, "Discouraged"): legacy_indices["discouraged"].append(i)
                 if _find_in_ranges(cp, "Extender"): legacy_indices["extender"].append(i)
                 if _find_in_ranges(cp, "Dash"): legacy_indices["dash"].append(i)
@@ -2754,29 +2731,22 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if _find_in_ranges(cp, "TerminalPunctuation"): legacy_indices["term_punct"].append(i)
                 if _find_in_ranges(cp, "SentenceTerminal"): legacy_indices["sent_term"].append(i)
                 if _find_in_ranges(cp, "Alphabetic"): legacy_indices["alpha"].append(i)
-                
-                # Normalization
                 if _find_in_ranges(cp, "CompositionExclusions"): legacy_indices["norm_excl"].append(i)
                 if _find_in_ranges(cp, "ChangesWhenNFKCCasefolded"): legacy_indices["norm_fold"].append(i)
                 
-                # Bidi Brackets
                 bracket_type = _find_in_ranges(cp, "BidiBracketType")
                 if bracket_type == "o": legacy_indices["bidi_bracket_open"].append(i)
                 elif bracket_type == "c": legacy_indices["bidi_bracket_close"].append(i)
-                
-                # Bidi Mirroring
                 if _find_in_ranges(cp, "BidiMirrored"): legacy_indices["bidi_mirrored"].append(i)
                 if _find_in_ranges(cp, "LogicalOrderException"): legacy_indices["loe"].append(i)
                 if cp in DATA_STORES["BidiMirroring"]:
                     mirrored_cp = DATA_STORES["BidiMirroring"][cp]
                     bidi_mirroring_map[i] = f"'{char}' → '{chr(mirrored_cp)}'"
 
-                # Emoji
                 if _find_in_ranges(cp, "Extended_Pictographic"): legacy_indices["ext_picto"].append(i)
                 if _find_in_ranges(cp, "Emoji_Modifier_Base"): legacy_indices["emoji_mod_base"].append(i)
                 if _find_in_ranges(cp, "Emoji_Modifier"): legacy_indices["emoji_mod"].append(i)
 
-                # Decomposition
                 decomp_type = _find_in_ranges(cp, "DecompositionType")
                 if decomp_type and decomp_type != "Canonical":
                     key = f"Decomposition (Derived): {decomp_type.title()}"
@@ -2786,7 +2756,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
 
                 if category == "Cn": legacy_indices["unassigned"].append(i)
 
-                # --- D. Bitmask Flags (Filling the gaps) ---
                 if mask & INVIS_DEFAULT_IGNORABLE: flags["default_ign"].append(i)
                 if mask & INVIS_JOIN_CONTROL: flags["join"].append(i)
                 if mask & INVIS_ZERO_WIDTH_SPACING: flags["zw_space"].append(i)
@@ -2797,15 +2766,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
                 if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
 
-                # --- E. UAX #31 (Preserved) ---
+                # UAX #31
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
                 status_key = ""
                 if id_status_val:
-                    if id_status_val not in UAX31_ALLOWED_STATUSES:
-                        status_key = f"Flag: Status: {id_status_val}"
+                    if id_status_val not in UAX31_ALLOWED_STATUSES: status_key = f"Flag: Status: {id_status_val}"
                 else:
-                    if category not in ("Cn", "Co", "Cs"):
-                        status_key = "Flag: Identifier Status: Default Restricted"
+                    if category not in ("Cn", "Co", "Cs"): status_key = "Flag: Identifier Status: Default Restricted"
                 if status_key:
                     if status_key not in id_type_stats: id_type_stats[status_key] = {'count': 0, 'positions': []}
                     id_type_stats[status_key]['count'] += 1
@@ -2822,45 +2789,66 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
 
-    # --- 4. Construct Output Rows (Mapping EVERYTHING to New Schema) ---
+    # --- 4. Construct Output Rows ---
     rows = []
-    
     def add_row(label, count, positions, severity="warn", badge=None, pct=None):
         if count > 0:
-            row = {
-                "label": label,
-                "count": count,
-                "positions": positions,
-                "severity": severity,
-                "badge": badge
-            }
+            row = {"label": label, "count": count, "positions": positions, "severity": severity, "badge": badge}
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
-    # 4a. Decode Health Grade
-    crit_errs = len(health_issues["fffd"]) + len(health_issues["surrogate"]) + len(health_issues["nonchar"]) + len(health_issues["nul"])
-    warn_errs = len(health_issues["pua"]) + len(health_issues["bom_mid"]) + len(health_issues["donotemit"]) + len(legacy_indices["other_ctrl"])
+    # 4a. Decode Health Grade (Expanded Logic)
+    health_reasons = []
+    crit_errs = 0
+    warn_errs = 0
     
+    # Criticals
+    if health_issues["fffd"]: 
+        crit_errs += len(health_issues["fffd"]); health_reasons.append("Replacement Char (U+FFFD)")
+    if health_issues["surrogate"]: 
+        crit_errs += len(health_issues["surrogate"]); health_reasons.append("Surrogates")
+    if health_issues["nonchar"]: 
+        crit_errs += len(health_issues["nonchar"]); health_reasons.append("Noncharacters")
+    if health_issues["nul"]: 
+        crit_errs += len(health_issues["nul"]); health_reasons.append("NUL (U+0000)")
+
+    # Warnings
+    if health_issues["pua"]: 
+        warn_errs += len(health_issues["pua"]); health_reasons.append("Private Use Area")
+    if health_issues["bom_mid"]: 
+        warn_errs += len(health_issues["bom_mid"]); health_reasons.append("Internal BOM")
+    if health_issues["donotemit"]: 
+        warn_errs += len(health_issues["donotemit"]); health_reasons.append("Do-Not-Emit Chars")
+    if legacy_indices["other_ctrl"]: 
+        warn_errs += len(legacy_indices["other_ctrl"]); health_reasons.append("C0/C1 Controls")
+
     is_nfc = True
-    try:
-        is_nfc = (t == unicodedata.normalize("NFC", t))
+    try: is_nfc = (t == unicodedata.normalize("NFC", t))
     except: pass
-    if not is_nfc: warn_errs += 1
+    if not is_nfc: 
+        warn_errs += 1; health_reasons.append("Text is not NFC")
 
     health_sev = "ok"; health_bdg = "OK"; health_pos = []
-
     if crit_errs > 0:
         health_sev = "crit"; health_bdg = "CRIT"
-        for k in ["fffd", "surrogate", "nonchar", "nul"]: health_pos.extend(health_issues[k])
     elif warn_errs > 0:
         health_sev = "warn"; health_bdg = "WARN"
-        for k in ["pua", "bom_mid", "donotemit"]: health_pos.extend(health_issues[k])
-        if legacy_indices["other_ctrl"]: health_pos.extend(legacy_indices["other_ctrl"])
     
+    # Collect all health positions
+    for k in health_issues: health_pos.extend(health_issues[k])
+    if legacy_indices["other_ctrl"]: health_pos.extend(legacy_indices["other_ctrl"])
     health_pos.sort()
-    rows.append({"label": "Decode Health Grade", "count": crit_errs + warn_errs, "positions": health_pos, "severity": health_sev, "badge": health_bdg})
 
-    # 4b. Add Bitmask Flags
+    rows.append({
+        "label": "Decode Health Grade",
+        "count": crit_errs + warn_errs,
+        "positions": health_pos,
+        "severity": health_sev,
+        "badge": health_bdg,
+        "reasons": health_reasons # Pass reasons to renderer
+    })
+
+    # 4b. Add Flags
     add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
     add_row("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)", len(flags["join"]), flags["join"], "warn")
     add_row("Flag: Zero-Width Spacing (ZWSP / WJ / BOM)", len(flags["zw_space"]), flags["zw_space"], "warn")
@@ -2870,9 +2858,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Deceptive Spaces (Non-ASCII)", len(flags["non_ascii_space"]), flags["non_ascii_space"], "warn")
     add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "crit")
     add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
-    add_row("Flag: Any Invisible or Default-Ignorable", len(flags["any_invis"]), flags["any_invis"], "warn")
+    add_row("Flag: Any Invisible or Default-Ignorable (Union)", len(flags["any_invis"]), flags["any_invis"], "warn")
 
-    # 4c. Add Legacy Flags (Restored!)
     pua_pct = round((len(health_issues["pua"]) / (len(t) + 1e-9)) * 100, 1)
     add_row("Flag: Private Use Area (PUA)", len(health_issues["pua"]), health_issues["pua"], "warn", pct=pua_pct)
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
@@ -2886,7 +2873,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     if not is_nfc:
         add_row("Flag: Normalization (Not NFC)", 1, ["Status: Text is NOT NFC"], "warn")
 
-    # Restored Specific Metrics
     add_row("Flag: Deceptive Newline (LS)", len(legacy_indices["deceptive_ls"]), legacy_indices["deceptive_ls"], "warn")
     add_row("Flag: Deceptive Newline (PS)", len(legacy_indices["deceptive_ps"]), legacy_indices["deceptive_ps"], "warn")
     add_row("Flag: Deceptive Newline (NEL)", len(legacy_indices["deceptive_nel"]), legacy_indices["deceptive_nel"], "warn")
@@ -2895,7 +2881,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Flag: Bidi Paired Bracket (Open)", len(legacy_indices["bidi_bracket_open"]), legacy_indices["bidi_bracket_open"], "ok")
     add_row("Flag: Bidi Paired Bracket (Close)", len(legacy_indices["bidi_bracket_close"]), legacy_indices["bidi_bracket_close"], "ok")
 
-    # Restored Properties
     add_row("Prop: Extender", len(legacy_indices["extender"]), legacy_indices["extender"], "ok")
     add_row("Prop: Deprecated", len(legacy_indices["deprecated"]), legacy_indices["deprecated"], "warn")
     add_row("Prop: Dash", len(legacy_indices["dash"]), legacy_indices["dash"], "ok")
@@ -2914,17 +2899,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Flag: Full Composition Exclusion", len(legacy_indices["norm_excl"]), legacy_indices["norm_excl"], "warn")
     add_row("Flag: Changes on NFKC Casefold", len(legacy_indices["norm_fold"]), legacy_indices["norm_fold"], "warn")
 
-    # Append dynamic lists (Decomp, ID Types)
-    for k, v in decomp_type_stats.items():
-        add_row(k, v['count'], v['positions'], "ok")
-        
-    for k, v in id_type_stats.items():
-        add_row(k, v['count'], v['positions'], "warn")
+    for k, v in decomp_type_stats.items(): add_row(k, v['count'], v['positions'], "ok")
+    for k, v in id_type_stats.items(): add_row(k, v['count'], v['positions'], "warn")
 
-    # --- NEW: Cluster Analysis ---
     summarize_invisible_clusters(t, rows)
-
-    # --- NEW: Zalgo & Bidi Structure Analysis ---
     analyze_combining_structure(t, rows)
     analyze_bidi_structure(t, rows)
 
@@ -3480,8 +3458,6 @@ def render_threat_analysis(threat_results):
     
     # 1. Render Flags
     flags = threat_results.get('flags', {})
-    # render_cards(flags, "threat-report-cards") # We can re-use render_cards!
-    # We can re-use the "integrity" matrix renderer!
     render_matrix_table(flags, "threat-report-body", has_positions=True)
     
     # 2. Render Hashes
@@ -3494,13 +3470,25 @@ def render_threat_analysis(threat_results):
     else:
         document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
 
-    # 3. Render Confusable Report
+    # 3. Render Confusable Report (Smarter Message)
     html_report = threat_results.get('html_report', "")
     report_el = document.getElementById("confusable-diff-report")
+    
     if html_report:
         report_el.innerHTML = html_report
     else:
-        report_el.innerHTML = '<p class="placeholder-text">No confusable runs detected.</p>'
+        # Check Skeleton Drift to give a better message
+        drift_count = 0
+        drift_flag = flags.get("Flag: Skeleton Drift")
+        if drift_flag:
+            drift_count = drift_flag.get("count", 0)
+            
+        if drift_count > 0:
+            msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization – see Skeleton Drift and flags above."
+        else:
+            msg = "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
+            
+        report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
     
 
     # 4. Render Banner
@@ -3733,88 +3721,74 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
 def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None):
     """Renders a generic "Matrix of Facts" table."""
     html = []
-    
-    # Sort the dictionary keys so the output is stable and alphabetical
     sorted_keys = sorted(stats_dict.keys())
     
-    for key in sorted_keys: # Iterate over sorted keys
+    for key in sorted_keys:
         data = stats_dict[key]
-        if not data:
-            continue
+        if not data: continue
             
-        # If aliases are provided and the key is in them, use the alias.
-        if aliases and key in aliases:
-            label = aliases[key]
-        else:
-            label = key
+        label = aliases.get(key, key) if aliases else key
         
-        # --- RENDER PATH 1: Decode Health Grade ---
+        # --- RENDER PATH 1: Decode Health Grade (Self-Explanatory) ---
         if key == "Decode Health Grade":
             grade = data.get("grade", "N/A")
+            reasons = data.get("reasons", [])
+            
             grade_class = "integrity-badge-ok"
             if grade == "Warning": grade_class = "integrity-badge-warn"
             elif grade == "Critical": grade_class = "integrity-badge-crit"
             
+            # Build the reason text
+            reason_html = ""
+            if reasons:
+                reason_text = "; ".join(reasons)
+                # Styled small and muted next to the badge
+                reason_html = f'<span style="color:#6b7280; font-size:0.85em; margin-left:8px; font-weight:normal;">— {reason_text}</span>'
+            
             html.append(
-                f'<tr><th scope="row" style="font-weight: 600;">{label}</th>'
-                f'<td colspan="2"><span class="integrity-badge {grade_class}">{grade}</span></td></tr>'
+                f'<tr title="Health = Structural decoding sanity (not semantic safety).">'
+                f'<th scope="row" style="font-weight: 600; cursor: help;">{label} ℹ️</th>'
+                f'<td colspan="2">'
+                f'<span class="integrity-badge {grade_class}">{grade}</span>'
+                f'{reason_html}'
+                f'</td></tr>'
             )
 
         # --- RENDER PATH 2: Standard `has_positions` flags ---
         elif has_positions:
-            # Data is a dict: {'count': 1, 'positions': ['#42'], 'pct': 0.5}
             count = data.get('count', 0)
-            if count == 0:
-                continue
+            if count == 0: continue
             
-            # Check for critical row flag
             row_class = ""
             if key in ("Flag: NUL (U+0000)", "Flag: Replacement Char (U+FFFD)", "Surrogates (Broken)"):
                 row_class = "flag-row-critical"
             
-            # Check for percentage
             count_html = str(count)
-            if 'pct' in data:
-                count_html = f"{count} ({data['pct']}%)"
+            if 'pct' in data: count_html = f"{count} ({data['pct']}%)"
             
-            # --- FIX: Normalize positions to strings (Handle Integers from new engine) ---
+            # Normalize positions
             raw_positions = data.get('positions', [])
-            position_list = []
-            for p in raw_positions:
-                # If it's an int (index), add #. If string (msg), keep as is.
-                if isinstance(p, int):
-                    position_list.append(f"#{p}")
-                else:
-                    position_list.append(str(p))
-            # --- END FIX ---
+            position_list = [f"#{p}" if isinstance(p, int) else str(p) for p in raw_positions]
 
-            total_positions = len(position_list)
-            POSITION_THRESHOLD = 5
-            
-            if total_positions > POSITION_THRESHOLD:
-                visible_positions = ", ".join(position_list[:POSITION_THRESHOLD])
-                hidden_positions = ", ".join(position_list[POSITION_THRESHOLD:])
-                position_html = (
+            if len(position_list) > 5:
+                visible = ", ".join(position_list[:5])
+                hidden = ", ".join(position_list[5:])
+                pos_html = (
                     f'<details style="cursor: pointer;">'
-                    f'<summary>{visible_positions} ... ({total_positions} total)</summary>'
-                    f'<div style="padding-top: 8px; user-select: all;">{hidden_positions}</div>'
+                    f'<summary>{visible} ... ({len(position_list)} total)</summary>'
+                    f'<div style="padding-top: 8px; user-select: all;">{hidden}</div>'
                     f'</details>'
                 )
             else:
-                position_html = ", ".join(position_list)
+                pos_html = ", ".join(position_list)
             
-            html.append(
-                f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{position_html}</td></tr>'
-            )
+            html.append(f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{pos_html}</td></tr>')
         
-        # --- RENDER PATH 3: Simple 2-column tables ---
+        # --- RENDER PATH 3: Simple 2-column ---
         else:
             count = data
-            if count == 0:
-                continue
-            html.append(
-                f'<tr><th scope="row">{label}</th><td>{count}</td></tr>'
-            )
+            if count == 0: continue
+            html.append(f'<tr><th scope="row">{label}</th><td>{count}</td></tr>')
             
     element = document.getElementById(element_id)
     if element:
@@ -4025,18 +3999,8 @@ def render_inspector_panel(data):
 @create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
-    
-    # --- 0. Debug Logging (Optional, kept from your code) ---
-    from js import console
-    try:
-        blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
-        confusables_len = len(DATA_STORES.get("Confusables", {}))
-    except Exception:
-        pass
-
     t = document.getElementById("text-input").value
     
-    # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
         render_cards({}, "meta-totals-cards")
         render_cards({}, "grapheme-integrity-cards")
@@ -4044,10 +4008,7 @@ def update_all(event=None):
         render_parallel_table({}, {}, "major-parallel-body")
         render_parallel_table({}, {}, "minor-parallel-body", ALIASES)
         render_matrix_table({}, "shape-matrix-body")
-        
-        # Use new renderer for empty state too
         render_integrity_matrix([]) 
-        
         render_matrix_table({}, "provenance-matrix-body")
         render_matrix_table({}, "linebreak-run-matrix-body")
         render_matrix_table({}, "bidi-run-matrix-body")
@@ -4062,20 +4023,16 @@ def update_all(event=None):
         render_toc_counts({})
         return
 
-    # --- 2. Run All Computations ---
-
-    # Emoji Engine
+    # --- 1. Run All Computations ---
     emoji_report = compute_emoji_analysis(t)
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
     emoji_list = emoji_report.get("emoji_list", [])
     
-    # Module 2.A: Dual-Atom
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     ccc_stats = compute_combining_class_stats(t)
     
-    # Module 2.B: Shape
     major_seq_stats = compute_sequence_stats(t)
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
@@ -4086,84 +4043,19 @@ def update_all(event=None):
     eaw_run_stats = compute_eastasianwidth_analysis(t)
     vo_run_stats = compute_verticalorientation_analysis(t)
 
-    # Module 2.C: Forensic Integrity (HYBRID ENGINE)
-    # Returns a LIST of row objects (for the renderer)
     forensic_rows = compute_forensic_stats_with_positions(t, cp_minor)
-    
-    # --- ADAPTER: Create a Dict Map for internal lookups (Threats, etc.) ---
-    # This bridges the gap between the new List format and old Dict logic
     forensic_map = {row['label']: row for row in forensic_rows}
 
-    # Module 2.D: Provenance
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
 
-    # Module 3: Threat-Hunting
     threat_results = compute_threat_analysis(t)
     window.latest_threat_data = threat_results
     
-    # --- 3. Prepare Data for Renderers ---
-    
-    # 2.A Cards
-    meta_cards = {
-        "Total Code Points": cp_summary.get("Total Code Points", 0),
-        "Total Graphemes": gr_summary.get("Total Graphemes", 0),
-        "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
-        "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
-        "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
-        "Latin-1-Compatible": cp_summary.get("Latin-1-Compatible"),
-        "BMP Coverage": cp_summary.get("BMP Coverage"),
-        "Supplementary Planes": cp_summary.get("Supplementary Planes"),
-    }
-    meta_cards_order = [
-        "Total Code Points", "Total Graphemes", "RGI Emoji Sequences", "Whitespace (Total)",
-        "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
-    ]
-    grapheme_cards = grapheme_forensics
-    
-    # 2.B Matrices
-    shape_matrix = major_seq_stats
-    prov_matrix = provenance_stats
-
-    # --- THREAT FLAGS LOGIC (Updated to use forensic_map) ---
-    threat_flags = threat_results.get('flags', {})
-
-    # 1) Invalid VS (Look up in forensic_map)
-    inv_vs = forensic_map.get("Flag: Invalid Variation Selector")
-    if inv_vs and inv_vs.get("count", 0) > 0:
-        threat_flags["Suspicious: Invalid Variation Selectors"] = inv_vs
-    
-    # 2) Unqualified Emoji (From Emoji Engine)
-    unq_emo = emoji_flags.get("Flag: Unqualified Emoji", {})
-    if unq_emo.get("count", 0) > 0:
-        threat_flags["Suspicious: Unqualified Emoji"] = unq_emo
-    
-    # 3) Lone ZWJ (Look up in forensic_map)
-    zwj_flag = forensic_map.get("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)")
-    if zwj_flag and zwj_flag.get("count", 0) > 0:
-        threat_flags["Suspicious: Join Control Present (ZWJ)"] = zwj_flag
-
-    # 4) New Emoji Flags
-    new_emoji_flags = {
-        "Flag: Broken Keycap Sequence": "Suspicious: Broken Keycap",
-        "Flag: Invalid Regional Indicator": "Suspicious: Invalid Regional Indicator",
-        "Flag: Forced Emoji Presentation": "Suspicious: Forced Emoji",
-        "Flag: Intent-Modifying ZWJ": "Suspicious: Intent-Modifying ZWJ"
-    }
-    for flag_key, threat_label in new_emoji_flags.items():
-        flag_data = emoji_flags.get(flag_key, {})
-        if flag_data.get("count", 0) > 0:
-            threat_flags[threat_label] = flag_data
-
-    # --- NEW: Zalgo Analysis (Needed for Score) ---
-    # Re-segment to get list of strings for the analyzer
+    # --- Gather Inputs for Threat Score ---
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
     nsm_stats = analyze_nsm_overload(grapheme_strings)
 
-    # --- NEW: Compute Threat Score ---
-    # Gather inputs from the disparate modules
-    
-    # 1. Extract metrics from Forensic Map
     decode_grade_row = forensic_map.get("Decode Health Grade", {})
     decode_grade = decode_grade_row.get("badge", "OK") if decode_grade_row else "OK"
     
@@ -4187,24 +4079,30 @@ def update_all(event=None):
     
     nfc_row = forensic_map.get("Flag: Normalization (Not NFC)", {})
     not_nfc = nfc_row.get("count", 0) > 0 if nfc_row else False
+    
+    hidden_marks_row = forensic_map.get("Flag: Marks on Non-Visual Base", {})
+    has_hidden_marks = hidden_marks_row.get("count", 0) > 0 if hidden_marks_row else False
 
-    # 2. Extract from Threat Results
     threat_flags_raw = threat_results.get('flags', {})
     malicious_bidi = "DANGER: Malicious Bidi Control" in threat_flags_raw
     
-    # Find script mix class from keys
     script_mix_class = "ASCII"
     for key in threat_flags_raw.keys():
         if "Mixed Scripts" in key:
-            script_mix_class = key # e.g. "CRITICAL: Mixed Scripts..."
+            script_mix_class = key
             break
-            
+    
     skeleton_drift = 0
     drift_flag = threat_flags_raw.get("Flag: Skeleton Drift")
     if drift_flag: skeleton_drift = drift_flag.get("count", 0)
 
-    # 3. Calculate
     score_inputs = {
+        "total_code_points": cp_summary.get("Total Code Points", 0),
+        "invis_or_ignorable": forensic_map.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0),
+        "deceptive_spaces": forensic_map.get("Deceptive Spaces (Non-ASCII)", {}).get("count", 0),
+        "has_internal_bom": forensic_map.get("Flag: Internal BOM (U+FEFF)", {}).get("count", 0) > 0,
+        "has_invalid_vs": forensic_map.get("Flag: Invalid Variation Selector", {}).get("count", 0) > 0,
+        "has_unclosed_bidi": forensic_map.get("Flag: Unclosed Bidi Sequence", {}).get("count", 0) > 0,
         "decode_grade": decode_grade,
         "malicious_bidi": malicious_bidi,
         "bidi_count": bidi_count,
@@ -4216,27 +4114,25 @@ def update_all(event=None):
         "nsm_level": nsm_stats["level"],
         "pua_pct": pua_pct,
         "nonchar_count": nonchar_count,
-        "unassigned_count": unassigned_count
+        "unassigned_count": unassigned_count,
+        "has_hidden_marks": has_hidden_marks
     }
     
     final_score = compute_threat_score(score_inputs)
     
-    # --- Inject Score into Threat Flags ---
-    # We construct a synthetic flag for the UI
-    score_badge = f"{final_score['level']} (Score: {final_score['score']})"
-    
-    # Create a new dict for display (Score First)
+    # --- Construct Display Flags ---
     final_threat_flags = {}
     
-    # Add Score Row
-    final_threat_flags["Threat Level"] = {
-        'count': 0, # Ignored by badge renderer usually, but we can use it
-        'positions': [f"Top factors: {', '.join(final_score['contributors'])}"] if final_score['contributors'] else [],
+    # 1. Score Row
+    score_badge = f"{final_score['level']} (Score: {final_score['score']})"
+    final_threat_flags["Threat Level (Heuristic)"] = {
+        'count': 0,
+        'positions': [f"Reasons: {'; '.join(final_score['reasons'][:5])}" if final_score['reasons'] else "None"],
         'severity': "crit" if final_score['level'] == "HIGH" else ("warn" if final_score['level'] == "MEDIUM" else "ok"),
         'badge': score_badge
     }
     
-    # Add Zalgo Row if needed
+    # 2. Zalgo Row
     if nsm_stats["level"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
         label = "Flag: Excessive Combining Marks (Zalgo)"
@@ -4247,28 +4143,39 @@ def update_all(event=None):
             'badge': "ZALGO"
         }
 
-    # Add remaining threat flags
-    final_threat_flags.update(threat_flags) # This contains the previously calculated flags
+    # 3. Merge existing threat flags
+    final_threat_flags.update(threat_flags_raw)
     
-    # TOC Counts
-    # Logic update: 'integrity' sums the rows in the list that have count > 0
-    toc_counts = {
-        'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
-        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
-        'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
-        'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
-        'emoji': meta_cards.get("RGI Emoji Sequences", 0),
-        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
+    # 4. Merge mapped forensic flags
+    inv_vs = forensic_map.get("Flag: Invalid Variation Selector")
+    if inv_vs and inv_vs.get("count", 0) > 0:
+        final_threat_flags["Suspicious: Invalid Variation Selectors"] = inv_vs
+    
+    unq_emo = emoji_flags.get("Flag: Unqualified Emoji", {})
+    if unq_emo.get("count", 0) > 0:
+        final_threat_flags["Suspicious: Unqualified Emoji"] = unq_emo
+    
+    zwj_flag = forensic_map.get("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)")
+    if zwj_flag and zwj_flag.get("count", 0) > 0:
+        final_threat_flags["Suspicious: Join Control Present (ZWJ)"] = zwj_flag
+
+    new_emoji_flags = {
+        "Flag: Broken Keycap Sequence": "Suspicious: Broken Keycap",
+        "Flag: Invalid Regional Indicator": "Suspicious: Invalid Regional Indicator",
+        "Flag: Forced Emoji Presentation": "Suspicious: Forced Emoji",
+        "Flag: Intent-Modifying ZWJ": "Suspicious: Intent-Modifying ZWJ"
     }
-    
-    # --- 4. Call All Renderers ---
-    
+    for flag_key, threat_label in new_emoji_flags.items():
+        flag_data = emoji_flags.get(flag_key, {})
+        if flag_data.get("count", 0) > 0:
+            final_threat_flags[threat_label] = flag_data
+
+    # --- Render ---
     render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
     render_parallel_table(cp_minor, gr_minor, "minor-parallel-body", ALIASES)
-    
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
@@ -4279,7 +4186,6 @@ def update_all(event=None):
     render_matrix_table(eaw_run_stats, "eawidth-run-matrix-body")
     render_matrix_table(vo_run_stats, "vo-run-matrix-body")
     
-    # --- RENDER 2.C (New Renderer) ---
     render_integrity_matrix(forensic_rows)
     
     render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True)
@@ -4288,26 +4194,28 @@ def update_all(event=None):
     render_emoji_qualification_table(emoji_list)
     render_emoji_summary(emoji_counts, emoji_list)
 
-    # Pass the ENHANCED threat flags (with score) to the renderer
+    # Pass updated flags to renderer
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results)
     
+    toc_counts = {
+        'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
+        'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
+        'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
+        'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
+        'emoji': meta_cards.get("RGI Emoji Sequences", 0),
+        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
+    }
     render_toc_counts(toc_counts)
 
-    # --- 5. Package Data for Stage 2 (Bridge) ---
+    # Stage 2 Bridge
     try:
-        # 1. Get grapheme segments
         segments_iterable = GRAPHEME_SEGMENTER.segment(t)
         grapheme_list = [seg.segment for seg in window.Array.from_(segments_iterable)]
-        
-        # 2. Get forensic flags (Use the MAP, not the list)
         all_flags = forensic_map.copy()
         all_flags.update(emoji_flags)
-
-        # 3. Get normalized text
         nfkc_cf_text = threat_results.get('nfkc_cf', "")
         
-        # 4. Expose core data
         core_data = {
             "raw_text": t,
             "grapheme_list": grapheme_list,
@@ -4316,11 +4224,8 @@ def update_all(event=None):
             "nfkc_casefold_text": nfkc_cf_text,
             "timestamp": window.Date.new().toISOString()
         }
-
         core_data_js = to_js(core_data, dict_converter=window.Object.fromEntries)
         window.TEXTTICS_CORE_DATA = core_data_js
-
-        # print("Stage 1 data exported for Stage 2.")
     except Exception as e:
         print(f"Error packaging data for Stage 2: {e}")
 
