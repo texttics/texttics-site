@@ -1072,11 +1072,6 @@ async def load_unicode_data():
         DATA_STORES["VariantSelectors"] = frozenset(std_selector_set) # Make this one immutable too
         
         # --- End Feature 1 Logic ---
-        
-        # --- NEW: Build Forensic Bitmask Table ---
-        build_invis_table()
-            
-        status_elem.innerHTML = "Ready."
 
         # --- NEW (Phase 1: Emoji Bugfix - Optimized) ---
         # Build the RGI Sequence Set from Tiers 1-3
@@ -1190,6 +1185,12 @@ async def load_unicode_data():
             })
         # --- Add Manual Security Overrides ---
         _add_manual_data_overrides()    
+
+        # --- NEW: Build Forensic Bitmask Table ---
+        # PASTE IT HERE (After all data stores are populated)
+        build_invis_table() 
+        
+        LOADING_STATE = "READY"
         
         LOADING_STATE = "READY"
         print("Unicode data loaded successfully.")
