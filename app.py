@@ -2892,7 +2892,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
     add_row("Flag: Any Invisible or Default-Ignorable (Union)", len(flags["any_invis"]), flags["any_invis"], "warn")
 
-    pua_pct = round((len(health_issues["pua"]) / (len(t) + 1e-9)) * 100, 1)
+    pua_pct = round((len(health_issues["pua"]) / (len(t) + 1e-9)) * 100, 2)
     add_row("Flag: Private Use Area (PUA)", len(health_issues["pua"]), health_issues["pua"], "warn", pct=pua_pct)
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
@@ -3281,17 +3281,21 @@ def compute_threat_analysis(t: str):
     confusable_indices = []
     found_confusable = False
     
-    # --- We use lists/sets to gather data first ---
+    # --- Trackers ---
     bidi_danger_indices = []
-    scripts_in_use = set() # Use ONE global set
+    
+    # NEW: Split trackers for the "Mixed Scripts" Ontology
+    base_scripts_in_use = set() 
+    ext_scripts_in_use = set()
+    is_non_ascii_LNS = False 
 
-    # Initialize output variables with safe defaults
+    # Initialize output variables
     nf_string = ""
     nf_casefold_string = ""
     skeleton_string = ""
     final_html_report = ""
 
-    # --- 1. Early Exit for Empty Input ---
+    # --- 1. Early Exit ---
     if not t:
         return {
             'flags': {}, 'hashes': {}, 'html_report': "", 'bidi_danger': False,
@@ -3303,144 +3307,119 @@ def compute_threat_analysis(t: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
     try:
-        # --- 2. Generate Normalized States (using Extended Normalizer) ---
+        # --- 2. Generate Normalized States ---
         nf_string = normalize_extended(t)
-        nf_casefold_string = nf_string.casefold() # Use the already-normalized string
+        nf_casefold_string = nf_string.casefold()
 
-        # --- 3. Run checks on the RAW string 't' ---
+        # --- 3. Run checks on RAW string ---
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
-            lnps_regex = REGEX_MATCHER.get("LNPS_Runs")
-            is_non_ascii_LNS = False # NEW: Flag to track if we are ASCII-Only
 
-            # --- LOOP: Single, "Per-Char" Analysis (Robust and Correct) ---
-            # This is the original, reliable loop from your first app.py
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # --- A. Bidi Check ---
-                # This will find the RLO (U+202E) from Test 2
+                # --- A. Bidi Check (Trojan Source) ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
-                # --- B. Mixed-Script Detection (Refined) ---
-                # Only check scripts for "visible" L, N, or S categories
+                # --- B. Mixed-Script Detection (Spec-Compliant) ---
                 try:
-                    category = unicodedata.category(char)[0] # Get 'L', 'N', 'S', 'C', etc.
+                    category = unicodedata.category(char)[0] # 'L', 'N', 'S'
                     if category in ("L", "N", "S"):
-                        if cp > 0x7F: is_non_ascii_LNS = True # NEW: Check for non-ASCII
-                        # This global set will find 'Latin' and 'Cyrillic' from Test 1
+                        if cp > 0x7F: is_non_ascii_LNS = True
+                        
+                        # 1. Base Script (The "Hard" Property)
+                        script_val = _find_in_ranges(cp, "Scripts")
+                        if script_val:
+                            base_scripts_in_use.add(script_val)
+                        
+                        # 2. Script Extensions (The "Soft" Property)
+                        # If extensions exist, use them. If not, fallback to Base.
                         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
                         if script_ext_val:
-                            scripts_in_use.update(script_ext_val.split())
-                        else:
-                            script_val = _find_in_ranges(cp, "Scripts")
-                            if script_val:
-                                scripts_in_use.add(script_val)
+                            ext_scripts_in_use.update(script_ext_val.split())
+                        elif script_val:
+                            ext_scripts_in_use.add(script_val)
+                            
                 except Exception:
-                    pass # Failsafe
+                    pass 
                 
-                # --- C. Confusable HTML Report Builder ---
-                # We no longer build HTML here. We just collect "hot" indices.
+                # --- C. Confusable Indexing ---
                 if cp in confusables_map and window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                     found_confusable = True
                     confusable_indices.append(i)
                 
 
-            # --- 4. Populate Threat Flags (This fixes the TypeError) ---
-            # We build the flags *after* the loop, all as dicts.
+            # --- 4. Populate Threat Flags ---
             
-            # Add Bidi flag
+            # Bidi
             if bidi_danger_indices:
                 threat_flags["DANGER: Malicious Bidi Control"] = {
                     'count': len(bidi_danger_indices),
                     'positions': bidi_danger_indices
                 }
             
-            # --- Graded Script-Mix Severity Flag ---
-            scripts_in_use.discard("Common")
-            scripts_in_use.discard("Inherited")
-            scripts_in_use.discard("Zzzz") # Unknown
-            num_scripts = len(scripts_in_use)
-            
-            sorted_scripts = sorted(list(scripts_in_use))
-            script_label = ", ".join(sorted_scripts)
 
-            if num_scripts == 0:
+            # --- Script Mix Logic (Ontology Applied) ---
+            # Filter out noise
+            ignored = {"Common", "Inherited", "Zzzz", "Unknown"}
+            
+            clean_base = {s for s in base_scripts_in_use if s not in ignored}
+            clean_ext = {s for s in ext_scripts_in_use if s not in ignored}
+            
+            # Variable to capture the highest severity mix for the Scorer
+            script_mix_class = "" 
+
+            # 1. Base Script Mix (The "Physical" Mix)
+            if len(clean_base) > 1:
+                sorted_base = sorted(list(clean_base))
+                key = f"CRITICAL: Mixed Scripts (Base: {', '.join(sorted_base)})"
+                threat_flags[key] = {
+                    'count': len(clean_base),
+                    'positions': ["(See Provenance Profile for details)"]
+                }
+                script_mix_class = "Mixed Scripts (Base)" # Capture for scorer
+                
+            # 2. Extension Mix (The "Confusable" Mix)
+            # Only flag this if it ADDS information or is "Highly Mixed"
+            if len(clean_ext) > 2:
+                 sorted_ext = sorted(list(clean_ext))
+                 key = f"CRITICAL: Highly Mixed Scripts (Extensions: {', '.join(sorted_ext)})"
+                 threat_flags[key] = {
+                    'count': len(clean_ext),
+                    'positions': ["(See Provenance Profile for details)"]
+                 }
+                 # Upgrade severity if base wasn't already critical
+                 if "Mixed" not in script_mix_class:
+                     script_mix_class = "Highly Mixed Scripts (Extensions)"
+                 else:
+                     # If both, mark as Highly Mixed to ensure max score
+                     script_mix_class = "Highly Mixed Scripts (Extensions)"
+            
+            # 3. Single Script / ASCII status (Info only)
+            if len(clean_base) == 0:
                 if is_non_ascii_LNS:
-                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': ["Text contains symbols/numbers but no specific script letters."]}
+                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': ["No specific script letters found."]}
                 else:
                      threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': ["Text is pure 7-bit ASCII."]}
-            
-            elif num_scripts == 1:
-                script_name = sorted_scripts[0]
-                if script_name == "Latin" and is_non_ascii_LNS:
-                    threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': ["Latin script with non-ASCII characters (e.g. accents)."]}
-                else:
-                    threat_flags[f"Script Profile: Single Script ({script_name})"] = {'count': 0, 'positions': ["Text is consistent in one script."]}
+            elif len(clean_base) == 1:
+                s_name = list(clean_base)[0]
+                if s_name == "Latin" and is_non_ascii_LNS:
+                     threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': ["Latin script with non-ASCII characters."]}
+                elif not threat_flags: # Only add if no Critical flags
+                     threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': ["Text is consistent."]}
 
-            elif num_scripts == 2:
-                # Mixed (2 scripts) - Common spoofing vector (e.g. Latin + Cyrillic)
-                threat_flags[f"CRITICAL: Mixed Scripts ({script_label})"] = {
-                    'count': num_scripts,
-                    'positions': ["(See Provenance Profile for details)"]
-                }
-            
-            else:
-                 # Highly Mixed (3+)
-                 threat_flags[f"CRITICAL: Highly Mixed Scripts ({script_label})"] = {
-                    'count': num_scripts,
-                    'positions': ["(See Provenance Profile for details)"]
-                }
 
-            if num_scripts > 1:
-                # CRITICAL: More than one primary script. This is the classic attack.
-                key = f"CRITICAL: Mixed Scripts ({', '.join(sorted(scripts_in_use))})"
-                threat_flags[key] = {
-                    'count': num_scripts,
-                    'positions': ["(See Provenance Profile for details)"]
-                }
-            elif num_scripts == 1:
-                # OK: Only one primary script.
-                script_name = list(scripts_in_use)[0]
-                # Check if it's "Latin" but also contains non-ASCII characters.
-                if script_name == "Latin" and is_non_ascii_LNS:
-                    # This is like "A é". Still one script, but not pure ASCII.
-                    threat_flags["Script Mix: Single Script (Latin, w/ non-ASCII)"] = {
-                        'count': 0, 'positions': ["Text uses one script (Latin) but includes non-ASCII characters."]
-                    }
-                else:
-                    # This is "Cyrillic" only, or "Greek" only, etc.
-                    threat_flags[f"Script Mix: Single Script ({script_name})"] = {
-                        'count': 0, 'positions': ["Text uses one primary script."]
-                    }
-            else:
-                # num_scripts == 0. This means only Common/Inherited or no L/N/S chars.
-                if not is_non_ascii_LNS:
-                    # This is the "pure" ASCII case (like "A1?$").
-                    threat_flags["Script Mix: ASCII-Only"] = {
-                        'count': 0, 'positions': ["All L/N/S characters are 7-bit ASCII."]
-                    }
-                else:
-                    # This is a "safe" non-ASCII case (like "©®™").
-                    threat_flags["Script Mix: Safe (Common/Inherited)"] = {
-                        'count': 0, 'positions': ["No primary script mix detected."]
-                    }
-
-        # --- 5. Implement UTS #39 Skeleton ---
+        # --- 5. Skeleton Drift ---
         skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
-
-        # --- Skeleton-Delta (Drift) Calculation ---
         skeleton_drift_count = 0
         try:
-            # We compare the raw string 't' to the final 'skeleton_string'
             min_len = min(len(t), len(skeleton_string))
             for idx in range(min_len):
                 if t[idx] != skeleton_string[idx]:
                     skeleton_drift_count += 1
-            # Add the difference in length
             skeleton_drift_count += abs(len(t) - len(skeleton_string))
             
             if skeleton_drift_count > 0:
@@ -3448,21 +3427,18 @@ def compute_threat_analysis(t: str):
                     'count': skeleton_drift_count,
                     'positions': [f"{skeleton_drift_count} positions differ from raw string"]
                 }
-        except Exception as e:
-            print(f"Error calculating Skeleton Drift: {e}")
+        except Exception:
+            pass
 
-        # --- 6. Generate Hashes ---
+        # --- 6. Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        # --- NEW: Call the new summary renderer ---
+        # --- 7. HTML Report ---
         if found_confusable:
-            # Pass the map so the helper can build the spans
-            final_html_report = _render_confusable_summary_view(
-                t, set(confusable_indices), confusables_map
-            )
+            final_html_report = _render_confusable_summary_view(t, set(confusable_indices), confusables_map)
         else:
             final_html_report = ""
 
@@ -3473,16 +3449,13 @@ def compute_threat_analysis(t: str):
         if not skeleton_string: skeleton_string = t
         final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
 
-    # --- 7. Return Final Report ---
     return {
         'flags': threat_flags,
         'hashes': threat_hashes,
         'html_report': final_html_report,
-        'bidi_danger': bool(bidi_danger_indices), # Return True if the list is not empty
-        'raw': t,
-        'nfkc': nf_string,
-        'nfkc_cf': nf_casefold_string,
-        'skeleton': skeleton_string
+        'bidi_danger': bool(bidi_danger_indices),
+        'script_mix_class': script_mix_class,
+        'raw': t, 'nfkc': nf_string, 'nfkc_cf': nf_casefold_string, 'skeleton': skeleton_string
     }
     
 def render_threat_analysis(threat_results):
@@ -4072,6 +4045,87 @@ def render_inspector_panel(data):
     ]
     panel.innerHTML = "".join(html)
 
+def compute_threat_score(inputs):
+    """
+    Computes the heuristic Threat Level based on the Data Model Spec.
+    Returns: {score, level, reasons[]}
+    """
+    score = 0
+    reasons = []
+    
+    # Helper for Spec-Compliant Reason Grammar
+    def add_reason(metric, relation, threshold, actual, weight, summary_key=None):
+        nonlocal score
+        # Check condition
+        triggered = False
+        if relation == ">=" and actual >= threshold: triggered = True
+        elif relation == ">" and actual > threshold: triggered = True
+        elif relation == "==" and actual == threshold: triggered = True
+        elif relation == "bool" and actual: triggered = True
+            
+        if triggered:
+            score += weight
+            # Spec format: "{Metric} {Relation} {Threshold} (actual={Value})"
+            key_text = summary_key if summary_key else metric
+            
+            if relation == "bool":
+                reasons.append(f"{key_text}")
+            else:
+                reasons.append(f"{key_text} {relation} {threshold} (actual={actual})")
+
+    # 1. Decode Health (Critical)
+    if inputs.get("decode_grade") == "CRIT":
+        score += 10
+        reasons.append("Decode Health is CRIT")
+    elif inputs.get("decode_grade") == "WARN":
+        score += 2
+        reasons.append("Decode Health is WARN")
+
+    # 2. Invisibles & Obfuscation
+    add_reason("invisible run", ">=", 4, inputs.get("max_invis_run", 0), 5)
+    add_reason("deceptive spaces", ">=", 5, inputs.get("deceptive_spaces", 0), 3)
+    add_reason("invisible clusters", ">=", 2, inputs.get("invis_cluster_count", 0), 3)
+    
+    # 3. Structural Integrity
+    add_reason("skeleton drift", ">=", 1, inputs.get("skeleton_drift", 0), 3)
+    add_reason("internal BOM", "bool", True, inputs.get("has_internal_bom", False), 4)
+    add_reason("unclosed bidi", "bool", True, inputs.get("has_unclosed_bidi", False), 3)
+    add_reason("invalid VS", "bool", True, inputs.get("has_invalid_vs", False), 2)
+    
+    # 4. Trojan Source (Explicit)
+    if inputs.get("malicious_bidi"):
+        score += 10
+        reasons.append("Malicious Bidi Control detected")
+
+    # 5. Zalgo (Global Heuristic)
+    nsm_level = inputs.get("nsm_level", 0)
+    if nsm_level == 2:
+        score += 5
+        reasons.append("Zalgo Level 2 (High Density)")
+    elif nsm_level == 1:
+        score += 1
+        reasons.append("Zalgo Level 1 (Mild)")
+
+    # 6. Mixed Scripts
+    sm_class = inputs.get("script_mix_class", "")
+    if "Highly Mixed" in sm_class:
+        score += 5
+        reasons.append("Highly Mixed Scripts (Extensions)")
+    elif "Mixed Scripts" in sm_class:
+        score += 4
+        reasons.append("Mixed Scripts (Base)")
+
+    # 7. PUA / Nonchar
+    add_reason("PUA usage", ">=", 1.0, inputs.get("pua_pct", 0), 2)
+    add_reason("Noncharacters", ">=", 1, inputs.get("nonchar_count", 0), 5)
+
+    # Calculate Level
+    level = "LOW"
+    if score >= 10: level = "HIGH"
+    elif score >= 5: level = "MEDIUM"
+    
+    return {"score": score, "level": level, "reasons": reasons}
+
 # ---
 # 6. MAIN ORCHESTRATOR
 # ---
@@ -4171,72 +4225,53 @@ def update_all(event=None):
     shape_matrix = major_seq_stats
     prov_matrix = provenance_stats
 
-    # --- THREAT FLAGS & SCORE LOGIC ---
+# --- THREAT FLAGS & SCORE LOGIC ---
     
-    # Gather inputs for Threat Score
+    # 1. Gather inputs for Threat Score
+    # [CRITICAL WIRING FIX]: Single source of truth for Zalgo
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
     nsm_stats = analyze_nsm_overload(grapheme_strings)
+
+    # Helper to safely get counts from forensic map
+    def get_count(label):
+        return forensic_map.get(label, {}).get("count", 0)
 
     decode_grade_row = forensic_map.get("Decode Health Grade", {})
     decode_grade = decode_grade_row.get("badge", "OK") if decode_grade_row else "OK"
     
-    bidi_row = forensic_map.get("Flag: Bidi Controls (UAX #9)", {})
-    bidi_count = bidi_row.get("count", 0) if bidi_row else 0
+    # [CRITICAL WIRING FIX]: Map bidi_danger from analysis to malicious_bidi input
+    malicious_bidi = threat_results.get('bidi_danger', False)
     
-    max_run_row = forensic_map.get("Max Invisible Run Length", {})
-    max_invis_run = max_run_row.get("count", 0) if max_run_row else 0
-    
-    cluster_row = forensic_map.get("Invisible Clusters (All)", {})
-    invis_cluster_count = cluster_row.get("count", 0) if cluster_row else 0
-    
-    nonchar_row = forensic_map.get("Noncharacter", {})
-    nonchar_count = nonchar_row.get("count", 0) if nonchar_row else 0
-    
-    unassigned_row = forensic_map.get("Unassigned (Void)", {})
-    unassigned_count = unassigned_row.get("count", 0) if unassigned_row else 0
-    
-    pua_row = forensic_map.get("Flag: Private Use Area (PUA)", {})
-    pua_pct = pua_row.get("pct", 0) if pua_row else 0
-    
-    nfc_row = forensic_map.get("Flag: Normalization (Not NFC)", {})
-    not_nfc = nfc_row.get("count", 0) > 0 if nfc_row else False
-    
-    hidden_marks_row = forensic_map.get("Flag: Marks on Non-Visual Base", {})
-    has_hidden_marks = hidden_marks_row.get("count", 0) > 0 if hidden_marks_row else False
+    # [CRITICAL WIRING FIX]: Get script_mix_class from analysis
+    script_mix_class = threat_results.get('script_mix_class', "")
 
-    threat_flags_raw = threat_results.get('flags', {})
-    malicious_bidi = "DANGER: Malicious Bidi Control" in threat_flags_raw
-    
-    script_mix_class = "ASCII"
-    for key in threat_flags_raw.keys():
-        if "Mixed Scripts" in key:
-            script_mix_class = key
-            break
-    
+    # Get Skeleton Drift from the threat flags (it was computed there)
     skeleton_drift = 0
-    drift_flag = threat_flags_raw.get("Flag: Skeleton Drift")
-    if drift_flag: skeleton_drift = drift_flag.get("count", 0)
+    drift_flag = threat_results['flags'].get("Flag: Skeleton Drift")
+    if drift_flag: 
+        skeleton_drift = drift_flag.get("count", 0)
 
+    # Build the Inputs Object (Aligned with Spec)
     score_inputs = {
         "total_code_points": cp_summary.get("Total Code Points", 0),
-        "invis_or_ignorable": forensic_map.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0),
-        "deceptive_spaces": forensic_map.get("Deceptive Spaces (Non-ASCII)", {}).get("count", 0),
-        "has_internal_bom": forensic_map.get("Flag: Internal BOM (U+FEFF)", {}).get("count", 0) > 0,
-        "has_invalid_vs": forensic_map.get("Flag: Invalid Variation Selector", {}).get("count", 0) > 0,
-        "has_unclosed_bidi": forensic_map.get("Flag: Unclosed Bidi Sequence", {}).get("count", 0) > 0,
+        "invis_or_ignorable": get_count("Flag: Any Invisible or Default-Ignorable (Union)"),
+        "deceptive_spaces": get_count("Deceptive Spaces (Non-ASCII)"),
+        "has_internal_bom": get_count("Flag: Internal BOM (U+FEFF)") > 0,
+        "has_invalid_vs": get_count("Flag: Invalid Variation Selector") > 0,
+        "has_unclosed_bidi": get_count("Flag: Unclosed Bidi Sequence") > 0,
         "decode_grade": decode_grade,
         "malicious_bidi": malicious_bidi,
-        "bidi_count": bidi_count,
-        "max_invis_run": max_invis_run,
-        "invis_cluster_count": invis_cluster_count,
+        "bidi_count": get_count("Flag: Bidi Controls (UAX #9)"),
+        "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
+        "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
         "skeleton_drift": skeleton_drift,
-        "not_nfc": not_nfc,
-        "script_mix_class": script_mix_class,
-        "nsm_level": nsm_stats["level"],
-        "pua_pct": pua_pct,
-        "nonchar_count": nonchar_count,
-        "unassigned_count": unassigned_count,
-        "has_hidden_marks": has_hidden_marks
+        "not_nfc": get_count("Flag: Normalization (Not NFC)") > 0,
+        "script_mix_class": script_mix_class, # Wired!
+        "nsm_level": nsm_stats["level"],      # Wired!
+        "pua_pct": forensic_map.get("Flag: Private Use Area (PUA)", {}).get("pct", 0),
+        "nonchar_count": get_count("Noncharacter"),
+        "unassigned_count": get_count("Unassigned (Void)"),
+        "has_hidden_marks": get_count("Flag: Marks on Non-Visual Base") > 0
     }
     
     final_score = compute_threat_score(score_inputs)
@@ -4253,19 +4288,19 @@ def update_all(event=None):
         'badge': score_badge
     }
     
-    # 2. Zalgo Row
+    # 2. Zalgo Row (Global View - Sourced from the SAME nsm_stats)
     if nsm_stats["count"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
         label = "Flag: Excessive Combining Marks (Zalgo)"
         final_threat_flags[label] = {
-            'count': nsm_stats["count"],         # CORRECT: Frequency of bad graphemes
-            'positions': nsm_stats["positions"], # CORRECT: Locations of bad graphemes
+            'count': nsm_stats["count"],
+            'positions': nsm_stats["positions"],
             'severity': sev,
             'badge': "ZALGO"
         }
 
-    # 3. Merge existing threat flags
-    final_threat_flags.update(threat_flags_raw)
+    # 3. Merge existing threat flags (from compute_threat_analysis)
+    final_threat_flags.update(threat_results['flags'])
     
     # 4. Merge mapped forensic flags
     inv_vs = forensic_map.get("Flag: Invalid Variation Selector")
