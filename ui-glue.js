@@ -196,6 +196,12 @@ const parseTable = (tbodyId, sectionTitle) => {
       }
 
       const metric = cells[0].innerText;
+
+      // --- Validation to prevent noisy empty lines ---
+      if (!metric || metric.trim() === '') {
+        return; // Skip this row if the metric name is empty
+      }
+      
       const count = cells[1].innerText;
 
       // optional Positions column
