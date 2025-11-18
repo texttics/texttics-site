@@ -2864,6 +2864,25 @@ def compute_threat_analysis(t: str):
         # --- 5. Implement UTS #39 Skeleton ---
         skeleton_string = _generate_uts39_skeleton(nf_casefold_string)
 
+        # --- Skeleton-Delta (Drift) Calculation ---
+        skeleton_drift_count = 0
+        try:
+            # We compare the raw string 't' to the final 'skeleton_string'
+            min_len = min(len(t), len(skeleton_string))
+            for idx in range(min_len):
+                if t[idx] != skeleton_string[idx]:
+                    skeleton_drift_count += 1
+            # Add the difference in length
+            skeleton_drift_count += abs(len(t) - len(skeleton_string))
+            
+            if skeleton_drift_count > 0:
+                threat_flags["Flag: Skeleton Drift"] = {
+                    'count': skeleton_drift_count,
+                    'positions': [f"{skeleton_drift_count} positions differ from raw string"]
+                }
+        except Exception as e:
+            print(f"Error calculating Skeleton Drift: {e}")
+
         # --- 6. Generate Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
