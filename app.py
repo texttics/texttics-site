@@ -3443,15 +3443,21 @@ def compute_threat_analysis(t: str):
         # --- 5. Skeleton Drift (METRICS ENGINE) ---
         skeleton_string, skel_metrics = _generate_uts39_skeleton_metrics(nf_casefold_string)
         
-        # [IMPORTANT] We ALWAYS flag drift if it exists, because this is a forensic tool.
-        # The SCORING engine decides if it matters, but the USER always sees the data.
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
             details = []
+            
+            # 1. Dangerous
             if skel_metrics['drift_cross_script'] > 0:
                 details.append(f"{skel_metrics['drift_cross_script']} cross-script")
+            
+            # 2. Noise (ASCII)
             if skel_metrics['drift_ascii'] > 0:
                 details.append(f"{skel_metrics['drift_ascii']} ASCII")
+                
+            # 3. Neutral/Other (The missing bucket!)
+            if skel_metrics['drift_other'] > 0:
+                details.append(f"{skel_metrics['drift_other']} other")
             
             if details:
                 drift_desc += f" ({', '.join(details)})"
