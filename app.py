@@ -241,15 +241,18 @@ def analyze_invisible_clusters(t: str):
     return clusters
 
 def summarize_invisible_clusters(t: str, rows: list):
-    """Adds cluster-level analysis rows to the integrity matrix."""
+    """
+    Adds cluster-level analysis rows to the integrity matrix.
+    Returns: max_run_length (int)
+    """
     clusters = analyze_invisible_clusters(t)
     if not clusters:
-        return
+        return 0 # [FIX] Return 0 if no clusters found
 
     total_clusters = len(clusters)
     max_run = max(c["length"] for c in clusters)
     high_risk_clusters = [c for c in clusters if c["high_risk"]]
-    semi_invisible = [c for c in clusters if c["has_alpha"]]
+    # semi_invisible = [c for c in clusters if c["has_alpha"]] # Unused, but harmless
 
     def format_cluster(c):
         start = c["start"]
@@ -298,6 +301,8 @@ def summarize_invisible_clusters(t: str, rows: list):
         "severity": "crit" if max_run >= 4 else "warn",
         "badge": None
     })
+    
+    return max_run # [FIX] Return the integer value
 
 def analyze_combining_structure(t: str, rows: list):
     """
@@ -581,16 +586,12 @@ def compute_threat_score(t):
 def analyze_bidi_structure(t: str, rows: list):
     """
     Checks for broken Bidi structure (Unclosed overrides, Unmatched PDFs).
+    Returns: total_broken_count (int)
     """
-    if LOADING_STATE != "READY": return
+    if LOADING_STATE != "READY": return 0
 
-    # Bidi Control Code Points
-    # LRE=202A, RLE=202B, PDF=202C, LRO=202D, RLO=202E
-    # LRI=2066, RLI=2067, FSI=2068, PDI=2069
-    
     stack = []
     unmatched_pdfs = []
-    unclosed_isolates = []
     
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
@@ -615,26 +616,29 @@ def analyze_bidi_structure(t: str, rows: list):
                 unmatched_pdfs.append(f"#{i}")
 
     # If stack is not empty, we have unclosed sequences
-    if stack:
+    unclosed_count = len(stack)
+    unmatched_count = len(unmatched_pdfs)
+    
+    if unclosed_count > 0:
         unclosed_pos = [f"#{x}" for x in stack]
         rows.append({
             "label": "Flag: Unclosed Bidi Sequence",
-            "count": len(stack),
+            "count": unclosed_count,
             "positions": unclosed_pos,
             "severity": "crit",
             "badge": "BROKEN"
         })
         
-    if unmatched_pdfs:
+    if unmatched_count > 0:
         rows.append({
             "label": "Flag: Unmatched PDF/PDI (Stack Underflow)",
-            "count": len(unmatched_pdfs),
+            "count": unmatched_count,
             "positions": unmatched_pdfs,
             "severity": "warn",
             "badge": "BROKEN"
         })
 
-
+    return unclosed_count + unmatched_count # [FIX] Return the sum of errors
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
