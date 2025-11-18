@@ -386,7 +386,8 @@ def analyze_nsm_overload(graphemes):
     """
     total_g = len(graphemes)
     if total_g == 0:
-        return {"level": 0, "max_marks": 0, "mark_density": 0.0}
+        # FIX: Add "max_marks_positions": [] to the return dict
+        return {"level": 0, "max_marks": 0, "mark_density": 0.0, "max_marks_positions": []}
 
     total_marks = 0
     g_with_marks = 0
