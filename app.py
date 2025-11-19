@@ -869,9 +869,6 @@ INVISIBLE_MAPPING = {
     0x2420: "[PIC:SP]",  0x2421: "[PIC:DEL]", 0x2422: "[PIC:BLANK]", 0x2423: "[PIC:OB]",
     0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
 
-    # ... (Control Pictures block ending with 0x2426) ...
-    0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
-
     # --- Wave 4: Invisible Khmer Vowels ---
     0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
     0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
