@@ -4577,6 +4577,16 @@ def inspect_character(event):
     """
     try:
         text_input = document.getElementById("text-input")
+        
+        # [IMMUTABLE REVEAL FIX]
+        # Guard Clause: If we are in Reveal Mode, the text positions do not match 
+        # the forensic report. Inspecting the '[ZWSP]' tag is misleading.
+        if text_input.classList.contains("reveal-active"):
+            render_inspector_panel({
+                "error": "<strong>Inspection Paused</strong><br>Visual Reveal is active. Positions are shifted.<br>Edit text or refresh to return to Live Analysis."
+            })
+            return
+
         pos = text_input.selectionStart
         
         # Only run if selection is a single cursor (not a range)
@@ -4757,10 +4767,12 @@ def compute_threat_score(inputs):
 @create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
-
-    # [IMMUTABLE REVEAL FIX] Clear the visual reveal state on any input/edit
+    
+    # [IMMUTABLE REVEAL FIX]
+    # If the user edits the text, the "Visual Overlay" is broken/invalid.
+    # We must strip the warning class and treat this as new Raw Evidence.
     t_input = document.getElementById("text-input")
-    if t_input: 
+    if t_input and t_input.classList.contains("reveal-active"):
         t_input.classList.remove("reveal-active")
     
     # --- 0. Debug Logging (Optional) ---
@@ -5072,12 +5084,21 @@ def reveal_invisibles(event=None):
         new_text = "".join(new_chars)
         element.value = new_text
         
-        # Update the status line to confirm action
-        # [IMMUTABLE REVEAL FIX] We do NOT call update_all(). 
-        # The report remains pinned to the forensic reality; the view is just an overlay.
-        element.classList.add("reveal-active") 
-        render_status(f"Visual Reveal Active ({replaced_count} chars). Report reflects original raw data.")
+        # [IMMUTABLE REVEAL FIX] 
+        # 1. Signal the state change visually
+        element.classList.add("reveal-active")
         
+        # 2. Inform the user clearly
+        render_status(f"Visual Reveal Active ({replaced_count} tags). Report reflects original raw data.")
+        
+        # 3. CRITICAL: We DO NOT call update_all(None). 
+        # The data model must remain pinned to the 'Evidence' (Raw Text), 
+        # while the UI shows the 'Visualization' (Revealed Text).
+        
+        # 4. Force the Inspector to update immediately to show the "Paused" state
+        # (We simulate a selection event)
+        inspect_character(None)
+
     else:
         render_status("No invisible characters found to reveal.")
 
