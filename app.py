@@ -4428,7 +4428,7 @@ def render_integrity_matrix(rows):
                 details.className = "threat-ledger-details"
                 
                 summary = document.createElement("summary")
-                summary.textContent = f"{len(ledger_data)} Integrity Factors (View Breakdown)"
+                summary.textContent = "View Penalty Breakdown"
                 details.appendChild(summary)
                 
                 table = document.createElement("table")
