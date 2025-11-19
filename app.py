@@ -4321,6 +4321,7 @@ def compute_threat_score(inputs):
 # ---
 
 @create_proxy
+@create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
     
@@ -4433,7 +4434,7 @@ def update_all(event=None):
     malicious_bidi = threat_results.get('bidi_danger', False)
     script_mix_class = threat_results.get('script_mix_class', "")
 
-    # [FIX] Retrieve metrics safely from the ALREADY COMPUTED threat_results
+    # Retrieve metrics safely from the ALREADY COMPUTED threat_results
     skel_metrics = threat_results.get("skel_metrics", {})
     
     # Build the Inputs Object
@@ -4450,7 +4451,7 @@ def update_all(event=None):
         "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
         "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
         
-        # [CRITICAL FIX] Pass specific drift metrics here
+        # Pass specific drift metrics here
         "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
         "drift_ascii": skel_metrics.get("drift_ascii", 0),
         "skeleton_drift": skel_metrics.get("total_drift", 0),
@@ -4474,11 +4475,18 @@ def update_all(event=None):
     
     # Append Complexity note if present
     details = final_score['reasons']
+
+    # [FIX] Correctly map the new "CRITICAL" level to "crit" styling
+    sev = "ok"
+    if final_score['level'] in ("CRITICAL", "HIGH"):
+        sev = "crit"
+    elif final_score['level'] == "MEDIUM":
+        sev = "warn"
     
     final_threat_flags["Threat Level (Heuristic)"] = {
         'count': 0,
         'positions': [f"Reasons: {'; '.join(details)}" if details else "None"],
-        'severity': "crit" if final_score['level'] == "HIGH" else ("warn" if final_score['level'] == "MEDIUM" else "ok"),
+        'severity': sev,
         'badge': score_badge
     }
     
