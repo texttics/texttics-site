@@ -4625,41 +4625,44 @@ def render_toc_counts(counts):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v2.0: Cluster-Aware & Risk-Integrated.
-    Snaps cursor to Grapheme Cluster. Decomposes into atoms.
-    Flags Zalgo, Confusables, Invisibles, and Bidi risks.
+    Forensic Inspector v2.1: Fixed Cross-Language Indexing.
+    Ensures Python (Code Point) vs JS (UTF-16) length calculations align perfectly.
     """
     try:
         text_input = document.getElementById("text-input")
         
-        # [IMMUTABLE REVEAL FIX] Guard Clause
+        # Guard: Immutable Reveal
         if text_input.classList.contains("reveal-active"):
             render_inspector_panel({
                 "error": "<strong>Inspection Paused</strong><br>Visual Reveal is active. Positions are shifted.<br>Edit text or refresh to return to Live Analysis."
             })
             return
 
-        # 1. Get DOM Cursor Position
         dom_pos = text_input.selectionStart
         if dom_pos != text_input.selectionEnd: return
         
-        text = text_input.value
+        # [CRITICAL FIX 1] Force conversion to Python str immediately
+        # This ensures len() and indexing works on Code Points (UCS-4), not UTF-16 proxies
+        text = str(text_input.value)
+        
         if not text:
             render_inspector_panel(None)
             return
 
-        # 2. Map DOM Index -> Python Index (Verified Working)
+        # 1. Map DOM Index (UTF-16) -> Python Index (Code Points)
         python_idx = 0
         utf16_accum = 0
         found = False
         
-        # Stop exactly when we hit the cursor
         for i, ch in enumerate(text):
             if utf16_accum == dom_pos:
                 python_idx = i
                 found = True
                 break
+            
+            # UTF-16 width calculation
             utf16_accum += 2 if ord(ch) > 0xFFFF else 1
+            
             if utf16_accum > dom_pos:
                 python_idx = i
                 found = True
@@ -4669,23 +4672,26 @@ def inspect_character(event):
              render_inspector_panel(None)
              return
 
-        # 3. GRAPHEME CLUSTER DISCOVERY (The Fix)
-        # Robust "Find Containing Segment" logic
+        # 2. GRAPHEME CLUSTER DISCOVERY
+        # [CRITICAL FIX 2] We must use Python strings for length calc to match python_idx
         segments_iter = GRAPHEME_SEGMENTER.segment(text)
         target_cluster = None
-        current_cp_idx = 0
+        cluster_accum_idx = 0 # Tracks Code Point Index
         
         for seg in segments_iter:
-            seg_str = seg.segment
-            seg_len = len(seg_str)
-            seg_end = current_cp_idx + seg_len
+            # Force cast to Python str to get Code Point length (1 for Emoji), not UTF-16 (2)
+            seg_str = str(seg.segment) 
+            seg_len = len(seg_str) 
+            seg_end = cluster_accum_idx + seg_len
             
-            if current_cp_idx <= python_idx < seg_end:
+            # Strict containment check
+            if cluster_accum_idx <= python_idx < seg_end:
                 target_cluster = seg_str
                 break
             
-            current_cp_idx = seg_end
+            cluster_accum_idx = seg_end
             
+        # Fallback if segmenter desyncs (should not happen with str cast)
         if not target_cluster:
             target_cluster = text[python_idx] if python_idx < len(text) else ""
 
@@ -4693,11 +4699,11 @@ def inspect_character(event):
              render_inspector_panel(None)
              return
 
-        # 4. Cluster Analysis
+        # 3. Cluster Analysis
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
-        # Structure Breakdown & Zalgo Scan
+        # Structure & Zalgo
         components = []
         zalgo_score = 0
         
@@ -4732,7 +4738,6 @@ def inspect_character(event):
         invisible_mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
         is_invisible = bool(invisible_mask & INVIS_ANY_MASK)
         
-        # Zalgo / Stacking Flag
         stack_msg = None
         if zalgo_score >= 3:
             stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
@@ -4748,14 +4753,14 @@ def inspect_character(event):
             "cp_dec_base": cp_base,
             "name_base": unicodedata.name(base_char, "No Name Found"),
             
-            # Standard Props (of Base)
+            # Standard Props
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
             "category": ALIASES.get(unicodedata.category(base_char), unicodedata.category(base_char)),
             "bidi": unicodedata.bidirectional(base_char) or "N/A",
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
             
-            # Segmentation (Restored!)
+            # Segmentation
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
             
