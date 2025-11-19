@@ -4780,8 +4780,8 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v4.0: 6-Column Fixed Height.
-    Cols: [Prev] [Target(Wide)] [Next] | [Identity] | [Structure(Wide)] | [Bytes]
+    Forensic Layout v5.0: 7-Column Grid with Dedicated Alert Channel.
+    Cols: [Prev] [Target] [Next] | [Identity] | [ALERTS] | [Structure] | [Bytes]
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4794,26 +4794,57 @@ def render_inspector_panel(data):
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    # Badges
-    badges = []
+    # --- BUILD ALERTS COLUMN ---
+    alerts_html_parts = []
+    
+    # 1. Invisible Badge
     if data['is_invisible']: 
-        badges.append('<span class="legend-badge legend-badge-danger">INVISIBLE</span>')
+        alerts_html_parts.append(
+            '<div class="legend-badge legend-badge-danger">'
+            '<span class="alert-icon">👻</span>INVISIBLE'
+            '</div>'
+        )
+
+    # 2. Stacking Badge
     if data['stack_msg']:
         sev = "danger" if "Heavy" in data['stack_msg'] else "suspicious"
-        badges.append(f'<span class="legend-badge legend-badge-{sev}">{data["stack_msg"].upper()}</span>')
+        icon = "📶" if sev == "danger" else "⚠️"
+        alerts_html_parts.append(
+            f'<div class="legend-badge legend-badge-{sev}">'
+            f'<span class="alert-icon">{icon}</span>{data["stack_msg"].upper()}'
+            f'</div>'
+        )
     
-    badge_html = " ".join(badges)
-
-    confusable_html = ""
+    # 3. Confusable Warning
     if data['confusable']:
-        confusable_html = f'''
-        <div class="inspector-row warning-row">
-            <span class="label">⚠️ Confusable:</span>
-            <span class="value">{data['confusable']}</span>
-        </div>
-        '''
+        alerts_html_parts.append(
+            '<div class="legend-badge legend-badge-high" title="Potential Homoglyph">'
+            '<span class="alert-icon">👁️</span>CONFUSABLE'
+            '</div>'
+        )
 
-    # Table Rows
+    # If no alerts, show a "Clean" state or empty
+    alerts_html = "".join(alerts_html_parts)
+    if not alerts_html:
+        alerts_html = '<div style="opacity:0.3; font-size:2rem;">✓</div>'
+
+    # --- BUILD IDENTITY COLUMN (Removed Confusable text from here) ---
+    identity_html = f"""
+        <div class="inspector-header">{data['name_base']}</div>
+        <div class="inspector-grid-compact">
+            <div><span class="label">Block:</span> {data['block']}</div>
+            <div><span class="label">Script:</span> {data['script']}</div>
+            <div><span class="label">Cat:</span> {data['category']}</div>
+            <div><span class="label">Bidi:</span> {data['bidi']}</div>
+            <div><span class="label">Age:</span> {data['age']}</div>
+        </div>
+        <div class="inspector-grid-compact" style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed var(--color-border-light);">
+            <div><span class="label">Line:</span> {data['line_break']}</div>
+            <div><span class="label">Word:</span> {data['word_break']}</div>
+        </div>
+    """
+
+    # --- TABLE ROWS ---
     comp_rows = ""
     for c in data['components']:
         is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
@@ -4825,6 +4856,7 @@ def render_inspector_panel(data):
         </tr>
         """
 
+    # --- VISUALS ---
     prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
     curr_vis = _escape_html(data['cluster_glyph'])
     next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
@@ -4840,7 +4872,6 @@ def render_inspector_panel(data):
         <div class="col-target">
             <div class="inspector-glyph">{curr_vis}</div>
             <div class="inspector-codepoint">{data['cp_hex_base']}</div>
-            <div class="inspector-badges">{badge_html}</div>
         </div>
 
         <div class="col-context col-next">
@@ -4849,26 +4880,16 @@ def render_inspector_panel(data):
         </div>
         
         <div class="col-identity">
-            <div class="inspector-header">{data['name_base']}</div>
-            
-            <div class="inspector-grid-compact">
-                <div><span class="label">Block:</span> {data['block']}</div>
-                <div><span class="label">Script:</span> {data['script']}</div>
-                <div><span class="label">Cat:</span> {data['category']}</div>
-                <div><span class="label">Bidi:</span> {data['bidi']}</div>
-                <div><span class="label">Age:</span> {data['age']}</div>
-            </div>
-            
-            <div class="inspector-grid-compact" style="margin-top:0.75rem; padding-top:0.5rem; border-top:1px dashed var(--color-border-light);">
-                <div><span class="label">Line Brk:</span> {data['line_break']}</div>
-                <div><span class="label">Word Brk:</span> {data['word_break']}</div>
-            </div>
-            
-            {confusable_html}
+            {identity_html}
+        </div>
+
+        <div class="col-alerts">
+            <div class="section-label" style="background:none; border:none; margin-bottom:0.5rem;">RISK</div>
+            {alerts_html}
         </div>
 
         <div class="col-structure">
-            <div class="section-label">CLUSTER COMPONENTS ({len(data['components'])})</div>
+            <div class="section-label">CLUSTER ({len(data['components'])})</div>
             <div class="structure-table-wrapper">
                 <table class="structure-table">
                     <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
@@ -4878,10 +4899,10 @@ def render_inspector_panel(data):
         </div>
         
         <div class="col-bytes">
-            <div class="section-label">FORENSIC BYTES</div>
+            <div class="section-label">BYTES</div>
             <div class="byte-grid">
-                <div><span class="label">UTF-8:</span> <br><code>{data['utf8']}</code></div>
-                <div><span class="label">UTF-16:</span> <br><code>{data['utf16']}</code></div>
+                <div><span class="label">UTF-8:</span><br>{data['utf8']}</div>
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;"><span class="label">UTF-16:</span><br>{data['utf16']}</div>
             </div>
         </div>
 
