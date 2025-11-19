@@ -758,27 +758,40 @@ Stage 2: Heatmap Row Classes
   border: none;
 }
 
-/* --- Inspector Layout v4 (7-Column Forensic Grid) --- */
+/* --- Inspector Layout v6: Fixed Height, Restored Design, Left-Side Risk --- */
+
+#inspector-panel-content {
+  /* RESTORED: Fixed Lab Bench Height */
+  height: 275px !important; 
+  padding: 0;
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden; 
+  display: flex;
+  flex-direction: column;
+}
+
 .inspector-layout-v3 {
   display: grid;
-  /* 1. Prev (Narrow)
-     2. Target (160px - Scrollable Specimen)
-     3. Next (Narrow)
-     4. Identity (Fluid)
-     5. ALERTS (NEW - 120px)
+  /* 1. Prev (50px)
+     2. Target (160px)
+     3. Next (50px)
+     4. RISK (100px) - MOVED LEFT
+     5. Identity (Fluid)
      6. Structure (260px)
-     7. Bytes (NARROWER - 130px)
+     7. Bytes (130px)
   */
-  grid-template-columns: 50px 160px 50px 1fr 120px 260px 130px;
+  grid-template-columns: 50px 160px 50px 100px 1fr 260px 130px;
   height: 100%;
   width: 100%;
   text-align: left;
-  font-size: 0.85rem; /* Global inspector font size */
+  font-size: 0.85rem;
 }
 
-/* --- Cols 1 & 3: Context --- */
+/* --- Cols 1 & 3: Context (Restored Gray Backgrounds) --- */
 .col-context {
-  background-color: #f8fafc;
+  background-color: #f8fafc; /* Restored Lab Gray */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -793,54 +806,94 @@ Stage 2: Heatmap Row Classes
 .ctx-label { font-size: 0.6rem; font-weight: 700; margin-bottom: 0.5rem; opacity: 0.6; }
 .ctx-glyph { font-family: var(--font-mono); font-size: 1.2rem; opacity: 0.5; filter: grayscale(100%); }
 
-/* --- Col 2: Target (The Microscope Slide) --- */
+/* --- Col 2: Target (Zalgo Scroll Enabled) --- */
 .col-target {
-  background-color: var(--color-bg);
+  background-color: var(--color-white);
   border-right: 1px solid var(--color-border-light);
   position: relative;
   
-  /* Flex + Auto Margin is the secret to scrollable centering */
-  display: flex;
-  flex-direction: column;
+  /* Layout for Centering + Scrolling */
+  display: grid;
+  place-items: center; /* Centers content */
   
-  /* Scroll Logic */
+  /* SCROLL ENABLED (X and Y) */
   overflow: auto; 
   z-index: 1;
-  box-shadow: inset 0 0 15px rgba(0,0,0,0.02);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
 }
 
 .inspector-glyph {
   font-family: var(--font-sans);
   font-size: 3.5rem;
   line-height: 1.2;
-  margin: auto; /* Centers it, but allows scrolling if it overflows */
-  padding: 2rem 0.5rem; /* Safety Buffer for Zalgo Marks */
+  
+  /* Ensure padding so scrollbars don't cover the char */
+  padding: 2rem; 
   text-align: center;
   font-variant-ligatures: none;
+  
+  /* Ensure it can grow */
+  min-width: min-content;
+  min-height: min-content;
 }
 
+/* Floating Code Point Label (Pinned to flow) */
 .inspector-codepoint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-primary);
   font-size: 0.8rem;
-  background-color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--color-border-light);
   padding: 2px 6px;
   border-radius: 4px;
-  
-  /* Pin to bottom center visually, but keep in flow */
-  margin-bottom: 0.5rem;
-  align-self: center;
+  z-index: 2; /* Sit above the scroll content if overlapping */
+  pointer-events: none;
 }
 
-/* --- Col 4: Identity --- */
+/* --- Col 4: RISK (New Location) --- */
+.col-alerts {
+  background-color: #fff1f2; /* Subtle Red Tint for Risk Column */
+  border-right: 1px solid var(--color-border-light);
+  padding: 0.75rem 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  overflow-y: auto;
+  text-align: center;
+}
+.col-alerts .section-label {
+    background: transparent; 
+    border: none; 
+    color: #9f1239; /* Dark Red Label */
+}
+
+/* Badges */
+.col-alerts .legend-badge {
+  width: 90%;
+  display: block;
+  white-space: normal;
+  line-height: 1.2;
+  font-size: 0.65rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  background-color: #fff; /* White badges on red tint */
+}
+.alert-icon { font-size: 1.2rem; margin-bottom: 0.2rem; display: block; }
+
+/* --- Col 5: Identity --- */
 .col-identity {
   padding: 1rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  overflow-y: auto;
   border-right: 1px solid var(--color-border-light);
+  background-color: var(--color-white);
+  overflow-y: auto;
 }
 .inspector-header {
   font-size: 1rem;
@@ -849,46 +902,21 @@ Stage 2: Heatmap Row Classes
   margin-bottom: 0.75rem;
   border-bottom: 2px solid var(--color-border-light);
   padding-bottom: 0.25rem;
-  /* Allow wrap for long names */
   word-wrap: break-word;
 }
-
-/* --- Col 5: ALERTS (NEW) --- */
-.col-alerts {
-  background-color: #fff; /* or slightly tinted #fff1f2 for danger feel */
-  border-right: 1px solid var(--color-border-light);
-  padding: 0.75rem 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: center;
-  overflow-y: auto;
-  text-align: center;
-}
-
-/* Badges inside Alerts Column */
-.col-alerts .legend-badge {
-  width: 100%;
-  display: block;
-  white-space: normal; /* Allow text wrap */
-  line-height: 1.2;
-  font-size: 0.65rem;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-.alert-icon { font-size: 1.5rem; margin-bottom: 0.2rem; display: block; }
 
 /* --- Col 6: Structure --- */
 .col-structure {
   border-right: 1px solid var(--color-border-light);
-  background-color: #fff;
+  background-color: var(--color-white);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* --- Col 7: Bytes (Narrower) --- */
+/* --- Col 7: Bytes (Restored Gray) --- */
 .col-bytes {
-  background-color: #f8fafc;
+  background-color: #f8fafc; /* Restored Lab Gray */
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -900,9 +928,10 @@ Stage 2: Heatmap Row Classes
   font-weight: 700;
   color: var(--color-text-muted);
   padding: 6px 8px;
-  background-color: #f1f5f9;
+  background-color: #e2e8f0; /* Darker header for contrast */
   border-bottom: 1px solid var(--color-border-light);
   letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 .byte-grid {
   padding: 8px;
@@ -911,7 +940,7 @@ Stage 2: Heatmap Row Classes
   gap: 8px;
   font-size: 0.7rem;
   font-family: var(--font-mono);
-  word-break: break-all; /* Ensure hex wraps in narrow column */
+  word-break: break-all;
 }
 
 /* Responsive */
