@@ -4625,13 +4625,13 @@ def render_toc_counts(counts):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v2.1: Fixed Cross-Language Indexing.
-    Ensures Python (Code Point) vs JS (UTF-16) length calculations align perfectly.
+    Forensic Inspector v2.2: Context-Aware.
+    Captures Prev/Next clusters to resolve "Visual Cling" ambiguities.
     """
     try:
         text_input = document.getElementById("text-input")
         
-        # Guard: Immutable Reveal
+        # Guard Clause
         if text_input.classList.contains("reveal-active"):
             render_inspector_panel({
                 "error": "<strong>Inspection Paused</strong><br>Visual Reveal is active. Positions are shifted.<br>Edit text or refresh to return to Live Analysis."
@@ -4641,15 +4641,12 @@ def inspect_character(event):
         dom_pos = text_input.selectionStart
         if dom_pos != text_input.selectionEnd: return
         
-        # [CRITICAL FIX 1] Force conversion to Python str immediately
-        # This ensures len() and indexing works on Code Points (UCS-4), not UTF-16 proxies
         text = str(text_input.value)
-        
         if not text:
             render_inspector_panel(None)
             return
 
-        # 1. Map DOM Index (UTF-16) -> Python Index (Code Points)
+        # 1. Map DOM -> Python Index
         python_idx = 0
         utf16_accum = 0
         found = False
@@ -4659,10 +4656,7 @@ def inspect_character(event):
                 python_idx = i
                 found = True
                 break
-            
-            # UTF-16 width calculation
             utf16_accum += 2 if ord(ch) > 0xFFFF else 1
-            
             if utf16_accum > dom_pos:
                 python_idx = i
                 found = True
@@ -4672,38 +4666,44 @@ def inspect_character(event):
              render_inspector_panel(None)
              return
 
-        # 2. GRAPHEME CLUSTER DISCOVERY
-        # [CRITICAL FIX 2] We must use Python strings for length calc to match python_idx
+        # 2. CONTEXTUAL SEGMENTATION
+        # We gather the Target, Prev, and Next clusters to show boundaries.
         segments_iter = GRAPHEME_SEGMENTER.segment(text)
-        target_cluster = None
-        cluster_accum_idx = 0 # Tracks Code Point Index
         
+        prev_cluster = None
+        target_cluster = None
+        next_cluster = None
+        
+        cluster_accum_idx = 0
+        
+        # Iterate to find the window
         for seg in segments_iter:
-            # Force cast to Python str to get Code Point length (1 for Emoji), not UTF-16 (2)
             seg_str = str(seg.segment) 
-            seg_len = len(seg_str) 
+            seg_len = len(seg_str)
             seg_end = cluster_accum_idx + seg_len
             
-            # Strict containment check
+            # Check containment
             if cluster_accum_idx <= python_idx < seg_end:
                 target_cluster = seg_str
-                break
+                # We stay in the loop one more time to grab 'next_cluster'
+                continue
             
+            if target_cluster is not None:
+                # This is the cluster immediately AFTER target
+                next_cluster = seg_str
+                break # We have Prev, Target, Next. Done.
+            
+            # This is a cluster BEFORE target (keep updating until we hit target)
+            prev_cluster = seg_str
             cluster_accum_idx = seg_end
             
-        # Fallback if segmenter desyncs (should not happen with str cast)
         if not target_cluster:
             target_cluster = text[python_idx] if python_idx < len(text) else ""
 
-        if not target_cluster:
-             render_inspector_panel(None)
-             return
-
-        # 3. Cluster Analysis
+        # 3. Cluster Analysis (Target)
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
-        # Structure & Zalgo
         components = []
         zalgo_score = 0
         
@@ -4722,13 +4722,13 @@ def inspect_character(event):
                 'is_base': not is_mark
             })
 
-        # Bytes (Forensic Truth)
+        # Bytes
         utf8_bytes = target_cluster.encode("utf-8")
         utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
         utf16_bytes = target_cluster.encode("utf-16-be")
         utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
 
-        # Risk Analysis
+        # Risk
         confusables_map = DATA_STORES.get("Confusables", {})
         skeleton = confusables_map.get(cp_base)
         confusable_msg = None
@@ -4744,27 +4744,24 @@ def inspect_character(event):
         elif zalgo_score > 0:
             stack_msg = f"Sequence ({zalgo_score} marks)"
 
-        # Data Payload
         data = {
             "cluster_glyph": target_cluster,
+            "prev_glyph": prev_cluster, # [NEW]
+            "next_glyph": next_cluster, # [NEW]
             "cluster_len": len(target_cluster),
             "base_char": base_char,
             "cp_hex_base": f"U+{cp_base:04X}",
             "cp_dec_base": cp_base,
             "name_base": unicodedata.name(base_char, "No Name Found"),
             
-            # Standard Props
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
             "category": ALIASES.get(unicodedata.category(base_char), unicodedata.category(base_char)),
             "bidi": unicodedata.bidirectional(base_char) or "N/A",
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
-            
-            # Segmentation
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
             
-            # Bytes & Risk
             "utf8": utf8_hex,
             "utf16": utf16_hex,
             "confusable": confusable_msg,
@@ -4781,8 +4778,8 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Renders the Cluster-Aware Inspector.
-    Layout: Cluster Visual | Identity & Props | Structure Table & Bytes
+    Renders the Cluster-Aware Inspector with Context Strip.
+    Layout: Context | Visual | Identity | Structure
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4795,7 +4792,6 @@ def render_inspector_panel(data):
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    # Badges Logic
     badges = []
     if data['is_invisible']: 
         badges.append('<span class="legend-badge legend-badge-danger">INVISIBLE</span>')
@@ -4814,7 +4810,7 @@ def render_inspector_panel(data):
         </div>
         '''
 
-    # Component Table Rows
+    # Table Rows
     comp_rows = ""
     for c in data['components']:
         is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
@@ -4826,10 +4822,23 @@ def render_inspector_panel(data):
         </tr>
         """
 
+    # [NEW] Context Strip Logic
+    # We use &nbsp; for missing neighbors to keep layout stable
+    prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
+    curr_vis = _escape_html(data['cluster_glyph'])
+    next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
+
     html = f"""
     <div class="inspector-layout">
         <div class="inspector-glyph-box">
-            <div class="inspector-glyph">{_escape_html(data['cluster_glyph'])}</div>
+            
+            <div class="inspector-context-strip">
+                <div class="ctx-item ctx-faint">{prev_vis}</div>
+                <div class="ctx-item ctx-focus">{curr_vis}</div>
+                <div class="ctx-item ctx-faint">{next_vis}</div>
+            </div>
+            
+            <div class="inspector-glyph">{curr_vis}</div>
             <div class="inspector-codepoint">{data['cp_hex_base']}</div>
             <div class="inspector-badges">{badge_html}</div>
         </div>
@@ -4860,7 +4869,6 @@ def render_inspector_panel(data):
                     <tbody>{comp_rows}</tbody>
                 </table>
             </div>
-            
             <div class="inspector-bytes-mini">
                 <div><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
                 <div><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
