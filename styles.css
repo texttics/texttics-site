@@ -1051,64 +1051,130 @@ tr.flag-row-crit {
 }
 
 
-/* --- Threat Ledger (The Receipt) --- */
+/* =========================================
+   FORENSIC LEDGER STYLES (Threat & Integrity)
+   ========================================= */
 
-.threat-ledger-details summary {
+/* Container & Summary Styling */
+.threat-ledger-details summary,
+.integrity-ledger-details summary { /* Assuming you add this class to Integrity details */
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-text-muted);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  user-select: none;
+  transition: color 0.2s ease;
+  display: inline-block; /* Tighter click area */
 }
 
-.threat-ledger-details summary:hover {
+.threat-ledger-details summary:hover,
+.integrity-ledger-details summary:hover {
   color: var(--color-primary);
 }
 
-.threat-ledger-table {
+/* The Table Frame */
+.threat-ledger-table,
+.integrity-ledger-table {
   width: 100%;
-  max-width: 500px; /* Keep it compact */
-  border-collapse: collapse;
+  max-width: 650px; /* Slightly wider for readability */
+  border-collapse: separate; /* Allows border-radius on rows */
+  border-spacing: 0;
   font-size: 0.85rem;
   background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  margin-top: 0.25rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03), 0 1px 0 rgba(0,0,0,0.02);
+  overflow: hidden; /* Clips the corners */
 }
 
-.threat-ledger-table th {
+/* Header Styling */
+.threat-ledger-table th,
+.integrity-ledger-table th {
   text-align: left;
-  padding: 6px 12px;
-  background-color: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
+  padding: 8px 16px; /* More breathing room */
+  background-color: #f8f9fa; /* Very subtle gray */
   color: var(--color-text-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 0.75rem;
-}
-
-.threat-ledger-table td {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--color-border-light);
-  color: var(--color-text);
-}
-
-.threat-ledger-table .score-val {
-  font-family: var(--font-mono);
   font-weight: 700;
-  text-align: right;
-  color: #b91c1c; /* Red for penalties */
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.threat-ledger-table tr:last-child td {
+/* Cell Styling */
+.threat-ledger-table td,
+.integrity-ledger-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+  color: var(--color-text);
+  transition: background-color 0.15s ease;
+}
+
+/* Row Hover Effect (The "Active Scan" feel) */
+.threat-ledger-table tr:hover td,
+.integrity-ledger-table tr:hover td {
+  background-color: #f9fafb;
+}
+
+/* Last row cleanup */
+.threat-ledger-table tr:last-child td,
+.integrity-ledger-table tr:last-child td {
   border-bottom: none;
 }
 
+/* Column 1: The Vector (Primary Data) */
+.threat-ledger-table td:first-child,
+.integrity-ledger-table td:first-child {
+  font-weight: 500;
+  color: #1f2937; /* Gray-900 */
+}
+
+/* Column 2: Severity Badge Container (Centered & Shrink-wrapped) */
+.threat-ledger-table td:nth-child(2),
+.integrity-ledger-table td:nth-child(2) {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Refined Badge Look inside Ledger */
+.threat-ledger-table .integrity-badge,
+.integrity-ledger-table .integrity-badge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent; /* Adds definition */
+}
+
+/* Column 3: The Score (The Math) */
+.score-val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-align: right;
+  color: #b91c1c; /* Red-700 */
+  width: 1%; /* Align tight to right */
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums; /* Aligns numbers vertically */
+}
+
+/* Noise Rows (Filtered Data) */
 .ledger-noise td {
-  background-color: #f9fafb;
-  color: var(--color-text-muted);
+  background-color: #fdfdfd; /* Almost white */
+  color: #9ca3af; /* Gray-400 - very muted */
+  font-style: italic;
   font-size: 0.8rem;
-  border-top: 2px solid var(--color-border-light);
+  border-top: 1px dashed var(--color-border-light); /* Distinctive separator */
+}
+
+.ledger-noise .integrity-badge {
+  opacity: 0.7;
+  filter: grayscale(100%); /* De-emphasize badges in noise rows */
 }
 
 /* --- Integrity Ledger (Data Health Receipt) --- */
