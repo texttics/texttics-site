@@ -262,15 +262,15 @@ This is a dedicated module powered by the UTS #51 file `emoji-test.txt`. It scan
 
 ### Group 3: Threat-Hunting Profile
 
-This is the final, high-level security assessment. It uses the "Quad-State" pipeline to unmask deceptions.
+This is the final, high-level security assessment. It operates on a "Clean Room" philosophy, strictly separating "Malice" (Intent) from "Rot" (Integrity).
 
-* **Threat Flags (Table):** A high-level summary of the most critical security risks. This table collects high-severity flags from the Integrity Profile (like `DANGER: Malicious Bidi Control`) and adds its own (like `High-Risk: Mixed Scripts`) to provide a single, consolidated threat report.
-* **Normalization Hashes (Table):** A "fingerprint" of the text in all four of its normalization states:
-    1.  **Forensic (Raw)**
-    2.  **NFKC** (Compatibility-normalized)
-    3.  **NFKC-Casefold** (Compatibility-normalized and case-folded)
-    4.  **UTS #39 Skeleton** (The ultimate security hash: normalized, folded, and confusable-mapped)
-* **Perception vs. Reality Report (Diff):** A visual report showing the *exact* transformations the string undergoes at each normalization state, allowing a human to see precisely how `pаypal.⓼` (Raw) becomes `pаypal.8` (NFKC) and finally `paypal.8` (Skeleton).
+* **Threat Level (Ledger):** A sophisticated scoring engine that calculates a "Weaponization Score." It uses a nested **Audit Ledger** to display the exact math behind the verdict.
+    * **Tier 1 (Execution):** Attacks on compilers (Trojan Source, Terminal Injection).
+    * **Tier 2 (Spoofing):** Attacks on humans (Homoglyphs, Identity Spoofing).
+    * **Tier 3 (Obfuscation):** Attacks on filters (Invisible Clusters, Steganography).
+* **Threat Flags:** A filtered list of active exploit vectors. Unlike the Integrity Profile, this view hides "noise" (like Zalgo or broken encoding) to focus exclusively on security threats.
+* **Normalization Hashes:** A "fingerprint" of the text in all four normalization states (Raw, NFKC, Casefold, Skeleton).
+* **Perception vs. Reality Report:** A diff view showing exactly how the text "shapeshifts" under normalization.
 
 ---
 
@@ -622,16 +622,22 @@ We solved the "False Positive" problem (where messy keyboards flagged as threats
 * **Behavior:** This warns the user of "messiness" without crying wolf.
     * *Example:* `123123` triggers **High Complexity** but **Zero Exploit Risk**.
 
-### 4. The Uncapped Integrity Engine
-We deprecated the "Decode Health Grade" (which had a ceiling of 10) and replaced it with a **Maximally Sensitive, Uncapped Integrity System**.
+### 4. The Dual-Ledger Scoring Engine (The "Jurisdiction" Model)
 
-* **Uncapped Scoring:** The score is no longer limited to 0-10. It accumulates linearly with risk. A score of **96** is demonstrably worse than a score of **12**.
-* **Severity Bands:**
-    * **CORRUPT (50+):** Massive binary injection or data loss.
-    * **CRITICAL (20+):** Fatal encoding errors (Surrogates) or System Risks (NUL/ESC).
-    * **WARNING (5+):** High-risk invisibles or broken structure.
-    * **NOTICE (1+):** Minor anomalies (PUA, NFC drift).
-* **Structural Feedback:** The logic now captures return values from the sub-analyzers (`analyze_bidi_structure` and `summarize_invisible_clusters`). A "Massive Invisible Cluster" or "Unclosed Bidi Chain" now directly penalizes the Integrity Score.
+Text...tics abandons the traditional single "risk score" in favor of a **Dual-Ledger System** that rigorously separates "Malice" from "Rot." This prevents the common forensic error where a corrupted file is flagged as a "hacker tool," or a highly dangerous homoglyph attack is ignored because the file is "clean."
+
+* **Jurisdiction A: The Integrity Auditor (`compute_integrity_score`)**
+    * **Focus:** **Data Health & Entropy.** (Is this text *broken*?)
+    * **Metrics:** Tracks `Data Corruption` (NUL, FFFD), `Structural Fractures` (broken Bidi chains), and `Protocol Violations` (Tags, Noncharacters).
+    * **Scoring:** Uses a **Base + Density** formula to calculate verdicts ranging from **HEALTHY** to **CORRUPT**.
+
+* **Jurisdiction B: The Threat Auditor (`compute_threat_score`)**
+    * **Focus:** **Weaponization & Intent.** (Is this text *attacking*?)
+    * **"Clean Room" Design:** Strictly **excludes** all "rot" vectors (like Nulls or broken UTF-8). This ensures a high Threat Score *always* indicates active malice, not just bad data.
+    * **Target-Based Tiers:**
+        * **Tier 1 (Execution):** Attacks on Compilers (Trojan Source, Terminal Injection).
+        * **Tier 2 (Spoofing):** Attacks on Humans (Homoglyphs, Skeleton Drift).
+        * **Tier 3 (Obfuscation):** Attacks on Filters (Invisible Clusters, Steganography).
 
 ### 5. Deep Research & Edge Case Coverage
 Based on a canonical inventory of invisible particles, we closed specific coverage gaps to ensure 100% forensic exhaustion.
@@ -811,10 +817,23 @@ The `app.py` file has evolved from a simple character counter into a sophisticat
     * **State 4 (UTS #39 Skeleton):** The "Visual Identity" form.
     * **Logic:** The function `compute_threat_analysis` compares these states. If the "Skeleton" differs significantly from the "Raw" input (calculated as "Skeleton Drift"), it flags a potential homoglyph or spoofing attack.
 
-4.  **The Uncapped Threat Scoring Engine:**
-    The `compute_threat_score` function aggregates signals from all sub-modules.
-    * It decouples **Complexity** (Zalgo, noise) from **Exploitation** (Bidi, Homoglyphs).
-    * It uses an "Uncapped" scoring model. Instead of capping at 10/10, the score accumulates based on the density of threats. A score of 114 is distinctly worse than a score of 20, providing granular forensic feedback.
+
+### 4. The Dual-Ledger Scoring Engine (The "Jurisdiction" Model)
+
+Text...tics abandons the traditional single "risk score" in favor of a **Dual-Ledger System** that rigorously separates "Malice" from "Rot." This prevents the common forensic error where a corrupted file is flagged as a "hacker tool," or a highly dangerous homoglyph attack is ignored because the file is "clean."
+
+* **Jurisdiction A: The Integrity Auditor (`compute_integrity_score`)**
+    * **Focus:** **Data Health & Entropy.** (Is this text *broken*?)
+    * **Metrics:** Tracks `Data Corruption` (NUL, FFFD), `Structural Fractures` (broken Bidi chains), and `Protocol Violations` (Tags, Noncharacters).
+    * **Scoring:** Uses a **Base + Density** formula (e.g., 40pts + 2pts/char) to calculate verdicts ranging from **HEALTHY** to **CORRUPT**.
+
+* **Jurisdiction B: The Threat Auditor (`compute_threat_score`)**
+    * **Focus:** **Weaponization & Intent.** (Is this text *attacking*?)
+    * **"Clean Room" Design:** Strictly **excludes** all "rot" vectors (like Nulls or broken UTF-8). This ensures a high Threat Score *always* indicates active malice, not just bad data.
+    * **Target-Based Tiers:**
+        * **Tier 1 (Execution):** Attacks on Compilers (Trojan Source, Terminal Injection).
+        * **Tier 2 (Spoofing):** Attacks on Humans (Homoglyphs, Skeleton Drift).
+        * **Tier 3 (Obfuscation):** Attacks on Filters (Invisible Clusters, Steganography).
 
 ---
 
@@ -830,12 +849,12 @@ The system operates in a tight loop, triggered by user interaction.
 **2. The Analysis Loop (`update_all`):**
 This function is bound to the `<textarea>` `input` event.
 * **Step A (Ingest):** Captures the raw string `t`.
-* **Step B (Compute):** Calls the specialized engines:
+* **Step B (Compute - The Engines):** Calls the specialized engines:
     * `compute_emoji_analysis(t)`: Scans for RGI sequences.
-    * `compute_forensic_stats_with_positions(t)`: Runs the Bitmask and Stack Machine logic.
+    * `compute_forensic_stats_with_positions(t)`: Acts as the **Integrity Collector**, running the Bitmask/Stack logic and passing data to the **Integrity Auditor**.
     * `compute_provenance_stats(t)`: Maps blocks and scripts.
-    * `compute_threat_analysis(t)`: Generates Skeletons and Drift metrics.
-* **Step C (Render):** Calls `render_...` functions (e.g., `render_integrity_matrix`). These functions take the computed Python dictionaries and generate HTML strings, injecting them into the `index.html` placeholders.
+    * `compute_threat_analysis(t)`: Runs Quad-State Normalization and feeds data to the **Threat Auditor**.
+* **Step C (Render - The Ledgers):** Calls `render_...` functions. Crucially, `render_integrity_matrix` and `render_threat_analysis` now generate **Nested 3-Column Ledgers** (Vector | Severity | Penalty) inside the summary rows, providing a transparent audit log of the score.
 
 **3. The Bridge Phase:**
 * After rendering, `update_all` packages the `grapheme_list` and `forensic_flags` into a JSON object.
@@ -860,8 +879,12 @@ This function is bound to the `<textarea>` `input` event.
 * **`def analyze_nsm_overload(graphemes)`:** The "Zalgo Detector." Calculates mark density per grapheme and checks for repeated mark sequences (a common rendering DoS vector).
 * **`def compute_threat_analysis(t)`:** The "Threat Hunter." Orchestrates the Quad-State Normalization. Generates the `UTS #39 Skeleton` and calculates the "Skeleton Drift" metric (how much the text changes when visually normalized).
 
+### Scoring Auditors (The Judges)
+* **`def compute_integrity_score(inputs)`:** The **Integrity Auditor**. Calculates the "Health Score" using a rigorous Base+Density formula. Applies tier-based penalties for Corruption, Fractures, Risk, and Decay.
+* **`def compute_threat_score(inputs)`:** The **Threat Auditor**. Calculates the "Weaponization Score." It explicitly filters out "Rot" (Integrity issues) to focus purely on Execution Risks, Spoofing, and Obfuscation.
+
 ### Orchestration & Rendering
-* **`def compute_forensic_stats_with_positions(t, ...)`:** The integration hub. It calls the sub-analyzers (Bidi, Cluster, Zalgo) and aggregates their results into the "Uncapped Integrity Score." It generates the detailed rows for the "Structural Integrity Profile."
+* **`def compute_forensic_stats_with_positions(t, ...)`:** The integration hub. It calls the sub-analyzers, gathers raw counts, and delegates judgment to the **Integrity Auditor** before generating the report rows.
 * **`def normalize_extended(text)`:** The resilient normalizer. Attempts `unicodedata2.normalize("NFKC", text)`. If that fails/is missing, falls back to built-in, and applies the manual `ENCLOSED_MAP` patch to ensure `⓼` becomes `8`.
 * **`@create_proxy def update_all(event)`:** The main event handler. Sequentially calls all `compute_` functions, aggregates the data, and calls all `render_` functions to update the DOM.
 * **`@create_proxy def reveal_invisibles(event)`:** The deobfuscator. Maps invisible code points to their bracketed tag equivalents and updates the textarea value.
