@@ -791,9 +791,10 @@ Stage 2: Heatmap Row Classes
   text-align: center;
 }
 .inspector-glyph {
-  font-family: var(--font-sans);
+  /* [FIX] Use Monospace to match the Input and preserve mark positioning fidelity */
+  font-family: var(--font-mono); 
   font-size: 3rem;
-  line-height: 1;
+  line-height: 1.2; /* Slight bump to accommodate tall stacks */
   margin-bottom: 0.25rem;
 }
 .inspector-codepoint {
