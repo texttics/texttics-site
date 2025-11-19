@@ -1092,6 +1092,16 @@ CCC_ALIASES = {
     "240": "Iota Subscript"
 }
 
+# --- THREAT PENALTY CONSTANTS (The "Penal Code") ---
+# These define the objective weight of each threat vector.
+# They are constant to ensure deterministic scoring.
+PENALTY_EXECUTION_RISK = 25   # Trojan Source, Terminal Injection
+PENALTY_DATA_LOSS      = 20   # Nulls, Replacement Chars, Broken Encodings
+PENALTY_OBFUSCATION    = 15   # Tags, Highly Mixed Scripts (Extensions)
+PENALTY_HIDDEN         = 10   # Invisible Clusters, Nonchars
+PENALTY_SPOOFING       = 10   # Homoglyphs (Base Score) + Density
+PENALTY_SYNTAX         = 5    # BOM, Invalid VS, PUA, Minor Script Mix
+
 # 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
 # We must define all categories to correctly implement the "default-to-restricted" rule.# Source: https://www.unicode.org/reports/tr31/
 # These are explicitly "Allowed" or "Recommended"
@@ -3949,11 +3959,13 @@ def compute_threat_analysis(t: str):
     }
     
 def render_threat_analysis(threat_results):
-    """Renders the Group 3 Threat-Hunting results."""
+    """Renders the Group 3 Threat-Hunting results with Nested Ledger."""
     
-    # 1. Render Flags
+    # 1. Extract Data
     flags = threat_results.get('flags', {})
     
+    # 2. Render Main Flags Table
+    # We treat the "Threat Level" row specifically
     html_rows = []
     threat_level_key = "Threat Level (Heuristic)"
     
@@ -3961,33 +3973,73 @@ def render_threat_analysis(threat_results):
         data = flags[threat_level_key]
         badge = data.get("badge", "")
         severity = data.get("severity", "ok")
-        positions = data.get("positions", [])
-        details = positions[0] if positions else ""
+        
+        # --- LEDGER GENERATION (The "Receipt") ---
+        # The 'positions' field in flags now carries our ledger dict if passed correctly,
+        # but since we updated compute_threat_score, we should access the raw data if possible.
+        # However, update_all puts the result into 'flags'. Let's handle the list passed there.
+        
+        # Note: In update_all, we need to ensure the 'ledger' is passed to the flag.
+        # See update logic below. Assuming 'positions' contains the ledger items for now
+        # or we reconstruct visuals from the text details.
+        
+        # CRITICAL: We need to access the raw 'score_result' from compute_threat_score
+        # But since update_all flattened it, let's rely on the 'details' being passed properly.
+        # BETTER APPROACH: update_all passes the ledger object in a specific way.
+        
+        # Let's assume we update `update_all` to pass the ledger in `data['ledger']`.
+        ledger = data.get("ledger", [])
+        noise = data.get("noise", [])
         
         badge_class = f"integrity-badge integrity-badge-{severity}"
         
+        # Build the Nested Table HTML
+        ledger_html = ""
+        if ledger:
+            ledger_rows = ""
+            for item in ledger:
+                p_val = f"+{item['points']}"
+                ledger_rows += f"<tr><td>{item['vector']}</td><td class='score-val'>{p_val}</td></tr>"
+            
+            if noise:
+                 noise_str = ", ".join(noise)
+                 ledger_rows += f"<tr class='ledger-noise'><td colspan='2'><em>Detected but excluded (Noise): {noise_str}</em></td></tr>"
+
+            ledger_html = f"""
+            <details class="threat-ledger-details">
+                <summary>View Penalty Breakdown</summary>
+                <table class="threat-ledger-table">
+                    <thead><tr><th>Threat Vector</th><th>Penalty</th></tr></thead>
+                    <tbody>{ledger_rows}</tbody>
+                </table>
+            </details>
+            """
+        else:
+            ledger_html = "No active threats detected."
+
         row_html = (
             f'<tr class="flag-row-{severity}" style="border-bottom: 2px solid var(--color-border);">'
             f'<th scope="row" style="font-weight:700; font-size:1.05em;">{threat_level_key}</th>'
             f'<td><span class="{badge_class}" style="font-size:0.9em;">{badge}</span></td>'
-            f'<td style="font-style:italic; color:var(--color-text-muted);">{details}</td>'
+            f'<td>{ledger_html}</td>'
             f'</tr>'
         )
         html_rows.append(row_html)
         
+        # Remove the score row from the generic flags list so we don't print it twice
         flags_copy = flags.copy()
         del flags_copy[threat_level_key]
         flags = flags_copy
-
-    # Render the rest using the enhanced matrix renderer
+    
+    # Render the rest of the flags
     render_matrix_table(flags, "threat-report-body", has_positions=True)
     
-    # Prepend the custom row
+    # Prepend our custom row
     if html_rows:
         existing_html = document.getElementById("threat-report-body").innerHTML
         document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
 
-    # 2. Render Hashes
+    # 3. Render Hashes (Standard)
     hashes = threat_results.get('hashes', {})
     hash_html = []
     if hashes:
@@ -3997,29 +4049,25 @@ def render_threat_analysis(threat_results):
     else:
         document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
 
-    # 3. Render Confusable Report
+    # 4. Render Confusable Report (Standard)
     html_report = threat_results.get('html_report', "")
     report_el = document.getElementById("confusable-diff-report")
     
     if html_report:
         report_el.innerHTML = html_report
     else:
-        drift_count = 0
         drift_flag = flags.get("Flag: Skeleton Drift")
-        if drift_flag:
-            drift_count = drift_flag.get("count", 0)
+        drift_count = drift_flag.get("count", 0) if drift_flag else 0
             
         if drift_count > 0:
-            msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization – see Skeleton Drift and flags above."
+            msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization."
         else:
             msg = "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
-            
         report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
     
-    # 4. Banner Logic REMOVED (Superseded by Table Header)
+    # Hide Banner
     banner_el = document.getElementById("threat-banner")
-    if banner_el:
-        banner_el.setAttribute("hidden", "true")
+    if banner_el: banner_el.setAttribute("hidden", "true")
 
 # ---
 # 4. DOM RENDERER FUNCTIONS
@@ -4556,98 +4604,100 @@ def render_inspector_panel(data):
 
 def compute_threat_score(inputs):
     """
-    Computes Dual Scores: Exploit Likelihood & Structural Complexity.
-    UNCAPPED: Uses weighted penalties similar to Integrity Engine.
+    Computes the Threat Score using a Ledger System (Audit Log).
+    Prevents 'Double Jeopardy' and provides a strict breakdown.
     """
-    # --- 1. Exploit Likelihood (The Security Threat) ---
-    exploit_score = 0
-    reasons = []
+    ledger = []  # List of {vector, points, category}
+    noise  = []  # List of {vector} (0 points)
 
-    def add_exploit(reason, points):
-        nonlocal exploit_score
-        exploit_score += points
-        reasons.append(reason)
+    def add_entry(vector, points, category="General"):
+        ledger.append({"vector": vector, "points": points, "category": category})
 
-    # A. Hard Security Failures (Trojan Source / Corrupt Data)
+    # --- 1. EXECUTION RISKS (Tier 1) ---
     if inputs.get("malicious_bidi"):
-        add_exploit("Malicious Bidi Control (Trojan Source)", 25) # Immediate High/Critical
-    
-    if inputs.get("has_unclosed_bidi"):
-        add_exploit("Unclosed Bidi Sequence", 10)
-    
+        add_entry("Malicious Bidi (Trojan Source)", PENALTY_EXECUTION_RISK, "Execution")
+    elif inputs.get("has_unclosed_bidi"):
+        # Only penalize unclosed if not already flagged as malicious trojan source
+        add_entry("Unclosed Bidi Sequence", 10, "Structure")
+    elif inputs.get("bidi_count", 0) > 0:
+        # Safe Bidi (just present)
+        add_entry(f"Bidi Controls Present ({inputs['bidi_count']})", 5, "Syntax")
+        
+    # [NEW] Terminal Injection Check (requires logic update in forensic stats to pass 'has_esc')
+    # We'll assume the input map has been updated or we check indices
+    # (Skipping direct check here to keep interface compatible with current update_all)
+
+    # --- 2. DATA INTEGRITY (Tier 2) ---
     grade = inputs.get("decode_grade", "OK")
     if grade in ("CORRUPT", "CRITICAL", "CRIT"):
-        add_exploit(f"Critical Integrity Failure ({grade})", 15)
+        add_entry(f"Critical Integrity Failure ({grade})", PENALTY_DATA_LOSS, "Integrity")
     elif grade in ("WARNING", "WARN"):
-        add_exploit("Integrity Warning", 5)
+        add_entry("Integrity Warning", 5, "Integrity")
 
-    # B. Cross-Script Drift (The Real Homoglyph Attack)
-    drift_cross = inputs.get("drift_cross_script", 0)
-    if drift_cross > 0:
-        # Scale: Base 10 + 1 point per character (Density matters)
-        points = 10 + drift_cross
-        add_exploit(f"Cross-Script Confusables (count={drift_cross})", points)
+    if inputs.get("nonchar_count", 0) > 0:
+        add_entry("Noncharacters (Illegal)", PENALTY_HIDDEN, "Integrity")
 
-    # C. High-Risk Invisibles
-    if inputs.get("invis_cluster_count", 0) > 0:
-        add_exploit("Invisible Character Clusters", 10)
+    # --- 3. OBFUSCATION & DECEPTION (Tier 3) ---
     
-    # D. Script Mixing (Base)
+    # Script Mixing
     mix_class = inputs.get("script_mix_class", "")
     if "Highly Mixed" in mix_class:
-        add_exploit(mix_class, 15)
+        add_entry(mix_class, PENALTY_OBFUSCATION, "Obfuscation")
     elif "Mixed Scripts" in mix_class:
-        add_exploit(mix_class, 8)
+        add_entry(mix_class, 8, "Obfuscation") # Lower penalty for base mix
 
-    # E. PUA / Nonchar
-    if inputs.get("pua_pct", 0) > 0:
-        add_exploit("Private Use Area characters", 5)
-    if inputs.get("nonchar_count", 0) > 0:
-        add_exploit("Noncharacters", 10)
+    # Invisible Clusters (Double Jeopardy Check: If Bidi was malicious, don't double count small clusters)
+    # But if we have a MASSIVE cluster, it's a separate issue (payload hiding).
+    cluster_count = inputs.get("invis_cluster_count", 0)
+    max_run = inputs.get("max_invis_run", 0)
     
-    # [NEW] Dangerous Controls
+    if cluster_count > 0:
+        if max_run > 4:
+            add_entry(f"Massive Invisible Cluster (len={max_run})", PENALTY_HIDDEN, "Obfuscation")
+        else:
+             # Smaller clusters - check if we already hit them with Bidi
+             if not inputs.get("malicious_bidi"):
+                 add_entry(f"Invisible Clusters ({cluster_count})", 5, "Obfuscation")
+
+    # Homoglyphs (Density Calculation)
+    drift_cross = inputs.get("drift_cross_script", 0)
+    if drift_cross > 0:
+        # Formula: Base Penalty + 1 point per char
+        density_score = PENALTY_SPOOFING + drift_cross
+        add_entry(f"Cross-Script Homoglyphs (count={drift_cross})", density_score, "Spoofing")
+
+    # --- 4. SYNTAX & PROTOCOL (Tier 4) ---
     if inputs.get("has_internal_bom"):
-        add_exploit("Internal BOM", 5)
+        add_entry("Internal BOM", PENALTY_SYNTAX, "Syntax")
     if inputs.get("has_invalid_vs"):
-        add_exploit("Invalid Variation Selector", 5)
-        
-    # --- 2. Structural Complexity (The Weirdness Metric) ---
-    complexity_score = 0
+        add_entry("Invalid Variation Selector", PENALTY_SYNTAX, "Syntax")
+    if inputs.get("pua_pct", 0) > 0:
+        add_entry("Private Use Area characters", PENALTY_SYNTAX, "Syntax")
     
-    # ASCII Drift (Visual Ambiguity)
+    # --- 5. NOISE (0 Points) ---
+    # Explicitly logging what we IGNORED to show rigor
+    if inputs.get("nsm_level") >= 1:
+        noise.append("Excessive Combining Marks (Zalgo)")
+    
     drift_ascii = inputs.get("drift_ascii", 0)
-    total_len = inputs.get("total_code_points", 1)
-    
     if drift_ascii > 0:
-        ratio = drift_ascii / total_len if total_len > 0 else 0
-        if ratio > 0.5: complexity_score += 8 
-        elif ratio > 0.1: complexity_score += 4
-        elif ratio > 0: complexity_score += 1
-        
-    # Zalgo / NSM Overload
-    if inputs.get("nsm_level") == 2: complexity_score += 8
-    elif inputs.get("nsm_level") == 1: complexity_score += 3
-    
-    # Inherit some risk from Exploit score (Malicious things are also Complex)
-    if exploit_score > 0:
-        complexity_score += 5
+        noise.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
 
-    # --- Determine Levels (Aligned with Integrity) ---
-    # 0-4: LOW
-    # 5-19: MEDIUM
-    # 20-49: HIGH
-    # 50+: CRITICAL
-    
+    # --- CALCULATION ---
+    total_score = sum(item["points"] for item in ledger)
+
+    # Determine Level
     level = "LOW"
-    if exploit_score >= 50: level = "CRITICAL"
-    elif exploit_score >= 20: level = "HIGH"
-    elif exploit_score >= 5: level = "MEDIUM"
-    
-    # Annotation if Complexity is high but Threat is low
-    if complexity_score > 5 and exploit_score < 5:
-        reasons.append(f"(Note: High Complexity {complexity_score} due to visual ambiguity)")
-        
-    return {"score": exploit_score, "level": level, "reasons": reasons}
+    if total_score >= 50: level = "CRITICAL"
+    elif total_score >= 20: level = "HIGH"
+    elif total_score >= 5: level = "MEDIUM"
+
+    return {
+        "score": total_score,
+        "level": level,
+        "ledger": ledger,
+        "noise": noise
+    }
 
 # ---
 # 6. MAIN ORCHESTRATOR
@@ -4806,9 +4856,6 @@ def update_all(event=None):
     # 1. Score Row (Exploit Likelihood)
     score_badge = f"{final_score['level']} (Score: {final_score['score']})"
     
-    # Append Complexity note if present
-    details = final_score['reasons']
-
     # [FIX] Correctly map the new "CRITICAL" level to "crit" styling
     sev = "ok"
     if final_score['level'] in ("CRITICAL", "HIGH"):
@@ -4816,11 +4863,14 @@ def update_all(event=None):
     elif final_score['level'] == "MEDIUM":
         sev = "warn"
     
+    # Pass the full ledger object to the renderer
     final_threat_flags["Threat Level (Heuristic)"] = {
         'count': 0,
-        'positions': [f"Reasons: {'; '.join(details)}" if details else "None"],
+        'positions': [], # Legacy field
         'severity': sev,
-        'badge': score_badge
+        'badge': score_badge,
+        'ledger': final_score.get('ledger', []),
+        'noise': final_score.get('noise', [])
     }
     
     # 2. Zalgo Row
