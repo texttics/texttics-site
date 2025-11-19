@@ -4755,9 +4755,13 @@ def compute_threat_score(inputs):
 # ---
 
 @create_proxy
-@create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
+
+    # [IMMUTABLE REVEAL FIX] Clear the visual reveal state on any input/edit
+    t_input = document.getElementById("text-input")
+    if t_input: 
+        t_input.classList.remove("reveal-active")
     
     # --- 0. Debug Logging (Optional) ---
     try:
@@ -5069,11 +5073,11 @@ def reveal_invisibles(event=None):
         element.value = new_text
         
         # Update the status line to confirm action
-        render_status(f"Deobfuscation complete. Revealed {replaced_count} invisible characters.")
+        # [IMMUTABLE REVEAL FIX] We do NOT call update_all(). 
+        # The report remains pinned to the forensic reality; the view is just an overlay.
+        element.classList.add("reveal-active") 
+        render_status(f"Visual Reveal Active ({replaced_count} chars). Report reflects original raw data.")
         
-        # TRIGGER A RE-ANALYSIS manually
-        # This is crucial so the metrics update to reflect the "safe" text
-        update_all(None)
     else:
         render_status("No invisible characters found to reveal.")
 
