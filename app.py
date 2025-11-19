@@ -87,7 +87,7 @@ def build_invis_table():
     apply_mask([(0x2028, 0x2029)], INVIS_NONSTANDARD_NL)
 
     # 10. Non-ASCII Spaces (Zs != 0x20)
-    # [UPDATE] Explicitly included MVS (0x180E) and Ogham (0x1680) per Deep Research
+    # [UPDATE] Explicitly included MVS (0x180E) and Ogham (0x1680)
     zs_ranges = [
         (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E), 
         (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), 
@@ -657,14 +657,13 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
-    0x0000: "[NUL]",           # Null Byte
+    # --- System & Control Risks ---
+    0x0000: "[NUL]",           # Null Byte (Critical)
     0x001B: "[ESC]",           # Escape (Terminal Injection)
     0x00AD: "[SHY]",           # Soft Hyphen
-    0x034F: "[CGJ]",           # Combining Grapheme Joiner
+    
+    # --- Bidi Controls (Trojan Source) ---
     0x061C: "[ALM]",           # Arabic Letter Mark
-    0x200B: "[ZWSP]",          # Zero Width Space
-    0x200C: "[ZWNJ]",          # Zero Width Non-Joiner
-    0x200D: "[ZWJ]",           # Zero Width Joiner
     0x200E: "[LRM]",           # Left-To-Right Mark
     0x200F: "[RLM]",           # Right-To-Left Mark
     0x202A: "[LRE]",           # Left-To-Right Embedding
@@ -672,29 +671,66 @@ INVISIBLE_MAPPING = {
     0x202C: "[PDF]",           # Pop Directional Formatting
     0x202D: "[LRO]",           # Left-To-Right Override
     0x202E: "[RLO]",           # Right-To-Left Override
-    0x2060: "[WJ]",            # Word Joiner
-    0x2061: "[FA]",            # Function Application
-    0x2062: "[IT]",            # Invisible Times
-    0x2063: "[IS]",            # Invisible Separator
     0x2066: "[LRI]",           # Left-To-Right Isolate
     0x2067: "[RLI]",           # Right-To-Left Isolate
     0x2068: "[FSI]",           # First Strong Isolate
     0x2069: "[PDI]",           # Pop Directional Isolate
-    0xFEFF: "[BOM]",           # Byte Order Mark
+
+    # --- Joiners & Separators ---
+    0x034F: "[CGJ]",           # Combining Grapheme Joiner
     0x180E: "[MVS]",           # Mongolian Vowel Separator
-    0xFFF9: "[IAA]",           # Interlinear Annotation Anchor
-    0xFFFA: "[IAS]",           # Interlinear Annotation Separator
-    0xFFFB: "[IAT]",           # Interlinear Annotation Terminator
+    0x200B: "[ZWSP]",          # Zero Width Space
+    0x200C: "[ZWNJ]",          # Zero Width Non-Joiner
+    0x200D: "[ZWJ]",           # Zero Width Joiner
+    0x2060: "[WJ]",            # Word Joiner
+    
+    # --- Invisible Math & Format ---
+    0x2061: "[FA]",            # Function Application
+    0x2062: "[IT]",            # Invisible Times
+    0x2063: "[IS]",            # Invisible Separator
+    
+    # --- Byte Order Mark ---
+    0xFEFF: "[BOM]",           # Zero Width No-Break Space
+    
+    # --- Interlinear Annotation (Rare Format) ---
+    0xFFF9: "[IAA]",           # Anchor
+    0xFFFA: "[IAS]",           # Separator
+    0xFFFB: "[IAT]",           # Terminator
+
+    # --- Exotic Spaces (Visual Spoofing) ---
+    0x00A0: "[NBSP]",          # No-Break Space
+    0x2002: "[ENSP]",          # En Space
+    0x2003: "[EMSP]",          # Em Space
+    0x2004: "[3/EM]",          # Three-Per-Em Space
+    0x2005: "[4/EM]",          # Four-Per-Em Space
+    0x2006: "[6/EM]",          # Six-Per-Em Space
+    0x2007: "[FIGSP]",         # Figure Space
+    0x2008: "[PUNCSP]",        # Punctuation Space
+    0x2009: "[THIN]",          # Thin Space
+    0x200A: "[HAIR]",          # Hair Space
+    0x202F: "[NNBSP]",         # Narrow No-Break Space
+    0x205F: "[MMSP]",          # Medium Mathematical Space
+    0x3000: "[IDSP]",          # Ideographic Space
+    
+    # --- Line Breaks ---
+    0x2028: "[LS]",            # Line Separator
+    0x2029: "[PS]",            # Paragraph Separator
+
+    # --- Tags (Special) ---
+    0xE0001: "[TAG:LANG]",     # Language Tag
+    0xE007F: "[TAG:CANCEL]",   # Cancel Tag
 }
-# Tag Characters (E0001, E0020-E007F)
-# Non-ASCII Spaces (Zs != 0x20)
-    # [UPDATE] Explicitly included MVS (0x180E) and Ogham (0x1680) per Deep Research
-    zs_ranges = [
-        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E), 
-        (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), 
-        (0x3000, 0x3000)
-    ]
-    apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE
+
+# Programmatically inject the full range of ASCII-Mapped Tags (Plane 14)
+# Range: U+E0020 (Tag Space) to U+E007E (Tag Tilde)
+# This converts U+E0041 to "[TAG:A]", U+E0030 to "[TAG:0]", etc.
+for ascii_val in range(0x20, 0x7F):
+    tag_cp = 0xE0000 + ascii_val
+    if ascii_val == 0x20:
+         INVISIBLE_MAPPING[tag_cp] = "[TAG:SP]" # Explicit Space
+    else:
+         INVISIBLE_MAPPING[tag_cp] = f"[TAG:{chr(ascii_val)}]"
+
 
 # Valid base characters for U+20E3 (Combining Enclosing Keycap)
 VALID_KEYCAP_BASES = frozenset({
@@ -3019,7 +3055,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     for k, v in decomp_type_stats.items(): add_row(k, v['count'], v['positions'], "ok")
     for k, v in id_type_stats.items(): add_row(k, v['count'], v['positions'], "warn")
 
-    # [FIX] We append the structural rows we generated earlier
     rows.extend(struct_rows)
 
     return rows
