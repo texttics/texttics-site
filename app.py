@@ -4777,14 +4777,11 @@ def inspect_character(event):
         print(f"Inspector Error: {e}")
         render_inspector_panel({"error": str(e)})
         
-    except Exception as e:
-        print(f"Inspector Error: {e}")
-        render_inspector_panel({"error": str(e)})
 
 def render_inspector_panel(data):
     """
-    Renders the Cluster-Aware Inspector with Context Strip.
-    Layout: Context | Visual | Identity | Structure
+    Forensic Layout v3.0: 5-Column Timeline + Data Split.
+    Cols: [Prev] [Target] [Next] | [Identity] | [Structure/Bytes]
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4797,6 +4794,7 @@ def render_inspector_panel(data):
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
+    # Badges
     badges = []
     if data['is_invisible']: 
         badges.append('<span class="legend-badge legend-badge-danger">INVISIBLE</span>')
@@ -4827,29 +4825,32 @@ def render_inspector_panel(data):
         </tr>
         """
 
-    # [NEW] Context Strip Logic
-    # We use &nbsp; for missing neighbors to keep layout stable
+    # Glyph Handling (Use non-breaking space for empty slots)
     prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
     curr_vis = _escape_html(data['cluster_glyph'])
     next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
 
     html = f"""
-    <div class="inspector-layout">
-        <div class="inspector-glyph-box">
-            
-            <div class="inspector-context-strip">
-                <div class="ctx-item ctx-faint">{prev_vis}</div>
-                <div class="ctx-item ctx-focus">{curr_vis}</div>
-                <div class="ctx-item ctx-faint">{next_vis}</div>
-            </div>
-            
+    <div class="inspector-layout-v3">
+        
+        <div class="col-context col-prev">
+            <div class="ctx-label">PREV</div>
+            <div class="ctx-glyph">{prev_vis}</div>
+        </div>
+
+        <div class="col-target">
             <div class="inspector-glyph">{curr_vis}</div>
             <div class="inspector-codepoint">{data['cp_hex_base']}</div>
             <div class="inspector-badges">{badge_html}</div>
         </div>
+
+        <div class="col-context col-next">
+            <div class="ctx-label">NEXT</div>
+            <div class="ctx-glyph">{next_vis}</div>
+        </div>
         
-        <div class="inspector-details">
-            <div class="inspector-header">{data['name_base']} <span class="sub-header">(Cluster Base)</span></div>
+        <div class="col-identity">
+            <div class="inspector-header">{data['name_base']}</div>
             
             <div class="inspector-grid-compact">
                 <div><span class="label">Block:</span> {data['block']}</div>
@@ -4859,7 +4860,7 @@ def render_inspector_panel(data):
                 <div><span class="label">Age:</span> {data['age']}</div>
             </div>
             
-            <div class="inspector-grid-compact" style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed var(--color-border-light);">
+            <div class="inspector-grid-compact" style="margin-top:0.75rem; padding-top:0.5rem; border-top:1px dashed var(--color-border-light);">
                 <div><span class="label">Line Brk:</span> {data['line_break']}</div>
                 <div><span class="label">Word Brk:</span> {data['word_break']}</div>
             </div>
@@ -4867,18 +4868,26 @@ def render_inspector_panel(data):
             {confusable_html}
         </div>
 
-        <div class="inspector-structure">
-            <div class="structure-table-wrapper">
-                <table class="structure-table">
-                    <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
-                    <tbody>{comp_rows}</tbody>
-                </table>
+        <div class="col-data">
+            <div class="structure-section">
+                <div class="section-label">CLUSTER COMPONENTS</div>
+                <div class="structure-table-wrapper">
+                    <table class="structure-table">
+                        <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
+                        <tbody>{comp_rows}</tbody>
+                    </table>
+                </div>
             </div>
-            <div class="inspector-bytes-mini">
-                <div><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
-                <div><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
+            
+            <div class="bytes-section">
+                <div class="section-label">FORENSIC BYTES</div>
+                <div class="byte-grid">
+                    <div><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
+                    <div><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
+                </div>
             </div>
         </div>
+
     </div>
     """
     panel.innerHTML = html
