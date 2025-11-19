@@ -4625,8 +4625,9 @@ def render_toc_counts(counts):
 @create_proxy
 def inspect_character(event):
     """
-    Called on 'selectionchange'. Inspects the GRAPHEME CLUSTER under the cursor.
-    Upgrade: Now cluster-aware. Detects Zalgo stacks, Emoji sequences, and combining marks.
+    Forensic Inspector v2.0: Cluster-Aware & Risk-Integrated.
+    Snaps cursor to Grapheme Cluster. Decomposes into atoms.
+    Flags Zalgo, Confusables, Invisibles, and Bidi risks.
     """
     try:
         text_input = document.getElementById("text-input")
@@ -4647,11 +4648,12 @@ def inspect_character(event):
             render_inspector_panel(None)
             return
 
-        # 2. Map DOM Index -> Python Index (The Bridge)
+        # 2. Map DOM Index -> Python Index (Verified Working)
         python_idx = 0
         utf16_accum = 0
         found = False
         
+        # Stop exactly when we hit the cursor
         for i, ch in enumerate(text):
             if utf16_accum == dom_pos:
                 python_idx = i
@@ -4667,42 +4669,35 @@ def inspect_character(event):
              render_inspector_panel(None)
              return
 
-        # 3. GRAPHEME CLUSTER DISCOVERY (The Upgrade)
-        # We need to find which cluster 'python_idx' belongs to.
-        # Efficient method: Segment text, find the segment containing index.
-        
-        # Note: For massive text, re-segmenting everything on click is slow.
-        # Optimization: Scan backwards/forwards from python_idx to find boundaries.
-        # Since we rely on Intl.Segmenter in JS, we'll do a constrained search or 
-        # just use the segmenter if text is small (<50k). 
-        # For Stage 1 robustness, we'll use the Python logic to iterate segments 
-        # until we hit our index.
-        
+        # 3. GRAPHEME CLUSTER DISCOVERY (The Fix)
+        # Robust "Find Containing Segment" logic
         segments_iter = GRAPHEME_SEGMENTER.segment(text)
         target_cluster = None
-        cluster_start_idx = 0
+        current_cp_idx = 0
         
-        # Iterate JS segments to find the containing one
         for seg in segments_iter:
             seg_str = seg.segment
-            seg_len = len(seg_str) # Python length (code points)
-            seg_end_idx = cluster_start_idx + seg_len
+            seg_len = len(seg_str)
+            seg_end = current_cp_idx + seg_len
             
-            if cluster_start_idx <= python_idx < seg_end_idx:
+            if current_cp_idx <= python_idx < seg_end:
                 target_cluster = seg_str
                 break
             
-            cluster_start_idx = seg_end_idx
+            current_cp_idx = seg_end
             
         if not target_cluster:
-            # Fallback (shouldn't happen unless index out of bounds)
-            target_cluster = text[python_idx]
+            target_cluster = text[python_idx] if python_idx < len(text) else ""
+
+        if not target_cluster:
+             render_inspector_panel(None)
+             return
 
         # 4. Cluster Analysis
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
-        # A. Structure Breakdown
+        # Structure Breakdown & Zalgo Scan
         components = []
         zalgo_score = 0
         
@@ -4721,16 +4716,14 @@ def inspect_character(event):
                 'is_base': not is_mark
             })
 
-        # B. Forensic Byte View (Of the whole cluster)
+        # Bytes (Forensic Truth)
         utf8_bytes = target_cluster.encode("utf-8")
         utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
         utf16_bytes = target_cluster.encode("utf-16-be")
         utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
 
-        # C. Risk Analysis
+        # Risk Analysis
         confusables_map = DATA_STORES.get("Confusables", {})
-        
-        # Check Base Confusability
         skeleton = confusables_map.get(cp_base)
         confusable_msg = None
         if skeleton:
@@ -4746,7 +4739,7 @@ def inspect_character(event):
         elif zalgo_score > 0:
             stack_msg = f"Sequence ({zalgo_score} marks)"
 
-        # D. Build Data Payload
+        # Data Payload
         data = {
             "cluster_glyph": target_cluster,
             "cluster_len": len(target_cluster),
@@ -4772,7 +4765,7 @@ def inspect_character(event):
             "confusable": confusable_msg,
             "is_invisible": is_invisible,
             "stack_msg": stack_msg,
-            "components": components # List of dicts for the table
+            "components": components
         }
         
         render_inspector_panel(data)
@@ -4784,7 +4777,7 @@ def inspect_character(event):
 def render_inspector_panel(data):
     """
     Renders the Cluster-Aware Inspector.
-    Layout: Cluster Glyph | Identity | Breakdown Table | Bytes
+    Layout: Cluster Visual | Identity & Props | Structure Table & Bytes
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4797,7 +4790,7 @@ def render_inspector_panel(data):
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    # Badges
+    # Badges Logic
     badges = []
     if data['is_invisible']: 
         badges.append('<span class="legend-badge legend-badge-danger">INVISIBLE</span>')
