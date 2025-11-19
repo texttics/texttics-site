@@ -4780,8 +4780,8 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v5.0: 7-Column Grid with Dedicated Alert Channel.
-    Cols: [Prev] [Target] [Next] | [Identity] | [ALERTS] | [Structure] | [Bytes]
+    Forensic Layout v6.0: Restored Design + Left-Side Risk.
+    Cols: [Prev] [Target] [Next] [RISK] [Identity] [Structure] [Bytes]
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4797,7 +4797,6 @@ def render_inspector_panel(data):
     # --- BUILD ALERTS COLUMN ---
     alerts_html_parts = []
     
-    # 1. Invisible Badge
     if data['is_invisible']: 
         alerts_html_parts.append(
             '<div class="legend-badge legend-badge-danger">'
@@ -4805,7 +4804,6 @@ def render_inspector_panel(data):
             '</div>'
         )
 
-    # 2. Stacking Badge
     if data['stack_msg']:
         sev = "danger" if "Heavy" in data['stack_msg'] else "suspicious"
         icon = "📶" if sev == "danger" else "⚠️"
@@ -4815,7 +4813,6 @@ def render_inspector_panel(data):
             f'</div>'
         )
     
-    # 3. Confusable Warning
     if data['confusable']:
         alerts_html_parts.append(
             '<div class="legend-badge legend-badge-high" title="Potential Homoglyph">'
@@ -4823,12 +4820,12 @@ def render_inspector_panel(data):
             '</div>'
         )
 
-    # If no alerts, show a "Clean" state or empty
     alerts_html = "".join(alerts_html_parts)
+    # Keep column empty if no risks, but maintain layout
     if not alerts_html:
-        alerts_html = '<div style="opacity:0.3; font-size:2rem;">✓</div>'
+         alerts_html = '<div style="opacity:0.2; font-size:1.5rem;">🛡️</div>'
 
-    # --- BUILD IDENTITY COLUMN (Removed Confusable text from here) ---
+    # --- BUILD IDENTITY COLUMN ---
     identity_html = f"""
         <div class="inspector-header">{data['name_base']}</div>
         <div class="inspector-grid-compact">
@@ -4879,13 +4876,13 @@ def render_inspector_panel(data):
             <div class="ctx-glyph">{next_vis}</div>
         </div>
         
+        <div class="col-alerts">
+            <div class="section-label">RISK</div>
+            {alerts_html}
+        </div>
+        
         <div class="col-identity">
             {identity_html}
-        </div>
-
-        <div class="col-alerts">
-            <div class="section-label" style="background:none; border:none; margin-bottom:0.5rem;">RISK</div>
-            {alerts_html}
         </div>
 
         <div class="col-structure">
@@ -4902,7 +4899,7 @@ def render_inspector_panel(data):
             <div class="section-label">BYTES</div>
             <div class="byte-grid">
                 <div><span class="label">UTF-8:</span><br>{data['utf8']}</div>
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;"><span class="label">UTF-16:</span><br>{data['utf16']}</div>
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1;"><span class="label">UTF-16:</span><br>{data['utf16']}</div>
             </div>
         </div>
 
