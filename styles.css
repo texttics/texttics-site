@@ -783,7 +783,9 @@ Stage 2: Heatmap Row Classes
      7. Bytes (220px) - Restored Width
   */
   grid-template-columns: 60px 180px 60px 110px 1fr 300px 220px;
-  
+  /* THE FIX: This tells the grid "You cannot grow taller than your container".
+     Without this, the row grows to fit the Zalgo text, so 'overflow' never triggers. */
+  grid-template-rows: minmax(0, 1fr);
   /* 2. Make the grid fill the constrained box */
   height: 100%;
   width: 100%;
@@ -822,12 +824,8 @@ Stage 2: Heatmap Row Classes
 .col-target {
   background-color: var(--color-white);
   border-right: 1px solid var(--color-border-light);
-  position: relative;
-  
-  /* Flex Container Logic */
   display: flex;
   flex-direction: column;
-  align-items: stretch;
   
   /* 3. Force this column to respect the grid height */
   height: 100%;
@@ -868,8 +866,11 @@ Stage 2: Heatmap Row Classes
 
 .inspector-codepoint {
   /* 6. Pinned label stays outside the scroll area */
-  margin-bottom: 8px;
-  margin-top: 4px;
+  /* Pinned below the viewport */
+  margin: 4px 0 8px;
+  align-self: center;
+  flex-shrink: 0;
+  
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-primary);
@@ -878,10 +879,6 @@ Stage 2: Heatmap Row Classes
   border: 1px solid var(--color-border-light);
   padding: 2px 6px;
   border-radius: 4px;
-  
-  align-self: center; /* Center horizontally */
-  flex-shrink: 0;    /* Never shrink */
-  z-index: 2;
 }
 
 /* --- Col 4: RISK (New Column) --- */
