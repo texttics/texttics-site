@@ -118,8 +118,8 @@ Column 1: Sticky Jump List (Nav)
 --- */
 .jump-list {
   position: sticky;
-  top: var(--spacing-8); /* Sticks below masthead (if masthead were sticky) */
-  align-self: start; /* Aligns to the top of the grid cell */
+  top: var(--spacing-8); /* Sticks below masthead */
+  align-self: start;
   max-height: calc(100vh - var(--spacing-8) * 2);
   overflow-y: auto;
 }
@@ -132,27 +132,27 @@ Column 1: Sticky Jump List (Nav)
 
 .jump-list a {
   display: flex;
-  flex-direction: column; /* Stack children vertically */
-  align-items: flex-start; /* Align text to the left */
+  flex-direction: column; 
+  align-items: flex-start;
   text-decoration: none;
   color: var(--color-text-muted);
   padding: var(--spacing-2) var(--spacing-3);
   border-radius: var(--radius-sm);
   transition: all 0.2s;
-  line-height: 1.3; /* Tighter line-height for the two rows */
+  line-height: 1.3; 
 }
 
 .jump-list-title {
   font-weight: 500;
-  font-size: 0.95rem; /* Make the main title distinct */
-  color: var(--color-text); /* Make the main title darker */
+  font-size: 0.95rem; 
+  color: var(--color-text); 
 }
 
 .jump-list-subtitle {
   font-weight: 400;
   font-size: 0.85rem;
-  color: var(--color-text-muted); /* Muted gray for "Profile" */
-  display: flex; /* Use flex to align the badge */
+  color: var(--color-text-muted);
+  display: flex; 
   align-items: center;
 }
 
@@ -169,7 +169,7 @@ Column 1: Sticky Jump List (Nav)
   padding: 2px 8px;
   border-radius: 12px;
   flex-shrink: 0;
-  margin-left: var(--spacing-2); /* Add margin back */
+  margin-left: var(--spacing-2); 
 }
 
 .jump-list a:hover .jump-list-title,
@@ -193,6 +193,9 @@ Column 2: Main Analysis Content
   margin-bottom: var(--spacing-4);
   padding-bottom: var(--spacing-2);
   border-bottom: 1px solid var(--color-border-light);
+  display: flex; /* For copy button alignment */
+  justify-content: space-between;
+  align-items: center;
 }
 .subsection-title {
   font-size: 1rem;
@@ -241,47 +244,47 @@ Group 1: Control Plane
 
 /* --- Control Plane Buttons --- */
 .control-buttons-container {
-  display: flex; /* Arranges buttons in a row */
-  gap: 0.75rem; /* Adds space *between* buttons */
-  margin: 0.5rem 0 1rem 0; /* Adds space above/below the button bar */
+  display: flex; 
+  gap: 0.75rem; 
+  margin: 0.5rem 0 1rem 0; 
 }
 
-/* This is your modified class */
 .tool-btn {
-  /* --- Core Layout (New) --- */
-  /* flex: 1; We no longer need this by default */
-  justify-content: center; /* Centers content */
+  /* Core Layout */
+  display: flex;
+  align-items: center;
+  justify-content: center; 
+  gap: var(--spacing-2);
   
-  /* --- Increased Size (Modified) --- */
-  font-size: 0.9rem; /* Slightly larger text */
-  padding: 0.65rem 1rem; /* Increased padding for a 'reputable' feel */
+  /* Typography & Size */
+  font-size: 0.9rem; 
+  font-weight: 600;
+  padding: 0.65rem 1rem; 
 
-  /* --- Your Existing Styles (Kept) --- */
+  /* Colors */
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  font-weight: 600;
+  
+  /* Interactive */
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
 }
 
 .tool-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background-color: #eff6ff; /* Light blue tint */
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: #eff6ff; /* Light blue tint */
 }
 
 .tool-btn:active {
-  transform: translateY(1px);
+  transform: translateY(1px);
 }
 .tool-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  background-color: var(--border-color);
+  background-color: var(--color-border);
 }
 
 /* ---
@@ -452,11 +455,6 @@ Responsive Design
 /* ---
 Section Header & Copy Button
 --- */
-.section-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 
 .copy-btn {
   font-size: 1rem;
@@ -534,70 +532,70 @@ Group 3: Threat-Hunting
 Legends & Badges
 --- */
 .legend {
-  margin-top: -0.5rem; /* Pulls it closer to the title */
-  margin-bottom: 1.25rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
+  margin-top: -0.5rem; /* Pulls it closer to the title */
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
 }
 
 .legend-label {
-  font-weight: 600;
-  margin-right: 0.25rem;
+  font-weight: 600;
+  margin-right: 0.25rem;
 }
 
 /* For Emoji Profile */
 .legend-pill {
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  font-size: 0.75rem;
-  white-space: nowrap;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 .legend-pill-ok {
-  border-color: #a7f3d0; /* green-200 */
-  background-color: #f0fdf4; /* green-50 */
-  color: #065f46; /* green-800 */
+  border-color: #a7f3d0; /* green-200 */
+  background-color: #f0fdf4; /* green-50 */
+  color: #065f46; /* green-800 */
 }
 .legend-pill-warn {
-  border-color: #fde68a; /* yellow-200 */
-  background-color: #fefce8; /* yellow-50 */
-  color: #854d0e; /* yellow-800 */
+  border-color: #fde68a; /* yellow-200 */
+  background-color: #fefce8; /* yellow-50 */
+  color: #854d0e; /* yellow-800 */
 }
 .legend-pill-neutral {
-  border-color: #e5e7eb; /* gray-200 */
-  background-color: #f9fafb; /* gray-50 */
-  color: #374151; /* gray-700 */
+  border-color: #e5e7eb; /* gray-200 */
+  background-color: #f9fafb; /* gray-50 */
+  color: #374151; /* gray-700 */
 }
 
 /* For Threat Profile */
 .legend-badge {
-  padding: 0.1rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  border: 1px solid;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid;
 }
 .legend-badge-danger {
-  background-color: #fef2f2; /* red-50 */
-  color: #b91c1c; /* red-700 */
-  border-color: #fca5a5; /* red-300 */
+  background-color: #fef2f2; /* red-50 */
+  color: #b91c1c; /* red-700 */
+  border-color: #fca5a5; /* red-300 */
 }
 .legend-badge-high {
-  background-color: #fffbeb; /* yellow-50 */
-  color: #b45309; /* amber-700 */
-  border-color: #fcd34d; /* yellow-300 */
+  background-color: #fffbeb; /* yellow-50 */
+  color: #b45309; /* amber-700 */
+  border-color: #fcd34d; /* yellow-300 */
 }
 .legend-badge-suspicious {
-  background-color: #eff6ff; /* blue-50 */
-  color: #1e40af; /* blue-800 */
-  border-color: #bfdbfe; /* blue-200 */
+  background-color: #eff6ff; /* blue-50 */
+  color: #1e40af; /* blue-800 */
+  border-color: #bfdbfe; /* blue-200 */
 }
 /* NEW: Style for the RGI/Component summary line */
 .emoji-summary {
@@ -622,31 +620,23 @@ Stage 2: Heatmap Row Classes
   transition: background-color 0.3s ease-in-out;
 }
 
-/* Normal / Baseline
-  No special styling, just the default.
-*/
+/* Normal / Baseline */
 .heatmap-normal {
   /* No change */
 }
 
-/* Low Anomaly (Z-Score > 1.5)
-  A subtle, non-intrusive yellow.
-*/
+/* Low Anomaly */
 .heatmap-low {
   background-color: #FFFBEA; /* Light yellow */
 }
 
-/* High Anomaly (Z-Score > 3.0)
-  A clear orange warning.
-*/
+/* High Anomaly */
 .heatmap-high {
   background-color: #FFF3E0; /* Light orange */
   font-weight: bold;
 }
 
-/* Critical Threat (Critical Flags > 0)
-  A high-alert, unambiguous red. This overrides all other styles.
-*/
+/* Critical Threat */
 .heatmap-critical {
   background-color: #FFEBEE; /* Light red */
   color: #B71C1C; /* Dark red text for high contrast */
@@ -656,7 +646,7 @@ Stage 2: Heatmap Row Classes
 
 /* --- Character Inspector Panel --- */
 
-/* Wrapper: no border, just radius for clipping */
+/* Wrapper */
 #inspector-panel-wrapper {
   margin-top: 0.75rem;
   border: none;
@@ -664,16 +654,14 @@ Stage 2: Heatmap Row Classes
   background-color: transparent;
 }
 
-/* Header bar of the inspector */
-
-/* Header: looks like a section heading, no top line */
+/* Header */
 #inspector-panel-wrapper h3 {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--color-text);
   background-color: transparent;
-  border: none;                       /* no lines at all */
+  border: none;
 }
 
 /* Body of the inspector */
@@ -685,26 +673,23 @@ Stage 2: Heatmap Row Classes
   font-size: 0.9rem;
   line-height: 1.6;
   overflow-x: auto;
-  background-color: var(--color-bg); /* keep the data area as a card */
-  height: 150px;
+  background-color: var(--color-bg);
+  min-height: 150px; /* CHANGED: min-height instead of height */
   box-sizing: border-box;
-  /* flexbox: column = vertical axis, so justify-content controls vertical centering */
   display: flex;
   flex-direction: column;
-  justify-content: center;   /* vertical centering */
-  align-items: flex-start;   /* keep text left-aligned */
+  justify-content: center;   
+  align-items: flex-start;   
 }
 
-
-/* Initial “click within the text input…” helper text */
+/* Helper text */
 #inspector-panel-content > p {
   margin: 0;
   color: var(--color-text-muted);
-  justify-content: center;     
-  align-items: flex-start;
+  align-self: center; /* Center the helper text specifically */
 }
 
-/* Big inspected glyph (the actual character, e.g. "e") */
+/* Big inspected glyph */
 #inspector-panel-content .inspector-glyph {
   font-size: 5rem;
   line-height: 2;
@@ -712,10 +697,10 @@ Stage 2: Heatmap Row Classes
   margin: 0 0 0.75rem;
 }
 
-/* 2-row horizontal layout for dt/dd pairs */
+/* Data Grid */
 #inspector-panel-content .inspector-grid {
   display: grid;
-  grid-auto-flow: column;                  /* one column per property */
+  grid-auto-flow: column;
   grid-auto-columns: minmax(150px, 1fr);
   column-gap: 1rem;
   row-gap: 0.25rem;
@@ -723,7 +708,7 @@ Stage 2: Heatmap Row Classes
   margin: 0;
   padding: 0;
   list-style: none;
-  min-width: max-content;                  /* keep the header row in one line */
+  min-width: max-content;
 }
 
 #inspector-panel-content .inspector-grid dt,
@@ -731,7 +716,6 @@ Stage 2: Heatmap Row Classes
   margin: 0;
 }
 
-/* Row 1: property labels */
 #inspector-panel-content .inspector-grid dt {
   grid-row: 1;
   font-size: 1rem;
@@ -740,29 +724,22 @@ Stage 2: Heatmap Row Classes
   color: var(--color-text-muted);
 }
 
-/* Row 2: values – framed like tiny cards */
 #inspector-panel-content .inspector-grid dd {
   grid-row: 2;
   font-size: 0.9rem;
   color: var(--color-text);
   white-space: nowrap;
-
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 0.35rem 0.6rem;
   background-color: var(--color-white);
 }
 
-
-
-/* On narrow screens – fall back to single column */
 @media (max-width: 800px) {
   #inspector-panel-content .inspector-grid {
     grid-template-columns: 1fr;
   }
 }
-
-
 
 /* --- Macro Analysis Control --- */
 .macro-analysis-control {
@@ -772,13 +749,11 @@ Stage 2: Heatmap Row Classes
   border-radius: var(--radius);
   background: var(--color-bg);
   align-items: center;
-  
   display: flex;
-  flex-direction: column; /* Stack button on top of text */
+  flex-direction: column;
   gap: 0.75rem;
 }
 
-/* Make the button itself full width */
 .macro-analysis-control .tool-btn {
   flex-grow: 1;
   border-color: var(--color-border);
@@ -810,30 +785,26 @@ Stage 2: Heatmap Row Classes
 
 
 /* =========================================
-   Status Bar: layout + left/right frames
+   Status Bar
    ========================================= */
 
-/* Row directly under the textarea, full width */
 .status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;  /* left card vs right card */
+  justify-content: space-between;
   width: 100%;
   margin-top: 1rem;
   gap: 0.75rem;
 }
 
-/* Left card: "Status: Ready." */
 .status-bar-left {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: 0.6rem;
-
   font-size: 0.9rem;
   color: var(--color-text-muted);
-
-  background-color: var(--color-bg);     /* same as page, but framed */
+  background-color: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 0.4rem 0.9rem 0.4rem 0.6rem;
@@ -841,14 +812,12 @@ Stage 2: Heatmap Row Classes
   text-align: left;
 }
 
-/* “Status:” label – a bit stronger */
 .status-bar-left strong {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--color-text);
 }
 
-/* Value pill */
 #status-line {
   font-size: 0.9rem;
   padding: 2px 8px;
@@ -858,37 +827,32 @@ Stage 2: Heatmap Row Classes
   border: 1px solid transparent;
 }
 
-/* State colors */
 #status-line.status-loading {
   color: var(--color-text-muted);
   background-color: var(--color-border-light);
 }
-
 #status-line.status-ready {
-  color: #065f46;          /* dark green */
+  color: #065f46; /* dark green */
   background-color: #f0fdf4;
   border-color: #a7f3d0;
 }
-
 #status-line.status-error {
   color: #991b1b;
   background-color: #fef2f2;
   border-color: #fca5a5;
 }
 
-/* Right card: frame for the Reveal button */
 .status-bar-right {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-
   background-color: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 0.25rem 0.4rem;
 }
 
-/* Button inside the right card – remove its own frame, keep typography */
+/* Ensure the button inside the status bar looks correct */
 .status-bar-right .tool-btn {
   border: none;
   background: transparent;
@@ -896,95 +860,60 @@ Stage 2: Heatmap Row Classes
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--color-text-muted);
+  box-shadow: none; /* Remove any button shadow if applied globally */
 }
 
-/* Optional hover tweak so it still feels clickable */
 .status-bar-right .tool-btn:hover {
-  color: var(--color-primary);
+  color: var(--color-primary-focus);
+  background-color: transparent; /* Don't add the blue tint here */
   cursor: pointer;
-  color: var(--color-primary-focus);
-}
-
-/* --- Collapsible Profile Styling --- */
-
-/* The clickable summary header */
-details.profile-section > summary {
-  cursor: pointer; /* This adds the "hand" cursor on hover */
-}
-
-/* Hide default triangle (Chrome, Safari, Edge) */
-details.profile-section > summary::-webkit-details-marker {
-  display: none;
-}
-
-
-/* When the <details> element is open, rotate the indicator */
-details[open].profile-section > summary::before {
-  transform: rotate(90deg); /* Point the chevron down */
-}
-
-/* Optional: Add a subtle hover effect for feedback */
-details.profile-section > summary:hover {
-  color: var(--color-primary-focus);
 }
 
 /* --- Repertoire Card Styling --- */
 
-/* 1. Make the new repertoire card a layout container */
 .card.card-repertoire {
-  position: relative; /* Allows absolute positioning for the badge */
-  padding-bottom: 2rem; /* Add more bottom padding to fit the badge */
+  position: relative; 
+  padding-bottom: 2rem; 
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
-/* 2. Style the main count (the number) */
 .card-main-value {
-  font-size: 2rem; /* Make the number large */
+  font-size: 2rem; 
   font-weight: 600;
-  color: #0d6efd; /* Your app's primary blue color */
+  color: #0d6efd; 
   line-height: 1.2;
   margin-top: 0.5rem;
 }
 
-/* 3. Style the "Fully" badge */
 .card-badge-full {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  
-  font-size: 0.25rem;
+  font-size: 0.75rem; /* FIXED: was 0.25rem which is too small */
   font-weight: 300;
-  color: #198754; /* Green */
-  background-color: #e9f7ef; /* Light green */
+  color: #198754; 
+  background-color: #e9f7ef; 
   padding: 1px 4px;
   border-radius: 4px;
 }
 
-/* 4. Style the percentage badge */
 .card-percentage {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  
-  font-size: 0.25rem;
+  font-size: 0.75rem; /* FIXED: was 0.25rem */
   font-weight: 300;
-  color: #6c757d; /* Muted grey */
-  background-color: #f8f9fa; /* Light grey */
+  color: #6c757d; 
+  background-color: #f8f9fa; 
   padding: 1px 4px;
   border-radius: 4px;
   border: 1px solid #e9ecef;
 }
 
-/* 5. Override default card layout for the new structure */
-/* The original cards are simple flex, we need to adjust */
-.card.card-repertoire {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start; /* Align title and count to the left */
-}
-
 /* --- Integrity Badge Styling --- */
 
-/* Base class for all badges */
 .integrity-badge {
   font-size: 0.7rem;
   font-weight: 600;
@@ -992,24 +921,23 @@ details.profile-section > summary:hover {
   border-radius: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  display: inline-block;
 }
 
-/* OK / Good / Yes */
 .integrity-badge-ok {
-  color: #198754; /* Green */
+  color: #198754; 
   background-color: #e9f7ef;
 }
 
-/* Warning / No */
 .integrity-badge-warn {
-  color: #ffc107; /* Yellow/Orange */
+  color: #ffc107; 
   background-color: #fff9e6;
   border: 1px solid #ffecb3;
 }
 
-/* Critical / Danger */
 .integrity-badge-crit {
-  color: #dc3545; /* Red */
+  color: #dc3545; 
   background-color: #fdebee;
 }
 
@@ -1034,31 +962,21 @@ details.profile-section > summary:hover {
     color: var(--color-white);
     border-bottom: none;
     border-radius: 2px;
-    cursor: zoom-in; /* <--- The Forensic Magnifying Glass */
+    cursor: zoom-in; 
 }
 
-/* Visually distinct focus state for accessibility */
 .pos-link:focus {
     outline: 2px solid var(--color-primary-focus);
     outline-offset: 1px;
 }
 
-/* --- Integrity Badges & Rows --- */
-
-.integrity-badge {
-  white-space: nowrap; /* Prevents "NOTICE (SCORE: 3)" from breaking */
-  display: inline-block;
-  padding: 0.15rem 0.6rem;
-}
-
 /* Row Styling for the "Integrity Level" Header */
-/* These make the top row look like a summary header */
 tr.flag-row-ok {
-  background-color: #f0fdf4; /* Light Green */
+  background-color: #f0fdf4; 
 }
 tr.flag-row-warn {
-  background-color: #fffbeb; /* Light Yellow */
+  background-color: #fffbeb; 
 }
 tr.flag-row-crit {
-  background-color: #fef2f2; /* Light Red */
+  background-color: #fef2f2; 
 }
