@@ -3141,36 +3141,33 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
                 if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
 
-                # --- [NEW] 17.0 THREAT: Sibe Quote / Syntax VS Attack ---
-                # Detects Variation Selectors on Syntax (Punctuation/Symbols).
-                # CRITICAL UPGRADE: Must exclude valid Emoji sequences (Symbol + VS15/16)
-                # to avoid massive false positives on things like '❤️' (U+2764 + U+FE0F).
+                # --- 17.0 Syntax Spoofing & Sibe Quotes ---
+                # Detects Variation Selectors attached to Syntax (Punctuation, Symbols, Separators).
+                # Covers: Sibe Quotes (Quote+VS3), Math Obfuscation, and Space+VS trim bypass.
+                # CRITICAL: Must strictly exempt valid VS15/VS16 Emoji sequences to avoid false positives.
                 if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
                     if i > 0:
                         prev_char = js_array[i-1]
                         prev_cp = ord(prev_char)
-                        prev_cat = unicodedata.category(prev_char) # e.g. 'So', 'Po'
+                        prev_cat = unicodedata.category(prev_char) # e.g. 'Po', 'Sm', 'Zs'
                         
                         # Target: Punctuation (P), Symbols (S), Separators (Z)
                         if prev_cat[0] in ('P', 'S', 'Z'):
                             
-                            # 1. CHECK EXEMPTION: Is this a valid Emoji sequence?
-                            # Emojis are 'So'. We allow them ONLY if the VS is VS15 (Text) or VS16 (Emoji).
-                            # (Sibe Quotes use VS3, so they will fail this check and get caught).
-                            
+                            # 1. CHECK EXEMPTION: Valid Emoji Presentation Sequence?
+                            # Rule: Base must be Emoji/Pictographic AND VS must be VS15/VS16.
                             is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
                                             _find_in_ranges(prev_cp, "Extended_Pictographic")
                             
-                            # VS15 (FE0E) and VS16 (FE0F) are standard for emoji presentation
                             is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
                             
                             if is_emoji_base and is_pres_selector:
-                                pass # SAFE: Standard emoji presentation
+                                pass # SAFE: Standard, RGI-compliant presentation (e.g. ❤️)
                             else:
-                                # DANGER: 
-                                # 1. It's a Symbol/Punctuation but NOT an emoji base.
-                                # 2. OR it IS an emoji base but using a weird VS (like VS1 or VS3).
-                                # This catches the Sibe Quote (Quote + VS3) and Math Obfuscation.
+                                # DANGER DETECTED:
+                                # Case A: Syntax + VS (e.g. " + VS3) -> Sibe Quote Attack
+                                # Case B: Space + VS (e.g. ' ' + VS1) -> Trim Bypass
+                                # Case C: Emoji + Bad VS (e.g. 😈 + VS1) -> Steganography/Obfuscation
                                 legacy_indices["suspicious_syntax_vs"].append(i)
 
                 # --- Identifiers ---
