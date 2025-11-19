@@ -4049,8 +4049,8 @@ def compute_threat_analysis(t: str):
         'raw': t, 'nfkc': nf_string, 'nfkc_cf': nf_casefold_string, 'skeleton': skeleton_string
     }
     
-def render_threat_analysis(threat_results):
-    """Renders the Group 3 Threat-Hunting results with Nested Ledger (3-Col)."""
+def render_threat_analysis(threat_results, text_context=None):
+    """Renders the Group 3 Threat-Hunting results."""
     
     flags = threat_results.get('flags', {})
     html_rows = []
@@ -4128,14 +4128,14 @@ def render_threat_analysis(threat_results):
         del flags_copy[threat_level_key]
         flags = flags_copy
     
-    # (Pass text_context to the matrix renderer)
+    # Pass text_context to the matrix renderer
     render_matrix_table(flags, "threat-report-body", has_positions=True, text_context=text_context)
     
     if html_rows:
         existing_html = document.getElementById("threat-report-body").innerHTML
         document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
 
-    # (Keep standard Hashes & Report rendering logic below...)
+    # Hashes
     hashes = threat_results.get('hashes', {})
     hash_html = []
     if hashes:
@@ -4145,6 +4145,7 @@ def render_threat_analysis(threat_results):
     else:
         document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
 
+    # HTML Report (PVR)
     html_report = threat_results.get('html_report', "")
     report_el = document.getElementById("confusable-diff-report")
     
@@ -4461,7 +4462,7 @@ def render_integrity_matrix(rows, text_context=None):
         tr = document.createElement("tr")
         
         if row["label"] == INTEGRITY_KEY:
-            # ... (Score Row logic remains identical) ...
+            # --- SCORE & LEDGER ROW ---
             tr.className = f"flag-row-{row['severity']}"
             tr.style.borderBottom = "2px solid var(--color-border)"
             
@@ -4482,7 +4483,6 @@ def render_integrity_matrix(rows, text_context=None):
             ledger_data = row.get("ledger", [])
             
             if ledger_data:
-                # ... (Ledger building logic remains identical) ...
                 details = document.createElement("details")
                 details.className = "threat-ledger-details"
                 summary = document.createElement("summary")
@@ -4532,6 +4532,7 @@ def render_integrity_matrix(rows, text_context=None):
             tr.appendChild(td_ledger)
             
         else:
+            # --- STANDARD ROW ---
             if row["severity"] == "crit": tr.classList.add("flag-row-critical")
             
             th = document.createElement("th")
@@ -4555,7 +4556,6 @@ def render_integrity_matrix(rows, text_context=None):
             
             if raw_positions:
                 # --- INDEXING PATCH: Manual HTML injection for Positions ---
-                # We build the string of links manually to use text_context
                 pos_links = [_create_position_link(p, text_context) for p in raw_positions]
                 
                 if len(pos_links) > 5:
