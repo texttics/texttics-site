@@ -943,16 +943,32 @@ ALIASES = {
 }
 
 CCC_ALIASES = {
-    # Full list is long, these are the most common "Zalgo" ones
+    "0": "Not Reordered",
     "1": "Overlay",
-    "218": "Double Below",
-    "220": "Attached Below",
-    "222": "Attached Below Left",
-    "228": "Attached Above Right",
-    "230": "Attached Above",
-    "232": "Attached Above Left",
-    "233": "Below",
-    "234": "Above",
+    "7": "Nukta",
+    "8": "Kana Voicing",
+    "9": "Virama",
+
+    # Range markers (rarely, if ever, seen in real text)
+    "10": "Start of fixed-position classes",
+    "199": "End of fixed-position classes",
+    
+    # Fixed Position Classes
+    "200": "Attached Below Left",
+    "202": "Attached Below",
+    "214": "Attached Above",
+    "216": "Attached Above Right",
+    "218": "Below Left",
+    "220": "Below",
+    "222": "Below Right",
+    "224": "Left",
+    "226": "Right",
+    "228": "Above Left",
+    "230": "Above",
+    "232": "Above Right",
+    "233": "Double Below",
+    "234": "Double Above",
+    "240": "Iota Subscript"
 }
 
 # 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
