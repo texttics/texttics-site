@@ -4623,38 +4623,31 @@ def render_toc_counts(counts):
 # ---
     
 @create_proxy
-@create_proxy
 def inspect_character(event):
     """
-    Called on 'selectionchange'. Inspects the character under the cursor.
-    Fixes the DOM (UTF-16) to Python (UCS-4) index mismatch.
+    Called on 'selectionchange'. Inspects the GRAPHEME CLUSTER under the cursor.
+    Upgrade: Now cluster-aware. Detects Zalgo stacks, Emoji sequences, and combining marks.
     """
     try:
         text_input = document.getElementById("text-input")
         
         # [IMMUTABLE REVEAL FIX] Guard Clause
-        # If the visual overlay is active, indices are desynchronized.
         if text_input.classList.contains("reveal-active"):
             render_inspector_panel({
                 "error": "<strong>Inspection Paused</strong><br>Visual Reveal is active. Positions are shifted.<br>Edit text or refresh to return to Live Analysis."
             })
             return
 
-        # 1. Get DOM Cursor Position (UTF-16 Units)
+        # 1. Get DOM Cursor Position
         dom_pos = text_input.selectionStart
+        if dom_pos != text_input.selectionEnd: return
         
-        # Only run if selection is a single cursor
-        if dom_pos != text_input.selectionEnd:
-            return
-
         text = text_input.value
         if not text:
             render_inspector_panel(None)
             return
 
-        # 2. Map DOM Index -> Python Index (The Fix)
-        # We must iterate to align the two coordinate systems because
-        # JS counts Emoji as 2, Python counts Emoji as 1.
+        # 2. Map DOM Index -> Python Index (The Bridge)
         python_idx = 0
         utf16_accum = 0
         found = False
@@ -4664,64 +4657,122 @@ def inspect_character(event):
                 python_idx = i
                 found = True
                 break
-            
-            # Advance accumulator based on char width in UTF-16
-            # Astral chars (> 0xFFFF) take 2 units; others take 1.
             utf16_accum += 2 if ord(ch) > 0xFFFF else 1
-            
-            # Safety break if we overshoot
             if utf16_accum > dom_pos:
                 python_idx = i
                 found = True
                 break
         
-        # Handle end-of-string cursor case
         if not found and utf16_accum == dom_pos:
              render_inspector_panel(None)
              return
 
-        # 3. Extract the Character
-        char = text[python_idx]
-        cp = ord(char)
+        # 3. GRAPHEME CLUSTER DISCOVERY (The Upgrade)
+        # We need to find which cluster 'python_idx' belongs to.
+        # Efficient method: Segment text, find the segment containing index.
         
-        # 4. Gather Forensic Data (Risk & Bytes First)
+        # Note: For massive text, re-segmenting everything on click is slow.
+        # Optimization: Scan backwards/forwards from python_idx to find boundaries.
+        # Since we rely on Intl.Segmenter in JS, we'll do a constrained search or 
+        # just use the segmenter if text is small (<50k). 
+        # For Stage 1 robustness, we'll use the Python logic to iterate segments 
+        # until we hit our index.
         
-        # A. Byte Representations (Crucial for Forensics)
-        utf8_bytes = char.encode("utf-8")
+        segments_iter = GRAPHEME_SEGMENTER.segment(text)
+        target_cluster = None
+        cluster_start_idx = 0
+        
+        # Iterate JS segments to find the containing one
+        for seg in segments_iter:
+            seg_str = seg.segment
+            seg_len = len(seg_str) # Python length (code points)
+            seg_end_idx = cluster_start_idx + seg_len
+            
+            if cluster_start_idx <= python_idx < seg_end_idx:
+                target_cluster = seg_str
+                break
+            
+            cluster_start_idx = seg_end_idx
+            
+        if not target_cluster:
+            # Fallback (shouldn't happen unless index out of bounds)
+            target_cluster = text[python_idx]
+
+        # 4. Cluster Analysis
+        base_char = target_cluster[0]
+        cp_base = ord(base_char)
+        
+        # A. Structure Breakdown
+        components = []
+        zalgo_score = 0
+        
+        for ch in target_cluster:
+            cp = ord(ch)
+            cat = unicodedata.category(ch)
+            name = unicodedata.name(ch, "Unknown")
+            is_mark = cat.startswith('M')
+            if is_mark: zalgo_score += 1
+            
+            components.append({
+                'char': ch,
+                'hex': f"U+{cp:04X}",
+                'name': name,
+                'cat': cat,
+                'is_base': not is_mark
+            })
+
+        # B. Forensic Byte View (Of the whole cluster)
+        utf8_bytes = target_cluster.encode("utf-8")
         utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
-        
-        # UTF-16 Hex (Big Endian for reading)
-        utf16_bytes = char.encode("utf-16-be")
+        utf16_bytes = target_cluster.encode("utf-16-be")
         utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
 
-        # B. Security Context
+        # C. Risk Analysis
         confusables_map = DATA_STORES.get("Confusables", {})
-        skeleton = confusables_map.get(cp)
-        confusable_msg = f"Maps to: '{skeleton}' (U+{ord(skeleton[0]):04X})" if skeleton else None
         
-        invisible_mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        # Check Base Confusability
+        skeleton = confusables_map.get(cp_base)
+        confusable_msg = None
+        if skeleton:
+            confusable_msg = f"Base maps to: '{skeleton}' (U+{ord(skeleton[0]):04X})"
+
+        invisible_mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
         is_invisible = bool(invisible_mask & INVIS_ANY_MASK)
         
-        # C. Standard Props
-        minor_cat_abbr = unicodedata.category(char)
-        
+        # Zalgo / Stacking Flag
+        stack_msg = None
+        if zalgo_score >= 3:
+            stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
+        elif zalgo_score > 0:
+            stack_msg = f"Sequence ({zalgo_score} marks)"
+
+        # D. Build Data Payload
         data = {
-            "char": char,
-            "cp_hex": f"U+{cp:04X}",
-            "cp_dec": cp,
-            "name": unicodedata.name(char, "No Name Found"),
-            "block": _find_in_ranges(cp, "Blocks") or "N/A",
-            "script": _find_in_ranges(cp, "Scripts") or "Common",
-            "category": ALIASES.get(minor_cat_abbr, minor_cat_abbr),
-            "bidi": unicodedata.bidirectional(char) or "N/A",
-            "age": _find_in_ranges(cp, "Age") or "N/A",
+            "cluster_glyph": target_cluster,
+            "cluster_len": len(target_cluster),
+            "base_char": base_char,
+            "cp_hex_base": f"U+{cp_base:04X}",
+            "cp_dec_base": cp_base,
+            "name_base": unicodedata.name(base_char, "No Name Found"),
             
-            # Enhanced Forensic Fields
+            # Standard Props (of Base)
+            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
+            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
+            "category": ALIASES.get(unicodedata.category(base_char), unicodedata.category(base_char)),
+            "bidi": unicodedata.bidirectional(base_char) or "N/A",
+            "age": _find_in_ranges(cp_base, "Age") or "N/A",
+            
+            # Segmentation (Restored!)
+            "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
+            "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
+            
+            # Bytes & Risk
             "utf8": utf8_hex,
             "utf16": utf16_hex,
             "confusable": confusable_msg,
             "is_invisible": is_invisible,
-            "html_ent": f"&#{cp};"
+            "stack_msg": stack_msg,
+            "components": components # List of dicts for the table
         }
         
         render_inspector_panel(data)
@@ -4732,8 +4783,8 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Renders the Forensic Character Inspector.
-    Layout: Glyph + Vital Stats + Byte Analysis + Risk Factors.
+    Renders the Cluster-Aware Inspector.
+    Layout: Cluster Glyph | Identity | Breakdown Table | Bytes
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4746,9 +4797,16 @@ def render_inspector_panel(data):
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    # Logic for visual flags (Risk Highlighting)
-    invis_badge = '<span class="legend-badge legend-badge-danger">INVISIBLE</span>' if data['is_invisible'] else ""
+    # Badges
+    badges = []
+    if data['is_invisible']: 
+        badges.append('<span class="legend-badge legend-badge-danger">INVISIBLE</span>')
+    if data['stack_msg']:
+        sev = "danger" if "Heavy" in data['stack_msg'] else "suspicious"
+        badges.append(f'<span class="legend-badge legend-badge-{sev}">{data["stack_msg"].upper()}</span>')
     
+    badge_html = " ".join(badges)
+
     confusable_html = ""
     if data['confusable']:
         confusable_html = f'''
@@ -4758,16 +4816,29 @@ def render_inspector_panel(data):
         </div>
         '''
 
+    # Component Table Rows
+    comp_rows = ""
+    for c in data['components']:
+        is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
+        comp_rows += f"""
+        <tr {is_mark_style}>
+            <td><code class="mini-code">{c['hex']}</code></td>
+            <td>{c['cat']}</td>
+            <td class="truncate-text" title="{c['name']}">{c['name']}</td>
+        </tr>
+        """
+
     html = f"""
     <div class="inspector-layout">
         <div class="inspector-glyph-box">
-            <div class="inspector-glyph">{_escape_html(data['char'])}</div>
-            <div class="inspector-codepoint">{data['cp_hex']}</div>
-            {invis_badge}
+            <div class="inspector-glyph">{_escape_html(data['cluster_glyph'])}</div>
+            <div class="inspector-codepoint">{data['cp_hex_base']}</div>
+            <div class="inspector-badges">{badge_html}</div>
         </div>
         
         <div class="inspector-details">
-            <div class="inspector-header">{data['name']}</div>
+            <div class="inspector-header">{data['name_base']} <span class="sub-header">(Cluster Base)</span></div>
+            
             <div class="inspector-grid-compact">
                 <div><span class="label">Block:</span> {data['block']}</div>
                 <div><span class="label">Script:</span> {data['script']}</div>
@@ -4775,14 +4846,27 @@ def render_inspector_panel(data):
                 <div><span class="label">Bidi:</span> {data['bidi']}</div>
                 <div><span class="label">Age:</span> {data['age']}</div>
             </div>
+            
+            <div class="inspector-grid-compact" style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed var(--color-border-light);">
+                <div><span class="label">Line Brk:</span> {data['line_break']}</div>
+                <div><span class="label">Word Brk:</span> {data['word_break']}</div>
+            </div>
+            
             {confusable_html}
         </div>
 
-        <div class="inspector-bytes">
-            <div class="byte-row"><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
-            <div class="byte-row"><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
-            <div class="byte-row"><span class="label">Decimal:</span> <code>{data['cp_dec']}</code></div>
-            <div class="byte-row"><span class="label">HTML:</span> <code>{data['html_ent']}</code></div>
+        <div class="inspector-structure">
+            <div class="structure-table-wrapper">
+                <table class="structure-table">
+                    <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
+                    <tbody>{comp_rows}</tbody>
+                </table>
+            </div>
+            
+            <div class="inspector-bytes-mini">
+                <div><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
+                <div><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
+            </div>
         </div>
     </div>
     """
