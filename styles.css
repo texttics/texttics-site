@@ -752,17 +752,15 @@ Stage 2: Heatmap Row Classes
   border: none;
 }
 
-/* --- "Best-in-Class" Inspector Layout (Fixed) --- */
+/* --- Cluster-Aware Inspector Layout --- */
 
 #inspector-panel-content {
-  min-height: 140px;
+  min-height: 160px; /* Slightly taller for the table */
   padding: 0;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   overflow: hidden;
-  
-  /* LAYOUT FIX: Center the "Empty State" text by default */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -770,29 +768,17 @@ Stage 2: Heatmap Row Classes
   text-align: center;
 }
 
-/* 1. The Active Grid Layout */
-/* When content is loaded, this div takes over and fills the Flex parent */
+/* Active Grid Layout */
 .inspector-layout {
   display: grid;
-  grid-template-columns: 140px 1fr 220px; /* Glyph | Details | Bytes */
+  grid-template-columns: 150px 1fr 240px; /* Visual | Identity | Structure */
   height: 100%;
-  width: 100%;       /* Force full width inside the Flex parent */
-  flex-grow: 1;      /* Grow to fill height */
-  text-align: left;  /* Reset text alignment for data */
+  width: 100%;
+  flex-grow: 1;
+  text-align: left;
 }
 
-/* 2. Fix the Placeholder Text */
-/* We remove the global dashed border so it looks clean inside this panel */
-#inspector-panel-content .placeholder-text {
-  border: none !important;      /* Remove the "Middle Line" */
-  background: transparent;      /* No background box */
-  margin: 0;
-  padding: 0;
-  font-size: 1rem;
-  color: var(--color-text-muted);
-}
-
-/* 3. The Glyph Box (Visual) */
+/* 1. Glyph Box */
 .inspector-glyph-box {
   background-color: var(--color-bg);
   border-right: 1px solid var(--color-border-light);
@@ -803,29 +789,32 @@ Stage 2: Heatmap Row Classes
   padding: 1rem;
   text-align: center;
 }
-
 .inspector-glyph {
   font-family: var(--font-sans);
-  font-size: 3.5rem;
+  font-size: 3rem;
   line-height: 1;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
-
 .inspector-codepoint {
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-primary);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+.inspector-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-/* 4. The Details (Identity) */
+/* 2. Details Column */
 .inspector-details {
   padding: 1rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
-
 .inspector-header {
   font-size: 1.1rem;
   font-weight: 700;
@@ -834,73 +823,82 @@ Stage 2: Heatmap Row Classes
   border-bottom: 1px solid var(--color-border-light);
   padding-bottom: 0.5rem;
 }
-
-.inspector-grid-compact {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4rem 1rem;
+.sub-header {
+  font-weight: 400;
   font-size: 0.85rem;
-}
-
-.inspector-grid-compact .label {
   color: var(--color-text-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-right: 0.4rem;
+  margin-left: 0.5rem;
 }
 
-.warning-row {
-  margin-top: 0.75rem;
-  padding: 0.4rem;
-  background-color: #fffbeb;
-  border: 1px solid #fcd34d;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  color: #b45309;
-}
-
-/* 5. The Bytes (Forensic) */
-.inspector-bytes {
+/* 3. Structure Column (Right) */
+.inspector-structure {
   background-color: #f8fafc;
   border-left: 1px solid var(--color-border-light);
-  padding: 1rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+  overflow: hidden; /* Contain the table */
 }
 
-.byte-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.structure-table-wrapper {
+  flex-grow: 1;
+  overflow-y: auto; /* Scroll if too many combining marks */
+  border-bottom: 1px solid var(--color-border-light);
+  max-height: 110px;
 }
 
-.byte-row code {
+.structure-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.structure-table th {
+  text-align: left;
+  padding: 4px 8px;
+  background-color: #f1f5f9;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.structure-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--color-border-light);
+  white-space: nowrap;
+}
+.mini-code {
   font-family: var(--font-mono);
-  background-color: var(--color-white);
-  border: 1px solid var(--color-border-light);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--color-text);
+  color: var(--color-text-muted);
+}
+.truncate-text {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+.inspector-bytes-mini {
+  padding: 0.75rem;
+  background-color: #fff;
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.inspector-bytes-mini code {
+    font-family: var(--font-mono);
+    background-color: #f1f5f9;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+/* Fix: Responsive Stack */
+@media (max-width: 900px) {
   .inspector-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
   }
-  .inspector-glyph-box {
-    border-right: none;
+  .inspector-glyph-box, .inspector-structure {
+    border: none;
     border-bottom: 1px solid var(--color-border-light);
-    padding: 1.5rem;
-  }
-  .inspector-bytes {
-    border-left: none;
-    border-top: 1px solid var(--color-border-light);
   }
 }
 
