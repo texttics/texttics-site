@@ -868,6 +868,30 @@ INVISIBLE_MAPPING = {
     0x241C: "[PIC:FS]",  0x241D: "[PIC:GS]",  0x241E: "[PIC:RS]",  0x241F: "[PIC:US]",
     0x2420: "[PIC:SP]",  0x2421: "[PIC:DEL]", 0x2422: "[PIC:BLANK]", 0x2423: "[PIC:OB]",
     0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
+
+    # ... (Control Pictures block ending with 0x2426) ...
+    0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
+
+    # --- Wave 4: Invisible Khmer Vowels ---
+    0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
+    0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
+    
+    # --- Wave 4: Invisible Math (Remaining) ---
+    # (U+2064 is already present as [INV+])
+    0x2061: "[FA]",            # Function Application
+    0x2062: "[IT]",            # Invisible Times
+    0x2063: "[IS]",            # Invisible Separator
+    
+    # --- Wave 4: Rich Text Ghost ---
+    0xFFFC: "[OBJ]",           # Object Replacement Character
+
+    # --- Wave 4: Zombie Controls (Deprecated Format) ---
+    0x206A: "[ISS]",           # Inhibit Symmetric Swapping
+    0x206B: "[ASS]",           # Activate Symmetric Swapping
+    0x206C: "[IAFS]",          # Inhibit Arabic Form Shaping
+    0x206D: "[AAFS]",          # Activate Arabic Form Shaping
+    0x206E: "[NDS]",           # National Digit Shapes
+    0x206F: "[NODS]",          # Nominal Digit Shapes
 }
 
 # Programmatically inject the full range of ASCII-Mapped Tags (Plane 14)
