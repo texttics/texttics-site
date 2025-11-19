@@ -4909,6 +4909,10 @@ def render_inspector_panel(data):
     """
     panel.innerHTML = html
 
+    # --- TRIGGER AUTO-SCALE ---
+    # This forces the JS engine to fit the new Zalgo content immediately.
+    window.TEXTTICS_FIT_GLYPH()
+
 def compute_threat_score(inputs):
     """
     The Threat Auditor.
