@@ -8,6 +8,113 @@
  * Its primary responsibility is managing the "Dual-Atom Profile" tabs.
  */
 
+// ---
+// 0. Shared Constants (Ported from Python for Report Generation)
+// ---
+const JS_INVISIBLE_MAPPING = {
+    // --- Control Pictures ---
+    0x2400: "[PIC:NUL]", 0x2401: "[PIC:SOH]", 0x2402: "[PIC:STX]", 0x2403: "[PIC:ETX]",
+    0x2404: "[PIC:EOT]", 0x2405: "[PIC:ENQ]", 0x2406: "[PIC:ACK]", 0x2407: "[PIC:BEL]",
+    0x2408: "[PIC:BS]",  0x2409: "[PIC:HT]",  0x240A: "[PIC:LF]",  0x240B: "[PIC:VT]",
+    0x240C: "[PIC:FF]",  0x240D: "[PIC:CR]",  0x240E: "[PIC:SO]",  0x240F: "[PIC:SI]",
+    0x2410: "[PIC:DLE]", 0x2411: "[PIC:DC1]", 0x2412: "[PIC:DC2]", 0x2413: "[PIC:DC3]",
+    0x2414: "[PIC:DC4]", 0x2415: "[PIC:NAK]", 0x2416: "[PIC:SYN]", 0x2417: "[PIC:ETB]",
+    0x2418: "[PIC:CAN]", 0x2419: "[PIC:EM]",  0x241A: "[PIC:SUB]", 0x241B: "[PIC:ESC]",
+    0x241C: "[PIC:FS]",  0x241D: "[PIC:GS]",  0x241E: "[PIC:RS]",  0x241F: "[PIC:US]",
+    0x2420: "[PIC:SP]",  0x2421: "[PIC:DEL]", 0x2422: "[PIC:BLANK]", 0x2423: "[PIC:OB]",
+    0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
+
+    // --- Wave 4: Zombies & Khmer ---
+    0x17B4: "[KHM:AQ]", 0x17B5: "[KHM:AA]",
+    0x2061: "[FA]", 0x2062: "[IT]", 0x2063: "[IS]", 0xFFFC: "[OBJ]",
+    0x206A: "[ISS]", 0x206B: "[ASS]", 0x206C: "[IAFS]", 
+    0x206D: "[AAFS]", 0x206E: "[NDS]", 0x206F: "[NODS]",
+
+    // --- Wave 3: C0/C1 Controls ---
+    0x0000: "[NUL]", 0x001B: "[ESC]", 0x00AD: "[SHY]", 0x007F: "[DEL]", 0x0085: "[NEL]",
+    // (We add ranges dynamically below for compactness, or paste full list)
+
+    // --- Wave 1: Structural Invisibles ---
+    0x061C: "[ALM]", 0x200E: "[LRM]", 0x200F: "[RLM]", 
+    0x202A: "[LRE]", 0x202B: "[RLE]", 0x202C: "[PDF]", 0x202D: "[LRO]", 0x202E: "[RLO]",
+    0x2066: "[LRI]", 0x2067: "[RLI]", 0x2068: "[FSI]", 0x2069: "[PDI]",
+    0x034F: "[CGJ]", 0x180E: "[MVS]", 0x200B: "[ZWSP]", 0x200C: "[ZWNJ]", 0x200D: "[ZWJ]",
+    0x2060: "[WJ]",  0xFEFF: "[BOM]", 0x2064: "[INV+]",
+    0xFFF9: "[IAA]", 0xFFFA: "[IAS]", 0xFFFB: "[IAT]",
+    
+    // --- Wave 1: Spaces & Glue ---
+    0x00A0: "[NBSP]", 0x2002: "[ENSP]", 0x2003: "[EMSP]", 0x2004: "[3/EM]", 0x2005: "[4/EM]",
+    0x2006: "[6/EM]", 0x2007: "[FIGSP]", 0x2008: "[PUNCSP]", 0x2009: "[THIN]", 0x200A: "[HAIR]",
+    0x202F: "[NNBSP]", 0x205F: "[MMSP]", 0x3000: "[IDSP]", 0x2028: "[LS]", 0x2029: "[PS]",
+
+    // --- Wave 1: False Vacuums ---
+    0x3164: "[HF]", 0xFFA0: "[HHF]", 0x115F: "[HCF]", 0x1160: "[HJF]", 0x2800: "[BRAILLE]",
+    0x1680: "[OSM]", 0x2000: "[EQ]", 0x2001: "[MQ]",
+
+    // --- Wave 1: Glue ---
+    0x2011: "[NBH]", 0x2024: "[ODL]", 0x0F08: "[TIB:SS]", 0x0F0C: "[TIB:DT]",
+    0x0F12: "[TIB:RGS]", 0x1802: "[MNG:C]", 0x1803: "[MNG:FS]", 0x1808: "[MNG:MC]",
+    0x1809: "[MNG:MFS]",
+
+    // --- Wave 1: Scoping ---
+    0x13437: "[EGY:BS]", 0x13438: "[EGY:ES]", 0x1BCA0: "[SHORT:LO]", 0x1BCA1: "[SHORT:CO]",
+    0x1BCA2: "[SHORT:DS]", 0x1BCA3: "[SHORT:UP]",
+    0x1D173: "[MUS:BB]", 0x1D174: "[MUS:EB]", 0x1D175: "[MUS:BT]", 0x1D176: "[MUS:ET]",
+    0x1D177: "[MUS:BS]", 0x1D178: "[MUS:ES]", 0x1D179: "[MUS:BP]", 0x1D17A: "[MUS:EP]",
+    
+    // --- Tags ---
+    0xE0001: "[TAG:LANG]", 0xE007F: "[TAG:CANCEL]"
+};
+
+// Populate Ranges for C0/C1 (Wave 3)
+for (let cp = 0x01; cp < 0x20; cp++) {
+    if (!JS_INVISIBLE_MAPPING[cp] && ![0x09, 0x0A, 0x0D].includes(cp)) {
+        JS_INVISIBLE_MAPPING[cp] = `[CTL:0x${cp.toString(16).toUpperCase().padStart(2,'0')}]`;
+    }
+}
+for (let cp = 0x80; cp <= 0x9F; cp++) {
+    if (!JS_INVISIBLE_MAPPING[cp]) {
+        JS_INVISIBLE_MAPPING[cp] = `[CTL:0x${cp.toString(16).toUpperCase().padStart(2,'0')}]`;
+    }
+}
+
+// Populate ASCII Tags (Wave 1)
+for (let asc = 0x20; asc < 0x7F; asc++) {
+    const tagCp = 0xE0000 + asc;
+    const char = asc === 0x20 ? "SP" : String.fromCharCode(asc);
+    JS_INVISIBLE_MAPPING[tagCp] = `[TAG:${char}]`;
+}
+
+// Helper Function
+function getDeobfuscatedText(text) {
+    if (!text) return "";
+    let output = "";
+    for (const char of text) {
+        const cp = char.codePointAt(0);
+        
+        // 1. Explicit Map
+        if (JS_INVISIBLE_MAPPING[cp]) {
+            output += JS_INVISIBLE_MAPPING[cp];
+        }
+        // 2. Variation Selectors
+        else if (cp >= 0xFE00 && cp <= 0xFE0F) {
+            output += `[VS${cp - 0xFE00 + 1}]`;
+        }
+        else if (cp >= 0xE0100 && cp <= 0xE01EF) {
+            output += `[VS${cp - 0xE0100 + 17}]`;
+        }
+        // 3. Generic Tag Plane fallback (if missed)
+        else if (cp >= 0xE0000 && cp <= 0xE007F) {
+            output += `[TAG:U+${cp.toString(16).toUpperCase()}]`;
+        }
+        // 4. Normal char
+        else {
+            output += char;
+        }
+    }
+    return output;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
   const tablist = document.querySelector('[role="tablist"][aria-label="Dual-Atom tabs"]');
@@ -303,6 +410,12 @@ function buildStructuredReport() {
     report.push(`3. NFKC-Casefold:    ${t.get('nfkc_cf')}`);
     report.push(`4. UTS #39 Skeleton: ${t.get('skeleton')}`);
   }
+
+    / --- DEOBFUSCATED VIEW ---
+  report.push('\n[ Forensic Deobfuscation (Revealed) ]');
+  const rawInput = getVal('#text-input');
+  const revealed = getDeobfuscatedText(rawInput);
+  report.push(revealed);
 
   return report.join('\n');
 }
