@@ -95,6 +95,49 @@ def build_invis_table():
     ]
     apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE)
 
+    # --- MANUAL FORENSIC OVERRIDES (From Tables 1-8) ---
+    
+    # 1. The "False Vacuums" (Letters/Symbols that act as Spaces)
+    # We map these to INVIS_NON_ASCII_SPACE so they trigger "Deceptive Space" flags.
+    # U+3164 (Hangul Filler), U+FFA0 (Halfwidth Filler), U+2800 (Braille Blank)
+    apply_mask([(0x3164, 0x3164), (0xFFA0, 0xFFA0), (0x2800, 0x2800)], INVIS_NON_ASCII_SPACE)
+
+    # 2. The "Ghost Operators" & "Fillers"
+    # These are technically 'Lo' (Letters) or 'Cf' (Format) but behave like invisibles.
+    # U+115F (Choseong), U+1160 (Jungseong), U+2064 (Invisible Plus)
+    # We map these to INVIS_DEFAULT_IGNORABLE so they trigger "Invisible" flags.
+    apply_mask([(0x115F, 0x1160), (0x2061, 0x2064)], INVIS_DEFAULT_IGNORABLE)
+
+    # 3. The "Structural Containers" (Scoping)
+    # Egyptian, Musical, Shorthand format controls.
+    # Map to INVIS_DEFAULT_IGNORABLE.
+    apply_mask([
+        (0x13437, 0x13438), # Egyptian
+        (0x1D173, 0x1D17A), # Musical
+        (0x1BCA0, 0x1BCA3)  # Shorthand
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # 4. The "Zombie Controls" & Invisible Math
+    # These are Format (Cf) characters that are deprecated or invisible.
+    # Map to INVIS_DEFAULT_IGNORABLE.
+    apply_mask([
+        (0x206A, 0x206F), # Deprecated Formatting (ISS, ASS, etc.)
+        (0x2061, 0x2063), # Invisible Math (FA, IT, IS)
+        (0x17B4, 0x17B5)  # Khmer Invisible Vowels
+    ], INVIS_DEFAULT_IGNORABLE)
+    
+    # 5. Object Replacement Character
+    # Technically 'So' (Symbol), but acts as a placeholder.
+    # Map to INVIS_DEFAULT_IGNORABLE to ensure it's flagged.
+    apply_mask([(0xFFFC, 0xFFFC)], INVIS_DEFAULT_IGNORABLE)
+
+    # 4. The "Layout Locks" (Glue)
+    # These prevent line breaks. We don't have a specific bitmask for "Glue" yet, 
+    # but if you want to detect "Layout Sabotage", you might map them to INVIS_ZERO_WIDTH_SPACING
+    # or create a new mask. For now, leaving them as visual characters is safer 
+    # unless you want to flag them as "Suspicious". 
+    # (Recommendation: Leave unmasked for now, rely on the [TAG] mapping in Part 1 for visibility).
+
 def run_self_tests():
     """
     PARANOID MODE: Verify that INVIS_TABLE bitmasks strictly match the UCD data.
@@ -719,6 +762,98 @@ INVISIBLE_MAPPING = {
     # --- Tags (Special) ---
     0xE0001: "[TAG:LANG]",     # Language Tag
     0xE007F: "[TAG:CANCEL]",   # Cancel Tag
+
+    # 1. C0 Control Codes (Legacy/Obfuscation)
+    # We skip 0x00 (NUL), 0x09 (TAB), 0x0A (LF), 0x0D (CR), 0x1B (ESC) as they are handled or common.
+    **{cp: f"[CTL:0x{cp:02X}]" for cp in range(0x01, 0x20) if cp not in [0x09, 0x0A, 0x0D, 0x1B]},**
+    # (Note: You can paste the generated dictionary below for cleaner code)
+
+    0x0001: "[CTL:0x01]", 0x0002: "[CTL:0x02]", 0x0003: "[CTL:0x03]", 0x0004: "[CTL:0x04]",
+    0x0005: "[CTL:0x05]", 0x0006: "[CTL:0x06]", 0x0007: "[CTL:0x07]", 0x0008: "[CTL:0x08]",
+    0x000B: "[CTL:0x0B]", 0x000C: "[CTL:0x0C]", 0x000E: "[CTL:0x0E]", 0x000F: "[CTL:0x0F]",
+    0x0010: "[CTL:0x10]", 0x0011: "[CTL:0x11]", 0x0012: "[CTL:0x12]", 0x0013: "[CTL:0x13]",
+    0x0014: "[CTL:0x14]", 0x0015: "[CTL:0x15]", 0x0016: "[CTL:0x16]", 0x0017: "[CTL:0x17]",
+    0x0018: "[CTL:0x18]", 0x0019: "[CTL:0x19]", 0x001A: "[CTL:0x1A]", 0x001C: "[CTL:0x1C]",
+    0x001D: "[CTL:0x1D]", 0x001E: "[CTL:0x1E]", 0x001F: "[CTL:0x1F]",
+    
+    # 2. C1 Control Codes (Legacy/Obfuscation)
+    0x007F: "[DEL]",      # Delete (Common mutation particle)
+    0x0085: "[NEL]",      # Next Line (Often breaks parsers)
+    # Range 0x80-0x9F
+    0x0080: "[CTL:0x80]", 0x0081: "[CTL:0x81]", 0x0082: "[CTL:0x82]", 0x0083: "[CTL:0x83]",
+    0x0084: "[CTL:0x84]", 0x0086: "[CTL:0x86]", 0x0087: "[CTL:0x87]", 0x0088: "[CTL:0x88]",
+    0x0089: "[CTL:0x89]", 0x008A: "[CTL:0x8A]", 0x008B: "[CTL:0x8B]", 0x008C: "[CTL:0x8C]",
+    0x008D: "[CTL:0x8D]", 0x008E: "[CTL:0x8E]", 0x008F: "[CTL:0x8F]", 0x0090: "[CTL:0x90]",
+    0x0091: "[CTL:0x91]", 0x0092: "[CTL:0x92]", 0x0093: "[CTL:0x93]", 0x0094: "[CTL:0x94]",
+    0x0095: "[CTL:0x95]", 0x0096: "[CTL:0x96]", 0x0097: "[CTL:0x97]", 0x0098: "[CTL:0x98]",
+    0x0099: "[CTL:0x99]", 0x009A: "[CTL:0x9A]", 0x009B: "[CTL:0x9B]", 0x009C: "[CTL:0x9C]",
+    0x009D: "[CTL:0x9D]", 0x009E: "[CTL:0x9E]", 0x009F: "[CTL:0x9F]",
+
+    # 1. Invisible Khmer Vowels (Fillers)
+    0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
+    0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
+    
+    # 2. Invisible Math Operators
+    0x2061: "[FA]",            # Function Application
+    0x2062: "[IT]",            # Invisible Times
+    0x2063: "[IS]",            # Invisible Separator
+    # (U+2064 Invisible Plus was added in Wave 1)
+
+    # 3. The "Rich Text Ghost"
+    0xFFFC: "[OBJ]",           # Object Replacement Character
+
+    # 4. The "Zombie Controls" (Deprecated Format Characters)
+    0x206A: "[ISS]",           # Inhibit Symmetric Swapping
+    0x206B: "[ASS]",           # Activate Symmetric Swapping
+    0x206C: "[IAFS]",          # Inhibit Arabic Form Shaping
+    0x206D: "[AAFS]",          # Activate Arabic Form Shaping
+    0x206E: "[NDS]",           # National Digit Shapes
+    0x206F: "[NODS]",          # Nominal Digit Shapes
+    
+    # Table 1: The "False Vacuums" (Hangul & Braille)
+    # These characters are often rendered as invisible but possess width or distinct properties.
+    0x3164: "[HF]",            # Hangul Filler (Critical ID spoofer)
+    0xFFA0: "[HHF]",           # Halfwidth Hangul Filler
+    0x115F: "[HCF]",           # Hangul Choseong Filler
+    0x1160: "[HJF]",           # Hangul Jungseong Filler
+    0x2800: "[BRAILLE]",       # Braille Pattern Blank (Critical Trim Bypass)
+
+    # Table 2: Anomalous Spaces & Quads (Visual Alignment Spoofing)
+    0x1680: "[OSM]",           # Ogham Space Mark
+    0x2000: "[EQ]",            # En Quad
+    0x2001: "[MQ]",            # Em Quad (M is standardized abbr)
+    0x2007: "[FIGSP]",         # Figure Space (Non-breaking)
+    # (Note: 0x2002-0x200A are often handled by general whitespace logic, but 2007/EQ/MQ are specific)
+
+    # Table 3: The "Glue" Class (Layout Locking / Non-Breaking Punctuation)
+    0x2011: "[NBH]",           # Non-Breaking Hyphen
+    0x2024: "[ODL]",           # One Dot Leader
+    0x0F08: "[TIB:SS]",        # Tibetan Mark Sbrul Shad
+    0x0F0C: "[TIB:DT]",        # Tibetan Mark Delimiter Tsheg
+    0x0F12: "[TIB:RGS]",       # Tibetan Mark Rgya Gram Shad
+    0x1802: "[MNG:C]",         # Mongolian Comma
+    0x1803: "[MNG:FS]",        # Mongolian Full Stop
+    0x1808: "[MNG:MC]",        # Mongolian Manchu Comma
+    0x1809: "[MNG:MFS]",       # Mongolian Manchu Full Stop
+
+    # Table 4: Invisible Operators & Scoping Containers
+    0x2064: "[INV+]",          # Invisible Plus (Mathematical Ghost)
+    0x13437: "[EGY:BS]",       # Egyptian Hieroglyph Begin Segment
+    0x13438: "[EGY:ES]",       # Egyptian Hieroglyph End Segment
+    0x1BCA0: "[SHORT:LO]",     # Shorthand Format Letter Overlap
+    0x1BCA1: "[SHORT:CO]",     # Shorthand Format Continuing Overlap
+    0x1BCA2: "[SHORT:DS]",     # Shorthand Format Down Step
+    0x1BCA3: "[SHORT:US]",     # Shorthand Format Up Step
+
+    # Table 5: Musical Scoping (The "Ghost" Structures)
+    0x1D173: "[MUS:BB]",       # Musical Symbol Begin Beam
+    0x1D174: "[MUS:EB]",       # Musical Symbol End Beam
+    0x1D175: "[MUS:BT]",       # Musical Symbol Begin Tie
+    0x1D176: "[MUS:ET]",       # Musical Symbol End Tie
+    0x1D177: "[MUS:BS]",       # Musical Symbol Begin Slur
+    0x1D178: "[MUS:ES]",       # Musical Symbol End Slur
+    0x1D179: "[MUS:BP]",       # Musical Symbol Begin Phrase
+    0x1D17A: "[MUS:EP]",       # Musical Symbol End Phrase
 }
 
 # Programmatically inject the full range of ASCII-Mapped Tags (Plane 14)
