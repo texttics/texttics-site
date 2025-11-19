@@ -125,6 +125,10 @@ Zone 0: Masthead (Static Header)
   color: var(--color-text-muted);
   font-family: var(--font-mono); /* Lab instrument feel */
   font-size: 0.8rem;
+  /* UPDATED VALUES: */
+  font-size: 1rem;   /* Increased from 0.8rem */
+  font-weight: 700;     /* Makes it bold */
+  letter-spacing: -0.02em; /* Optional: Tightens it slightly for a technical look */
 }
 
 /* UPDATED: Centered Text blocks */
