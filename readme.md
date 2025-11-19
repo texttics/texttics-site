@@ -890,3 +890,28 @@ This function is bound to the `<textarea>` `input` event.
 * **`@create_proxy def reveal_invisibles(event)`:** The deobfuscator. Maps invisible code points to their bracketed tag equivalents and updates the textarea value.
 
 This architecture ensures that **Text...tics** is not just a passive observer of text, but a hardened, verified, and deterministic instrument for structural analysis.
+
+
+## 🛡️ Update: Stage 1 Forensic Hardening & Inspector V4
+
+**Session Focus:** Architectural correctness, UAX #9 compliance, and the transition from "Character Inspection" to "Cluster Forensics."
+
+### 1. Core Engine Hardening
+* **Unified Bidi Stack Machine (UAX #9):** Replaced the split-stack model with a single, unified state machine that strictly tracks the nesting order of Isolates and Embeddings. This allows for the detection of **Implicit Closures** (valid but sloppy) vs. **Spillover/Cross-Over** (broken structure), eliminating false negatives on complex Bidi attacks.
+* **Forensic Drift Decoupling:** Fixed the "Drift Blindness" flaw. The engine now explicitly calculates "Skeleton Drift" by comparing the **Raw Input** to the Skeleton (capturing normalization attacks like Fullwidth chars), while separately using the NFKC form for standard equivalence hashing.
+* **Hybrid Tokenizer (Anti-DoS):** Replaced the whitespace-only tokenizer with a role-aware engine (Whitespace + Major Punctuation + Hard Length Cap). This prevents DOM thrashing on minified code/large blobs and ensures the "Perception vs. Reality" report remains readable.
+
+### 2. State Integrity (The "Immutable Reveal")
+* **Evidence Preservation:** The "Reveal Invisibles" feature was refactored from a **Mutator** to a **Viewer**. It now applies a visual overlay (Amber warning state) without re-submitting the modified text to the analysis engine. This prevents "Evidence Laundering" where revealing a threat would accidentally reset the Threat Score to zero.
+
+### 3. The Inspector V4 (Cluster-Aware & Contextual)
+The Character Inspector was rebuilt from the ground up to resolve "Visual Cling" and "Zalgo Blindness."
+
+* **Cluster-First Architecture:** The inspector now targets **Grapheme Clusters** (what the user sees) rather than Code Points (what the machine sees). It captures the entire stack (Base + Marks) and then decomposes it into a forensic table.
+* **Context Strip:** A new "Timeline" view (Prev | **Target** | Next) visually isolates the target cluster, proving exactly where the machine draws the boundary between a letter and a "clinging" modifier.
+* **Cross-Language Indexing Bridge:** Solved the "Jumping Cursor" bug caused by the mismatch between JavaScript's UTF-16 DOM indexing and Python's UCS-4 indexing. The new engine uses a localized, normalization-agnostic search window to lock onto the correct particle.
+* **6-Column Forensic Grid:** A rigid, fixed-height layout that separates data into dedicated lanes:
+    * **Timeline:** Prev / Target / Next glyphs.
+    * **Identity:** Name, Block, Script, and Segmentation properties.
+    * **Structure:** A dedicated table listing every atom in the cluster (Base + Combining Marks).
+    * **Bytes:** Raw UTF-8 and UTF-16 hex dumps for the cluster.
