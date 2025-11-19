@@ -3998,13 +3998,9 @@ def compute_threat_analysis(t: str):
     }
     
 def render_threat_analysis(threat_results):
-    """Renders the Group 3 Threat-Hunting results with Nested Ledger."""
+    """Renders the Group 3 Threat-Hunting results with Nested Ledger (3-Col)."""
     
-    # 1. Extract Data
     flags = threat_results.get('flags', {})
-    
-    # 2. Render Main Flags Table
-    # We treat the "Threat Level" row specifically
     html_rows = []
     threat_level_key = "Threat Level (Heuristic)"
     
@@ -4013,42 +4009,53 @@ def render_threat_analysis(threat_results):
         badge = data.get("badge", "")
         severity = data.get("severity", "ok")
         
-        # --- LEDGER GENERATION (The "Receipt") ---
-        # The 'positions' field in flags now carries our ledger dict if passed correctly,
-        # but since we updated compute_threat_score, we should access the raw data if possible.
-        # However, update_all puts the result into 'flags'. Let's handle the list passed there.
-        
-        # Note: In update_all, we need to ensure the 'ledger' is passed to the flag.
-        # See update logic below. Assuming 'positions' contains the ledger items for now
-        # or we reconstruct visuals from the text details.
-        
-        # CRITICAL: We need to access the raw 'score_result' from compute_threat_score
-        # But since update_all flattened it, let's rely on the 'details' being passed properly.
-        # BETTER APPROACH: update_all passes the ledger object in a specific way.
-        
-        # Let's assume we update `update_all` to pass the ledger in `data['ledger']`.
+        # Data from the Threat Auditor
         ledger = data.get("ledger", [])
         noise = data.get("noise", [])
         
         badge_class = f"integrity-badge integrity-badge-{severity}"
         
-        # Build the Nested Table HTML
+        # --- LEDGER GENERATION (3-Column) ---
         ledger_html = ""
         if ledger:
             ledger_rows = ""
             for item in ledger:
+                # Map Category to Severity Class
+                cat = item['category'].upper()
+                sev_class = "ok"
+                if cat in ("EXECUTION", "SPOOFING"):
+                    sev_class = "crit"
+                elif cat in ("OBFUSCATION"):
+                    sev_class = "warn"
+                elif cat in ("SUSPICIOUS", "SYNTAX"):
+                    sev_class = "warn"
+                
                 p_val = f"+{item['points']}"
-                ledger_rows += f"<tr><td>{item['vector']}</td><td class='score-val'>{p_val}</td></tr>"
+                
+                ledger_rows += (
+                    f"<tr>"
+                    f"<td>{item['vector']}</td>"
+                    f"<td><span class='integrity-badge integrity-badge-{sev_class}' style='font-size:0.7em'>{cat}</span></td>"
+                    f"<td class='score-val'>{p_val}</td>"
+                    f"</tr>"
+                )
             
+            # Add Noise (Zero-score items)
             if noise:
-                 noise_str = ", ".join(noise)
-                 ledger_rows += f"<tr class='ledger-noise'><td colspan='2'><em>Detected but excluded (Noise): {noise_str}</em></td></tr>"
+                 for n in noise:
+                     ledger_rows += (
+                         f"<tr class='ledger-noise'>"
+                         f"<td>{n}</td>"
+                         f"<td><span class='integrity-badge integrity-badge-ok' style='font-size:0.7em'>NOISE</span></td>"
+                         f"<td class='score-val'>0</td>"
+                         f"</tr>"
+                     )
 
             ledger_html = f"""
             <details class="threat-ledger-details">
                 <summary>View Penalty Breakdown</summary>
                 <table class="threat-ledger-table">
-                    <thead><tr><th>Threat Vector</th><th>Penalty</th></tr></thead>
+                    <thead><tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr></thead>
                     <tbody>{ledger_rows}</tbody>
                 </table>
             </details>
@@ -4065,20 +4072,17 @@ def render_threat_analysis(threat_results):
         )
         html_rows.append(row_html)
         
-        # Remove the score row from the generic flags list so we don't print it twice
         flags_copy = flags.copy()
         del flags_copy[threat_level_key]
         flags = flags_copy
     
-    # Render the rest of the flags
     render_matrix_table(flags, "threat-report-body", has_positions=True)
     
-    # Prepend our custom row
     if html_rows:
         existing_html = document.getElementById("threat-report-body").innerHTML
         document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
 
-    # 3. Render Hashes (Standard)
+    # (Keep standard Hashes & Report rendering logic below...)
     hashes = threat_results.get('hashes', {})
     hash_html = []
     if hashes:
@@ -4088,7 +4092,6 @@ def render_threat_analysis(threat_results):
     else:
         document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
 
-    # 4. Render Confusable Report (Standard)
     html_report = threat_results.get('html_report', "")
     report_el = document.getElementById("confusable-diff-report")
     
@@ -4097,14 +4100,9 @@ def render_threat_analysis(threat_results):
     else:
         drift_flag = flags.get("Flag: Skeleton Drift")
         drift_count = drift_flag.get("count", 0) if drift_flag else 0
-            
-        if drift_count > 0:
-            msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization."
-        else:
-            msg = "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
+        msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization." if drift_count > 0 else "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
         report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
     
-    # Hide Banner
     banner_el = document.getElementById("threat-banner")
     if banner_el: banner_el.setAttribute("hidden", "true")
 
