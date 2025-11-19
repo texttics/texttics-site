@@ -84,21 +84,63 @@ Accessibility & Utilities
 Zone 0: Masthead (Static Header)
 --- */
 .masthead {
-  padding: var(--spacing-4) var(--spacing-8);
+  padding: var(--spacing-6) var(--spacing-8); /* Increased top/bottom padding slightly for balance */
   border-bottom: 1px solid var(--color-border);
   background: var(--color-white);
+  
+  /* CENTER ALIGNMENT FIX */
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Ensures child elements center-align */
 }
+
 .app-title {
-  font-size: 1.5rem;
+  font-size: 1.75rem; /* Slight bump for hierarchy */
   color: var(--color-text);
+  margin-bottom: var(--spacing-2);
 }
+
+/* NEW: Stage Indicator Styles */
+.stage-indicator {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-3);
+  font-size: 0.85rem;
+}
+
+.stage-pill {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.stage-desc {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono); /* Lab instrument feel */
+  font-size: 0.8rem;
+}
+
+/* UPDATED: Centered Text blocks */
 .spec, .method {
   font-size: 0.9rem;
   color: var(--color-text-muted);
   margin-top: var(--spacing-1);
+  
+  /* Limit width for readability when centered */
+  max-width: 800px; 
+  line-height: 1.5;
 }
+
 .spec {
   font-weight: 600;
+  margin-bottom: var(--spacing-1);
 }
 
 /* ---
