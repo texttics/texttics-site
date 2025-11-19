@@ -327,10 +327,19 @@ function buildStructuredReport() {
         // -- Iterate Ledger Rows --
         nestedTable.querySelectorAll('tbody tr').forEach(subRow => {
           const cols = Array.from(subRow.querySelectorAll('td'));
-          if (cols.length >= 2) {
+          
+          // Handle 3-column (Vector | Severity | Penalty)
+          if (cols.length >= 3) {
+             const vec = cols[0].textContent.trim();
+             const sev = cols[1].textContent.trim();
+             const pts = cols[2].textContent.trim();
+             // Format: "    - Trojan Source [EXECUTION]: +40"
+             lines.push(`      - ${vec} [${sev}]: ${pts}`);
+          }
+          // Handle 2-column Legacy (Vector | Penalty)
+          else if (cols.length >= 2) {
             const vec = cols[0].textContent.trim();
-            const pts = cols[cols.length - 1].textContent.trim(); // Last col is always points
-            // Format: "    - Malicious Bidi: +25"
+            const pts = cols[cols.length - 1].textContent.trim();
             lines.push(`      - ${vec}: ${pts}`);
           }
         });
