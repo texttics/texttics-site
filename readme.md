@@ -688,3 +688,58 @@ The engine was validated against an **"Ultimate Invisible Stress Test"** string 
 * Deceptive non-ASCII spaces.
 
 **Result:** The tool correctly identified, clustered, and flagged every single anomaly, yielding a **HIGH** threat score and a perfect forensic breakdown.
+
+---
+
+## 📈 Addendum #2: The Forensic Precision Upgrade (Stage 1 Finalization)
+
+**Summary:** This update transitions the tool from a "Passive Data Logger" to an **"Active Forensic Investigator."** We have refined the domain model, implemented a high-precision interaction bridge, and radically re-architected the scoring engines to distinguish between "Structural Noise" (Complexity) and "Active Malice" (Exploit Likelihood).
+
+### 1. Domain Model: The "Particle" Taxonomy
+We have formally redefined the application's identity to match its deterministic nature.
+* **New Title:** *The Algorithmically Deterministic Structural Profiler of Textual Particles.*
+* **The Particle Model:**
+    * **Elementary Particles:** Code Points (The logical atom).
+    * **Composite Particles:** Grapheme Clusters (The perceptual atom).
+    * **Molecular Structures:** Runs, Sequences, and Emoji Chains.
+* **Method:** We no longer "guess." We apply fixed, UCD-based laws to measure the "spectral composition" of the text.
+
+### 2. The Interactive Bridge ("Active Investigator")
+We resolved the "disconnect" between the data tables and the raw text. The tool now closes the loop between **Analysis** and **Action**.
+* **The Mechanism:** A dedicated `window.TEXTTICS_HIGHLIGHT_CODEPOINT` bridge in `ui-glue.js`.
+* **The Behavior:** Every position index (e.g., `#52`, `#920`) in the Integrity, Provenance, and Threat tables is now a clickable link.
+* **The Visuals:** Hovering over a position index changes the cursor to `zoom-in` (Magnifying Glass), reinforcing the "Lab Instrument" metaphor. Clicking instantly scrolls to and selects the exact character in the input field, allowing for immediate inspection or deletion of invisible threats.
+
+### 3. The Dual-Score Threat Engine
+We solved the "False Positive" problem (where messy keyboards flagged as threats) by decoupling the scoring logic into two orthogonal axes.
+
+**A. Exploit Likelihood Score (The Security Alarm)**
+* **Question:** "Is this text actively trying to deceive the user or the system?"
+* **Inputs:** Cross-Script Homoglyphs (Cyrillic 'a' vs Latin 'a'), Malicious Bidi Controls (Trojan Source), Invisible Clusters, and broken syntax.
+* **Behavior:** This is the primary "Threat Level." It ignores innocent ASCII noise.
+    * *Example:* `pаypal` (Cyrillic 'a') triggers **HIGH/CRITICAL**.
+
+**B. Structural Complexity Score (The Noise Meter)**
+* **Question:** "How visually ambiguous or structurally messy is this text?"
+* **Inputs:** ASCII Drift (`1` vs `l`), Zalgo (combining mark density), Drift Ratio.
+* **Behavior:** This warns the user of "messiness" without crying wolf.
+    * *Example:* `123123` triggers **High Complexity** but **Zero Exploit Risk**.
+
+### 4. The Uncapped Integrity Engine
+We deprecated the "Decode Health Grade" (which had a ceiling of 10) and replaced it with a **Maximally Sensitive, Uncapped Integrity System**.
+
+* **Uncapped Scoring:** The score is no longer limited to 0-10. It accumulates linearly with risk. A score of **96** is demonstrably worse than a score of **12**.
+* **Severity Bands:**
+    * **CORRUPT (50+):** Massive binary injection or data loss.
+    * **CRITICAL (20+):** Fatal encoding errors (Surrogates) or System Risks (NUL/ESC).
+    * **WARNING (5+):** High-risk invisibles or broken structure.
+    * **NOTICE (1+):** Minor anomalies (PUA, NFC drift).
+* **Structural Feedback:** The logic now captures return values from the sub-analyzers (`analyze_bidi_structure` and `summarize_invisible_clusters`). A "Massive Invisible Cluster" or "Unclosed Bidi Chain" now directly penalizes the Integrity Score.
+
+### 5. Deep Research & Edge Case Coverage
+Based on a canonical inventory of invisible particles, we closed specific coverage gaps to ensure 100% forensic exhaustion.
+
+* **Terminal Injection Risk (ESC):** The Escape character (`U+001B`) is now elevated to a **Tier 1 Critical Threat**. Its presence forces the Integrity Level to "CRITICAL" due to the risk of terminal command injection.
+* **Smart Tag Deobfuscation:** Plane 14 Tag Characters are no longer generic hex codes. They are programmatically mapped to their ASCII equivalents (e.g., `[TAG:A]`, `[TAG:!]`), making steganography instantly readable.
+* **Exotic Space Detection:** The Mongolian Vowel Separator (`U+180E`) and other rare spaces are explicitly added to the forensic bitmask to ensure they trigger "Deceptive Space" flags.
+* **Interlinear Annotation Controls:** Specific tracking added for `U+FFF9`–`U+FFFB` to detect suppressed formatting structures.
