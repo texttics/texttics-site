@@ -257,6 +257,12 @@ Column 2: Main Analysis Content
 /* ---
 Group 1: Control Plane
 --- */
+/* [FIX] Enforce identical font stack for Input and Inspector */
+#text-input, 
+.inspector-glyph, 
+.ctx-item {
+  font-family: "Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace;
+}
 #text-input {
   width: 100%;
   height: 180px;
@@ -265,7 +271,7 @@ Group 1: Control Plane
   border-radius: var(--radius);
   padding: var(--spacing-4);
   font-size: 1rem;
-  font-family: var(--font-mono);
+/* font-family is now handled by the group rule above */
   line-height: 1.6;
 }
 #text-input:focus {
