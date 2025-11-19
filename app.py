@@ -4076,7 +4076,8 @@ def render_threat_analysis(threat_results):
         del flags_copy[threat_level_key]
         flags = flags_copy
     
-    render_matrix_table(flags, "threat-report-body", has_positions=True)
+    # (Pass text_context to the matrix renderer)
+    render_matrix_table(flags, "threat-report-body", has_positions=True, text_context=text_context)
     
     if html_rows:
         existing_html = document.getElementById("threat-report-body").innerHTML
@@ -4109,34 +4110,49 @@ def render_threat_analysis(threat_results):
 # ---
 # 4. DOM RENDERER FUNCTIONS
 # ---
-def _create_position_link(val):
+def _create_position_link(val, text_context=None):
     """
     Helper: Transforms an index (int or '#123' string) into a clickable HTML link.
-    Calls window.TEXTTICS_HIGHLIGHT_CODEPOINT(idx).
-    Returns plain text if val is a description/reason.
+    Calls window.TEXTTICS_HIGHLIGHT_CODEPOINT(dom_idx).
+    
+    Indexing Patch: Uses text_context (if provided) to translate Python's 
+    Code Point Index to the Browser's UTF-16 DOM Index.
     """
     txt = str(val)
-    idx = None
+    cp_idx = None
 
     # Case A: It is an integer (e.g., 52)
     if isinstance(val, int):
-        idx = val
+        cp_idx = val
         txt = f"#{val}"
     
     # Case B: It is a string (e.g., "#52" or "52")
     elif isinstance(val, str):
         clean = val.strip()
         if clean.startswith("#") and clean[1:].isdigit():
-            idx = int(clean[1:])
+            cp_idx = int(clean[1:])
         elif clean.isdigit():
-            idx = int(clean)
-            txt = f"#{idx}"
+            cp_idx = int(clean)
+            txt = f"#{cp_idx}"
     
-    # If we successfully extracted an index, wrap it in the JS bridge call
-    if idx is not None:
-        return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({idx}); return false;">{txt}</a>'
+    # If we successfully extracted a Code Point index...
+    if cp_idx is not None:
+        dom_idx = cp_idx # Default fallback
+        
+        # --- INDEXING PATCH START ---
+        # Calculate the exact UTF-16 offset if text context is available.
+        if text_context is not None:
+            # Encode the substring up to the character as UTF-16-LE.
+            # The length of the bytes divided by 2 gives the number of UTF-16 code units.
+            try:
+                dom_idx = len(text_context[:cp_idx].encode("utf-16-le")) // 2
+            except Exception:
+                dom_idx = cp_idx # Failsafe
+        # --- INDEXING PATCH END ---
 
-    # Otherwise, return the text as-is (e.g., "Status: Text is NOT NFC")
+        return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({dom_idx}); return false;">{txt}</a>'
+
+    # Otherwise, return the text as-is
     return txt
     
 def render_status(message):
@@ -4161,30 +4177,25 @@ def render_status(message):
         # Clear any old inline styles
         status_line.style.color = ""
 
-def render_emoji_qualification_table(emoji_list: list):
+def render_emoji_qualification_table(emoji_list: list, text_context=None):
     """Renders the new Emoji Qualification Profile table."""
     element = document.getElementById("emoji-qualification-body")
-    if not element:
-        return
-
+    if not element: return
     if not emoji_list:
         element.innerHTML = "<tr><td colspan='4' class='placeholder-text'>No RGI emoji sequences detected.</td></tr>"
         return
 
-    # 1. Aggregate the list by (sequence, status)
     grouped = {}
     for item in emoji_list:
         seq = item.get("sequence", "?")
-        # Format status: "fully-qualified" -> "Fully Qualified"
         status = item.get("status", "unknown").replace("-", " ").title()
         index = item.get("index", 0)
-        
         key = (seq, status)
-        if key not in grouped:
-            grouped[key] = []
+        if key not in grouped: grouped[key] = []
         
         # [ACTIVE UPDATE] Use the link helper
-        grouped[key].append(_create_position_link(index))
+        # PASS text_context HERE
+        grouped[key].append(_create_position_link(index, text_context))
 
     # 2. Build HTML string
     html = []
@@ -4334,7 +4345,7 @@ def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
     if element:
         element.innerHTML = "".join(html)
 
-def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None):
+def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None, text_context=None):
     """Renders a generic 'Matrix of Facts' table."""
     html = []
     sorted_keys = sorted(stats_dict.keys())
@@ -4345,7 +4356,6 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             
         label = aliases.get(key, key) if aliases else key
         
-
         # --- RENDER PATH 1: Standard `has_positions` flags ---
         if has_positions:
             count = data.get('count', 0)
@@ -4358,9 +4368,10 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
             count_html = str(count)
             if 'pct' in data: count_html = f"{count} ({data['pct']}%)"
             
-            # [ACTIVE UPDATE] Linkify Positions
+            # [ACTIVE UPDATE] Linkify Positions with Context
             raw_positions = data.get('positions', [])
-            position_list = [_create_position_link(p) for p in raw_positions]
+            # PASS text_context HERE
+            position_list = [_create_position_link(p, text_context) for p in raw_positions]
 
             if len(position_list) > 5:
                 visible = ", ".join(position_list[:5])
@@ -4385,33 +4396,29 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
     element = document.getElementById(element_id)
     if element:
         element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
-
-def render_integrity_matrix(rows):
+        
+def render_integrity_matrix(rows, text_context=None):
     """Renders the forensic integrity matrix with Nested Ledger."""
     tbody = document.getElementById("integrity-matrix-body")
     tbody.innerHTML = ""
     
     INTEGRITY_KEY = "Integrity Level (Heuristic)"
-    
-    # Sort: Integrity Level first
     sorted_rows = sorted(rows, key=lambda r: "000" if r["label"] == INTEGRITY_KEY else r["label"])
     
     for row in sorted_rows:
         tr = document.createElement("tr")
         
         if row["label"] == INTEGRITY_KEY:
-            # --- SCORE & LEDGER ROW ---
+            # ... (Score Row logic remains identical) ...
             tr.className = f"flag-row-{row['severity']}"
             tr.style.borderBottom = "2px solid var(--color-border)"
             
-            # 1. Label
             th = document.createElement("th")
             th.textContent = row["label"]
             th.scope = "row"
             th.style.fontWeight = "700"
             th.style.fontSize = "1.05em"
             
-            # 2. Badge
             td_badge = document.createElement("td")
             span = document.createElement("span")
             span.className = f"integrity-badge integrity-badge-{row['severity']}"
@@ -4419,14 +4426,13 @@ def render_integrity_matrix(rows):
             span.textContent = row["badge"]
             td_badge.appendChild(span)
             
-            # 3. Nested Ledger Table
             td_ledger = document.createElement("td")
             ledger_data = row.get("ledger", [])
             
             if ledger_data:
+                # ... (Ledger building logic remains identical) ...
                 details = document.createElement("details")
                 details.className = "threat-ledger-details"
-                
                 summary = document.createElement("summary")
                 summary.textContent = "View Penalty Breakdown"
                 details.appendChild(summary)
@@ -4441,17 +4447,12 @@ def render_integrity_matrix(rows):
                 tbody_inner = document.createElement("tbody")
                 for item in ledger_data:
                     tr_inner = document.createElement("tr")
-                    
-                    # Vector
                     td_vec = document.createElement("td")
                     td_vec.textContent = item["vector"]
-                    if item["count"] > 1:
-                        td_vec.textContent += f" (x{item['count']})"
+                    if item["count"] > 1: td_vec.textContent += f" (x{item['count']})"
                     
-                    # Severity Pill
                     td_sev = document.createElement("td")
                     span_sev = document.createElement("span")
-                    # Map text severity to class
                     sev_map = {"FATAL": "crit", "FRACTURE": "crit", "RISK": "warn", "DECAY": "ok"}
                     css_class = sev_map.get(item["severity"], "ok")
                     span_sev.className = f"integrity-badge integrity-badge-{css_class}"
@@ -4459,7 +4460,6 @@ def render_integrity_matrix(rows):
                     span_sev.textContent = item["severity"]
                     td_sev.appendChild(span_sev)
                     
-                    # Points
                     td_pts = document.createElement("td")
                     td_pts.className = "score-val"
                     td_pts.textContent = f"+{item['points']}"
@@ -4480,7 +4480,6 @@ def render_integrity_matrix(rows):
             tr.appendChild(td_ledger)
             
         else:
-            # --- STANDARD ROWS (Copy existing logic) ---
             if row["severity"] == "crit": tr.classList.add("flag-row-critical")
             
             th = document.createElement("th")
@@ -4488,7 +4487,6 @@ def render_integrity_matrix(rows):
             th.scope = "row"
             
             td_count = document.createElement("td")
-            # Logic for badge vs plain count
             if row["badge"] and row["badge"] != "OK": 
                 if row["count"] > 0:
                      td_count.appendChild(document.createTextNode(f"{row['count']} "))
@@ -4502,25 +4500,26 @@ def render_integrity_matrix(rows):
 
             td_pos = document.createElement("td")
             raw_positions = row.get("positions", [])
+            
             if raw_positions:
-                 # (Insert existing position link rendering logic here)
-                 # Simplified for brevity:
-                 if len(raw_positions) > 0:
-                     # Re-use the _create_position_link logic via innerHTML injection if needed
-                     # Or simpler: just text content for now if complex logic not copied
-                     # Assuming logic similar to render_matrix_table
-                     pass 
+                # --- INDEXING PATCH: Manual HTML injection for Positions ---
+                # We build the string of links manually to use text_context
+                pos_links = [_create_position_link(p, text_context) for p in raw_positions]
+                
+                if len(pos_links) > 5:
+                     visible = ", ".join(pos_links[:5])
+                     hidden = ", ".join(pos_links[5:])
+                     details_html = (
+                        f'<details style="cursor: pointer;">'
+                        f'<summary>{visible} ... ({len(pos_links)} total)</summary>'
+                        f'<div style="padding-top: 8px; user-select: all;">{hidden}</div>'
+                        f'</details>'
+                     )
+                     td_pos.innerHTML = details_html
+                else:
+                     td_pos.innerHTML = ", ".join(pos_links)
             else:
                 td_pos.textContent = "—"
-                
-            # Re-inject standard position logic
-            if raw_positions:
-                 # ... (Standard rendering logic) ...
-                 pass 
-                 
-            # NOTE: For the surgical fix, copy the exact Position Rendering block
-            # from your existing render_matrix_table into this 'else' block.
-            # I omitted it here to save space, but it must be preserved.
             
             tr.appendChild(th)
             tr.appendChild(td_count)
@@ -4964,11 +4963,15 @@ def update_all(event=None):
     }
 
     # --- 4. Call All Renderers ---
+    # Note: We pass 'text_context=t' ONLY to renderers that generate clickable position links.
+    
     render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
     render_parallel_table(cp_minor, gr_minor, "minor-parallel-body", ALIASES)
+    
+    # Shape & Run Profiles (Counts/Sequences only, no positions to click)
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
@@ -4979,16 +4982,20 @@ def update_all(event=None):
     render_matrix_table(eaw_run_stats, "eawidth-run-matrix-body")
     render_matrix_table(vo_run_stats, "vo-run-matrix-body")
     
-    render_integrity_matrix(forensic_rows)
+    # Integrity Profile (Has Positions -> Needs Context)
+    render_integrity_matrix(forensic_rows, text_context=t)
     
-    render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True)
-    render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True)
+    # Provenance Profile (Has Positions -> Needs Context)
+    render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True, text_context=t)
+    render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True, text_context=t)
 
-    render_emoji_qualification_table(emoji_list)
+    # Emoji Profile (Has Positions -> Needs Context)
+    render_emoji_qualification_table(emoji_list, text_context=t)
     render_emoji_summary(emoji_counts, emoji_list)
 
+    # Threat Profile (Has Positions -> Needs Context)
     threat_results['flags'] = final_threat_flags
-    render_threat_analysis(threat_results)
+    render_threat_analysis(threat_results, text_context=t)
     
     render_toc_counts(toc_counts)
 
