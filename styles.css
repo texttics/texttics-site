@@ -761,7 +761,7 @@ Stage 2: Heatmap Row Classes
 /* --- Inspector Layout v4 (6-Column Fixed) --- */
 
 #inspector-panel-content {
-  height: 300px; /* [FIX] STABLE HEIGHT. No more leaps. */
+  height: 275px; /* [FIX] STABLE HEIGHT. No more leaps. */
   padding: 0;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
