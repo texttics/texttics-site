@@ -4623,45 +4623,86 @@ def render_toc_counts(counts):
 # ---
     
 @create_proxy
+@create_proxy
 def inspect_character(event):
     """
     Called on 'selectionchange'. Inspects the character under the cursor.
+    Fixes the DOM (UTF-16) to Python (UCS-4) index mismatch.
     """
     try:
         text_input = document.getElementById("text-input")
         
-        # [IMMUTABLE REVEAL FIX]
-        # Guard Clause: If we are in Reveal Mode, the text positions do not match 
-        # the forensic report. Inspecting the '[ZWSP]' tag is misleading.
+        # [IMMUTABLE REVEAL FIX] Guard Clause
+        # If the visual overlay is active, indices are desynchronized.
         if text_input.classList.contains("reveal-active"):
             render_inspector_panel({
                 "error": "<strong>Inspection Paused</strong><br>Visual Reveal is active. Positions are shifted.<br>Edit text or refresh to return to Live Analysis."
             })
             return
 
-        pos = text_input.selectionStart
+        # 1. Get DOM Cursor Position (UTF-16 Units)
+        dom_pos = text_input.selectionStart
         
-        # Only run if selection is a single cursor (not a range)
-        if pos != text_input.selectionEnd:
+        # Only run if selection is a single cursor
+        if dom_pos != text_input.selectionEnd:
             return
 
         text = text_input.value
-        if pos >= len(text):
-            # Cursor is at the end, nothing to inspect
+        if not text:
             render_inspector_panel(None)
             return
+
+        # 2. Map DOM Index -> Python Index (The Fix)
+        # We must iterate to align the two coordinate systems because
+        # JS counts Emoji as 2, Python counts Emoji as 1.
+        python_idx = 0
+        utf16_accum = 0
+        found = False
+        
+        for i, ch in enumerate(text):
+            if utf16_accum == dom_pos:
+                python_idx = i
+                found = True
+                break
             
-        char = text[pos]
+            # Advance accumulator based on char width in UTF-16
+            # Astral chars (> 0xFFFF) take 2 units; others take 1.
+            utf16_accum += 2 if ord(ch) > 0xFFFF else 1
+            
+            # Safety break if we overshoot
+            if utf16_accum > dom_pos:
+                python_idx = i
+                found = True
+                break
+        
+        # Handle end-of-string cursor case
+        if not found and utf16_accum == dom_pos:
+             render_inspector_panel(None)
+             return
+
+        # 3. Extract the Character
+        char = text[python_idx]
         cp = ord(char)
+        
+        # 4. Gather Forensic Data (Risk & Bytes First)
+        
+        # A. Byte Representations (Crucial for Forensics)
+        utf8_bytes = char.encode("utf-8")
+        utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
+        
+        # UTF-16 Hex (Big Endian for reading)
+        utf16_bytes = char.encode("utf-16-be")
+        utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
 
-        # Handle astral plane characters (surrogate pairs)
-        if 0xD800 <= cp <= 0xDBFF and pos + 1 < len(text):
-            cp_low = ord(text[pos+1])
-            if 0xDC00 <= cp_low <= 0xDFFF:
-                cp = 0x10000 + (((cp - 0xD800) << 10) | (cp_low - 0xDC00))
-                char = char + text[pos+1] # The character is the pair
-
-        # --- FIXES APPLIED HERE ---
+        # B. Security Context
+        confusables_map = DATA_STORES.get("Confusables", {})
+        skeleton = confusables_map.get(cp)
+        confusable_msg = f"Maps to: '{skeleton}' (U+{ord(skeleton[0]):04X})" if skeleton else None
+        
+        invisible_mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        is_invisible = bool(invisible_mask & INVIS_ANY_MASK)
+        
+        # C. Standard Props
         minor_cat_abbr = unicodedata.category(char)
         
         data = {
@@ -4670,16 +4711,18 @@ def inspect_character(event):
             "cp_dec": cp,
             "name": unicodedata.name(char, "No Name Found"),
             "block": _find_in_ranges(cp, "Blocks") or "N/A",
-            "age": _find_in_ranges(cp, "Age") or "N/A", # <--- FIX 1: Changed "DerivedAge" to "Age"
-            "script": _find_in_ranges(cp, "Scripts") or "N/A",
-            "category_minor": ALIASES.get(minor_cat_abbr, minor_cat_abbr), # <--- FIX 2: Using ALIASES for minor category name
-            "bidi_class": unicodedata.bidirectional(char) or "N/A", # <--- FIX 3: Using standard Python func for bidi
-            "line_break": _find_in_ranges(cp, "LineBreak") or "N/A",
-            "word_break": _find_in_ranges(cp, "WordBreak") or "N/A",
-            "sentence_break": _find_in_ranges(cp, "SentenceBreak") or "N/A",
-            "grapheme_break": _find_in_ranges(cp, "GraphemeBreak") or "N/A",
+            "script": _find_in_ranges(cp, "Scripts") or "Common",
+            "category": ALIASES.get(minor_cat_abbr, minor_cat_abbr),
+            "bidi": unicodedata.bidirectional(char) or "N/A",
+            "age": _find_in_ranges(cp, "Age") or "N/A",
+            
+            # Enhanced Forensic Fields
+            "utf8": utf8_hex,
+            "utf16": utf16_hex,
+            "confusable": confusable_msg,
+            "is_invisible": is_invisible,
+            "html_ent": f"&#{cp};"
         }
-        # --- END FIXES ---
         
         render_inspector_panel(data)
         
@@ -4689,37 +4732,61 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Renders the HTML for the Character Inspector panel.
+    Renders the Forensic Character Inspector.
+    Layout: Glyph + Vital Stats + Byte Analysis + Risk Factors.
     """
     panel = document.getElementById("inspector-panel-content")
-    if not panel:
-        return
+    if not panel: return
 
     if data is None:
-        panel.innerHTML = "<p>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</p>"
+        panel.innerHTML = "<p class='placeholder-text'>Click a character to inspect.</p>"
         return
         
     if "error" in data:
-        panel.innerHTML = f"<p>Error: {data['error']}</p>"
+        panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    html = [
-        f'<h2>{data["char"]}</h2>',
-        '<dl class="inspector-grid">',
-        f'<dt>Code Point</dt><dd>{data["cp_hex"]} (Decimal: {data["cp_dec"]})</dd>',
-        f'<dt>Name</dt><dd>{data["name"]}</dd>',
-        f'<dt>Block</dt><dd>{data["block"]}</dd>',
-        f'<dt>Age</dt><dd>{data["age"]}</dd>',
-        f'<dt>Script</dt><dd>{data["script"]}</dd>',
-        f'<dt>Category</dt><dd>{data["category_minor"]}</dd>',
-        f'<dt>Bidi Class</dt><dd>{data["bidi_class"]}</dd>',
-        f'<dt>Line Break</dt><dd>{data["line_break"]}</dd>',
-        f'<dt>Word Break</dt><dd>{data["word_break"]}</dd>',
-        f'<dt>Sentence Break</dt><dd>{data["sentence_break"]}</dd>',
-        f'<dt>Grapheme Break</dt><dd>{data["grapheme_break"]}</dd>',
-        '</dl>'
-    ]
-    panel.innerHTML = "".join(html)
+    # Logic for visual flags (Risk Highlighting)
+    invis_badge = '<span class="legend-badge legend-badge-danger">INVISIBLE</span>' if data['is_invisible'] else ""
+    
+    confusable_html = ""
+    if data['confusable']:
+        confusable_html = f'''
+        <div class="inspector-row warning-row">
+            <span class="label">⚠️ Confusable:</span>
+            <span class="value">{data['confusable']}</span>
+        </div>
+        '''
+
+    html = f"""
+    <div class="inspector-layout">
+        <div class="inspector-glyph-box">
+            <div class="inspector-glyph">{_escape_html(data['char'])}</div>
+            <div class="inspector-codepoint">{data['cp_hex']}</div>
+            {invis_badge}
+        </div>
+        
+        <div class="inspector-details">
+            <div class="inspector-header">{data['name']}</div>
+            <div class="inspector-grid-compact">
+                <div><span class="label">Block:</span> {data['block']}</div>
+                <div><span class="label">Script:</span> {data['script']}</div>
+                <div><span class="label">Cat:</span> {data['category']}</div>
+                <div><span class="label">Bidi:</span> {data['bidi']}</div>
+                <div><span class="label">Age:</span> {data['age']}</div>
+            </div>
+            {confusable_html}
+        </div>
+
+        <div class="inspector-bytes">
+            <div class="byte-row"><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
+            <div class="byte-row"><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
+            <div class="byte-row"><span class="label">Decimal:</span> <code>{data['cp_dec']}</code></div>
+            <div class="byte-row"><span class="label">HTML:</span> <code>{data['html_ent']}</code></div>
+        </div>
+    </div>
+    """
+    panel.innerHTML = html
 
 def compute_threat_score(inputs):
     """
