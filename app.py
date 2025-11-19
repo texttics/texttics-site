@@ -3315,147 +3315,75 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
-    # --- [UNCAPPED INTEGRITY SCORE LOGIC] ---
-    
-    integrity_score = 0
-    integrity_reasons = []
-    
-    def add_hit(reason, points):
-        nonlocal integrity_score
-        integrity_score += points
-        integrity_reasons.append(reason)
-
-    # 1. STRUCTURAL FEEDBACK LOOP
+    # --- 1. STRUCTURAL FEEDBACK LOOP (Gather Data) ---
     struct_rows = []
     
+    # Run Sub-Analyzers
     bidi_broken_count = analyze_bidi_structure(t, struct_rows)
-    if bidi_broken_count > 0:
-        add_hit(f"Unclosed/Broken Bidi Chains ({bidi_broken_count})", 15) 
-
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
-    if cluster_max_len > 4:
-        points = min(20, 5 + cluster_max_len)
-        add_hit(f"Massive Invisible Cluster (len={cluster_max_len})", points)
-    elif cluster_max_len > 1:
-        add_hit("Invisible Clusters", 3)
-
     analyze_combining_structure(t, struct_rows)
 
-    # 2. TIER 1: FATAL / MALICIOUS (20+ points)
-    
-    # [NEW] Terminal Injection Risk
-    if len(legacy_indices["esc"]) > 0:
-        add_hit(f"Terminal Injection Risk (ESC detected)", 25) # Maximally Severe
-
-    if len(health_issues["fffd"]) > 0:
-        add_hit(f"Data Loss (Replacement Chars: {len(health_issues['fffd'])})", 20)
-    
-    if len(health_issues["surrogate"]) > 0:
-        add_hit(f"Broken Encoding (Surrogates: {len(health_issues['surrogate'])})", 20)
-
-    if len(health_issues["nul"]) > 0:
-        add_hit("Null Bytes (Binary Data)", 20)
+    # --- 2. INTEGRITY AUDITOR (The Logic Engine) ---
+    # We gather all raw signals into a clean input object for the auditor.
+    auditor_inputs = {
+        # FATAL
+        "fffd": len(health_issues["fffd"]),
+        "surrogate": len(health_issues["surrogate"]),
+        "nul": len(health_issues["nul"]),
         
-    if len(health_issues["nonchar"]) > 0:
-        add_hit("Noncharacters (Illegal Interchange)", 15)
-
-    # 3. TIER 2: SECURITY & PROTOCOL RISKS (5-15 points)
-    
-    if len(flags["bidi"]) > 0:
-        if bidi_broken_count == 0:
-             add_hit(f"Bidi Controls Present ({len(flags['bidi'])})", 5)
-        else:
-             integrity_score += len(flags["bidi"]) 
-
-    if len(flags["tags"]) > 0:
-        add_hit(f"Plane 14 Tags ({len(flags['tags'])})", 15)
-
-    if len(legacy_indices["invalid_vs"]) > 0:
-        add_hit(f"Invalid Variation Selectors ({len(legacy_indices['invalid_vs'])})", 10)
-
-    if len(health_issues["donotemit"]) > 0:
-        add_hit("Do-Not-Emit Characters", 8)
-
-    # 4. TIER 3: SUSPICIOUS ARTIFACTS (3-5 points)
-    
-    if len(health_issues["bom_mid"]) > 0:
-        add_hit("Internal BOM", 5)
-    
-    # [NEW] Interlinear Controls
-    if len(legacy_indices["interlinear"]) > 0:
-         add_hit("Interlinear Annotation Controls", 5)
+        # FRACTURE
+        "bidi_broken_count": bidi_broken_count,
+        "broken_keycap": len(emoji_flags.get("Flag: Broken Keycap Sequence", {}).get("positions", [])), 
+        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), # Using syntax VS as proxy for hidden marks logic
         
-    if len(flags["non_ascii_space"]) > 0:
-        add_hit(f"Deceptive Spaces ({len(flags['non_ascii_space'])})", 3)
-    
-    deceptive_nl = len(legacy_indices["deceptive_ls"]) + len(legacy_indices["deceptive_ps"]) + len(legacy_indices["deceptive_nel"])
-    if deceptive_nl > 0:
-        add_hit("Deceptive Newlines", 3)
-
-    # 5. TIER 4: STRUCTURAL NOISE (1-2 points)
-    
-    if len(health_issues["pua"]) > 0:
-        add_hit(f"Private Use Area ({len(health_issues['pua'])})", 2)
+        # RISK
+        "tags": len(flags["tags"]),
+        "nonchar": len(health_issues["nonchar"]),
+        "invalid_vs": len(legacy_indices["invalid_vs"]),
+        "donotemit": len(health_issues["donotemit"]),
+        "max_cluster_len": cluster_max_len, # For cluster containment logic
         
-    if len(legacy_indices["other_ctrl"]) > 0:
-        add_hit("Legacy Control Chars", 2)
-        
-    is_nfc = True
-    try: is_nfc = (t == unicodedata.normalize("NFC", t))
-    except: pass
-    if not is_nfc: 
-        add_hit("Text is not NFC", 1)
+        # DECAY
+        "bom": len(health_issues["bom_mid"]),
+        "pua": len(health_issues["pua"]),
+        "legacy_ctrl": len(legacy_indices["other_ctrl"]),
+        "dec_space": len(flags["non_ascii_space"]),
+        "not_nfc": not (t == unicodedata.normalize("NFC", t)),
+        "bidi_present": len(flags["bidi"])
+    }
 
+    # Calculate Score & Ledger
+    audit_result = compute_integrity_score(auditor_inputs)
 
-    # --- DETERMINE BADGE ---
-    int_level = "OK"
-    int_sev = "ok"
-    
-    if integrity_score >= 50:
-        int_level = "CORRUPT"
-        int_sev = "crit"
-    elif integrity_score >= 20:
-        int_level = "CRITICAL"
-        int_sev = "crit"
-    elif integrity_score >= 5:
-        int_level = "WARNING"
-        int_sev = "warn"
-    elif integrity_score > 0:
-        int_level = "NOTICE"
-        int_sev = "warn"
-    
-    int_badge_str = f"{int_level} (Score: {integrity_score})" if integrity_score > 0 else "OK"
-    
-    display_reasons = integrity_reasons[:5]
-    if len(integrity_reasons) > 5:
-        display_reasons.append(f"... +{len(integrity_reasons)-5} more")
-    
-    int_details_str = f"Reasons: {'; '.join(display_reasons)}" if integrity_reasons else "Structure is sound."
-
-    # Add Score Row
+    # --- 3. RENDER SCORE ROW (With Ledger) ---
     rows.append({
         "label": "Integrity Level (Heuristic)",
-        "count": integrity_score,
-        "positions": [int_details_str],
-        "severity": int_sev,
-        "badge": int_badge_str
+        "count": audit_result["score"],
+        "severity": audit_result["severity_class"],
+        "badge": f"{audit_result['verdict']} (Score: {audit_result['score']})",
+        "ledger": audit_result["ledger"], # [NEW] Pass the structured ledger
+        "positions": [] # Legacy fallback
     })
 
-    # --- Add Detail Rows ---
-    # [NEW] Flag High-Risk Items
-    add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
-    add_row("Flag: Interlinear Annotation Controls", len(legacy_indices["interlinear"]), legacy_indices["interlinear"], "warn")
+    # --- 4. ADD DETAIL ROWS (Standard Flags) ---
+    # We keep the full detail list for the "Flat View", 
+    # even though the score is calculated via the Ledger.
     
-    add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "crit")
-    add_row("Flag: Unicode Tags (Plane 14)", len(flags["tags"]), flags["tags"], "crit")
-    add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
+    # FATAL / HIGH RISK
+    add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
-    add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "crit")
+    add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "warn") # Downgraded to WARN per new logic
     add_row("Surrogates (Broken)", len(health_issues["surrogate"]), health_issues["surrogate"], "crit")
-    add_row("Unassigned (Void)", len(legacy_indices["unassigned"]), legacy_indices["unassigned"], "crit")
-    add_row("Flag: Invalid Variation Selector", len(legacy_indices["invalid_vs"]), legacy_indices["invalid_vs"], "crit")
+    
+    # PROTOCOL / INTERCHANGE
+    add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "warn") # General presence is warn
+    add_row("Flag: Unicode Tags (Plane 14)", len(flags["tags"]), flags["tags"], "warn")
+    add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
+    add_row("Flag: Invalid Variation Selector", len(legacy_indices["invalid_vs"]), legacy_indices["invalid_vs"], "warn")
+    add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "warn")
 
+    # INVISIBLES & HYGIENE
     add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
     add_row("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)", len(flags["join"]), flags["join"], "warn")
     add_row("Flag: Zero-Width Spacing (ZWSP / WJ / BOM)", len(flags["zw_space"]), flags["zw_space"], "warn")
@@ -3468,9 +3396,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     
     add_row("Flag: Internal BOM (U+FEFF)", len(health_issues["bom_mid"]), health_issues["bom_mid"], "warn")
     add_row("Flag: Other Control Chars (C0/C1)", len(legacy_indices["other_ctrl"]), legacy_indices["other_ctrl"], "warn")
-    add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "crit")
+    add_row("Flag: Interlinear Annotation Controls", len(legacy_indices["interlinear"]), legacy_indices["interlinear"], "warn")
     
-    if not is_nfc:
+    if not (t == unicodedata.normalize("NFC", t)):
         add_row("Flag: Normalization (Not NFC)", 1, ["Status: Text is NOT NFC"], "warn")
 
     add_row("Flag: Deceptive Newline (LS)", len(legacy_indices["deceptive_ls"]), legacy_indices["deceptive_ls"], "warn")
@@ -3478,9 +3406,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Flag: Deceptive Newline (NEL)", len(legacy_indices["deceptive_nel"]), legacy_indices["deceptive_nel"], "warn")
     add_row("Flag: Security Discouraged (Compatibility)", len(legacy_indices["discouraged"]), legacy_indices["discouraged"], "warn")
 
+    # INFORMATIONAL / OK PROPERTIES
     add_row("Flag: Bidi Paired Bracket (Open)", len(legacy_indices["bidi_bracket_open"]), legacy_indices["bidi_bracket_open"], "ok")
     add_row("Flag: Bidi Paired Bracket (Close)", len(legacy_indices["bidi_bracket_close"]), legacy_indices["bidi_bracket_close"], "ok")
-
     add_row("Prop: Extender", len(legacy_indices["extender"]), legacy_indices["extender"], "ok")
     add_row("Prop: Deprecated", len(legacy_indices["deprecated"]), legacy_indices["deprecated"], "warn")
     add_row("Prop: Dash", len(legacy_indices["dash"]), legacy_indices["dash"], "ok")
@@ -3491,7 +3419,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
     add_row("Prop: Logical Order Exception", len(legacy_indices["loe"]), legacy_indices["loe"], "warn")
     add_row("Prop: Extended Pictographic", len(legacy_indices["ext_picto"]), legacy_indices["ext_picto"], "ok")
     add_row("Prop: Variation Selector", len(legacy_indices["vs_all"]), legacy_indices["vs_all"], "ok")
-    
+    add_row("Unassigned (Void)", len(legacy_indices["unassigned"]), legacy_indices["unassigned"], "crit")
+
     if bidi_mirroring_map:
         m_pos = [f"#{idx} ({m})" for idx, m in bidi_mirroring_map.items()]
         add_row("Flag: Bidi Mirrored Mapping", len(m_pos), m_pos, "ok")
