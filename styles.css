@@ -816,6 +816,28 @@ Stage 2: Heatmap Row Classes
   gap: 4px;
 }
 
+/* --- Inspector Context Strip --- */
+.inspector-context-strip {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1rem;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-white);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-light);
+}
+.ctx-item {
+  font-family: inherit; /* Inherits the monospace stack */
+  font-size: 1.2rem;
+  line-height: 1;
+  min-width: 20px;
+  text-align: center;
+}
+.ctx-faint { color: var(--color-text-muted); opacity: 0.4; }
+.ctx-focus { color: var(--color-primary); font-weight: 700; background-color: #eff6ff; border-radius: 2px; }
+
 /* 2. Details Column */
 .inspector-details {
   padding: 1rem;
