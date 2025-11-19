@@ -1063,17 +1063,18 @@ ALIASES = {
 }
 
 CCC_ALIASES = {
+    # --- General Reordering Classes ---
     "0": "Not Reordered",
     "1": "Overlay",
     "7": "Nukta",
     "8": "Kana Voicing",
     "9": "Virama",
 
-    # Range markers (rarely, if ever, seen in real text)
+    # --- Fixed Position Range Markers (UAX #44) ---
     "10": "Start of fixed-position classes",
     "199": "End of fixed-position classes",
     
-    # Fixed Position Classes
+    # --- Attached / Reordering Classes (The "Zalgo" Reservoir) ---
     "200": "Attached Below Left",
     "202": "Attached Below",
     "214": "Attached Above",
@@ -3025,8 +3026,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         "norm_excl": [], "norm_fold": [],
         "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
         "vs_all": [], "invalid_vs": [], "discouraged": [], 
-        "other_ctrl": [], "esc": [], "interlinear": [], # [NEW] Specific trackers
-        "bidi_mirrored": [], "loe": [], "unassigned": []
+        "other_ctrl": [], "esc": [], "interlinear": [], # Specific trackers
+        "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": []
     }
     
     decomp_type_stats = {}
@@ -3139,6 +3140,38 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
                 if mask & INVIS_NON_ASCII_SPACE: flags["non_ascii_space"].append(i)
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
                 if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
+
+                # --- [NEW] 17.0 THREAT: Sibe Quote / Syntax VS Attack ---
+                # Detects Variation Selectors on Syntax (Punctuation/Symbols).
+                # CRITICAL UPGRADE: Must exclude valid Emoji sequences (Symbol + VS15/16)
+                # to avoid massive false positives on things like '❤️' (U+2764 + U+FE0F).
+                if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
+                    if i > 0:
+                        prev_char = js_array[i-1]
+                        prev_cp = ord(prev_char)
+                        prev_cat = unicodedata.category(prev_char) # e.g. 'So', 'Po'
+                        
+                        # Target: Punctuation (P), Symbols (S), Separators (Z)
+                        if prev_cat[0] in ('P', 'S', 'Z'):
+                            
+                            # 1. CHECK EXEMPTION: Is this a valid Emoji sequence?
+                            # Emojis are 'So'. We allow them ONLY if the VS is VS15 (Text) or VS16 (Emoji).
+                            # (Sibe Quotes use VS3, so they will fail this check and get caught).
+                            
+                            is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
+                                            _find_in_ranges(prev_cp, "Extended_Pictographic")
+                            
+                            # VS15 (FE0E) and VS16 (FE0F) are standard for emoji presentation
+                            is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
+                            
+                            if is_emoji_base and is_pres_selector:
+                                pass # SAFE: Standard emoji presentation
+                            else:
+                                # DANGER: 
+                                # 1. It's a Symbol/Punctuation but NOT an emoji base.
+                                # 2. OR it IS an emoji base but using a weird VS (like VS1 or VS3).
+                                # This catches the Sibe Quote (Quote + VS3) and Math Obfuscation.
+                                legacy_indices["suspicious_syntax_vs"].append(i)
 
                 # --- Identifiers ---
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
@@ -3353,6 +3386,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
         
     add_row("Flag: Full Composition Exclusion", len(legacy_indices["norm_excl"]), legacy_indices["norm_excl"], "warn")
     add_row("Flag: Changes on NFKC Casefold", len(legacy_indices["norm_fold"]), legacy_indices["norm_fold"], "warn")
+    add_row("SUSPICIOUS: Variation Selector on Syntax", len(legacy_indices["suspicious_syntax_vs"]), legacy_indices["suspicious_syntax_vs"], "crit")
 
     for k, v in decomp_type_stats.items(): add_row(k, v['count'], v['positions'], "ok")
     for k, v in id_type_stats.items(): add_row(k, v['count'], v['positions'], "warn")
