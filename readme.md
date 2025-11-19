@@ -743,3 +743,47 @@ Based on a canonical inventory of invisible particles, we closed specific covera
 * **Smart Tag Deobfuscation:** Plane 14 Tag Characters are no longer generic hex codes. They are programmatically mapped to their ASCII equivalents (e.g., `[TAG:A]`, `[TAG:!]`), making steganography instantly readable.
 * **Exotic Space Detection:** The Mongolian Vowel Separator (`U+180E`) and other rare spaces are explicitly added to the forensic bitmask to ensure they trigger "Deceptive Space" flags.
 * **Interlinear Annotation Controls:** Specific tracking added for `U+FFF9`–`U+FFFB` to detect suppressed formatting structures.
+
+---
+
+## 📈 Addendum #3: The "Forensic Exhaustion" Upgrade (Deobfuscation Engine)
+
+**Summary:** This update pushes the tool beyond "detection" into **"Forensic Deobfuscation."** We have implemented a "Zero-Trust" particle mapper that translates over **200+** specific invisible, control, and deceptive characters into human-readable tags (e.g., `[HF]`, `[RLO]`, `[PIC:NUL]`). This ensures that *no* particle—whether a deprecated format control or a legacy terminal command—remains invisible to the analyst.
+
+### 1. The "Four Waves" of Particle Coverage
+We have expanded the `INVISIBLE_MAPPING` engine to cover four distinct classes of structural threats that standard "whitespace" filters miss:
+
+* **Wave 1: The "False Vacuums" (Identity Spoofing)**
+    * **Threat:** Characters that render as empty space but are technically Letters (`Lo`) or Symbols (`So`), bypassing `trim()` and whitespace regexes.
+    * **Coverage:** Explicit mapping for the **Hangul Filler** (`[HF]`, `[HCF]`), **Braille Pattern Blank** (`[BRAILLE]`), and **Halfwidth Fillers** (`[HHF]`).
+    * **Structural Glue:** Detection of "Layout Locks" like **Non-Breaking Hyphens** (`[NBH]`) and **Figure Spaces** (`[FIGSP]`) that sabotage line-breaking algorithms.
+
+* **Wave 2: The "Ghost Containers" (Invisible Scoping)**
+    * **Threat:** Invisible control characters used to "group" text in specialized scripts, creating hidden "pockets" for payload storage.
+    * **Coverage:** Full mapping of **Egyptian Hieroglyph Controls** (`[EGY:BS]`), **Musical Scoping** (`[MUS:BB]`), and **Shorthand Format Controls** (`[SHORT:LO]`).
+
+* **Wave 3: The "Legacy Drones" (Terminal Injection)**
+    * **Threat:** C0 and C1 control codes (relics of the teletype era) that can manipulate terminal logs (e.g., Backspace Overwriting).
+    * **Coverage:** A complete hex-map for the C0 block (`[CTL:0x07]`, `[CTL:0x1B]`) and the C1 block (`[NEL]`, `[DEL]`).
+
+* **Wave 4: The "Zombie Controls" (Parsing Desynchronization)**
+    * **Threat:** Deprecated Unicode format characters (like "Inhibit Symmetric Swapping") that modern renderers ignore (making them invisible) but legacy parsers might still process.
+    * **Coverage:** Explicit tags for **Zombie Controls** (`[ISS]`, `[NODS]`), **Invisible Math Operators** (`[FA]`, `[IT]`), and **Khmer Inherent Vowels** (`[KHM:AQ]`).
+
+### 2. The "Visual Deception" Shield (Control Pictures)
+We addressed a specific social-engineering vector where visible glyphs *mimic* invisible control codes to fool analysts.
+* **The Attack:** Using `U+2400` (␀, Symbol for Null) to make a string *look* like it contains a Null Byte, while hiding the real payload elsewhere.
+* **The Defense:** The Reveal Engine now translates these ambiguous glyphs into explicit **Picture Tags** (e.g., `[PIC:NUL]`, `[PIC:ESC]`), instantly distinguishing them from actual control codes (`[NUL]`, `[ESC]`).
+
+### 3. Forensic Report Deobfuscation (JS/Python Bridge)
+We have bridged the "Reveal" logic directly into the reporting engine.
+* **Feature:** When "Copy Stage 1 Report" is clicked, the system now runs a pure-JavaScript replica of the Python deobfuscator (`getDeobfuscatedText`).
+* **Output:** The copied report automatically appends a **"[ Forensic Deobfuscation (Revealed) ]"** section at the bottom, providing a "Christmas Tree" view of the input string with all 200+ forensic tags applied. This allows for immediate, immutable evidence preservation in bug reports.
+
+### 4. The "Browser Boundary" Defense (Non-Unicode Handling)
+We have confirmed the tool's resilience against "Non-Unicode" (invalid byte) attacks.
+* **Architecture:** Since the tool operates "Post-Clipboard," it relies on the browser's internal sanitization.
+* **Detection:** The tool explicitly tracks the "Scar Tissue" left by this sanitization:
+    * **`U+FFFD` (Replacement Character):** Flagged as "Data Loss" (evidence of invalid UTF-8 bytes).
+    * **Lone Surrogates (`0xD800`):** Flagged as "Broken Encoding" (evidence of raw, invalid UTF-16 manipulation).
+    * **Unassigned (`Cn`):** Flagged as "Void" (evidence of future-proofing or fuzzing attacks).
