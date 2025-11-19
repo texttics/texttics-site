@@ -4780,8 +4780,8 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v3.0: 5-Column Timeline + Data Split.
-    Cols: [Prev] [Target] [Next] | [Identity] | [Structure/Bytes]
+    Forensic Layout v4.0: 6-Column Fixed Height.
+    Cols: [Prev] [Target(Wide)] [Next] | [Identity] | [Structure(Wide)] | [Bytes]
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4825,7 +4825,6 @@ def render_inspector_panel(data):
         </tr>
         """
 
-    # Glyph Handling (Use non-breaking space for empty slots)
     prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
     curr_vis = _escape_html(data['cluster_glyph'])
     next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
@@ -4868,23 +4867,21 @@ def render_inspector_panel(data):
             {confusable_html}
         </div>
 
-        <div class="col-data">
-            <div class="structure-section">
-                <div class="section-label">CLUSTER COMPONENTS</div>
-                <div class="structure-table-wrapper">
-                    <table class="structure-table">
-                        <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
-                        <tbody>{comp_rows}</tbody>
-                    </table>
-                </div>
+        <div class="col-structure">
+            <div class="section-label">CLUSTER COMPONENTS ({len(data['components'])})</div>
+            <div class="structure-table-wrapper">
+                <table class="structure-table">
+                    <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
+                    <tbody>{comp_rows}</tbody>
+                </table>
             </div>
-            
-            <div class="bytes-section">
-                <div class="section-label">FORENSIC BYTES</div>
-                <div class="byte-grid">
-                    <div><span class="label">UTF-8:</span> <code>{data['utf8']}</code></div>
-                    <div><span class="label">UTF-16:</span> <code>{data['utf16']}</code></div>
-                </div>
+        </div>
+        
+        <div class="col-bytes">
+            <div class="section-label">FORENSIC BYTES</div>
+            <div class="byte-grid">
+                <div><span class="label">UTF-8:</span> <br><code>{data['utf8']}</code></div>
+                <div><span class="label">UTF-16:</span> <br><code>{data['utf16']}</code></div>
             </div>
         </div>
 
