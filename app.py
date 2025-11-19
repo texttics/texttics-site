@@ -4867,7 +4867,9 @@ def render_inspector_panel(data):
         </div>
 
         <div class="col-target">
-            <div class="inspector-glyph">{curr_vis}</div>
+            <div class="glyph-viewport">
+                <div class="inspector-glyph">{curr_vis}</div>
+            </div>
             <div class="inspector-codepoint">{data['cp_hex_base']}</div>
         </div>
 
