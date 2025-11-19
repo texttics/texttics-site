@@ -1092,15 +1092,20 @@ CCC_ALIASES = {
     "240": "Iota Subscript"
 }
 
-# --- THREAT PENALTY CONSTANTS (The "Penal Code") ---
-# These define the objective weight of each threat vector.
-# They are constant to ensure deterministic scoring.
-PENALTY_EXECUTION_RISK = 25   # Trojan Source, Terminal Injection
-PENALTY_DATA_LOSS      = 20   # Nulls, Replacement Chars, Broken Encodings
-PENALTY_OBFUSCATION    = 15   # Tags, Highly Mixed Scripts (Extensions)
-PENALTY_HIDDEN         = 10   # Invisible Clusters, Nonchars
-PENALTY_SPOOFING       = 10   # Homoglyphs (Base Score) + Density
-PENALTY_SYNTAX         = 5    # BOM, Invalid VS, PUA, Minor Script Mix
+# --- THREAT PENALTY CONSTANTS (The "Weaponization Code") ---
+# Tier 1: COMPILER / EXECUTION ATTACKS (Target: Machine)
+THR_BASE_EXECUTION = 40
+
+# Tier 2: IDENTITY SPOOFING (Target: Human)
+THR_BASE_SPOOFING = 25
+THR_MULT_SPOOFING = 1.0 # Capped at +25 extra
+
+# Tier 3: OBFUSCATION & STEGO (Target: Filter/Scanner)
+THR_BASE_OBFUSCATION = 15
+THR_MULT_OBFUSCATION = 0.5
+
+# Tier 4: SUSPICIOUS CONTEXT (Target: Ambiguity)
+THR_BASE_SUSPICIOUS = 10
 
 # 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
 # We must define all categories to correctly implement the "default-to-restricted" rule.# Source: https://www.unicode.org/reports/tr31/
@@ -4659,99 +4664,93 @@ def render_inspector_panel(data):
 
 def compute_threat_score(inputs):
     """
-    Computes the Threat Score using a Ledger System (Audit Log).
-    Prevents 'Double Jeopardy' and provides a strict breakdown.
+    The Threat Auditor.
+    Calculates Weaponization & Malice.
+    Strictly excludes 'Rot' (Integrity issues).
     """
-    ledger = []  # List of {vector, points, category}
-    noise  = []  # List of {vector} (0 points)
+    ledger = []
+    
+    def add_entry(vector, points, category):
+        ledger.append({"vector": vector, "points": int(points), "category": category})
 
-    def add_entry(vector, points, category="General"):
-        ledger.append({"vector": vector, "points": points, "category": category})
-
-    # --- 1. EXECUTION RISKS (Tier 1) ---
+    # --- 1. EXECUTION ATTACKS (Tier 1) ---
+    # Trojan Source: Requires Bidi Override/Embedding (not just Isolates)
     if inputs.get("malicious_bidi"):
-        add_entry("Malicious Bidi (Trojan Source)", PENALTY_EXECUTION_RISK, "Execution")
-    elif inputs.get("has_unclosed_bidi"):
-        # Only penalize unclosed if not already flagged as malicious trojan source
-        add_entry("Unclosed Bidi Sequence", 10, "Structure")
-    elif inputs.get("bidi_count", 0) > 0:
-        # Safe Bidi (just present)
-        add_entry(f"Bidi Controls Present ({inputs['bidi_count']})", 5, "Syntax")
+        add_entry("Trojan Source (Malicious Bidi)", THR_BASE_EXECUTION, "EXECUTION")
         
-    # [NEW] Terminal Injection Check (requires logic update in forensic stats to pass 'has_esc')
-    # We'll assume the input map has been updated or we check indices
-    # (Skipping direct check here to keep interface compatible with current update_all)
-
-    # --- 2. DATA INTEGRITY (Tier 2) ---
-    grade = inputs.get("decode_grade", "OK")
-    if grade in ("CORRUPT", "CRITICAL", "CRIT"):
-        add_entry(f"Critical Integrity Failure ({grade})", PENALTY_DATA_LOSS, "Integrity")
-    elif grade in ("WARNING", "WARN"):
-        add_entry("Integrity Warning", 5, "Integrity")
-
-    if inputs.get("nonchar_count", 0) > 0:
-        add_entry("Noncharacters (Illegal)", PENALTY_HIDDEN, "Integrity")
-
-    # --- 3. OBFUSCATION & DECEPTION (Tier 3) ---
+    # Terminal Injection: ESC key patterns
+    # (Assuming forensic stats passes 'has_esc' check)
+    # For now, we use the Bidi Danger check as the primary signal
     
-    # Script Mixing
-    mix_class = inputs.get("script_mix_class", "")
-    if "Highly Mixed" in mix_class:
-        add_entry(mix_class, PENALTY_OBFUSCATION, "Obfuscation")
-    elif "Mixed Scripts" in mix_class:
-        add_entry(mix_class, 8, "Obfuscation") # Lower penalty for base mix
+    # Syntax Spoofing: Variation Selector on Operator/Syntax
+    if inputs.get("suspicious_syntax_vs"):
+        add_entry("Syntax Spoofing (VS on Operator)", THR_BASE_EXECUTION, "EXECUTION")
 
-    # Invisible Clusters (Double Jeopardy Check: If Bidi was malicious, don't double count small clusters)
-    # But if we have a MASSIVE cluster, it's a separate issue (payload hiding).
-    cluster_count = inputs.get("invis_cluster_count", 0)
-    max_run = inputs.get("max_invis_run", 0)
-    
-    if cluster_count > 0:
-        if max_run > 4:
-            add_entry(f"Massive Invisible Cluster (len={max_run})", PENALTY_HIDDEN, "Obfuscation")
-        else:
-             # Smaller clusters - check if we already hit them with Bidi
-             if not inputs.get("malicious_bidi"):
-                 add_entry(f"Invisible Clusters ({cluster_count})", 5, "Obfuscation")
-
-    # Homoglyphs (Density Calculation)
+    # --- 2. IDENTITY SPOOFING (Tier 2) ---
     drift_cross = inputs.get("drift_cross_script", 0)
     if drift_cross > 0:
-        # Formula: Base Penalty + 1 point per char
-        density_score = PENALTY_SPOOFING + drift_cross
-        add_entry(f"Cross-Script Homoglyphs (count={drift_cross})", density_score, "Spoofing")
+        # Capped Density Model: Base + min(count, 25)
+        density_bonus = min(drift_cross, 25) * THR_MULT_SPOOFING
+        total_pts = THR_BASE_SPOOFING + density_bonus
+        add_entry(f"Cross-Script Homoglyphs ({drift_cross})", total_pts, "SPOOFING")
 
-    # --- 4. SYNTAX & PROTOCOL (Tier 4) ---
-    if inputs.get("has_internal_bom"):
-        add_entry("Internal BOM", PENALTY_SYNTAX, "Syntax")
-    if inputs.get("has_invalid_vs"):
-        add_entry("Invalid Variation Selector", PENALTY_SYNTAX, "Syntax")
-    if inputs.get("pua_pct", 0) > 0:
-        add_entry("Private Use Area characters", PENALTY_SYNTAX, "Syntax")
+    # --- 3. OBFUSCATION (Tier 3) ---
+    # Massive Clusters
+    cluster_len = inputs.get("max_invis_run", 0)
+    cluster_count = inputs.get("invis_cluster_count", 0)
     
-    # --- 5. NOISE (0 Points) ---
-    # Explicitly logging what we IGNORED to show rigor
-    if inputs.get("nsm_level") >= 1:
-        noise.append("Excessive Combining Marks (Zalgo)")
-    
-    drift_ascii = inputs.get("drift_ascii", 0)
-    if drift_ascii > 0:
-        noise.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
+    if cluster_len > 4:
+        # Logic: Massive cluster is obfuscation.
+        add_entry(f"Massive Invisible Cluster (len={cluster_len})", THR_BASE_OBFUSCATION, "OBFUSCATION")
+    elif cluster_count > 0:
+         # Smaller clusters - check if we already charged for Trojan Source
+         if not inputs.get("malicious_bidi"):
+             # If no Trojan Source, treat as Obfuscation/Stego attempt
+             # Scale slightly by count
+             pts = THR_BASE_OBFUSCATION + min(cluster_count, 10) * THR_MULT_OBFUSCATION
+             add_entry(f"Invisible Clusters ({cluster_count})", pts, "OBFUSCATION")
+
+    # Plane 14 Tags
+    tags = inputs.get("tags_count", 0)
+    if tags > 0:
+        add_entry(f"Plane 14 Tags ({tags})", THR_BASE_OBFUSCATION, "OBFUSCATION")
+
+    # Highly Mixed Scripts
+    mix_class = inputs.get("script_mix_class", "")
+    if "Highly Mixed" in mix_class:
+        add_entry(mix_class, THR_BASE_OBFUSCATION, "OBFUSCATION")
+
+    # --- 4. SUSPICIOUS (Tier 4) ---
+    # Unclosed Bidi (Sloppy) - Only if NOT Malicious
+    if inputs.get("has_unclosed_bidi") and not inputs.get("malicious_bidi"):
+        add_entry("Unclosed Bidi Sequence", THR_BASE_SUSPICIOUS, "SUSPICIOUS")
+        
+    # Mixed Scripts (Base)
+    if "Mixed Scripts (Base)" in mix_class:
+        add_entry(mix_class, THR_BASE_SUSPICIOUS, "SUSPICIOUS")
 
     # --- CALCULATION ---
     total_score = sum(item["points"] for item in ledger)
-
-    # Determine Level
-    level = "LOW"
-    if total_score >= 50: level = "CRITICAL"
-    elif total_score >= 20: level = "HIGH"
-    elif total_score >= 5: level = "MEDIUM"
+    
+    verdict = "CLEAN"
+    severity_class = "ok"
+    
+    if total_score >= 40:
+        verdict = "WEAPONIZED"
+        severity_class = "crit"
+    elif total_score >= 15:
+        verdict = "HIGH RISK"
+        severity_class = "crit" # High Risk is still critical red
+    elif total_score >= 1:
+        verdict = "SUSPICIOUS"
+        severity_class = "warn"
 
     return {
         "score": total_score,
-        "level": level,
+        "verdict": verdict,
+        "severity_class": severity_class,
         "ledger": ledger,
-        "noise": noise
+        "noise": inputs.get("noise_list", []) # Pass noise list for display
     }
 
 # ---
@@ -4875,35 +4874,31 @@ def update_all(event=None):
     # Retrieve metrics safely from the ALREADY COMPUTED threat_results
     skel_metrics = threat_results.get("skel_metrics", {})
     
-    # Build the Inputs Object
+    # Gather Noise (for display)
+    noise_list = []
+    if nsm_stats["level"] >= 1: noise_list.append("Excessive Combining Marks (Zalgo)")
+    drift_ascii = skel_metrics.get("drift_ascii", 0)
+    if drift_ascii > 0: noise_list.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
+
+    # Inputs for Threat Auditor
     score_inputs = {
-        "total_code_points": cp_summary.get("Total Code Points", 0),
-        "invis_or_ignorable": get_count("Flag: Any Invisible or Default-Ignorable (Union)"),
-        "deceptive_spaces": get_count("Deceptive Spaces (Non-ASCII)"),
-        "has_internal_bom": get_count("Flag: Internal BOM (U+FEFF)") > 0,
-        "has_invalid_vs": get_count("Flag: Invalid Variation Selector") > 0,
-        "has_unclosed_bidi": get_count("Flag: Unclosed Bidi Sequence") > 0,
-        "decode_grade": decode_grade,
         "malicious_bidi": malicious_bidi,
-        "bidi_count": get_count("Flag: Bidi Controls (UAX #9)"),
+        "has_unclosed_bidi": get_count("Flag: Unclosed Bidi Sequence") > 0,
+        
+        "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
+        "script_mix_class": script_mix_class,
+        
         "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
         "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
+        "tags_count": get_count("Flag: Unicode Tags (Plane 14)"),
         
-        # Pass specific drift metrics here
-        "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
-        "drift_ascii": skel_metrics.get("drift_ascii", 0),
-        "skeleton_drift": skel_metrics.get("total_drift", 0),
+        "suspicious_syntax_vs": get_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
         
-        "not_nfc": get_count("Flag: Normalization (Not NFC)") > 0,
-        "script_mix_class": script_mix_class,
-        "nsm_level": nsm_stats["level"],
-        "pua_pct": forensic_map.get("Flag: Private Use Area (PUA)", {}).get("pct", 0),
-        "nonchar_count": get_count("Noncharacter"),
-        "unassigned_count": get_count("Unassigned (Void)"),
-        "has_hidden_marks": get_count("Flag: Marks on Non-Visual Base") > 0
+        "noise_list": noise_list
     }
     
     final_score = compute_threat_score(score_inputs)
+    
     
     # --- Construct Display Flags ---
     final_threat_flags = {}
