@@ -752,25 +752,47 @@ Stage 2: Heatmap Row Classes
   border: none;
 }
 
-/* --- "Best-in-Class" Inspector Layout --- */
+/* --- "Best-in-Class" Inspector Layout (Fixed) --- */
 
 #inspector-panel-content {
   min-height: 140px;
-  padding: 0; /* Reset padding for grid layout */
+  padding: 0;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   overflow: hidden;
+  
+  /* LAYOUT FIX: Center the "Empty State" text by default */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
+/* 1. The Active Grid Layout */
+/* When content is loaded, this div takes over and fills the Flex parent */
 .inspector-layout {
   display: grid;
-  grid-template-columns: 140px 1fr 220px; /* Fixed Glyph | Fluid Details | Fixed Bytes */
+  grid-template-columns: 140px 1fr 220px; /* Glyph | Details | Bytes */
   height: 100%;
-  min-height: 140px;
+  width: 100%;       /* Force full width inside the Flex parent */
+  flex-grow: 1;      /* Grow to fill height */
+  text-align: left;  /* Reset text alignment for data */
 }
 
-/* 1. The Glyph Box (Visual) */
+/* 2. Fix the Placeholder Text */
+/* We remove the global dashed border so it looks clean inside this panel */
+#inspector-panel-content .placeholder-text {
+  border: none !important;      /* Remove the "Middle Line" */
+  background: transparent;      /* No background box */
+  margin: 0;
+  padding: 0;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+}
+
+/* 3. The Glyph Box (Visual) */
 .inspector-glyph-box {
   background-color: var(--color-bg);
   border-right: 1px solid var(--color-border-light);
@@ -783,7 +805,7 @@ Stage 2: Heatmap Row Classes
 }
 
 .inspector-glyph {
-  font-family: var(--font-sans); /* Use system font for best rendering */
+  font-family: var(--font-sans);
   font-size: 3.5rem;
   line-height: 1;
   margin-bottom: 0.5rem;
@@ -796,7 +818,7 @@ Stage 2: Heatmap Row Classes
   font-size: 0.9rem;
 }
 
-/* 2. The Details (Identity) */
+/* 4. The Details (Identity) */
 .inspector-details {
   padding: 1rem;
   display: flex;
@@ -838,9 +860,9 @@ Stage 2: Heatmap Row Classes
   color: #b45309;
 }
 
-/* 3. The Bytes (Forensic) */
+/* 5. The Bytes (Forensic) */
 .inspector-bytes {
-  background-color: #f8fafc; /* Slate-50 */
+  background-color: #f8fafc;
   border-left: 1px solid var(--color-border-light);
   padding: 1rem;
   display: flex;
@@ -865,7 +887,7 @@ Stage 2: Heatmap Row Classes
   color: var(--color-text);
 }
 
-/* Mobile Responsive: Stack vertically on small screens */
+/* Mobile Responsive */
 @media (max-width: 768px) {
   .inspector-layout {
     grid-template-columns: 1fr;
