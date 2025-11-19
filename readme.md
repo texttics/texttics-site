@@ -1,92 +1,69 @@
-# Text...tics: A Deterministic Structural Profiler & Integrity Analyzer
+# Text...tics
+### Stage 1: The Profiler
+**Focus:** Metrics, Lists, Integrity Flags
 
-## What is Text...tics?
-
-This is a single-page web application that functions as a real-time, deterministic text analyzer. It is a highly specialized, browser-based "lab instrument" meticulously engineered to provide a literal, precise, and unfiltered view of any text string's internal structure, composition, and integrity.
-
-Its primary goal is to function as a **"Structural Profiler"**. This tool is not a "best guess" analyzer; it is a deterministic machine. It generates a complete, absolute, and unambiguous statistical signature, or "profile," for any given text. This profile serves as a verifiable, ground-truth baseline, allowing for the computational detection of *any* structural change between two strings, no matter how perceptually subtle.
-
-Its secondary, but equally important, goal is to serve as a **"Structural Integrity Analyzer."** It uses its detailed, multi-layered profile to detect, flag, and locate anomalies, deceptions, and sophisticated "inter-layer mismatch attacks." These are attacks specifically designed to deceive human perception while presenting a different logical reality to a machine. This tool is built to find the invisible, ambiguous, or malicious characters (such as homoglyphs, "Trojan Source" bidirectional overrides, invisible format controls, or steganographic variation selectors) that successfully survive the common copy/paste process and persist as a threat in a "post-clipboard" environment.
+> **The Algorithmically Deterministic Structural Profiler of Textual Particles (Unicode-based)**
 
 ---
 
+## 🧪 Method & Scope
+**Method:** Deterministic particle-level analysis of the post-clipboard string, leveraging the Unicode Technical Standards (UAX/UTS) to profile composition, logical identity, and perceptual boundaries.
+
+**Text...tics** is a single-page web application that functions as a real-time, deterministic forensic instrument. It is a highly specialized, browser-based "lab instrument" meticulously engineered to provide a literal, precise, and unfiltered view of any text string's internal structure, composition, and integrity.
+
+As **Stage 1 (The Profiler)**, its primary mission is to generate the verifiable, ground-truth baseline statistics and forensic flags required to detect sophisticated "inter-layer mismatch attacks" (such as homoglyphs, "Trojan Source" bidirectional overrides, or invisible format controls).
+
 ---
 
-## The Architectural Model: A Hybrid, Serverless Powerhouse
+## 🔬 Core Philosophy: A "Post-Clipboard" Analyzer
 
-The entire application runs 100% in the user's browser, requiring no server-side backend or data processing. This guarantees user privacy and enables instantaneous, real-time analysis. It operates on a powerful, serverless, hybrid model that leverages the best of two different environments: the high-speed JavaScript engine and the deep-analysis Python runtime (via PyScript).
+The design of this tool is the result of a specific, critical scoping decision. It is a **"Post-Clipboard Structural Integrity Analyzer."** This means its primary mission is to analyze the structural integrity of a decoded string *exactly as it exists* after being copied from an external source and pasted (Ctrl+V) into the browser.
+
+### The "Great Standardizer" Boundary
+The operating system's clipboard and the browser's "paste" event act as a security boundary we call the **"Great Standardizer."** By the time text appears in our input box, the browser's hardened rendering engine has already performed a massive, free sanitization:
+
+1.  **Byte-Level Interpretation:** The browser has interpreted raw bytes using a guessed encoding.
+2.  **Decoding:** It has decoded that stream into a standardized internal JavaScript string (UTF-16).
+3.  **Sanitization:** It has strictly rejected or replaced invalid data (e.g., Overlong UTF-8, Lone Surrogates, or invalid byte sequences) with the Unicode Replacement Character (`U+FFFD`).
+
+### Defining the Analytical Boundary
+This "Great Standardizer" process allows Text...tics to focus 100% on the **structural integrity of the resulting, decoded string**. This creates a clear distinction:
+
+* **IT IS NOT:** A "raw file analyzer" or "byte-level parser." We do not guess encodings or show raw hex bytes (`0xFE 0xFF`).
+* **IT IS:** A "Post-Clipboard" analyzer. We analyze the *result* of the sanitization process.
+* **THE GOAL:** To detect threats that *survive* normalization and transit—threats specifically designed to deceive human perception while presenting a different logical reality to a machine.
+
+---
+
+## 🏗️ The Architectural Model: A Hybrid, Serverless Powerhouse
+
+The entire application runs **100% in the user's browser**, requiring no server-side backend. This guarantees user privacy and enables instantaneous analysis. It operates on a powerful, hybrid model that leverages the best of two environments.
 
 ### 1. The JavaScript Layer (High-Speed Standards Parsing)
-
-This layer uses the browser's native, Just-In-Time (JIT) compiled JavaScript engines (like Google's V8 or Mozilla's SpiderMonkey). These engines are written in high-performance C++ and are the "world-class" standard for executing high-frequency, standards-compliant operations at native speed. We delegate two critical, high-throughput tasks to this layer:
-
-* **Unicode Property Classification (UAX #18):** All 30 minor category checks (e.g., `\p{Lu}`, `\p{Po}`) and dozens of property checks (e.g., `\p{White_Space}`) are handled by the browser's native `RegExp` engine. This engine has a pre-compiled, optimized implementation of the Unicode Character Database, making it the fastest possible way to classify millions of code points per second.
-* **Grapheme Cluster Segmentation (UAX #29):** The "perceptual" analysis is powered by the native `Intl.Segmenter` API. This is the browser's built-in, trusted implementation of **Unicode Standard Annex #29 (UAX #29)**, the official rulebook for determining "what counts as a single character" to a human user. We treat this as an authoritative black box for perceptual segmentation.
+We delegate high-frequency, standard-compliant tasks to the browser's native, JIT-compiled C++ engines (V8/SpiderMonkey) for native speed:
+* **Unicode Property Classification (UAX #18):** Using the native `RegExp` engine to classify millions of code points per second (e.g., `\p{Lu}`, `\p{White_Space}`).
+* **Grapheme Cluster Segmentation (UAX #29):** Using the `Intl.Segmenter` API as the authoritative "black box" for determining perceptual character boundaries.
 
 ### 2. The Python Layer (Orchestration & Deep Analysis)
-
-This layer runs a full Python 3.12 runtime in the browser via PyScript. Python acts as the application's "brain" or "chief orchestrator." It is used for lower-frequency, "heavy-lifting" tasks that require deep, data-driven logic and complex state management that JavaScript alone cannot easily provide.
-
-* **State Management & Orchestration:** The main `update_all` function in `app.py` manages the entire application state and analysis pipeline, calling all computation functions and passing their results to the correct DOM renderers.
-* **Deep Unicode Analysis:** The tool uses a file-first, data-driven approach for maximum precision. While built-in `unicodedata` functions are used for simple tasks (like `unicodedata.numeric()`), the core forensic engine is powered by direct lookups against a local copy of the Unicode Character Database.
-* **Data-Driven Analysis (The Core):** This is the heart of the tool's analytical depth. Python asynchronously fetches, parses, and analyzes **31 raw data files** directly from the Unicode Consortium. This data-driven approach allows the tool to perform UAX-compliant checks that are impossible with built-in functions alone. The data files implemented include:
-    * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`):** For Block, Age, and Script properties.
-    * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`):** The raw data for the six file-based Run-Length Encoding (RLE) engines.
-    * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`):** A deep well of binary flags and properties used for the forensic integrity report.
-    * **Specialized Profile (`StandardizedVariants.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`):** High-precision files for features like the Zalgo-detector, decomposition analysis, numeric types, and variant/Bidi bracket pairing.
-    * **Threat-Hunting (`confusables.txt`, `IdentifierType.txt`, `IdentifierStatus.txt`, `intentional.txt`):** The data files that power the Group 3 (homoglyph) and UAX #31 (Identifier) security analysis.
-    * **UTS #51 Emoji Profile (`emoji-variation-sequences.txt`, `emoji-sequences.txt`, `emoji-zwj-sequences.txt`, `emoji-data.txt`, `emoji-test.txt`):** The 5 data files that power the UTS #51 "Emoji Powerhouse" subsystem.
-
-The final result is a multi-layered, literal, and data-driven analysis of text composition, sequence (run) shape, structural integrity, and deep provenance, all based on the official Unicode Standard.
+We run a full **Python 3.12 runtime** in the browser via PyScript. Python acts as the "brain," handling heavy-lifting tasks that require deep, data-driven logic:
+* **State Management:** The main `update_all` function in `app.py` orchestrates the entire analysis pipeline.
+* **Deep Unicode Analysis:** Unlike the JS layer, Python performs direct lookups against a local, virtualized copy of the Unicode Character Database.
+* **Data-Driven Analysis (The Core):** Python asynchronously fetches and parses **31 raw data files** directly from the Unicode Consortium to perform checks impossible with built-in functions alone, including:
+    * **Core Profile:** `Blocks.txt`, `Scripts.txt`, `DerivedAge.txt`.
+    * **Shape Profile:** `LineBreak.txt`, `BidiBrackets.txt`, `EastAsianWidth.txt`.
+    * **Integrity Profile:** `PropList.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`.
+    * **Threat-Hunting:** `confusables.txt`, `IdentifierStatus.txt` (UAX #31).
+    * **Emoji Powerhouse (UTS #51):** A dedicated 5-file subsystem (`emoji-test.txt`, `emoji-zwj-sequences.txt`, etc.) for forensic emoji analysis.
 
 ---
 
-## 🔬 Core Philosophy: A "Post-Clipboard" Structural Integrity Analyzer
+## 🎯 Primary Objectives
 
-### What is a "Post-Clipboard" Analyzer?
+### Goal 1: Structural Profiling
+To provide an absolute, deterministic statistical signature for any text. This serves as a verifiable ground-truth baseline, allowing for the computational detection of *any* structural change between two strings, no matter how perceptually subtle.
 
-The design of this tool is the result of a specific, critical scoping decision. It is a **"Post-Clipboard Structural Integrity Analyzer."**
-
-This means its primary mission is to analyze the structural integrity of a decoded string *exactly as it exists* after being copied from an external source (like a website, email, or document) and pasted (Ctrl+V) into the browser's `<textarea>`.
-
-This "post-clipboard" scope is a core feature, not a limitation. It defines our analytical boundary and allows us to focus on a class of threats that *survive* normalization and transit.
-
-### The "Great Standardizer": A Core Feature, Not a Limitation
-
-The operating system's clipboard and the browser's "paste" event are a powerful, standards-compliant security boundary. We call this boundary the **"Great Standardizer."**
-
-By the time the text appears in our input box, the browser's strict, hardened rendering and paste engine has *already* performed a massive, free sanitization and pre-analysis for us:
-
-1.  **Byte-Level Interpretation:** The browser has already interpreted the raw bytes from the clipboard, using a (guessed) encoding (e.g., UTF-8, Windows-1252, etc.).
-2.  **Decoding:** It has decoded that byte stream into a standardized, internal JavaScript string (typically UTF-16).
-3.  **Sanitization & Rejection:** This is the most critical step. The browser's engine has *already* strictly rejected or replaced any invalid, malformed, or corrupt byte-level data. This includes:
-    * **Overlong UTF-8 sequences** (a classic security filter bypass).
-    * **"Non-shortest form" byte sequences.**
-    * **Lone Surrogates** (remnants of broken UTF-16 pairs).
-    * **Invalid byte sequences** (e.g., `0xFF`).
-    * **Ill-formed sequences** (e.g., a 4-byte UTF-8 sequence representing a code point > U+10FFFF).
-    * In all these cases, the browser's modern, security-first engine will have **replaced** the offending data with the Unicode Replacement Character (, `U+FFFD`), providing an immediate, unambiguous flag of data corruption *before* our tool even runs.
-
-### Defining Our Analytical Boundary (What This Tool IS NOT)
-
-This "Great Standardizer" process allows our tool to focus 100% on its primary mission: analyzing the *structural integrity of the resulting, decoded string*. This is a critical distinction that separates our tool from others.
-
-This tool **intentionally excludes** a whole class of "raw file" analysis. It **does not**:
-
-* **Analyze raw bytes.** That is the job of a hex editor (like HxD or 010 Editor). Our tool does not show you `0xFE 0xFF`.
-* **Perform encoding guessing.** That is the job of a library like `charset-normalizer`. Our tool trusts the browser's guess.
-* **Detect byte-level corruption.** The browser has already detected this and replaced it with .
-
-We analyze the **result** of that sanitization process, not the process itself. This makes our tool a "structural integrity" analyzer, not a "byte-level forensic" analyzer.
-
-### Our Focus: Structural Profiling First, Threat-Hunting Second
-
-This tool's philosophy is built on a clear, two-part order of operations:
-
-1.  **IT IS:** A **"Post-Clipboard" analyzer** that examines the structural integrity of a *decoded, sanitized string*.
-2.  **IT IS NOT:** A **"raw file analyzer"** or **"byte-level parser."** It analyzes the string *after* the browser's "Great Standardizer" has already processed it.
-3.  **ITS MAIN GOAL (Group 2):** To be a **"Structural Profiler."** It provides the absolute, deterministic data needed to find *any* structural deviation between two text versions.
-4.  **ITS SECONDARY GOAL (Group 3):** To be a **"Threat-Hunting Analyzer."** It uses this profile to detect *inter-layer mismatch attacks* (like homoglyphs, invisible characters, and Bidi controls) that *successfully survive* the browser's sanitization process.
+### Goal 2: Structural Integrity Analysis
+To use that profile to flag "Inter-Layer Mismatches." These are attacks where the **Logical Atom** (what the machine sees) differs from the **Perceptual Atom** (what the human sees). This tool is built to expose invisible characters, homoglyphs, Trojan Source overrides, and steganographic variation selectors that hide within plain sight.
 
 ---
 
