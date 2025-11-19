@@ -758,16 +758,16 @@ Stage 2: Heatmap Row Classes
   border: none;
 }
 
-/* --- Cluster-Aware Inspector Layout --- */
+/* --- Inspector Layout v3 (5-Column Grid) --- */
 
 #inspector-panel-content {
-  min-height: 160px; /* Slightly taller for the table */
+  min-height: 180px; /* Taller to accommodate data columns */
   padding: 0;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   overflow: hidden;
-  /* Center "Empty State" Text */
+  /* Flex fallback for Empty State centering */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -775,19 +775,51 @@ Stage 2: Heatmap Row Classes
   text-align: center;
 }
 
-/* Active Grid Layout */
-.inspector-layout {
+.inspector-layout-v3 {
   display: grid;
-  grid-template-columns: 150px 1fr 240px; /* Visual | Identity | Structure */
+  /* Cols: 
+     1. Prev (Narrow)
+     2. Target (Wide Visual)
+     3. Next (Narrow)
+     4. Identity (Fluid info)
+     5. Data (Fixed Width table/bytes)
+  */
+  grid-template-columns: 60px 140px 60px 1fr 260px;
   height: 100%;
   width: 100%;
   flex-grow: 1;
-  text-align: left; /* Reset text alignment */
+  text-align: left;
 }
 
-/* 1. Glyph Box */
-.inspector-glyph-box {
-  background-color: var(--color-bg);
+/* --- Columns 1 & 3: Context Strips --- */
+.col-context {
+  background-color: #f8fafc; /* Slate-50 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--color-border-light);
+  color: var(--color-text-muted);
+}
+.col-prev { border-right: 1px dashed var(--color-border-light); }
+.col-next { border-left: 1px dashed var(--color-border-light); } /* Separator from Target */
+
+.ctx-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  opacity: 0.6;
+}
+.ctx-glyph {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  opacity: 0.5;
+  filter: grayscale(100%);
+}
+
+/* --- Column 2: Target Visual --- */
+.col-target {
+  background-color: var(--color-bg); /* White/Gray mix */
   border-right: 1px solid var(--color-border-light);
   display: flex;
   flex-direction: column;
@@ -795,13 +827,14 @@ Stage 2: Heatmap Row Classes
   justify-content: center;
   padding: 1rem;
   text-align: center;
+  z-index: 1; /* Sit above context borders */
+  box-shadow: 0 0 10px rgba(0,0,0,0.03); /* Slight lift */
 }
 .inspector-glyph {
-  /* [FIX] Use Monospace to match the Input and preserve mark positioning fidelity */
-  font-family: var(--font-mono); 
-  font-size: 3rem;
-  line-height: 1.2; /* Slight bump to accommodate tall stacks */
-  margin-bottom: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 3.5rem;
+  line-height: 1;
+  margin-bottom: 0.5rem;
 }
 .inspector-codepoint {
   font-family: var(--font-mono);
@@ -810,126 +843,79 @@ Stage 2: Heatmap Row Classes
   font-size: 0.85rem;
   margin-bottom: 0.5rem;
 }
-.inspector-badges {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 
-/* --- Inspector Context Strip --- */
-.inspector-context-strip {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 1rem;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-white);
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--color-border-light);
-}
-.ctx-item {
-  font-family: inherit; /* Inherits the monospace stack */
-  font-size: 1.2rem;
-  line-height: 1;
-  min-width: 20px;
-  text-align: center;
-}
-.ctx-faint { color: var(--color-text-muted); opacity: 0.4; }
-.ctx-focus { color: var(--color-primary); font-weight: 700; background-color: #eff6ff; border-radius: 2px; }
-
-/* 2. Details Column */
-.inspector-details {
-  padding: 1rem;
+/* --- Column 4: Identity --- */
+.col-identity {
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
 .inspector-header {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--color-text);
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: 1rem;
+  border-bottom: 2px solid var(--color-border-light);
   padding-bottom: 0.5rem;
 }
-.sub-header {
-  font-weight: 400;
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-  margin-left: 0.5rem;
-}
 
-/* 3. Structure Column (Right) */
-.inspector-structure {
+/* --- Column 5: Structure & Bytes --- */
+.col-data {
   background-color: #f8fafc;
   border-left: 1px solid var(--color-border-light);
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* Contain the table */
 }
 
-.structure-table-wrapper {
-  flex-grow: 1;
-  overflow-y: auto; /* Scroll if too many combining marks */
+/* Sub-section: Structure Table */
+.structure-section {
+  flex: 2; /* Takes 2/3rds of height */
   border-bottom: 1px solid var(--color-border-light);
-  max-height: 110px;
-}
-
-.structure-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.75rem;
-}
-.structure-table th {
-  text-align: left;
-  padding: 4px 8px;
-  background-color: #f1f5f9;
-  color: var(--color-text-muted);
-  font-weight: 600;
-  position: sticky;
-  top: 0;
-}
-.structure-table td {
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--color-border-light);
-  white-space: nowrap;
-}
-.mini-code {
-  font-family: var(--font-mono);
-  color: var(--color-text-muted);
-}
-.truncate-text {
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.inspector-bytes-mini {
-  padding: 0.75rem;
-  background-color: #fff;
-  font-size: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  overflow: hidden;
 }
-.inspector-bytes-mini code {
-    font-family: var(--font-mono);
-    background-color: #f1f5f9;
-    padding: 1px 4px;
-    border-radius: 3px;
+.section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  padding: 6px 10px;
+  background-color: #f1f5f9;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.structure-table-wrapper {
+  flex-grow: 1;
+  overflow-y: auto;
+}
+.structure-table td {
+  padding: 4px 8px;
 }
 
-/* Fix: Responsive Stack */
-@media (max-width: 900px) {
-  .inspector-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
+/* Sub-section: Bytes */
+.bytes-section {
+  flex: 1; /* Takes 1/3rd of height */
+  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+.byte-grid {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.75rem;
+}
+
+/* Responsive Collapse */
+@media (max-width: 1100px) {
+  .inspector-layout-v3 {
+    grid-template-columns: 140px 1fr; /* Visual | Identity */
+    grid-template-rows: auto auto;
   }
-  .inspector-glyph-box, .inspector-structure {
-    border: none;
-    border-bottom: 1px solid var(--color-border-light);
-  }
+  /* Hide context columns on mid-size screens to save space */
+  .col-context { display: none; }
+  .col-data { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--color-border-light); }
 }
 
 /* --- Macro Analysis Control --- */
