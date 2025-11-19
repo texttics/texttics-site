@@ -869,6 +869,29 @@ Stage 2: Heatmap Row Classes
   cursor: pointer;
 }
 
+/* --- Collapsible Profile Styling --- */
+
+/* The clickable summary header */
+details.profile-section > summary {
+  cursor: pointer; /* Adds the "hand" cursor */
+}
+
+
+/* If you are using a custom triangle (::before), restore this. 
+   If you were using the default browser triangle, you can delete 
+   the ::before and ::-webkit-details-marker blocks.
+*/
+
+/* When open, rotate the custom indicator */
+details[open].profile-section > summary::before {
+  transform: rotate(90deg);
+}
+
+/* THE BLUE HOVER EFFECT */
+details.profile-section > summary:hover {
+  color: var(--color-primary-focus); /* Turns text and marker blue */
+}
+
 /* --- Repertoire Card Styling --- */
 
 .card.card-repertoire {
