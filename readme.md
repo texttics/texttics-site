@@ -787,3 +787,58 @@ We have confirmed the tool's resilience against "Non-Unicode" (invalid byte) att
     * **`U+FFFD` (Replacement Character):** Flagged as "Data Loss" (evidence of invalid UTF-8 bytes).
     * **Lone Surrogates (`0xD800`):** Flagged as "Broken Encoding" (evidence of raw, invalid UTF-16 manipulation).
     * **Unassigned (`Cn`):** Flagged as "Void" (evidence of future-proofing or fuzzing attacks).
+ 
+
+---
+
+***
+
+## 🛡️ Update: The "Forensic Saturation" & UTS #55 Compliance Upgrade
+
+**Session Goal:** To achieve total forensic exhaustion against advanced "Inter-layer Mismatch" attacks, utilizing the threat models defined in **UTS #55 (Source Code Handling)** and the new vector deltas from **Unicode 17.0**.
+
+**Summary:** We moved beyond simple "character counting" to **"State-Machine Validation."** The engine now tracks the *structural logic* of the text (nesting, stacks, and sequence binding) to detect exploits that are technically valid Unicode but forensically malicious.
+
+### 1. The "Stack-Machine" Bidi Scanner (UTS #55 Sec 5.2.1)
+We replaced the linear Bidi counter with a **Tri-State Stack Machine**. Previous versions counted control characters but ignored their nesting order, leaving the tool vulnerable to "Stack Cross-Over" and "Spillover" attacks.
+
+* **The Upgrade:** The `analyze_bidi_structure` function now maintains **three independent isolation stacks**:
+    1.  **The Isolate Stack:** Strictly tracks `LRI`, `RLI`, `FSI` -> `PDI`.
+    2.  **The Embedding Stack:** Strictly tracks `LRE`, `RLE`, `LRO`, `RLO` -> `PDF`.
+    3.  **The Bracket Stack:** Strictly enforces **Identity Matching** for paired brackets (e.g., `(` must be closed by `)`).
+* **The Threat Neutralized:**
+    * **Spillover Attacks:** An attacker injects an unbalanced `(` to force the renderer to leak RTL directionality into subsequent code. The engine now flags `Flag: Unbalanced Bidi Brackets`.
+    * **Stack Cross-Over:** An attacker tries to close an Isolate (`LRI`) with an Embedding closer (`PDF`). The engine now flags this as a structural break (`Flag: Unmatched PDF` + `Flag: Unclosed Isolate`).
+
+### 2. The "Syntax Spoofing" Detector (Unicode 17.0 Delta)
+We addressed a specific vulnerability introduced in Unicode 17.0 ("Sibe Quotation Marks") where Variation Selectors can be legally attached to punctuation.
+
+* **The Threat:** An attacker appends `VS3` (`U+FE02`) to a quotation mark (`"`). To a compiler, `"` + `VS3` $\neq$ `"`, allowing the attacker to break out of string literals while maintaining the visual appearance of a string. This also applies to Math Operators (obfuscating logic) and Spaces (bypassing `trim()` functions).
+* **The Defense:** We implemented a **"Context-Aware" Variation Selector Scanner** in `compute_forensic_stats`.
+    * **Heuristic:** It flags any Variation Selector attached to **Punctuation**, **Symbols**, or **Separators**.
+    * **The Smart Filter (False Positive Prevention):** It performs a deep check against `Emoji` and `Extended_Pictographic` ranges. If the sequence is a valid Emoji Presentation (e.g., `❤️` or `⚠️`), it is **ignored**. If it is a Syntax character (e.g., `"`, `+`, ` `), it triggers `SUSPICIOUS: Variation Selector on Syntax`.
+
+### 3. The "Ghost Glue" Patch (CGJ Hardening)
+We identified a gap in the detection of **`U+034F` (Combining Grapheme Joiner)**.
+
+* **The Threat:** `CGJ` is a "transparent" character used to block canonical reordering. It is frequently used in "Invisible Cluster" attacks to inflate file size or hide payloads without triggering standard whitespace filters.
+* **The Fix:** We patched the **O(1) Bitmask Engine** (`build_invis_table`) to explicitly map `0x034F` to the `INVIS_JOIN_CONTROL` bit.
+* **Result:** Runs of CGJ now contribute to the "Invisible Cluster" density score and trigger "High Risk" warnings.
+
+### 4. UAX #44 Forensic Labelling (The Zalgo Fix)
+We audited the "Combining Class Profile" against **UAX #44** and the **Unicode 17.0 Property Value Aliases**.
+
+* **The Issue:** The tool previously labeled `CCC=233` as generic "Below."
+* **The Fix:** We updated `CCC_ALIASES` to strictly match the UAX #44 specification.
+    * `233` is now correctly identified as **"Double Below"** (the primary mechanism for high-density Zalgo stacking).
+    * Added strict range markers for **Fixed Position Classes (10–199)**.
+* **Result:** The tool now identifies the *mechanism* of a Zalgo attack, not just the presence of it.
+
+### 5. Standards Compliance Verification
+This session brings `app.py` into verified compliance with the structural requirements of:
+
+* ✅ **UTS #55 (Source Code Handling):** Full structural coverage of Line Break Spoofing, Bidi Overrides, Lookalikes, and Mixed Scripts. (Note: Syntax-aware checks like comment boundaries remain out of scope by design).
+* ✅ **UTS #39 (Security Mechanisms):** Full implementation of the "General Security Profile" via `IdentifierStatus` and Skeleton Drift.
+* ✅ **Unicode 17.0 (Pre-Release):** Architecture validated to automatically ingest the new `IdentifierStatus` restrictions (78k+ chars) and `LineBreak` properties (`HH`) upon data file update.
+
+***
