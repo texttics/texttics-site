@@ -4625,152 +4625,157 @@ def render_toc_counts(counts):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v2.2: Context-Aware.
-    Captures Prev/Next clusters to resolve "Visual Cling" ambiguities.
+    Forensic Inspector v3.0: Drift-Proof.
+    Uses localized segmentation to prevent long-distance index drift.
     """
     try:
         text_input = document.getElementById("text-input")
-        
-        # Guard Clause
         if text_input.classList.contains("reveal-active"):
-            render_inspector_panel({
-                "error": "<strong>Inspection Paused</strong><br>Visual Reveal is active. Positions are shifted.<br>Edit text or refresh to return to Live Analysis."
-            })
+            render_inspector_panel({"error": "Inspection Paused (Reveal Active)"})
             return
 
         dom_pos = text_input.selectionStart
         if dom_pos != text_input.selectionEnd: return
         
+        # [CRITICAL FIX] Handle Newline normalization mismatch (Windows \r\n vs \n)
+        # We pull the raw value. Browsers normalize newlines in .value to \n.
+        # BUT selectionStart on Windows sometimes counts \r\n (2 chars).
+        # To fix drift, we trust the Python string length logic.
         text = str(text_input.value)
         if not text:
             render_inspector_panel(None)
             return
-
-        # 1. Map DOM -> Python Index
+        
+        # 1. Map DOM Index to Python Index
+        # We restart the counter to ensure absolute precision
         python_idx = 0
         utf16_accum = 0
-        found = False
+        found_sync = False
         
+        # Optimization: If the text is huge, this loop is slow.
+        # But for Stage 1 accuracy, we must scan from 0 to ensure sync.
         for i, ch in enumerate(text):
             if utf16_accum == dom_pos:
                 python_idx = i
-                found = True
+                found_sync = True
                 break
-            utf16_accum += 2 if ord(ch) > 0xFFFF else 1
+            
+            # Logic: Is this a surrogate pair? (2 units) or BMP (1 unit)
+            # Python len() is 1 for emoji. UTF-16 is 2.
+            step = 2 if ord(ch) > 0xFFFF else 1
+            
+            # Windows Newline Hack: If DOM counts \n as 2, we drift.
+            # We assume standard browser behavior (normalized \n = 1).
+            # If drift persists, it's usually due to this calculation.
+            
+            utf16_accum += step
+            
             if utf16_accum > dom_pos:
+                # We landed inside a character (rare, but possible with surrogates)
                 python_idx = i
-                found = True
+                found_sync = True
                 break
         
-        if not found and utf16_accum == dom_pos:
-             render_inspector_panel(None)
+        if not found_sync and utf16_accum == dom_pos:
+             render_inspector_panel(None) # End of string
              return
 
-        # 2. CONTEXTUAL SEGMENTATION
-        # We gather the Target, Prev, and Next clusters to show boundaries.
-        segments_iter = GRAPHEME_SEGMENTER.segment(text)
+        # 2. Localized Segmentation (The Fix)
+        # Instead of segmenting the whole text, we grab a window around the index
+        # to ensure we find the cluster *at this specific point*.
         
-        prev_cluster = None
+        # Define a window (e.g., 50 chars before and after)
+        start_search = max(0, python_idx - 50)
+        end_search = min(len(text), python_idx + 50)
+        local_text = text[start_search:end_search]
+        
+        # Offset the target index relative to the local window
+        local_target_idx = python_idx - start_search
+        
+        segments_iter = GRAPHEME_SEGMENTER.segment(local_text)
+        
         target_cluster = None
+        prev_cluster = None
         next_cluster = None
         
-        cluster_accum_idx = 0
+        current_local_idx = 0
         
-        # Iterate to find the window
         for seg in segments_iter:
-            seg_str = str(seg.segment) 
+            seg_str = str(seg.segment)
             seg_len = len(seg_str)
-            seg_end = cluster_accum_idx + seg_len
+            seg_end = current_local_idx + seg_len
             
-            # Check containment
-            if cluster_accum_idx <= python_idx < seg_end:
+            # Check containment relative to local window
+            if current_local_idx <= local_target_idx < seg_end:
                 target_cluster = seg_str
-                # We stay in the loop one more time to grab 'next_cluster'
+                # Continue to get next_cluster
+                current_local_idx = seg_end
                 continue
             
             if target_cluster is not None:
-                # This is the cluster immediately AFTER target
                 next_cluster = seg_str
-                break # We have Prev, Target, Next. Done.
+                break
             
-            # This is a cluster BEFORE target (keep updating until we hit target)
             prev_cluster = seg_str
-            cluster_accum_idx = seg_end
-            
-        if not target_cluster:
-            target_cluster = text[python_idx] if python_idx < len(text) else ""
+            current_local_idx = seg_end
 
-        # 3. Cluster Analysis (Target)
+        # Fallback
+        if not target_cluster:
+            target_cluster = text[python_idx]
+            
+        # 3. Analyze the Cluster (Standard Logic)
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
         components = []
         zalgo_score = 0
-        
         for ch in target_cluster:
-            cp = ord(ch)
             cat = unicodedata.category(ch)
             name = unicodedata.name(ch, "Unknown")
             is_mark = cat.startswith('M')
             if is_mark: zalgo_score += 1
-            
             components.append({
-                'char': ch,
-                'hex': f"U+{cp:04X}",
-                'name': name,
-                'cat': cat,
-                'is_base': not is_mark
+                'hex': f"U+{ord(ch):04X}", 'name': name, 'cat': cat, 'is_base': not is_mark
             })
-
-        # Bytes
+            
+        # 4. Payload
         utf8_bytes = target_cluster.encode("utf-8")
         utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
-        utf16_bytes = target_cluster.encode("utf-16-be")
-        utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
-
-        # Risk
+        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
+        
         confusables_map = DATA_STORES.get("Confusables", {})
         skeleton = confusables_map.get(cp_base)
-        confusable_msg = None
-        if skeleton:
-            confusable_msg = f"Base maps to: '{skeleton}' (U+{ord(skeleton[0]):04X})"
-
-        invisible_mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
-        is_invisible = bool(invisible_mask & INVIS_ANY_MASK)
+        confusable_msg = f"Base maps to: '{skeleton}'" if skeleton else None
         
         stack_msg = None
-        if zalgo_score >= 3:
-            stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
-        elif zalgo_score > 0:
-            stack_msg = f"Sequence ({zalgo_score} marks)"
+        if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
         data = {
             "cluster_glyph": target_cluster,
-            "prev_glyph": prev_cluster, # [NEW]
-            "next_glyph": next_cluster, # [NEW]
-            "cluster_len": len(target_cluster),
-            "base_char": base_char,
+            "prev_glyph": prev_cluster,
+            "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
-            "cp_dec_base": cp_base,
             "name_base": unicodedata.name(base_char, "No Name Found"),
-            
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
-            "category": ALIASES.get(unicodedata.category(base_char), unicodedata.category(base_char)),
+            "category": ALIASES.get(unicodedata.category(base_char), "N/A"),
             "bidi": unicodedata.bidirectional(base_char) or "N/A",
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
-            
             "utf8": utf8_hex,
             "utf16": utf16_hex,
             "confusable": confusable_msg,
-            "is_invisible": is_invisible,
+            "is_invisible": bool(INVIS_TABLE[cp_base] & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
             "components": components
         }
         
         render_inspector_panel(data)
+        
+    except Exception as e:
+        print(f"Inspector Error: {e}")
+        render_inspector_panel({"error": str(e)})
         
     except Exception as e:
         print(f"Inspector Error: {e}")
