@@ -1059,9 +1059,12 @@ tr.flag-row-crit {
 .threat-ledger-details summary,
 .integrity-ledger-details summary { /* Assuming you add this class to Integrity details */
   cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  font-weight: 650;
+
+  display: list-item; /* This forces the native browser triangle to appear */
+  
+  color: #000000;
   margin-bottom: 0.75rem;
   user-select: none;
   transition: color 0.2s ease;
@@ -1073,6 +1076,12 @@ tr.flag-row-crit {
   color: var(--color-primary);
 }
 
+/* Optional: Give the triangle a bit more breathing room */
+.threat-ledger-details summary::marker,
+.integrity-ledger-details summary::marker {
+  color: #000000; /* Ensure arrow is also black */
+  font-size: 0.8em;
+}
 /* The Table Frame */
 .threat-ledger-table,
 .integrity-ledger-table {
