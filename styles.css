@@ -819,35 +819,74 @@ Stage 2: Heatmap Row Classes
   filter: grayscale(100%);
 }
 
-/* --- Col 2: Target (Main Stage) --- */
+/* --- Col 2: Target (Main Stage) - "The Microscope Slide" --- */
 .col-target {
   background-color: var(--color-bg);
   border-right: 1px solid var(--color-border-light);
+  
+  /* Layout Strategy: Layered HUD */
+  position: relative; /* Anchor for absolute badges */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem;
-  text-align: center;
+  
+  /* Specimen Safety Zone */
+  padding: 2rem; /* Huge buffer so marks don't touch edges */
+  
+  /* Forensic Scrolling: The "Slide" Effect */
+  overflow: auto; /* SCROLL if the character is massive (Zalgo) */
   z-index: 1;
-  box-shadow: 0 0 10px rgba(0,0,0,0.03);
-  overflow: hidden; /* Crucial: Prevents Zalgo from pushing height */
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.02); /* Subtle depth */
 }
+
 .inspector-glyph {
-  font-family: var(--font-mono);
-  font-size: 3.5rem;
-  line-height: 1.1;
-  margin-bottom: 0.25rem;
-  /* Ensure tall characters don't break layout */
-  max-height: 80px; 
-  overflow: hidden;
+  font-family: var(--font-sans); /* Use sans for clarity, or mono if preferred */
+  font-size: 4rem; /* Large base size */
+  line-height: 1.2;
+  
+  /* REMOVED: max-height & overflow: hidden */
+  /* The glyph is now allowed to grow infinitely; the container scrolls. */
+  margin-bottom: 1rem; 
+  text-align: center;
+  
+  /* Rendering precision */
+  font-variant-ligatures: none; 
 }
+
+/* Keep the Code Point label pinned to the flow (scrolls with glyph) */
 .inspector-codepoint {
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-primary);
-  font-size: 0.85rem;
-  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* --- HUD Layer: Floating Forensic Badges --- */
+.inspector-badges {
+  /* Float above the specimen (Z-Axis) */
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%); /* Perfect center alignment */
+  z-index: 10; /* Always on top of Zalgo bleed */
+  
+  /* Glassmorphism for readability over messy text */
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(2px);
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  padding: 4px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  
+  /* Flex layout for multiple badges */
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+  pointer-events: none; /* Let clicks pass through to the scroll area */
 }
 
 /* --- Col 4: Identity --- */
