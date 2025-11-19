@@ -3129,7 +3129,7 @@ def compute_integrity_score(inputs):
         "ledger": ledger
     }
 
-def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict):
+def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
     
     # --- 1. Init Trackers ---
@@ -4821,7 +4821,7 @@ def update_all(event=None):
     vo_run_stats = compute_verticalorientation_analysis(t)
 
     # Module 2.C: Forensic Integrity (HYBRID ENGINE)
-    forensic_rows = compute_forensic_stats_with_positions(t, cp_minor)
+    forensic_rows = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags)
     forensic_map = {row['label']: row for row in forensic_rows}
 
     # Module 2.D: Provenance
