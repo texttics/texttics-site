@@ -3620,78 +3620,83 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
 
 def _tokenize_for_pvr(text: str) -> list:
     """
-    Tokenizes the text into a list of 'word' and 'gap' tokens
-    for the Perception vs. Reality view.
-    
-    This is a pure-Python tokenizer that avoids JS proxy errors.
-    
-    Implementation detail:
-      - We work over window.Array.from_(text), so indices are in
-        codepoint space (the same as confusable_indices).
-      - A 'word' is a maximal run of NON-WHITESPACE.
-      - A 'gap' is a maximal run of WHITESPACE.
+    Hybrid Tokenizer for PVR View.
+    Splits on: 1. Whitespace, 2. Major Punctuation, 3. Hard Length Cap.
+    Prevents DOM Bloat on minified code, URLs, or large blobs.
     """
     tokens = []
-    js_array = window.Array.from_(text)
-
-    if not js_array:
-        return tokens
-
-    current_type = None    # 'word' or 'gap'
-    current_start = 0
-
-    for i, ch in enumerate(js_array):
-        # Python's str.isspace() is Unicode-aware and handles
-        # basic spaces, tabs, and newlines (Zl, Zp, Zs).
-        # This is the correct logic for this tokenizer.
-        is_gap_char = ch.isspace()
-        token_type = 'gap' if is_gap_char else 'word'
-
-        if current_type is None:
-            # First character
-            current_type = token_type
-            current_start = i
-            continue
-
-        if token_type != current_type:
-            # Flush the previous run
-            segment_text = "".join(js_array[current_start:i])
-            
-            if segment_text:
-                if current_type == 'gap':
-                    tokens.append({
-                        'type': 'gap',
-                        'text': segment_text,
-                    })
-                else: # 'word'
-                    tokens.append({
-                        'type': 'word',
-                        'text': segment_text,
-                        'start': current_start,
-                        'end': i,
-                    })
-
-            # Start new run
-            current_type = token_type
-            current_start = i
-
-    # Flush the final run
-    end_index = len(js_array)
-    segment_text = "".join(js_array[current_start:end_index])
+    if not text: return tokens
     
+    # Use window.Array.from to respect surrogate pairs/graphemes (JS-aligned)
+    js_array = window.Array.from_(text)
+    total_len = len(js_array)
+    
+    # Configuration
+    MAX_TOKEN_LEN = 50 # Force split after 50 chars (Safety Cap)
+    
+    # Set of punctuation that should act as token boundaries
+    PUNCT_SET = set(".,;:!?()[]{}<>\"'/\\|@#")
+    
+    current_start = 0
+    current_type = None # 'word' or 'gap'
+    
+    i = 0
+    while i < total_len:
+        char = js_array[i]
+        is_space = char.isspace()
+        is_punct = char in PUNCT_SET
+        
+        # Determine type of current char
+        # Punctuation is treated as a 'delimiter' that breaks a word
+        if is_space:
+            char_type = 'gap'
+        elif is_punct:
+            char_type = 'punct'
+        else:
+            char_type = 'word'
+            
+        # Initial State
+        if current_type is None:
+            current_type = char_type
+            current_start = i
+            i += 1
+            continue
+            
+        # Check for Break Conditions
+        should_break = False
+        
+        # 1. Type Change (Word -> Space, etc.)
+        if char_type != current_type:
+            should_break = True
+            
+        # 2. Punctuation Logic: Always breaks from Word, and breaks from itself
+        # (This isolates dots in URLs: "paypal" "." "com")
+        elif char_type == 'punct': 
+            should_break = True 
+            
+        # 3. Hard Cap (DoS Protection for long blobs)
+        elif (i - current_start) >= MAX_TOKEN_LEN:
+            should_break = True
+            
+        if should_break:
+            # Flush previous token
+            segment_text = "".join(js_array[current_start:i])
+            if segment_text:
+                # Map internal types to output types ('word' or 'gap')
+                # We map 'punct' to 'word' so the renderer can highlight it if it's a confusable
+                out_type = 'gap' if current_type == 'gap' else 'word'
+                tokens.append({'type': out_type, 'text': segment_text})
+                
+            current_start = i
+            current_type = char_type
+            
+        i += 1
+        
+    # Flush Final Token
+    segment_text = "".join(js_array[current_start:])
     if segment_text:
-        if current_type == 'gap':
-            tokens.append({
-                'type': 'gap',
-                'text': segment_text,
-            })
-        else: # 'word'
-            tokens.append({
-                'type': 'word',
-                'text': segment_text,
-                'start': current_start,
-                'end': end_index,
-            })
+        out_type = 'gap' if current_type == 'gap' else 'word'
+        tokens.append({'type': out_type, 'text': segment_text})
 
     return tokens
 
@@ -3886,6 +3891,20 @@ def compute_threat_analysis(t: str):
         # --- 2. Generate Normalized States ---
         nf_string = normalize_extended(t)
         nf_casefold_string = nf_string.casefold()
+
+        # --- 5. Skeleton & Drift (Refined Logic) ---
+        
+        # A. The Skeleton String (Standard Identity)
+        # Derived from the Canonical (Casefolded) form, for standard equivalence hashing.
+        # We re-use the metrics function but ignore the metrics here.
+        skeleton_string, _ = _generate_uts39_skeleton_metrics(nf_casefold_string)
+        
+        # B. The Forensic Drift Metrics (Forensic Insight)
+        # [DRIFT BLINDNESS FIX]
+        # We calculate drift by comparing the RAW input (t) against its Skeleton mapping.
+        # This captures normalization changes (e.g. Fullwidth -> ASCII) as "Drift",
+        # preserving the evidence of the original "weirdness".
+        _, skel_metrics = _generate_uts39_skeleton_metrics(t)
 
         # --- 3. Run checks on RAW string ---
         confusables_map = DATA_STORES.get("Confusables", {})
