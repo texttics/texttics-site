@@ -4902,20 +4902,14 @@ def update_all(event=None):
     final_threat_flags = {}
     
     # 1. Score Row (Exploit Likelihood)
-    score_badge = f"{final_score['level']} (Score: {final_score['score']})"
-    
-    # [FIX] Correctly map the new "CRITICAL" level to "crit" styling
-    sev = "ok"
-    if final_score['level'] in ("CRITICAL", "HIGH"):
-        sev = "crit"
-    elif final_score['level'] == "MEDIUM":
-        sev = "warn"
+    # FIX: Use 'verdict' and pre-calculated 'severity_class' from the Auditor
+    score_badge = f"{final_score['verdict']} (Score: {final_score['score']})"
     
     # Pass the full ledger object to the renderer
     final_threat_flags["Threat Level (Heuristic)"] = {
         'count': 0,
         'positions': [], # Legacy field
-        'severity': sev,
+        'severity': final_score['severity_class'], # Use the class calculated by the Auditor
         'badge': score_badge,
         'ledger': final_score.get('ledger', []),
         'noise': final_score.get('noise', [])
