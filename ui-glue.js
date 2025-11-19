@@ -291,7 +291,7 @@ function buildStructuredReport() {
     return lines;
   };
 
-  // --- Helper: Universal Table Scraper ---
+  // --- Helper: Universal Table Scraper (With Ledger Support) ---
   const parseTable = (tbodyId, prefix = '') => {
     const lines = [];
     const tbody = document.getElementById(tbodyId);
@@ -299,19 +299,52 @@ function buildStructuredReport() {
 
     tbody.querySelectorAll('tr').forEach(row => {
       if (row.querySelector('.placeholder-text')) return;
+      if (row.classList.contains('ledger-noise')) return; // Skip noise rows in main output
 
-      const cells = Array.from(row.querySelectorAll('th, td'));
-      if (cells.length === 0) return;
+      // 1. Get Label
+      const th = row.querySelector('th');
+      const label = th ? th.textContent.trim() : '';
 
-      const cellTexts = cells.map(c => 
-        c.textContent
-          .replace(/[\n\r]+/g, ' ') 
-          .replace(/\s+/g, ' ')      
-          .trim()
-      );
+      // 2. Get Main Value (Badge or Count)
+      const tdCount = row.querySelector('td:nth-child(2)');
+      let value = '';
+      if (tdCount) {
+        // Prefer the badge text if it exists (e.g., "CRITICAL (Score: 114)")
+        const badge = tdCount.querySelector('.integrity-badge');
+        value = badge ? badge.textContent.trim() : tdCount.textContent.trim();
+      }
 
-      if (!cellTexts[0]) return;
-      lines.push(`  ${prefix}${cellTexts.join(', ')}`);
+      // 3. Get Details OR Ledger
+      const tdDetails = row.querySelector('td:nth-child(3)');
+      
+      // CHECK FOR LEDGER (Nested Table)
+      const nestedTable = tdDetails ? tdDetails.querySelector('table') : null;
+      
+      if (nestedTable) {
+        // -- Header Line --
+        lines.push(`  ${prefix}${label}: ${value}`);
+        
+        // -- Iterate Ledger Rows --
+        nestedTable.querySelectorAll('tbody tr').forEach(subRow => {
+          const cols = Array.from(subRow.querySelectorAll('td'));
+          if (cols.length >= 2) {
+            const vec = cols[0].textContent.trim();
+            const pts = cols[cols.length - 1].textContent.trim(); // Last col is always points
+            // Format: "    - Malicious Bidi: +25"
+            lines.push(`      - ${vec}: ${pts}`);
+          }
+        });
+      } 
+      else if (tdDetails) {
+        // -- Standard Row --
+        // Clean up newlines and multiple spaces
+        const details = tdDetails.textContent
+          .replace(/[\n\r]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+          
+        lines.push(`  ${prefix}${label}: ${value}, ${details}`);
+      }
     });
     return lines;
   };
