@@ -610,45 +610,162 @@ def compute_threat_score(t):
     }
 
 def analyze_bidi_structure(t: str, rows: list):
-    """Checks for broken Bidi structure. Returns: total_broken_count (int)."""
+    """
+    ULTIMATE FORENSIC SCANNER:
+    1. Strict Bracket Identity (prevents ( ... ] spoofing).
+    2. Separation of Isolate vs. Embedding stacks (prevents PDI/PDF confusion).
+    3. Deep detection of Spillover and Stack Underflow.
+    """
     if LOADING_STATE != "READY": return 0
 
-    stack = []
-    unmatched_pdfs = []
+    # --- DATA SOURCES ---
+    # We need the mirroring map to know that '(' expects ')'
+    mirror_map = DATA_STORES.get("BidiMirroring", {})
+
+    # --- STACK MACHINE STATE ---
     
+    # Stack A: Isolates (LRI, RLI, FSI). Closed ONLY by PDI.
+    # [Critical for UTS #55 Safe Isolation]
+    isolate_stack = []
+    
+    # Stack B: Embeddings/Overrides (LRE, RLE, LRO, RLO). Closed ONLY by PDF.
+    # [Critical for Trojan Source Detection]
+    embed_stack = []
+
+    # Stack C: Brackets. Must match specific closer.
+    # [Critical for Spillover Prevention - UTS #55 5.2.1]
+    bracket_stack = [] # Stores tuples: (index, expected_closing_cp)
+    
+    # --- ANOMALY ACCUMULATORS ---
+    unmatched_pdi = []        # Stack Underflow (Isolate)
+    unmatched_pdf = []        # Stack Underflow (Embedding)
+    unmatched_closer = []     # Broken Bracket Structure (e.g. "a ) b")
+    mismatched_closer = []    # Cross-Nesting Error (e.g. "( ]")
+
+    # --- CONTROL CONSTANTS ---
+    ISO_INIT = {0x2066, 0x2067, 0x2068} # LRI, RLI, FSI
+    EMB_INIT = {0x202A, 0x202B, 0x202D, 0x202E} # LRE, RLE, LRO, RLO
+    VAL_PDI = 0x2069
+    VAL_PDF = 0x202C
+
     js_array = window.Array.from_(t)
     for i, char in enumerate(js_array):
         cp = ord(char)
-        # Push (Embeddings/Overrides/Isolates)
-        if cp in (0x202A, 0x202B, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068):
-            stack.append(i)
-        # Pop (PDF/PDI)
-        elif cp in (0x202C, 0x2069): 
-            if stack: stack.pop()
-            else: unmatched_pdfs.append(f"#{i}")
 
-    unclosed_count = len(stack)
-    unmatched_count = len(unmatched_pdfs)
+        # --- 1. ISOLATE LOGIC (LRI/RLI/FSI ... PDI) ---
+        if cp in ISO_INIT:
+            isolate_stack.append(i)
+        elif cp == VAL_PDI:
+            if isolate_stack:
+                isolate_stack.pop()
+            else:
+                unmatched_pdi.append(f"#{i}")
+
+        # --- 2. EMBEDDING LOGIC (LRE/RLE/LRO/RLO ... PDF) ---
+        elif cp in EMB_INIT:
+            embed_stack.append(i)
+        elif cp == VAL_PDF:
+            if embed_stack:
+                embed_stack.pop()
+            else:
+                unmatched_pdf.append(f"#{i}")
+
+        # --- 3. BRACKET LOGIC (Strict Identity Check) ---
+        # Only process if it has a Bracket Type property
+        b_type = _find_in_ranges(cp, "BidiBracketType")
+        
+        if b_type == "o":
+            # OPENER: Find what closes it (or default to itself if no mirror)
+            # BidiMirroring.txt provides the mapping
+            expected_closer = mirror_map.get(cp, cp) 
+            # BUT: If it's an opener, the mirror map usually points Close -> Open.
+            # We need Open -> Close. 
+            # In BidiMirroring.txt: '(' maps to ')'. This is symmetric.
+            # So if cp is '(', expected is ')'.
+            
+            bracket_stack.append((i, expected_closer))
+
+        elif b_type == "c":
+            # CLOSER: Must match the TOP of the stack
+            if not bracket_stack:
+                unmatched_closer.append(f"#{i}")
+            else:
+                top_idx, required_cp = bracket_stack[-1]
+                
+                if cp == required_cp:
+                    # PERFECT MATCH: Close the scope
+                    bracket_stack.pop()
+                else:
+                    # MISMATCH: This ']' does not close the recent '('.
+                    # Forensic Decision: This is a structure break.
+                    # The opener remains OPEN (Spillover).
+                    # The closer is ORPHANED (Broken).
+                    # We do NOT pop the stack, because the scope technically persists.
+                    mismatched_closer.append(f"#{i} (Expected {chr(required_cp)})")
+
+    # --- COMPILE REPORT ---
     
-    if unclosed_count > 0:
+    # A. Trojan Source & Embedding Errors (Legacy/Dangerous)
+    if embed_stack:
         rows.append({
-            "label": "Flag: Unclosed Bidi Sequence",
-            "count": unclosed_count,
-            "positions": [f"#{x}" for x in stack],
+            "label": "Flag: Unclosed Bidi Embedding (LRE/RLO...)",
+            "count": len(embed_stack),
+            "positions": [f"#{x}" for x in embed_stack],
             "severity": "crit",
             "badge": "BROKEN"
         })
-        
-    if unmatched_count > 0:
+    if unmatched_pdf:
         rows.append({
-            "label": "Flag: Unmatched PDF/PDI (Stack Underflow)",
-            "count": unmatched_count,
-            "positions": unmatched_pdfs,
+            "label": "Flag: Unmatched PDF (Stack Underflow)",
+            "count": len(unmatched_pdf),
+            "positions": unmatched_pdf,
             "severity": "warn",
             "badge": "BROKEN"
         })
 
-    return unclosed_count + unmatched_count
+    # B. Isolate Errors (Modern/Spillover)
+    if isolate_stack:
+        rows.append({
+            "label": "Flag: Unclosed Bidi Isolate (LRI...)",
+            "count": len(isolate_stack),
+            "positions": [f"#{x}" for x in isolate_stack],
+            "severity": "crit",
+            "badge": "SPILLOVER"
+        })
+    if unmatched_pdi:
+        rows.append({
+            "label": "Flag: Unmatched PDI (Isolate Underflow)",
+            "count": len(unmatched_pdi),
+            "positions": unmatched_pdi,
+            "severity": "warn",
+            "badge": "BROKEN"
+        })
+
+    # C. Bracket Errors (UTS #55 5.2.1 Strict)
+    if bracket_stack:
+        rows.append({
+            "label": "Flag: Unclosed/Unpaired Brackets",
+            "count": len(bracket_stack),
+            "positions": [f"#{x}" for x, _ in bracket_stack],
+            "severity": "crit",
+            "badge": "SPILLOVER"
+        })
+    
+    # Combine mismatch/unmatched closer for clarity
+    broken_closers = unmatched_closer + mismatched_closer
+    if broken_closers:
+        rows.append({
+            "label": "Flag: Broken Closing Brackets (Mismatch)",
+            "count": len(broken_closers),
+            "positions": broken_closers,
+            "severity": "crit",
+            "badge": "BROKEN"
+        })
+
+    # Total Structural Penalties
+    return (len(embed_stack) + len(unmatched_pdf) + 
+            len(isolate_stack) + len(unmatched_pdi) + 
+            len(bracket_stack) + len(broken_closers))
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
