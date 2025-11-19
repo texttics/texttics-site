@@ -820,56 +820,60 @@ Stage 2: Heatmap Row Classes
   filter: grayscale(100%);
 }
 
-/* --- Col 2: Target (SCROLL FIXED) --- */
+/* --- Col 2: Target (Auto-Scale Physics) --- */
 .col-target {
   background-color: var(--color-white);
   border-right: 1px solid var(--color-border-light);
+  position: relative;
+  
+  /* Flex layout to stack Viewport and Label vertically */
   display: flex;
   flex-direction: column;
   
-  /* 3. Force this column to respect the grid height */
+  /* Rigid constraints */
   height: 100%;
-  min-height: 0; /* Critical for flex children scrolling */
-  
-  /* NO OVERFLOW HERE - Pass it down to viewport */
+  overflow: hidden; /* No scrolling allowed; scaling handles the overflow */
 }
 
-/* THE SCROLLABLE WINDOW (Inner Wrapper) */
+/* The Measuring Box */
 .glyph-viewport {
-  /* Take all available vertical space */
-  flex: 1 1 auto;
-  min-height: 0; /* Critical */
+  /* Fill all space above the label */
+  flex: 1;
   width: 100%;
   
-  /* 4. Scroll Logic happens HERE */
-  overflow: auto; 
-  
-  /* Center content if small, scroll if big */
+  /* Center the glyph for the scaler */
   display: flex;
   align-items: center;
   justify-content: center;
   
-  padding: 1rem; /* Safety buffer */
+  /* Critical: Allow content to bleed so JS can measure its true size */
+  overflow: visible; 
 }
 
 .inspector-glyph {
   font-family: var(--font-mono);
   font-size: 3.5rem;
   line-height: 1.1;
+  
+  /* Let the element take its TRUE natural size (even 1000px tall) */
+  width: max-content;
+  height: max-content;
+  margin: 0;
+  
   text-align: center;
   font-variant-ligatures: none;
+  white-space: nowrap;
   
-  /* 5. Ensure it takes up space to force scroll */
-  margin: auto; 
-  white-space: nowrap; /* Force X-scroll if wide */
+  /* Performance & Animation */
+  transform-origin: center center;
+  transition: transform 0.1s ease-out; /* Snap to size smoothly */
 }
 
 .inspector-codepoint {
-  /* 6. Pinned label stays outside the scroll area */
-  /* Pinned below the viewport */
-  margin: 4px 0 8px;
+  /* Pinned to bottom of the flex column */
+  margin: 4px 0 8px 0;
   align-self: center;
-  flex-shrink: 0;
+  flex-shrink: 0; /* Ensure label never collapses */
   
   font-family: var(--font-mono);
   font-weight: 700;
@@ -879,6 +883,7 @@ Stage 2: Heatmap Row Classes
   border: 1px solid var(--color-border-light);
   padding: 2px 6px;
   border-radius: 4px;
+  z-index: 10; /* Ensure label sits on top of any bleed */
 }
 
 /* --- Col 4: RISK (New Column) --- */
