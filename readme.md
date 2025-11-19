@@ -762,3 +762,131 @@ This session brings `app.py` into verified compliance with the structural requir
 * ✅ **Unicode 17.0 (Pre-Release):** Architecture validated to automatically ingest the new `IdentifierStatus` restrictions (78k+ chars) and `LineBreak` properties (`HH`) upon data file update.
 
 ***
+---
+
+# Text...tics Architecture & Logic Summary (Stage 1)
+
+## 1. Executive Architecture Overview
+
+Text...tics is built on a **Hybrid, Serverless, Client-Side Architecture**. It leverages the browser's main thread to run a full Python 3.12 runtime (via PyScript/WebAssembly) alongside high-performance native JavaScript APIs.
+
+Unlike traditional string analysis tools that rely on simple Regular Expressions or passive character counting, Text...tics operates as an **Active State-Machine Forensic Engine**. It processes text through a rigorous pipeline that includes normalization, O(1) bitmask filtering, stack-machine structural validation (UTS #55), and heuristic threat scoring, all without sending a single byte to a remote server.
+
+The system is composed of five distinct, tightly coupled files that separate concerns between **Data Supply**, **Visual Semantics**, **Interaction Logic**, and **Forensic Computation**.
+
+---
+
+## 2. Component Breakdown (The "Five Pillars")
+
+### File 1: `pyscript.toml` (The Data Manifest & Supply Chain)
+This configuration file is the "bootloader" of the forensic engine. It defines the application's environment and ensures the forensic payload is available before the logic executes.
+
+* **Forensic Payload Definition:** The `[[fetch]]` block explicitly lists **31 Unicode Data Files** (e.g., `DerivedCoreProperties.txt`, `emoji-test.txt`, `BidiBrackets.txt`). This acts as a strict manifest. The application does not rely on the browser's internal (often outdated) Unicode tables; it virtualizes these 31 raw UCD files into the browser's file system, ensuring the tool runs on the exact Unicode version specified (currently aligned with v15.1/v16.0 standards).
+* **Dependency Injection:** It forces the loading of `unicodedata2`. This is a critical architectural decision. The standard Python `unicodedata` library in Pyodide is often stripped down or outdated. By injecting `unicodedata2`, the tool ensures access to the C-optimized, full-spec Unicode database for Tier 1 normalization.
+
+### File 2: `index.html` (The Lab Bench Skeleton)
+This is the semantic skeleton of the application. It is designed not as a web page, but as a "Control Plane."
+
+* **Hidden DOM State:** The HTML contains "ghost" elements (like `#threat-banner` and `#inspector-panel-content`) that are empty or hidden by default. These are not static content areas but **dynamic containers** that the Python runtime manipulates directly.
+* **Semantic Collapsibility:** The use of `<details>` and `<summary>` elements for the major profiles (Dual-Atom, Integrity, Threat-Hunting) allows the application to render massive datasets (thousands of data points) without overwhelming the user, preserving the "at-a-glance" utility of the Dashboard while keeping deep forensic data one click away.
+* **Sticky Navigation (`.jump-list`):** Implements a persistent sidebar that tracks the user's position in the forensic report, crucial for navigating long reports generated from large text dumps.
+
+### File 3: `styles.css` (The Visual Semantics & Severity Encoding)
+The CSS layer is not merely aesthetic; it is a functional component of the forensic reporting engine. It encodes logic into visual cues.
+
+* **Severity Class Mapping:** The stylesheet defines specific utility classes—`.flag-row-crit`, `.flag-row-warn`, and `.flag-row-ok`—that correspond 1:1 with the logic decisions made in Python. When `app.py` determines a threat score is "CRITICAL," it injects the `.flag-row-crit` class, which `styles.css` renders with a specific red background and bold typography. This makes the style sheet the "decoder ring" for the engine's output.
+* **The "Microscope" Metaphor:** The `.pos-link:hover { cursor: zoom-in; }` rule is a subtle but vital UX pattern. It signals to the user that the blue position links (e.g., `#52`) are not navigation links, but **inspection triggers** that will focus the "microscope" (the text input) on that specific particle.
+* **Zalgo Containment:** Specific CSS rules handle the rendering of the `.inspector-glyph`, ensuring that characters with excessive combining marks (Zalgo text) do not break the UI layout but are contained within the inspection panel.
+
+### File 4: `ui-glue.js` (The Bridge & Split-Brain Deobfuscator)
+This JavaScript file acts as the **Translator** and **Bridge** between the Python runtime (Logic) and the Browser DOM (Perception).
+
+* **The Interaction Bridge (`window.TEXTTICS_HIGHLIGHT_CODEPOINT`):** This is the most critical function in this file. Python operates on "Logical Code Points" (0-indexed integers). The browser's DOM `selectionStart` / `selectionEnd` operates on UTF-16 code units. This function translates the Python index into a DOM selection range by iterating through the string and summing `codePoint.length`. This ensures that the highlighter handles surrogate pairs (like Emoji `😀` which are 2 units) correctly, preventing the "cursor drift" bug common in hybrid apps.
+* **Split-Brain Deobfuscation:** The logic for mapping invisible characters to tags (e.g., `U+200B` -> `[ZWSP]`) exists here as `JS_INVISIBLE_MAPPING`. This duplicates logic found in Python.
+    * *Why?* To allow the "Copy Report" button to function instantaneously. When a user copies the report, `ui-glue.js` generates the "Forensic Deobfuscation" footer locally in the browser. This prevents a costly round-trip to the Python interpreter for a simple string formatting task, keeping the UI snappy.
+* **ARIA Management:** It handles the WAI-ARIA state for the tab controls, ensuring the application remains accessible to screen readers.
+
+### File 5: `app.py` (The Forensic State Machine)
+This is the monolithic "brain" of the application. It is not a linear script but an event-driven orchestrator that manages the entire analysis pipeline.
+
+#### 3. The Core Logic Architecture (`app.py`)
+
+The `app.py` file has evolved from a simple character counter into a sophisticated state machine. Its architecture rests on four pillars:
+
+1.  **The O(1) Bitmask Engine:**
+    Instead of performing binary searches on range tables for every character (which would be $O(N \log M)$), the app pre-calculates a global lookup array, `INVIS_TABLE`, covering the entire Unicode space (0x110000).
+    * **Mechanism:** `build_invis_table()` maps properties (Bidi, Join Control, Tag) to specific bits in an integer mask.
+    * **Forensic Check:** `analyze_invisible_clusters` can then check `if mask & INVIS_HIGH_RISK_MASK` in strictly $O(1)$ time per character. This optimization allows the tool to analyze large bodies of text in real-time on the main thread.
+
+2.  **The UTS #55 Bidi Stack Machine:**
+    The `analyze_bidi_structure` function implements the strict security requirements of **Unicode Technical Standard #55 (Source Code Handling)**. It is not a counter; it is a **Pushdown Automaton**.
+    * **State Separation:** It maintains three independent stacks:
+        1.  **Isolate Stack:** Tracks `LRI`/`RLI`/`FSI` $\to$ `PDI`.
+        2.  **Embedding Stack:** Tracks `LRE`/`RLE`/`LRO`/`RLO` $\to$ `PDF`.
+        3.  **Bracket Stack:** Tracks paired punctuation (e.g., `(` $\to$ `)`).
+    * **Validation:** It detects structural violations that simple counters miss, such as "Stack Cross-Over" (closing an isolate with a PDF) or "Spillover" (unclosed brackets bleeding directionality).
+
+3.  **The Quad-State Normalization Pipeline:**
+    To detect homoglyph attacks and canonical equivalence issues, the app maintains the text in four simultaneous states:
+    * **State 1 (Forensic/Raw):** The literal input. Used for all integrity checks.
+    * **State 2 (NFKC):** Compatibility decomposition.
+    * **State 3 (NFKC-Casefold):** The "Search Canonical" form.
+    * **State 4 (UTS #39 Skeleton):** The "Visual Identity" form.
+    * **Logic:** The function `compute_threat_analysis` compares these states. If the "Skeleton" differs significantly from the "Raw" input (calculated as "Skeleton Drift"), it flags a potential homoglyph or spoofing attack.
+
+4.  **The Uncapped Threat Scoring Engine:**
+    The `compute_threat_score` function aggregates signals from all sub-modules.
+    * It decouples **Complexity** (Zalgo, noise) from **Exploitation** (Bidi, Homoglyphs).
+    * It uses an "Uncapped" scoring model. Instead of capping at 10/10, the score accumulates based on the density of threats. A score of 114 is distinctly worse than a score of 20, providing granular forensic feedback.
+
+---
+
+## 4. Functional Interconnections & Data Flow
+
+The system operates in a tight loop, triggered by user interaction.
+
+**1. Initialization Phase:**
+* `main()` (Entry Point) triggers `load_unicode_data()`.
+* `load_unicode_data()` fetches the 31 `.txt` files.
+* **Paranoid Check:** Immediately runs `run_self_tests()`. This iterates through the raw data ranges and asserts that the `INVIS_TABLE` bitmasks were built correctly. If this fails, the system alerts the console, refusing to "fail silent."
+
+**2. The Analysis Loop (`update_all`):**
+This function is bound to the `<textarea>` `input` event.
+* **Step A (Ingest):** Captures the raw string `t`.
+* **Step B (Compute):** Calls the specialized engines:
+    * `compute_emoji_analysis(t)`: Scans for RGI sequences.
+    * `compute_forensic_stats_with_positions(t)`: Runs the Bitmask and Stack Machine logic.
+    * `compute_provenance_stats(t)`: Maps blocks and scripts.
+    * `compute_threat_analysis(t)`: Generates Skeletons and Drift metrics.
+* **Step C (Render):** Calls `render_...` functions (e.g., `render_integrity_matrix`). These functions take the computed Python dictionaries and generate HTML strings, injecting them into the `index.html` placeholders.
+
+**3. The Bridge Phase:**
+* After rendering, `update_all` packages the `grapheme_list` and `forensic_flags` into a JSON object.
+* It exports this object to `window.TEXTTICS_CORE_DATA` via `to_js`. This makes the deep forensic data available to the "Stage 2" visualizer (which runs in a separate tab/window) without re-calculation.
+
+**4. The Mutation Phase (`reveal_invisibles`):**
+* When clicked, this function uses the `INVISIBLE_MAPPING` dictionary to rewrite the input string (e.g., `U+200B` $\to$ `[ZWSP]`).
+* **Recursive Trigger:** Crucially, it calls `update_all(None)` at the end. This forces the engine to re-analyze the *new, revealed* string, verifying that the "invisible" threats have been successfully converted into visible, safe ASCII characters.
+
+---
+
+## 5. Key Function Reference (`app.py`)
+
+### Initialization & Setup
+* **`async def load_unicode_data()`:** The heavy lifter. Fetches 31 files, parses them using specialized parsers (`_parse_and_store_ranges`, `_parse_property_file`, etc.), and populates the global `DATA_STORES`. Triggers `build_invis_table`.
+* **`def build_invis_table()`:** Compiles the O(1) lookup array. Iterates through property ranges (Bidi, Join Control, etc.) and sets the corresponding bits in the `INVIS_TABLE` integer array.
+* **`def run_self_tests()`:** The "Trust but Verify" unit test. Checks random samples and boundary cases in `INVIS_TABLE` to ensure data integrity before the UI unlocks.
+
+### Forensic Analysis Engines
+* **`def analyze_bidi_structure(t, rows)`:** The implementation of the UTS #55 Bidi Stack Machine. Iterates the string, pushing/popping Isolates and Embeddings. Returns a penalty score based on broken chains and spillovers.
+* **`def analyze_invisible_clusters(t)`:** Scans for contiguous runs of invisible characters. Returns a list of clusters with metadata (e.g., "High Risk" if it contains Bidi controls mixed with Tags).
+* **`def analyze_nsm_overload(graphemes)`:** The "Zalgo Detector." Calculates mark density per grapheme and checks for repeated mark sequences (a common rendering DoS vector).
+* **`def compute_threat_analysis(t)`:** The "Threat Hunter." Orchestrates the Quad-State Normalization. Generates the `UTS #39 Skeleton` and calculates the "Skeleton Drift" metric (how much the text changes when visually normalized).
+
+### Orchestration & Rendering
+* **`def compute_forensic_stats_with_positions(t, ...)`:** The integration hub. It calls the sub-analyzers (Bidi, Cluster, Zalgo) and aggregates their results into the "Uncapped Integrity Score." It generates the detailed rows for the "Structural Integrity Profile."
+* **`def normalize_extended(text)`:** The resilient normalizer. Attempts `unicodedata2.normalize("NFKC", text)`. If that fails/is missing, falls back to built-in, and applies the manual `ENCLOSED_MAP` patch to ensure `⓼` becomes `8`.
+* **`@create_proxy def update_all(event)`:** The main event handler. Sequentially calls all `compute_` functions, aggregates the data, and calls all `render_` functions to update the DOM.
+* **`@create_proxy def reveal_invisibles(event)`:** The deobfuscator. Maps invisible code points to their bracketed tag equivalents and updates the textarea value.
+
+This architecture ensures that **Text...tics** is not just a passive observer of text, but a hardened, verified, and deterministic instrument for structural analysis.
