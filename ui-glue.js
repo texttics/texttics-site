@@ -5,16 +5,13 @@
  * in the Text...tics application. It is designed to be lightweight and work
  * independently of the PyScript-driven analysis logic.
  *
- * Its primary responsibility is managing the "Dual-Atom Profile" tabs.
  */
 
-onst JS_INVISIBLE_MAPPING = { ... }; block and its setup loops, and replace it with this pure, pre-computed JavaScript version. This avoids any risk of Python logic leaking into JS.
 
-JavaScript
+// ==========================================
+// 0. FORENSIC DATA & DEOBFUSCATION ENGINE
+// ==========================================
 
-// ---
-// 0. Shared Constants (Forensic Mapping)
-// ---
 const JS_INVISIBLE_MAPPING = {
     // --- Control Pictures ---
     0x2400: "[PIC:NUL]", 0x2401: "[PIC:SOH]", 0x2402: "[PIC:STX]", 0x2403: "[PIC:ETX]",
@@ -34,25 +31,8 @@ const JS_INVISIBLE_MAPPING = {
     0x206A: "[ISS]", 0x206B: "[ASS]", 0x206C: "[IAFS]", 
     0x206D: "[AAFS]", 0x206E: "[NDS]", 0x206F: "[NODS]",
 
-    // --- Wave 3: C0/C1 Controls ---
+    // --- Wave 3: C0/C1 Controls (Explicit) ---
     0x0000: "[NUL]", 0x001B: "[ESC]", 0x00AD: "[SHY]", 0x007F: "[DEL]", 0x0085: "[NEL]",
-    // C0
-    0x0001: "[CTL:0x01]", 0x0002: "[CTL:0x02]", 0x0003: "[CTL:0x03]", 0x0004: "[CTL:0x04]",
-    0x0005: "[CTL:0x05]", 0x0006: "[CTL:0x06]", 0x0007: "[CTL:0x07]", 0x0008: "[CTL:0x08]",
-    0x000B: "[CTL:0x0B]", 0x000C: "[CTL:0x0C]", 0x000E: "[CTL:0x0E]", 0x000F: "[CTL:0x0F]",
-    0x0010: "[CTL:0x10]", 0x0011: "[CTL:0x11]", 0x0012: "[CTL:0x12]", 0x0013: "[CTL:0x13]",
-    0x0014: "[CTL:0x14]", 0x0015: "[CTL:0x15]", 0x0016: "[CTL:0x16]", 0x0017: "[CTL:0x17]",
-    0x0018: "[CTL:0x18]", 0x0019: "[CTL:0x19]", 0x001A: "[CTL:0x1A]", 0x001C: "[CTL:0x1C]",
-    0x001D: "[CTL:0x1D]", 0x001E: "[CTL:0x1E]", 0x001F: "[CTL:0x1F]",
-    // C1
-    0x0080: "[CTL:0x80]", 0x0081: "[CTL:0x81]", 0x0082: "[CTL:0x82]", 0x0083: "[CTL:0x83]",
-    0x0084: "[CTL:0x84]", 0x0086: "[CTL:0x86]", 0x0087: "[CTL:0x87]", 0x0088: "[CTL:0x88]",
-    0x0089: "[CTL:0x89]", 0x008A: "[CTL:0x8A]", 0x008B: "[CTL:0x8B]", 0x008C: "[CTL:0x8C]",
-    0x008D: "[CTL:0x8D]", 0x008E: "[CTL:0x8E]", 0x008F: "[CTL:0x8F]", 0x0090: "[CTL:0x90]",
-    0x0091: "[CTL:0x91]", 0x0092: "[CTL:0x92]", 0x0093: "[CTL:0x93]", 0x0094: "[CTL:0x94]",
-    0x0095: "[CTL:0x95]", 0x0096: "[CTL:0x96]", 0x0097: "[CTL:0x97]", 0x0098: "[CTL:0x98]",
-    0x0099: "[CTL:0x99]", 0x009A: "[CTL:0x9A]", 0x009B: "[CTL:0x9B]", 0x009C: "[CTL:0x9C]",
-    0x009D: "[CTL:0x9D]", 0x009E: "[CTL:0x9E]", 0x009F: "[CTL:0x9F]",
 
     // --- Wave 1: Structural Invisibles ---
     0x061C: "[ALM]", 0x200E: "[LRM]", 0x200F: "[RLM]", 
@@ -86,12 +66,30 @@ const JS_INVISIBLE_MAPPING = {
     0xE0001: "[TAG:LANG]", 0xE007F: "[TAG:CANCEL]"
 };
 
+// Populate Ranges for C0/C1 (Wave 3)
+for (let cp = 0x01; cp < 0x20; cp++) {
+    if (!JS_INVISIBLE_MAPPING[cp] && ![0x09, 0x0A, 0x0D].includes(cp)) {
+        JS_INVISIBLE_MAPPING[cp] = `[CTL:0x${cp.toString(16).toUpperCase().padStart(2,'0')}]`;
+    }
+}
+for (let cp = 0x80; cp <= 0x9F; cp++) {
+    if (!JS_INVISIBLE_MAPPING[cp]) {
+        JS_INVISIBLE_MAPPING[cp] = `[CTL:0x${cp.toString(16).toUpperCase().padStart(2,'0')}]`;
+    }
+}
 
-/ Helper Function
+// Populate ASCII Tags (Wave 1)
+for (let asc = 0x20; asc < 0x7F; asc++) {
+    const tagCp = 0xE0000 + asc;
+    const char = asc === 0x20 ? "SP" : String.fromCharCode(asc);
+    JS_INVISIBLE_MAPPING[tagCp] = `[TAG:${char}]`;
+}
+
+// JS-Side Deobfuscator
 function getDeobfuscatedText(text) {
     if (!text) return "";
     let output = "";
-    // Iterate by code point (supports emoji/surrogates)
+    // Iterate by code point (supports emoji/surrogates correctly)
     for (const char of text) {
         const cp = char.codePointAt(0);
         
@@ -117,6 +115,10 @@ function getDeobfuscatedText(text) {
     }
     return output;
 }
+
+// ==========================================
+// 1. DOM & EVENT LISTENERS
+// ==========================================
 
 document.addEventListener('DOMContentLoaded', () => {
 
