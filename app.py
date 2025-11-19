@@ -62,6 +62,9 @@ def build_invis_table():
 
     # 2. Join Controls
     apply_mask([(0x200C, 0x200D)], INVIS_JOIN_CONTROL)
+    # --- Explicitly catch CGJ (U+034F) as a Join Control ---
+    # It acts as invisible glue, so we treat it as a structural joiner for forensics.
+    apply_mask([(0x034F, 0x034F)], INVIS_JOIN_CONTROL)
 
     # 3. Zero Width Spacing
     apply_mask([(0x200B, 0x200B), (0x2060, 0x2060), (0xFEFF, 0xFEFF)], INVIS_ZERO_WIDTH_SPACING)
