@@ -1061,14 +1061,15 @@ tr.flag-row-crit {
   cursor: pointer;
   font-size: 0.95rem;
   font-weight: 650;
-
-  display: list-item; /* This forces the native browser triangle to appear */
-  
   color: #000000;
-  margin-bottom: 0.75rem;
+  display: list-item; /* This forces the native browser triangle to appear */
+  /* 3. ALIGNMENT FIX (Stop Levitation) */
+  margin: 0;           /* Remove default vertical margins */
+  padding-top: 4px;    /* Slight nudge to align with badge */
+  padding-bottom: 4px;
+
   user-select: none;
-  transition: color 0.2s ease;
-  display: inline-block; /* Tighter click area */
+  transition: opacity 0.2s ease;
 }
 
 .threat-ledger-details summary:hover,
