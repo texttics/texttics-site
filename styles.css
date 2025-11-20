@@ -994,77 +994,87 @@ Stage 2: Heatmap Row Classes
   border-bottom: 1px solid #EF4444;
 }
 
-/* Zone B: Diagnostic Matrix */
+/* Zone B: Diagnostic Matrix (Space-Between Layout) */
 .risk-matrix {
-  padding: 10px 8px;
+  padding: 12px 10px; /* Increased padding slightly for air */
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  flex-grow: 1;
-  justify-content: flex-start;
+  justify-content: space-between; /* Key Fix: Pushes items apart */
+  flex-grow: 1; /* Fills all remaining vertical space */
+  min-height: 0; /* Prevents overflow issues */
 }
 
 .risk-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start; /* Align to top to handle multi-line right side */
+  align-items: flex-start; /* Top-align so multi-line text hangs correctly */
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  padding-bottom: 6px; /* More padding for multi-line */
-  border-bottom: 1px dotted #E5E7EB;
-}
-.risk-row:last-child {
-  border-bottom: none;
+  
+  /* Remove borders - space-between handles separation cleanly now */
+  border-bottom: 1px dotted #f3f4f6; 
+  padding-bottom: 4px;
 }
 
+/* Remove border from the last item so it sits flush */
+.risk-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* Left Side: Facet Label (Icon + Text) */
 .risk-facet {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #6B7280;
+  gap: 8px; /* More space between icon and text */
+  color: #6B7280; /* Slate-500 */
   font-weight: 600;
-  margin-top: 1px; /* Nudge down to align with first line of text */
+  padding-top: 2px; /* Optical alignment with the Status text */
 }
+
 .facet-icon svg {
   display: block;
-  opacity: 0.7;
+  opacity: 0.6; /* Subtle icons */
+  width: 14px;  /* Slightly larger for clarity */
+  height: 14px;
 }
 
-/* Matrix Value Colors */
-.risk-value {
-  font-weight: 700;
+/* Right Side: Content Container */
+.risk-cell-right {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 1px; /* Tight spacing between Status and Detail */
+}
+
+/* Line 1: Status (PASS / EXTENDED / HIDDEN) */
+.risk-status {
+  font-weight: 800;
+  font-size: 0.75rem; /* Bumped up for readability */
+  letter-spacing: 0.02em;
 }
 .risk-pass {
-  color: #9CA3AF; /* Slate-400 (Muted) */
+  color: #9CA3AF; /* Slate-400 */
 }
 .risk-warn {
-  color: #B45309; /* Amber-700 (Warning) */
+  color: #B45309; /* Amber-700 */
 }
 .risk-fail {
-  color: #111827; /* Gray-900 (Critical/Black) */
-}
-
-/* Icon Opacity Control */
-.risk-pass ~ .facet-icon svg,
-.risk-pass .facet-icon svg {
-    opacity: 0.4; /* Fade out icons for safe states */
-}
-.risk-warn ~ .facet-icon svg,
-.risk-fail ~ .facet-icon svg,
-.risk-warn .facet-icon svg,
-.risk-fail .facet-icon svg {
-    opacity: 1.0; /* Full visibility for risks */
-    color: #000; /* Ensure icon is black for risks */
+  color: #111827; /* Gray-900 (Black) */
 }
 
 /* Line 2: Detail (The "Why") */
 .risk-detail {
-    font-family: var(--font-sans); /* Use Sans for readability */
-    font-size: 0.6rem;
+    font-family: var(--font-sans); /* Sans-serif for natural reading */
+    font-size: 0.65rem;
     font-weight: 500;
-    color: #6B7280; /* Muted Gray */
-    max-width: 120px; /* Prevent overflow */
-    line-height: 1.1;
+    color: #9CA3AF; /* Muted Gray */
+    
+    /* Prevent text wrapping from breaking layout */
+    white-space: nowrap; 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
 }
 
 /* Zone C: Evidence Block (Static Footer) */
