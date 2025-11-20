@@ -4967,7 +4967,9 @@ def render_inspector_panel(data):
         </div>
         """
     
-    signal_processor_content = risk_header_html + matrix_html + footer_html
+    # --- ASSEMBLE SIGNAL PROCESSOR BLOCK CONTENT (Reordered) ---
+    # Hierarchy: Header (Level) -> Footer (Specifics) -> Matrix (Facets)
+    signal_processor_content = risk_header_html + footer_html + matrix_html
 
     # --- (Rest of the function remains identical) ---
     identity_html = f"""
