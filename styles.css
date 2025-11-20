@@ -991,16 +991,16 @@ Stage 2: Heatmap Row Classes
 }
 
 /* Responsive */
-@media (max-width: 1400px) {
+/* @media (max-width: 1400px) {
   .inspector-layout-v3 {
     /* Collapse to 2 rows on smaller screens */
-    grid-template-columns: 180px 1fr 220px; 
+   /* grid-template-columns: 180px 1fr 220px; 
     grid-template-rows: 175px 175px;
     height: auto;
   }
   #inspector-panel-content { height: auto; max-height: 350px; }
   .col-context { display: none; } /* Hide prev/next */
-  .col-structure { grid-row: 2; grid-column: 1 / span 2; border-top: 1px solid var(--color-border-light); }
+ /* .col-structure { grid-row: 2; grid-column: 1 / span 2; border-top: 1px solid var(--color-border-light); }
   .col-bytes { grid-row: 2; grid-column: 3; border-top: 1px solid var(--color-border-light); }
 }
 
