@@ -5060,9 +5060,9 @@ def render_inspector_panel(data):
 
     # Zone B: The Diagnostic Matrix
     def build_row(label, f_data):
-        # f_data contains: state, class, icon, detail
         icon_color = "#6B7280" if f_data['class'] == "risk-pass" else "#111827" 
-        svg = get_icon(f_data['icon'], color=icon_color, size=12)
+        # CHANGED size from 12 to 14 for better visual weight
+        svg = get_icon(f_data['icon'], color=icon_color, size=14)
         
         return f"""
         <div class="risk-row">
