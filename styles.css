@@ -990,18 +990,32 @@ Stage 2: Heatmap Row Classes
   font-size: 0.75rem;
 }
 
-/* Responsive */
-/* @media (max-width: 1400px) {
+/* --- Responsive: Keep Fixed Geometry for Scroll Safety --- */
+@media (max-width: 1400px) {
   .inspector-layout-v3 {
-    /* Collapse to 2 rows on smaller screens */
-   /* grid-template-columns: 180px 1fr 220px; 
-    grid-template-rows: 175px 175px;
-    height: auto;
+    /* Switch to a stacked layout but KEEP FIXED HEIGHTS for the scroll areas */
+    grid-template-columns: 180px 1fr 220px; 
+    grid-template-rows: 175px 175px; /* Fixed rows ensure constraint */
+    height: 100%;
   }
-  #inspector-panel-content { height: auto; max-height: 350px; }
-  .col-context { display: none; } /* Hide prev/next */
- /* .col-structure { grid-row: 2; grid-column: 1 / span 2; border-top: 1px solid var(--color-border-light); }
-  .col-bytes { grid-row: 2; grid-column: 3; border-top: 1px solid var(--color-border-light); }
+  
+  /* Force the outer container to remain rigid */
+  #inspector-panel-content { 
+    height: 350px !important; /* Taller to accommodate 2 rows */
+    max-height: none;
+  }
+  
+  /* Hide context/risk on mobile to save space, or move them */
+  .col-context, .col-alerts { display: none; } 
+  
+  /* Map the visible columns to the 2-row grid */
+  /* Row 1: Target | Identity */
+  .col-target { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--color-border-light); }
+  .col-identity { grid-row: 1; grid-column: 2 / span 2; border-bottom: 1px solid var(--color-border-light); }
+  
+  /* Row 2: Structure | Bytes */
+  .col-structure { grid-row: 2; grid-column: 1 / span 2; }
+  .col-bytes { grid-row: 2; grid-column: 3; }
 }
 
 /* --- Macro Analysis Control --- */
