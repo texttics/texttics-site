@@ -4866,17 +4866,10 @@ def inspect_character(event):
 
 def analyze_signal_processor_state(data):
     """
-    Forensic State Machine v4.0 (SOTA Risk Model).
-    
-    Implements UTS #39 concepts:
-    - Security Invariants (Hard overrides for Bidi/Control)
-    - Facet-based Risk Scoring (Visibility/Structure/Identity)
-    - Context-Aware Heuristics (ASCII dominance, Script matching)
+    Forensic State Machine v5.0 (Fixed Definition).
     """
     
-    # --- 1. THREAT DEFINITIONS (The Risk Weighting Table) ---
-    # Weights: 0=Safe, 1=Note, 2=Warn, 3=Suspicious, 4=Critical
-    
+    # --- 1. THREAT DEFINITIONS ---
     RISK_WEIGHTS = {
         "INVISIBLE": 2.0,
         "NON_ASCII": 0.5,
@@ -4899,6 +4892,11 @@ def analyze_signal_processor_state(data):
     script = data.get('script', 'Common')
     raw_confusable = bool(data.get('confusable'))
     is_ascii = data.get('ascii', 'N/A') != 'N/A'
+
+    # --- THE MISSING DEFINITION ---
+    # We check the global set we loaded from JSON
+    is_ascii_confusable = (cp in ASCII_CONFUSABLES)
+    # ------------------------------
     
     # Heuristic: Non-ASCII + Confusable = Cross-Script Risk
     is_cross_script_confusable = raw_confusable and not is_ascii
@@ -4909,7 +4907,6 @@ def analyze_signal_processor_state(data):
         for c in data['components']:
             if not c['is_base']: mark_count += 1
             
-    # Script-Aware Zalgo Thresholds
     zalgo_threshold = 2 if script in ('Latin', 'Common') else 4
     is_heavy_zalgo = "Heavy" in stack_msg or mark_count > zalgo_threshold
     is_light_mark = mark_count > 0 and not is_heavy_zalgo
@@ -4936,28 +4933,23 @@ def analyze_signal_processor_state(data):
              reasons.append("Invisible Character")
     elif not is_ascii:
         current_score += RISK_WEIGHTS["NON_ASCII"]
-        # CHANGED: risk-pass -> risk-info (Blue)
         vis = {"state": "EXTENDED", "class": "risk-info", "icon": "eye", "detail": "Unicode Range"}
     else:
         vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
 
     # B. STRUCTURE
     if is_bidi_control:
-        # ... (Keep existing Bidi logic)
         current_score += RISK_WEIGHTS["BIDI"]
         struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
         reasons.append("Directional Control")
     elif is_heavy_zalgo:
-        # ... (Keep existing Heavy logic)
         current_score += RISK_WEIGHTS["ZALGO_HEAVY"]
         struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
         reasons.append("Excessive Marks")
     elif is_light_mark:
         current_score += RISK_WEIGHTS["ZALGO_LIGHT"]
-        # CHANGED: risk-pass -> risk-info (Blue)
         struct = {"state": "MODIFIED", "class": "risk-info", "icon": "cube", "detail": "Combining Marks"}
     elif is_layout_control:
-        # ...
         current_score += RISK_WEIGHTS["LAYOUT_CONTROL"]
         struct = {"state": "LAYOUT", "class": "risk-warn", "icon": "cube", "detail": "Format Control"}
     else:
@@ -4969,8 +4961,7 @@ def analyze_signal_processor_state(data):
     ident_icon = "fingerprint"
     ident_detail = "No Lookalikes"
 
-    # Check specific lookalike count from our new JSON
-    # We map cp (int) to string key for JSON lookup (e.g. "65" for 'A')
+    # Lookup count from JSON
     lookalikes = DATA_STORES.get("InverseConfusables", {}).get(str(cp), [])
     lookalike_count = len(lookalikes)
 
@@ -4995,7 +4986,6 @@ def analyze_signal_processor_state(data):
         
     elif lookalike_count > 0:
         # It has lookalikes but wasn't flagged as critical/ascii
-        # Treat as a mild note
         ident_state = "NOTE"
         ident_class = "risk-pass" # Keep gray
         ident_detail = f"{lookalike_count} Lookalikes"
@@ -5054,7 +5044,7 @@ def analyze_signal_processor_state(data):
 
     if reasons:
         footer_text = ", ".join(reasons)
-    elif level == 0 and raw_confusable:
+    elif level == 0 and is_ascii_confusable:
         footer_label = "NOTE"
         footer_text = "Common Lookalike (Safe)"
 
@@ -5064,7 +5054,11 @@ def analyze_signal_processor_state(data):
         "verdict_text": label,
         "header_class": header_class,
         "icon_key": icon,
-        "facets": [vis, struct, ident],
+        "facets": [
+            {"state": vis_state, "class": vis_class, "icon": vis_icon, "detail": vis_detail},
+            {"state": struct_state, "class": struct_class, "icon": struct_icon, "detail": struct_detail},
+            {"state": ident_state, "class": ident_class, "icon": ident_icon, "detail": ident_detail}
+        ],
         "footer_label": footer_label,
         "footer_text": footer_text,
         "footer_class": footer_class
