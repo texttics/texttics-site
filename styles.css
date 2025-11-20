@@ -759,7 +759,15 @@ Stage 2: Heatmap Row Classes
 }
 
 /* --- Inspector Layout v7: The Perfect Hybrid --- */
+@media () {
 
+#inspector-panel-content {
+
+height: auto;
+
+max-height: 350px;
+
+}
 #inspector-panel-content {
   /* Fixed vertical height, but allow horizontal scrolling */
   height: 275px !important;
