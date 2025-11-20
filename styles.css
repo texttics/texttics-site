@@ -979,7 +979,7 @@ Stage 2: Heatmap Row Classes
   padding: 10px 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   flex-grow: 1;
   justify-content: flex-start;
 }
@@ -987,10 +987,10 @@ Stage 2: Heatmap Row Classes
 .risk-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start; /* Align to top to handle multi-line right side */
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  padding-bottom: 4px;
+  padding-bottom: 6px; /* More padding for multi-line */
   border-bottom: 1px dotted #E5E7EB;
 }
 .risk-row:last-child {
@@ -1003,6 +1003,7 @@ Stage 2: Heatmap Row Classes
   gap: 6px;
   color: #6B7280;
   font-weight: 600;
+  margin-top: 1px; /* Nudge down to align with first line of text */
 }
 .facet-icon svg {
   display: block;
@@ -1017,6 +1018,15 @@ Stage 2: Heatmap Row Classes
 }
 .risk-fail {
   color: #111827; 
+}
+/* Line 2: Detail (The "Why") */
+.risk-detail {
+    font-family: var(--font-sans); /* Use Sans for readability */
+    font-size: 0.6rem;
+    font-weight: 500;
+    color: #6B7280; /* Muted Gray */
+    max-width: 120px; /* Prevent overflow */
+    line-height: 1.1;
 }
 
 /* Zone C: Evidence Block (Moved to Middle) */
