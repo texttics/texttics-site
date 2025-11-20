@@ -847,39 +847,34 @@ Stage 2: Heatmap Row Classes
   /* Remove flex rules from here if they exist */
 }
 
+/* The Scrollable Window */
 .glyph-viewport {
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0; /* Fill the entire column */
+  top: 0; left: 0; right: 0; bottom: 2.2rem; /* Leave space for label */
   
-  /* 1. Force Scrollbars */
   overflow: auto; 
   
-  /* 2. Use Block layout (Most robust for Zalgo) */
+  /* Block layout for robust scrolling */
   display: block; 
-  text-align: center; /* Center the child horizontally */
-  
-  /* 3. Reset padding */
+  text-align: center; /* Horizontally centers the inline-block child */
+  white-space: nowrap; /* Prevent wrap */
+  scroll-snap-type: y mandatory;
   padding: 0;
 }
 
 .inspector-glyph {
   font-family: var(--font-mono);
   font-size: 3.5rem;
-  line-height: normal; 
+  line-height: 1; /* Tight line height to keep the "center" predictable */
   
-  /* 1. INLINE-BLOCK allows padding to create scroll space properly */
   display: inline-block;
+  vertical-align: middle;
   
-  /* 2. THE ZALGO FIX: 
-     Huge vertical padding (10rem = 160px top and bottom).
-     This forces the scroll container to be tall enough to catch 
-     the "ghost" characters floating above/below the letter. */
+  /* The "Ghost Ink" Fix: Massive Padding forces the scroll area */
   padding: 10rem 2rem; 
-  
+  scroll-snap-align: center; /* Tell the browser "I want this element centered" */
   font-variant-ligatures: none;
   white-space: nowrap; 
-  
-  /* Ensure text color is solid */
   color: var(--color-text);
 }
 
