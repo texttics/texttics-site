@@ -4657,10 +4657,55 @@ def render_toc_counts(counts):
     document.getElementById("toc-emoji-count").innerText = f"({counts.get('emoji', 0)})"
     document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
 
+
+# --- INSPECTOR HELPERS ---
+
+def _classify_macro_type(cp, cat, id_status, mask):
+    """
+    Determines the 'Macro-Type' for the Forensic HUD.
+    Returns: 'STANDARD', 'COMPLEX', 'THREAT', or 'LEGACY'
+    """
+    # 1. THREAT: Restricted, Invisible, or Bidi Control
+    if id_status != "Allowed" and id_status != "N/A": return "THREAT"
+    if mask & (INVIS_BIDI_CONTROL | INVIS_HIGH_RISK_MASK): return "THREAT"
+    
+    # 2. COMPLEX: Marks, Emoji, Format
+    if cat.startswith('M') or cat == 'Cf': return "COMPLEX"
+    # (Note: Emoji check passed in from main logic is better, but this is a good proxy)
+    
+    # 3. STANDARD: ASCII Letters/Digits
+    if cp < 128 and cat in ('Ll', 'Lu', 'Nd'): return "STANDARD"
+    
+    # 4. LEGACY/RARE: Everything else (Symbols, Extended Latin, etc.)
+    return "LEGACY"
+
+def _get_ghost_chain(char):
+    """Returns the Quad-State Ghost Chain if normalization occurs."""
+    nfkc = normalize_extended(char)
+    casefold = nfkc.casefold()
+    
+    # Compute Skeleton (reuse existing logic or simple map lookup)
+    # We use the map directly for speed here
+    confusables_map = DATA_STORES.get("Confusables", {})
+    # For the skeleton, we map the *casefolded* char if possible, or raw
+    # The official alg is recursive, but for single char display:
+    skel_source = ord(casefold[0]) if casefold else ord(char)
+    skeleton = confusables_map.get(skel_source, casefold)
+
+    if nfkc == char and casefold == char and skeleton == char:
+        return None # No ghosts
+        
+    return {
+        "raw": char,
+        "nfkc": nfkc,
+        "casefold": casefold,
+        "skeleton": skeleton
+    }
+    
 # ---
 # 5. MAIN ORCHESTRATOR
 # ---
-    
+   
 @create_proxy
 def inspect_character(event):
     """
@@ -4828,94 +4873,58 @@ def inspect_character(event):
                 'is_base': not is_mark
             })
             
-        # 4. Payload & Extended Forensics (The Forensic 9)
+        # --- 4. Construct Data Payload (Enriched for HUD v2) ---
         
-        # A. System Layer
-        utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
-        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
-        utf32_hex = f"{cp_base:08X}"
+        # A. Context & Classification
+        cat_short = unicodedata.category(base_char)
+        id_status = _find_in_ranges(cp_base, "IdentifierStatus")
+        if not id_status:
+             id_status = "Restricted" if cat_short not in ("Cn", "Co", "Cs") else "N/A"
         
-        # B. Legacy Layer (Fail-Safe Encoding)
-        def try_enc(enc_name):
-            try:
-                return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
-            except UnicodeEncodeError:
-                return "N/A"
-
-        ascii_val = try_enc("ascii")
-        latin1_val = try_enc("latin-1")
-        cp1252_val = try_enc("cp1252")
+        mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
+        macro_type = _classify_macro_type(cp_base, cat_short, id_status, mask)
+        ghosts = _get_ghost_chain(base_char)
         
-        # C. Injection Layer
-        # URL: Simple byte-level percent encoding for the UTF-8 sequence
-        url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
-        
-        # HTML: Entity representation
-        # Simple logic: if alphanumeric, show char. If special, show entity.
-        if target_cluster.isalnum():
-            html_enc = target_cluster
-        else:
-            # Force hex entity for clarity
-            html_enc = "".join(f"&#x{ord(c):X};" for c in target_cluster)
-            
-        # Code: Python/JSON style escape
-        code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
-
-        confusables_map = DATA_STORES.get("Confusables", {})
-        skeleton = confusables_map.get(cp_base)
-        confusable_msg = f"Base maps to: '{skeleton}'" if skeleton else None
-        
-        # --- 4. Construct Data Payload ---
+        # B. Standard Props
+        bidi_short = unicodedata.bidirectional(base_char)
+        gb_prop = _find_in_ranges(cp_base, "GraphemeBreak") or "Other"
         
         stack_msg = None
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
         data = {
-            # --- Navigation & Core Identity (Required for Col 1-3) ---
+            # --- Navigation & Core Identity ---
             "cluster_glyph": target_cluster,
             "prev_glyph": prev_cluster,
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name Found"),
             
-            # --- Spec Sheet Data (Enriched for Col 5) ---
+            # --- HUD v2 Logic Signals ---
+            "macro_type": macro_type,
+            "ghosts": ghosts,
+            "id_status": id_status,
+            "id_type": _find_in_ranges(cp_base, "IdentifierType"),
+            "is_ascii": (cp_base <= 0x7F),
+            
+            # --- Spec Data ---
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
-            "script_ext": _find_in_ranges(cp_base, "ScriptExtensions"), # [NEW]
-            
-            # Category Logic: 
-            # 'category' is needed for the Risk Processor (legacy)
-            # 'category_full' and 'category_short' are needed for the Spec Sheet (new)
-            "category": ALIASES.get(cat_short, "N/A"), 
-            "category_full": ALIASES.get(cat_short, "N/A"), # [NEW]
-            "category_short": cat_short,                    # [NEW] (e.g. "Nd")
-            
-            "id_status": id_status, # [NEW] (e.g. "Allowed")
-            "id_type": id_type,     # [NEW] (e.g. "Recommended")
-            
+            "script_ext": _find_in_ranges(cp_base, "ScriptExtensions"),
+            "category_full": ALIASES.get(cat_short, "N/A"),
+            "category_short": cat_short,
             "bidi": bidi_short,
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
-            
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
-            "grapheme_break": gb_prop, # [NEW]
-            
-            "is_ascii": (cp_base <= 0x7F), # [NEW] Boolean for Chips
+            "grapheme_break": gb_prop,
 
-            # --- Forensic 9 Payload (Required for Col 7) ---
-            "utf8": utf8_hex,
-            "utf16": utf16_hex,
-            "utf32": utf32_hex,
-            "ascii": ascii_val,     # Used by Risk Processor to detect non-ASCII
-            "latin1": latin1_val,
-            "cp1252": cp1252_val,
-            "url": url_enc,
-            "html": html_enc,
-            "code": code_enc,
-            
-            # --- Risk Signals (Required for Signal Processor) ---
+            # --- Legacy / Forensic 9 ---
+            "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
+            "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
+            "url": url_enc, "html": html_enc, "code": code_enc,
             "confusable": confusable_msg,
-            "is_invisible": bool(INVIS_TABLE[cp_base] & INVIS_ANY_MASK),
+            "is_invisible": bool(mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
             "components": components
         }
@@ -5225,86 +5234,100 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Forensic Spec Sheet V2) ---
+    # --- COL 5: IDENTITY (HUD v2.0) ---
     
-    # 1. Build Chips
-    ascii_chip = '<span class="spec-chip ascii">ASCII</span>' if data['is_ascii'] else ''
+    # 1. Identity Capsule (Chips)
+    chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
+    chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
     
-    # 2. Build ID Status Class
-    id_status_raw = data.get('id_status', 'Unknown')
-    id_status_cls = "id-status-restricted"
-    if id_status_raw == "Allowed": id_status_cls = "id-status-allowed"
-    elif id_status_raw == "Restricted": id_status_cls = "id-status-restricted"
-    else: id_status_cls = "id-status-technical"
+    if data['macro_type'] == "STANDARD":
+        chips_html += '<span class="spec-chip ascii">ASCII</span>'
+        chips_html += '<span class="spec-chip safe">SAFE</span>'
+    elif data['macro_type'] == "THREAT":
+        chips_html += '<span class="spec-chip threat">THREAT</span>'
+        if data['is_invisible']: chips_html += '<span class="spec-chip invisible">INVISIBLE</span>'
+    
+    # 2. Mechanics Matrix (Dynamic)
+    # We customize the cells based on the type
+    
+    # Cell 1: Direction (Universal)
+    matrix_html = f"""
+        <div class="matrix-item">
+            <span class="spec-label">DIRECTION</span>
+            <span class="matrix-val">{data['bidi']}</span>
+        </div>
+    """
+    
+    # Cell 2: Segmentation (Combined Word/Grapheme)
+    matrix_html += f"""
+        <div class="matrix-item">
+            <span class="spec-label">SEGMENT</span>
+            <span class="matrix-val">{data['word_break']}</span>
+            <span class="matrix-sub">{data['grapheme_break']}</span>
+        </div>
+    """
+    
+    # Cell 3: Breaking (Line)
+    matrix_html += f"""
+        <div class="matrix-item">
+            <span class="spec-label">WRAP</span>
+            <span class="matrix-val">{data['line_break']}</span>
+        </div>
+    """
+    
+    # Cell 4: Type-Specific
+    if data['macro_type'] == "THREAT":
+        # Show ID Status for Threats
+        status_cls = "id-status-restricted"
+        matrix_html += f"""
+            <div class="matrix-item">
+                <span class="spec-label">SECURITY</span>
+                <span class="matrix-val {status_cls}">{data['id_status']}</span>
+            </div>
+        """
+    else:
+        # Show Script for others
+        matrix_html += f"""
+            <div class="matrix-item">
+                <span class="spec-label">SCRIPT</span>
+                <span class="matrix-val">{data['script']}</span>
+            </div>
+        """
 
-    # 3. Prepare Sub-labels (You can expand these maps later)
-    # For now, we just show the main value. 
-    # Ideally, map 'Nd' -> 'Decimal Number', 'EN' -> 'European Number'
-    
+    # 3. Security & Ghosts (The "Why?")
+    ghost_html = ""
+    if data['ghosts']:
+        g = data['ghosts']
+        ghost_html = f"""
+        <div class="ghost-section">
+            <div class="spec-label" style="margin-bottom:4px;">NORMALIZATION GHOSTS</div>
+            <div class="ghost-strip">
+                <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
+                <div class="ghost-arrow">→</div>
+                <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
+                <div class="ghost-arrow">→</div>
+                <div class="ghost-step">SKEL<br><span>{_escape_html(g['skeleton'])}</span></div>
+            </div>
+        </div>
+        """
+
     identity_html = f"""
         <div class="inspector-header" title="{data['name_base']}">{data['name_base']}</div>
         
         <div class="spec-capsule">
-            <span class="spec-chip codepoint">{data['cp_hex_base']}</span>
-            <span class="spec-chip category">{data['category_short']}</span>
-            <span class="spec-chip block">{data['block']}</span>
-            {ascii_chip}
+            {chips_html}
         </div>
-
-        <div class="spec-group">
-            <div class="spec-row">
-                <span class="spec-label">SCRIPT</span>
-                <span class="spec-value">
-                    {data['script']}
-                    <span class="spec-sub">
-                        {f"({data['script_ext']})" if data['script_ext'] else ""}
-                    </span>
-                </span>
-            </div>
-            <div class="spec-row">
-                <span class="spec-label">CATEGORY (Gc)</span>
-                <span class="spec-value">
-                    {data['category_full']}
-                    <span class="spec-sub">({data['category_short']})</span>
-                </span>
-            </div>
-            <div class="spec-row">
-                <span class="spec-label">AGE</span>
-                <span class="spec-value">{data['age']}</span>
-            </div>
-            
-            <div class="spec-row">
-                <span class="spec-label">ID STATUS</span>
-                <span class="spec-value {id_status_cls}">{id_status_raw}</span>
-            </div>
-            <div class="spec-row" {'hidden' if not data['id_type'] else ''}>
-                <span class="spec-label">ID TYPE</span>
-                <span class="spec-value spec-sub" style="font-weight:600; color:#4b5563;">{data.get('id_type', '')}</span>
-            </div>
+        
+        <div class="spec-row" style="margin-bottom: 8px;">
+            <span class="spec-label">BLOCK</span>
+            <span class="spec-value">{data['block']}</span>
         </div>
 
         <div class="spec-matrix">
-            <div class="matrix-item">
-                <span class="spec-label">BIDI CLASS</span>
-                <span class="matrix-val">{data['bidi']}</span>
-                <span class="matrix-sub">Directionality</span>
-            </div>
-            <div class="matrix-item">
-                <span class="spec-label">LINE BREAK</span>
-                <span class="matrix-val">{data['line_break']}</span>
-                <span class="matrix-sub">Breaking</span>
-            </div>
-            <div class="matrix-item">
-                <span class="spec-label">WORD BREAK</span>
-                <span class="matrix-val">{data['word_break']}</span>
-                <span class="matrix-sub">Segmentation</span>
-            </div>
-            <div class="matrix-item">
-                <span class="spec-label">GRAPHEME</span>
-                <span class="matrix-val">{data['grapheme_break']}</span>
-                <span class="matrix-sub">Cluster</span>
-            </div>
+            {matrix_html}
         </div>
+        
+        {ghost_html}
     """
 
     # --- COL 6: COMPONENTS TABLE ---
