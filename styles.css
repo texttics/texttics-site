@@ -1055,38 +1055,61 @@ Stage 2: Heatmap Row Classes
     line-height: 1.1;
 }
 
-/* Zone C: Evidence Block (Moved to Middle) */
+/* Zone C: Evidence Block (Static Footer) */
 .risk-footer {
   background-color: #ffffff;
-  /* Removed border-top, added border-bottom to separate from Matrix */
   border-bottom: 1px solid var(--color-border-light);
-  padding: 8px 8px 12px 8px; /* Extra bottom padding for spacing */
+  /* Fixed height container to prevent jitter */
+  min-height: 48px; 
+  padding: 8px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .risk-footer-label {
     font-family: var(--font-sans);
     font-size: 0.6rem;
-    font-weight: 700;
-    color: #9CA3AF; /* Lightened label to reduce noise */
-    margin-bottom: 2px;
+    font-weight: 800;
+    margin-bottom: 3px;
     letter-spacing: 0.05em;
+    text-transform: uppercase;
 }
 
 .risk-footer-content {
     font-family: var(--font-mono);
-    font-size: 0.75rem; /* Bigger */
-    color: #000000; /* Pure Black */
+    font-size: 0.7rem;
     font-weight: 700;
     line-height: 1.2;
     
-    /* Handle overflow gracefully */
+    /* Handle overflow */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+/* Footer State Colors */
 
+/* Level 0: Neutral/Gray */
+.footer-neutral {
+    color: #9CA3AF; /* Slate-400 */
+}
+
+/* Level 1: Info/Blue */
+.footer-info {
+    color: #3B82F6; /* Blue-500 */
+}
+
+/* Level 2-3: Warn/Amber */
+.footer-warn {
+    color: #B45309; /* Amber-700 */
+}
+
+/* Level 4: Crit/Red */
+.footer-crit {
+    color: #DC2626; /* Red-600 */
+}
 
 /* --- Col 5: Identity (Restored Fluid) --- */
 .col-identity {
