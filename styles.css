@@ -896,7 +896,7 @@ Stage 2: Heatmap Row Classes
   
   font-family: var(--font-mono);
   font-weight: 700;
-  color: var(--color-primary);
+  /* color: var(--color-primary); REMOVED to allow Python injection */
   font-size: 1rem;
   
   /* Make sure the label sits ON TOP of the scrolling text */
@@ -908,6 +908,7 @@ Stage 2: Heatmap Row Classes
   padding: 3px 10px;
   border-radius: 12px; /* Pill shape */
   z-index: 20;
+  transition: color 0.2s, border-color 0.2s; /* Smooth transition when clicking different chars */
 }
 
 
