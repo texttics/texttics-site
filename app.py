@@ -4766,6 +4766,48 @@ def inspect_character(event):
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
+        # --- DATA ENRICHMENT FOR SPEC SHEET V2 ---
+        
+        # 1. Identifier Status (UTS #39)
+        id_status = _find_in_ranges(cp_base, "IdentifierStatus")
+        # Default restricted logic (UAX #31)
+        cat = unicodedata.category(base_char)
+        if not id_status:
+             if cat not in ("Cn", "Co", "Cs"): id_status = "Restricted"
+             else: id_status = "N/A"
+             
+        id_type = _find_in_ranges(cp_base, "IdentifierType")
+
+        # 2. Short Codes (We need a map or raw access)
+        # For now, we extract them from the full name if possible, or pass the raw value
+        # Since our data stores have long names, we will use the long name as primary
+        # and the raw code from unicodedata as secondary where possible.
+        
+        cat_short = cat # 'Nd', 'Lu', etc.
+        
+        # Bidi Short Code (using built-in as fallback/primary for short code)
+        bidi_short = unicodedata.bidirectional(base_char)
+        
+        # Grapheme Break Property
+        gb_prop = _find_in_ranges(cp_base, "GraphemeBreak") or "Other"
+
+        components = []
+        zalgo_score = 0
+        for ch in target_cluster:
+            # ... (Existing component loop logic) ...
+            cat = unicodedata.category(ch)
+            name = unicodedata.name(ch, "Unknown")
+            ccc = unicodedata.combining(ch)
+            is_mark = cat.startswith('M')
+            if is_mark: zalgo_score += 1
+            components.append({
+                'hex': f"U+{ord(ch):04X}", 
+                'name': name, 
+                'cat': cat, 
+                'ccc': ccc,
+                'is_base': not is_mark
+            })
+        
         components = []
         zalgo_score = 0
         for ch in target_cluster:
@@ -4823,34 +4865,55 @@ def inspect_character(event):
         skeleton = confusables_map.get(cp_base)
         confusable_msg = f"Base maps to: '{skeleton}'" if skeleton else None
         
+        # --- 4. Construct Data Payload ---
+        
         stack_msg = None
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
         data = {
+            # --- Navigation & Core Identity (Required for Col 1-3) ---
             "cluster_glyph": target_cluster,
             "prev_glyph": prev_cluster,
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name Found"),
+            
+            # --- Spec Sheet Data (Enriched for Col 5) ---
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
-            "category": ALIASES.get(unicodedata.category(base_char), "N/A"),
-            "bidi": unicodedata.bidirectional(base_char) or "N/A",
+            "script_ext": _find_in_ranges(cp_base, "ScriptExtensions"), # [NEW]
+            
+            # Category Logic: 
+            # 'category' is needed for the Risk Processor (legacy)
+            # 'category_full' and 'category_short' are needed for the Spec Sheet (new)
+            "category": ALIASES.get(cat_short, "N/A"), 
+            "category_full": ALIASES.get(cat_short, "N/A"), # [NEW]
+            "category_short": cat_short,                    # [NEW] (e.g. "Nd")
+            
+            "id_status": id_status, # [NEW] (e.g. "Allowed")
+            "id_type": id_type,     # [NEW] (e.g. "Recommended")
+            
+            "bidi": bidi_short,
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
+            
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
+            "grapheme_break": gb_prop, # [NEW]
             
-            # Forensic 9 Payload
+            "is_ascii": (cp_base <= 0x7F), # [NEW] Boolean for Chips
+
+            # --- Forensic 9 Payload (Required for Col 7) ---
             "utf8": utf8_hex,
             "utf16": utf16_hex,
             "utf32": utf32_hex,
-            "ascii": ascii_val,
+            "ascii": ascii_val,     # Used by Risk Processor to detect non-ASCII
             "latin1": latin1_val,
             "cp1252": cp1252_val,
             "url": url_enc,
             "html": html_enc,
             "code": code_enc,
             
+            # --- Risk Signals (Required for Signal Processor) ---
             "confusable": confusable_msg,
             "is_invisible": bool(INVIS_TABLE[cp_base] & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
@@ -4858,7 +4921,7 @@ def inspect_character(event):
         }
         
         render_inspector_panel(data)
-        
+
     except Exception as e:
         print(f"Inspector Error: {e}")
         render_inspector_panel({"error": str(e)})
