@@ -513,38 +513,41 @@ window.TEXTTICS_HIGHLIGHT_CODEPOINT = (codePointIndex) => {
 };
 
 /**
- * FORENSIC FIT: Auto-scales the glyph to fit the container (Zalgo Containment).
- * Triggered by Python whenever a new character is inspected.
+ * FORENSIC FIT: Auto-scales the glyph to fit the container.
+ * Robust version with logging and safety checks.
  */
 window.TEXTTICS_FIT_GLYPH = () => {
-  // Use AnimationFrame to ensure DOM render is complete before measuring
+  // Use requestAnimationFrame to wait for layout paint
   requestAnimationFrame(() => {
     const viewport = document.querySelector('.glyph-viewport');
     const glyph = document.querySelector('.inspector-glyph');
     
-    if (!viewport || !glyph) return;
+    if (!viewport || !glyph) {
+        console.warn("TEXTTICS: Scale target not found.");
+        return;
+    }
 
-    // 1. Reset scale to measure natural size (The "Real" Zalgo dimensions)
+    // 1. Reset to measure natural size
     glyph.style.transform = 'none';
     
+    // 2. Get dimensions
     const vRect = viewport.getBoundingClientRect();
     const gRect = glyph.getBoundingClientRect();
     
-    // Safety check for zero-size elements (e.g. hidden tab)
+    // 3. Calculate Scale (with 15% padding)
     if (gRect.width === 0 || gRect.height === 0) return;
-
-    // 2. Calculate Scale Ratios (with 15% safety padding)
+    
     const padding = 0.85; 
     const scaleX = (vRect.width * padding) / gRect.width;
     const scaleY = (vRect.height * padding) / gRect.height;
     
-    // 3. Determine final scale (Only shrink, never grow pixelated)
+    // 4. Apply Scale (Only shrink)
     const scale = Math.min(scaleX, scaleY, 1);
     
-    // 4. Apply
-    if (scale < 1) {
+    if (scale < 0.99) {
         glyph.style.transform = `scale(${scale})`;
-        glyph.style.transformOrigin = 'center center'; // Scale from middle
+        glyph.style.transformOrigin = 'center center';
+        console.log(`TEXTTICS: Scaled glyph by ${scale.toFixed(2)}x`);
     }
   });
 };
