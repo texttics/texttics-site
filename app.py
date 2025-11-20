@@ -4732,10 +4732,19 @@ def inspect_character(event):
         for ch in target_cluster:
             cat = unicodedata.category(ch)
             name = unicodedata.name(ch, "Unknown")
+            
+            # NEW: Get the Stacking Physics
+            ccc = unicodedata.combining(ch)
+            
             is_mark = cat.startswith('M')
             if is_mark: zalgo_score += 1
+            
             components.append({
-                'hex': f"U+{ord(ch):04X}", 'name': name, 'cat': cat, 'is_base': not is_mark
+                'hex': f"U+{ord(ch):04X}", 
+                'name': name, 
+                'cat': cat, 
+                'ccc': ccc,  # <--- Added this field
+                'is_base': not is_mark
             })
             
         # 4. Payload & Extended Forensics (The Forensic 9)
