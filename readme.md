@@ -891,10 +891,7 @@ This function is bound to the `<textarea>` `input` event.
 
 This architecture ensures that **Text...tics** is not just a passive observer of text, but a hardened, verified, and deterministic instrument for structural analysis.
 
-
 ---
-
-***
 
 ## 🛡️ Update: Stage 1 Forensic Hardening & Inspector V7
 
@@ -908,15 +905,17 @@ This architecture ensures that **Text...tics** is not just a passive observer of
 ### 2. State Integrity (The "Immutable Reveal")
 * **Evidence Preservation:** The "Reveal Invisibles" feature was refactored from a **Mutator** to a **Viewer**. It now applies a visual overlay (Amber warning state) without re-submitting the modified text to the analysis engine. This prevents "Evidence Laundering" where revealing a threat would accidentally reset the Threat Score to zero.
 
-### 3. The Inspector V7 (Zalgo-Proof & 7-Column Grid)
-The Character Inspector was rebuilt from the ground up to solve the "Infinite Height" problem posed by excessive combining marks.
+
+### 3. The Inspector V7 (Zalgo-Proof & 7-Column Forensic Grid)
+
+The Character Inspector was rebuilt from the ground up to solve the "Infinite Height" problem posed by excessive combining marks and to provide "Total Information Awareness" via the expanded Forensic 9 engine.
 
 * **7-Column Forensic Grid:** A rigid, fixed-height layout that separates data into dedicated lanes, preventing layout shifts even under heavy fuzzing:
     * **Timeline:** Prev / Target / Next glyphs.
     * **Risk (New):** A dedicated, left-aligned column for high-visibility threat badges (e.g., `INVISIBLE`, `HEAVY STACKING`), ensuring warnings are never obscured by the character itself.
     * **Identity:** Name, Block, Script, and Segmentation properties.
-    * **Structure:** A dedicated table listing every atom in the cluster (Base + Combining Marks).
-    * **Bytes:** Raw UTF-8 and UTF-16 hex dumps with forensic wrapping.
+    * **Cluster Components:** A granular breakdown of every atom in the cluster. Now includes a dedicated **CCC (Canonical Combining Class)** column to explicitly expose the "Stacking Physics" mechanism behind Zalgo attacks.
+    * **Forensic Encodings:** Expanded from simple hex dumps to the **"Forensic 9"** spectrum. Covers the **System Layer** (UTF-8, UTF-16, UTF-32), **Legacy Layer** (ASCII, Latin-1, Win-1252), and **Injection Layer** (URL, HTML, Code) for maximal investigative leverage.
 * **Zalgo Containment Protocol (The "Ghost Ink" Fix):** Solved the browser rendering issue where combining marks do not increase element height. The target viewport now uses a **Block Layout with Massive Padding (10rem)** strategy to force the browser to acknowledge and scroll the full vertical extent of "Zalgo" stacks, preventing decapitation of diacritics.
 * **Forensic Centering Engine:** A JavaScript bridge that calculates the exact geometric center of the scrollable area and auto-scrolls the viewport to the middle, ensuring the base character is always visible on load, regardless of stack height.
 * **Absolute Constraint Pattern:** The grid rows are now strictly locked (`minmax(0, 100%)`) to prevent the UI from expanding. Content that exceeds the physical dimensions of the "Lab Bench" (275px) is forced into internal scrolling, preserving the application's structural integrity.
