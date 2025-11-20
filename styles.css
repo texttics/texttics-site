@@ -780,21 +780,33 @@ Stage 2: Heatmap Row Classes
 
 .inspector-layout-v3 {
   display: grid;
-  /* Define robust widths. 
+  
+  /* 1. FORCE SINGLE ROW */
+  grid-template-rows: 100%; 
+  
+  /* 2. DEFINE THE 7 COLUMNS EXPLICITLY 
+     (Context | Target | Context | Risk | Identity | Structure | Bytes) */
+  grid-template-columns: 
+    60px                 /* 1. Context Prev */
+    140px                /* 2. Target (Main Glyph) */
+    60px                 /* 3. Context Next */
+    80px                 /* 4. Alerts/Risk */
+    minmax(250px, 1fr)   /* 5. Identity (Flexible width) */
+    260px                /* 6. Structure Table */
+    120px;               /* 7. Bytes */
 
-  
-  /* FORCE the grid to be at least this wide. 
-     This pushes the scrollbar onto the parent if the screen is narrower. */
-  min-width: 1020px;
-  
-  /* Row constraint from before */
-  grid-template-rows: minmax(0, 1fr);
+  /* 3. FORCE SCROLL */
+  /* This ensures the grid never squashes. 
+     It triggers the scrollbar on the parent #inspector-panel-content */
+  min-width: 1000px; 
   
   height: 100%;
   width: 100%;
   text-align: left;
   font-size: 0.85rem;
-  flex-direction: column;
+  
+  /* Reset any inherited border issues */
+  border: none;
 }
 
 /* --- Cols 1 & 3: Context (Restored Gray & Borders) --- */
