@@ -4738,11 +4738,31 @@ def inspect_character(event):
                 'hex': f"U+{ord(ch):04X}", 'name': name, 'cat': cat, 'is_base': not is_mark
             })
             
-        # 4. Payload
+        # 4. Payload & Extended Forensics
+        # --- UTF-8 ---
         utf8_bytes = target_cluster.encode("utf-8")
         utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
-        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
         
+        # --- UTF-16 (Big Endian standard for hex dumps) ---
+        utf16_bytes = target_cluster.encode("utf-16-be")
+        utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
+        
+        # --- UTF-32 (The "God Mode" - True Scalar) ---
+        # We encode the base character to see its structural ID
+        utf32_hex = f"{cp_base:08X}" 
+        
+        # --- ASCII (The Safety Check) ---
+        try:
+            target_cluster.encode("ascii")
+            ascii_val = "Valid" # Or show the hex if you prefer: f"{ord(target_cluster[0]):02X}"
+        except UnicodeEncodeError:
+            ascii_val = "N/A" # High-contrast failure state
+            
+        # --- URL Encoding (The Wire Trace) ---
+        # We use Python's urllib logic manually or via import if available.
+        # For PyScript, simple byte formatting is safer and faster:
+        url_enc = "".join(f"%{b:02X}" for b in utf8_bytes)
+
         confusables_map = DATA_STORES.get("Confusables", {})
         skeleton = confusables_map.get(cp_base)
         confusable_msg = f"Base maps to: '{skeleton}'" if skeleton else None
@@ -4763,8 +4783,14 @@ def inspect_character(event):
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
+            
+            # Forensic Bytes Payload
             "utf8": utf8_hex,
             "utf16": utf16_hex,
+            "utf32": utf32_hex,
+            "ascii": ascii_val,
+            "url": url_enc,
+            
             "confusable": confusable_msg,
             "is_invisible": bool(INVIS_TABLE[cp_base] & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
@@ -4898,10 +4924,30 @@ def render_inspector_panel(data):
         </div>
         
         <div class="col-bytes">
-            <div class="section-label">BYTES</div>
+            <div class="section-label">FORENSIC BYTES</div>
             <div class="byte-grid">
+                
                 <div><span class="label">UTF-8:</span><br>{data['utf8']}</div>
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #cbd5e1;"><span class="label">UTF-16:</span><br>{data['utf16']}</div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">UTF-16:</span><br>{data['utf16']}
+                </div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">UTF-32 (BE):</span><br>
+                    <span style="font-family:var(--font-mono); letter-spacing:1px;">{data['utf32']}</span>
+                </div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">ASCII:</span><br>
+                    <span style="color:{'#dc2626' if data['ascii'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['ascii']}</span>
+                </div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">URL Encoded:</span><br>
+                    <span style="font-size:0.65rem; word-break:break-all;">{data['url']}</span>
+                </div>
+
             </div>
         </div>
 
