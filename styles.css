@@ -858,7 +858,6 @@ Stage 2: Heatmap Row Classes
   display: block; 
   text-align: center; /* Horizontally centers the inline-block child */
   white-space: nowrap; /* Prevent wrap */
-  scroll-snap-type: y mandatory;
   padding: 0;
 }
 
@@ -872,7 +871,6 @@ Stage 2: Heatmap Row Classes
   
   /* The "Ghost Ink" Fix: Massive Padding forces the scroll area */
   padding: 10rem 2rem; 
-  scroll-snap-align: center; /* Tell the browser "I want this element centered" */
   font-variant-ligatures: none;
   white-space: nowrap; 
   color: var(--color-text);
