@@ -5081,14 +5081,10 @@ def render_inspector_panel(data):
     # --- CALL THE LOGIC ENGINE ---
     state = analyze_signal_processor_state(data)
     
-    # --- UNPACK FACETS FOR RENDERING ---
-    # This fixes the 'vis_state is not defined' error
-    # We extract the dictionaries from the list returned by the logic engine
+    # --- UNPACK FACETS (Fixes 'vis_state not defined' error) ---
     vis_data = state['facets'][0]
     struct_data = state['facets'][1]
     ident_data = state['facets'][2]
-    
-    # --- HTML GENERATION ---
     
     # --- HTML GENERATION ---
 
@@ -5105,10 +5101,11 @@ def render_inspector_panel(data):
     """
 
     # Zone B: The Diagnostic Matrix
-    def build_row(label, icon_key, status, detail, css_class):
+    def build_row(label, f_data):
+        # f_data contains: state, class, icon, detail
         # Logic: if class is risk-pass, use gray icon. If risk-warn/fail, use black.
-        icon_color = "#6B7280" if css_class == "risk-pass" else "#111827" 
-        svg = get_icon(icon_key, color=icon_color, size=12)
+        icon_color = "#6B7280" if f_data['class'] == "risk-pass" else "#111827" 
+        svg = get_icon(f_data['icon'], color=icon_color, size=12)
         
         return f"""
         <div class="risk-row">
@@ -5117,30 +5114,33 @@ def render_inspector_panel(data):
                 <span class="facet-label">{label}</span>
             </div>
             <div class="risk-cell-right">
-                <div class="risk-status {css_class}">{status}</div>
-                <div class="risk-detail">{detail}</div>
+                <div class="risk-status {f_data['class']}">{f_data['state']}</div>
+                <div class="risk-detail">{f_data['detail']}</div>
             </div>
         </div>
         """
 
-    facets = state['facets'] # [vis, struct, ident]
     matrix_html = f"""
         <div class="risk-matrix">
-            {build_row("VISIBILITY", vis_data['icon'], vis_data['state'], vis_data['detail'], vis_data['class'])}
-            {build_row("STRUCTURE", struct_data['icon'], struct_data['state'], struct_data['detail'], struct_data['class'])}
-            {build_row("IDENTITY", ident_data['icon'], ident_data['state'], ident_data['detail'], ident_data['class'])}
+            {build_row("VISIBILITY", vis_data)}
+            {build_row("STRUCTURE", struct_data)}
+            {build_row("IDENTITY", ident_data)}
         </div>
     """
 
-    # Zone C: The Footer (Always Visible)
-    footer_html = f"""
-    <div class="risk-footer">
-        <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
-        <div class="risk-footer-content {state['footer_class']}">{state['footer_text']}</div>
-    </div>
-    """
+    # Zone C: The Footer (Evidence)
+    # Logic: Only show footer if Level >= 2 (Anomalous or higher)
+    footer_html = ""
+    if state['level'] >= 2 and state['reasons']:
+        footer_text = ", ".join(state['reasons'])
+        footer_html = f"""
+        <div class="risk-footer">
+            <div class="risk-footer-label">DETECTED</div>
+            <div class="risk-footer-content">{footer_text}</div>
+        </div>
+        """
     
-    # Assemble Column 4 (Order: Header -> Footer -> Matrix)
+    # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
     # --- IDENTITY COLUMN (Standard) ---
