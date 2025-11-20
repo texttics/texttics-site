@@ -1009,24 +1009,7 @@ Stage 2: Heatmap Row Classes
   text-overflow: ellipsis; 
 }
   
-  /* Force the outer container to remain rigid */
-  #inspector-panel-content { 
-    height: 350px !important; /* Taller to accommodate 2 rows */
-    max-height: none;
-  }
   
-  /* Hide context/risk on mobile to save space, or move them */
-  .col-context, .col-alerts { display: none; } 
-  
-  /* Map the visible columns to the 2-row grid */
-  /* Row 1: Target | Identity */
-  .col-target { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--color-border-light); }
-  .col-identity { grid-row: 1; grid-column: 2 / span 2; border-bottom: 1px solid var(--color-border-light); }
-  
-  /* Row 2: Structure | Bytes */
-  .col-structure { grid-row: 2; grid-column: 1 / span 2; }
-  .col-bytes { grid-row: 2; grid-column: 3; }
-}
 
 /* --- Macro Analysis Control --- */
 .macro-analysis-control {
