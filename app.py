@@ -4866,7 +4866,8 @@ def inspect_character(event):
 
 def analyze_signal_processor_state(data):
     """
-    Forensic State Machine v5.0 (Fixed Definition).
+    Forensic State Machine v5.1 (Fixed Data Structures).
+    Standardizes all facets to dictionaries to prevent NameError.
     """
     
     # --- 1. THREAT DEFINITIONS ---
@@ -4893,12 +4894,9 @@ def analyze_signal_processor_state(data):
     raw_confusable = bool(data.get('confusable'))
     is_ascii = data.get('ascii', 'N/A') != 'N/A'
 
-    # --- THE MISSING DEFINITION ---
-    # We check the global set we loaded from JSON
+    # Check the global set we loaded from JSON
     is_ascii_confusable = (cp in ASCII_CONFUSABLES)
-    # ------------------------------
     
-    # Heuristic: Non-ASCII + Confusable = Cross-Script Risk
     is_cross_script_confusable = raw_confusable and not is_ascii
     
     stack_msg = data.get('stack_msg') or ""
@@ -4923,7 +4921,7 @@ def analyze_signal_processor_state(data):
     current_score = 0.0
     reasons = []
 
-    # A. VISIBILITY
+    # A. VISIBILITY (Constructs 'vis' dict)
     if is_invisible:
         if is_bidi_control:
              vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Control Char"}
@@ -4937,7 +4935,7 @@ def analyze_signal_processor_state(data):
     else:
         vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
 
-    # B. STRUCTURE
+    # B. STRUCTURE (Constructs 'struct' dict)
     if is_bidi_control:
         current_score += RISK_WEIGHTS["BIDI"]
         struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
@@ -4955,13 +4953,12 @@ def analyze_signal_processor_state(data):
     else:
         struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
 
-    # C. IDENTITY
+    # C. IDENTITY (Calculates vars, then constructs 'ident' dict)
     ident_state = "UNIQUE"
     ident_class = "risk-pass"
     ident_icon = "fingerprint"
     ident_detail = "No Lookalikes"
 
-    # Lookup count from JSON
     lookalikes = DATA_STORES.get("InverseConfusables", {}).get(str(cp), [])
     lookalike_count = len(lookalikes)
 
@@ -4970,26 +4967,29 @@ def analyze_signal_processor_state(data):
         ident_state = "AMBIGUOUS"
         ident_class = "risk-warn"
         ident_icon = "clone"
-        # Show precise count if available
         detail_text = f"{lookalike_count} Lookalikes" if lookalike_count > 0 else "Cross-Script Risk"
         ident_detail = detail_text
         reasons.append("Confusable Identity")
         
     elif is_ascii_confusable: 
-        # ASCII Lookalikes (1, l, I, 0, O)
-        # No score added (Safe Baseline), but Visual Flag (Blue)
-        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"] # 0.0
+        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
         ident_state = "NOTE"
         ident_class = "risk-info"
         ident_icon = "fingerprint"
         ident_detail = f"{lookalike_count} Lookalikes"
         
     elif lookalike_count > 0:
-        # It has lookalikes but wasn't flagged as critical/ascii
         ident_state = "NOTE"
-        ident_class = "risk-pass" # Keep gray
+        ident_class = "risk-pass"
         ident_detail = f"{lookalike_count} Lookalikes"
 
+    # Wrap Identity into a dict to match the others
+    ident = {
+        "state": ident_state,
+        "class": ident_class,
+        "icon": ident_icon,
+        "detail": ident_detail
+    }
 
     # --- 4. VERDICT LEVEL MAPPING ---
     
@@ -5054,11 +5054,7 @@ def analyze_signal_processor_state(data):
         "verdict_text": label,
         "header_class": header_class,
         "icon_key": icon,
-        "facets": [
-            {"state": vis_state, "class": vis_class, "icon": vis_icon, "detail": vis_detail},
-            {"state": struct_state, "class": struct_class, "icon": struct_icon, "detail": struct_detail},
-            {"state": ident_state, "class": ident_class, "icon": ident_icon, "detail": ident_detail}
-        ],
+        "facets": [vis, struct, ident], # Pass the dicts directly
         "footer_label": footer_label,
         "footer_text": footer_text,
         "footer_class": footer_class
