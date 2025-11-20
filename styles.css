@@ -882,8 +882,8 @@ Stage 2: Heatmap Row Classes
 .inspector-codepoint {
   position: absolute;
   /* FIX: Lift it up so it floats above the scrollbar track */
-  bottom: 15px;
-  left: 50%;
+  bottom: 25px;
+  left: 55%;
   transform: translateX(-50%);
   
   font-family: var(--font-mono);
