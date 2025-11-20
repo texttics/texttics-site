@@ -512,3 +512,18 @@ window.TEXTTICS_HIGHLIGHT_CODEPOINT = (codePointIndex) => {
   }
 };
 
+// Add this helper function
+window.TEXTTICS_CENTER_GLYPH = () => {
+  const viewport = document.querySelector('.glyph-viewport');
+  const glyph = document.querySelector('.inspector-glyph');
+  
+  if (viewport && glyph) {
+    // Scroll to vertical center
+    const top = (glyph.offsetHeight - viewport.offsetHeight) / 2;
+    viewport.scrollTop = top;
+    
+    // Scroll to horizontal center (if needed)
+    const left = (glyph.offsetWidth - viewport.offsetWidth) / 2;
+    viewport.scrollLeft = left;
+  }
+};
