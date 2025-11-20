@@ -4738,30 +4738,38 @@ def inspect_character(event):
                 'hex': f"U+{ord(ch):04X}", 'name': name, 'cat': cat, 'is_base': not is_mark
             })
             
-        # 4. Payload & Extended Forensics
-        # --- UTF-8 ---
-        utf8_bytes = target_cluster.encode("utf-8")
-        utf8_hex = " ".join(f"{b:02X}" for b in utf8_bytes)
+        # 4. Payload & Extended Forensics (The Forensic 9)
         
-        # --- UTF-16 (Big Endian standard for hex dumps) ---
-        utf16_bytes = target_cluster.encode("utf-16-be")
-        utf16_hex = " ".join(f"{b:02X}" for b in utf16_bytes)
+        # A. System Layer
+        utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
+        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
+        utf32_hex = f"{cp_base:08X}"
         
-        # --- UTF-32 (The "God Mode" - True Scalar) ---
-        # We encode the base character to see its structural ID
-        utf32_hex = f"{cp_base:08X}" 
+        # B. Legacy Layer (Fail-Safe Encoding)
+        def try_enc(enc_name):
+            try:
+                return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
+            except UnicodeEncodeError:
+                return "N/A"
+
+        ascii_val = try_enc("ascii")
+        latin1_val = try_enc("latin-1")
+        cp1252_val = try_enc("cp1252")
         
-        # --- ASCII (The Safety Check) ---
-        try:
-            target_cluster.encode("ascii")
-            ascii_val = "Valid" # Or show the hex if you prefer: f"{ord(target_cluster[0]):02X}"
-        except UnicodeEncodeError:
-            ascii_val = "N/A" # High-contrast failure state
+        # C. Injection Layer
+        # URL: Simple byte-level percent encoding for the UTF-8 sequence
+        url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
+        
+        # HTML: Entity representation
+        # Simple logic: if alphanumeric, show char. If special, show entity.
+        if target_cluster.isalnum():
+            html_enc = target_cluster
+        else:
+            # Force hex entity for clarity
+            html_enc = "".join(f"&#x{ord(c):X};" for c in target_cluster)
             
-        # --- URL Encoding (The Wire Trace) ---
-        # We use Python's urllib logic manually or via import if available.
-        # For PyScript, simple byte formatting is safer and faster:
-        url_enc = "".join(f"%{b:02X}" for b in utf8_bytes)
+        # Code: Python/JSON style escape
+        code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
 
         confusables_map = DATA_STORES.get("Confusables", {})
         skeleton = confusables_map.get(cp_base)
@@ -4784,12 +4792,16 @@ def inspect_character(event):
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
             
-            # Forensic Bytes Payload
+            # Forensic 9 Payload
             "utf8": utf8_hex,
             "utf16": utf16_hex,
             "utf32": utf32_hex,
             "ascii": ascii_val,
+            "latin1": latin1_val,
+            "cp1252": cp1252_val,
             "url": url_enc,
+            "html": html_enc,
+            "code": code_enc,
             
             "confusable": confusable_msg,
             "is_invisible": bool(INVIS_TABLE[cp_base] & INVIS_ANY_MASK),
@@ -4924,28 +4936,48 @@ def render_inspector_panel(data):
         </div>
         
         <div class="col-bytes">
-            <div class="section-label">FORENSIC BYTES</div>
+            <div class="section-label">FORENSIC ENCODINGS</div>
             <div class="byte-grid">
                 
                 <div><span class="label">UTF-8:</span><br>{data['utf8']}</div>
                 
                 <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">UTF-16:</span><br>{data['utf16']}
+                    <span class="label">UTF-16 (BE):</span><br>{data['utf16']}
                 </div>
                 
                 <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">UTF-32 (BE):</span><br>
+                    <span class="label">UTF-32 (Scalar):</span><br>
                     <span style="font-family:var(--font-mono); letter-spacing:1px;">{data['utf32']}</span>
                 </div>
                 
                 <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">ASCII:</span><br>
+                    <span class="label">ASCII (7-bit):</span><br>
                     <span style="color:{'#dc2626' if data['ascii'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['ascii']}</span>
                 </div>
                 
                 <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">Latin-1 (ISO):</span><br>
+                    <span style="color:{'#dc2626' if data['latin1'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['latin1']}</span>
+                </div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">Win-1252:</span><br>
+                    <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
+                </div>
+
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
                     <span class="label">URL Encoded:</span><br>
                     <span style="font-size:0.65rem; word-break:break-all;">{data['url']}</span>
+                </div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">HTML Entity:</span><br>
+                    <span style="font-size:0.65rem; word-break:break-all;">{_escape_html(data['html'])}</span>
+                </div>
+                
+                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
+                    <span class="label">Code (Python/JS):</span><br>
+                    <span style="font-size:0.65rem; word-break:break-all; font-family:var(--font-mono);">{_escape_html(data['code'])}</span>
                 </div>
 
             </div>
