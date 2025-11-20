@@ -4944,6 +4944,7 @@ def inspect_character(event):
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
         data = {
+            "python_idx": python_idx, # [CRITICAL] Links this particle to the Global Threat Ledger
             # --- Navigation & Core Identity ---
             "cluster_glyph": target_cluster,
             "prev_glyph": prev_cluster,
@@ -5290,24 +5291,69 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (HUD v3.0) ---
+    # --- COL 5: IDENTITY (Verdict-Aware HUD) ---
     
-    # 1. Identity Capsule (Chips)
+    # 1. Get Global Forensic Context (The Truth Source)
+    # We check if this specific particle index is flagged in the main engine's ledger.
+    active_threats = []
+    try:
+        # Safely access the global data object from the window
+        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
+            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
+            current_idx = data.get('python_idx')
+            
+            if current_idx is not None:
+                idx_marker = f"#{current_idx}"
+                # Scan every flag in the system
+                for flag_name, flag_data in global_flags.items():
+                    # Check if our index appears in this flag's position list
+                    # Positions are stored as ["#12", "#55 (reason)"]
+                    raw_positions = flag_data.get('positions', [])
+                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
+                        # Map flag name to short badge
+                        name_lower = flag_name.lower()
+                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
+                        elif "bidi" in name_lower: active_threats.append("BIDI")
+                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
+                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
+                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
+                        elif "tag" in name_lower: active_threats.append("TAG")
+                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
+                        else: active_threats.append("RISK")
+    except Exception:
+        pass # Fail safe (render standard chips if bridge fails)
+
+    # 2. Build Identity Capsule (Chips)
     chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
     chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
     
+    # Always show ASCII status if applicable
+    if data['is_ascii']:
+        chips_html += '<span class="spec-chip ascii">ASCII</span>'
+
+    # 3. The Truth Chip (Verdict-Based)
     mt = data['macro_type']
     
-    if mt == "STANDARD":
-        chips_html += '<span class="spec-chip ascii">ASCII</span>'
-    elif mt == "SYNTAX":
-        chips_html += '<span class="spec-chip ascii">ASCII</span>'
-        chips_html += '<span class="spec-chip syntax">SYNTAX</span>'
+    if active_threats:
+        # CASE A: The Engine says it's bad. Show the specific threats.
+        # Deduplicate and show red/orange chips
+        for threat in sorted(list(set(active_threats))):
+            chips_html += f'<span class="spec-chip threat">{threat}</span>'
+            
     elif mt == "THREAT":
+        # CASE B: The Macro classifier thinks it's bad (fallback)
         chips_html += '<span class="spec-chip threat">THREAT</span>'
-        if data['is_invisible']: chips_html += '<span class="spec-chip invisible">INVISIBLE</span>'
+        
     elif mt == "ROT":
         chips_html += '<span class="spec-chip rot">DATA ROT</span>'
+        
+    elif mt in ("STANDARD", "SYNTAX"):
+        # CASE C: It's clean in the Ledger AND it's a Standard/Syntax type.
+        # Only NOW do we grant the "SAFE" badge.
+        chips_html += '<span class="spec-chip safe">SAFE</span>'
+        if mt == "SYNTAX":
+             chips_html += '<span class="spec-chip syntax">SYNTAX</span>'
+             
     elif mt == "COMPLEX":
         chips_html += '<span class="spec-chip complex">COMPLEX</span>'
     
