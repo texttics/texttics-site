@@ -795,7 +795,8 @@ Stage 2: Heatmap Row Classes
      6. Structure (260)
      7. Bytes (180)
   */
-  grid-template-columns: 50px 170px 50px 170px minmax(155px, 1fr) 260px 180px;
+  /* WIDENED Column 4 (Risk) to 215px */
+  grid-template-columns: 50px 170px 50px 215px minmax(155px, 1fr) 260px 180px;
 /* REMAP COLUMN 4 NAME TO NEW SIGNAL PROCESSOR */
   
   .col-signal-processor { 
@@ -1062,6 +1063,9 @@ Stage 2: Heatmap Row Classes
 }
 .risk-pass {
   color: #15803D; /* Green-700 (Was Gray Slate-400) */
+}
+.risk-info {
+  color: #0369A1; /* Sky-700 (Matches Level 1 Header) */
 }
 .risk-warn {
   color: #B45309; /* Amber-700 */
