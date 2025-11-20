@@ -1068,15 +1068,22 @@ Stage 2: Heatmap Row Classes
 /* Line 2: Detail (The "Why") */
 .risk-detail {
     font-family: var(--font-sans); /* Sans-serif for natural reading */
-    font-size: 0.65rem;
-    font-weight: 500;
+    font-size: 0.7rem;
+    font-weight: 600;
     color: #9CA3AF; /* Muted Gray */
     
     /* Prevent text wrapping from breaking layout */
     white-space: nowrap; 
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 130px;
+   /* Alignment Logic:
+       Anchored right by parent (.risk-cell-right).
+       Expands leftwards freely until it hits the max-width. */
+    
+    max-width: 115px;        /* Increased to fill gap to left label */
+    overflow: hidden;        /* Safety: Ellipsis if it hits the label */
+    text-overflow: ellipsis; 
+    
+    line-height: 1.2;
+    margin-top: 1px;
 }
 
 /* Zone C: Evidence Block (Static Footer) */
@@ -1163,13 +1170,14 @@ Stage 2: Heatmap Row Classes
   flex-direction: column;
 }
 .section-label {
-  font-size: 0.65rem;
-  font-weight: 700;
+  font-size: 0.8rem; /* Increased from 0.65rem */
+  font-weight: 800;
   color: var(--color-text-muted);
-  padding: 6px 10px;
+  padding: 8px 10px;  /* Slightly more padding for the larger text */
   background-color: #ffffff; /* Changed from #f1f5f9 to White */
   border-bottom: 1px solid var(--color-border-light);
   text-align: center;
+  letter-spacing: 0.02em; /* Slight spacing for readability */
 }
 .structure-table-wrapper {
   flex-grow: 1;
