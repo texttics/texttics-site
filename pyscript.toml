@@ -38,7 +38,9 @@ files = [
     "emoji-sequences.txt",
     "emoji-zwj-sequences.txt",
     "emoji-data.txt",
-    "emoji-test.txt"
+    "emoji-test.txt",
     #"confusablesWholeScript.txt"
     #"confusablesSummary.txt"
+    "inverse_confusables.json",
+    "ascii_confusables.json"
 ]
