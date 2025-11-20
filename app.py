@@ -4853,13 +4853,6 @@ def analyze_signal_processor_state(data):
     """
     Rigorous Forensic State Machine (0-4 Scale).
     Decouples rendering from risk assessment logic.
-    
-    Levels:
-    0 - IDEAL:       ASCII, No marks, Standard.
-    1 - COMPLEX:     Unicode, Emoji, Light marks (1-2). Harmless but not "Base".
-    2 - ANOMALOUS:   Invisibles, Layout controls, Non-std Spaces.
-    3 - SUSPICIOUS:  Zalgo (>2 marks), Confusables, Ambiguous Identity.
-    4 - CRITICAL:    Bidi, Tags, Injection, Syntax Spoofing.
     """
     
     # --- 1. RAW SENSORS ---
@@ -4869,7 +4862,6 @@ def analyze_signal_processor_state(data):
     # Parse Stack/Zalgo
     stack_msg = data.get('stack_msg') or ""
     mark_count = 0
-    # Calculate raw mark count from components if available
     if 'components' in data:
         for c in data['components']:
             if not c['is_base']: mark_count += 1
@@ -4877,12 +4869,8 @@ def analyze_signal_processor_state(data):
     is_heavy_zalgo = "Heavy" in stack_msg or mark_count > 2
     is_light_mark = mark_count > 0 and not is_heavy_zalgo
     
-    # Parse Bidi/Injection
     bidi_val = data.get('bidi')
-    # Explicit list of dangerous directional format controls
     is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
-    
-    # Check ASCII purity
     is_ascii = data.get('ascii', 'N/A') != 'N/A'
 
     # --- 2. FACET STATE CALCULATOR ---
@@ -4914,49 +4902,61 @@ def analyze_signal_processor_state(data):
 
     # --- 3. VERDICT LEVEL CALCULATOR (The 0-4 Scale) ---
     
-    # Start at 0 (IDEAL)
     level = 0
     label = "IDEAL"
     header_class = "header-baseline"
     icon = "shield_ok"
     reasons = []
+    
+    # Footer State Defaults
+    footer_label = "ANALYSIS"
+    footer_text = "Standard Baseline"
+    footer_class = "footer-neutral"
 
-    # Check Level 1: COMPLEX (Harmless but unclean)
-    # Condition: Not ASCII, or has light marks (like 'o' + slash)
+    # Level 1: COMPLEX
     if not is_ascii or is_light_mark:
         level = 1
         label = "COMPLEX"
-        header_class = "header-complex" # New Blue/Teal class
-        icon = "shield_ok" # Still a shield, just complex
-        # No specific reason text needed for Level 1 usually, or just "Unicode"
+        header_class = "header-complex"
+        icon = "shield_ok"
+        footer_label = "NOTE"
+        footer_text = "Extended Composition"
+        footer_class = "footer-info"
 
-    # Check Level 2: ANOMALOUS (Sophisticated/Sensitive)
-    # Condition: Invisible (but not Bidi), or Weird layout
+    # Level 2: ANOMALOUS
     if is_invisible and not is_bidi_control:
         level = 2
         label = "ANOMALOUS"
-        header_class = "header-anomalous" # Yellow
+        header_class = "header-anomalous"
         icon = "shield_warn"
         reasons.append("Invisible Character")
+        footer_label = "DETECTED"
+        footer_class = "footer-warn"
 
-    # Check Level 3: SUSPICIOUS (Real threats to Perception)
-    # Condition: Zalgo, Confusables
+    # Level 3: SUSPICIOUS
     if is_heavy_zalgo or is_confusable:
         level = 3
         label = "SUSPICIOUS"
-        header_class = "header-suspicious" # Orange
+        header_class = "header-suspicious"
         icon = "shield_warn"
         if is_heavy_zalgo: reasons.append("Excessive Combining Marks")
         if is_confusable: reasons.append("Confusable Identity")
+        footer_label = "DETECTED"
+        footer_class = "footer-warn"
 
-    # Check Level 4: CRITICAL (Real threats to System/Syntax)
-    # Condition: Bidi Override, Injection
+    # Level 4: CRITICAL
     if is_bidi_control:
         level = 4
         label = "CRITICAL"
-        header_class = "header-critical" # Red/Black
+        header_class = "header-critical"
         icon = "octagon_crit"
         reasons.append("Trojan Source / Bidi")
+        footer_label = "DETECTED"
+        footer_class = "footer-crit"
+        
+    # Finalize Footer Text for levels 2-4
+    if reasons:
+        footer_text = ", ".join(reasons)
 
     return {
         "level": level,
@@ -4965,7 +4965,9 @@ def analyze_signal_processor_state(data):
         "header_class": header_class,
         "icon_key": icon,
         "facets": [vis, struct, ident],
-        "reasons": reasons
+        "footer_label": footer_label,
+        "footer_text": footer_text,
+        "footer_class": footer_class
     }
 
 def render_inspector_panel(data):
@@ -5030,19 +5032,15 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # Zone C: The Footer (Evidence)
-    # Logic: Only show footer if Level >= 2 (Anomalous or higher)
-    footer_html = ""
-    if state['level'] >= 2 and state['reasons']:
-        footer_text = ", ".join(state['reasons'])
-        footer_html = f"""
-        <div class="risk-footer">
-            <div class="risk-footer-label">DETECTED</div>
-            <div class="risk-footer-content">{footer_text}</div>
-        </div>
-        """
+    # Zone C: The Footer (Always Visible)
+    footer_html = f"""
+    <div class="risk-footer">
+        <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
+        <div class="risk-footer-content {state['footer_class']}">{state['footer_text']}</div>
+    </div>
+    """
     
-    # Assemble Column 4
+    # Assemble Column 4 (Order: Header -> Footer -> Matrix)
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
     # --- IDENTITY COLUMN (Standard) ---
