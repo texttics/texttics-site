@@ -893,29 +893,47 @@ This architecture ensures that **Text...tics** is not just a passive observer of
 
 ---
 
-## 🛡️ Update: Stage 1 Forensic Hardening & Inspector V7
 
-**Session Focus:** Architectural correctness, UAX #9 compliance, and the transition to "Zalgo-Proof" Cluster Forensics.
+## 🛡️ Update: Stage 1 Forensic Mastery & Inspector V10
 
-### 1. Core Engine Hardening
-* **Unified Bidi Stack Machine (UAX #9):** Replaced the split-stack model with a single, unified state machine that strictly tracks the nesting order of Isolates and Embeddings. This allows for the detection of **Implicit Closures** (valid but sloppy) vs. **Spillover/Cross-Over** (broken structure), eliminating false negatives on complex Bidi attacks.
-* **Forensic Drift Decoupling:** Fixed the "Drift Blindness" flaw. The engine now explicitly calculates "Skeleton Drift" by comparing the **Raw Input** to the Skeleton (capturing normalization attacks like Fullwidth chars), while separately using the NFKC form for standard equivalence hashing.
-* **Hybrid Tokenizer (Anti-DoS):** Replaced the whitespace-only tokenizer with a role-aware engine (Whitespace + Major Punctuation + Hard Length Cap). This prevents DOM thrashing on minified code/large blobs and ensures the "Perception vs. Reality" report remains readable.
+**Session Focus:** Achieving "State-of-the-Art" (SOTA) status in forensic risk assessment by transitioning from naive counting to a rigorous, UTS #39-compliant Risk Matrix Engine.
 
-### 2. State Integrity (The "Immutable Reveal")
-* **Evidence Preservation:** The "Reveal Invisibles" feature was refactored from a **Mutator** to a **Viewer**. It now applies a visual overlay (Amber warning state) without re-submitting the modified text to the analysis engine. This prevents "Evidence Laundering" where revealing a threat would accidentally reset the Threat Score to zero.
+### 1. Core Engine: The "Forensic State Machine v5.0"
+We abandoned the simple "if-else" logic for a sophisticated, **additive scoring engine** that mimics professional static analysis tools (like ICU SpoofChecker).
 
+* **Risk Score Matrix:** Instead of a single "worst-case" flag, the engine now calculates a cumulative `risk_score` based on a weighted table of threats:
+    * `BIDI`: +4.0 (Critical)
+    * `ZALGO_HEAVY`: +3.0 (Suspicious)
+    * `CONFUSABLE_CROSS`: +3.0 (Suspicious)
+    * `INVISIBLE`: +2.0 (Anomalous)
+    * `LAYOUT_CONTROL`: +1.5 (Non-Standard)
+* **5-Tier Verdict System:** The engine maps the score to a precise, forensic-grade verdict scale:
+    * **Level 0 (BASELINE):** Standard composition (ASCII 1, Latin 'a'). Safe.
+    * **Level 1 (NON-STD):** Extended Unicode or light combining marks. Not dangerous, but noted.
+    * **Level 2 (ANOMALOUS):** Invisibles, layout controls, or odd formatting. Manual review recommended.
+    * **Level 3 (SUSPICIOUS):** High probability of spoofing (Zalgo, Cross-Script Confusables).
+    * **Level 4 (CRITICAL):** Active exploit vectors (Trojan Source Bidi, Injection).
+* **Security Invariants:** Implemented hard overrides (e.g., `is_bidi_control` $\to$ Minimum Level 4) to ensure known CVE-class threats never slip through as "low risk."
 
-### 3. The Inspector V7 (Zalgo-Proof & 7-Column Forensic Grid)
+### 2. Data Engineering: The "Inverse Lookalike" Pipeline
+We solved the "missing dataset" problem for homoglyphs by building a custom ETL (Extract-Transform-Load) pipeline directly into the repo.
 
-The Character Inspector was rebuilt from the ground up to solve the "Infinite Height" problem posed by excessive combining marks and to provide "Total Information Awareness" via the expanded Forensic 9 engine.
+* **The Builder Script (`build_data.py`):** A robust Python tool that parses the official `confusablesSummary.txt` from the Unicode Consortium.
+* **Inverse Map Generation:** Instead of relying on one-way mappings, we now generate `inverse_confusables.json`, a massive map linking every code point to *all* its potential lookalikes.
+* **Auto-Generated ASCII Risks:** We programmatically derived the `ascii_confusables.json` set. Instead of manually hardcoding `{'1', 'l', 'I'}`, the engine now *knows* exactly which 91 ASCII characters are spoofing targets based on official Unicode data.
+* **Result:** `1` and `l` are now treated identically as **"Level 0: NOTE (Common Lookalike)"**, eliminating the previous logic gap where one was flagged and the other ignored.
 
-* **7-Column Forensic Grid:** A rigid, fixed-height layout that separates data into dedicated lanes, preventing layout shifts even under heavy fuzzing:
-    * **Timeline:** Prev / Target / Next glyphs.
-    * **Risk (New):** A dedicated, left-aligned column for high-visibility threat badges (e.g., `INVISIBLE`, `HEAVY STACKING`), ensuring warnings are never obscured by the character itself.
-    * **Identity:** Name, Block, Script, and Segmentation properties.
-    * **Cluster Components:** A granular breakdown of every atom in the cluster. Now includes a dedicated **CCC (Canonical Combining Class)** column to explicitly expose the "Stacking Physics" mechanism behind Zalgo attacks.
-    * **Forensic Encodings:** Expanded from simple hex dumps to the **"Forensic 9"** spectrum. Covers the **System Layer** (UTF-8, UTF-16, UTF-32), **Legacy Layer** (ASCII, Latin-1, Win-1252), and **Injection Layer** (URL, HTML, Code) for maximal investigative leverage.
-* **Zalgo Containment Protocol (The "Ghost Ink" Fix):** Solved the browser rendering issue where combining marks do not increase element height. The target viewport now uses a **Block Layout with Massive Padding (10rem)** strategy to force the browser to acknowledge and scroll the full vertical extent of "Zalgo" stacks, preventing decapitation of diacritics.
-* **Forensic Centering Engine:** A JavaScript bridge that calculates the exact geometric center of the scrollable area and auto-scrolls the viewport to the middle, ensuring the base character is always visible on load, regardless of stack height.
-* **Absolute Constraint Pattern:** The grid rows are now strictly locked (`minmax(0, 100%)`) to prevent the UI from expanding. Content that exceeds the physical dimensions of the "Lab Bench" (275px) is forced into internal scrolling, preserving the application's structural integrity.
+### 3. The Inspector V10: The "Signal Processor" UI
+The Character Inspector has been completely reimagined as a high-precision **Diagnostic Instrument**.
+
+* **The "Signal Processor" Column:** Replaced the scrolling "Alerts" list with a fixed-geometry, 3-zone dashboard:
+    * **Zone A (Verdict):** A high-contrast, color-coded header (Green/Blue/Yellow/Orange/Red) displaying the exact Threat Level.
+    * **Zone B (The Matrix):** A rigid, 3-row grid monitoring the three core forensic facets: **VISIBILITY**, **STRUCTURE**, and **IDENTITY**.
+    * **Zone C (Evidence):** A static footer that explicitly states the *reason* for the verdict (e.g., "DETECTED: Trojan Source / Bidi").
+* **Synchronized Visuals:** The icons in the matrix now dynamically synchronize their color with the global Verdict Level, creating a cohesive "system state" visual language.
+* **Fluid Typography:** Implemented advanced CSS Flexbox rules (`flex: 1`, `min-width: 0`) to allow long forensic details (like "Heavy Stack (16 marks)") to flow naturally without breaking the grid layout.
+* **Clinical Aesthetic:** Replaced all emojis with **Abstract Vector Icons** (SVG) and adopted a strict "Clinical White" theme to reinforce the tool's identity as a scientific instrument.
+
+### 4. Architectural Polish
+* **Robust Data Loader:** Fixed a critical "unpacking error" in `app.py` to correctly handle the dynamic injection of the new JSON datasets alongside the 31 raw text files.
+* **Visual Consistency:** Unified the background colors of the Context columns (`PREV`/`NEXT`) and Table Headers to match the main interface, removing legacy gray boxes for a cleaner look.
