@@ -796,7 +796,11 @@ Stage 2: Heatmap Row Classes
      7. Bytes (180)
   */
   grid-template-columns: 50px 170px 50px 170px minmax(155px, 1fr) 260px 180px;
-
+/* REMAP COLUMN 4 NAME TO NEW SIGNAL PROCESSOR */
+  .col-signal-processor { 
+    grid-area: auto; /* Ensures it fits */
+    /* Update: The new column is called 'col-signal-processor' in app.py HTML */
+  }
   /* 3. FORCE SCROLL */
   /* This ensures the grid never squashes. 
      It triggers the scrollbar on the parent #inspector-panel-content */
@@ -904,30 +908,119 @@ Stage 2: Heatmap Row Classes
   z-index: 20;
 }
 
-/* --- Col 4: RISK (New Column) --- */
-.col-alerts {
-  background-color: #fff1f2; /* Subtle Red Tint */
+
+/* --- Col 4: The Signal Processor (RISK) --- */
+
+.col-signal-processor {
+  /* Base Layout */
+  background-color: #F9FAFB; /* Slate-50 (Neutral Baseline) */
   border-right: 1px solid var(--color-border-light);
-  padding: 0.75rem 0.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  padding: 0; /* Padding handled internally by zones */
+  overflow: hidden;
+}
+
+/* Zone A: Verdict Header */
+.risk-header {
+  height: 32px;
+  display: flex;
   align-items: center;
-  overflow-y: auto;
-  text-align: center;
+  justify-content: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--color-border-light);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  /* Ensure header icons (SVGs) use the text color */
+  fill: currentColor;
+  stroke: currentColor;
 }
-/* Reuse existing badge styles but adapt for narrow column */
-.col-alerts .legend-badge {
-  width: 95%;
-  display: block;
-  white-space: normal;
-  line-height: 1.2;
-  font-size: 0.6rem;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  background-color: #fff;
+
+/* Header States (High Contrast) */
+.header-baseline {
+  background-color: #F3F4F6; /* Slate-100 */
+  color: #374151; /* Slate-700 */
+}
+.header-suspicious {
+  background-color: #FEF3C7; /* Amber-100 */
+  color: #B45309; /* Amber-700 */
+  border-bottom-color: #FCD34D;
+}
+.header-critical {
+  background-color: #111827; /* Gray-900 (Black box look) */
+  color: #F87171; /* Red-400 (Glowing red text) */
+  border-bottom: 1px solid #EF4444;
+}
+
+.risk-header-icon svg {
+  display: block; /* Fix SVG alignment */
+}
+
+/* Zone B: Diagnostic Matrix */
+.risk-matrix {
+  padding: 10px 8px;
+  display: flex;
   flex-direction: column;
+  gap: 8px;
+  flex-grow: 1;
+  justify-content: flex-start; /* Top align */
 }
-.alert-icon { font-size: 1.2rem; margin-bottom: 0.2rem; display: block; }
+
+.risk-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding-bottom: 4px;
+  border-bottom: 1px dotted #E5E7EB;
+}
+.risk-row:last-child {
+  border-bottom: none;
+}
+
+/* Left Side: Facet Label */
+.risk-facet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6B7280; /* Slate-500 (Base text color for labels) */
+  font-weight: 600;
+}
+.facet-icon svg {
+  display: block;
+  opacity: 0.7;
+  /* SVGs use the currentColor inherited from .risk-facet */
+}
+
+/* Right Side: Value */
+.risk-value {
+  font-weight: 700;
+}
+.risk-pass {
+  color: #9CA3AF; /* Slate-400 (Muted/Inactive for safe state) */
+}
+.risk-fail {
+  color: #111827; /* Gray-900 (High Contrast for failed state) */
+}
+
+/* Zone C: Footer (Artifacts) */
+.risk-footer {
+  background-color: #fff;
+  border-top: 1px solid var(--color-border-light);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #EF4444; /* Red text for specific artifacts */
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 
 /* --- Col 5: Identity (Restored Fluid) --- */
