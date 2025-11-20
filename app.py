@@ -1995,7 +1995,7 @@ async def load_unicode_data():
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
          decomp_type_txt, derived_binary_txt, num_type_txt, 
          ea_width_txt, vert_orient_txt, bidi_brackets_txt,
-         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt) = results
+         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt, inverse_json, ascii_json) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
