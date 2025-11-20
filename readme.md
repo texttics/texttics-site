@@ -892,9 +892,13 @@ This function is bound to the `<textarea>` `input` event.
 This architecture ensures that **Text...tics** is not just a passive observer of text, but a hardened, verified, and deterministic instrument for structural analysis.
 
 
-## 🛡️ Update: Stage 1 Forensic Hardening & Inspector V4
+---
 
-**Session Focus:** Architectural correctness, UAX #9 compliance, and the transition from "Character Inspection" to "Cluster Forensics."
+***
+
+## 🛡️ Update: Stage 1 Forensic Hardening & Inspector V7
+
+**Session Focus:** Architectural correctness, UAX #9 compliance, and the transition to "Zalgo-Proof" Cluster Forensics.
 
 ### 1. Core Engine Hardening
 * **Unified Bidi Stack Machine (UAX #9):** Replaced the split-stack model with a single, unified state machine that strictly tracks the nesting order of Isolates and Embeddings. This allows for the detection of **Implicit Closures** (valid but sloppy) vs. **Spillover/Cross-Over** (broken structure), eliminating false negatives on complex Bidi attacks.
@@ -904,14 +908,15 @@ This architecture ensures that **Text...tics** is not just a passive observer of
 ### 2. State Integrity (The "Immutable Reveal")
 * **Evidence Preservation:** The "Reveal Invisibles" feature was refactored from a **Mutator** to a **Viewer**. It now applies a visual overlay (Amber warning state) without re-submitting the modified text to the analysis engine. This prevents "Evidence Laundering" where revealing a threat would accidentally reset the Threat Score to zero.
 
-### 3. The Inspector V4 (Cluster-Aware & Contextual)
-The Character Inspector was rebuilt from the ground up to resolve "Visual Cling" and "Zalgo Blindness."
+### 3. The Inspector V7 (Zalgo-Proof & 7-Column Grid)
+The Character Inspector was rebuilt from the ground up to solve the "Infinite Height" problem posed by excessive combining marks.
 
-* **Cluster-First Architecture:** The inspector now targets **Grapheme Clusters** (what the user sees) rather than Code Points (what the machine sees). It captures the entire stack (Base + Marks) and then decomposes it into a forensic table.
-* **Context Strip:** A new "Timeline" view (Prev | **Target** | Next) visually isolates the target cluster, proving exactly where the machine draws the boundary between a letter and a "clinging" modifier.
-* **Cross-Language Indexing Bridge:** Solved the "Jumping Cursor" bug caused by the mismatch between JavaScript's UTF-16 DOM indexing and Python's UCS-4 indexing. The new engine uses a localized, normalization-agnostic search window to lock onto the correct particle.
-* **6-Column Forensic Grid:** A rigid, fixed-height layout that separates data into dedicated lanes:
+* **7-Column Forensic Grid:** A rigid, fixed-height layout that separates data into dedicated lanes, preventing layout shifts even under heavy fuzzing:
     * **Timeline:** Prev / Target / Next glyphs.
+    * **Risk (New):** A dedicated, left-aligned column for high-visibility threat badges (e.g., `INVISIBLE`, `HEAVY STACKING`), ensuring warnings are never obscured by the character itself.
     * **Identity:** Name, Block, Script, and Segmentation properties.
     * **Structure:** A dedicated table listing every atom in the cluster (Base + Combining Marks).
-    * **Bytes:** Raw UTF-8 and UTF-16 hex dumps for the cluster.
+    * **Bytes:** Raw UTF-8 and UTF-16 hex dumps with forensic wrapping.
+* **Zalgo Containment Protocol (The "Ghost Ink" Fix):** Solved the browser rendering issue where combining marks do not increase element height. The target viewport now uses a **Block Layout with Massive Padding (10rem)** strategy to force the browser to acknowledge and scroll the full vertical extent of "Zalgo" stacks, preventing decapitation of diacritics.
+* **Forensic Centering Engine:** A JavaScript bridge that calculates the exact geometric center of the scrollable area and auto-scrolls the viewport to the middle, ensuring the base character is always visible on load, regardless of stack height.
+* **Absolute Constraint Pattern:** The grid rows are now strictly locked (`minmax(0, 100%)`) to prevent the UI from expanding. Content that exceeds the physical dimensions of the "Lab Bench" (275px) is forced into internal scrolling, preserving the application's structural integrity.
