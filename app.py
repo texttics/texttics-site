@@ -4911,7 +4911,14 @@ def render_inspector_panel(data):
 
     # --- TRIGGER AUTO-SCALE ---
     # This forces the JS engine to fit the new Zalgo content immediately.
-    window.TEXTTICS_FIT_GLYPH()
+    # --- Robust Bridge Call ---
+    try:
+        if hasattr(window, "TEXTTICS_FIT_GLYPH"):
+            window.TEXTTICS_FIT_GLYPH()
+        else:
+            print("Warning: TEXTTICS_FIT_GLYPH not found on window.")
+    except Exception as e:
+        print(f"Error triggering scale: {e}")
 
 def compute_threat_score(inputs):
     """
