@@ -5225,19 +5225,85 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY ---
+    # --- COL 5: IDENTITY (Forensic Spec Sheet V2) ---
+    
+    # 1. Build Chips
+    ascii_chip = '<span class="spec-chip ascii">ASCII</span>' if data['is_ascii'] else ''
+    
+    # 2. Build ID Status Class
+    id_status_raw = data.get('id_status', 'Unknown')
+    id_status_cls = "id-status-restricted"
+    if id_status_raw == "Allowed": id_status_cls = "id-status-allowed"
+    elif id_status_raw == "Restricted": id_status_cls = "id-status-restricted"
+    else: id_status_cls = "id-status-technical"
+
+    # 3. Prepare Sub-labels (You can expand these maps later)
+    # For now, we just show the main value. 
+    # Ideally, map 'Nd' -> 'Decimal Number', 'EN' -> 'European Number'
+    
     identity_html = f"""
-        <div class="inspector-header">{data['name_base']}</div>
-        <div class="inspector-grid-compact">
-            <div><span class="label">Block:</span> {data['block']}</div>
-            <div><span class="label">Script:</span> {data['script']}</div>
-            <div><span class="label">Cat:</span> {data['category']}</div>
-            <div><span class="label">Bidi:</span> {data['bidi']}</div>
-            <div><span class="label">Age:</span> {data['age']}</div>
+        <div class="inspector-header" title="{data['name_base']}">{data['name_base']}</div>
+        
+        <div class="spec-capsule">
+            <span class="spec-chip codepoint">{data['cp_hex_base']}</span>
+            <span class="spec-chip category">{data['category_short']}</span>
+            <span class="spec-chip block">{data['block']}</span>
+            {ascii_chip}
         </div>
-        <div class="inspector-grid-compact" style="margin-top:0.5rem; padding-top:0.5rem; border-top:1px dashed var(--color-border-light);">
-            <div><span class="label">Line:</span> {data['line_break']}</div>
-            <div><span class="label">Word:</span> {data['word_break']}</div>
+
+        <div class="spec-group">
+            <div class="spec-row">
+                <span class="spec-label">SCRIPT</span>
+                <span class="spec-value">
+                    {data['script']}
+                    <span class="spec-sub">
+                        {f"({data['script_ext']})" if data['script_ext'] else ""}
+                    </span>
+                </span>
+            </div>
+            <div class="spec-row">
+                <span class="spec-label">CATEGORY (Gc)</span>
+                <span class="spec-value">
+                    {data['category_full']}
+                    <span class="spec-sub">({data['category_short']})</span>
+                </span>
+            </div>
+            <div class="spec-row">
+                <span class="spec-label">AGE</span>
+                <span class="spec-value">{data['age']}</span>
+            </div>
+            
+            <div class="spec-row">
+                <span class="spec-label">ID STATUS</span>
+                <span class="spec-value {id_status_cls}">{id_status_raw}</span>
+            </div>
+            <div class="spec-row" {'hidden' if not data['id_type'] else ''}>
+                <span class="spec-label">ID TYPE</span>
+                <span class="spec-value spec-sub" style="font-weight:600; color:#4b5563;">{data.get('id_type', '')}</span>
+            </div>
+        </div>
+
+        <div class="spec-matrix">
+            <div class="matrix-item">
+                <span class="spec-label">BIDI CLASS</span>
+                <span class="matrix-val">{data['bidi']}</span>
+                <span class="matrix-sub">Directionality</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">LINE BREAK</span>
+                <span class="matrix-val">{data['line_break']}</span>
+                <span class="matrix-sub">Breaking</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">WORD BREAK</span>
+                <span class="matrix-val">{data['word_break']}</span>
+                <span class="matrix-sub">Segmentation</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">GRAPHEME</span>
+                <span class="matrix-val">{data['grapheme_break']}</span>
+                <span class="matrix-sub">Cluster</span>
+            </div>
         </div>
     """
 
