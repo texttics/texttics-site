@@ -4863,24 +4863,18 @@ def analyze_signal_processor_state(data):
     # Weights: 0=Safe, 1=Note, 2=Warn, 3=Suspicious, 4=Critical
     
     RISK_WEIGHTS = {
-        # Visibility
         "INVISIBLE": 2.0,
         "NON_ASCII": 0.5,
-        
-        # Structure
-        "BIDI": 4.0,             # Trojan Source vector
-        "ZALGO_HEAVY": 3.0,      # Obfuscation/DoS
-        "ZALGO_LIGHT": 0.5,      # Annoyance
-        "LAYOUT_CONTROL": 1.5,   # Formatters (ZWNJ, etc.)
-        
-        # Identity
-        "CONFUSABLE_CROSS": 3.0, # Cyrillic 'a' vs Latin 'a'
-        "CONFUSABLE_SAME": 0.0,  # '1' vs 'l' (Context dependent, usually just Note)
+        "BIDI": 4.0,             
+        "ZALGO_HEAVY": 3.0,      
+        "ZALGO_LIGHT": 0.5,      
+        "LAYOUT_CONTROL": 1.5,   
+        "CONFUSABLE_CROSS": 3.0, 
+        "CONFUSABLE_SAME": 0.0,  
     }
 
     # --- 2. RAW SENSORS & CONTEXT ---
     
-    # Identity
     cp_hex = data.get('cp_hex_base', '').replace('U+', '')
     try:
         cp = int(cp_hex, 16)
@@ -4888,17 +4882,12 @@ def analyze_signal_processor_state(data):
         cp = 0
     
     script = data.get('script', 'Common')
-    is_common = script in ('Common', 'Inherited')
-    
-    # Confusables
     raw_confusable = bool(data.get('confusable'))
     is_ascii = data.get('ascii', 'N/A') != 'N/A'
     
-    # Heuristic: If it's ASCII, it's a "Same Script" confusable (Note).
-    # If it's Non-ASCII but Confusable, it's likely "Cross Script" (Risk).
+    # Heuristic: Non-ASCII + Confusable = Cross-Script Risk
     is_cross_script_confusable = raw_confusable and not is_ascii
     
-    # Structure
     stack_msg = data.get('stack_msg') or ""
     mark_count = 0
     if 'components' in data:
@@ -4906,19 +4895,16 @@ def analyze_signal_processor_state(data):
             if not c['is_base']: mark_count += 1
             
     # Script-Aware Zalgo Thresholds
-    # Latin/Common: Low tolerance (2). Others: Higher (4).
     zalgo_threshold = 2 if script in ('Latin', 'Common') else 4
     is_heavy_zalgo = "Heavy" in stack_msg or mark_count > zalgo_threshold
     is_light_mark = mark_count > 0 and not is_heavy_zalgo
     
-    # Controls
     is_invisible = data.get('is_invisible', False)
     bidi_val = data.get('bidi')
     is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
     
     cat = data.get('category', 'N/A')
     is_layout_control = cat in ('Format', 'Space Separator') and not is_bidi_control and not is_invisible and not is_ascii
-
 
     # --- 3. FACET STATE CALCULATOR ---
     
@@ -4963,14 +4949,13 @@ def analyze_signal_processor_state(data):
         ident = {"state": "AMBIGUOUS", "class": "risk-warn", "icon": "clone", "detail": "Cross-Script Risk"}
         reasons.append("Confusable Identity")
     elif raw_confusable: 
-        # ASCII Confusable (1, l, 0)
         current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
         ident = {"state": "NOTE", "class": "risk-pass", "icon": "fingerprint", "detail": "Common Lookalike"}
     else:
         ident = {"state": "UNIQUE", "class": "risk-pass", "icon": "fingerprint", "detail": "No Lookalikes"}
 
 
-    # --- 4. VERDICT LEVEL MAPPING (Bands) ---
+    # --- 4. VERDICT LEVEL MAPPING ---
     
     level = 0
     label = "BASELINE"
@@ -4980,7 +4965,6 @@ def analyze_signal_processor_state(data):
     footer_text = "Standard Composition"
     footer_class = "footer-neutral"
 
-    # Level 1: NON-STD (0.5 - 1.5)
     if 0.5 <= current_score < 1.5:
         level = 1
         label = "NON-STD"
@@ -4990,7 +4974,6 @@ def analyze_signal_processor_state(data):
         footer_text = "Extended Unicode / Marks"
         footer_class = "footer-info"
         
-    # Level 2: ANOMALOUS (1.5 - 2.9)
     elif 1.5 <= current_score < 3.0:
         level = 2
         label = "ANOMALOUS"
@@ -4999,7 +4982,6 @@ def analyze_signal_processor_state(data):
         footer_label = "DETECTED"
         footer_class = "footer-warn"
         
-    # Level 3: SUSPICIOUS (3.0 - 3.9)
     elif 3.0 <= current_score < 4.0:
         level = 3
         label = "SUSPICIOUS"
@@ -5008,7 +4990,6 @@ def analyze_signal_processor_state(data):
         footer_label = "DETECTED"
         footer_class = "footer-warn"
         
-    # Level 4: CRITICAL (4.0+)
     elif current_score >= 4.0:
         level = 4
         label = "CRITICAL"
@@ -5017,29 +4998,14 @@ def analyze_signal_processor_state(data):
         footer_label = "DETECTED"
         footer_class = "footer-crit"
 
-
-    # --- 5. SECURITY INVARIANTS (Hard Overrides) ---
-    # These rules trump the score to ensure safety.
-    
-    # Invariant 1: Bidi Controls are always Critical in this context
-    if is_bidi_control:
-        level = 4
-        label = "CRITICAL"
-        header_class = "header-critical"
-        icon = "octagon_crit"
-        footer_class = "footer-crit"
-        # Ensure reason is present
-        if "Directional Control" not in reasons: reasons.insert(0, "Directional Control")
-
-    # Invariant 2: Invisible + Confusable = Suspicious (Stealth Spoof)
-    if is_invisible and is_cross_script_confusable and level < 3:
+    # --- 5. HARD OVERRIDES ---
+    if is_bidi_control and level < 3:
         level = 3
         label = "SUSPICIOUS"
         header_class = "header-suspicious"
         icon = "shield_warn"
         footer_class = "footer-warn"
 
-    # Finalize Footer
     if reasons:
         footer_text = ", ".join(reasons)
     elif level == 0 and raw_confusable:
@@ -5052,15 +5018,12 @@ def analyze_signal_processor_state(data):
         "verdict_text": label,
         "header_class": header_class,
         "icon_key": icon,
-        "facets": [
-            {"state": vis_state, "class": vis_class, "icon": vis_icon, "detail": vis_detail},
-            {"state": struct_state, "class": struct_class, "icon": struct_icon, "detail": struct_detail},
-            {"state": ident_state, "class": ident_class, "icon": ident_icon, "detail": ident_detail}
-        ],
+        "facets": [vis, struct, ident],
         "footer_label": footer_label,
         "footer_text": footer_text,
         "footer_class": footer_class
     }
+
 
 def render_inspector_panel(data):
     """
@@ -5081,11 +5044,6 @@ def render_inspector_panel(data):
     # --- CALL THE LOGIC ENGINE ---
     state = analyze_signal_processor_state(data)
     
-    # --- UNPACK FACETS (Fixes 'vis_state not defined' error) ---
-    vis_data = state['facets'][0]
-    struct_data = state['facets'][1]
-    ident_data = state['facets'][2]
-    
     # --- HTML GENERATION ---
 
     # Zone A: The Verdict Header
@@ -5103,7 +5061,6 @@ def render_inspector_panel(data):
     # Zone B: The Diagnostic Matrix
     def build_row(label, f_data):
         # f_data contains: state, class, icon, detail
-        # Logic: if class is risk-pass, use gray icon. If risk-warn/fail, use black.
         icon_color = "#6B7280" if f_data['class'] == "risk-pass" else "#111827" 
         svg = get_icon(f_data['icon'], color=icon_color, size=12)
         
@@ -5120,30 +5077,28 @@ def render_inspector_panel(data):
         </div>
         """
 
+    facets = state['facets'] 
     matrix_html = f"""
         <div class="risk-matrix">
-            {build_row("VISIBILITY", vis_data)}
-            {build_row("STRUCTURE", struct_data)}
-            {build_row("IDENTITY", ident_data)}
+            {build_row("VISIBILITY", facets[0])}
+            {build_row("STRUCTURE", facets[1])}
+            {build_row("IDENTITY", facets[2])}
         </div>
     """
 
     # Zone C: The Footer (Evidence)
-    # Logic: Only show footer if Level >= 2 (Anomalous or higher)
-    footer_html = ""
-    if state['level'] >= 2 and state['reasons']:
-        footer_text = ", ".join(state['reasons'])
-        footer_html = f"""
-        <div class="risk-footer">
-            <div class="risk-footer-label">DETECTED</div>
-            <div class="risk-footer-content">{footer_text}</div>
-        </div>
-        """
+    # Logic: Only show footer if Level >= 2 (Anomalous or higher) OR if there is specific text for level 0/1
+    footer_html = f"""
+    <div class="risk-footer">
+        <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
+        <div class="risk-footer-content {state['footer_class']}">{state['footer_text']}</div>
+    </div>
+    """
     
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- IDENTITY COLUMN (Standard) ---
+    # --- IDENTITY COLUMN ---
     identity_html = f"""
         <div class="inspector-header">{data['name_base']}</div>
         <div class="inspector-grid-compact">
