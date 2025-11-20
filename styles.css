@@ -835,19 +835,16 @@ Stage 2: Heatmap Row Classes
   overflow: hidden; /* No scrolling allowed; scaling handles the overflow */
 }
 
-/* The Measuring Box */
+/* Update .glyph-viewport to support scroll AND scale */
 .glyph-viewport {
-  /* Fill all space above the label */
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
-  
-  /* Center the glyph for the scaler */
+  overflow: auto; /* Scrollbar appears if scaling fails or on mobile */
   display: flex;
   align-items: center;
   justify-content: center;
-  
-  /* Critical: Allow content to bleed so JS can measure its true size */
-  overflow: visible; 
+  padding: 1rem;
 }
 
 .inspector-glyph {
