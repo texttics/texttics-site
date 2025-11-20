@@ -4849,10 +4849,129 @@ def inspect_character(event):
         render_inspector_panel({"error": str(e)})
         
 
+def analyze_signal_processor_state(data):
+    """
+    Rigorous Forensic State Machine (0-4 Scale).
+    Decouples rendering from risk assessment logic.
+    
+    Levels:
+    0 - IDEAL:       ASCII, No marks, Standard.
+    1 - COMPLEX:     Unicode, Emoji, Light marks (1-2). Harmless but not "Base".
+    2 - ANOMALOUS:   Invisibles, Layout controls, Non-std Spaces.
+    3 - SUSPICIOUS:  Zalgo (>2 marks), Confusables, Ambiguous Identity.
+    4 - CRITICAL:    Bidi, Tags, Injection, Syntax Spoofing.
+    """
+    
+    # --- 1. RAW SENSORS ---
+    is_confusable = bool(data.get('confusable'))
+    is_invisible = data.get('is_invisible', False)
+    
+    # Parse Stack/Zalgo
+    stack_msg = data.get('stack_msg') or ""
+    mark_count = 0
+    # Calculate raw mark count from components if available
+    if 'components' in data:
+        for c in data['components']:
+            if not c['is_base']: mark_count += 1
+            
+    is_heavy_zalgo = "Heavy" in stack_msg or mark_count > 2
+    is_light_mark = mark_count > 0 and not is_heavy_zalgo
+    
+    # Parse Bidi/Injection
+    bidi_val = data.get('bidi')
+    # Explicit list of dangerous directional format controls
+    is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
+    
+    # Check ASCII purity
+    is_ascii = data.get('ascii', 'N/A') != 'N/A'
+
+    # --- 2. FACET STATE CALCULATOR ---
+    
+    # A. VISIBILITY
+    if is_invisible:
+        vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
+    elif not is_ascii:
+        vis = {"state": "COMPLEX", "class": "risk-warn", "icon": "eye", "detail": "Extended Unicode"}
+    else:
+        vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
+
+    # B. STRUCTURE
+    if is_bidi_control:
+        struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
+    elif is_heavy_zalgo:
+        struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
+    elif is_light_mark:
+        struct = {"state": "MODIFIED", "class": "risk-pass", "icon": "cube", "detail": "Combining Marks"}
+    else:
+        struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
+
+    # C. IDENTITY
+    if is_confusable:
+        ident = {"state": "AMBIGUOUS", "class": "risk-warn", "icon": "clone", "detail": "Homoglyph Risk"}
+    else:
+        ident = {"state": "UNIQUE", "class": "risk-pass", "icon": "fingerprint", "detail": "No Lookalikes"}
+
+
+    # --- 3. VERDICT LEVEL CALCULATOR (The 0-4 Scale) ---
+    
+    # Start at 0 (IDEAL)
+    level = 0
+    label = "IDEAL"
+    header_class = "header-baseline"
+    icon = "shield_ok"
+    reasons = []
+
+    # Check Level 1: COMPLEX (Harmless but unclean)
+    # Condition: Not ASCII, or has light marks (like 'o' + slash)
+    if not is_ascii or is_light_mark:
+        level = 1
+        label = "COMPLEX"
+        header_class = "header-complex" # New Blue/Teal class
+        icon = "shield_ok" # Still a shield, just complex
+        # No specific reason text needed for Level 1 usually, or just "Unicode"
+
+    # Check Level 2: ANOMALOUS (Sophisticated/Sensitive)
+    # Condition: Invisible (but not Bidi), or Weird layout
+    if is_invisible and not is_bidi_control:
+        level = 2
+        label = "ANOMALOUS"
+        header_class = "header-anomalous" # Yellow
+        icon = "shield_warn"
+        reasons.append("Invisible Character")
+
+    # Check Level 3: SUSPICIOUS (Real threats to Perception)
+    # Condition: Zalgo, Confusables
+    if is_heavy_zalgo or is_confusable:
+        level = 3
+        label = "SUSPICIOUS"
+        header_class = "header-suspicious" # Orange
+        icon = "shield_warn"
+        if is_heavy_zalgo: reasons.append("Excessive Combining Marks")
+        if is_confusable: reasons.append("Confusable Identity")
+
+    # Check Level 4: CRITICAL (Real threats to System/Syntax)
+    # Condition: Bidi Override, Injection
+    if is_bidi_control:
+        level = 4
+        label = "CRITICAL"
+        header_class = "header-critical" # Red/Black
+        icon = "octagon_crit"
+        reasons.append("Trojan Source / Bidi")
+
+    return {
+        "level": level,
+        "level_text": f"LEVEL {level}",
+        "verdict_text": label,
+        "header_class": header_class,
+        "icon_key": icon,
+        "facets": [vis, struct, ident],
+        "reasons": reasons
+    }
+
 def render_inspector_panel(data):
     """
-    Forensic Layout v8.0: The Signal Processor (Cluster-Aware).
-    Updates: Zalgo triggers risk levels; Matrix cells have 2-line detail.
+    Forensic Layout v9.0: 5-Tier Logic.
+    Uses external state machine for rigorous 0-4 risk grading.
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -4865,96 +4984,30 @@ def render_inspector_panel(data):
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    # --- DIAGNOSTIC LOGIC ENGINE ---
+    # --- CALL THE LOGIC ENGINE ---
+    state = analyze_signal_processor_state(data)
     
-    # Inputs
-    is_confusable = bool(data.get('confusable'))
-    is_invisible = data.get('is_invisible', False)
-    stack_msg = data.get('stack_msg') or "" # e.g. "Heavy Stacking (16 marks)"
-    is_zalgo = bool(stack_msg)
-    is_bidi_control = data.get('bidi') in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
-    
-    # 1. Facet Logic (Status + Detail)
-
-    # Visibility
-    vis_status = "HIDDEN" if is_invisible else "PASS"
-    vis_class = "risk-fail" if is_invisible else "risk-pass"
-    vis_icon = "eye_off" if is_invisible else "eye"
-    # Detail Logic
-    if is_invisible:
-        # Try to be specific based on category
-        cat = data.get('category', 'N/A')
-        if cat == 'Format': vis_detail = "Format Control"
-        elif cat == 'Space Separator': vis_detail = "Non-Visual Space"
-        else: vis_detail = "No Glyphs Rendered"
-    else:
-        vis_detail = "Rendered Normally"
-
-    # Structure
-    struct_status = "FRACTURED" if (is_zalgo or is_bidi_control) else "STABLE"
-    struct_class = "risk-fail" if (is_zalgo or is_bidi_control) else "risk-pass"
-    struct_icon = "layers" if (is_zalgo or is_bidi_control) else "cube"
-    # Detail Logic
-    if is_bidi_control:
-        struct_detail = "Bidi Layout Control"
-    elif is_zalgo:
-        # Extract count if possible or use generic msg
-        struct_detail = stack_msg if "Stacking" in stack_msg else "Excessive Marks"
-    else:
-        struct_detail = "Standard Composition"
-
-    # Identity
-    ident_status = "AMBIGUOUS" if is_confusable else "UNIQUE"
-    ident_class = "risk-fail" if is_confusable else "risk-pass"
-    ident_icon = "clone" if is_confusable else "fingerprint"
-    # Detail Logic
-    if is_confusable:
-        ident_detail = "Homoglyph Risk"
-    else:
-        ident_detail = "No Lookalikes"
-
-    # 2. Determine Verdict Level (0-3)
-    # Revised Logic: Zalgo is now Level 2 (Suspicious) at minimum
-    
-    level = 0
-    verdict_label = "CLEAN"
-    verdict_icon = "shield_ok"
-    header_class = "header-baseline"
-
-    # Level 2: Suspicious
-    if is_invisible or is_confusable or is_zalgo:
-        level = 2
-        verdict_label = "SUSPICIOUS"
-        verdict_icon = "shield_warn"
-        header_class = "header-suspicious"
-    
-    # Level 3: Critical (Structural Bidi or Massive Zalgo)
-    if is_bidi_control or (is_zalgo and "Heavy" in stack_msg):
-        level = 3
-        verdict_label = "CRITICAL"
-        verdict_icon = "octagon_crit"
-        header_class = "header-critical"
-
-    level_text = f"LEVEL {level}"
-
     # --- HTML GENERATION ---
 
     # Zone A: The Verdict Header
-    icon_svg = get_icon(verdict_icon, color="currentColor", size=14)
+    icon_svg = get_icon(state['icon_key'], color="currentColor", size=14)
     risk_header_html = f"""
-        <div class="risk-header {header_class}">
+        <div class="risk-header {state['header_class']}">
             <div class="risk-header-top">
                 <span class="risk-header-icon">{icon_svg}</span>
-                <span class="risk-level-text">{level_text}</span>
+                <span class="risk-level-text">{state['level_text']}</span>
             </div>
-            <div class="risk-verdict-text">{verdict_label}</div>
+            <div class="risk-verdict-text">{state['verdict_text']}</div>
         </div>
     """
 
-    # Zone B: The Diagnostic Matrix (Dual-Row Cells)
-    def build_row(label, icon_key, status, detail, css_class):
-        icon_color = "#6B7280" if css_class == "risk-pass" else "#111827" 
-        svg = get_icon(icon_key, color=icon_color, size=12)
+    # Zone B: The Diagnostic Matrix
+    def build_row(label, f_data):
+        # f_data contains: state, class, icon, detail
+        # Logic: if class is risk-pass, use gray icon. If risk-warn/fail, use black.
+        icon_color = "#6B7280" if f_data['class'] == "risk-pass" else "#111827" 
+        svg = get_icon(f_data['icon'], color=icon_color, size=12)
+        
         return f"""
         <div class="risk-row">
             <div class="risk-facet">
@@ -4962,24 +5015,37 @@ def render_inspector_panel(data):
                 <span class="facet-label">{label}</span>
             </div>
             <div class="risk-cell-right">
-                <div class="risk-status {css_class}">{status}</div>
-                <div class="risk-detail">{detail}</div>
+                <div class="risk-status {f_data['class']}">{f_data['state']}</div>
+                <div class="risk-detail">{f_data['detail']}</div>
             </div>
         </div>
         """
 
+    facets = state['facets'] # [vis, struct, ident]
     matrix_html = f"""
         <div class="risk-matrix">
-            {build_row("VISIBILITY", vis_icon, vis_status, vis_detail, vis_class)}
-            {build_row("STRUCTURE", struct_icon, struct_status, struct_detail, struct_class)}
-            {build_row("IDENTITY", ident_icon, ident_status, ident_detail, ident_class)}
+            {build_row("VISIBILITY", facets[0])}
+            {build_row("STRUCTURE", facets[1])}
+            {build_row("IDENTITY", facets[2])}
         </div>
     """
-    
-    # Zone C is removed (merged into matrix rows)
-    signal_processor_content = risk_header_html + matrix_html
 
-    # --- IDENTITY COLUMN (No changes) ---
+    # Zone C: The Footer (Evidence)
+    # Logic: Only show footer if Level >= 2 (Anomalous or higher)
+    footer_html = ""
+    if state['level'] >= 2 and state['reasons']:
+        footer_text = ", ".join(state['reasons'])
+        footer_html = f"""
+        <div class="risk-footer">
+            <div class="risk-footer-label">DETECTED</div>
+            <div class="risk-footer-content">{footer_text}</div>
+        </div>
+        """
+    
+    # Assemble Column 4
+    signal_processor_content = risk_header_html + footer_html + matrix_html
+
+    # --- IDENTITY COLUMN (Standard) ---
     identity_html = f"""
         <div class="inspector-header">{data['name_base']}</div>
         <div class="inspector-grid-compact">
@@ -4995,7 +5061,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-   # --- COMPONENT TABLE ---
+    # --- COMPONENTS TABLE ---
     comp_rows = ""
     for c in data['components']:
         ccc_val = c.get('ccc', 0)
