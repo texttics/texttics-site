@@ -1842,4 +1842,44 @@ tr.flag-row-crit {
   text-transform: none; /* Allow mixed case for descriptions */
 }
 
+/* --- HUD v2 EXTENSIONS --- */
 
+/* Chip Colors */
+.spec-chip.safe { background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.spec-chip.threat { background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+.spec-chip.invisible { background-color: #f3e8ff; color: #7e22ce; border-color: #d8b4fe; }
+
+/* Ghost Strip (Normalization Chain) */
+.ghost-section {
+  margin-top: 10px;
+  background-color: #fff7ed; /* Warning Orange Tint */
+  border: 1px solid #ffedd5;
+  border-radius: 4px;
+  padding: 6px;
+}
+
+.ghost-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+}
+
+.ghost-step {
+  text-align: center;
+  font-size: 0.6rem;
+  color: #9a3412; /* Dark Orange */
+  font-weight: 700;
+}
+
+.ghost-step span {
+  display: block;
+  font-size: 1rem;
+  margin-top: 2px;
+  color: #000;
+}
+
+.ghost-arrow {
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
