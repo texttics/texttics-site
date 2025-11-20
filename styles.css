@@ -758,6 +758,7 @@ Stage 2: Heatmap Row Classes
   border: none;
 }
 
+
 /* --- Inspector Layout v7: The Perfect Hybrid --- */
 
 #inspector-panel-content {
@@ -780,8 +781,7 @@ Stage 2: Heatmap Row Classes
 .inspector-layout-v3 {
   display: grid;
   /* Define robust widths. 
-     Note the 'minmax(200px, 1fr)' for Identity - it ensures it never collapses. */
-  grid-template-columns: 50px 180px 50px 110px minmax(200px, 1fr) 280px 150px;
+
   
   /* FORCE the grid to be at least this wide. 
      This pushes the scrollbar onto the parent if the screen is narrower. */
