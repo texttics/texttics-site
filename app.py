@@ -4851,52 +4851,122 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v6.0: Restored Design + Left-Side Risk.
-    Cols: [Prev] [Target] [Next] [RISK] [Identity] [Structure] [Bytes]
+    Forensic Layout v7.0: The Signal Processor.
+    Risk column is now a fixed-geometry diagnostic instrument.
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
 
+    # Check for initial state or error
     if data is None:
-        panel.innerHTML = "<p class='placeholder-text'>Click a character to inspect.</p>"
+        panel.innerHTML = "<div style='padding:2rem; color:#9ca3af; text-align:center; font-style:italic;'>Select a particle to initialize diagnostics.</div>"
         return
         
     if "error" in data:
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
-    # --- BUILD ALERTS COLUMN ---
-    alerts_html_parts = []
+    # --- DIAGNOSTIC LOGIC ENGINE ---
     
-    if data['is_invisible']: 
-        alerts_html_parts.append(
-            '<div class="legend-badge legend-badge-danger">'
-            '<span class="alert-icon">👻</span>INVISIBLE'
-            '</div>'
-        )
-
-    if data['stack_msg']:
-        sev = "danger" if "Heavy" in data['stack_msg'] else "suspicious"
-        icon = "📶" if sev == "danger" else "⚠️"
-        alerts_html_parts.append(
-            f'<div class="legend-badge legend-badge-{sev}">'
-            f'<span class="alert-icon">{icon}</span>{data["stack_msg"].upper()}'
-            f'</div>'
-        )
+    # Check if this data key exists, otherwise default to False/None
+    is_confusable = bool(data.get('confusable'))
+    is_invisible = data.get('is_invisible', False)
+    is_zalgo = "Heavy" in (data.get('stack_msg') or "")
+    is_bidi_control = data.get('bidi') in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
     
-    if data['confusable']:
-        alerts_html_parts.append(
-            '<div class="legend-badge legend-badge-high" title="Potential Homoglyph">'
-            '<span class="alert-icon">👁️</span>CONFUSABLE'
-            '</div>'
-        )
+    # Visibility Facet
+    vis_risk = is_invisible
+    vis_state = "HIDDEN" if vis_risk else "PASS"
+    vis_icon = "eye_off" if vis_risk else "eye"
+    vis_class = "risk-fail" if vis_risk else "risk-pass"
 
-    alerts_html = "".join(alerts_html_parts)
-    # Keep column empty if no risks, but maintain layout
-    if not alerts_html:
-         alerts_html = '<div style="opacity:0.2; font-size:1.5rem;">🛡️</div>'
+    # Structure Facet (Zalgo or Bidi Structural Control)
+    struct_risk = is_zalgo or is_bidi_control
+    struct_state = "FRACTURED" if struct_risk else "STABLE"
+    struct_icon = "layers" if struct_risk else "cube"
+    struct_class = "risk-fail" if struct_risk else "risk-pass"
 
-    # --- BUILD IDENTITY COLUMN ---
+    # Identity Facet (Homoglyph/Spoofing)
+    ident_risk = is_confusable
+    ident_state = "AMBIGUOUS" if ident_risk else "UNIQUE"
+    ident_icon = "clone" if ident_risk else "fingerprint"
+    ident_class = "risk-fail" if ident_risk else "risk-pass"
+
+    # 2. Determine Verdict Level (0-3)
+    # Default: Level 0 (Baseline)
+    level = 0
+    verdict_label = "LEVEL 0 · CLEAN"
+    verdict_icon = "shield_ok"
+    header_class = "header-baseline"
+
+    # Level 2: Suspicious (Invisible or Confusable)
+    if vis_risk or ident_risk:
+        level = 2
+        verdict_label = "LEVEL 2 · SUSPICIOUS"
+        verdict_icon = "shield_warn"
+        header_class = "header-suspicious"
+    
+    # Level 3: Critical (Structural break, i.e., Bidi control)
+    if is_bidi_control: # Bidi is the most critical local flag
+        level = 3
+        verdict_label = "LEVEL 3 · CRITICAL"
+        verdict_icon = "octagon_crit"
+        header_class = "header-critical"
+
+    # --- HTML GENERATION ---
+
+    # Helper function for HTML rows
+    def build_row(label, icon_key, value, css_class):
+        icon_color = "#6B7280" if css_class == "risk-pass" else "#111827" 
+        svg = get_icon(icon_key, color=icon_color, size=12)
+        return f"""
+        <div class="risk-row">
+            <div class="risk-facet">
+                <span class="facet-icon">{svg}</span>
+                <span class="facet-label">{label}</span>
+            </div>
+            <div class="risk-value {css_class}">{value}</div>
+        </div>
+        """
+
+    # --- ASSEMBLE ZONES A, B, C INDIVIDUALLY ---
+
+    # Zone A: The Verdict Header (risk_header_html)
+    icon_svg = get_icon(verdict_icon, color="currentColor", size=14)
+    risk_header_html = f"""
+        <div class="risk-header {header_class}">
+            <span class="risk-header-icon">{icon_svg}</span>
+            <span class="risk-header-text">{verdict_label}</span>
+        </div>
+    """
+
+    # Zone B: The Diagnostic Matrix (matrix_html)
+    matrix_html = f"""
+        <div class="risk-matrix">
+            {build_row("VISIBILITY", vis_icon, vis_state, vis_class)}
+            {build_row("STRUCTURE", struct_icon, struct_state, struct_class)}
+            {build_row("IDENTITY", ident_icon, ident_state, ident_class)}
+        </div>
+    """
+
+    # Zone C: The Footer (Evidence) (footer_html)
+    footer_html = ""
+    if level > 0:
+        reason = []
+        if is_bidi_control: reason.append("Bidi Control")
+        elif is_invisible: reason.append("Invisible")
+        if is_confusable: reason.append("Confusable")
+        if is_zalgo: reason.append("High Density")
+        
+        footer_text = ", ".join(reason)
+        footer_html = f'<div class="risk-footer">DETECTED: {footer_text}</div>'
+    
+    # --- ASSEMBLE SIGNAL PROCESSOR BLOCK CONTENT (The FIX) ---
+    # Concatenate the three strings before placing them in the final HTML template.
+    signal_processor_content = risk_header_html + matrix_html + footer_html
+
+
+    # --- OTHER VISUAL COMPONENTS (No changes) ---
     identity_html = f"""
         <div class="inspector-header">{data['name_base']}</div>
         <div class="inspector-grid-compact">
@@ -4912,19 +4982,10 @@ def render_inspector_panel(data):
         </div>
     """
 
-   # --- TABLE ROWS (Now with CCC Physics) ---
     comp_rows = ""
     for c in data['components']:
-        # Calculate Combining Class (The "Stacking Physics")
-        # We need to look up the char from the hex string or pass the char directly.
-        # Since 'components' in inspect_character only has metadata, we need to adjust 
-        # the data gathering phase OR just re-calculate it here if we have the char.
-        # Actually, let's do it cleaner: Update the Data Gathering phase first (see below).
-        
-        # Assuming 'ccc' is now in c:
         ccc_val = c.get('ccc', 0)
         ccc_display = f'<span style="color:#9ca3af;">0</span>' if ccc_val == 0 else f'<b>{ccc_val}</b>'
-        
         is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
         
         comp_rows += f"""
@@ -4936,7 +4997,6 @@ def render_inspector_panel(data):
         </tr>
         """
 
-    # --- VISUALS ---
     prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
     curr_vis = _escape_html(data['cluster_glyph'])
     next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
@@ -4962,10 +5022,8 @@ def render_inspector_panel(data):
         </div>
         
         <div class="col-signal-processor">
-            {risk_header_html}
-            {matrix_html}
-            {footer_html}
-        </div>
+            {signal_processor_content}
+        </div>
         
         <div class="col-identity">
             {identity_html}
@@ -5024,14 +5082,11 @@ def render_inspector_panel(data):
     </div>
     """
     panel.innerHTML = html
-
-    # Trigger the centering scroll
-    # --- TRIGGER CENTERING ---
-    # Force JS to scroll the viewport to the middle of the massive padding box
+    
     try:
         window.TEXTTICS_CENTER_GLYPH()
     except Exception:
-        pass # Fail silent if JS not ready
+        pass
 
 def compute_threat_score(inputs):
     """
