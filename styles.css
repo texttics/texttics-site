@@ -870,7 +870,10 @@ Stage 2: Heatmap Row Classes
   vertical-align: middle;
   
   /* The "Ghost Ink" Fix: Massive Padding forces the scroll area */
-  padding: 10rem 2rem; 
+  /* --- THE CHANGE --- */
+  /* 10rem = Top/Bottom Buffer (Vertical) */
+  /* 8rem  = Left/Right Buffer (Horizontal) -> Increased from 2rem */
+  padding: 10rem 8rem; 
   font-variant-ligatures: none;
   white-space: nowrap; 
   color: var(--color-text);
