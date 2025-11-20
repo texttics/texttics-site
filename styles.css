@@ -1017,13 +1017,25 @@ Stage 2: Heatmap Row Classes
   color: var(--color-text-muted);
 }
 
-/* Darker & Bolder Labels for UTF-8/16 */
+/* The "Key:" in "Key: Value" */
 .byte-grid .label {
-  color: #111827;     /* Dark Gray (almost black) */
+  color: #111827;     /* Dark Gray */
   font-weight: 800;   /* Extra Bold */
-  font-size: 0.75rem; /* Slightly larger than the hex codes */
-  display: inline-block;
-  margin-bottom: 2px;
+  font-size: 0.7rem;
+  
+  /* THE FIX: Sit on the same line */
+  display: inline-block; 
+  margin-right: 6px;  /* Spacing between Key and Value */
+  margin-bottom: 0;   /* Remove bottom margin */
+  
+  /* Fixed width ensures alignment (optional, but looks pro) */
+  min-width: 45px; 
+}
+
+/* Optional: A subtle separator class for the rows */
+.byte-row {
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 2px;
 }
   
 
