@@ -4961,10 +4961,11 @@ def render_inspector_panel(data):
             <div class="ctx-glyph">{next_vis}</div>
         </div>
         
-        <div class="col-alerts">
-            <div class="section-label">RISK</div>
-            {alerts_html}
-        </div>
+        <div class="col-signal-processor">
+            {risk_header_html}
+            {matrix_html}
+            {footer_html}
+        </div>
         
         <div class="col-identity">
             {identity_html}
