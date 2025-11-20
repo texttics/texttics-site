@@ -1261,7 +1261,43 @@ Stage 2: Heatmap Row Classes
     border-bottom: 1px solid #f1f5f9;
     padding-bottom: 2px;
 }
-  
+
+/* --- 
+   Dynamic Badge Synchronization 
+   Matches the Inspector Verdict Colors
+--- */
+
+/* Level 0: BASELINE (Green) */
+.inspector-codepoint.risk-tier-0 { 
+  color: #15803D; 
+  border-color: #15803D; 
+}
+
+/* Level 1: NON-STD (Blue) */
+.inspector-codepoint.risk-tier-1 { 
+  color: #0369A1; 
+  border-color: #0369A1; 
+}
+
+/* Level 2: ANOMALOUS (Yellow/Amber) */
+.inspector-codepoint.risk-tier-2 { 
+  color: #A16207; 
+  border-color: #A16207; 
+}
+
+/* Level 3: SUSPICIOUS (Orange) */
+.inspector-codepoint.risk-tier-3 { 
+  color: #C2410C; 
+  border-color: #C2410C; 
+}
+
+/* Level 4: CRITICAL (Red) */
+.inspector-codepoint.risk-tier-4 { 
+  color: #DC2626; 
+  border-color: #DC2626; 
+  background-color: #FEF2F2; /* Subtle red tint for critical */
+}
+
 
 /* --- Macro Analysis Control --- */
 .macro-analysis-control {
