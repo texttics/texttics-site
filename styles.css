@@ -849,23 +849,25 @@ Stage 2: Heatmap Row Classes
   flex-direction: column;
 }
 
-/* The Scrollable Window (Pinned to edges) */
 .glyph-viewport {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 2rem; /* Leave exactly enough room for the label */
+  bottom: 2rem; /* Keep space for the label at bottom */
   
-  /* FORCE SCROLLBARS if content is too big */
-  overflow: auto; 
+  /* 1. Enable Scrollbars */
+  overflow: auto;
   
-  /* Center content */
+  /* 2. Flex layout */
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  flex-direction: column;
+  
+  /* 3. CRITICAL CHANGE: Remove these lines! */
+  /* align-items: center; */
+  /* justify-content: center; */
+  
+  /* Keep a small gap from the edges */
+  padding: 0.5rem;
 }
 
 .inspector-glyph {
