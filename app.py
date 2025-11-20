@@ -4879,14 +4879,26 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # --- TABLE ROWS ---
+   # --- TABLE ROWS (Now with CCC Physics) ---
     comp_rows = ""
     for c in data['components']:
+        # Calculate Combining Class (The "Stacking Physics")
+        # We need to look up the char from the hex string or pass the char directly.
+        # Since 'components' in inspect_character only has metadata, we need to adjust 
+        # the data gathering phase OR just re-calculate it here if we have the char.
+        # Actually, let's do it cleaner: Update the Data Gathering phase first (see below).
+        
+        # Assuming 'ccc' is now in c:
+        ccc_val = c.get('ccc', 0)
+        ccc_display = f'<span style="color:#9ca3af;">0</span>' if ccc_val == 0 else f'<b>{ccc_val}</b>'
+        
         is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
+        
         comp_rows += f"""
         <tr {is_mark_style}>
             <td><code class="mini-code">{c['hex']}</code></td>
-            <td>{c['cat']}</td>
+            <td style="text-align:center;">{c['cat']}</td>
+            <td style="text-align:center;">{ccc_display}</td>
             <td class="truncate-text" title="{c['name']}">{c['name']}</td>
         </tr>
         """
@@ -4926,10 +4938,22 @@ def render_inspector_panel(data):
         </div>
 
         <div class="col-structure">
-            <div class="section-label">CLUSTER ({len(data['components'])})</div>
+            <div class="section-label">
+                CLUSTER COMPONENTS
+                <span style="display:block; font-weight:400; opacity:0.7; font-size:0.6rem; margin-top:2px;">
+                    ({len(data['components'])} PARTICLES)
+                </span>
+            </div>
             <div class="structure-table-wrapper">
                 <table class="structure-table">
-                    <thead><tr><th>CP</th><th>Cat</th><th>Name</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>CP</th>
+                            <th style="text-align:center;">Cat</th>
+                            <th style="text-align:center;" title="Canonical Combining Class">CCC</th>
+                            <th>Name</th>
+                        </tr>
+                    </thead>
                     <tbody>{comp_rows}</tbody>
                 </table>
             </div>
