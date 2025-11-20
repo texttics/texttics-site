@@ -5291,87 +5291,21 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Verdict-Synchronized HUD v3.1) ---
+    # --- COL 5: IDENTITY (Clean V4: No Redundancy) ---
     
-    # 1. Get Global Forensic Context (The Truth Source)
-    # We check if this specific particle index is flagged in the main engine's ledger.
-    active_threats = []
-    try:
-        # Safely access the global data object from the window
-        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
-            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
-            current_idx = data.get('python_idx')
-            
-            if current_idx is not None:
-                idx_marker = f"#{current_idx}"
-                # Scan every flag in the system
-                for flag_name, flag_data in global_flags.items():
-                    # Check if our index appears in this flag's position list
-                    # Positions are stored as ["#12", "#55 (reason)"]
-                    raw_positions = flag_data.get('positions', [])
-                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
-                        # Map flag name to short badge
-                        name_lower = flag_name.lower()
-                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
-                        elif "bidi" in name_lower: active_threats.append("BIDI")
-                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
-                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
-                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
-                        elif "tag" in name_lower: active_threats.append("TAG")
-                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
-                        else: active_threats.append("RISK")
-    except Exception:
-        pass # Fail safe (render standard chips if bridge fails)
-
-    # 2. Identity Capsule (Chips)
-    chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
-    chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
-    
-    mt = data['macro_type']
-    
-    # A. ASCII Chip
-    if data['is_ascii']:
-        chips_html += '<span class="spec-chip ascii">ASCII</span>'
-
-    # B. Type Chip (Structural Identity)
-    if mt == "SYNTAX":
-        chips_html += '<span class="spec-chip syntax">SYNTAX</span>'
-    elif mt == "ROT":
-        chips_html += '<span class="spec-chip rot">DATA ROT</span>'
-    elif mt == "COMPLEX":
-        chips_html += '<span class="spec-chip complex">COMPLEX</span>'
-    elif mt == "THREAT":
-        # Only label as Threat here if we don't have a more specific badge coming up
-        if not active_threats and state['level'] == 0:
-             chips_html += '<span class="spec-chip threat">THREAT</span>'
-        if data['is_invisible']: chips_html += '<span class="spec-chip invisible">INVISIBLE</span>'
-
-    # C. Safety Chip (The Truth)
-    # Priority: 1. Global Ledger -> 2. Local Verdict -> 3. Safe
-    
-    if active_threats:
-        # 1. Global Ledger Alarm (Red/Orange)
-        for threat in sorted(list(set(active_threats))):
-            chips_html += f'<span class="spec-chip threat">{threat}</span>'
-            
-    elif state['level'] > 0:
-        # 2. Local Inspection Alarm (Yellow/Red)
-        # If the V10 engine says "ANOMALOUS", we print "ANOMALOUS", not "SAFE".
-        verdict_label = state['verdict_text'] # e.g. ANOMALOUS, SUSPICIOUS
-        
-        # Map level to chip color
-        css_class = "complex" if state['level'] == 1 else "threat"
-        chips_html += f'<span class="spec-chip {css_class}">{verdict_label}</span>'
-        
+    # 1. Determine Header Title
+    # If it's a cluster (Base + Marks), we stop pretending it's just the base letter.
+    # We label it as a CLUSTER to force the user to look at the components.
+    if len(data['components']) > 1:
+        header_title = "GRAPHEME CLUSTER"
+        # Optional: Add a visual cue that this is a composite structure
+        header_style = "letter-spacing: 0.05em; color: #4b5563;" 
     else:
-        # 3. Clean Bill of Health (Green)
-        # Only IF Global is Clean AND Local is Level 0
-        # AND it's a standard/syntax type (don't stamp SAFE on unknown legacy chars)
-        if mt in ("STANDARD", "SYNTAX"):
-            chips_html += '<span class="spec-chip safe">SAFE</span>'
-    
-    # 3. Mechanics Matrix (Dynamic Cell 4)
-    
+        header_title = data['name_base']
+        header_style = ""
+
+    # 2. Mechanics Matrix (Dynamic Cell 4)
+    mt = data['macro_type']
     matrix_extra_cell = ""
     
     if mt in ("THREAT", "ROT", "SYNTAX", "LEGACY"):
@@ -5411,7 +5345,7 @@ def render_inspector_panel(data):
         {matrix_extra_cell}
     """
 
-    # 4. Security & Ghosts
+    # 3. Security & Ghosts
     ghost_html = ""
     if data['ghosts']:
         g = data['ghosts']
@@ -5428,14 +5362,11 @@ def render_inspector_panel(data):
         </div>
         """
 
+    # 4. Final Assembly (No Chips)
     identity_html = f"""
-        <div class="inspector-header" title="{data['name_base']}">{data['name_base']}</div>
+        <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
         
-        <div class="spec-capsule">
-            {chips_html}
-        </div>
-        
-        <div class="spec-row" style="margin-bottom: 8px;">
+        <div class="spec-row" style="margin-bottom: 8px; margin-top: 4px;">
             <span class="spec-label">BLOCK</span>
             <span class="spec-value">{data['block']}</span>
         </div>
