@@ -762,8 +762,8 @@ Stage 2: Heatmap Row Classes
 /* --- Inspector Layout v7: The Perfect Hybrid --- */
 
 #inspector-panel-content {
-  /* 1. Allow the user to drag the height if they want */
-  resize: vertical; 
+  
+  /* 1. Allow the user to drag the height if they want */ /*resize: vertical; */
   height: 275px; /* Default starting height */
   min-height: 275px;
   
