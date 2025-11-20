@@ -820,30 +820,35 @@ Stage 2: Heatmap Row Classes
   filter: grayscale(100%);
 }
 
-/* --- Col 2: Target (Auto-Scale Physics) --- */
+/* --- Col 2: Target (Auto-Scale Container) --- */
 .col-target {
   background-color: var(--color-white);
   border-right: 1px solid var(--color-border-light);
   position: relative;
   
-  /* Flex layout to stack Viewport and Label vertically */
+  /* Flex Layout: Stack Viewport (Top) and Label (Bottom) */
   display: flex;
   flex-direction: column;
   
-  /* Rigid constraints */
+  /* Force fit within the grid cell */
   height: 100%;
-  overflow: hidden; /* No scrolling allowed; scaling handles the overflow */
+  min-height: 0; 
+  overflow: hidden; /* Clip the bleed so JS can scale it down safely */
 }
 
-/* Update .glyph-viewport to support scroll AND scale */
+/* The Measuring Box for JS */
 .glyph-viewport {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 1; /* Fill all available space */
   width: 100%;
-  overflow: auto; /* Scrollbar appears if scaling fails or on mobile */
+  min-height: 0;
+  
+  /* Center the glyph perfectly */
   display: flex;
   align-items: center;
   justify-content: center;
+  
+  /* Allow the glyph to bleed out (visible) so JS can measure its true size */
+  overflow: visible; 
   padding: 1rem;
 }
 
@@ -852,7 +857,7 @@ Stage 2: Heatmap Row Classes
   font-size: 3.5rem;
   line-height: 1.1;
   
-  /* Let the element take its TRUE natural size (even 1000px tall) */
+  /* Allow natural size (even if huge) */
   width: max-content;
   height: max-content;
   margin: 0;
@@ -861,16 +866,17 @@ Stage 2: Heatmap Row Classes
   font-variant-ligatures: none;
   white-space: nowrap;
   
-  /* Performance & Animation */
+  /* Anchor for the JS Transform */
   transform-origin: center center;
-  transition: transform 0.1s ease-out; /* Snap to size smoothly */
+  transition: transform 0.1s ease-out; 
 }
 
 .inspector-codepoint {
-  /* Pinned to bottom of the flex column */
+  /* Pinned label */
   margin: 4px 0 8px 0;
   align-self: center;
-  flex-shrink: 0; /* Ensure label never collapses */
+  flex-shrink: 0;
+  z-index: 10;
   
   font-family: var(--font-mono);
   font-weight: 700;
@@ -880,7 +886,6 @@ Stage 2: Heatmap Row Classes
   border: 1px solid var(--color-border-light);
   padding: 2px 6px;
   border-radius: 4px;
-  z-index: 10; /* Ensure label sits on top of any bleed */
 }
 
 /* --- Col 4: RISK (New Column) --- */
