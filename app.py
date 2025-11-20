@@ -5195,15 +5195,12 @@ def render_inspector_panel(data):
         """
 
     # --- FINAL HTML ASSEMBLY ---
-    
     prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
     curr_vis = _escape_html(data['cluster_glyph'])
     next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
-    
-    # [VISUAL SYNC] Use the calculated risk color for the badge
-    # We use a subtle transparency for the border (if you want solid, remove '40')
-    
-    badge_style = f"color: {global_icon_color}; border-color: {global_icon_color};"
+
+    # [VISUAL SYNC] Inject the calculated risk level (0-4) as a CSS class
+    tier_class = f"risk-tier-{state['level']}"
 
     html = f"""
     <div class="inspector-layout-v3">
@@ -5215,7 +5212,7 @@ def render_inspector_panel(data):
             <div class="glyph-viewport">
                 <div class="inspector-glyph">{curr_vis}</div>
             </div>
-            <div class="inspector-codepoint" style="{badge_style}">{data['cp_hex_base']}</div>
+            <div class="inspector-codepoint {tier_class}">{data['cp_hex_base']}</div>
         </div>
         <div class="col-context col-next">
             <div class="ctx-label">NEXT</div>
