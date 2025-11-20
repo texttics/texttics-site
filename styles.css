@@ -786,14 +786,16 @@ Stage 2: Heatmap Row Classes
   
   /* 2. DEFINE THE 7 COLUMNS EXPLICITLY 
      (Context | Target | Context | Risk | Identity | Structure | Bytes) */
-  grid-template-columns: 
-    60px                 /* 1. Context Prev */
-    140px                /* 2. Target (Main Glyph) */
-    60px                 /* 3. Context Next */
-    80px                 /* 4. Alerts/Risk */
-    minmax(250px, 1fr)   /* 5. Identity (Flexible width) */
-    260px                /* 6. Structure Table */
-    120px;               /* 7. Bytes */
+  /* ADJUSTED COLUMNS:
+     1. Prev (50)
+     2. Target (170)
+     3. Next (50)
+     4. RISK (165) - WIDENED (was 110)
+     5. Identity (minmax(160, 1fr)) - TIGHTENED (was 200)
+     6. Structure (260)
+     7. Bytes (180)
+  */
+  grid-template-columns: 50px 170px 50px 170px minmax(155px, 1fr) 260px 180px;
 
   /* 3. FORCE SCROLL */
   /* This ensures the grid never squashes. 
