@@ -1743,4 +1743,103 @@ tr.flag-row-crit {
   color: #b91c1c;
 }
 
+/* --- FORENSIC SPEC SHEET V2 (UTS #39 Compliant) --- */
+
+/* 1. IDENTITY CAPSULE (Chips) */
+.spec-capsule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.75rem 0;
+}
+
+.spec-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px; /* Techy box look, not pill */
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.spec-chip.codepoint {
+  background-color: #111827;
+  color: #fff;
+}
+
+.spec-chip.category {
+  background-color: #e5e7eb;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.spec-chip.block {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.spec-chip.ascii {
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+/* 2. SPEC ROWS (Enhanced) */
+.spec-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* Tight stacking */
+}
+
+.spec-sub {
+  color: #9ca3af;
+  font-weight: 400;
+  font-size: 0.7rem;
+  margin-left: 4px;
+}
+
+/* ID Status Colors */
+.id-status-allowed { color: #15803d; font-weight: 700; }
+.id-status-restricted { color: #b91c1c; font-weight: 700; }
+.id-status-technical { color: #a16207; font-weight: 700; }
+
+/* 3. CALM MATRIX (Layout Grid) */
+.spec-matrix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 0.75rem;
+  background-color: #f9fafb;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #f3f4f6;
+}
+
+.matrix-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.matrix-val {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1f2937; /* Dark Neutral (Calm) */
+  line-height: 1.2;
+}
+
+.matrix-sub {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: #9ca3af; /* Muted Label */
+  margin-top: 1px;
+  text-transform: none; /* Allow mixed case for descriptions */
+}
+
 
