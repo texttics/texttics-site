@@ -966,15 +966,6 @@ Stage 2: Heatmap Row Classes
   gap: 8px;
   font-size: 0.75rem;
 }
-
-/* --- Responsive: Keep Fixed Geometry for Scroll Safety --- */
-@media (max-width: 1400px) {
-  .inspector-layout-v3 {
-    /* Switch to a stacked layout but KEEP FIXED HEIGHTS for the scroll areas */
-    grid-template-columns: 180px 1fr 220px; 
-    grid-template-rows: 175px 175px; /* Fixed rows ensure constraint */
-    height: 100%;
-  }
   
   /* Force the outer container to remain rigid */
   #inspector-panel-content { 
