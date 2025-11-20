@@ -996,6 +996,7 @@ Stage 2: Heatmap Row Classes
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow: hidden; /* Fixes the header in place */
 }
 .byte-grid {
   padding: 10px;
@@ -1004,14 +1005,29 @@ Stage 2: Heatmap Row Classes
   gap: 8px;
   font-size: 0.75rem;
   font-family: var(--font-mono);
+
+  /* SCROLL LOGIC */
+  flex: 1;          /* Fill the remaining vertical space */
+  overflow: auto;   /* Enable X and Y scrollbars */
   
-  /* Stop text from wrapping awkwardly */
+  /* PREVENT WRAPPING (Forces X-Scroll) */
   white-space: nowrap; 
+  word-break: keep-all; 
   /* If it really overflows horizontally inside the column, handle it gracefully */
   overflow-x: hidden; 
   text-overflow: ellipsis; 
+
+  color: var(--color-text-muted);
 }
-  
+
+/* Darker & Bolder Labels for UTF-8/16 */
+.byte-grid .label {
+  color: #111827;     /* Dark Gray (almost black) */
+  font-weight: 800;   /* Extra Bold */
+  font-size: 0.75rem; /* Slightly larger than the hex codes */
+  display: inline-block;
+  margin-bottom: 2px;
+}
   
 
 /* --- Macro Analysis Control --- */
