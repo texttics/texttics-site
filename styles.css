@@ -966,11 +966,11 @@ Stage 2: Heatmap Row Classes
   color: #374151; /* Slate-700 */
 }
 
-/* Level 1: COMPLEX (Blue/Teal - Informational but not "Clean") */
+/* Level 1: NON-STD (Blue/Teal - Informational) */
 .header-complex {
-  background-color: #E0F2FE; /* Sky-100 */
+  background-color: #F0F9FF; /* Very light blue (Sky-50) */
   color: #0369A1; /* Sky-700 */
-  border-bottom-color: #7DD3FC;
+  border-bottom-color: #BAE6FD; /* Sky-200 */
 }
 
 /* Level 2: ANOMALOUS (Yellow - Sensitive/Sophisticated) */
