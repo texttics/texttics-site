@@ -5293,7 +5293,37 @@ def render_inspector_panel(data):
 
     # --- COL 5: IDENTITY (Verdict-Synchronized HUD v3.1) ---
     
-    # 1. Identity Capsule (Chips)
+    # 1. Get Global Forensic Context (The Truth Source)
+    # We check if this specific particle index is flagged in the main engine's ledger.
+    active_threats = []
+    try:
+        # Safely access the global data object from the window
+        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
+            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
+            current_idx = data.get('python_idx')
+            
+            if current_idx is not None:
+                idx_marker = f"#{current_idx}"
+                # Scan every flag in the system
+                for flag_name, flag_data in global_flags.items():
+                    # Check if our index appears in this flag's position list
+                    # Positions are stored as ["#12", "#55 (reason)"]
+                    raw_positions = flag_data.get('positions', [])
+                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
+                        # Map flag name to short badge
+                        name_lower = flag_name.lower()
+                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
+                        elif "bidi" in name_lower: active_threats.append("BIDI")
+                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
+                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
+                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
+                        elif "tag" in name_lower: active_threats.append("TAG")
+                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
+                        else: active_threats.append("RISK")
+    except Exception:
+        pass # Fail safe (render standard chips if bridge fails)
+
+    # 2. Identity Capsule (Chips)
     chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
     chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
     
@@ -5325,7 +5355,7 @@ def render_inspector_panel(data):
             chips_html += f'<span class="spec-chip threat">{threat}</span>'
             
     elif state['level'] > 0:
-        # 2. Local Inspection Alarm (Yellow/Red) [THE FIX]
+        # 2. Local Inspection Alarm (Yellow/Red)
         # If the V10 engine says "ANOMALOUS", we print "ANOMALOUS", not "SAFE".
         verdict_label = state['verdict_text'] # e.g. ANOMALOUS, SUSPICIOUS
         
@@ -5336,9 +5366,11 @@ def render_inspector_panel(data):
     else:
         # 3. Clean Bill of Health (Green)
         # Only IF Global is Clean AND Local is Level 0
-        chips_html += '<span class="spec-chip safe">SAFE</span>'
+        # AND it's a standard/syntax type (don't stamp SAFE on unknown legacy chars)
+        if mt in ("STANDARD", "SYNTAX"):
+            chips_html += '<span class="spec-chip safe">SAFE</span>'
     
-    # 2. Mechanics Matrix (Dynamic Cell 4)
+    # 3. Mechanics Matrix (Dynamic Cell 4)
     
     matrix_extra_cell = ""
     
@@ -5379,7 +5411,7 @@ def render_inspector_panel(data):
         {matrix_extra_cell}
     """
 
-    # 3. Security & Ghosts
+    # 4. Security & Ghosts
     ghost_html = ""
     if data['ghosts']:
         g = data['ghosts']
