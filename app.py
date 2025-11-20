@@ -5032,8 +5032,8 @@ def analyze_signal_processor_state(data):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v9.0: 5-Tier Logic.
-    Uses external state machine for rigorous 0-4 risk grading.
+    Forensic Layout v10.0: Synchronized Visuals.
+    Updates: Icons now synchronize their color with the global Verdict Level.
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -5049,9 +5049,33 @@ def render_inspector_panel(data):
     # --- CALL THE LOGIC ENGINE ---
     state = analyze_signal_processor_state(data)
     
+    # --- UNPACK FACETS ---
+    vis_data = state['facets'][0]
+    struct_data = state['facets'][1]
+    ident_data = state['facets'][2]
+
+    # --- ICON COLOR SYNCHRONIZATION ENGINE ---
+    # Determine the master color based on the Header Class
+    header_cls = state['header_class']
+    
+    if header_cls == "header-baseline":
+        global_icon_color = "#15803D" # Green-700 (Matches Baseline Text)
+    elif header_cls == "header-complex":
+        global_icon_color = "#0369A1" # Sky-700 (Matches Non-Std Text)
+    elif header_cls == "header-anomalous":
+        global_icon_color = "#A16207" # Yellow-700
+    elif header_cls == "header-suspicious":
+        global_icon_color = "#C2410C" # Orange-700
+    elif header_cls == "header-critical":
+        global_icon_color = "#DC2626" # Red-600
+    else:
+        global_icon_color = "#6B7280" # Fallback Slate
+
+    
     # --- HTML GENERATION ---
 
     # Zone A: The Verdict Header
+    # Header Icon uses current text color (via CSS currentColor)
     icon_svg = get_icon(state['icon_key'], color="currentColor", size=14)
     risk_header_html = f"""
         <div class="risk-header {state['header_class']}">
@@ -5064,23 +5088,9 @@ def render_inspector_panel(data):
     """
 
     # Zone B: The Diagnostic Matrix
-    def build_row(label, f_data):
-        # Logic: 
-        # Pass (Green) -> Muted Gray Icon
-        # Info (Blue) -> Blue Icon
-        # Warn/Fail -> Black Icon (High Contrast)
-        
-        css = f_data['class']
-        if css == "risk-pass":
-            icon_color = "#9CA3AF" # Gray
-        elif css == "risk-info":
-            icon_color = "#0369A1" # Blue (Sky-700)
-        elif css == "risk-warn":
-             icon_color = "#B45309" # Amber
-        else:
-            icon_color = "#111827" # Black (Critical)
-
-        svg = get_icon(f_data['icon'], color=icon_color, size=14)
+    def build_row(label, f_data, master_color):
+        # Use Master Color for ALL icons to ensure synchronization
+        svg = get_icon(f_data['icon'], color=master_color, size=14)
         
         return f"""
         <div class="risk-row">
@@ -5089,29 +5099,38 @@ def render_inspector_panel(data):
                 <span class="facet-label">{label}</span>
             </div>
             <div class="risk-cell-right">
-                <div class="risk-status {css}">{f_data['state']}</div>
+                <div class="risk-status {f_data['class']}">{f_data['state']}</div>
                 <div class="risk-detail">{f_data['detail']}</div>
             </div>
         </div>
         """
 
-    facets = state['facets'] 
     matrix_html = f"""
         <div class="risk-matrix">
-            {build_row("VISIBILITY", facets[0])}
-            {build_row("STRUCTURE", facets[1])}
-            {build_row("IDENTITY", facets[2])}
+            {build_row("VISIBILITY", vis_data, global_icon_color)}
+            {build_row("STRUCTURE", struct_data, global_icon_color)}
+            {build_row("IDENTITY", ident_data, global_icon_color)}
         </div>
     """
 
-    # Zone C: The Footer (Evidence)
-    # Logic: Only show footer if Level >= 2 (Anomalous or higher) OR if there is specific text for level 0/1
-    footer_html = f"""
-    <div class="risk-footer">
-        <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
-        <div class="risk-footer-content {state['footer_class']}">{state['footer_text']}</div>
-    </div>
-    """
+    # Zone C: The Footer
+    footer_html = ""
+    # Only show footer if Level >= 1 (Now including Non-Std per logic update)
+    if state['level'] >= 1 and state['footer_text']:
+        footer_html = f"""
+        <div class="risk-footer">
+            <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
+            <div class="risk-footer-content">{state['footer_text']}</div>
+        </div>
+        """
+    elif state['level'] == 0:
+        # Default footer for Baseline
+        footer_html = f"""
+        <div class="risk-footer">
+            <div class="risk-footer-label footer-neutral">ANALYSIS</div>
+            <div class="risk-footer-content">Standard Composition</div>
+        </div>
+        """
     
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
