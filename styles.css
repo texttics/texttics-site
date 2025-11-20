@@ -958,19 +958,39 @@ Stage 2: Heatmap Row Classes
   display: block;
 }
 
-/* Header States */
+/* Header States (5-Tier Scale) */
+
+/* Level 0: IDEAL (Gray/Neutral) */
 .header-baseline {
   background-color: #F3F4F6; /* Slate-100 */
   color: #374151; /* Slate-700 */
 }
-.header-suspicious {
-  background-color: #FEF3C7; /* Amber-100 */
-  color: #B45309; /* Amber-700 */
-  border-bottom-color: #FCD34D;
+
+/* Level 1: COMPLEX (Blue/Teal - Informational but not "Clean") */
+.header-complex {
+  background-color: #E0F2FE; /* Sky-100 */
+  color: #0369A1; /* Sky-700 */
+  border-bottom-color: #7DD3FC;
 }
+
+/* Level 2: ANOMALOUS (Yellow - Sensitive/Sophisticated) */
+.header-anomalous {
+  background-color: #FEF9C3; /* Yellow-100 */
+  color: #A16207; /* Yellow-700 */
+  border-bottom-color: #FDE047;
+}
+
+/* Level 3: SUSPICIOUS (Orange - Zalgo/Confusable) */
+.header-suspicious {
+  background-color: #FFEDD5; /* Orange-100 */
+  color: #C2410C; /* Orange-700 */
+  border-bottom-color: #FDBA74;
+}
+
+/* Level 4: CRITICAL (Red/Black - Real Danger) */
 .header-critical {
-  background-color: #111827; /* Gray-900 */
-  color: #F87171; /* Red-400 */
+  background-color: #111827; /* Gray-900 (Black box look) */
+  color: #F87171; /* Red-400 (Glowing red text) */
   border-bottom: 1px solid #EF4444;
 }
 
