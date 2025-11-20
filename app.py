@@ -4851,19 +4851,36 @@ def inspect_character(event):
 
 def analyze_signal_processor_state(data):
     """
-    Rigorous Forensic State Machine v2.0 (Context-Aware).
+    Forensic State Machine v4.0 (SOTA Risk Model).
     
-    Levels (Professional Terminology):
-    0 - BASELINE:    Standard ASCII/Latin-1 in expected context.
-    1 - NON-STD:     Valid Unicode/Emoji, Extended Latin. Harmless but noted.
-    2 - ANOMALOUS:   Invisibles, Non-Standard Spaces.
-    3 - SUSPICIOUS:  Script Mixing, Zalgo, Confusables *in wrong context*.
-    4 - CRITICAL:    Bidi, Tags, Injection, Syntax Spoofing.
+    Implements UTS #39 concepts:
+    - Security Invariants (Hard overrides for Bidi/Control)
+    - Facet-based Risk Scoring (Visibility/Structure/Identity)
+    - Context-Aware Heuristics (ASCII dominance, Script matching)
     """
     
-    # --- 1. RAW SENSORS & CONTEXT ---
+    # --- 1. THREAT DEFINITIONS (The Risk Weighting Table) ---
+    # Weights: 0=Safe, 1=Note, 2=Warn, 3=Suspicious, 4=Critical
     
-    # A. Identity & Script Context
+    RISK_WEIGHTS = {
+        # Visibility
+        "INVISIBLE": 2.0,
+        "NON_ASCII": 0.5,
+        
+        # Structure
+        "BIDI": 4.0,             # Trojan Source vector
+        "ZALGO_HEAVY": 3.0,      # Obfuscation/DoS
+        "ZALGO_LIGHT": 0.5,      # Annoyance
+        "LAYOUT_CONTROL": 1.5,   # Formatters (ZWNJ, etc.)
+        
+        # Identity
+        "CONFUSABLE_CROSS": 3.0, # Cyrillic 'a' vs Latin 'a'
+        "CONFUSABLE_SAME": 0.0,  # '1' vs 'l' (Context dependent, usually just Note)
+    }
+
+    # --- 2. RAW SENSORS & CONTEXT ---
+    
+    # Identity
     cp_hex = data.get('cp_hex_base', '').replace('U+', '')
     try:
         cp = int(cp_hex, 16)
@@ -4872,140 +4889,162 @@ def analyze_signal_processor_state(data):
     
     script = data.get('script', 'Common')
     is_common = script in ('Common', 'Inherited')
-    is_latin = script == 'Latin'
     
-    # Global Confusable Flag (Raw Data)
+    # Confusables
     raw_confusable = bool(data.get('confusable'))
-    
-    # Smart Confusable Logic:
-    # Only flag as "Risk" if it's a cross-script confusable OR widely spoofed
-    # If it's just a Latin '1' or 'l' in a Latin/Common context, it is NOT a risk.
-    # Since we don't have full neighbor script context here easily without passing more data,
-    # we apply a heuristic: 
-    # - If it is ASCII (Basic Latin), assume SAFE unless specific known bads.
-    # - Digit '1' (0x31) and 'l' (0x6C) are ASCII. They are baseline.
-    
     is_ascii = data.get('ascii', 'N/A') != 'N/A'
     
-    # Override: ASCII characters are NEVER "Identity Ambiguous" in a vacuum.
-    # They are the *reference* for ambiguity.
-    is_identity_risk = raw_confusable and not is_ascii
-
-    # B. Structure / Zalgo
+    # Heuristic: If it's ASCII, it's a "Same Script" confusable (Note).
+    # If it's Non-ASCII but Confusable, it's likely "Cross Script" (Risk).
+    is_cross_script_confusable = raw_confusable and not is_ascii
+    
+    # Structure
     stack_msg = data.get('stack_msg') or ""
     mark_count = 0
     if 'components' in data:
         for c in data['components']:
             if not c['is_base']: mark_count += 1
             
-    is_heavy_zalgo = "Heavy" in stack_msg or mark_count > 2
+    # Script-Aware Zalgo Thresholds
+    # Latin/Common: Low tolerance (2). Others: Higher (4).
+    zalgo_threshold = 2 if script in ('Latin', 'Common') else 4
+    is_heavy_zalgo = "Heavy" in stack_msg or mark_count > zalgo_threshold
     is_light_mark = mark_count > 0 and not is_heavy_zalgo
     
-    # C. Invisible / Control
+    # Controls
     is_invisible = data.get('is_invisible', False)
     bidi_val = data.get('bidi')
     is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
-
-
-    # --- 2. FACET STATE CALCULATOR ---
     
+    cat = data.get('category', 'N/A')
+    is_layout_control = cat in ('Format', 'Space Separator') and not is_bidi_control and not is_invisible and not is_ascii
+
+
+    # --- 3. FACET STATE CALCULATOR ---
+    
+    current_score = 0.0
+    reasons = []
+
     # A. VISIBILITY
     if is_invisible:
-        vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
+        if is_bidi_control:
+             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Control Char"}
+        else:
+             current_score += RISK_WEIGHTS["INVISIBLE"]
+             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
+             reasons.append("Invisible Character")
     elif not is_ascii:
-        vis = {"state": "EXTENDED", "class": "risk-pass", "icon": "eye", "detail": "Unicode Range"} # Changed from COMPLEX
+        current_score += RISK_WEIGHTS["NON_ASCII"]
+        vis = {"state": "EXTENDED", "class": "risk-pass", "icon": "eye", "detail": "Unicode Range"}
     else:
         vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
 
     # B. STRUCTURE
     if is_bidi_control:
+        current_score += RISK_WEIGHTS["BIDI"]
         struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
+        reasons.append("Directional Control")
     elif is_heavy_zalgo:
+        current_score += RISK_WEIGHTS["ZALGO_HEAVY"]
         struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
+        reasons.append("Excessive Marks")
     elif is_light_mark:
+        current_score += RISK_WEIGHTS["ZALGO_LIGHT"]
         struct = {"state": "MODIFIED", "class": "risk-pass", "icon": "cube", "detail": "Combining Marks"}
+    elif is_layout_control:
+        current_score += RISK_WEIGHTS["LAYOUT_CONTROL"]
+        struct = {"state": "LAYOUT", "class": "risk-warn", "icon": "cube", "detail": "Format Control"}
     else:
         struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
 
     # C. IDENTITY
-    if is_identity_risk:
-        ident = {"state": "AMBIGUOUS", "class": "risk-warn", "icon": "clone", "detail": "Homoglyph Risk"}
+    if is_cross_script_confusable:
+        current_score += RISK_WEIGHTS["CONFUSABLE_CROSS"]
+        ident = {"state": "AMBIGUOUS", "class": "risk-warn", "icon": "clone", "detail": "Cross-Script Risk"}
+        reasons.append("Confusable Identity")
     elif raw_confusable: 
-        # It IS confusable (like '1'), but it's ASCII/Safe. 
-        # We note it as "NOTE" but class is PASS.
-        ident = {"state": "NOTE", "class": "risk-pass", "icon": "fingerprint", "detail": "Visual Lookalikes"}
+        # ASCII Confusable (1, l, 0)
+        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
+        ident = {"state": "NOTE", "class": "risk-pass", "icon": "fingerprint", "detail": "Common Lookalike"}
     else:
         ident = {"state": "UNIQUE", "class": "risk-pass", "icon": "fingerprint", "detail": "No Lookalikes"}
 
 
-    # --- 3. VERDICT LEVEL CALCULATOR (The 0-4 Scale) ---
+    # --- 4. VERDICT LEVEL MAPPING (Bands) ---
     
-    # Start at 0 (BASELINE)
     level = 0
     label = "BASELINE"
     header_class = "header-baseline"
     icon = "shield_ok"
-    reasons = []
-    
-    # Footer Defaults
     footer_label = "ANALYSIS"
     footer_text = "Standard Composition"
     footer_class = "footer-neutral"
 
-    # Check Level 1: NON-STD (Valid but not basic ASCII)
-    # Condition: Not ASCII, or has light marks
-    if not is_ascii or is_light_mark:
+    # Level 1: NON-STD (0.5 - 1.5)
+    if 0.5 <= current_score < 1.5:
         level = 1
-        label = "NON-STD" # Professional Term for "Not Baseline"
-        header_class = "header-complex" 
+        label = "NON-STD"
+        header_class = "header-complex"
         icon = "shield_ok"
-        
         footer_label = "NOTE"
         footer_text = "Extended Unicode / Marks"
         footer_class = "footer-info"
-
-    # Check Level 2: ANOMALOUS (Invisible or Structural Oddity)
-    if is_invisible and not is_bidi_control:
+        
+    # Level 2: ANOMALOUS (1.5 - 2.9)
+    elif 1.5 <= current_score < 3.0:
         level = 2
         label = "ANOMALOUS"
         header_class = "header-anomalous"
         icon = "shield_warn"
-        reasons.append("Invisible Character")
-        
         footer_label = "DETECTED"
         footer_class = "footer-warn"
-
-    # Check Level 3: SUSPICIOUS (Real threats)
-    if is_heavy_zalgo or is_identity_risk:
+        
+    # Level 3: SUSPICIOUS (3.0 - 3.9)
+    elif 3.0 <= current_score < 4.0:
         level = 3
         label = "SUSPICIOUS"
         header_class = "header-suspicious"
         icon = "shield_warn"
-        if is_heavy_zalgo: reasons.append("Excessive Combining Marks")
-        if is_identity_risk: reasons.append("Confusable Identity")
-        
         footer_label = "DETECTED"
         footer_class = "footer-warn"
+        
+    # Level 4: CRITICAL (4.0+)
+    elif current_score >= 4.0:
+        level = 4
+        label = "CRITICAL"
+        header_class = "header-critical"
+        icon = "octagon_crit"
+        footer_label = "DETECTED"
+        footer_class = "footer-crit"
 
-    # Check Level 4: CRITICAL (System threats)
+
+    # --- 5. SECURITY INVARIANTS (Hard Overrides) ---
+    # These rules trump the score to ensure safety.
+    
+    # Invariant 1: Bidi Controls are always Critical in this context
     if is_bidi_control:
         level = 4
         label = "CRITICAL"
         header_class = "header-critical"
         icon = "octagon_crit"
-        reasons.append("Trojan Source / Bidi")
-        
-        footer_label = "DETECTED"
         footer_class = "footer-crit"
-        
+        # Ensure reason is present
+        if "Directional Control" not in reasons: reasons.insert(0, "Directional Control")
+
+    # Invariant 2: Invisible + Confusable = Suspicious (Stealth Spoof)
+    if is_invisible and is_cross_script_confusable and level < 3:
+        level = 3
+        label = "SUSPICIOUS"
+        header_class = "header-suspicious"
+        icon = "shield_warn"
+        footer_class = "footer-warn"
+
     # Finalize Footer
     if reasons:
         footer_text = ", ".join(reasons)
     elif level == 0 and raw_confusable:
-         # Special case for Digit 1: Baseline but worth noting
-         footer_label = "NOTE"
-         footer_text = "Common Confusable (Safe)"
-         footer_class = "footer-neutral"
+        footer_label = "NOTE"
+        footer_text = "Common Lookalike (Safe)"
 
     return {
         "level": level,
@@ -5013,7 +5052,11 @@ def analyze_signal_processor_state(data):
         "verdict_text": label,
         "header_class": header_class,
         "icon_key": icon,
-        "facets": [vis, struct, ident],
+        "facets": [
+            {"state": vis_state, "class": vis_class, "icon": vis_icon, "detail": vis_detail},
+            {"state": struct_state, "class": struct_class, "icon": struct_icon, "detail": struct_detail},
+            {"state": ident_state, "class": ident_class, "icon": ident_icon, "detail": ident_detail}
+        ],
         "footer_label": footer_label,
         "footer_text": footer_text,
         "footer_class": footer_class
