@@ -4921,23 +4921,28 @@ def analyze_signal_processor_state(data):
              reasons.append("Invisible Character")
     elif not is_ascii:
         current_score += RISK_WEIGHTS["NON_ASCII"]
-        vis = {"state": "EXTENDED", "class": "risk-pass", "icon": "eye", "detail": "Unicode Range"}
+        # CHANGED: risk-pass -> risk-info (Blue)
+        vis = {"state": "EXTENDED", "class": "risk-info", "icon": "eye", "detail": "Unicode Range"}
     else:
         vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
 
     # B. STRUCTURE
     if is_bidi_control:
+        # ... (Keep existing Bidi logic)
         current_score += RISK_WEIGHTS["BIDI"]
         struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
         reasons.append("Directional Control")
     elif is_heavy_zalgo:
+        # ... (Keep existing Heavy logic)
         current_score += RISK_WEIGHTS["ZALGO_HEAVY"]
         struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
         reasons.append("Excessive Marks")
     elif is_light_mark:
         current_score += RISK_WEIGHTS["ZALGO_LIGHT"]
-        struct = {"state": "MODIFIED", "class": "risk-pass", "icon": "cube", "detail": "Combining Marks"}
+        # CHANGED: risk-pass -> risk-info (Blue)
+        struct = {"state": "MODIFIED", "class": "risk-info", "icon": "cube", "detail": "Combining Marks"}
     elif is_layout_control:
+        # ...
         current_score += RISK_WEIGHTS["LAYOUT_CONTROL"]
         struct = {"state": "LAYOUT", "class": "risk-warn", "icon": "cube", "detail": "Format Control"}
     else:
@@ -5060,8 +5065,21 @@ def render_inspector_panel(data):
 
     # Zone B: The Diagnostic Matrix
     def build_row(label, f_data):
-        icon_color = "#6B7280" if f_data['class'] == "risk-pass" else "#111827" 
-        # CHANGED size from 12 to 14 for better visual weight
+        # Logic: 
+        # Pass (Green) -> Muted Gray Icon
+        # Info (Blue) -> Blue Icon
+        # Warn/Fail -> Black Icon (High Contrast)
+        
+        css = f_data['class']
+        if css == "risk-pass":
+            icon_color = "#9CA3AF" # Gray
+        elif css == "risk-info":
+            icon_color = "#0369A1" # Blue (Sky-700)
+        elif css == "risk-warn":
+             icon_color = "#B45309" # Amber
+        else:
+            icon_color = "#111827" # Black (Critical)
+
         svg = get_icon(f_data['icon'], color=icon_color, size=14)
         
         return f"""
@@ -5071,7 +5089,7 @@ def render_inspector_panel(data):
                 <span class="facet-label">{label}</span>
             </div>
             <div class="risk-cell-right">
-                <div class="risk-status {f_data['class']}">{f_data['state']}</div>
+                <div class="risk-status {css}">{f_data['state']}</div>
                 <div class="risk-detail">{f_data['detail']}</div>
             </div>
         </div>
