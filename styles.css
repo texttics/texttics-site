@@ -973,21 +973,23 @@ Stage 2: Heatmap Row Classes
   width: 100%;
   font-size: 0.75rem;
 }
-.structure-table th {
+.structure-table th, 
+.structure-table td {
   text-align: left;
-  padding: 4px 8px;
+  /* Tighter padding to fit 4 columns in 260px */
+  padding: 4px 4px; 
+  border-bottom: 1px solid var(--color-border-light);
+  white-space: nowrap;
+}
+
+/* Optional: Fix the header top position */
+.structure-table th {
   background-color: #fff;
   color: var(--color-text-muted);
   font-weight: 600;
   position: sticky;
   top: 0;
   z-index: 2;
-  border-bottom: 1px solid var(--color-border-light);
-}
-.structure-table td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--color-border-light);
-  white-space: nowrap;
 }
 
 /* --- Col 7: Bytes (Restored Gray) --- */
