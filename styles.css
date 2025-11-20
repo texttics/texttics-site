@@ -761,8 +761,14 @@ Stage 2: Heatmap Row Classes
 /* --- Inspector Layout v7: The Perfect Hybrid --- */
 
 #inspector-panel-content {
-  /* 1. Constrain the outer box */
-  height: 275px !important; 
+  /* Fixed vertical height, but allow horizontal scrolling */
+  height: 275px !important;
+  
+  /* CRITICAL: This allows the panel to scroll sideways on small screens
+     instead of crushing the columns. */
+  overflow-x: auto; 
+  overflow-y: hidden;
+  
   padding: 0;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
@@ -773,8 +779,16 @@ Stage 2: Heatmap Row Classes
 
 .inspector-layout-v3 {
   display: grid;
-  /* Columns: Prev | Target | Next | RISK | Identity | Structure | Bytes */
-  grid-template-columns: 50px 180px 50px 125px 1fr 260px 140px;
+  /* Define robust widths. 
+     Note the 'minmax(200px, 1fr)' for Identity - it ensures it never collapses. */
+  grid-template-columns: 50px 180px 50px 110px minmax(200px, 1fr) 280px 150px;
+  
+  /* FORCE the grid to be at least this wide. 
+     This pushes the scrollbar onto the parent if the screen is narrower. */
+  min-width: 1020px;
+  
+  /* Row constraint from before */
+  grid-template-rows: minmax(0, 1fr);
   
   height: 100%;
   width: 100%;
@@ -965,6 +979,13 @@ Stage 2: Heatmap Row Classes
   flex-direction: column;
   gap: 8px;
   font-size: 0.75rem;
+  font-family: var(--font-mono);
+  
+  /* Stop text from wrapping awkwardly */
+  white-space: nowrap; 
+  /* If it really overflows horizontally inside the column, handle it gracefully */
+  overflow-x: hidden; 
+  text-overflow: ellipsis; 
 }
   
   /* Force the outer container to remain rigid */
