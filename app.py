@@ -4851,13 +4851,12 @@ def inspect_character(event):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v7.0: The Signal Processor.
-    Risk column is now a fixed-geometry diagnostic instrument.
+    Forensic Layout v7.1: The Signal Processor (Hierarchical).
+    Updates: Split headers (Level/Verdict) and stacked footer (Label/Content).
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
 
-    # Check for initial state or error
     if data is None:
         panel.innerHTML = "<div style='padding:2rem; color:#9ca3af; text-align:center; font-style:italic;'>Select a particle to initialize diagnostics.</div>"
         return
@@ -4868,54 +4867,67 @@ def render_inspector_panel(data):
 
     # --- DIAGNOSTIC LOGIC ENGINE ---
     
-    # Check if this data key exists, otherwise default to False/None
     is_confusable = bool(data.get('confusable'))
     is_invisible = data.get('is_invisible', False)
     is_zalgo = "Heavy" in (data.get('stack_msg') or "")
     is_bidi_control = data.get('bidi') in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
     
-    # Visibility Facet
+    # Facet States
     vis_risk = is_invisible
     vis_state = "HIDDEN" if vis_risk else "PASS"
     vis_icon = "eye_off" if vis_risk else "eye"
     vis_class = "risk-fail" if vis_risk else "risk-pass"
 
-    # Structure Facet (Zalgo or Bidi Structural Control)
     struct_risk = is_zalgo or is_bidi_control
     struct_state = "FRACTURED" if struct_risk else "STABLE"
     struct_icon = "layers" if struct_risk else "cube"
     struct_class = "risk-fail" if struct_risk else "risk-pass"
 
-    # Identity Facet (Homoglyph/Spoofing)
     ident_risk = is_confusable
     ident_state = "AMBIGUOUS" if ident_risk else "UNIQUE"
     ident_icon = "clone" if ident_risk else "fingerprint"
     ident_class = "risk-fail" if ident_risk else "risk-pass"
 
-    # 2. Determine Verdict Level (0-3)
-    # Default: Level 0 (Baseline)
+    # --- 2. Determine Verdict Level (Split Variables) ---
+    
+    # Default: Level 0
     level = 0
-    verdict_label = "LEVEL 0 · CLEAN"
+    level_text = "LEVEL 0"
+    verdict_text = "CLEAN"
     verdict_icon = "shield_ok"
     header_class = "header-baseline"
 
-    # Level 2: Suspicious (Invisible or Confusable)
+    # Level 2: Suspicious
     if vis_risk or ident_risk:
         level = 2
-        verdict_label = "LEVEL 2 · SUSPICIOUS"
+        level_text = "LEVEL 2"
+        verdict_text = "SUSPICIOUS"
         verdict_icon = "shield_warn"
         header_class = "header-suspicious"
     
-    # Level 3: Critical (Structural break, i.e., Bidi control)
-    if is_bidi_control: # Bidi is the most critical local flag
+    # Level 3: Critical
+    if is_bidi_control:
         level = 3
-        verdict_label = "LEVEL 3 · CRITICAL"
+        level_text = "LEVEL 3"
+        verdict_text = "CRITICAL"
         verdict_icon = "octagon_crit"
         header_class = "header-critical"
 
     # --- HTML GENERATION ---
 
-    # Helper function for HTML rows
+    # Zone A: The Verdict Header (Split Row)
+    icon_svg = get_icon(verdict_icon, color="currentColor", size=14)
+    risk_header_html = f"""
+        <div class="risk-header {header_class}">
+            <div class="risk-header-top">
+                <span class="risk-header-icon">{icon_svg}</span>
+                <span class="risk-level-text">{level_text}</span>
+            </div>
+            <div class="risk-verdict-text">{verdict_text}</div>
+        </div>
+    """
+
+    # Zone B: The Diagnostic Matrix
     def build_row(label, icon_key, value, css_class):
         icon_color = "#6B7280" if css_class == "risk-pass" else "#111827" 
         svg = get_icon(icon_key, color=icon_color, size=12)
@@ -4929,18 +4941,6 @@ def render_inspector_panel(data):
         </div>
         """
 
-    # --- ASSEMBLE ZONES A, B, C INDIVIDUALLY ---
-
-    # Zone A: The Verdict Header (risk_header_html)
-    icon_svg = get_icon(verdict_icon, color="currentColor", size=14)
-    risk_header_html = f"""
-        <div class="risk-header {header_class}">
-            <span class="risk-header-icon">{icon_svg}</span>
-            <span class="risk-header-text">{verdict_label}</span>
-        </div>
-    """
-
-    # Zone B: The Diagnostic Matrix (matrix_html)
     matrix_html = f"""
         <div class="risk-matrix">
             {build_row("VISIBILITY", vis_icon, vis_state, vis_class)}
@@ -4949,7 +4949,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # Zone C: The Footer (Evidence) (footer_html)
+    # Zone C: The Footer (Stacked & Black)
     footer_html = ""
     if level > 0:
         reason = []
@@ -4959,14 +4959,17 @@ def render_inspector_panel(data):
         if is_zalgo: reason.append("High Density")
         
         footer_text = ", ".join(reason)
-        footer_html = f'<div class="risk-footer">DETECTED: {footer_text}</div>'
+        # Split structure: Label on top, Content on bottom
+        footer_html = f"""
+        <div class="risk-footer">
+            <div class="risk-footer-label">DETECTED</div>
+            <div class="risk-footer-content">{footer_text}</div>
+        </div>
+        """
     
-    # --- ASSEMBLE SIGNAL PROCESSOR BLOCK CONTENT (The FIX) ---
-    # Concatenate the three strings before placing them in the final HTML template.
     signal_processor_content = risk_header_html + matrix_html + footer_html
 
-
-    # --- OTHER VISUAL COMPONENTS (No changes) ---
+    # --- (Rest of the function remains identical) ---
     identity_html = f"""
         <div class="inspector-header">{data['name_base']}</div>
         <div class="inspector-grid-compact">
@@ -4987,7 +4990,6 @@ def render_inspector_panel(data):
         ccc_val = c.get('ccc', 0)
         ccc_display = f'<span style="color:#9ca3af;">0</span>' if ccc_val == 0 else f'<b>{ccc_val}</b>'
         is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
-        
         comp_rows += f"""
         <tr {is_mark_style}>
             <td><code class="mini-code">{c['hex']}</code></td>
@@ -5003,32 +5005,26 @@ def render_inspector_panel(data):
 
     html = f"""
     <div class="inspector-layout-v3">
-        
         <div class="col-context col-prev">
             <div class="ctx-label">PREV</div>
             <div class="ctx-glyph">{prev_vis}</div>
         </div>
-
         <div class="col-target">
             <div class="glyph-viewport">
                 <div class="inspector-glyph">{curr_vis}</div>
             </div>
             <div class="inspector-codepoint">{data['cp_hex_base']}</div>
         </div>
-
         <div class="col-context col-next">
             <div class="ctx-label">NEXT</div>
             <div class="ctx-glyph">{next_vis}</div>
         </div>
-        
         <div class="col-signal-processor">
             {signal_processor_content}
         </div>
-        
         <div class="col-identity">
             {identity_html}
         </div>
-
         <div class="col-structure">
             <div class="section-label">
                 CLUSTER COMPONENTS
@@ -5050,15 +5046,12 @@ def render_inspector_panel(data):
                 </table>
             </div>
         </div>
-        
         <div class="col-bytes">
             <div class="section-label">FORENSIC ENCODINGS</div>
             <div class="byte-grid">
-                
                 <div class="byte-row"><span class="label">UTF-8:</span>{data['utf8']}</div>
                 <div class="byte-row"><span class="label">UTF-16:</span>{data['utf16']}</div>
                 <div class="byte-row"><span class="label">UTF-32:</span>{data['utf32']}</div>
-                
                 <div class="byte-row">
                     <span class="label">ASCII:</span>
                     <span style="color:{'#dc2626' if data['ascii'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['ascii']}</span>
@@ -5071,14 +5064,11 @@ def render_inspector_panel(data):
                     <span class="label">Win-1252:</span>
                     <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
                 </div>
-
                 <div class="byte-row"><span class="label">URL:</span>{data['url']}</div>
                 <div class="byte-row"><span class="label">HTML:</span>{_escape_html(data['html'])}</div>
                 <div class="byte-row"><span class="label">Code:</span>{_escape_html(data['code'])}</div>
-
             </div>
         </div>
-
     </div>
     """
     panel.innerHTML = html
