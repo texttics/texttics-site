@@ -1030,15 +1030,21 @@ Stage 2: Heatmap Row Classes
   opacity: 0.7;
 }
 
+/* Right Side: Value */
 .risk-value {
   font-weight: 700;
 }
 .risk-pass {
-  color: #9CA3AF; 
+  color: #9CA3AF; /* Slate-400 (Muted) */
+}
+/* Add an intermediate warning color for Level 1/2? */
+.risk-warn {
+  color: #B45309; /* Amber-700 (Visible but not black) */
 }
 .risk-fail {
-  color: #111827; 
+  color: #111827; /* Gray-900 (High Contrast) */
 }
+
 /* Line 2: Detail (The "Why") */
 .risk-detail {
     font-family: var(--font-sans); /* Use Sans for readability */
