@@ -1982,7 +1982,9 @@ async def load_unicode_data():
             "emoji-sequences.txt",
             "emoji-zwj-sequences.txt",
             "emoji-data.txt",
-            "emoji-test.txt"
+            "emoji-test.txt",
+            "inverse_confusables.json",
+            "ascii_confusables.json"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -2002,6 +2004,19 @@ async def load_unicode_data():
         if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
         if intentional_txt: _parse_intentional(intentional_txt)
         if confusables_txt: _parse_confusables(confusables_txt)
+
+        # --- Load Forensic JSONs ---
+        if inverse_json:
+            DATA_STORES["InverseConfusables"] = json.loads(inverse_json)
+            print(f"Loaded Inverse Confusables map.")
+
+        if ascii_json:
+            # Update the global ASCII_CONFUSABLES set with rigorous data
+            # We assume ascii_json is a list of integers
+            loaded_ascii = set(json.loads(ascii_json))
+            global ASCII_CONFUSABLES
+            ASCII_CONFUSABLES = loaded_ascii
+            print(f"Loaded {len(ASCII_CONFUSABLES)} high-risk ASCII homoglyphs.")
         
         # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
         std_base_set = set()
@@ -4949,15 +4964,41 @@ def analyze_signal_processor_state(data):
         struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
 
     # C. IDENTITY
+    ident_state = "UNIQUE"
+    ident_class = "risk-pass"
+    ident_icon = "fingerprint"
+    ident_detail = "No Lookalikes"
+
+    # Check specific lookalike count from our new JSON
+    # We map cp (int) to string key for JSON lookup (e.g. "65" for 'A')
+    lookalikes = DATA_STORES.get("InverseConfusables", {}).get(str(cp), [])
+    lookalike_count = len(lookalikes)
+
     if is_cross_script_confusable:
         current_score += RISK_WEIGHTS["CONFUSABLE_CROSS"]
-        ident = {"state": "AMBIGUOUS", "class": "risk-warn", "icon": "clone", "detail": "Cross-Script Risk"}
+        ident_state = "AMBIGUOUS"
+        ident_class = "risk-warn"
+        ident_icon = "clone"
+        # Show precise count if available
+        detail_text = f"{lookalike_count} Lookalikes" if lookalike_count > 0 else "Cross-Script Risk"
+        ident_detail = detail_text
         reasons.append("Confusable Identity")
-    elif raw_confusable: 
-        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
-        ident = {"state": "NOTE", "class": "risk-pass", "icon": "fingerprint", "detail": "Common Lookalike"}
-    else:
-        ident = {"state": "UNIQUE", "class": "risk-pass", "icon": "fingerprint", "detail": "No Lookalikes"}
+        
+    elif is_ascii_confusable: 
+        # ASCII Lookalikes (1, l, I, 0, O)
+        # No score added (Safe Baseline), but Visual Flag (Blue)
+        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"] # 0.0
+        ident_state = "NOTE"
+        ident_class = "risk-info"
+        ident_icon = "fingerprint"
+        ident_detail = f"{lookalike_count} Lookalikes"
+        
+    elif lookalike_count > 0:
+        # It has lookalikes but wasn't flagged as critical/ascii
+        # Treat as a mild note
+        ident_state = "NOTE"
+        ident_class = "risk-pass" # Keep gray
+        ident_detail = f"{lookalike_count} Lookalikes"
 
 
     # --- 4. VERDICT LEVEL MAPPING ---
