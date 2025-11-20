@@ -1040,12 +1040,17 @@ Stage 2: Heatmap Row Classes
   height: 14px;
 }
 
-/* Right Side: Content Container */
+/* Right Side: Content Container (Fluid) */
 .risk-cell-right {
     text-align: right;
     display: flex;
     flex-direction: column;
-    gap: 1px; /* Tight spacing between Status and Detail */
+    gap: 1px;
+    
+    /* FLUID MECHANICS */
+    flex: 1;             /* Grow to fill all empty space in the row */
+    min-width: 0;        /* Critical: Allows flex child to shrink below content size */
+    margin-left: 8px;    /* Ensure gap between Left Label and Right Text */
 }
 
 /* Line 1: Status (PASS / EXTENDED / HIDDEN) */
@@ -1067,21 +1072,18 @@ Stage 2: Heatmap Row Classes
 
 /* Line 2: Detail (The "Why") */
 .risk-detail {
-    font-family: var(--font-sans); /* Sans-serif for natural reading */
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-family: var(--font-sans);
+    font-size: 0.65rem;
+    font-weight: 500;
     color: #9CA3AF; /* Muted Gray */
     
-    /* Prevent text wrapping from breaking layout */
-    white-space: nowrap; 
-   /* Alignment Logic:
-       Anchored right by parent (.risk-cell-right).
-       Expands leftwards freely until it hits the max-width. */
+    /* SINGLE LINE FLUIDITY */
+    white-space: nowrap;     /* No wrapping */
+    overflow: hidden;        /* Clip content that doesn't fit */
+    text-overflow: ellipsis; /* Add "..." at the end if cut off */
     
-    max-width: 115px;        /* Increased to fill gap to left label */
-    overflow: hidden;        /* Safety: Ellipsis if it hits the label */
-    text-overflow: ellipsis; 
-    
+    /* Fill the fluid parent */
+    width: 100%;
     line-height: 1.2;
     margin-top: 1px;
 }
