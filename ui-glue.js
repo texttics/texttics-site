@@ -512,18 +512,27 @@ window.TEXTTICS_HIGHLIGHT_CODEPOINT = (codePointIndex) => {
   }
 };
 
-// Add this helper function
+/**
+ * FORENSIC CENTER: Forces the scroll viewport to center the glyph.
+ * Call this immediately after rendering the inspector HTML.
+ */
 window.TEXTTICS_CENTER_GLYPH = () => {
-  const viewport = document.querySelector('.glyph-viewport');
-  const glyph = document.querySelector('.inspector-glyph');
-  
-  if (viewport && glyph) {
-    // Scroll to vertical center
-    const top = (glyph.offsetHeight - viewport.offsetHeight) / 2;
-    viewport.scrollTop = top;
+  requestAnimationFrame(() => {
+    const viewport = document.querySelector('.glyph-viewport');
+    const glyph = document.querySelector('.inspector-glyph');
     
-    // Scroll to horizontal center (if needed)
-    const left = (glyph.offsetWidth - viewport.offsetWidth) / 2;
-    viewport.scrollLeft = left;
-  }
+    if (viewport && glyph) {
+      // Calculate the center position
+      // (Glyph Height - Viewport Height) / 2 = Top offset needed
+      const scrollTop = (glyph.scrollHeight - viewport.clientHeight) / 2;
+      const scrollLeft = (glyph.scrollWidth - viewport.clientWidth) / 2;
+      
+      // Apply instantly
+      if (scrollTop > 0) viewport.scrollTop = scrollTop;
+      if (scrollLeft > 0) viewport.scrollLeft = scrollLeft;
+      
+      // Optional: Log for debugging
+      // console.log(`Centered Glyph: Top=${scrollTop}, Left=${scrollLeft}`);
+    }
+  });
 };
