@@ -791,7 +791,6 @@ Stage 2: Heatmap Row Classes
   justify-content: center;
   border-right: 1px solid var(--color-border-light);
   color: var(--color-text-muted);
-  overflow: hidden;
 }
 .col-prev { border-right: 1px dashed var(--color-border-light); }
 .col-next { border-left: 1px dashed var(--color-border-light); }
@@ -817,7 +816,6 @@ Stage 2: Heatmap Row Classes
   /* Anchor for absolute children */
   position: relative; 
   height: 100%;
-  overflow: hidden; /* Clip anything outside the cell */
 }
 
 /* The Scrollable Window (Pinned to edges) */
@@ -910,7 +908,6 @@ Stage 2: Heatmap Row Classes
   border-bottom: 2px solid var(--color-border-light);
   padding-bottom: 0.25rem;
   white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -920,7 +917,6 @@ Stage 2: Heatmap Row Classes
   background-color: #fff;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 .section-label {
   font-size: 0.65rem;
@@ -937,7 +933,6 @@ Stage 2: Heatmap Row Classes
 }
 .structure-table {
   width: 100%;
-  border-collapse: collapse;
   font-size: 0.75rem;
 }
 .structure-table th {
