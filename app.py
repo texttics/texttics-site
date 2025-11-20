@@ -4939,46 +4939,26 @@ def render_inspector_panel(data):
             <div class="section-label">FORENSIC ENCODINGS</div>
             <div class="byte-grid">
                 
-                <div><span class="label">UTF-8:</span><br>{data['utf8']}</div>
+                <div class="byte-row"><span class="label">UTF-8:</span>{data['utf8']}</div>
+                <div class="byte-row"><span class="label">UTF-16:</span>{data['utf16']}</div>
+                <div class="byte-row"><span class="label">UTF-32:</span>{data['utf32']}</div>
                 
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">UTF-16 (BE):</span><br>{data['utf16']}
-                </div>
-                
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">UTF-32 (Scalar):</span><br>
-                    <span style="font-family:var(--font-mono); letter-spacing:1px;">{data['utf32']}</span>
-                </div>
-                
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">ASCII (7-bit):</span><br>
+                <div class="byte-row">
+                    <span class="label">ASCII:</span>
                     <span style="color:{'#dc2626' if data['ascii'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['ascii']}</span>
                 </div>
-                
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">Latin-1 (ISO):</span><br>
+                <div class="byte-row">
+                    <span class="label">Latin-1:</span>
                     <span style="color:{'#dc2626' if data['latin1'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['latin1']}</span>
                 </div>
-                
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">Win-1252:</span><br>
+                <div class="byte-row">
+                    <span class="label">Win-1252:</span>
                     <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
                 </div>
 
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">URL Encoded:</span><br>
-                    <span style="font-size:0.65rem; word-break:break-all;">{data['url']}</span>
-                </div>
-                
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">HTML Entity:</span><br>
-                    <span style="font-size:0.65rem; word-break:break-all;">{_escape_html(data['html'])}</span>
-                </div>
-                
-                <div style="margin-top:4px; padding-top:4px; border-top:1px dashed #e2e8f0;">
-                    <span class="label">Code (Python/JS):</span><br>
-                    <span style="font-size:0.65rem; word-break:break-all; font-family:var(--font-mono);">{_escape_html(data['code'])}</span>
-                </div>
+                <div class="byte-row"><span class="label">URL:</span>{data['url']}</div>
+                <div class="byte-row"><span class="label">HTML:</span>{_escape_html(data['html'])}</div>
+                <div class="byte-row"><span class="label">Code:</span>{_escape_html(data['code'])}</div>
 
             </div>
         </div>
