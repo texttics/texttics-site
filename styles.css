@@ -1030,19 +1030,31 @@ Stage 2: Heatmap Row Classes
   opacity: 0.7;
 }
 
-/* Right Side: Value */
+/* Matrix Value Colors */
 .risk-value {
   font-weight: 700;
 }
 .risk-pass {
   color: #9CA3AF; /* Slate-400 (Muted) */
 }
-/* Add an intermediate warning color for Level 1/2? */
 .risk-warn {
-  color: #B45309; /* Amber-700 (Visible but not black) */
+  color: #B45309; /* Amber-700 (Warning) */
 }
 .risk-fail {
-  color: #111827; /* Gray-900 (High Contrast) */
+  color: #111827; /* Gray-900 (Critical/Black) */
+}
+
+/* Icon Opacity Control */
+.risk-pass ~ .facet-icon svg,
+.risk-pass .facet-icon svg {
+    opacity: 0.4; /* Fade out icons for safe states */
+}
+.risk-warn ~ .facet-icon svg,
+.risk-fail ~ .facet-icon svg,
+.risk-warn .facet-icon svg,
+.risk-fail .facet-icon svg {
+    opacity: 1.0; /* Full visibility for risks */
+    color: #000; /* Ensure icon is black for risks */
 }
 
 /* Line 2: Detail (The "Why") */
