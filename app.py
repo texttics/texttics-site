@@ -5067,8 +5067,8 @@ def analyze_signal_processor_state(data):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v10.0: Synchronized Visuals.
-    Updates: Icons now synchronize their color with the global Verdict Level.
+    Forensic Layout v10.0: Synchronized Visuals & Fluid Matrix.
+    Fixes 'vis_state' error by correctly using unpacked data dictionaries.
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -5084,19 +5084,19 @@ def render_inspector_panel(data):
     # --- CALL THE LOGIC ENGINE ---
     state = analyze_signal_processor_state(data)
     
-    # --- UNPACK FACETS ---
+    # --- UNPACK FACETS (The Data Dictionaries) ---
     vis_data = state['facets'][0]
     struct_data = state['facets'][1]
     ident_data = state['facets'][2]
 
-    # --- ICON COLOR SYNCHRONIZATION ENGINE ---
-    # Determine the master color based on the Header Class
+    # --- ICON COLOR SYNCHRONIZATION ---
+    # Determine master color based on Header Class
     header_cls = state['header_class']
     
     if header_cls == "header-baseline":
-        global_icon_color = "#15803D" # Green-700 (Matches Baseline Text)
+        global_icon_color = "#15803D" # Green-700
     elif header_cls == "header-complex":
-        global_icon_color = "#0369A1" # Sky-700 (Matches Non-Std Text)
+        global_icon_color = "#0369A1" # Sky-700
     elif header_cls == "header-anomalous":
         global_icon_color = "#A16207" # Yellow-700
     elif header_cls == "header-suspicious":
@@ -5104,13 +5104,11 @@ def render_inspector_panel(data):
     elif header_cls == "header-critical":
         global_icon_color = "#DC2626" # Red-600
     else:
-        global_icon_color = "#6B7280" # Fallback Slate
+        global_icon_color = "#6B7280" # Slate-500
 
-    
     # --- HTML GENERATION ---
 
     # Zone A: The Verdict Header
-    # Header Icon uses current text color (via CSS currentColor)
     icon_svg = get_icon(state['icon_key'], color="currentColor", size=14)
     risk_header_html = f"""
         <div class="risk-header {state['header_class']}">
@@ -5123,8 +5121,8 @@ def render_inspector_panel(data):
     """
 
     # Zone B: The Diagnostic Matrix
+    # Uses 'f_data' dicts (vis_data, etc) instead of raw variables
     def build_row(label, f_data, master_color):
-        # Use Master Color for ALL icons to ensure synchronization
         svg = get_icon(f_data['icon'], color=master_color, size=14)
         
         return f"""
@@ -5150,7 +5148,6 @@ def render_inspector_panel(data):
 
     # Zone C: The Footer
     footer_html = ""
-    # Only show footer if Level >= 1 (Now including Non-Std per logic update)
     if state['level'] >= 1 and state['footer_text']:
         footer_html = f"""
         <div class="risk-footer">
@@ -5159,7 +5156,6 @@ def render_inspector_panel(data):
         </div>
         """
     elif state['level'] == 0:
-        # Default footer for Baseline
         footer_html = f"""
         <div class="risk-footer">
             <div class="risk-footer-label footer-neutral">ANALYSIS</div>
@@ -5170,7 +5166,7 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- IDENTITY COLUMN ---
+    # --- COL 5: IDENTITY ---
     identity_html = f"""
         <div class="inspector-header">{data['name_base']}</div>
         <div class="inspector-grid-compact">
@@ -5186,7 +5182,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # --- COMPONENTS TABLE ---
+    # --- COL 6: COMPONENTS TABLE ---
     comp_rows = ""
     for c in data['components']:
         ccc_val = c.get('ccc', 0)
@@ -5202,7 +5198,7 @@ def render_inspector_panel(data):
         </tr>
         """
 
-    # --- FINAL HTML ---
+    # --- FINAL HTML ASSEMBLY ---
     prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
     curr_vis = _escape_html(data['cluster_glyph'])
     next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
