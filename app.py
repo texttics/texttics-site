@@ -4910,7 +4910,12 @@ def render_inspector_panel(data):
     panel.innerHTML = html
 
     # Trigger the centering scroll
-    window.TEXTTICS_CENTER_GLYPH()
+    # --- TRIGGER CENTERING ---
+    # Force JS to scroll the viewport to the middle of the massive padding box
+    try:
+        window.TEXTTICS_CENTER_GLYPH()
+    except Exception:
+        pass # Fail silent if JS not ready
 
 def compute_threat_score(inputs):
     """
