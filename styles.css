@@ -889,7 +889,7 @@ Stage 2: Heatmap Row Classes
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-primary);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   
   /* Make sure the label sits ON TOP of the scrolling text */
   /* High contrast & Shadow so it pops over the text/scrollbar */
@@ -897,7 +897,7 @@ Stage 2: Heatmap Row Classes
   box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* Add shadow for separation */
   
   border: 1px solid var(--color-border-light);
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 12px; /* Pill shape */
   z-index: 20;
 }
@@ -962,6 +962,7 @@ Stage 2: Heatmap Row Classes
   padding: 6px 10px;
   background-color: #f1f5f9;
   border-bottom: 1px solid var(--color-border-light);
+  text-align: center;
 }
 .structure-table-wrapper {
   flex-grow: 1;
@@ -991,7 +992,7 @@ Stage 2: Heatmap Row Classes
 
 /* --- Col 7: Bytes (Restored Gray) --- */
 .col-bytes {
-  background-color: #f8fafc; /* Gray Restored */
+  color: var(--color-text-muted); /* Changed from #f8fafc */
   display: flex;
   flex-direction: column;
   overflow-y: auto;
