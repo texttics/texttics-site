@@ -5230,8 +5230,8 @@ def render_inspector_panel(data):
         <div class="col-structure">
             <div class="section-label">
                 CLUSTER COMPONENTS
-                <span style="display:block; font-weight:400; opacity:0.7; font-size:0.6rem; margin-top:2px;">
-                    ({len(data['components'])} PARTICLES)
+                <span style="display:block; font-weight:600; opacity:0.99; font-size:0.7rem; margin-top:2px;">
+                    ({len(data['components'])} PARTICLE{'S' if len(data['components']) != 1 else ''})
                 </span>
             </div>
             <div class="structure-table-wrapper">
