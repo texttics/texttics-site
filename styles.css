@@ -882,21 +882,21 @@ Stage 2: Heatmap Row Classes
 .inspector-codepoint {
   position: absolute;
   /* FIX: Lift it up so it floats above the scrollbar track */
-  bottom: 25px;
-  left: 55%;
+  bottom: 30px;
+  left: 45%;
   transform: translateX(-50%);
   
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--color-primary);
-  font-size: 0.9rem;
+  font-size: 1rem;
   
   /* Make sure the label sits ON TOP of the scrolling text */
   /* High contrast & Shadow so it pops over the text/scrollbar */
   background-color: rgba(255, 255, 255, 0.95);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* Add shadow for separation */
   
-  border: 1px solid var(--color-border-light);
+  border: 2px solid var(--color-border-light);
   padding: 3px 10px;
   border-radius: 12px; /* Pill shape */
   z-index: 20;
