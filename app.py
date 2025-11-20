@@ -4839,23 +4839,6 @@ def inspect_character(event):
         components = []
         zalgo_score = 0
         for ch in target_cluster:
-            # ... (Existing component loop logic) ...
-            cat = unicodedata.category(ch)
-            name = unicodedata.name(ch, "Unknown")
-            ccc = unicodedata.combining(ch)
-            is_mark = cat.startswith('M')
-            if is_mark: zalgo_score += 1
-            components.append({
-                'hex': f"U+{ord(ch):04X}", 
-                'name': name, 
-                'cat': cat, 
-                'ccc': ccc,
-                'is_base': not is_mark
-            })
-        
-        components = []
-        zalgo_score = 0
-        for ch in target_cluster:
             cat = unicodedata.category(ch)
             name = unicodedata.name(ch, "Unknown")
             
@@ -4873,21 +4856,45 @@ def inspect_character(event):
                 'is_base': not is_mark
             })
             
+        # --- 3. Forensic 9: Encoding Calculations (RESTORED) ---
+        # We must calculate these BEFORE building the data dict
+        
+        # A. System Layer
+        utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
+        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
+        utf32_hex = f"{cp_base:08X}"
+        
+        # B. Legacy Layer (Fail-Safe)
+        def try_enc(enc_name):
+            try:
+                return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
+            except UnicodeEncodeError:
+                return "N/A"
+
+        ascii_val = try_enc("ascii")
+        latin1_val = try_enc("latin-1")
+        cp1252_val = try_enc("cp1252")
+        
+        # C. Injection Layer
+        url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
+        
+        if target_cluster.isalnum():
+            html_enc = target_cluster
+        else:
+            html_enc = "".join(f"&#x{ord(c):X};" for c in target_cluster)
+            
+        code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
+
         # --- 4. Construct Data Payload (Enriched for HUD v2) ---
         
         # A. Context & Classification
-        cat_short = unicodedata.category(base_char)
-        id_status = _find_in_ranges(cp_base, "IdentifierStatus")
-        if not id_status:
-             id_status = "Restricted" if cat_short not in ("Cn", "Co", "Cs") else "N/A"
-        
         mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
         macro_type = _classify_macro_type(cp_base, cat_short, id_status, mask)
         ghosts = _get_ghost_chain(base_char)
-        
-        # B. Standard Props
-        bidi_short = unicodedata.bidirectional(base_char)
-        gb_prop = _find_in_ranges(cp_base, "GraphemeBreak") or "Other"
+
+        confusables_map = DATA_STORES.get("Confusables", {})
+        skeleton = confusables_map.get(cp_base)
+        confusable_msg = f"Base maps to: '{skeleton}'" if skeleton else None
         
         stack_msg = None
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
@@ -4911,18 +4918,23 @@ def inspect_character(event):
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
             "script_ext": _find_in_ranges(cp_base, "ScriptExtensions"),
-            "category_full": ALIASES.get(cat_short, "N/A"),
-            "category_short": cat_short,
+            
+            "category": ALIASES.get(cat_short, "N/A"), # Legacy Key
+            "category_full": ALIASES.get(cat_short, "N/A"), # HUD Key
+            "category_short": cat_short,                    # HUD Key (e.g. "Nd")
+            
             "bidi": bidi_short,
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
             "grapheme_break": gb_prop,
 
-            # --- Legacy / Forensic 9 ---
+            # --- Forensic 9 Payload ---
             "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
             "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
             "url": url_enc, "html": html_enc, "code": code_enc,
+            
+            # --- Risk Signals ---
             "confusable": confusable_msg,
             "is_invisible": bool(mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
