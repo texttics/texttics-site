@@ -4658,48 +4658,93 @@ def render_toc_counts(counts):
     document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
 
 
-# --- INSPECTOR HELPERS ---
+# --- INSPECTOR HELPERS (FORENSIC V3) ---
+
+def _get_single_char_skeleton(s: str) -> str:
+    """
+    Generates the UTS #39 skeleton for a single character context.
+    Reuses the global Confusables map to ensure consistency with Threat Engine.
+    """
+    confusables_map = DATA_STORES.get("Confusables", {})
+    res = []
+    for char in s:
+        cp = ord(char)
+        # Direct mapping, matching _generate_uts39_skeleton logic
+        mapped = confusables_map.get(cp, char)
+        res.append(mapped)
+    return "".join(res)
 
 def _classify_macro_type(cp, cat, id_status, mask):
     """
     Determines the 'Macro-Type' for the Forensic HUD.
-    Returns: 'STANDARD', 'COMPLEX', 'THREAT', or 'LEGACY'
+    Refined V3 Logic: strict separation of Rot, Syntax, and Threat.
     """
-    # 1. THREAT: Restricted, Invisible, or Bidi Control
-    if id_status != "Allowed" and id_status != "N/A": return "THREAT"
-    if mask & (INVIS_BIDI_CONTROL | INVIS_HIGH_RISK_MASK): return "THREAT"
+    is_ascii = (cp <= 0x7F)
+
+    # 0. DATA ROT (Corruption / Integrity Failures)
+    # Cn (Unassigned), Cs (Surrogate), Co (Private Use)
+    if cat in ('Cn', 'Cs', 'Co'): 
+        return "ROT"
+
+    # 1. TRUE THREATS (Active Attack Vectors)
+    # Must mask specifically to Bidi, High-Risk Invisibles, or Tags
+    if mask & (INVIS_BIDI_CONTROL | INVIS_HIGH_RISK_MASK): 
+        return "THREAT"
+
+    # 2. FORMAT / CONTROL (Context-Dependent)
+    # Cf (Format) that isn't high-risk. E.g. ZWNJ in Persian is fine.
+    if cat == 'Cf': 
+        return "COMPLEX"
+
+    # 3. COMPLEX (Rich Text)
+    # Combining Marks (Mn, Mc, Me)
+    if cat.startswith('M'): 
+        return "COMPLEX"
     
-    # 2. COMPLEX: Marks, Emoji, Format
-    if cat.startswith('M') or cat == 'Cf': return "COMPLEX"
-    # (Note: Emoji check passed in from main logic is better, but this is a good proxy)
-    
-    # 3. STANDARD: ASCII Letters/Digits
-    if cp < 128 and cat in ('Ll', 'Lu', 'Nd'): return "STANDARD"
-    
-    # 4. LEGACY/RARE: Everything else (Symbols, Extended Latin, etc.)
+    # 4. WHITESPACE (Structural)
+    if cat.startswith('Z'):
+        return "SYNTAX"
+
+    # 5. STANDARD (Safe Atoms)
+    # ASCII Letters/Digits.
+    if is_ascii and cat in ('Ll', 'Lu', 'Nd'): 
+        return "STANDARD"
+
+    # 6. SYNTAX (Technical/Punctuation)
+    # ASCII Punctuation/Symbols.
+    if is_ascii and cat.startswith(('P', 'S')):
+        return "SYNTAX"
+
+    # 7. LEGACY / EXTENDED (Everything Else)
+    # Extended Latin, Emoji, Symbols, non-ASCII punctuation.
     return "LEGACY"
 
-def _get_ghost_chain(char):
-    """Returns the Quad-State Ghost Chain if normalization occurs."""
-    nfkc = normalize_extended(char)
+def _get_ghost_chain(char: str):
+    """
+    Returns the Quad-State Ghost Chain if meaningful normalization occurs.
+    Filters out simple ASCII case changes to reduce noise.
+    """
+    raw = char
+    nfkc = normalize_extended(raw)
     casefold = nfkc.casefold()
     
-    # Compute Skeleton (reuse existing logic or simple map lookup)
-    # We use the map directly for speed here
-    confusables_map = DATA_STORES.get("Confusables", {})
-    # For the skeleton, we map the *casefolded* char if possible, or raw
-    # The official alg is recursive, but for single char display:
-    skel_source = ord(casefold[0]) if casefold else ord(char)
-    skeleton = confusables_map.get(skel_source, casefold)
+    # Use the consistent skeleton logic
+    skeleton = _get_single_char_skeleton(casefold)
 
-    if nfkc == char and casefold == char and skeleton == char:
-        return None # No ghosts
-        
+    # NOISE FILTER: Ignore simple ASCII case changes (A -> a)
+    def is_boring_change(a, b):
+        return a == b or (len(a) == 1 and len(b) == 1 and ord(a) < 128 and ord(b) < 128 and a.lower() == b.lower())
+
+    # If raw matches skeleton (ignoring case), it's boring
+    if is_boring_change(raw, nfkc) and is_boring_change(nfkc, casefold) and is_boring_change(casefold, skeleton):
+        return None
+
+    # VISUALIZE ERASURE: If char disappears, show ∅
     return {
-        "raw": char,
-        "nfkc": nfkc,
-        "casefold": casefold,
-        "skeleton": skeleton
+        "raw": raw,
+        "nfkc": nfkc if nfkc else "∅",
+        "casefold": casefold if casefold else "∅",
+        "skeleton": skeleton if skeleton else "∅"
     }
     
 # ---
@@ -4811,29 +4856,30 @@ def inspect_character(event):
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
-        # --- DATA ENRICHMENT FOR SPEC SHEET V2 ---
+        # --- DATA ENRICHMENT FOR SPEC SHEET V3 ---
         
         # 1. Identifier Status (UTS #39)
         id_status = _find_in_ranges(cp_base, "IdentifierStatus")
         # Default restricted logic (UAX #31)
         cat = unicodedata.category(base_char)
+        cat_short = cat # Alias for clarity
+        
         if not id_status:
-             if cat not in ("Cn", "Co", "Cs"): id_status = "Restricted"
-             else: id_status = "N/A"
-             
+             # Only restrict if not Unassigned/Private/Surrogate (handled by ROT)
+             if cat not in ("Cn", "Co", "Cs"): 
+                 id_status = "Restricted"
+             else: 
+                 id_status = "N/A"
+                 
         id_type = _find_in_ranges(cp_base, "IdentifierType")
 
-        # 2. Short Codes (We need a map or raw access)
-        # For now, we extract them from the full name if possible, or pass the raw value
-        # Since our data stores have long names, we will use the long name as primary
-        # and the raw code from unicodedata as secondary where possible.
-        
-        cat_short = cat # 'Nd', 'Lu', etc.
-        
-        # Bidi Short Code (using built-in as fallback/primary for short code)
+        # 2. Macro Classification
+        mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
+        macro_type = _classify_macro_type(cp_base, cat_short, id_status, mask)
+        ghosts = _get_ghost_chain(base_char)
+
+        # 3. Standard Props
         bidi_short = unicodedata.bidirectional(base_char)
-        
-        # Grapheme Break Property
         gb_prop = _find_in_ranges(cp_base, "GraphemeBreak") or "Other"
 
         components = []
@@ -4842,7 +4888,7 @@ def inspect_character(event):
             cat = unicodedata.category(ch)
             name = unicodedata.name(ch, "Unknown")
             
-            # NEW: Get the Stacking Physics
+            # Stacking Physics
             ccc = unicodedata.combining(ch)
             
             is_mark = cat.startswith('M')
@@ -4852,12 +4898,12 @@ def inspect_character(event):
                 'hex': f"U+{ord(ch):04X}", 
                 'name': name, 
                 'cat': cat, 
-                'ccc': ccc,  # <--- Added this field
+                'ccc': ccc,
                 'is_base': not is_mark
             })
             
-        # --- 3. Forensic 9: Encoding Calculations (RESTORED) ---
-        # We must calculate these BEFORE building the data dict
+        # --- 4. Forensic 9: Encoding Calculations ---
+        # Calculated immediately before data construction
         
         # A. System Layer
         utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
@@ -4885,17 +4931,15 @@ def inspect_character(event):
             
         code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
 
-        # --- 4. Construct Data Payload (Enriched for HUD v2) ---
+        # --- 5. Construct Data Payload ---
         
-        # A. Context & Classification
-        mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
-        macro_type = _classify_macro_type(cp_base, cat_short, id_status, mask)
-        ghosts = _get_ghost_chain(base_char)
+        confusable_msg = None
+        if ghosts:
+             # Use the calculated skeleton from the ghost chain
+             skel_val = ghosts['skeleton']
+             if skel_val != base_char and skel_val != base_char.casefold():
+                 confusable_msg = f"Base maps to: '{skel_val}'"
 
-        confusables_map = DATA_STORES.get("Confusables", {})
-        skeleton = confusables_map.get(cp_base)
-        confusable_msg = f"Base maps to: '{skeleton}'" if skeleton else None
-        
         stack_msg = None
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
@@ -4907,11 +4951,11 @@ def inspect_character(event):
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name Found"),
             
-            # --- HUD v2 Logic Signals ---
+            # --- HUD v3 Logic Signals ---
             "macro_type": macro_type,
             "ghosts": ghosts,
             "id_status": id_status,
-            "id_type": _find_in_ranges(cp_base, "IdentifierType"),
+            "id_type": id_type,
             "is_ascii": (cp_base <= 0x7F),
             
             # --- Spec Data ---
@@ -4919,9 +4963,9 @@ def inspect_character(event):
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
             "script_ext": _find_in_ranges(cp_base, "ScriptExtensions"),
             
-            "category": ALIASES.get(cat_short, "N/A"), # Legacy Key
-            "category_full": ALIASES.get(cat_short, "N/A"), # HUD Key
-            "category_short": cat_short,                    # HUD Key (e.g. "Nd")
+            "category": ALIASES.get(cat_short, "N/A"),
+            "category_full": ALIASES.get(cat_short, "N/A"),
+            "category_short": cat_short,
             
             "bidi": bidi_short,
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
@@ -5246,65 +5290,75 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (HUD v2.0) ---
+    # --- COL 5: IDENTITY (HUD v3.0) ---
     
     # 1. Identity Capsule (Chips)
     chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
     chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
     
-    if data['macro_type'] == "STANDARD":
+    mt = data['macro_type']
+    
+    if mt == "STANDARD":
         chips_html += '<span class="spec-chip ascii">ASCII</span>'
-        chips_html += '<span class="spec-chip safe">SAFE</span>'
-    elif data['macro_type'] == "THREAT":
+    elif mt == "SYNTAX":
+        chips_html += '<span class="spec-chip ascii">ASCII</span>'
+        chips_html += '<span class="spec-chip syntax">SYNTAX</span>'
+    elif mt == "THREAT":
         chips_html += '<span class="spec-chip threat">THREAT</span>'
         if data['is_invisible']: chips_html += '<span class="spec-chip invisible">INVISIBLE</span>'
+    elif mt == "ROT":
+        chips_html += '<span class="spec-chip rot">DATA ROT</span>'
+    elif mt == "COMPLEX":
+        chips_html += '<span class="spec-chip complex">COMPLEX</span>'
     
-    # 2. Mechanics Matrix (Dynamic)
-    # We customize the cells based on the type
+    # 2. Mechanics Matrix (Dynamic Cell 4)
     
-    # Cell 1: Direction (Universal)
-    matrix_html = f"""
-        <div class="matrix-item">
-            <span class="spec-label">DIRECTION</span>
-            <span class="matrix-val">{data['bidi']}</span>
-        </div>
-    """
+    # Logic:
+    # THREAT/ROT -> Show Security (Red/Orange)
+    # SYNTAX -> Show Security (Neutral/Technical)
+    # STANDARD -> Show Script (Blue)
     
-    # Cell 2: Segmentation (Combined Word/Grapheme)
-    matrix_html += f"""
-        <div class="matrix-item">
-            <span class="spec-label">SEGMENT</span>
-            <span class="matrix-val">{data['word_break']}</span>
-            <span class="matrix-sub">{data['grapheme_break']}</span>
-        </div>
-    """
+    matrix_extra_cell = ""
     
-    # Cell 3: Breaking (Line)
-    matrix_html += f"""
-        <div class="matrix-item">
-            <span class="spec-label">WRAP</span>
-            <span class="matrix-val">{data['line_break']}</span>
-        </div>
-    """
-    
-    # Cell 4: Type-Specific
-    if data['macro_type'] == "THREAT":
-        # Show ID Status for Threats
+    if mt in ("THREAT", "ROT", "SYNTAX", "LEGACY"):
         status_cls = "id-status-restricted"
-        matrix_html += f"""
+        if data['id_status'] == "Allowed": status_cls = "id-status-allowed"
+        
+        # Syntax is "technical" restriction, not "threat" restriction
+        if mt == "SYNTAX": status_cls = "id-status-technical"
+        
+        matrix_extra_cell = f"""
             <div class="matrix-item">
                 <span class="spec-label">SECURITY</span>
                 <span class="matrix-val {status_cls}">{data['id_status']}</span>
             </div>
         """
     else:
-        # Show Script for others
-        matrix_html += f"""
+        # Standard atoms show Script
+        matrix_extra_cell = f"""
             <div class="matrix-item">
                 <span class="spec-label">SCRIPT</span>
                 <span class="matrix-val">{data['script']}</span>
             </div>
         """
+
+    # Re-assemble Matrix (Cells 1-3 remain the same)
+    matrix_html = f"""
+        <div class="matrix-item">
+            <span class="spec-label">DIRECTION</span>
+            <span class="matrix-val">{data['bidi']}</span>
+        </div>
+        <div class="matrix-item">
+            <span class="spec-label">SEGMENT</span>
+            <span class="matrix-val">{data['word_break']}</span>
+            <span class="matrix-sub">{data['grapheme_break']}</span>
+        </div>
+        <div class="matrix-item">
+            <span class="spec-label">WRAP</span>
+            <span class="matrix-val">{data['line_break']}</span>
+        </div>
+        {matrix_extra_cell}
+    """
 
     # 3. Security & Ghosts (The "Why?")
     ghost_html = ""
