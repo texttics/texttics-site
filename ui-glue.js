@@ -169,71 +169,66 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-    // ==========================================
-  // 6. HUD CONSOLE & NAVIGATION BRIDGE
+ // ==========================================
+  // 6. HUD CONSOLE BRIDGE (DOUBLE-DECKER)
   // ==========================================
   const hudContainer = document.getElementById('forensic-hud');
-  const consoleOutput = document.getElementById('hud-console-output');
-  const consoleMeta = document.getElementById('hud-console-meta');
-  const defaultConsoleText = "Hover over a metric for forensic definition.";
+  
+  // Row 1 Elements
+  const row1Label = document.querySelector('#console-row-main .console-label');
+  const row1Content = document.querySelector('#console-row-main .console-content');
+  const row1Meta = document.querySelector('#console-row-main .console-meta');
+  
+  // Row 2 Elements
+  const row2Label = document.querySelector('#console-row-sub .console-label');
+  const row2Content = document.querySelector('#console-row-sub .console-content');
+  const row2Meta = document.querySelector('#console-row-sub .console-meta');
 
-  if (hudContainer && consoleOutput) {
+  const defaults = {
+    r1c: "Hover over a metric for primary definition.",
+    r2c: "Secondary context will appear here."
+  };
+
+  if (hudContainer && row1Content) {
     
-    // --- A. Console Hover Logic (Delegated) ---
     hudContainer.addEventListener('mouseover', (e) => {
-      // Find closest column parent
       const col = e.target.closest('.hud-col');
       if (col) {
-        const desc = col.getAttribute('data-desc') || "";
-        const math = col.getAttribute('data-math') || "";
-        const ref = col.getAttribute('data-ref') || "";
+        // --- ROW 1 UPDATE ---
+        const d1 = col.getAttribute('data-d1') || "";
+        const m1 = col.getAttribute('data-m1') || "";
+        const r1 = col.getAttribute('data-r1') || "";
         
-        // Update Console
-        consoleOutput.textContent = desc;
-        consoleOutput.style.color = "var(--color-primary)";
-        
-        // Optional: Show Math/Ref in meta section
-        let metaText = [];
-        if(math) metaText.push(`[MATH: ${math}]`);
-        if(ref) metaText.push(`[REF: ${ref}]`);
-        consoleMeta.textContent = metaText.join(" ");
+        row1Content.textContent = d1;
+        let meta1 = [];
+        if(m1) meta1.push(`[MATH: ${m1}]`);
+        if(r1) meta1.push(`[REF: ${r1}]`);
+        row1Meta.textContent = meta1.join(" ");
+
+        // --- ROW 2 UPDATE ---
+        const d2 = col.getAttribute('data-d2') || "";
+        const m2 = col.getAttribute('data-m2') || "";
+        const r2 = col.getAttribute('data-r2') || "";
+
+        row2Content.textContent = d2;
+        let meta2 = [];
+        if(m2) meta2.push(`[MATH: ${m2}]`);
+        if(r2) meta2.push(`[REF: ${r2}]`);
+        row2Meta.textContent = meta2.join(" ");
       }
     });
 
-    // --- B. Reset on Leave ---
     hudContainer.addEventListener('mouseout', (e) => {
-       // Only reset if we actually left the HUD container, not just a child
        if (!e.relatedTarget || !hudContainer.contains(e.relatedTarget)) {
-          consoleOutput.textContent = defaultConsoleText;
-          consoleOutput.style.color = ""; // Reset color
-          consoleMeta.textContent = "";
+          // Reset to defaults
+          row1Content.textContent = defaults.r1c;
+          row1Meta.textContent = "";
+          row2Content.textContent = defaults.r2c;
+          row2Meta.textContent = "";
        }
     });
-
-    // --- C. Navigation Click Logic (Delegated) ---
-    hudContainer.addEventListener('click', (e) => {
-      // Check if click was on the Footer or the Button
-      const footer = e.target.closest('.hud-row-extra');
-      
-      if (footer) {
-        const targetId = footer.getAttribute('data-nav-target');
-        if (targetId) {
-           const targetSection = document.querySelector(targetId);
-           if (targetSection) {
-             // 1. Expand the details element if it's closed
-             if (targetSection.tagName === 'DETAILS' && !targetSection.open) {
-                targetSection.open = true;
-             }
-             // 2. Scroll to it smoothly
-             targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-             
-             // 3. Optional: Flash effect to show where we went
-             targetSection.classList.add('highlight-flash');
-             setTimeout(() => targetSection.classList.remove('highlight-flash'), 1000);
-           }
-        }
-      }
-    });
+    
+    // Note: Navigation Click Logic removed as requested
   }
 
   // --- Keyboard Navigation Handler ---
