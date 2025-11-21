@@ -5029,7 +5029,8 @@ def inspect_character(event):
         
         # 2. Standard Props (Legacy/Fallback)
         bidi_short = unicodedata.bidirectional(base_char)
-        gb_prop = _find_in_ranges(cp_base, "GraphemeBreak") or "Other"
+        gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
+        gb_prop = gb_val if gb_val else "Base (Other)"
         
         # 3. Components Analysis
         components = []
