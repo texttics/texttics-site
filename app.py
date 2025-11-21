@@ -5437,10 +5437,10 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Grid Layout V5) ---
+    # --- COL 5: IDENTITY (Clean Header V6) ---
     
-    # 1. Header
-    # Always prioritize the specific name unless it's a multi-part cluster
+    # 1. Header Title (Full Name)
+    # Prioritize the specific name unless it's a multi-part cluster
     if data.get('is_cluster') and len(data.get('components', [])) > 1:
         header_title = "GRAPHEME CLUSTER"
         header_style = "letter-spacing: 0.05em; color: #4b5563;" 
@@ -5470,9 +5470,10 @@ def render_inspector_panel(data):
                         else: active_threats.append("RISK")
     except Exception: pass
 
+    # 3. Extract Macro Type (CRITICAL FIX: Define 'mt' here)
+    mt = data['macro_type']
 
     # 4. Top Grid (Identity Specs)
-    # Arranged in a 2x2 layout for density
     type_label = data.get('type_label', 'CATEGORY')
     type_val = data.get('type_val', data['category_full'])
     
@@ -5513,7 +5514,6 @@ def render_inspector_panel(data):
             </div>
         """
     else:
-        # For Standard atoms, we can show something else or keep it balanced
         matrix_extra_cell = f"""
             <div class="matrix-item">
                 <span class="spec-label">SECURITY</span>
@@ -5538,6 +5538,38 @@ def render_inspector_panel(data):
             </div>
             {matrix_extra_cell}
         </div>
+    """
+
+    # 6. Normalization Ghosts
+    ghost_html = ""
+    if data['ghosts']:
+        g = data['ghosts']
+        ghost_html = f"""
+        <div class="ghost-section">
+            <div class="spec-label" style="margin-bottom:4px;">NORMALIZATION GHOSTS</div>
+            <div class="ghost-strip">
+                <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
+                <div class="ghost-arrow">→</div>
+                <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
+                <div class="ghost-arrow">→</div>
+                <div class="ghost-step">SKEL<br><span>{_escape_html(g['skeleton'])}</span></div>
+            </div>
+        </div>
+        """
+    else:
+        ghost_html = f"""
+        <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
+            <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
+        </div>
+        """
+
+    # 7. Final Assembly (NO CHIPS)
+    identity_html = f"""
+        <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
+        
+        {identity_grid}
+        {technical_grid}
+        {ghost_html}
     """
 
     # 6. Normalization Ghosts (Always Show if Data Exists)
