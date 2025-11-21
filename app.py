@@ -5566,8 +5566,9 @@ def render_inspector_panel(data):
         """
     else:
         ghost_html = f"""
-        <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
-            <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
+        <div class="ghost-section stable">
+            <span class="ghost-key">NORMALIZATION:</span>
+            <span class="ghost-val-ok">STABLE</span>
         </div>
         """
 
