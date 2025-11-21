@@ -855,21 +855,19 @@ def render_forensic_hud(t, stats):
         """
 
     # --- 0. PRE-CALCULATE UAX COUNTERS (Ground Truth) ---
-    uax_word_count = 0
+    # [FIX] Offload calculation to JS (ui-glue.js) to prevent PyProxy errors
+    uax_word_count = "N/A"
+    uax_sent_count = "N/A"
+    
     try:
-        word_seg = window.Intl.Segmenter.new("en", {"granularity": "word"})
-        segments = window.Array.from_(word_seg.segment(t))
-        uax_word_count = sum(1 for s in segments if s.isWordLike)
+        # Returns [words, sentences] or [-1, -1] on error
+        counts = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        
+        if counts[0] != -1:
+            uax_word_count = counts[0]
+            uax_sent_count = counts[1]
     except Exception:
-        uax_word_count = "N/A"
-
-    uax_sent_count = 0
-    try:
-        sent_seg = window.Intl.Segmenter.new("en", {"granularity": "sentence"})
-        segments = window.Array.from_(sent_seg.segment(t))
-        uax_sent_count = len(segments)
-    except Exception:
-        uax_sent_count = "N/A"
+        pass # Keep as N/A if bridge fails
 
 
     # --- 1. VOLUME (The Left Band) ---
@@ -968,12 +966,12 @@ def render_forensic_hud(t, stats):
     # D. Non-Standard Others
     count_non_std_other = 0
     js_array = window.Array.from_(t)
-    invis_table_len = len(INVIS_TABLE) # [FIX] Safe length check
+    invis_table_len = len(INVIS_TABLE)
     
     for c in js_array:
         cp = ord(c)
         cat = unicodedata.category(c)
-        # [FIX] Safe Table Access
+        # Safe Table Access
         mask = INVIS_TABLE[cp] if cp < invis_table_len else 0
         
         is_alphanum = cat.startswith('L') or cat.startswith('N')
