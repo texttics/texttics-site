@@ -2065,257 +2065,78 @@ tr.flag-row-crit {
   color: #b91c1c; /* Red-700 */
 }
 
-/* --- Forensic HUD (Triage Dashboard) --- */
+/* --- Forensic HUD (The Ticker Strip) --- */
 .hud-container {
-  display: grid;
-  /* Layout: Volume (Auto) | Composition (Flexible) | Safety (Auto) */
-  grid-template-columns: minmax(140px, 0.8fr) 2fr minmax(160px, 1fr);
-  gap: 1rem;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0; /* We use borders for separation */
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  padding: 0.75rem;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   font-family: var(--font-sans);
-  align-items: stretch;
+  overflow-x: auto; /* Allow scroll on very small screens */
 }
 
-/* Band Containers */
-.hud-band {
+/* Individual Column */
+.hud-col {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-}
-
-.hud-band-center {
-  border-left: 1px solid var(--color-border-light);
+  justify-content: space-between; /* Pushes footer to bottom */
+  padding: 0.75rem 1rem;
   border-right: 1px solid var(--color-border-light);
-  padding: 0 1.5rem; /* Breathing room for the dense middle section */
+  min-width: max-content; /* Prevent squashing */
 }
 
-.hud-band-right {
-  padding-left: 0.5rem;
+.hud-col:last-child {
+  border-right: none;
 }
 
-/* Titles */
-.hud-title {
+/* 1. Header (Label) */
+.hud-header {
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 700;
   color: #6b7280; /* Gray-500 */
-  margin-bottom: 0.5rem;
-  display: block;
+  margin-bottom: 4px;
+  white-space: nowrap;
 }
 
-/* --- Band 1: Volume (Big Number) --- */
-.hud-metric-hero {
-  font-size: 2.2rem;
+/* 2. Body (The Big Number) */
+.hud-body {
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--color-text);
-  line-height: 1;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-}
-.hud-metric-sub {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  margin-top: 4px;
-  font-weight: 500;
-}
-
-/* --- Band 2: Composition (Mini Boxes) --- */
-.hud-grid-2x2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.hud-mini-box {
-  display: flex;
-  flex-direction: column;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  padding: 6px 8px;
-}
-
-.hud-mini-label {
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.hud-mini-val {
-  font-family: var(--font-mono);
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #111827;
-  margin-top: 2px;
-}
-
-/* Color States for Mini Boxes */
-.hud-box-warn { border-color: #fde68a; background-color: #fffbeb; color: #b45309; }
-.hud-box-crit { border-color: #fca5a5; background-color: #fef2f2; color: #b91c1c; }
-.hud-box-safe { border-color: #a7f3d0; background-color: #ecfdf5; color: #047857; }
-
-/* Script Badge */
-.hud-script-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 4px 8px;
-  border-radius: 4px;
-  text-align: center;
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-}
-.hud-script-crit { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
-
-/* --- Band 3: Safety (Gauges) --- */
-.hud-gauge-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.hud-gauge-val {
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 0.7rem;
-}
-.hud-gauge-ok   { color: #059669; background: #ecfdf5; }
-.hud-gauge-warn { color: #d97706; background: #fffbeb; }
-.hud-gauge-crit { color: #dc2626; background: #fef2f2; }
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .hud-container {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-  }
-  .hud-band-center {
-    border: none;
-    border-top: 1px solid var(--color-border-light);
-    border-bottom: 1px solid var(--color-border-light);
-    padding: 1rem 0;
-  }
-  .hud-band-right {
-    padding-left: 0;
-  }
-}
-
-/* --- HUD Tooltip System --- */
-
-/* The Container (Relative anchor) */
-.hud-info-wrapper {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  cursor: help;
-  margin-left: 4px;
-}
-
-/* The Icon (i) */
-.info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  border: 1px solid #9ca3af; /* Gray-400 */
-  border-radius: 50%;
-  font-family: serif;
-  font-style: italic;
-  font-size: 0.65rem;
-  color: #6b7280; /* Gray-500 */
-  background-color: rgba(255, 255, 255, 0.5);
-  transition: all 0.2s ease;
-}
-
-.hud-info-wrapper:hover .info-icon {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background-color: #eff6ff;
-  transform: scale(1.1);
-}
-
-/* The Tooltip (Glassmorphism Popover) */
-.hud-tooltip {
-  visibility: hidden;
-  opacity: 0;
-  position: absolute;
-  bottom: 100%; /* Sit above the icon */
-  left: 50%;
-  transform: translateX(-50%) translateY(-4px); /* Centered & slightly lifted */
-  
-  width: max-content;
-  max-width: 280px;
-  padding: 10px;
-  
-  /* Glass / Dark Mode Style */
-  background-color: rgba(17, 24, 39, 0.95); /* Gray-900, slight transparency */
-  backdrop-filter: blur(4px);
-  color: #f9fafb; /* Gray-50 */
-  border: 1px solid #374151; /* Gray-700 */
-  border-radius: 6px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  
-  font-family: var(--font-sans);
-  font-size: 0.75rem;
-  line-height: 1.4;
-  z-index: 50; /* On top of everything */
-  
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  pointer-events: none; /* Let clicks pass through if needed */
-}
-
-/* Hover State */
-.hud-info-wrapper:hover .hud-tooltip {
-  visibility: visible;
-  opacity: 1;
-  transform: translateX(-50%) translateY(-8px);
-}
-
-/* Tooltip Content Styles */
-.tt-header {
-  display: block;
-  font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #4b5563; /* Gray-600 */
-  font-size: 0.8rem;
-}
-
-.tt-row {
-  display: flex;
-  gap: 8px;
   margin-bottom: 4px;
 }
 
-.tt-key {
+/* 3. Footer (Info & Subtext) */
+.hud-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.65rem;
   color: #9ca3af; /* Gray-400 */
-  font-weight: 600;
-  min-width: 45px; /* Align colons */
-  flex-shrink: 0;
+  font-weight: 500;
+  min-height: 16px; /* Ensure alignment even if empty */
 }
 
-.tt-val {
-  color: #d1d5db; /* Gray-300 */
-}
+/* --- Status Colors (Applied to hud-body) --- */
+.status-safe { color: #059669; } /* Green */
+.status-warn { color: #d97706; } /* Orange */
+.status-crit { color: #dc2626; } /* Red */
+.status-neutral { color: #1f2937; } /* Dark Gray */
 
-.tt-info {
-  margin-top: 6px;
-  color: #9ca3af; /* Gray-400 */
-  font-style: italic;
-  font-size: 0.7rem;
+/* --- Tweak Tooltip Position for the Strip Layout --- */
+.hud-tooltip {
+  bottom: auto; 
+  top: 100%; /* Show tooltip BELOW the footer in this layout */
+  margin-top: 8px;
 }
