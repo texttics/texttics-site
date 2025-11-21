@@ -5437,27 +5437,96 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Forensic Cluster HUD) ---
+    # --- COL 5: IDENTITY (Grid Layout V5) ---
     
-    # 1. Determine Header Title
-    # If the engine flagged it as a cluster (or we see multiple components), we use the generic header.
-    # This prevents labeling a complex sequence as just "LATIN A".
-    if data.get('is_cluster') or len(data.get('components', [])) > 1:
+    # 1. Header & Chips
+    # Always prioritize the specific name unless it's a multi-part cluster
+    if data.get('is_cluster') and len(data.get('components', [])) > 1:
         header_title = "GRAPHEME CLUSTER"
         header_style = "letter-spacing: 0.05em; color: #4b5563;" 
     else:
         header_title = data['name_base']
         header_style = ""
 
-    # 2. Mechanics Matrix (Dynamic Cell 4)
-    mt = data['macro_type']
-    matrix_extra_cell = ""
+    # 2. Get Global Forensic Context (The Truth Source)
+    active_threats = []
+    try:
+        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
+            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
+            current_idx = data.get('python_idx')
+            if current_idx is not None:
+                idx_marker = f"#{current_idx}"
+                for flag_name, flag_data in global_flags.items():
+                    raw_positions = flag_data.get('positions', [])
+                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
+                        name_lower = flag_name.lower()
+                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
+                        elif "bidi" in name_lower: active_threats.append("BIDI")
+                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
+                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
+                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
+                        elif "tag" in name_lower: active_threats.append("TAG")
+                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
+                        else: active_threats.append("RISK")
+    except Exception: pass
+
+    # 3. Build Chips
+    chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
+    chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
     
+    if data['is_ascii']: chips_html += '<span class="spec-chip ascii">ASCII</span>'
+
+    mt = data['macro_type']
+    if mt == "SYNTAX": chips_html += '<span class="spec-chip syntax">SYNTAX</span>'
+    elif mt == "ROT": chips_html += '<span class="spec-chip rot">DATA ROT</span>'
+    elif mt == "COMPLEX": chips_html += '<span class="spec-chip complex">COMPLEX</span>'
+    elif mt == "THREAT":
+        if not active_threats and state['level'] == 0: chips_html += '<span class="spec-chip threat">THREAT</span>'
+        if data['is_invisible']: chips_html += '<span class="spec-chip invisible">INVISIBLE</span>'
+
+    if active_threats:
+        for threat in sorted(list(set(active_threats))): chips_html += f'<span class="spec-chip threat">{threat}</span>'
+    elif state['level'] > 0:
+        css = "complex" if state['level'] == 1 else "threat"
+        chips_html += f'<span class="spec-chip {css}">{state["verdict_text"]}</span>'
+    elif mt in ("STANDARD", "SYNTAX"):
+        chips_html += '<span class="spec-chip safe">SAFE</span>'
+
+    # 4. Top Grid (Identity Specs)
+    # Arranged in a 2x2 layout for density
+    type_label = data.get('type_label', 'CATEGORY')
+    type_val = data.get('type_val', data['category_full'])
+    
+    identity_grid = f"""
+        <div class="spec-matrix" style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
+            <div class="matrix-item">
+                <span class="spec-label">BLOCK</span>
+                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data['block']}</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">SCRIPT</span>
+                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">
+                    {data['script']}
+                    <span class="matrix-sub" style="display:inline;">{f"({data['script_ext']})" if data.get('script_ext') and not data.get('is_cluster') else ""}</span>
+                </span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">{type_label}</span>
+                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{type_val}</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">AGE</span>
+                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data['age']}</span>
+            </div>
+        </div>
+    """
+
+    # 5. Bottom Grid (Technical Specs)
+    matrix_extra_cell = ""
     if mt in ("THREAT", "ROT", "SYNTAX", "LEGACY"):
         status_cls = "id-status-restricted"
         if data['id_status'] == "Allowed": status_cls = "id-status-allowed"
         if mt == "SYNTAX": status_cls = "id-status-technical"
-        
         matrix_extra_cell = f"""
             <div class="matrix-item">
                 <span class="spec-label">SECURITY</span>
@@ -5465,33 +5534,39 @@ def render_inspector_panel(data):
             </div>
         """
     else:
+        # For Standard atoms, we can show something else or keep it balanced
         matrix_extra_cell = f"""
             <div class="matrix-item">
-                <span class="spec-label">SCRIPT</span>
-                <span class="matrix-val">{data['script']}</span>
+                <span class="spec-label">SECURITY</span>
+                <span class="matrix-val id-status-allowed">{data['id_status']}</span>
             </div>
         """
 
-    # Re-assemble Matrix
-    matrix_html = f"""
-        <div class="matrix-item">
-            <span class="spec-label">DIRECTION</span>
-            <span class="matrix-val">{data['bidi']}</span>
+    technical_grid = f"""
+        <div class="spec-matrix">
+            <div class="matrix-item">
+                <span class="spec-label">DIRECTION</span>
+                <span class="matrix-val">{data['bidi']}</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">SEGMENT</span>
+                <span class="matrix-val">{data['word_break']}</span>
+                <span class="matrix-sub">{data['grapheme_break']}</span>
+            </div>
+            <div class="matrix-item">
+                <span class="spec-label">WRAP</span>
+                <span class="matrix-val">{data['line_break']}</span>
+            </div>
+            {matrix_extra_cell}
         </div>
-        <div class="matrix-item">
-            <span class="spec-label">SEGMENT</span>
-            <span class="matrix-val">{data['word_break']}</span>
-            <span class="matrix-sub">{data['grapheme_break']}</span>
-        </div>
-        <div class="matrix-item">
-            <span class="spec-label">WRAP</span>
-            <span class="matrix-val">{data['line_break']}</span>
-        </div>
-        {matrix_extra_cell}
     """
 
-    # 3. Security & Ghosts
+    # 6. Normalization Ghosts (Always Show if Data Exists)
     ghost_html = ""
+    # We relax the condition: If we calculated ghosts, we show them.
+    # The calculation logic already filters out "boring" ASCII-only case changes.
+    # If you want *everything*, remove the filter in _get_ghost_chain.
+    # Assuming _get_ghost_chain logic is desired, we just render what it returns.
     if data['ghosts']:
         g = data['ghosts']
         ghost_html = f"""
@@ -5506,40 +5581,23 @@ def render_inspector_panel(data):
             </div>
         </div>
         """
+    else:
+        # Fallback: Show "Stable" if no drift detected, to prove we checked.
+        ghost_html = f"""
+        <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
+            <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
+        </div>
+        """
 
-    # 4. Final Assembly (Cluster-Aware Spec Group)
-    # This replaces the old static rows with the dynamic aggregated data
     identity_html = f"""
         <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
         
-        <div class="spec-group" style="margin-top: 8px;">
-            <div class="spec-row">
-                <span class="spec-label">BLOCK</span>
-                <span class="spec-value">{data['block']}</span>
-            </div>
-            <div class="spec-row">
-                <span class="spec-label">SCRIPT</span>
-                <span class="spec-value">
-                    {data['script']}
-                    <span class="spec-sub">
-                        {f"({data['script_ext']})" if data.get('script_ext') and not data.get('is_cluster') else ""}
-                    </span>
-                </span>
-            </div>
-            <div class="spec-row">
-                <span class="spec-label">{data.get('type_label', 'CATEGORY')}</span>
-                <span class="spec-value">{data.get('type_val', data['category_full'])}</span>
-            </div>
-            <div class="spec-row">
-                <span class="spec-label">AGE</span>
-                <span class="spec-value">{data['age']}</span>
-            </div>
-        </div>
-
-        <div class="spec-matrix">
-            {matrix_html}
+        <div class="spec-capsule">
+            {chips_html}
         </div>
         
+        {identity_grid}
+        {technical_grid}
         {ghost_html}
     """
 
