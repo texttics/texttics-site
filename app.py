@@ -854,6 +854,30 @@ def render_forensic_hud(t, stats):
         </span>
         """
 
+    # --- 0. PRE-CALCULATE UAX COUNTERS (Ground Truth) ---
+    # We must do this FIRST so the variables exist for the tooltips.
+    
+    # Word Count
+    uax_word_count = 0
+    try:
+        word_seg = window.Intl.Segmenter.new("en", {"granularity": "word"})
+        # [FIX] Convert JS iterator to array before counting
+        segments = window.Array.from_(word_seg.segment(t))
+        uax_word_count = sum(1 for s in segments if s.isWordLike)
+    except Exception:
+        uax_word_count = "N/A"
+
+    # Sentence Count
+    uax_sent_count = 0
+    try:
+        sent_seg = window.Intl.Segmenter.new("en", {"granularity": "sentence"})
+        # [FIX] Convert JS iterator to array before counting
+        segments = window.Array.from_(sent_seg.segment(t))
+        uax_sent_count = len(segments)
+    except Exception:
+        uax_sent_count = "N/A"
+
+
     # --- 1. VOLUME (The Left Band) ---
     
     # A. Metric: Volumetric Units (VU)
@@ -862,17 +886,6 @@ def render_forensic_hud(t, stats):
     vu_val = (count_L + count_N) / 5.0 # Using 5.0 as Standard Typing Unit
     vu_display = f"{vu_val:.1f}"
     
-    # UAX #29 Reference Count (Words)
-    uax_word_count = 0
-    try:
-        word_seg = window.Intl.Segmenter.new("en", {"granularity": "word"})
-        # [FIX] Convert JS iterator to array before counting
-        segments = window.Array.from_(word_seg.segment(t))
-        uax_word_count = sum(1 for s in segments if s.isWordLike)
-    except Exception as e:
-        print(f"UAX Word Error: {e}") # For debugging
-        uax_word_count = "N/A"
-
     tt_vu = make_tooltip(
         "Volumetric Units (VU)",
         [("MATH", "(Letters + Numbers) / 5.0"), ("REF", f"UAX #29 word segments: {uax_word_count}")],
@@ -891,14 +904,12 @@ def render_forensic_hud(t, stats):
         if char in {'.', '?', '!', ';', ','}:
             terminators += 1
     
-    # Tooltip for Segments (Comparison against UAX)
     tt_seg = make_tooltip(
         "Structural Segments (estimated sentences)",
         [("MATH", "VU / 20.0"), ("REF", f"UAX #29 sentence segments: {uax_sent_count}")],
         "Coarse estimate of sentence-like blocks based on lexical density. Comparing this to Delimiters reveals flow vs. structure."
     )
     
-    # Tooltip for Delimiters
     tt_term = make_tooltip(
         "Explicit Delimiters",
         [("TARGET", ". , ? ! ;")],
@@ -1021,6 +1032,68 @@ def render_forensic_hud(t, stats):
         <div class="hud-script-badge {badge_cls}">{badge_text}</div>
     </div>
     """
+
+    # --- 3. SAFETY (The Right Band) ---
+    
+    # Defaults
+    int_verdict = "READY"
+    int_score = 0
+    int_cls = "hud-gauge-ok"
+    thr_verdict = "READY"
+    thr_score = 0
+    thr_cls = "hud-gauge-ok"
+    comp_score = "LOW"
+    comp_cls = "hud-gauge-ok"
+
+    if t:
+        # Integrity
+        int_res = stats.get('integrity', {})
+        int_score = int_res.get('score', 0)
+        int_verdict = int_res.get('verdict', 'UNKNOWN')
+        if int_verdict in ("CORRUPT", "FRACTURED"): int_cls = "hud-gauge-crit"
+        elif int_verdict in ("RISKY", "DECAYING"): int_cls = "hud-gauge-warn"
+        
+        # Threat
+        thr_res = stats.get('threat', {})
+        thr_score = thr_res.get('score', 0)
+        thr_verdict = thr_res.get('verdict', 'UNKNOWN')
+        if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: thr_cls = "hud-gauge-crit"
+        elif "SUSPICIOUS" in thr_verdict: thr_cls = "hud-gauge-warn"
+        
+        # Complexity
+        nsm_level = stats.get('nsm_level', 0)
+        drift = stats.get('drift', 0)
+        if nsm_level >= 2 or drift > 10:
+            comp_score = "HIGH"
+            comp_cls = "hud-gauge-warn"
+        elif nsm_level == 1 or drift > 0:
+            comp_score = "MED"
+            
+    # Safety Tooltips
+    tt_int = make_tooltip("Integrity Auditor", [("FOCUS", "Data health")], "Aggregates decode-health signals (replacement characters, broken surrogates, noncharacters). High scores indicate corruption, not necessarily attacks.")
+    tt_thr = make_tooltip("Threat Auditor", [("FOCUS", "Exploit risk")], "Scores patterns associated with spoofing and exploit techniques (mixed scripts, Bidi, invisible clusters). Integrity issues do not raise this score.")
+    
+    def render_gauge(label, val, cls, tooltip=""):
+        return f"""
+        <div class="hud-gauge-row">
+            <div style="display:flex; align-items:center; gap:4px;">
+                <span>{label}</span>
+                {tooltip}
+            </div>
+            <span class="hud-gauge-val {cls}">{val}</span>
+        </div>"""
+
+    safe_html = f"""
+    <div class="hud-band hud-band-right">
+        <span class="hud-title">Safety Aggregate</span>
+        {render_gauge("Integrity", f"{int_verdict} ({int_score})", int_cls, tt_int)}
+        {render_gauge("Threat", f"{thr_verdict} ({thr_score})", thr_cls, tt_thr)}
+        {render_gauge("Complexity", comp_score, comp_cls)}
+    </div>
+    """
+
+    # --- ASSEMBLY ---
+    container.innerHTML = vol_html + comp_html + safe_html
 
     # --- 3. SAFETY (The Right Band) ---
     
