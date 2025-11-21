@@ -5578,7 +5578,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6A. Lookalikes Section (Rich Chips)
+    # 6A. Lookalikes Section (Risk-Synchronized)
     lookalike_html = ""
     if data.get('lookalikes_data'):
         count = len(data['lookalikes_data'])
@@ -5586,9 +5586,7 @@ def render_inspector_panel(data):
         # Build the grid of chips
         chips_buffer = []
         for item in data['lookalikes_data']:
-            # Tooltip shows full name and block
             tooltip = f"{item['name']} &#10;Block: {item['block']}"
-            
             chip = f"""
             <div class="lookalike-chip" title="{tooltip}">
                 <span class="lk-glyph">{item['glyph']}</span>
@@ -5602,9 +5600,13 @@ def render_inspector_panel(data):
             
         grid_html = "".join(chips_buffer)
         
+        # [CRITICAL FIX] Inherit the color class from the Identity Risk Facet
+        # ident_data['class'] will be 'risk-info' (Blue), 'risk-warn' (Orange), etc.
+        risk_css = ident_data['class'] 
+        
         lookalike_html = f"""
-        <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
-            <span class="ghost-key blue">LOOKALIKES ({count})</span>
+        <div class="ghost-section lookalikes {risk_css}" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
+            <span class="ghost-key">LOOKALIKES ({count})</span>
             <div class="lookalike-grid">
                 {grid_html}
             </div>
