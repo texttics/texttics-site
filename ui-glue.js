@@ -346,13 +346,26 @@ function buildStructuredReport() {
       } 
       else if (tdDetails) {
         // -- Standard Row --
+        let detailsText = "";
+        
+        // [FIX] Check for <details> element to format summary/content cleanly
+        const detailsEl = tdDetails.querySelector('details');
+        if (detailsEl) {
+            const summary = detailsEl.querySelector('summary') ? detailsEl.querySelector('summary').textContent.trim() : "";
+            const hidden = detailsEl.querySelector('div') ? detailsEl.querySelector('div').textContent.trim() : "";
+            // Insert a space between summary and hidden content
+            detailsText = `${summary} ${hidden}`;
+        } else {
+            detailsText = tdDetails.textContent;
+        }
+
         // Clean up newlines and multiple spaces
-        const details = tdDetails.textContent
+        const cleanDetails = detailsText
           .replace(/[\n\r]+/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
           
-        lines.push(`  ${prefix}${label}: ${value}, ${details}`);
+        lines.push(`  ${prefix}${label}: ${value}, ${cleanDetails}`);
       }
     });
     return lines;
