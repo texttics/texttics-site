@@ -915,7 +915,7 @@ def render_forensic_hud(t, stats):
     vu = (L + N) / 5.0
     c1 = render_cell(
         "LEXICAL MASS", 
-        "MASS (VU)", f"{vu:.1f}", color_neutral(vu),
+        "UNITS", f"{vu:.1f}", color_neutral(vu),
         "WORDS", str(uax_word), color_neutral(uax_word),
         d1="Volumetric Mass in Standardized Typing Units.", m1="(L+N) / 5.0", r1="Metric: VU",
         d2="Linguistic word count via UAX #29.", m2="Intl.Segmenter", r2="UAX #29"
