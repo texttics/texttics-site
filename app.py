@@ -827,36 +827,32 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V5 (Console + Navigation).
-    Tooltips removed. Data attributes added for JS Bridge.
+    Renders the 'Forensic Matrix' V6 (9-Column, Double-Console).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
 
-    # --- HELPER: The Cell Builder V2 ---
+    # --- HELPER: Cell Builder V3 (Double Metadata) ---
     def render_cell(sci_title, 
                     main_label, main_val, 
                     sub_label, sub_val, 
                     risk_class="neutral", 
-                    # Data attributes for the Console
-                    desc="", math="", ref="",
-                    # Navigation Target
-                    nav_target=""):
+                    # Data attributes for Row 1 (Main)
+                    d1="", m1="", r1="",
+                    # Data attributes for Row 2 (Sub)
+                    d2="", m2="", r2=""):
         
         if not sub_label: sub_label = "&nbsp;"
         if not sub_val: sub_val = "&nbsp;"
         
-        # Escaping for HTML attributes
-        desc_safe = desc.replace('"', '&quot;')
-        math_safe = math.replace('"', '&quot;')
-        ref_safe = ref.replace('"', '&quot;')
+        # HTML Escape
+        def esc(s): return s.replace('"', '&quot;')
 
         return f"""
         <div class="hud-col" 
-             data-desc="{desc_safe}" 
-             data-math="{math_safe}" 
-             data-ref="{ref_safe}">
+             data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
+             data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
              
             <div class="hud-row-sci">{sci_title}</div>
             
@@ -865,15 +861,10 @@ def render_forensic_hud(t, stats):
             
             <div class="hud-row-label-sub">{sub_label}</div>
             <div class="hud-row-val-sub">{sub_val}</div>
-            
-            <div class="hud-row-extra" data-nav-target="{nav_target}">
-                <span class="hud-extra-btn">View Details</span>
-                <span class="hud-info-icon">i</span>
             </div>
-        </div>
         """
 
-    # --- 0. PRE-CALC UAX ---
+    # --- 0. PRE-CALC ---
     uax_word = "N/A"
     uax_sent = "N/A"
     try:
@@ -883,58 +874,88 @@ def render_forensic_hud(t, stats):
 
     # --- 1. COLUMNS ---
 
-    # C1: VOLUME -> Dual-Atom Profile
+    # [NEW] C0: VISIBLE ALPHA (The Meat)
+    # Logic: Count alphanumerics and contiguous alphanumeric runs
+    alpha_chars = sum(1 for c in t if c.isalnum())
+    
+    # Calculate Runs
+    alpha_runs = 0
+    in_run = False
+    for c in t:
+        if c.isalnum():
+            if not in_run:
+                alpha_runs += 1
+                in_run = True
+        else:
+            in_run = False
+
+    c0 = render_cell(
+        "Alpha Content", "Graphemes", str(alpha_chars), "Alpha Runs", str(alpha_runs), "neutral",
+        d1="Visible alphanumeric characters (Letters + Numbers).", m1="Count(Alphanum)", r1="Base: ASCII+Unicode",
+        d2="Contiguous sequences of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: [A-Z0-9]+"
+    )
+
+    # C1: VOLUME (Lexical Mass)
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
     c1 = render_cell(
         "Lexical Mass", "Units", f"{vu:.1f}", "UAX Words", str(uax_word), "neutral",
-        desc="Normalized payload mass vs standard word count.",
-        math="(AlphaNum) / 5.0",
-        ref=f"UAX Words: {uax_word}",
-        nav_target="#dual-atom"
+        d1="Normalized payload mass (Standardized Typing Units).", m1="(L+N) / 5.0", r1="Metric: VU",
+        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="UAX #29"
     )
 
-    # C2: SEGMENTS -> Dual-Atom (Core Metrics)
+    # C2: DENSITY
     seg_est = max(1, round(vu / 20.0)) if t else 0
     c2 = render_cell(
         "Density", "Segments", str(seg_est), "UAX Sent.", str(uax_sent), "neutral",
-        desc="Estimated sentence blocks based on lexical density.",
-        math="VU / 20.0",
-        ref=f"UAX Sentences: {uax_sent}",
-        nav_target="#dual-atom"
+        d1="Estimated structural blocks based on mass.", m1="VU / 20.0", r1="Metric: Blocks",
+        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="UAX #29"
     )
 
-    # C3: DELIMITERS -> Structural Shape (Punctuation)
+    # C3: BOUNDS
     terms = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
     dens_val = f"{terms/max(1, vu):.2f}" if vu > 0 else "0.0"
     c3 = render_cell(
         "Syntax Bounds", "Delimiters", str(terms), "Density", dens_val, "neutral",
-        desc="Hard punctuation boundaries and explicit terminators.",
-        math="Count of [. ? ! ; ,]",
-        ref="",
-        nav_target="#structural-shape"
+        d1="Hard punctuation boundaries and terminators.", m1="Count([.?!;,])", r1="Grammar",
+        d2="Ratio of delimiters to lexical mass.", m2="Delim / VU", r2="Flow"
     )
 
-    # C4: INVISIBLES -> Structural Integrity
+    # C4: VOID
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
     flags = stats.get('forensic_flags', {})
     non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     risk_inv = "crit" if non_std_inv > 0 else "safe"
-    
     c4 = render_cell(
         "Void Spectrum", "Standard", str(std_inv), "Stealth", str(non_std_inv), risk_inv,
-        desc="Composition: Standard Whitespace vs High-risk invisible matter.",
-        math="Sum(Std) vs Sum(Invis)",
-        ref="Bucket: Stealth",
-        nav_target="#structural-integrity"
+        d1="Standard visible whitespace (Space, Tab, CR, LF).", m1="ASCII WS", r1="Layout",
+        d2="High-risk invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation"
     )
 
-    # C5: OTHERS -> Provenance (Scripts/Symbols)
+    # [NEW] C5: EMOJI SPECTRUM
+    # Logic: RGI vs Abnormal (Unqualified/Components)
+    rgi_count = stats.get('rgi_count', 0)
+    
+    # We need to dig into emoji stats if available, or estimate based on symbols
+    # Using 'forensic_flags' to find abnormal emoji signals
+    abnormal = 0
+    abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
+    abnormal += flags.get("Flag: Standalone Emoji Component", {}).get("count", 0)
+    abnormal += flags.get("Flag: Broken Keycap Sequence", {}).get("count", 0)
+    
+    risk_emo = "warn" if abnormal > 0 else "neutral"
+    
+    c5 = render_cell(
+        "Emoji Spectrum", "RGI Seq.", str(rgi_count), "Abnormal", str(abnormal), risk_emo,
+        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: Emoji 15.1",
+        d2="Unqualified, broken, or component-only artifacts.", m2="Sum(Flags)", r2="Render Risk"
+    )
+
+    # C6: NON-ALPHANUM (Renamed/Refined)
     asc_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
-    rgi = stats.get('rgi_count', 0)
-    std_oth = asc_punct + rgi
+    std_oth = asc_punct # Removed RGI from here since it has its own column
     
     anom = 0
     js_arr = window.Array.from_(t)
@@ -943,50 +964,43 @@ def render_forensic_hud(t, stats):
         cp = ord(c)
         cat = unicodedata.category(c)
         msk = INVIS_TABLE[cp] if cp < t_len else 0
+        # Logic: Not Letter, Not Number, Not Std Space, Not Invisible, Not ASCII Punct
         if not (cat.startswith(('L','N')) or cp in std_set or (msk & INVIS_ANY_MASK) or (0x21 <= cp <= 0x7E and not c.isalnum())):
             anom += 1
     risk_anom = "warn" if anom > 0 else "neutral"
 
-    c5 = render_cell(
-        "Non-Alphanum", "Std Syntax", str(std_oth), "Anomalies", str(anom), risk_anom,
-        desc="Standard grammar vs Exotic, Unknown, or Symbol characters.",
-        math="Non-Alphanum - StdPunct - RGI",
-        ref="Bucket: Anomalies",
-        nav_target="#provenance-context"
+    c6 = render_cell(
+        "Symbolic / Other", "ASCII Punct", str(std_oth), "Anomalies", str(anom), risk_anom,
+        d1="Standard ASCII punctuation and symbols.", m1="ASCII 0x21-7E", r1="Basic Syntax",
+        d2="Exotic symbols, math operators, and unassigned code points.", m2="Residuals", r2="Rare/Sketchy"
     )
 
-    # C6: INTEGRITY -> Integrity Profile
+    # C7: DATA HEALTH
     int_res = stats.get('integrity', {})
     int_v = int_res.get('verdict', 'READY')
     risk_int = "safe"
     if int_v in ("CORRUPT", "FRACTURED"): risk_int = "crit"
     elif int_v in ("RISKY", "DECAYING"): risk_int = "warn"
-    
-    c6 = render_cell(
+    c7 = render_cell(
         "Data Health", "Integrity", int_v, "Issues", str(len(int_res.get('ledger',[]))), risk_int,
-        desc="Measures technical rot, data loss, and encoding fractures.",
-        math="Integrity Score Matrix",
-        ref="Auditor: Integrity",
-        nav_target="#structural-integrity"
+        d1="Overall structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
+        d2="Count of active integrity violations found.", m2="Count(Ledger)", r2="Corruptions"
     )
 
-    # C7: THREAT -> Threat Profile
+    # C8: EXPLOIT RISK
     thr_res = stats.get('threat', {})
     thr_v = thr_res.get('verdict', 'READY')
     risk_thr = "safe"
     if "WEAPONIZED" in thr_v or "HIGH" in thr_v: risk_thr = "crit"
     elif "SUSPICIOUS" in thr_v: risk_thr = "warn"
-    
-    c7 = render_cell(
+    c8 = render_cell(
         "Exploit Risk", "Threat", thr_v, "Signals", str(len(thr_res.get('ledger',[]))), risk_thr,
-        desc="Measures active attack patterns, spoofing, and injection.",
-        math="Threat Score Matrix",
-        ref="Auditor: Threat",
-        nav_target="#threat-hunting"
+        d1="Assessment of active weaponization or intent.", m1="Threat Score", r1="Auditor: Threat",
+        d2="Specific attack vectors and exploit signals.", m2="Count(Ledger)", r2="CVE Patterns"
     )
 
     # --- ASSEMBLY ---
-    container.innerHTML = "".join([c1, c2, c3, c4, c5, c6, c7])
+    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8])
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
