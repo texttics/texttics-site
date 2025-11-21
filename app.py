@@ -5437,10 +5437,10 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Grid Layout V5) ---
+    # --- COL 5: IDENTITY (Clean Header V6) ---
     
-    # 1. Header & Chips
-    # Always prioritize the specific name unless it's a multi-part cluster
+    # 1. Header Title (Full Name)
+    # Prioritize the specific name unless it's a multi-part cluster
     if data.get('is_cluster') and len(data.get('components', [])) > 1:
         header_title = "GRAPHEME CLUSTER"
         header_style = "letter-spacing: 0.05em; color: #4b5563;" 
@@ -5448,52 +5448,7 @@ def render_inspector_panel(data):
         header_title = data['name_base']
         header_style = ""
 
-    # 2. Get Global Forensic Context (The Truth Source)
-    active_threats = []
-    try:
-        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
-            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
-            current_idx = data.get('python_idx')
-            if current_idx is not None:
-                idx_marker = f"#{current_idx}"
-                for flag_name, flag_data in global_flags.items():
-                    raw_positions = flag_data.get('positions', [])
-                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
-                        name_lower = flag_name.lower()
-                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
-                        elif "bidi" in name_lower: active_threats.append("BIDI")
-                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
-                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
-                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
-                        elif "tag" in name_lower: active_threats.append("TAG")
-                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
-                        else: active_threats.append("RISK")
-    except Exception: pass
-
-    # 3. Build Chips
-    chips_html = f'<span class="spec-chip codepoint">{data["cp_hex_base"]}</span>'
-    chips_html += f'<span class="spec-chip category" title="{data["category_full"]}">{data["category_short"]}</span>'
-    
-    if data['is_ascii']: chips_html += '<span class="spec-chip ascii">ASCII</span>'
-
-    mt = data['macro_type']
-    if mt == "SYNTAX": chips_html += '<span class="spec-chip syntax">SYNTAX</span>'
-    elif mt == "ROT": chips_html += '<span class="spec-chip rot">DATA ROT</span>'
-    elif mt == "COMPLEX": chips_html += '<span class="spec-chip complex">COMPLEX</span>'
-    elif mt == "THREAT":
-        if not active_threats and state['level'] == 0: chips_html += '<span class="spec-chip threat">THREAT</span>'
-        if data['is_invisible']: chips_html += '<span class="spec-chip invisible">INVISIBLE</span>'
-
-    if active_threats:
-        for threat in sorted(list(set(active_threats))): chips_html += f'<span class="spec-chip threat">{threat}</span>'
-    elif state['level'] > 0:
-        css = "complex" if state['level'] == 1 else "threat"
-        chips_html += f'<span class="spec-chip {css}">{state["verdict_text"]}</span>'
-    elif mt in ("STANDARD", "SYNTAX"):
-        chips_html += '<span class="spec-chip safe">SAFE</span>'
-
-    # 4. Top Grid (Identity Specs)
-    # Arranged in a 2x2 layout for density
+    # 2. Top Grid (Identity Specs)
     type_label = data.get('type_label', 'CATEGORY')
     type_val = data.get('type_val', data['category_full'])
     
@@ -5521,7 +5476,8 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 5. Bottom Grid (Technical Specs)
+    # 3. Bottom Grid (Technical Specs)
+    mt = data['macro_type']
     matrix_extra_cell = ""
     if mt in ("THREAT", "ROT", "SYNTAX", "LEGACY"):
         status_cls = "id-status-restricted"
@@ -5534,7 +5490,6 @@ def render_inspector_panel(data):
             </div>
         """
     else:
-        # For Standard atoms, we can show something else or keep it balanced
         matrix_extra_cell = f"""
             <div class="matrix-item">
                 <span class="spec-label">SECURITY</span>
@@ -5559,6 +5514,38 @@ def render_inspector_panel(data):
             </div>
             {matrix_extra_cell}
         </div>
+    """
+
+    # 4. Normalization Ghosts
+    ghost_html = ""
+    if data['ghosts']:
+        g = data['ghosts']
+        ghost_html = f"""
+        <div class="ghost-section">
+            <div class="spec-label" style="margin-bottom:4px;">NORMALIZATION GHOSTS</div>
+            <div class="ghost-strip">
+                <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
+                <div class="ghost-arrow">→</div>
+                <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
+                <div class="ghost-arrow">→</div>
+                <div class="ghost-step">SKEL<br><span>{_escape_html(g['skeleton'])}</span></div>
+            </div>
+        </div>
+        """
+    else:
+        ghost_html = f"""
+        <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
+            <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
+        </div>
+        """
+
+    # 5. Final Assembly (NO CHIPS)
+    identity_html = f"""
+        <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
+        
+        {identity_grid}
+        {technical_grid}
+        {ghost_html}
     """
 
     # 6. Normalization Ghosts (Always Show if Data Exists)
