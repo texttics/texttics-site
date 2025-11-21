@@ -5800,15 +5800,18 @@ def compute_threat_score(inputs):
     # Massive Clusters
     cluster_len = inputs.get("max_invis_run", 0)
     cluster_count = inputs.get("invis_cluster_count", 0)
+    rgi_count = inputs.get("rgi_count", 0) # [NEW]
     
     if cluster_len > 4:
         # Logic: Massive cluster is obfuscation.
         add_entry(f"Massive Invisible Cluster (len={cluster_len})", THR_BASE_OBFUSCATION, "OBFUSCATION")
     elif cluster_count > 0:
-         # Smaller clusters - check if we already charged for Trojan Source
-         if not inputs.get("malicious_bidi"):
-             # If no Trojan Source, treat as Obfuscation/Stego attempt
-             # Scale slightly by count
+         # [SMART FILTER] If clusters are likely just RGI Emoji structure (VS/ZWJ), downgrade risk.
+         # Heuristic: Max run is small (1-2 chars) and we have RGI sequences present.
+         is_likely_emoji_glue = (rgi_count > 0 and cluster_len <= 2 and cluster_count <= (rgi_count * 2))
+         
+         if not inputs.get("malicious_bidi") and not is_likely_emoji_glue:
+             # If no Trojan Source and NOT emoji glue, treat as Obfuscation attempt
              pts = THR_BASE_OBFUSCATION + min(cluster_count, 10) * THR_MULT_OBFUSCATION
              add_entry(f"Invisible Clusters ({cluster_count})", pts, "OBFUSCATION")
 
@@ -5998,6 +6001,9 @@ def update_all(event=None):
         
         "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
         "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
+        # [NEW] Pass RGI count to filter false positives
+        "rgi_count": meta_cards.get("RGI Emoji Sequences", 0),
+        
         "tags_count": get_count("Flag: Unicode Tags (Plane 14)"),
         
         "suspicious_syntax_vs": get_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
