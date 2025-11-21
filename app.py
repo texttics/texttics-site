@@ -824,44 +824,40 @@ def analyze_bidi_structure(t: str, rows: list):
                      
     return penalty_count
 
+@create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V4 (Bottom-Up Tooltips).
-    All info moved to footer to prevent clipping.
+    Renders the 'Forensic Matrix' V5 (Console + Navigation).
+    Tooltips removed. Data attributes added for JS Bridge.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
 
-    # --- HELPER: Tooltip Generator ---
-    def gen_tooltip(header, rows, info):
-        rows_html = ""
-        for k, v in rows:
-            rows_html += f'<div class="tt-row"><span class="tt-key">[{k}]</span><span class="tt-val">{v}</span></div>'
-        
-        return f"""
-        <div class="hud-tooltip">
-            <div class="tt-header">{header}</div>
-            {rows_html}
-            <div class="tt-info">{info}</div>
-        </div>
-        """
-
-    # --- HELPER: The Cell Builder ---
+    # --- HELPER: The Cell Builder V2 ---
     def render_cell(sci_title, 
                     main_label, main_val, 
                     sub_label, sub_val, 
                     risk_class="neutral", 
-                    tooltip_header="", tooltip_rows=[], tooltip_info=""):
+                    # Data attributes for the Console
+                    desc="", math="", ref="",
+                    # Navigation Target
+                    nav_target=""):
         
         if not sub_label: sub_label = "&nbsp;"
         if not sub_val: sub_val = "&nbsp;"
         
-        # Build the combined tooltip for the footer
-        tt_html = gen_tooltip(tooltip_header, tooltip_rows, tooltip_info)
+        # Escaping for HTML attributes
+        desc_safe = desc.replace('"', '&quot;')
+        math_safe = math.replace('"', '&quot;')
+        ref_safe = ref.replace('"', '&quot;')
 
         return f"""
-        <div class="hud-col">
+        <div class="hud-col" 
+             data-desc="{desc_safe}" 
+             data-math="{math_safe}" 
+             data-ref="{ref_safe}">
+             
             <div class="hud-row-sci">{sci_title}</div>
             
             <div class="hud-row-label-main">{main_label}</div>
@@ -870,10 +866,9 @@ def render_forensic_hud(t, stats):
             <div class="hud-row-label-sub">{sub_label}</div>
             <div class="hud-row-val-sub">{sub_val}</div>
             
-            <div class="hud-row-extra">
+            <div class="hud-row-extra" data-nav-target="{nav_target}">
                 <span class="hud-extra-btn">View Details</span>
                 <span class="hud-info-icon">i</span>
-                {tt_html}
             </div>
         </div>
         """
@@ -888,36 +883,40 @@ def render_forensic_hud(t, stats):
 
     # --- 1. COLUMNS ---
 
-    # C1: VOLUME
+    # C1: VOLUME -> Dual-Atom Profile
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
     c1 = render_cell(
         "Lexical Mass", "Units", f"{vu:.1f}", "UAX Words", str(uax_word), "neutral",
-        "Volumetric Analysis", 
-        [("MATH", "(AlphaNum) / 5.0"), ("REF", f"UAX Words: {uax_word}")],
-        "Normalized payload mass vs standard word count."
+        desc="Normalized payload mass vs standard word count.",
+        math="(AlphaNum) / 5.0",
+        ref=f"UAX Words: {uax_word}",
+        nav_target="#dual-atom"
     )
 
-    # C2: SEGMENTS
+    # C2: SEGMENTS -> Dual-Atom (Core Metrics)
     seg_est = max(1, round(vu / 20.0)) if t else 0
     c2 = render_cell(
         "Density", "Segments", str(seg_est), "UAX Sent.", str(uax_sent), "neutral",
-        "Structural Density",
-        [("MATH", "VU / 20.0"), ("REF", f"UAX Sentences: {uax_sent}")],
-        "Estimated sentence blocks based on lexical density."
+        desc="Estimated sentence blocks based on lexical density.",
+        math="VU / 20.0",
+        ref=f"UAX Sentences: {uax_sent}",
+        nav_target="#dual-atom"
     )
 
-    # C3: DELIMITERS
+    # C3: DELIMITERS -> Structural Shape (Punctuation)
     terms = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
+    dens_val = f"{terms/max(1, vu):.2f}" if vu > 0 else "0.0"
     c3 = render_cell(
-        "Syntax Bounds", "Delimiters", str(terms), "Density", f"{terms/max(1, vu):.2f}" if vu > 0 else "0.0", "neutral",
-        "Explicit Delimiters",
-        [("TARGET", ". , ? ! ;")],
-        "Hard punctuation boundaries."
+        "Syntax Bounds", "Delimiters", str(terms), "Density", dens_val, "neutral",
+        desc="Hard punctuation boundaries and explicit terminators.",
+        math="Count of [. ? ! ; ,]",
+        ref="",
+        nav_target="#structural-shape"
     )
 
-    # C4: INVISIBLES
+    # C4: INVISIBLES -> Structural Integrity
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
     flags = stats.get('forensic_flags', {})
@@ -926,12 +925,13 @@ def render_forensic_hud(t, stats):
     
     c4 = render_cell(
         "Void Spectrum", "Standard", str(std_inv), "Stealth", str(non_std_inv), risk_inv,
-        "Composition Analysis",
-        [("STD", "Space, Tab, CR, LF"), ("STEALTH", "ZWSP, Tags, Bidi...")],
-        "Standard layout vs High-risk invisible matter."
+        desc="Composition: Standard Whitespace vs High-risk invisible matter.",
+        math="Sum(Std) vs Sum(Invis)",
+        ref="Bucket: Stealth",
+        nav_target="#structural-integrity"
     )
 
-    # C5: OTHERS
+    # C5: OTHERS -> Provenance (Scripts/Symbols)
     asc_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
     rgi = stats.get('rgi_count', 0)
     std_oth = asc_punct + rgi
@@ -949,12 +949,13 @@ def render_forensic_hud(t, stats):
 
     c5 = render_cell(
         "Non-Alphanum", "Std Syntax", str(std_oth), "Anomalies", str(anom), risk_anom,
-        "Syntax Analysis",
-        [("STD", "ASCII Punct, RGI Emoji"), ("ANOM", "Ext. Symbols, Controls")],
-        "Standard grammar vs Exotic/Unknown characters."
+        desc="Standard grammar vs Exotic, Unknown, or Symbol characters.",
+        math="Non-Alphanum - StdPunct - RGI",
+        ref="Bucket: Anomalies",
+        nav_target="#provenance-context"
     )
 
-    # C6: INTEGRITY
+    # C6: INTEGRITY -> Integrity Profile
     int_res = stats.get('integrity', {})
     int_v = int_res.get('verdict', 'READY')
     risk_int = "safe"
@@ -963,12 +964,13 @@ def render_forensic_hud(t, stats):
     
     c6 = render_cell(
         "Data Health", "Integrity", int_v, "Issues", str(len(int_res.get('ledger',[]))), risk_int,
-        "Integrity Auditor",
-        [("FOCUS", "Data Corruption"), ("CHECK", "Encoding, NUL, FFFD")],
-        "Measures technical rot and data loss."
+        desc="Measures technical rot, data loss, and encoding fractures.",
+        math="Integrity Score Matrix",
+        ref="Auditor: Integrity",
+        nav_target="#structural-integrity"
     )
 
-    # C7: THREAT
+    # C7: THREAT -> Threat Profile
     thr_res = stats.get('threat', {})
     thr_v = thr_res.get('verdict', 'READY')
     risk_thr = "safe"
@@ -977,9 +979,10 @@ def render_forensic_hud(t, stats):
     
     c7 = render_cell(
         "Exploit Risk", "Threat", thr_v, "Signals", str(len(thr_res.get('ledger',[]))), risk_thr,
-        "Threat Auditor",
-        [("FOCUS", "Malicious Intent"), ("CHECK", "Spoofing, Injection")],
-        "Measures active attack patterns."
+        desc="Measures active attack patterns, spoofing, and injection.",
+        math="Threat Score Matrix",
+        ref="Auditor: Threat",
+        nav_target="#threat-hunting"
     )
 
     # --- ASSEMBLY ---
