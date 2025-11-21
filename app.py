@@ -5435,14 +5435,13 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Clean V4: No Redundancy) ---
+    # --- COL 5: IDENTITY (Forensic Cluster HUD) ---
     
     # 1. Determine Header Title
-    # If it's a cluster (Base + Marks), we stop pretending it's just the base letter.
-    # We label it as a CLUSTER to force the user to look at the components.
-    if len(data['components']) > 1:
+    # If the engine flagged it as a cluster (or we see multiple components), we use the generic header.
+    # This prevents labeling a complex sequence as just "LATIN A".
+    if data.get('is_cluster') or len(data.get('components', [])) > 1:
         header_title = "GRAPHEME CLUSTER"
-        # Optional: Add a visual cue that this is a composite structure
         header_style = "letter-spacing: 0.05em; color: #4b5563;" 
     else:
         header_title = data['name_base']
@@ -5540,6 +5539,7 @@ def render_inspector_panel(data):
         </div>
         
         {ghost_html}
+    """
 
     # --- COL 6: COMPONENTS TABLE ---
     comp_rows = ""
