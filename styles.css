@@ -2161,10 +2161,11 @@ tr.flag-row-crit {
 /* --- HUD TEXT UTILITIES (Zero-State Logic) --- */
 .txt-normal { color: var(--color-text); }
 .txt-muted  { color: #d1d5db; } /* Gray for 0 values */
-.txt-good   { color: #059669; } /* Green for 0 risks */
+.txt-good   { color: #059669; } /* Deep Emerald for Critical Safety */
+.txt-clean  { color: #16a34a; } /* Vibrant Green for 0 Anomalies (Light) */
 .txt-warn   { color: #d97706; } /* Orange for >0 risks */
 .txt-crit   { color: #dc2626; } /* Red for critical risks */
-.txt-safe   { color: #059669; } /* Explicit Safe status */
+.txt-safe   { color: #059669; } /* Deep Emerald for Safe Status */
 
 
 /* --- HUD COLUMNS (9-Column Layout) --- */
