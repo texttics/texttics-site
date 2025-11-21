@@ -2225,15 +2225,19 @@ tr.flag-row-crit {
 }
 
 /* Tooltip Logic */
+/* The Tooltip (Re-styled for Grid - Downward Projection) */
 .hud-tooltip {
   visibility: hidden;
   opacity: 0;
   position: absolute;
-  bottom: 100%;
+  /* Position BELOW the trigger icon */
+  top: 100%; 
+  margin-top: 8px; /* Gap */
   left: 50%;
-  transform: translateX(-50%) translateY(-5px);
+  transform: translateX(-50%);
+  
   width: max-content;
-  max-width: 220px; /* Slightly narrower */
+  max-width: 240px;
   background-color: rgba(17, 24, 39, 0.95);
   color: white;
   padding: 8px 10px;
@@ -2241,16 +2245,24 @@ tr.flag-row-crit {
   font-size: 0.7rem;
   font-family: var(--font-sans);
   text-align: left;
-  z-index: 100; /* Higher Z to float over everything */
+  z-index: 9999; /* Force on top */
   pointer-events: none;
   transition: opacity 0.15s;
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  white-space: normal; /* Allow text wrapping inside tooltip */
+  white-space: normal; /* Allow wrapping */
 }
 
-.hud-info-icon:hover .hud-tooltip {
-  visibility: visible;
-  opacity: 1;
+/* Special case for the LAST column (prevent right overflow) */
+.hud-col:last-child .hud-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateX(0);
+}
+
+/* Special case for the FIRST column (prevent left overflow) */
+.hud-col:first-child .hud-tooltip {
+    left: 0;
+    transform: translateX(0);
 }
 
 /* Last column tooltip adjustment: prevent overflow off-screen */
