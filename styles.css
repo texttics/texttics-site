@@ -751,8 +751,8 @@ Stage 2: Heatmap Row Classes
 /* Header */
 #inspector-panel-wrapper h3 {
   margin: 0;
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: 2rem;
+  font-weight: 800;
   color: var(--color-text);
   background-color: transparent;
   border: none;
