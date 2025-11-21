@@ -1883,7 +1883,7 @@ tr.flag-row-crit {
 /* "NORMALIZATION:" (Black) */
 .ghost-key {
   color: #000000; /* Dark Black/Gray */
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
 }
@@ -1891,7 +1891,7 @@ tr.flag-row-crit {
 /* "STABLE" (Green) */
 .ghost-val-ok {
   color: #16a34a; /* Bright Green */
-  font-weight: 800;
+  font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
 }
