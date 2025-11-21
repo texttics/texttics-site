@@ -5383,7 +5383,7 @@ def render_inspector_panel(data):
     if not panel: return
 
     if data is None:
-        panel.innerHTML = "<div style='padding:2rem; color:#9ca3af; text-align:center; font-style:italic;'>Select a particle to initialize diagnostics.</div>"
+        panel.innerHTML = ""<div class='inspector-placeholder'>Select a text particle to initialize diagnostics.</div>""
         return
         
     if "error" in data:
