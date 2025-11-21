@@ -5029,6 +5029,13 @@ def inspect_character(event):
         
         # 2. Standard Props (Legacy/Fallback)
         bidi_short = unicodedata.bidirectional(base_char)
+        # [FIX] Use "Other" as default to match UAX #29 standard for Word Break
+        wb_prop = _find_in_ranges(cp_base, "WordBreak") or "Other"
+        
+        # [FIX] Use "Unknown" (XX) as default for Line Break
+        lb_prop = _find_in_ranges(cp_base, "LineBreak") or "Unknown"
+        
+        # [FIX] Use "Base (Other)" as clearer alias for default Grapheme Break
         gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
         gb_prop = gb_val if gb_val else "Base (Other)"
         
@@ -5116,8 +5123,8 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             
-            "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
-            "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
+            "line_break": lb_prop,
+            "word_break": wb_prop,
             "grapheme_break": gb_prop,
 
             # --- Forensic 9 ---
