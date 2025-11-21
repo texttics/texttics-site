@@ -826,19 +826,15 @@ def analyze_bidi_structure(t: str, rows: list):
 
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic HUD' - The Triage Dashboard.
-    Layout: Volume (Left) | Composition (Center) | Safety (Right).
-    Includes interactive tooltips with UAX #29 comparisons.
+    Renders the 'Forensic HUD' as a single-row Ticker Strip.
+    Structure: Header | Body | Footer (with i).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
-    
-    # Ensure string is not None
     if t is None: t = ""
 
-    # --- HELPER: Tooltip Generator ---
+    # --- HELPER: Tooltip & Column Generator ---
     def make_tooltip(header, rows, info):
-        """Generates the HTML structure for the glass tooltip."""
         rows_html = ""
         for k, v in rows:
             rows_html += f'<div class="tt-row"><span class="tt-key">[{k}]</span><span class="tt-val">{v}</span></div>'
@@ -854,244 +850,145 @@ def render_forensic_hud(t, stats):
         </span>
         """
 
-    # --- 0. PRE-CALCULATE UAX COUNTERS (Ground Truth) ---
-    # [FIX] Offload calculation to JS (ui-glue.js) to prevent PyProxy errors
+    def render_col(label, value, risk_class="neutral", footer_text="", tooltip_html=""):
+        """Generates one vertical slice of the dashboard."""
+        return f"""
+        <div class="hud-col">
+            <div class="hud-header">{label}</div>
+            <div class="hud-body status-{risk_class}">{value}</div>
+            <div class="hud-footer">
+                {tooltip_html}
+                <span>{footer_text}</span>
+            </div>
+        </div>
+        """
+
+    # --- 0. DATA PREP (Ground Truth) ---
     uax_word_count = "N/A"
     uax_sent_count = "N/A"
-    
     try:
-        # Returns [words, sentences] or [-1, -1] on error
         counts = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        
         if counts[0] != -1:
             uax_word_count = counts[0]
             uax_sent_count = counts[1]
-    except Exception:
-        pass # Keep as N/A if bridge fails
+    except: pass
 
-
-    # --- 1. VOLUME (The Left Band) ---
+    # --- 1. VOLUME METRICS ---
     
-    # A. Metric: Volumetric Units (VU)
+    # A. VU
     count_L = stats.get('major_stats', {}).get("L (Letter)", 0)
     count_N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu_val = (count_L + count_N) / 5.0 
-    vu_display = f"{vu_val:.1f}"
-    
-    tt_vu = make_tooltip(
-        "Volumetric Units (VU)",
-        [("MATH", "(Letters + Numbers) / 5.0"), ("REF", f"UAX #29 word segments: {uax_word_count}")],
-        "Approximate count of word-like units, assuming ~5 visible characters per word. Use for comparing text size, not as a tokenizer."
-    )
+    tt_vu = make_tooltip("Volumetric Units", [("MATH", "(L+N)/5.0"), ("REF", f"UAX Words: {uax_word_count}")], "Normalized payload mass.")
+    col_vu = render_col("Volume (VU)", f"{vu_val:.1f}", "neutral", "AlphaNum / 5", tt_vu)
 
-    # B. Metric: Structural Segments (Pure Density)
-    # [FIX] Zero-Payload Logic: If VU is 0, Segments must be 0.
-    if vu_val == 0:
-        seg_val = 0
-    else:
-        seg_val = max(1, round(vu_val / 20.0))
-        
-    seg_label = "Structural Segments (Est.)"
+    # B. Segments
+    if vu_val == 0: seg_val = 0
+    else: seg_val = max(1, round(vu_val / 20.0))
+    tt_seg = make_tooltip("Segments", [("MATH", "VU/20.0"), ("REF", f"UAX Sentences: {uax_sent_count}")], "Estimated sentence blocks.")
+    col_seg = render_col("Segments", str(seg_val), "neutral", "Density Est.", tt_seg)
 
-    # C. Metric: Explicit Delimiters (Raw Count)
-    terminators = 0
-    for char in t:
-        if char in {'.', '?', '!', ';', ','}:
-            terminators += 1
-    
-    tt_seg = make_tooltip(
-        "Structural Segments (estimated sentences)",
-        [("MATH", "VU / 20.0"), ("REF", f"UAX #29 sentence segments: {uax_sent_count}")],
-        "Coarse estimate of sentence-like blocks based on lexical density. Comparing this to Delimiters reveals flow vs. structure."
-    )
-    
-    tt_term = make_tooltip(
-        "Explicit Delimiters",
-        [("TARGET", ". , ? ! ;")],
-        "Count of punctuation marks that typically separate sentences or major clauses."
-    )
+    # C. Delimiters
+    terminators = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
+    tt_term = make_tooltip("Delimiters", [("TARGET", ". , ? ! ;")], "Explicit punctuation boundaries.")
+    col_term = render_col("Delimiters", str(terminators), "neutral", "Hard Bounds", tt_term)
 
-    vol_html = f"""
-    <div class="hud-band">
-        <span class="hud-title">Volumetric Analysis {tt_vu}</span>
-        
-        <div style="margin-bottom: 8px;">
-            <div class="hud-metric-hero">{vu_display}</div>
-            <div class="hud-metric-sub">Volumetric Units (VU)</div>
-            <div class="hud-metric-sub" style="font-size:0.65rem; opacity:0.8;">(AlphaNum / 5.0)</div>
-        </div>
+    # --- 2. COMPOSITION METRICS ---
 
-        <div style="border-top: 1px solid var(--color-border-light); padding-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            
-            <div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <span style="font-size: 1.2rem; font-weight: 700; color: var(--color-text); line-height: 1;">{seg_val}</span>
-                    {tt_seg}
-                </div>
-                <div class="hud-metric-sub" style="font-size:0.7rem;">Segments</div>
-            </div>
-
-            <div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <span style="font-size: 1.2rem; font-weight: 700; color: var(--color-text); line-height: 1;">{terminators}</span>
-                    {tt_term}
-                </div>
-                <div class="hud-metric-sub" style="font-size:0.7rem;">Delimiters</div>
-            </div>
-        </div>
-    </div>
-    """
-
-    # --- 2. COMPOSITION (The Center Band) ---
-    
-    # A. Standard Whitespace
+    # D. Whitespace
     std_invis_set = {0x20, 0x09, 0x0A, 0x0D}
     count_std_invis = sum(1 for c in t if ord(c) in std_invis_set)
-    tt_std_inv = make_tooltip("Standard Whitespace", [("TARGET", "Space, Tab, LF, CR")], "Normal layout spacing and line breaks (Unicode whitespace / line separators).")
-    
-    # B. Non-Standard Invisibles
+    tt_white = make_tooltip("Std Whitespace", [("TARGET", "Space Tab LF CR")], "Layout skeleton.")
+    col_white = render_col("Whitespace", str(count_std_invis), "neutral", "Standard", tt_white)
+
+    # E. Stealth (Non-Std Invis) - CRITICAL SIGNAL
     flags = stats.get('forensic_flags', {})
-    count_non_std_invis = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    tt_ns_inv = make_tooltip("Non-standard Invisibles", [("TARGET", "ZWSP, ZWJ, Bidi, Tags...")], "Potential obfuscation / spoofing vector. Review positions in the Integrity Profile.")
-    
-    # C. Standard Others
-    count_ascii_punct = 0
-    for c in t:
-        if 0x21 <= ord(c) <= 0x7E and not c.isalnum():
-            count_ascii_punct += 1
+    count_stealth = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    risk_stealth = "crit" if count_stealth > 0 else "safe" # Green 0 is good
+    tt_stealth = make_tooltip("Stealth Matter", [("TARGET", "ZWSP Bidi Tags...")], "Obfuscation vector.")
+    col_stealth = render_col("Stealth", str(count_stealth), risk_stealth, "Non-Standard", tt_stealth)
+
+    # F. Syntax
+    count_ascii_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
     count_rgi = stats.get('rgi_count', 0)
     count_std_others = count_ascii_punct + count_rgi
-    tt_std_oth = make_tooltip("Standard Syntax", [("TARGET", "ASCII Punct, RGI Emoji")], "Standard grammatical punctuation and valid emoji sequences.")
-    
-    # D. Non-Standard Others
-    count_non_std_other = 0
+    tt_syn = make_tooltip("Std Syntax", [("TARGET", "ASCII Punct + Emoji")], "Standard grammar.")
+    col_syn = render_col("Syntax", str(count_std_others), "neutral", "Std Other", tt_syn)
+
+    # G. Anomalies (Non-Std Other)
+    count_anom = 0
     js_array = window.Array.from_(t)
-    invis_table_len = len(INVIS_TABLE)
-    
+    invis_len = len(INVIS_TABLE)
     for c in js_array:
         cp = ord(c)
         cat = unicodedata.category(c)
-        # Safe Table Access
-        mask = INVIS_TABLE[cp] if cp < invis_table_len else 0
-        
-        is_alphanum = cat.startswith('L') or cat.startswith('N')
-        is_std_invis = cp in std_invis_set
-        is_invis_mask = (mask & INVIS_ANY_MASK) != 0
-        is_ascii_punct = (0x21 <= cp <= 0x7E and not c.isalnum())
-        
-        if not (is_alphanum or is_std_invis or is_invis_mask or is_ascii_punct):
-            count_non_std_other += 1
-            
-    tt_ns_oth = make_tooltip("Extended / Anomalous", [("TARGET", "Ext. Symbols, Controls...")], "Characters outside standard alphanumerics and syntax. May indicate math spoofing or binary data.")
+        mask = INVIS_TABLE[cp] if cp < invis_len else 0
+        if not (cat.startswith(('L','N')) or cp in std_invis_set or (mask & INVIS_ANY_MASK) or (0x21 <= cp <= 0x7E and not c.isalnum())):
+            count_anom += 1
+    
+    risk_anom = "warn" if count_anom > 0 else "safe"
+    tt_anom = make_tooltip("Anomalies", [("TARGET", "Ext. Symbols/Ctrl")], "Exotic/Unknown chars.")
+    col_anom = render_col("Anomalies", str(count_anom), risk_anom, "Non-Std Other", tt_anom)
 
-    # E. Script Badge
+    # H. Script
     script_mix = stats.get('script_mix', "")
-    badge_text = "System Ready" 
-    badge_cls = ""
-    
-    if not t:
-        badge_text = "System Ready"
-    elif "CRITICAL" in script_mix: 
-        badge_text = "CRITICAL: Mixed Scripts"
-        badge_cls = "hud-script-crit"
+    # Shorten for column width
+    script_val = "ASCII"
+    risk_script = "safe"
+    if "CRITICAL" in script_mix: 
+        script_val = "CRIT MIX"
+        risk_script = "crit"
     elif "Mixed" in script_mix:
-        badge_text = "Mixed Scripts (Safe)"
+        script_val = "MIXED"
+        risk_script = "warn"
     elif "Single" in script_mix:
-        badge_text = "Single Script"
+        script_val = "SINGLE"
     elif not stats.get('is_ascii', True):
-        badge_text = "Unicode Extended"
-    else:
-        badge_text = "ASCII-Only"
-
-    # Render Mini Boxes
-    def render_box(label, val, risk_level="safe", tooltip=""):
-        cls = f"hud-box-{risk_level}" if risk_level != "safe" else ""
-        return f"""
-        <div class="hud-mini-box {cls}">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="hud-mini-label">{label}</span>
-                {tooltip}
-            </div>
-            <span class="hud-mini-val">{val}</span>
-        </div>"""
-
-    risk_ns_invis = "crit" if count_non_std_invis > 0 else "safe"
-    risk_ns_other = "warn" if count_non_std_other > 0 else "safe"
-
-    comp_html = f"""
-    <div class="hud-band hud-band-center">
-        <span class="hud-title">Composition Spectrum</span>
-        <div class="hud-grid-2x2">
-            {render_box("Std Whitespace", count_std_invis, "safe", tt_std_inv)}
-            {render_box("Non-Std Invis", count_non_std_invis, risk_ns_invis, tt_ns_inv)}
-            {render_box("Std Syntax", count_std_others, "safe", tt_std_oth)}
-            {render_box("Ext. / Anomalous", count_non_std_other, risk_ns_other, tt_ns_oth)}
-        </div>
-        <div class="hud-script-badge {badge_cls}">{badge_text}</div>
-    </div>
-    """
-
-    # --- 3. SAFETY (The Right Band) ---
+        script_val = "UNICODE"
     
-    # Defaults
-    int_verdict = "READY"
-    int_score = 0
-    int_cls = "hud-gauge-ok"
-    thr_verdict = "READY"
-    thr_score = 0
-    thr_cls = "hud-gauge-ok"
-    comp_score = "LOW"
-    comp_cls = "hud-gauge-ok"
+    tt_script = make_tooltip("Script Spectrum", [("STATE", script_mix)], "Spoofing detection.")
+    col_script = render_col("Script", script_val, risk_script, "Spectrum", tt_script)
 
-    if t:
-        # Integrity
-        int_res = stats.get('integrity', {})
-        int_score = int_res.get('score', 0)
-        int_verdict = int_res.get('verdict', 'UNKNOWN')
-        if int_verdict in ("CORRUPT", "FRACTURED"): int_cls = "hud-gauge-crit"
-        elif int_verdict in ("RISKY", "DECAYING"): int_cls = "hud-gauge-warn"
-        
-        # Threat
-        thr_res = stats.get('threat', {})
-        thr_score = thr_res.get('score', 0)
-        thr_verdict = thr_res.get('verdict', 'UNKNOWN')
-        if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: thr_cls = "hud-gauge-crit"
-        elif "SUSPICIOUS" in thr_verdict: thr_cls = "hud-gauge-warn"
-        
-        # Complexity
-        nsm_level = stats.get('nsm_level', 0)
-        drift = stats.get('drift', 0)
-        if nsm_level >= 2 or drift > 10:
-            comp_score = "HIGH"
-            comp_cls = "hud-gauge-warn"
-        elif nsm_level == 1 or drift > 0:
-            comp_score = "MED"
-            
-    # Safety Tooltips
-    tt_int = make_tooltip("Integrity Auditor", [("FOCUS", "Data health")], "Aggregates decode-health signals (replacement characters, broken surrogates, noncharacters). High scores indicate corruption, not necessarily attacks.")
-    tt_thr = make_tooltip("Threat Auditor", [("FOCUS", "Exploit risk")], "Scores patterns associated with spoofing and exploit techniques (mixed scripts, Bidi, invisible clusters). Integrity issues do not raise this score.")
+    # --- 3. SAFETY METRICS ---
+
+    # I. Integrity
+    int_res = stats.get('integrity', {})
+    int_verdict = int_res.get('verdict', 'READY')
+    risk_int = "safe"
+    if int_verdict in ("CORRUPT", "FRACTURED"): risk_int = "crit"
+    elif int_verdict in ("RISKY", "DECAYING"): risk_int = "warn"
+    tt_int = make_tooltip("Integrity", [("FOCUS", "Data Health")], "Corruption check.")
+    col_int = render_col("Integrity", int_verdict, risk_int, f"Score: {int_res.get('score',0)}", tt_int)
+
+    # J. Threat
+    thr_res = stats.get('threat', {})
+    thr_verdict = thr_res.get('verdict', 'READY')
+    risk_thr = "safe"
+    if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: risk_thr = "crit"
+    elif "SUSPICIOUS" in thr_verdict: risk_thr = "warn"
+    tt_thr = make_tooltip("Threat", [("FOCUS", "Exploit Risk")], "Attack check.")
+    col_thr = render_col("Threat", thr_verdict, risk_thr, f"Score: {thr_res.get('score',0)}", tt_thr)
+
+    # K. Complexity
+    nsm_level = stats.get('nsm_level', 0)
+    drift = stats.get('drift', 0)
+    comp_val = "LOW"
+    risk_comp = "safe"
+    if nsm_level >= 2 or drift > 10:
+        comp_val = "HIGH"
+        risk_comp = "warn"
+    elif nsm_level == 1 or drift > 0:
+        comp_val = "MED"
     
-    def render_gauge(label, val, cls, tooltip=""):
-        return f"""
-        <div class="hud-gauge-row">
-            <div style="display:flex; align-items:center; gap:4px;">
-                <span>{label}</span>
-                {tooltip}
-            </div>
-            <span class="hud-gauge-val {cls}">{val}</span>
-        </div>"""
-
-    safe_html = f"""
-    <div class="hud-band hud-band-right">
-        <span class="hud-title">Safety Aggregate</span>
-        {render_gauge("Integrity", f"{int_verdict} ({int_score})", int_cls, tt_int)}
-        {render_gauge("Threat", f"{thr_verdict} ({thr_score})", thr_cls, tt_thr)}
-        {render_gauge("Complexity", comp_score, comp_cls)}
-    </div>
-    """
+    tt_comp = make_tooltip("Complexity", [("INPUT", "Zalgo / Drift")], "Visual density.")
+    col_comp = render_col("Complexity", comp_val, risk_comp, "Entropy", tt_comp)
 
     # --- ASSEMBLY ---
-    container.innerHTML = vol_html + comp_html + safe_html
+    container.innerHTML = "".join([
+        col_vu, col_seg, col_term, 
+        col_white, col_stealth, col_syn, col_anom, col_script,
+        col_int, col_thr, col_comp
+    ])
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
