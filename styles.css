@@ -2064,3 +2064,151 @@ tr.flag-row-crit {
 .ghost-section.lookalikes.risk-fail .ghost-key {
   color: #b91c1c; /* Red-700 */
 }
+
+/* --- Forensic HUD (Triage Dashboard) --- */
+.hud-container {
+  display: grid;
+  /* Layout: Volume (Auto) | Composition (Flexible) | Safety (Auto) */
+  grid-template-columns: minmax(140px, 0.8fr) 2fr minmax(160px, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  font-family: var(--font-sans);
+  align-items: stretch;
+}
+
+/* Band Containers */
+.hud-band {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hud-band-center {
+  border-left: 1px solid var(--color-border-light);
+  border-right: 1px solid var(--color-border-light);
+  padding: 0 1.5rem; /* Breathing room for the dense middle section */
+}
+
+.hud-band-right {
+  padding-left: 0.5rem;
+}
+
+/* Titles */
+.hud-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: #6b7280; /* Gray-500 */
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+/* --- Band 1: Volume (Big Number) --- */
+.hud-metric-hero {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.hud-metric-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* --- Band 2: Composition (Mini Boxes) --- */
+.hud-grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hud-mini-box {
+  display: flex;
+  flex-direction: column;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.hud-mini-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud-mini-val {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 2px;
+}
+
+/* Color States for Mini Boxes */
+.hud-box-warn { border-color: #fde68a; background-color: #fffbeb; color: #b45309; }
+.hud-box-crit { border-color: #fca5a5; background-color: #fef2f2; color: #b91c1c; }
+.hud-box-safe { border-color: #a7f3d0; background-color: #ecfdf5; color: #047857; }
+
+/* Script Badge */
+.hud-script-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+.hud-script-crit { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+
+/* --- Band 3: Safety (Gauges) --- */
+.hud-gauge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.hud-gauge-val {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+}
+.hud-gauge-ok   { color: #059669; background: #ecfdf5; }
+.hud-gauge-warn { color: #d97706; background: #fffbeb; }
+.hud-gauge-crit { color: #dc2626; background: #fef2f2; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .hud-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .hud-band-center {
+    border: none;
+    border-top: 1px solid var(--color-border-light);
+    border-bottom: 1px solid var(--color-border-light);
+    padding: 1rem 0;
+  }
+  .hud-band-right {
+    padding-left: 0;
+  }
+}
