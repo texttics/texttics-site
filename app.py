@@ -827,26 +827,20 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V6 (9-Column, Double-Console).
+    Renders the 'Forensic Matrix' V7 (Scientific Terminology + Equalized Rows).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
 
-    # --- HELPER: Cell Builder V3 (Double Metadata) ---
+    # --- HELPER: Cell Builder V4 (Equalized) ---
     def render_cell(sci_title, 
-                    main_label, main_val, 
-                    sub_label, sub_val, 
-                    risk_class="neutral", 
-                    # Data attributes for Row 1 (Main)
+                    label_1, val_1, class_1,
+                    label_2, val_2, class_2,
+                    # Console Data
                     d1="", m1="", r1="",
-                    # Data attributes for Row 2 (Sub)
                     d2="", m2="", r2=""):
         
-        if not sub_label: sub_label = "&nbsp;"
-        if not sub_val: sub_val = "&nbsp;"
-        
-        # HTML Escape
         def esc(s): return s.replace('"', '&quot;')
 
         return f"""
@@ -856,17 +850,39 @@ def render_forensic_hud(t, stats):
              
             <div class="hud-row-sci">{sci_title}</div>
             
-            <div class="hud-row-label-main">{main_label}</div>
-            <div class="hud-row-val-main txt-{risk_class}">{main_val}</div>
-            
-            <div class="hud-row-label-sub">{sub_label}</div>
-            <div class="hud-row-val-sub">{sub_val}</div>
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_1}</div>
+                <div class="hud-val {class_1}">{val_1}</div>
             </div>
+            
+            <div class="hud-metric-divider"></div>
+
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_2}</div>
+                <div class="hud-val {class_2}">{val_2}</div>
+            </div>
+
+        </div>
         """
 
+    # --- COLOR LOGIC HELPERS ---
+    def color_neutral(val):
+        """0 is Gray (Empty), >0 is Normal (Black)"""
+        try:
+            v = float(val)
+            return "txt-muted" if v == 0 else "txt-normal"
+        except: return "txt-normal"
+
+    def color_risk(val):
+        """0 is Green (Good), >0 is Warn (Orange)"""
+        try:
+            v = float(val)
+            return "txt-good" if v == 0 else "txt-warn"
+        except: return "txt-normal"
+
     # --- 0. PRE-CALC ---
-    uax_word = "N/A"
-    uax_sent = "N/A"
+    uax_word = 0
+    uax_sent = 0
     try:
         c = window.TEXTTICS_CALC_UAX_COUNTS(t)
         if c[0] != -1: uax_word, uax_sent = c[0], c[1]
@@ -874,11 +890,8 @@ def render_forensic_hud(t, stats):
 
     # --- 1. COLUMNS ---
 
-    # [NEW] C0: VISIBLE ALPHA (The Meat)
-    # Logic: Count alphanumerics and contiguous alphanumeric runs
+    # C0: ALPHANUMERIC (Was Alpha Content)
     alpha_chars = sum(1 for c in t if c.isalnum())
-    
-    # Calculate Runs
     alpha_runs = 0
     in_run = False
     for c in t:
@@ -890,72 +903,79 @@ def render_forensic_hud(t, stats):
             in_run = False
 
     c0 = render_cell(
-        "Alpha Content", "Graphemes", str(alpha_chars), "Alpha Runs", str(alpha_runs), "neutral",
-        d1="Visible alphanumeric characters (Letters + Numbers).", m1="Count(Alphanum)", r1="Base: ASCII+Unicode",
-        d2="Contiguous sequences of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: [A-Z0-9]+"
+        "ALPHANUMERIC", 
+        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
+        "SEQUENCES", str(alpha_runs), color_neutral(alpha_runs),
+        d1="Total count of visible alphanumeric characters.", m1="Count(Alphanum)", r1="Base: Visible",
+        d2="Contiguous sequences of alphanumerics.", m2="Count(Runs)", r2="Pattern: [A-Z0-9]+"
     )
 
-    # C1: VOLUME (Lexical Mass)
+    # C1: LEXICAL MASS (Scientific Standard)
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
     c1 = render_cell(
-        "Lexical Mass", "Units", f"{vu:.1f}", "UAX Words", str(uax_word), "neutral",
-        d1="Normalized payload mass (Standardized Typing Units).", m1="(L+N) / 5.0", r1="Metric: VU",
-        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="UAX #29"
+        "LEXICAL MASS", 
+        "MASS (VU)", f"{vu:.1f}", color_neutral(vu),
+        "WORDS", str(uax_word), color_neutral(uax_word),
+        d1="Volumetric Mass in Standardized Typing Units.", m1="(L+N) / 5.0", r1="Metric: VU",
+        d2="Linguistic word count via UAX #29.", m2="Intl.Segmenter", r2="UAX #29"
     )
 
-    # C2: DENSITY
+    # C2: SEGMENTATION (Was Density)
     seg_est = max(1, round(vu / 20.0)) if t else 0
+    if not t: seg_est = 0
     c2 = render_cell(
-        "Density", "Segments", str(seg_est), "UAX Sent.", str(uax_sent), "neutral",
+        "SEGMENTATION", 
+        "BLOCKS", str(seg_est), color_neutral(seg_est),
+        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
         d1="Estimated structural blocks based on mass.", m1="VU / 20.0", r1="Metric: Blocks",
-        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="UAX #29"
+        d2="Linguistic sentence count via UAX #29.", m2="Intl.Segmenter", r2="UAX #29"
     )
 
-    # C3: BOUNDS
+    # C3: DELIMITERS (Was Syntax Bounds)
     terms = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
-    dens_val = f"{terms/max(1, vu):.2f}" if vu > 0 else "0.0"
+    ratio = terms/max(1, vu) if vu > 0 else 0.0
     c3 = render_cell(
-        "Syntax Bounds", "Delimiters", str(terms), "Density", dens_val, "neutral",
+        "DELIMITERS", 
+        "COUNT", str(terms), color_neutral(terms),
+        "RATIO", f"{ratio:.2f}", color_neutral(ratio),
         d1="Hard punctuation boundaries and terminators.", m1="Count([.?!;,])", r1="Grammar",
         d2="Ratio of delimiters to lexical mass.", m2="Delim / VU", r2="Flow"
     )
 
-    # C4: VOID
+    # C4: WHITESPACE (Was Void Spectrum)
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
+    
     flags = stats.get('forensic_flags', {})
     non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    risk_inv = "crit" if non_std_inv > 0 else "safe"
+    
     c4 = render_cell(
-        "Void Spectrum", "Standard", str(std_inv), "Stealth", str(non_std_inv), risk_inv,
+        "WHITESPACE", 
+        "VISIBLE", str(std_inv), color_neutral(std_inv),  # 0 is Gray
+        "INVISIBLE", str(non_std_inv), color_risk(non_std_inv), # 0 is Green
         d1="Standard visible whitespace (Space, Tab, CR, LF).", m1="ASCII WS", r1="Layout",
         d2="High-risk invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation"
     )
 
-    # [NEW] C5: EMOJI SPECTRUM
-    # Logic: RGI vs Abnormal (Unqualified/Components)
+    # C5: EMOJI (Was Emoji Spectrum)
     rgi_count = stats.get('rgi_count', 0)
-    
-    # We need to dig into emoji stats if available, or estimate based on symbols
-    # Using 'forensic_flags' to find abnormal emoji signals
     abnormal = 0
     abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
     abnormal += flags.get("Flag: Standalone Emoji Component", {}).get("count", 0)
     abnormal += flags.get("Flag: Broken Keycap Sequence", {}).get("count", 0)
     
-    risk_emo = "warn" if abnormal > 0 else "neutral"
-    
     c5 = render_cell(
-        "Emoji Spectrum", "RGI Seq.", str(rgi_count), "Abnormal", str(abnormal), risk_emo,
+        "EMOJI", 
+        "STANDARD", str(rgi_count), color_neutral(rgi_count), # 0 is Gray
+        "INVALID", str(abnormal), color_risk(abnormal), # 0 is Green
         d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: Emoji 15.1",
         d2="Unqualified, broken, or component-only artifacts.", m2="Sum(Flags)", r2="Render Risk"
     )
 
-    # C6: NON-ALPHANUM (Renamed/Refined)
+    # C6: SYMBOLS (Was Non-Alphanum)
     asc_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
-    std_oth = asc_punct # Removed RGI from here since it has its own column
     
     anom = 0
     js_arr = window.Array.from_(t)
@@ -964,37 +984,49 @@ def render_forensic_hud(t, stats):
         cp = ord(c)
         cat = unicodedata.category(c)
         msk = INVIS_TABLE[cp] if cp < t_len else 0
-        # Logic: Not Letter, Not Number, Not Std Space, Not Invisible, Not ASCII Punct
         if not (cat.startswith(('L','N')) or cp in std_set or (msk & INVIS_ANY_MASK) or (0x21 <= cp <= 0x7E and not c.isalnum())):
             anom += 1
-    risk_anom = "warn" if anom > 0 else "neutral"
 
     c6 = render_cell(
-        "Symbolic / Other", "ASCII Punct", str(std_oth), "Anomalies", str(anom), risk_anom,
+        "SYMBOLS", 
+        "PUNCTUATION", str(asc_punct), color_neutral(asc_punct), # 0 is Gray
+        "NON-STD", str(anom), color_risk(anom), # 0 is Green
         d1="Standard ASCII punctuation and symbols.", m1="ASCII 0x21-7E", r1="Basic Syntax",
         d2="Exotic symbols, math operators, and unassigned code points.", m2="Residuals", r2="Rare/Sketchy"
     )
 
-    # C7: DATA HEALTH
+    # C7: INTEGRITY (Data Health)
     int_res = stats.get('integrity', {})
     int_v = int_res.get('verdict', 'READY')
-    risk_int = "safe"
-    if int_v in ("CORRUPT", "FRACTURED"): risk_int = "crit"
-    elif int_v in ("RISKY", "DECAYING"): risk_int = "warn"
+    int_issues = len(int_res.get('ledger',[]))
+    
+    # Verdict Color
+    v_cls = "txt-safe"
+    if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
+    elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
+    
     c7 = render_cell(
-        "Data Health", "Integrity", int_v, "Issues", str(len(int_res.get('ledger',[]))), risk_int,
+        "INTEGRITY", 
+        "STATUS", int_v, v_cls,
+        "ERRORS", str(int_issues), color_risk(int_issues), # 0 is Green
         d1="Overall structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
         d2="Count of active integrity violations found.", m2="Count(Ledger)", r2="Corruptions"
     )
 
-    # C8: EXPLOIT RISK
+    # C8: THREAT LEVEL (Exploit Risk)
     thr_res = stats.get('threat', {})
     thr_v = thr_res.get('verdict', 'READY')
-    risk_thr = "safe"
-    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: risk_thr = "crit"
-    elif "SUSPICIOUS" in thr_v: risk_thr = "warn"
+    thr_sigs = len(thr_res.get('ledger',[]))
+    
+    # Verdict Color
+    t_cls = "txt-safe"
+    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: t_cls = "txt-crit"
+    elif "SUSPICIOUS" in thr_v: t_cls = "txt-warn"
+
     c8 = render_cell(
-        "Exploit Risk", "Threat", thr_v, "Signals", str(len(thr_res.get('ledger',[]))), risk_thr,
+        "THREAT LEVEL", 
+        "VERDICT", thr_v, t_cls,
+        "VECTORS", str(thr_sigs), color_risk(thr_sigs), # 0 is Green
         d1="Assessment of active weaponization or intent.", m1="Threat Score", r1="Auditor: Threat",
         d2="Specific attack vectors and exploit signals.", m2="Count(Ledger)", r2="CVE Patterns"
     )
