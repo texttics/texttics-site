@@ -1969,7 +1969,7 @@ tr.flag-row-crit {
 .lookalike-chip {
   display: inline-flex;
   align-items: center;
-  background: #f8fafc;
+  background-color: #ffffff;
   border: 1px solid #cbd5e1; /* Slate-300 */
   border-radius: 4px;
   padding: 3px 6px;
@@ -2031,7 +2031,7 @@ tr.flag-row-crit {
 /* Suspicious / Ambiguous (Orange) - Matches risk-warn */
 .ghost-section.lookalikes.risk-warn {
   border-color: #fed7aa; /* Orange-200 */
-  background-color: #fff7ed; /* Very light orange tint */
+  background-color: #ffffff;
 }
 .ghost-section.lookalikes.risk-warn .ghost-key {
   color: #c2410c; /* Orange-700 */
@@ -2040,7 +2040,7 @@ tr.flag-row-crit {
 /* Critical (Red) - Matches risk-fail */
 .ghost-section.lookalikes.risk-fail {
   border-color: #fecaca; /* Red-200 */
-  background-color: #fef2f2; /* Very light red tint */
+  background-color: #ffffff;
 }
 .ghost-section.lookalikes.risk-fail .ghost-key {
   color: #b91c1c; /* Red-700 */
