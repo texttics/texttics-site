@@ -5565,7 +5565,7 @@ def render_inspector_panel(data):
         </div>
         """
     else:
-        # CLEAN HTML: No inline styles, uses CSS classes for Black/Green colors
+        # CLEAN HTML: No inline styles. Classes control the colors.
         ghost_html = f"""
         <div class="ghost-section stable">
             <span class="ghost-key">NORMALIZATION:</span>
