@@ -1905,6 +1905,7 @@ tr.flag-row-crit {
   align-items: center;
   justify-content: space-between;
   font-family: var(--font-mono);
+  width: 100%; /* Ensure strip fills container */
 }
 .ghost-step {
   text-align: center;
