@@ -2096,31 +2096,49 @@ tr.flag-row-crit {
   width: 100%;
 }
 
-/* New Console Strip Styles */
+/* --- HUD CONSOLE (Double-Decker) --- */
 .hud-console-strip {
+  display: flex;
+  flex-direction: column; /* Stack them vertically */
+  justify-content: center;
+  width: 100%;
+  height: 54px; /* Increased height for 2 rows */
+  padding: 4px 12px;
+  gap: 2px;
+  
+  background-color: #f9fafb;
+  border: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-light);
+  border-radius: 0 0 var(--radius) var(--radius);
+  
+  margin-bottom: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.console-row {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 36px; /* Fixed hardware height */
-  padding: 0 12px;
-  gap: 12px;
-  
-  background-color: #f9fafb; /* Light gray (contrast with white HUD) */
-  border: 1px solid var(--color-border);
-  border-top: 1px solid var(--color-border-light); /* Subtle separator */
-  border-radius: 0 0 var(--radius) var(--radius); /* Radius moves here */
-  
-  margin-bottom: 1.5rem; /* Push the Inspector down */
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
+  height: 50%; /* Split height evenly */
+  gap: 10px;
 }
+
+/* Row 1: Main Metric Context */
+#console-row-main .console-label { color: var(--color-primary); }
+#console-row-main .console-content { color: var(--color-text); font-weight: 600; }
+
+/* Row 2: Sub Metric Context */
+#console-row-sub .console-label { color: var(--color-text-muted); opacity: 0.8; }
+#console-row-sub .console-content { color: var(--color-text-muted); }
+
 .console-label {
-  font-weight: 700;
-  color: var(--color-text);
-  font-size: 0.65rem;
+  font-weight: 800;
+  font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  min-width: 40px; /* Alignment anchor */
+  text-align: right;
   user-select: none;
 }
 
@@ -2129,15 +2147,23 @@ tr.flag-row-crit {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-grow: 1;
-  color: var(--color-primary); /* Blue text for active readout */
-  font-weight: 600;
 }
 
 .console-meta {
-  color: #b45309; /* Amber for Formulas/Refs */
-  font-size: 0.7rem;
-  margin-left: auto; /* Push to right */
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 500;
 }
+/* Main Meta (Math/Ref) gets Amber color */
+#console-row-main .console-meta { color: #b45309; }
+#console-row-sub  .console-meta { color: #9ca3af; }
+
+/* Remove the Footer Button Styling since we are deleting it */
+.hud-row-extra { display: none !important; }
+
+/* Squeeze columns slightly for 9-col layout */
+.hud-col { padding: 2px 4px; }
+.hud-row-val-main { font-size: 1.4rem; } /* Slightly smaller to fit 9 cols */
 
 /* --- The Column (Fluid Vertical Slice) --- */
 .hud-col {
