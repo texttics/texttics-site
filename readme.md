@@ -893,47 +893,76 @@ This architecture ensures that **Text...tics** is not just a passive observer of
 
 ---
 
+## 🛡️ Update: Stage 1 Forensic Mastery & Inspector V11
 
-## 🛡️ Update: Stage 1 Forensic Mastery & Inspector V10
-
-**Session Focus:** Achieving "State-of-the-Art" (SOTA) status in forensic risk assessment by transitioning from naive counting to a rigorous, UTS #39-compliant Risk Matrix Engine.
+**Session Focus:** Achieving **"State-of-the-Art" (SOTA)** status in forensic risk assessment. We transitioned from naive counting to a rigorous, UTS #39-compliant Risk Matrix Engine, and subsequently evolved the Inspector from a passive data viewer into a **Cluster-Aware, Verdict-Synchronized Forensic HUD**.
 
 ### 1. Core Engine: The "Forensic State Machine v5.0"
+*(Foundation established in V10 - Unchanged)*
+
 We abandoned the simple "if-else" logic for a sophisticated, **additive scoring engine** that mimics professional static analysis tools (like ICU SpoofChecker).
 
 * **Risk Score Matrix:** Instead of a single "worst-case" flag, the engine now calculates a cumulative `risk_score` based on a weighted table of threats:
-    * `BIDI`: +4.0 (Critical)
-    * `ZALGO_HEAVY`: +3.0 (Suspicious)
-    * `CONFUSABLE_CROSS`: +3.0 (Suspicious)
-    * `INVISIBLE`: +2.0 (Anomalous)
-    * `LAYOUT_CONTROL`: +1.5 (Non-Standard)
+    * `BIDI`: **+4.0** (Critical)
+    * `ZALGO_HEAVY`: **+3.0** (Suspicious)
+    * `CONFUSABLE_CROSS`: **+3.0** (Suspicious)
+    * `INVISIBLE`: **+2.0** (Anomalous)
+    * `LAYOUT_CONTROL`: **+1.5** (Non-Standard)
 * **5-Tier Verdict System:** The engine maps the score to a precise, forensic-grade verdict scale:
     * **Level 0 (BASELINE):** Standard composition (ASCII 1, Latin 'a'). Safe.
     * **Level 1 (NON-STD):** Extended Unicode or light combining marks. Not dangerous, but noted.
     * **Level 2 (ANOMALOUS):** Invisibles, layout controls, or odd formatting. Manual review recommended.
     * **Level 3 (SUSPICIOUS):** High probability of spoofing (Zalgo, Cross-Script Confusables).
     * **Level 4 (CRITICAL):** Active exploit vectors (Trojan Source Bidi, Injection).
-* **Security Invariants:** Implemented hard overrides (e.g., `is_bidi_control` $\to$ Minimum Level 4) to ensure known CVE-class threats never slip through as "low risk."
+* **Security Invariants:** Implemented hard overrides (e.g., `is_bidi_control` → **Minimum Level 4**) to ensure known CVE-class threats never slip through as "low risk."
 
 ### 2. Data Engineering: The "Inverse Lookalike" Pipeline
+*(Foundation established in V10 - Unchanged)*
+
 We solved the "missing dataset" problem for homoglyphs by building a custom ETL (Extract-Transform-Load) pipeline directly into the repo.
 
 * **The Builder Script (`build_data.py`):** A robust Python tool that parses the official `confusablesSummary.txt` from the Unicode Consortium.
-* **Inverse Map Generation:** Instead of relying on one-way mappings, we now generate `inverse_confusables.json`, a massive map linking every code point to *all* its potential lookalikes.
-* **Auto-Generated ASCII Risks:** We programmatically derived the `ascii_confusables.json` set. Instead of manually hardcoding `{'1', 'l', 'I'}`, the engine now *knows* exactly which 91 ASCII characters are spoofing targets based on official Unicode data.
+* **Inverse Map Generation:** Instead of relying on one-way mappings, we now generate `inverse_confusables.json`, a massive map linking every code point to **all** its potential lookalikes.
+* **Auto-Generated ASCII Risks:** We programmatically derived the `ascii_confusables.json` set. Instead of manually hardcoding `{'1', 'l', 'I'}`, the engine now **knows** exactly which 91 ASCII characters are spoofing targets based on official Unicode data.
 * **Result:** `1` and `l` are now treated identically as **"Level 0: NOTE (Common Lookalike)"**, eliminating the previous logic gap where one was flagged and the other ignored.
 
-### 3. The Inspector V10: The "Signal Processor" UI
-The Character Inspector has been completely reimagined as a high-precision **Diagnostic Instrument**.
+### 3. The "Forensic Truth" Architecture (Inspector V11)
+*(Major Logic Overhaul)*
 
-* **The "Signal Processor" Column:** Replaced the scrolling "Alerts" list with a fixed-geometry, 3-zone dashboard:
-    * **Zone A (Verdict):** A high-contrast, color-coded header (Green/Blue/Yellow/Orange/Red) displaying the exact Threat Level.
-    * **Zone B (The Matrix):** A rigid, 3-row grid monitoring the three core forensic facets: **VISIBILITY**, **STRUCTURE**, and **IDENTITY**.
-    * **Zone C (Evidence):** A static footer that explicitly states the *reason* for the verdict (e.g., "DETECTED: Trojan Source / Bidi").
-* **Synchronized Visuals:** The icons in the matrix now dynamically synchronize their color with the global Verdict Level, creating a cohesive "system state" visual language.
-* **Fluid Typography:** Implemented advanced CSS Flexbox rules (`flex: 1`, `min-width: 0`) to allow long forensic details (like "Heavy Stack (16 marks)") to flow naturally without breaking the grid layout.
-* **Clinical Aesthetic:** Replaced all emojis with **Abstract Vector Icons** (SVG) and adopted a strict "Clinical White" theme to reinforce the tool's identity as a scientific instrument.
+In V11, we resolved a critical "split-brain" design flaw where the Threat Engine flagged a cluster as **"CRITICAL"** (e.g., Zalgo or Bidi), but the Inspector naively labeled its base character as **"SAFE."**
 
-### 4. Architectural Polish
+* **State Synchronization (The Ledger Bridge):** The Inspector no longer "guesses" safety based on local properties. It now queries the **Global Threat Ledger** via a direct bridge.
+    * **Logic:** "If the Threat Engine flags this cluster index, the Inspector HUD screams 'THREAT'. It *only* grants a 'SAFE' badge if the global ledger is silent."
+* **Cluster-Aware Molecular Engine:** We replaced the atomic inspection logic with a **Molecular Aggregator** (`_compute_cluster_identity`). We eliminated the "Part-for-Whole" fallacy, ensuring the UI reflects the composite risk of the entire grapheme cluster.
+    * **TR-51 Emoji Semantics:** Detects and labels Keycap sequences, ZWJ families, and Flag sequences as **"EMOJI SEQUENCE"** instead of "Base + 3 Marks."
+    * **Forensic Composition:** Zalgo strings are now correctly identified as **"COMPOSITION: Base + 16 Marks"** rather than masquerading as "Basic Latin."
+    * **Block Mixing:** Explicitly flags "Basic Latin + 1 Other Block" to expose the multi-block nature of spoofing attacks.
+
+### 4. The "Forensic Spec Sheet" HUD (Identity Column)
+*(UI Redesign)*
+
+The Identity Column has been completely redesigned to match the aesthetic of a high-end forensic spec sheet, prioritizing **clarity** and **completeness** over redundancy.
+
+* **De-Cluttered Chips:** Removed redundant chips (`ASCII`, `NON-STD`) that duplicated data found elsewhere.
+* **The "Truth Chip" System:**
+    * **Verdict-Driven:** Chips like `[STACKED]`, `[BIDI]`, `[SPOOF]`, and `[ROT]` appear *only* when the Threat Engine confirms an active vector.
+    * **Context-Aware Color:** `[NOTE]` badges are now **Blue** (matching the Lookalikes box), ensuring strict visual hierarchy alongside Red (Critical) and Orange (Suspicious).
+* **Dynamic Header:** The header title now dynamically shifts from "LATIN LETTER A" to **"GRAPHEME CLUSTER"** when analyzing complex sequences, forcing the analyst to check the component table.
+* **2x2 Technical Matrix:** Replaced the list view with a dense, framed 2x2 grid for technical specs (`Block`, `Script`, `Category`, `Age`), improving scanability and visual density.
+
+### 5. Visualizing the Threat (Evidence Arrays)
+*(New Visualization Features)*
+
+We moved beyond simple text lists to **Visual Evidence Arrays**, ensuring threats are visible at a glance.
+
+* **The Lookalikes Matrix:** Instead of a CSV string (`U+0430, U+0061`), we now render a **Visual Grid of Chips**.
+    * **Rich Data:** Each chip displays the Glyph, the Hex Code, and the Script (e.g., `a` `U+0430` `CYRILLIC`).
+    * **Vertical Color Sync:** The Lookalikes box inherits the risk color of the Verdict Panel. If the verdict is **Orange (AMBIGUOUS)**, the Lookalikes box turns **Orange**, visually linking the threat to the evidence.
+* **The "Normalization Ghost" Strip:**
+    * **Always-On Stability:** We now explicitly show **"NORMALIZATION: STABLE"** (in green/black) when no drift is detected, providing affirmative confirmation of safety.
+    * **Visual Chain:** When drift occurs, it renders the full `RAW` → `NFKC` → `SKELETON` transformation chain, allowing analysts to see exactly how a character "shapeshifts" under normalization.
+
+### 6. Architectural Polish
+* **Forensic 9 Restoration:** Fixed a regression where legacy encoding data (`utf8`, `html`, `url`) was temporarily lost during the refactor. The calculation logic was restored and integrated into the new payload.
+* **CSS "Calm" System:** Refined the UI with "Calm" white backgrounds and thin light-gray borders for stable states, reserving high-contrast colors (Red/Orange/Blue) strictly for active signals. This reduces cognitive load during analysis.
 * **Robust Data Loader:** Fixed a critical "unpacking error" in `app.py` to correctly handle the dynamic injection of the new JSON datasets alongside the 31 raw text files.
-* **Visual Consistency:** Unified the background colors of the Context columns (`PREV`/`NEXT`) and Table Headers to match the main interface, removing legacy gray boxes for a cleaner look.
