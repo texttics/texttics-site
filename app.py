@@ -6310,7 +6310,7 @@ def update_all(event=None):
         "nsm_level": nsm_stats["level"],
         "drift": skel_metrics.get("total_drift", 0)
     }
-    render_forensic_hud(t, hud_stats))
+    render_forensic_hud(t, hud_stats)
     
     # Stage 2 Bridge
     try:
