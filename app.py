@@ -5039,11 +5039,34 @@ def inspect_character(event):
         gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
         gb_prop = gb_val if gb_val else "Base (Other)"
         
-        # --- FETCH LOOKALIKES ---
-        # Retrieve the list of visual confusables for this base character
+        # --- FETCH LOOKALIKES (Rich Data) ---
         inv_map = DATA_STORES.get("InverseConfusables", {})
-        # Keys in JSON are strings of the integer value
-        lookalikes_list = inv_map.get(str(cp_base), [])
+        raw_lookalikes = inv_map.get(str(cp_base), [])
+        
+        lookalikes_data = []
+        for item in raw_lookalikes:
+            try:
+                # Handle both integer and string inputs from JSON
+                if isinstance(item, int):
+                    cp = item
+                else:
+                    # Assume Hex String "U+XXXX" or "XXXX"
+                    clean = str(item).replace("U+", "").strip()
+                    cp = int(clean, 16)
+                
+                char = chr(cp)
+                script = _find_in_ranges(cp, "Scripts") or "Common"
+                block = _find_in_ranges(cp, "Blocks") or "Unknown Block"
+                
+                lookalikes_data.append({
+                    "cp": f"U+{cp:04X}",
+                    "glyph": char,
+                    "script": script,
+                    "block": block,
+                    "name": unicodedata.name(char, "UNKNOWN CHARACTER")
+                })
+            except Exception:
+                continue
         
         # 3. Components Analysis
         components = []
@@ -5128,7 +5151,7 @@ def inspect_character(event):
             "macro_type": macro_type,
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
-            "lookalikes": lookalikes_list,
+            "lookalikes_data": lookalikes_data,
             
             "line_break": lb_prop,
             "word_break": wb_prop,
@@ -5555,17 +5578,36 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6A. Lookalikes Section (New Constant Section)
+    # 6A. Lookalikes Section (Rich Chips)
     lookalike_html = ""
-    if data.get('lookalikes'):
-        count = len(data['lookalikes'])
-        # Join them nicely (e.g., "A, А, Ꭺ")
-        list_str = ", ".join(data['lookalikes'])
+    if data.get('lookalikes_data'):
+        count = len(data['lookalikes_data'])
+        
+        # Build the grid of chips
+        chips_buffer = []
+        for item in data['lookalikes_data']:
+            # Tooltip shows full name and block
+            tooltip = f"{item['name']} &#10;Block: {item['block']}"
+            
+            chip = f"""
+            <div class="lookalike-chip" title="{tooltip}">
+                <span class="lk-glyph">{item['glyph']}</span>
+                <span class="lk-meta">
+                    <span class="lk-cp">{item['cp']}</span>
+                    <span class="lk-script">{item['script']}</span>
+                </span>
+            </div>
+            """
+            chips_buffer.append(chip)
+            
+        grid_html = "".join(chips_buffer)
         
         lookalike_html = f"""
-        <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px;">
-            <span class="ghost-key blue">LOOKALIKES ({count}):</span>
-            <span class="lookalike-list">{list_str}</span>
+        <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
+            <span class="ghost-key blue">LOOKALIKES ({count})</span>
+            <div class="lookalike-grid">
+                {grid_html}
+            </div>
         </div>
         """
     else:
