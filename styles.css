@@ -2065,7 +2065,7 @@ tr.flag-row-crit {
   color: #b91c1c; /* Red-700 */
 }
 
-/* --- Forensic HUD (The Data Matrix - Fluid Fit) --- */
+/* --- Forensic HUD (The Data Matrix - Final) --- */
 .hud-container {
   display: flex;
   flex-direction: row;
@@ -2079,68 +2079,63 @@ tr.flag-row-crit {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   font-family: var(--font-sans);
   
-  /* [FIX] Changed from 'hidden' to 'visible' so tooltips can pop out */
-  overflow: visible; 
-  width: 100%;
-  z-index: 20; /* Ensure it sits above the content below */
+  /* [CRITICAL FIX] Allow Tooltips to Escape */
+  overflow: visible !important; 
+  
+  /* [CRITICAL FIX] Stack ABOVE the Inspector details element */
   position: relative;
+  z-index: 50;
+  
+  width: 100%;
 }
 
-/* The Column (Vertical Slice) */
+/* The Column (Fluid Width) */
 .hud-col {
-  /* THE MAGIC FIX: */
-  flex: 1 1 0px; /* Grow: 1, Shrink: 1, Basis: 0. Forces exact equality. */
-  
-  /* Remove constraints that caused gaps/scrolls */
+  flex: 1 1 0px; /* Strict equality */
   min-width: 0; 
-  max-width: none; 
-  
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--color-border-light);
   text-align: center;
-  position: relative;
+  position: relative; /* Tooltip anchor */
 }
 
 .hud-col:last-child {
   border-right: none;
 }
 
-/* --- ROW 1: Scientific Title (Top) --- */
+/* --- ROW 1: Scientific Title --- */
 .hud-row-sci {
   background-color: #f9fafb;
   color: #6b7280;
-  font-size: 0.55rem; /* Slight reduction to prevent wrap */
+  font-size: 0.55rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 700;
-  padding: 6px 2px; /* Tighter padding */
+  padding: 6px 2px;
   border-bottom: 1px solid #e5e7eb;
-  
-  /* Safety for narrow screens */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* --- ROW 2: Main Title (with i) --- */
+/* --- ROW 2: Main Title --- */
 .hud-row-label-main {
   padding: 8px 2px 2px 2px;
-  font-size: 0.65rem; /* Optimized for fit */
+  font-size: 0.65rem;
   font-weight: 600;
   color: #374151;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 4px;
-  
   white-space: nowrap;
   overflow: hidden;
 }
 
 /* --- ROW 3: Main Digit --- */
 .hud-row-val-main {
-  font-size: 1.6rem; /* Big enough to pop */
+  font-size: 1.6rem;
   font-weight: 700;
   color: #111827;
   line-height: 1.1;
@@ -2148,7 +2143,7 @@ tr.flag-row-crit {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- ROW 4: Secondary Title (with i) --- */
+/* --- ROW 4: Secondary Title --- */
 .hud-row-label-sub {
   margin-top: 4px;
   font-size: 0.55rem;
@@ -2191,7 +2186,6 @@ tr.flag-row-crit {
   color: #2563eb;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2201,93 +2195,103 @@ tr.flag-row-crit {
   background-color: #eff6ff;
 }
 
-/* --- Interactive Elements --- */
-
-/* The Elegant 'i' */
+/* --- INFO ICON (The "Little i" Fix) --- */
 .hud-info-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px; /* Slightly larger touch target */
+  width: 13px;
   height: 13px;
   border: 1px solid #9ca3af;
   border-radius: 50%;
   
-  /* [FIX] Force explicit font settings to prevent "Big I" inheritance */
+  /* [FIX] Force settings to override parent Uppercase/Bold */
   font-family: serif;
   font-style: italic;
   font-weight: normal;
-  text-transform: none; /* Critical: Prevents 'I' */
+  text-transform: none; /* Turns 'I' back to 'i' */
   font-size: 0.65rem;
   line-height: 1;
   
   color: #6b7280;
   cursor: help;
-  position: relative; 
+  position: relative;
   background-color: rgba(255,255,255,0.5);
-  margin-left: 3px;
+  flex-shrink: 0;
 }
 
 .hud-info-icon:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
   background-color: #fff;
-  z-index: 101; /* Ensure hovered icon stays on top */
+  z-index: 101;
 }
 
-/* Tooltip Logic - Downward Projection */
+/* --- TOOLTIP (The Pop-out Fix) --- */
 .hud-tooltip {
   visibility: hidden;
   opacity: 0;
   position: absolute;
-  top: 120%; /* Push it slightly further down so it doesn't cover the icon */
+  
+  /* Push DOWN below the icon */
+  top: 140%; 
   left: 50%;
   transform: translateX(-50%);
   
   width: max-content;
   max-width: 220px;
+  
   background-color: rgba(17, 24, 39, 0.95);
-  color: white;
-  padding: 8px 10px;
-  border-radius: 4px;
+  backdrop-filter: blur(4px);
+  color: #f9fafb;
+  padding: 10px;
+  border-radius: 6px;
   font-size: 0.7rem;
   font-family: var(--font-sans);
   text-align: left;
   
-  /* [FIX] Massive Z-Index to ensure it floats over everything */
+  /* [FIX] Ensure it floats on top of everything */
   z-index: 9999; 
   pointer-events: none;
   transition: opacity 0.15s;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
-  white-space: normal;
-  
-  /* Reset text transform inside tooltip just in case */
-  text-transform: none;
-  font-weight: normal;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  white-space: normal; /* Allow wrapping */
+  border: 1px solid #374151;
 }
 
-/* Special case for the LAST column (prevent right overflow) */
+/* Show on hover */
+.hud-info-icon:hover .hud-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Prevent overflow on edge columns */
 .hud-col:last-child .hud-tooltip {
     left: auto;
-    right: 0;
+    right: -5px;
     transform: translateX(0);
 }
-
-/* Special case for the FIRST column (prevent left overflow) */
 .hud-col:first-child .hud-tooltip {
-    left: 0;
+    left: -5px;
     transform: translateX(0);
 }
 
-/* Last column tooltip adjustment: prevent overflow off-screen */
-.hud-col:last-child .hud-tooltip {
-    left: auto;
-    right: 0;
-    transform: translateX(0) translateY(-5px);
-}
-
-/* Colors */
+/* Status Colors */
 .txt-safe { color: #059669; }
 .txt-warn { color: #d97706; }
 .txt-crit { color: #dc2626; }
 .txt-neutral { color: #111827; }
+
+/* Tooltip Internal Layout */
+.tt-header {
+  display: block;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #4b5563;
+}
+.tt-row { display: flex; gap: 8px; margin-bottom: 2px; }
+.tt-key { color: #9ca3af; font-weight: 600; min-width: 40px; }
+.tt-val { color: #d1d5db; }
+.tt-info { margin-top: 6px; color: #9ca3af; font-style: italic; }
