@@ -169,6 +169,73 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+    // ==========================================
+  // 6. HUD CONSOLE & NAVIGATION BRIDGE
+  // ==========================================
+  const hudContainer = document.getElementById('forensic-hud');
+  const consoleOutput = document.getElementById('hud-console-output');
+  const consoleMeta = document.getElementById('hud-console-meta');
+  const defaultConsoleText = "Hover over a metric for forensic definition.";
+
+  if (hudContainer && consoleOutput) {
+    
+    // --- A. Console Hover Logic (Delegated) ---
+    hudContainer.addEventListener('mouseover', (e) => {
+      // Find closest column parent
+      const col = e.target.closest('.hud-col');
+      if (col) {
+        const desc = col.getAttribute('data-desc') || "";
+        const math = col.getAttribute('data-math') || "";
+        const ref = col.getAttribute('data-ref') || "";
+        
+        // Update Console
+        consoleOutput.textContent = desc;
+        consoleOutput.style.color = "var(--color-primary)";
+        
+        // Optional: Show Math/Ref in meta section
+        let metaText = [];
+        if(math) metaText.push(`[MATH: ${math}]`);
+        if(ref) metaText.push(`[REF: ${ref}]`);
+        consoleMeta.textContent = metaText.join(" ");
+      }
+    });
+
+    // --- B. Reset on Leave ---
+    hudContainer.addEventListener('mouseout', (e) => {
+       // Only reset if we actually left the HUD container, not just a child
+       if (!e.relatedTarget || !hudContainer.contains(e.relatedTarget)) {
+          consoleOutput.textContent = defaultConsoleText;
+          consoleOutput.style.color = ""; // Reset color
+          consoleMeta.textContent = "";
+       }
+    });
+
+    // --- C. Navigation Click Logic (Delegated) ---
+    hudContainer.addEventListener('click', (e) => {
+      // Check if click was on the Footer or the Button
+      const footer = e.target.closest('.hud-row-extra');
+      
+      if (footer) {
+        const targetId = footer.getAttribute('data-nav-target');
+        if (targetId) {
+           const targetSection = document.querySelector(targetId);
+           if (targetSection) {
+             // 1. Expand the details element if it's closed
+             if (targetSection.tagName === 'DETAILS' && !targetSection.open) {
+                targetSection.open = true;
+             }
+             // 2. Scroll to it smoothly
+             targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+             
+             // 3. Optional: Flash effect to show where we went
+             targetSection.classList.add('highlight-flash');
+             setTimeout(() => targetSection.classList.remove('highlight-flash'), 1000);
+           }
+        }
+      }
+    });
+  }
+
   // --- Keyboard Navigation Handler ---
   tabs.forEach(tab => {
     tab.addEventListener('keydown', (e) => {
