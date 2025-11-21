@@ -826,8 +826,9 @@ def analyze_bidi_structure(t: str, rows: list):
 
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix'.
-    Structure: 6-Row Vertical Stack per Column.
+    Renders the 'Forensic Matrix' V3.
+    Structure: 7-Column Vertical Stack.
+    Split Safety into Integrity (Col 6) and Threat (Col 7).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -848,24 +849,19 @@ def render_forensic_hud(t, stats):
                     sub_label, sub_val, sub_info, 
                     risk_class="neutral", extra_label="View Details"):
         
-        # Handle empty sub-values gracefully for layout stability
         if not sub_label: sub_label = "&nbsp;"
         if not sub_val: sub_val = "&nbsp;"
         
-        # Main Tooltip
         tt_main = ""
         if main_info:
             tt_html = gen_tooltip(main_label, main_info)
             tt_main = f'<span class="hud-info-icon">i{tt_html}</span>'
 
-        # Sub Tooltip
         tt_sub = ""
         if sub_info:
             tt_html = gen_tooltip(sub_label, sub_info)
             tt_sub = f'<span class="hud-info-icon">i{tt_html}</span>'
         elif sub_label != "&nbsp;":
-             # If label exists but no specific info, show empty icon or hide? 
-             # User asked for 'i' at top right. Let's include it if label exists.
              pass
 
         return f"""
@@ -884,7 +880,7 @@ def render_forensic_hud(t, stats):
             
             <div class="hud-row-val-sub">{sub_val}</div>
             
-            <div class="hud-row-extra" title="Extended Analysis (Placeholder)">
+            <div class="hud-row-extra" title="Extended Analysis">
                 <span class="hud-extra-btn">{extra_label}</span>
             </div>
         </div>
@@ -898,14 +894,12 @@ def render_forensic_hud(t, stats):
         if c[0] != -1: uax_word, uax_sent = c[0], c[1]
     except: pass
 
-    # --- 1. METRIC DEFINITIONS ---
+    # --- 1. VOLUME METRICS ---
 
     # COL 1: VOLUME
-    # Main: VU, Sub: UAX Words
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
-    
     c1 = render_cell(
         "Lexical Mass",
         "Volume (VU)", f"{vu:.1f}", "Calculated payload mass (AlphaNum / 5.0).",
@@ -913,9 +907,7 @@ def render_forensic_hud(t, stats):
     )
 
     # COL 2: SEGMENTS
-    # Main: Est Segments, Sub: UAX Sentences
     seg_est = max(1, round(vu / 20.0)) if t else 0
-    
     c2 = render_cell(
         "Density",
         "Segments", str(seg_est), "Estimated structural blocks based on lexical density (VU / 20).",
@@ -923,20 +915,18 @@ def render_forensic_hud(t, stats):
     )
 
     # COL 3: DELIMITERS
-    # Main: Count, Sub: Ratio?
     terms = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
-    
     c3 = render_cell(
         "Syntax Bounds",
         "Delimiters", str(terms), "Explicit punctuation boundaries (., !?;).",
         "Density", f"{terms/max(1, vu):.2f}" if vu > 0 else "0.0", "Delimiters per Volumetric Unit."
     )
 
+    # --- 2. COMPOSITION METRICS ---
+
     # COL 4: INVISIBLES
-    # Main: Std, Sub: Non-Std (Risk)
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
-    
     flags = stats.get('forensic_flags', {})
     non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     risk_inv = "crit" if non_std_inv > 0 else "safe"
@@ -949,12 +939,10 @@ def render_forensic_hud(t, stats):
     )
 
     # COL 5: OTHERS
-    # Main: Syntax, Sub: Anomalies
     asc_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
     rgi = stats.get('rgi_count', 0)
     std_oth = asc_punct + rgi
     
-    # Anomalies calc
     anom = 0
     js_arr = window.Array.from_(t)
     t_len = len(INVIS_TABLE)
@@ -973,27 +961,42 @@ def render_forensic_hud(t, stats):
         risk_anom
     )
 
-    # COL 6: SAFETY (Composite)
-    # Main: Threat, Sub: Integrity
-    thr = stats.get('threat', {})
-    thr_v = thr.get('verdict', 'READY')
-    thr_s = thr.get('score', 0)
-    risk_thr = "safe"
-    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: risk_thr = "crit"
-    elif "SUSPICIOUS" in thr_v: risk_thr = "warn"
+    # --- 3. SAFETY METRICS (SPLIT) ---
 
+    # COL 6: INTEGRITY (Data Health)
     int_res = stats.get('integrity', {})
-    int_v = int_res.get('verdict', 'READY')
+    int_verdict = int_res.get('verdict', 'READY')
+    int_count = len(int_res.get('ledger', [])) # Count of active issues
+    
+    risk_int = "safe"
+    if int_verdict in ("CORRUPT", "FRACTURED"): risk_int = "crit"
+    elif int_verdict in ("RISKY", "DECAYING"): risk_int = "warn"
     
     c6 = render_cell(
-        "Audit Result",
-        "Threat", thr_v, f"Exploit Risk Score: {thr_s}",
-        "Integrity", int_v, f"Data Health Score: {int_res.get('score',0)}",
-        risk_thr, "View Ledger"
+        "Data Health",
+        "Integrity", int_verdict, "Measures corruption, encoding errors, and data loss.",
+        "Issues", str(int_count), "Count of active integrity flags.",
+        risk_int, "View Ledger"
+    )
+
+    # COL 7: THREAT (Exploit Risk)
+    thr_res = stats.get('threat', {})
+    thr_verdict = thr_res.get('verdict', 'READY')
+    thr_count = len(thr_res.get('ledger', [])) # Count of active threats
+    
+    risk_thr = "safe"
+    if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: risk_thr = "crit"
+    elif "SUSPICIOUS" in thr_verdict: risk_thr = "warn"
+    
+    c7 = render_cell(
+        "Exploit Risk",
+        "Threat", thr_verdict, "Measures malicious patterns (spoofing, injection, obfuscation).",
+        "Signals", str(thr_count), "Count of active threat vectors detected.",
+        risk_thr, "View Analysis"
     )
 
     # --- ASSEMBLY ---
-    container.innerHTML = "".join([c1, c2, c3, c4, c5, c6])
+    container.innerHTML = "".join([c1, c2, c3, c4, c5, c6, c7])
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
