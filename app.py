@@ -890,7 +890,7 @@ def render_forensic_hud(t, stats):
 
     # --- 1. COLUMNS ---
 
-    # C0: ALPHANUMERIC (Was Alpha Content)
+    # C0: ALPHANUMERIC (The Literals)
     alpha_chars = sum(1 for c in t if c.isalnum())
     alpha_runs = 0
     in_run = False
@@ -906,8 +906,8 @@ def render_forensic_hud(t, stats):
         "ALPHANUMERIC", 
         "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
         "SEQUENCES", str(alpha_runs), color_neutral(alpha_runs),
-        d1="Total count of visible alphanumeric characters.", m1="Count(Alphanum)", r1="Base: Visible",
-        d2="Contiguous sequences of alphanumerics.", m2="Count(Runs)", r2="Pattern: [A-Z0-9]+"
+        d1="Count of atomic alphanumeric data values (Letters + Numbers).", m1="Count(Alphanum)", r1="Base: Visible",
+        d2="Contiguous runs of alphanumeric data.", m2="Count(Runs)", r2="Pattern: [A-Z0-9]+"
     )
 
     # C1: LEXICAL MASS (Scientific Standard)
