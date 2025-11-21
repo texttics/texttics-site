@@ -2065,13 +2065,12 @@ tr.flag-row-crit {
   color: #b91c1c; /* Red-700 */
 }
 
-/* --- Forensic HUD (The Data Matrix) --- */
+/* --- Forensic HUD (The Data Matrix - Fluid Fit) --- */
 .hud-container {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
   align-items: stretch;
-  gap: 0; /* Borders handle separation */
+  gap: 0; /* No gaps, borders only */
   margin-top: 1rem;
   margin-bottom: 0.5rem;
   background-color: var(--color-white);
@@ -2080,16 +2079,20 @@ tr.flag-row-crit {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   font-family: var(--font-sans);
   
-  /* Constraints */
-  overflow-x: auto;
-  max-width: 100%;
+  /* FORCE FIT: No scrolling, hide overflow */
+  overflow: hidden; 
+  width: 100%;
 }
 
 /* The Column (Vertical Slice) */
 .hud-col {
-  flex: 1; /* Spread evenly */
-  min-width: 105px; /* [CHANGED] Reduced from 120px to fit 7 cols */
-  max-width: 140px; /* [CHANGED] Reduced max width for tightness */
+  /* THE MAGIC FIX: */
+  flex: 1 1 0px; /* Grow: 1, Shrink: 1, Basis: 0. Forces exact equality. */
+  
+  /* Remove constraints that caused gaps/scrolls */
+  min-width: 0; 
+  max-width: none; 
+  
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--color-border-light);
@@ -2103,14 +2106,16 @@ tr.flag-row-crit {
 
 /* --- ROW 1: Scientific Title (Top) --- */
 .hud-row-sci {
-  background-color: #f9fafb; /* Gray-50 */
-  color: #6b7280; /* Gray-500 */
-  font-size: 0.6rem;
+  background-color: #f9fafb;
+  color: #6b7280;
+  font-size: 0.55rem; /* Slight reduction to prevent wrap */
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 700;
-  padding: 6px 4px;
+  padding: 6px 2px; /* Tighter padding */
   border-bottom: 1px solid #e5e7eb;
+  
+  /* Safety for narrow screens */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2118,55 +2123,59 @@ tr.flag-row-crit {
 
 /* --- ROW 2: Main Title (with i) --- */
 .hud-row-label-main {
-  padding: 8px 4px 2px 4px;
-  font-size: 0.7rem;
+  padding: 8px 2px 2px 2px;
+  font-size: 0.65rem; /* Optimized for fit */
   font-weight: 600;
-  color: #374151; /* Gray-700 */
+  color: #374151;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 4px;
+  
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 /* --- ROW 3: Main Digit --- */
 .hud-row-val-main {
-  font-size: 1.75rem; /* Big Impact */
+  font-size: 1.6rem; /* Big enough to pop */
   font-weight: 700;
-  color: #111827; /* Gray-900 */
+  color: #111827;
   line-height: 1.1;
-  padding: 2px 4px;
+  padding: 2px 0;
   font-variant-numeric: tabular-nums;
 }
 
 /* --- ROW 4: Secondary Title (with i) --- */
 .hud-row-label-sub {
-  margin-top: 6px;
-  font-size: 0.6rem;
+  margin-top: 4px;
+  font-size: 0.55rem;
   font-weight: 600;
-  color: #9ca3af; /* Gray-400 */
+  color: #9ca3af;
   text-transform: uppercase;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
 }
 
 /* --- ROW 5: Secondary Digit --- */
 .hud-row-val-sub {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: #4b5563; /* Gray-600 */
+  color: #4b5563;
   margin-bottom: 8px;
   font-variant-numeric: tabular-nums;
-  min-height: 1.2em; /* Preserve height even if empty */
+  min-height: 1.2em;
 }
 
 /* --- ROW 6: Extra Button (Footer) --- */
 .hud-row-extra {
-  margin-top: auto; /* Push to bottom */
+  margin-top: auto;
   background-color: #ffffff;
   border-top: 1px solid #e5e7eb;
-  padding: 6px;
+  padding: 6px 2px;
   cursor: pointer;
   transition: background-color 0.2s;
 }
@@ -2175,11 +2184,15 @@ tr.flag-row-crit {
   display: block;
   width: 100%;
   text-align: center;
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  color: #2563eb; /* Primary Blue */
+  color: #2563eb;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hud-row-extra:hover {
@@ -2188,13 +2201,13 @@ tr.flag-row-crit {
 
 /* --- Interactive Elements --- */
 
-/* The Elegant 'i' */
 .hud-info-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 12px;
   height: 12px;
+  flex-shrink: 0; /* Prevent icon from squishing */
   border: 1px solid #d1d5db;
   border-radius: 50%;
   font-family: serif;
@@ -2202,7 +2215,7 @@ tr.flag-row-crit {
   font-size: 0.6rem;
   color: #6b7280;
   cursor: help;
-  position: relative; /* For Tooltip Anchor */
+  position: relative;
 }
 
 .hud-info-icon:hover {
@@ -2211,7 +2224,7 @@ tr.flag-row-crit {
   background-color: #fff;
 }
 
-/* The Tooltip (Re-styled for Grid) */
+/* Tooltip Logic */
 .hud-tooltip {
   visibility: hidden;
   opacity: 0;
@@ -2220,7 +2233,7 @@ tr.flag-row-crit {
   left: 50%;
   transform: translateX(-50%) translateY(-5px);
   width: max-content;
-  max-width: 240px;
+  max-width: 220px; /* Slightly narrower */
   background-color: rgba(17, 24, 39, 0.95);
   color: white;
   padding: 8px 10px;
@@ -2228,10 +2241,11 @@ tr.flag-row-crit {
   font-size: 0.7rem;
   font-family: var(--font-sans);
   text-align: left;
-  z-index: 50;
+  z-index: 100; /* Higher Z to float over everything */
   pointer-events: none;
   transition: opacity 0.15s;
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  white-space: normal; /* Allow text wrapping inside tooltip */
 }
 
 .hud-info-icon:hover .hud-tooltip {
@@ -2239,7 +2253,15 @@ tr.flag-row-crit {
   opacity: 1;
 }
 
+/* Last column tooltip adjustment: prevent overflow off-screen */
+.hud-col:last-child .hud-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateX(0) translateY(-5px);
+}
+
 /* Colors */
 .txt-safe { color: #059669; }
 .txt-warn { color: #d97706; }
 .txt-crit { color: #dc2626; }
+.txt-neutral { color: #111827; }
