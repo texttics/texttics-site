@@ -110,9 +110,16 @@
             </div>
         
         <div id="hud-console" class="hud-console-strip">
-            <span class="console-label">INFO:</span>
-            <span id="hud-console-output" class="console-content">Hover over a metric for forensic definition.</span>
-            <span id="hud-console-meta" class="console-meta"></span>
+            <div class="console-row" id="console-row-main">
+                <span class="console-label">MAIN:</span>
+                <span class="console-content">Hover over a metric for primary definition.</span>
+                <span class="console-meta"></span>
+            </div>
+            <div class="console-row" id="console-row-sub">
+                <span class="console-label">SUB:</span>
+                <span class="console-content">Secondary context will appear here.</span>
+                <span class="console-meta"></span>
+            </div>
         </div>
         
         <details class="profile-section" id="inspector-panel-wrapper" open>
