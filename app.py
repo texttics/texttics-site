@@ -902,7 +902,9 @@ def render_forensic_hud(t, stats):
     vu = (L + N) / 5.0
     c1 = render_cell(
         "Lexical Mass",
-        "Volume (VU)", f"{vu:.1f}", "Calculated payload mass (AlphaNum / 5.0).",
+        "Units", f"{vu:.1f}",  # [CHANGED] Label: 'Units'
+        # [CHANGED] Tooltip explanation
+        "Custom Volumetric Unit based on visible graphemes (AlphaNum / 5.0). Roughly equivalent to standard typing words.",
         "UAX Words", str(uax_word), "Unicode Standard Annex #29 word segmentation count."
     )
 
@@ -910,7 +912,9 @@ def render_forensic_hud(t, stats):
     seg_est = max(1, round(vu / 20.0)) if t else 0
     c2 = render_cell(
         "Density",
-        "Segments", str(seg_est), "Estimated structural blocks based on lexical density (VU / 20).",
+        "Segments", str(seg_est), 
+        # [Refined] Tooltip
+        "Estimated structural blocks based on lexical density (Units / 20). A forensic proxy for sentences.",
         "UAX Sent.", str(uax_sent), "Unicode Standard Annex #29 sentence segmentation count."
     )
 
