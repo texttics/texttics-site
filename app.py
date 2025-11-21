@@ -5009,17 +5009,17 @@ def inspect_character(event):
         # --- DATA ENRICHMENT (Composite-Aware) ---
         
         # 1. Composite Macro-Classification
-        # We use the aggregated risk signals from the cluster engine (max_risk_cat)
-        # instead of just the base character's category.
         comp_cat = cluster_identity["max_risk_cat"]
         comp_mask = cluster_identity["cluster_mask"]
         
-        # Re-eval ID status based on the composite risk category
-        # If the cluster contains Rot/Control, we treat the whole unit as Restricted logic
+        # Re-eval ID status based on composite risk
         if comp_cat in ("Cn", "Co", "Cs", "Cf"):
             id_status = "Restricted"
         else:
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
+            
+        # [FIX] Explicitly define id_type here so it exists for the data payload
+        id_type = _find_in_ranges(cp_base, "IdentifierType")
             
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
         ghosts = _get_ghost_chain(base_char)
