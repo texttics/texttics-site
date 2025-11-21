@@ -827,7 +827,7 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V8 (Refined Terminology).
+    Renders the 'Forensic Matrix' V9 (Keyboard-Safe Symbols + Column Swap).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -932,12 +932,8 @@ def render_forensic_hud(t, stats):
         d2="Linguistic sentence count via UAX #29.", m2="Intl.Segmenter", r2="UAX #29"
     )
 
-    # C3: DELIMITERS (ASCII vs Non-ASCII)
-    # Main: ASCII Punctuation (. , ; ! ?)
+    # C3: DELIMITERS
     ascii_delims = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
-    
-    # Sub: Non-ASCII Punctuation (Extended)
-    # We scan for category 'P' (Punctuation) that is NOT in the ASCII range
     non_ascii_delims = 0
     for c in t:
         if unicodedata.category(c).startswith('P') and ord(c) > 0x7F:
@@ -951,10 +947,9 @@ def render_forensic_hud(t, stats):
         d2="Extended Unicode punctuation (Fullwidth, Inverted, etc).", m2="Count(P) > 0x7F", r2="Grammar: Ext"
     )
 
-    # C4: WHITESPACE (Standard vs Non-Std)
+    # C4: WHITESPACE
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
-    
     flags = stats.get('forensic_flags', {})
     non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
@@ -966,14 +961,44 @@ def render_forensic_hud(t, stats):
         d2="Obscure or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation"
     )
 
-    # C5: EMOJI (RGI vs Irregular)
+    # C5: SYMBOLS (Keyboard Safe Logic)
+    # Main: ASCII Operators/Symbols (Exclude C3 delimiters)
+    # Logic: 0x21-0x7E, Not Alphanum, Not {. ? ! ; ,}
+    # This ensures ^, %, $, +, ~ are ALL counted as Standard Keyboard Chars
+    c3_set = {'.', '?', '!', ';', ','}
+    ascii_ops = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum() and c not in c3_set)
+    
+    # Sub: Exotic (Non-ASCII Symbols/Punctuation not caught in C3)
+    # If it's > 0x7F and starts with S (Symbol) or P (Punctuation) but wasn't counted in C3 sub
+    exotic = 0
+    js_arr = window.Array.from_(t)
+    for c in js_arr:
+        cp = ord(c)
+        if cp > 0x7F:
+            cat = unicodedata.category(c)
+            # If it's a Symbol (Sk, Sm, So, Sc) it goes here.
+            # If it's Punctuation (P*) it was likely counted in C3, so we focus on Symbols here
+            if cat.startswith('S'):
+                exotic += 1
+            # Note: We keep C3 and C5 strictly orthogonal. C3 = Punctuation, C5 = Symbols.
+            # But we handled "Non-ASCII Punct" in C3. So here we only want "Non-ASCII Symbols".
+
+    c5 = render_cell(
+        "SYMBOLS", 
+        "OPERATORS", str(ascii_ops), color_neutral(ascii_ops),
+        "EXOTIC", str(exotic), color_risk(exotic),
+        d1="Standard ASCII symbols (Keyboards: @ # $ % ^ & * _ + = < > / |).", m1="ASCII 0x21-7E", r1="Keyboard",
+        d2="Non-ASCII symbols, math operators, and dingbats.", m2="Category: S*", r2="Extended"
+    )
+
+    # C6: EMOJI (Moved Here)
     rgi_count = stats.get('rgi_count', 0)
     abnormal = 0
     abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
     abnormal += flags.get("Flag: Standalone Emoji Component", {}).get("count", 0)
     abnormal += flags.get("Flag: Broken Keycap Sequence", {}).get("count", 0)
     
-    c5 = render_cell(
+    c6 = render_cell(
         "EMOJI", 
         "RGI SEQS", str(rgi_count), color_neutral(rgi_count),
         "IRREGULAR", str(abnormal), color_risk(abnormal),
@@ -981,35 +1006,11 @@ def render_forensic_hud(t, stats):
         d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk"
     )
 
-    # C6: SYMBOLS
-    # Main: ASCII Symbols (non-punct)
-    asc_sym = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum() and c not in {'.', '?', '!', ';', ','})
-    
-    anom = 0
-    js_arr = window.Array.from_(t)
-    t_len = len(INVIS_TABLE)
-    for c in js_arr:
-        cp = ord(c)
-        cat = unicodedata.category(c)
-        msk = INVIS_TABLE[cp] if cp < t_len else 0
-        # Filter: Not Letter, Not Number, Not Std Space, Not Invisible, Not Punctuation
-        if not (cat.startswith(('L','N','P')) or cp in std_set or (msk & INVIS_ANY_MASK)):
-            anom += 1
-
-    c6 = render_cell(
-        "SYMBOLS", 
-        "ASCII", str(asc_sym), color_neutral(asc_sym),
-        "NON-STD", str(anom), color_risk(anom),
-        d1="Standard ASCII symbols (Operators, Brackets).", m1="ASCII 0x21-7E", r1="Basic Syntax",
-        d2="Exotic symbols, math operators, and unassigned code points.", m2="Residuals", r2="Rare/Sketchy"
-    )
-
-    # C7: INTEGRITY (Intact vs Degraded)
+    # C7: INTEGRITY
     int_res = stats.get('integrity', {})
-    int_v = int_res.get('verdict', 'INTACT') # Default to INTACT
+    int_v = int_res.get('verdict', 'INTACT')
     int_issues = len(int_res.get('ledger',[]))
-    
-    if int_issues == 0: int_v = "INTACT" # Force INTACT if 0 issues
+    if int_issues == 0: int_v = "INTACT"
     
     v_cls = "txt-safe"
     if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
@@ -1023,12 +1024,11 @@ def render_forensic_hud(t, stats):
         d2="Count of active integrity violations found.", m2="Count(Ledger)", r2="Corruptions"
     )
 
-    # C8: THREAT (Clear vs Detected)
+    # C8: THREAT
     thr_res = stats.get('threat', {})
-    thr_v = thr_res.get('verdict', 'CLEAR') # Default to CLEAR
+    thr_v = thr_res.get('verdict', 'CLEAR')
     thr_sigs = len(thr_res.get('ledger',[]))
-    
-    if thr_sigs == 0: thr_v = "CLEAR" # Force CLEAR if 0 signals
+    if thr_sigs == 0: thr_v = "CLEAR"
 
     t_cls = "txt-safe"
     if "WEAPONIZED" in thr_v or "HIGH" in thr_v: t_cls = "txt-crit"
@@ -1042,7 +1042,7 @@ def render_forensic_hud(t, stats):
         d2="Specific attack vectors and exploit signals.", m2="Count(Ledger)", r2="CVE Patterns"
     )
 
-    # --- ASSEMBLY ---
+    # --- ASSEMBLY (SWAPPED C5/C6) ---
     container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8])
 
 # ---
