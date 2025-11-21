@@ -1954,3 +1954,65 @@ tr.flag-row-crit {
   font-weight: 500;
   word-break: break-all; /* Prevent layout break on massive lists */
 }
+
+/* --- Lookalike Chips (High Density) --- */
+
+.lookalike-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.lookalike-chip {
+  display: inline-flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1; /* Slate-300 */
+  border-radius: 4px;
+  padding: 3px 6px;
+  gap: 8px;
+  text-decoration: none;
+  transition: all 0.2s;
+  cursor: help;
+}
+
+.lookalike-chip:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* The Glyph (Visual) */
+.lk-glyph {
+  font-family: var(--font-mono); /* Use system fonts to ensure rendering */
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #0f172a; /* Slate-900 */
+}
+
+/* The Meta Data (Technical) */
+.lk-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+  gap: 2px;
+}
+
+.lk-cp {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #334155; /* Slate-700 */
+  font-family: var(--font-mono);
+}
+
+.lk-script {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  color: #64748b; /* Slate-500 */
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
