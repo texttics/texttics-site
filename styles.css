@@ -1880,8 +1880,9 @@ tr.flag-row-crit {
 /* Style for the "STABLE" label specifically */
 .ghost-section .spec-label {
     margin-bottom: 0;
-    color: #111827; /* Dark Gray/Black */
-    font-weight: 700;
+    color: #000000; /* Dark Gray/Black */
+    font-weight: 600;
+    background-color: #ffffff;
     font-size: 0.75rem;
     letter-spacing: 0.05em;
 }
@@ -1905,10 +1906,5 @@ tr.flag-row-crit {
 }
 .ghost-arrow {
   color: #cbd5e1;
-  font-size: 0.8rem;
-}
-
-.ghost-arrow {
-  color: #cbd5e1;
-  font-size: 0.8rem;
+  font-size: 1.5rem;
 }
