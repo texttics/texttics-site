@@ -549,3 +549,31 @@ window.TEXTTICS_CENTER_GLYPH = () => {
     }
   });
 };
+
+// ==========================================
+// 5. UAX #29 COUNTER BRIDGE
+// ==========================================
+window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
+  if (!text) return [0, 0];
+  try {
+    // Run segmentation natively in JS to avoid PyProxy overhead/errors
+    const wordSeg = new Intl.Segmenter("en", { granularity: 'word' });
+    const sentSeg = new Intl.Segmenter("en", { granularity: 'sentence' });
+    
+    let wCount = 0;
+    // .segment() returns an iterable, we can loop directly
+    for (const seg of wordSeg.segment(text)) {
+      if (seg.isWordLike) wCount++;
+    }
+    
+    let sCount = 0;
+    for (const seg of sentSeg.segment(text)) {
+      sCount++;
+    }
+    
+    return [wCount, sCount];
+  } catch (e) {
+    console.error("UAX Calc Error:", e);
+    return [-1, -1]; // Signal error to Python
+  }
+};
