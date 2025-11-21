@@ -1874,7 +1874,7 @@ tr.flag-row-crit {
   border-radius: 4px;
   padding: 8px;
   /* CENTER CONTENT */
-  display: flex;
+  justify-content: center;
 }
 /* Style for the "STABLE" label specifically */
 .ghost-section .spec-label {
