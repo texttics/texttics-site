@@ -826,195 +826,174 @@ def analyze_bidi_structure(t: str, rows: list):
 
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic HUD' V2.
-    Layout: Ticker Strip with Header(i), Body(Main+Sub), Footer(Extra).
+    Renders the 'Forensic Matrix'.
+    Structure: 6-Row Vertical Stack per Column.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
 
-    # --- HELPER: Tooltip Generator ---
-    def make_tooltip(header, rows, info):
-        rows_html = ""
-        for k, v in rows:
-            rows_html += f'<div class="tt-row"><span class="tt-key">[{k}]</span><span class="tt-val">{v}</span></div>'
-        
+    # --- HELPER: Tooltip Content Generator ---
+    def gen_tooltip(header, body):
         return f"""
         <div class="hud-tooltip">
-            <span class="tt-header">{header}</span>
-            {rows_html}
-            <div class="tt-info">{info}</div>
+            <div style="font-weight:700; margin-bottom:4px; border-bottom:1px solid #4b5563; padding-bottom:2px;">{header}</div>
+            <div style="line-height:1.3;">{body}</div>
         </div>
         """
 
-    # --- HELPER: Column Renderer ---
-    def render_col(label, main_val, sub_val_html="", risk_class="neutral", tooltip_html="", extra_text="Extra"):
-        """
-        Generates the 3-part column structure.
-        """
-        # If sub_val_html is just text, wrap it. If empty, render nothing.
-        sub_block = ""
-        if sub_val_html:
-            sub_block = f'<div class="hud-sub-val">{sub_val_html}</div>'
+    # --- HELPER: The 6-Row Cell Builder ---
+    def render_cell(sci_title, 
+                    main_label, main_val, main_info, 
+                    sub_label, sub_val, sub_info, 
+                    risk_class="neutral", extra_label="View Details"):
+        
+        # Handle empty sub-values gracefully for layout stability
+        if not sub_label: sub_label = "&nbsp;"
+        if not sub_val: sub_val = "&nbsp;"
+        
+        # Main Tooltip
+        tt_main = ""
+        if main_info:
+            tt_html = gen_tooltip(main_label, main_info)
+            tt_main = f'<span class="hud-info-icon">i{tt_html}</span>'
+
+        # Sub Tooltip
+        tt_sub = ""
+        if sub_info:
+            tt_html = gen_tooltip(sub_label, sub_info)
+            tt_sub = f'<span class="hud-info-icon">i{tt_html}</span>'
+        elif sub_label != "&nbsp;":
+             # If label exists but no specific info, show empty icon or hide? 
+             # User asked for 'i' at top right. Let's include it if label exists.
+             pass
 
         return f"""
         <div class="hud-col">
-            <div class="hud-header-row">
-                <span class="hud-label">{label}</span>
-                <div class="hud-info-wrapper">
-                    <span class="hud-info-trigger">i</span>
-                    {tooltip_html}
-                </div>
+            <div class="hud-row-sci">{sci_title}</div>
+            
+            <div class="hud-row-label-main">
+                {main_label} {tt_main}
             </div>
             
-            <div class="hud-body">
-                <div class="hud-main-val status-{risk_class}">{main_val}</div>
-                {sub_block}
+            <div class="hud-row-val-main txt-{risk_class}">{main_val}</div>
+            
+            <div class="hud-row-label-sub">
+                {sub_label} {tt_sub}
             </div>
             
-            <div class="hud-footer-zone" title="Click for extended analysis (Placeholder)">
-                {extra_text}
+            <div class="hud-row-val-sub">{sub_val}</div>
+            
+            <div class="hud-row-extra" title="Extended Analysis (Placeholder)">
+                <span class="hud-extra-btn">{extra_label}</span>
             </div>
         </div>
         """
 
-    # --- 0. DATA PREP (Ground Truth) ---
-    uax_word_count = "N/A"
-    uax_sent_count = "N/A"
+    # --- 0. PRE-CALC UAX ---
+    uax_word = "N/A"
+    uax_sent = "N/A"
     try:
-        counts = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if counts[0] != -1:
-            uax_word_count = counts[0]
-            uax_sent_count = counts[1]
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
     except: pass
 
-    # --- 1. VOLUME METRICS ---
-    
-    # A. VU
-    count_L = stats.get('major_stats', {}).get("L (Letter)", 0)
-    count_N = stats.get('major_stats', {}).get("N (Number)", 0)
-    vu_val = (count_L + count_N) / 5.0 
-    
-    # Tooltip contains the math
-    tt_vu = make_tooltip("Volumetric Units", 
-        [("MATH", "(L+N)/5.0"), ("REF", f"UAX Words: {uax_word_count}")], 
-        "Normalized payload mass.")
-        
+    # --- 1. METRIC DEFINITIONS ---
+
+    # COL 1: VOLUME
     # Main: VU, Sub: UAX Words
-    sub_vu = f"{uax_word_count} <span class='hud-sub-label'>UAX Words</span>"
-    col_vu = render_col("Volume (VU)", f"{vu_val:.1f}", sub_vu, "neutral", tt_vu)
-
-    # B. Segments
-    if vu_val == 0: seg_val = 0
-    else: seg_val = max(1, round(vu_val / 20.0))
+    L = stats.get('major_stats', {}).get("L (Letter)", 0)
+    N = stats.get('major_stats', {}).get("N (Number)", 0)
+    vu = (L + N) / 5.0
     
-    tt_seg = make_tooltip("Segments", 
-        [("MATH", "VU/20.0"), ("REF", f"UAX Sentences: {uax_sent_count}")], 
-        "Estimated sentence blocks.")
-        
-    sub_seg = f"{uax_sent_count} <span class='hud-sub-label'>UAX Sent.</span>"
-    col_seg = render_col("Segments", str(seg_val), sub_seg, "neutral", tt_seg)
+    c1 = render_cell(
+        "Lexical Mass",
+        "Volume (VU)", f"{vu:.1f}", "Calculated payload mass (AlphaNum / 5.0).",
+        "UAX Words", str(uax_word), "Unicode Standard Annex #29 word segmentation count."
+    )
 
-    # C. Delimiters
-    terminators = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
-    tt_term = make_tooltip("Delimiters", [("TARGET", ". , ? ! ;")], "Explicit punctuation boundaries.")
-    col_term = render_col("Delimiters", str(terminators), "", "neutral", tt_term)
+    # COL 2: SEGMENTS
+    # Main: Est Segments, Sub: UAX Sentences
+    seg_est = max(1, round(vu / 20.0)) if t else 0
+    
+    c2 = render_cell(
+        "Density",
+        "Segments", str(seg_est), "Estimated structural blocks based on lexical density (VU / 20).",
+        "UAX Sent.", str(uax_sent), "Unicode Standard Annex #29 sentence segmentation count."
+    )
 
-    # --- 2. COMPOSITION METRICS ---
+    # COL 3: DELIMITERS
+    # Main: Count, Sub: Ratio?
+    terms = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
+    
+    c3 = render_cell(
+        "Syntax Bounds",
+        "Delimiters", str(terms), "Explicit punctuation boundaries (., !?;).",
+        "Density", f"{terms/max(1, vu):.2f}" if vu > 0 else "0.0", "Delimiters per Volumetric Unit."
+    )
 
-    # D. Whitespace
-    std_invis_set = {0x20, 0x09, 0x0A, 0x0D}
-    count_std_invis = sum(1 for c in t if ord(c) in std_invis_set)
-    tt_white = make_tooltip("Std Whitespace", [("TARGET", "Space Tab LF CR")], "Layout skeleton.")
-    col_white = render_col("Whitespace", str(count_std_invis), "", "neutral", tt_white)
-
-    # E. Stealth (Non-Std Invis)
+    # COL 4: INVISIBLES
+    # Main: Std, Sub: Non-Std (Risk)
+    std_set = {0x20, 0x09, 0x0A, 0x0D}
+    std_inv = sum(1 for c in t if ord(c) in std_set)
+    
     flags = stats.get('forensic_flags', {})
-    count_stealth = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    risk_stealth = "crit" if count_stealth > 0 else "safe"
-    tt_stealth = make_tooltip("Stealth Matter", [("TARGET", "ZWSP Bidi Tags...")], "Obfuscation vector.")
-    col_stealth = render_col("Stealth", str(count_stealth), "", risk_stealth, tt_stealth)
+    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    risk_inv = "crit" if non_std_inv > 0 else "safe"
+    
+    c4 = render_cell(
+        "Void Spectrum",
+        "Standard", str(std_inv), "Safe layout skeleton (Space, Tab, CR, LF).",
+        "Stealth", str(non_std_inv), "High-risk invisible matter (ZWSP, Tags, Bidi...).",
+        risk_inv
+    )
 
-    # F. Syntax
-    count_ascii_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
-    count_rgi = stats.get('rgi_count', 0)
-    count_std_others = count_ascii_punct + count_rgi
-    tt_syn = make_tooltip("Std Syntax", [("TARGET", "ASCII Punct + Emoji")], "Standard grammar.")
-    col_syn = render_col("Syntax", str(count_std_others), "", "neutral", tt_syn)
-
-    # G. Anomalies
-    count_anom = 0
-    js_array = window.Array.from_(t)
-    invis_len = len(INVIS_TABLE)
-    for c in js_array:
+    # COL 5: OTHERS
+    # Main: Syntax, Sub: Anomalies
+    asc_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
+    rgi = stats.get('rgi_count', 0)
+    std_oth = asc_punct + rgi
+    
+    # Anomalies calc
+    anom = 0
+    js_arr = window.Array.from_(t)
+    t_len = len(INVIS_TABLE)
+    for c in js_arr:
         cp = ord(c)
         cat = unicodedata.category(c)
-        mask = INVIS_TABLE[cp] if cp < invis_len else 0
-        if not (cat.startswith(('L','N')) or cp in std_invis_set or (mask & INVIS_ANY_MASK) or (0x21 <= cp <= 0x7E and not c.isalnum())):
-            count_anom += 1
-    
-    risk_anom = "warn" if count_anom > 0 else "safe"
-    tt_anom = make_tooltip("Anomalies", [("TARGET", "Ext. Symbols/Ctrl")], "Exotic/Unknown chars.")
-    col_anom = render_col("Anomalies", str(count_anom), "", risk_anom, tt_anom)
+        msk = INVIS_TABLE[cp] if cp < t_len else 0
+        if not (cat.startswith(('L','N')) or cp in std_set or (msk & INVIS_ANY_MASK) or (0x21 <= cp <= 0x7E and not c.isalnum())):
+            anom += 1
+    risk_anom = "warn" if anom > 0 else "neutral"
 
-    # H. Script
-    script_mix = stats.get('script_mix', "")
-    script_val = "ASCII"
-    risk_script = "safe"
-    if "CRITICAL" in script_mix: 
-        script_val = "CRIT MIX"
-        risk_script = "crit"
-    elif "Mixed" in script_mix:
-        script_val = "MIXED"
-        risk_script = "warn"
-    elif "Single" in script_mix:
-        script_val = "SINGLE"
-    elif not stats.get('is_ascii', True):
-        script_val = "UNICODE"
-    
-    tt_script = make_tooltip("Script Spectrum", [("STATE", script_mix)], "Spoofing detection.")
-    col_script = render_col("Script", script_val, "", risk_script, tt_script)
+    c5 = render_cell(
+        "Non-Alphanum",
+        "Std Syntax", str(std_oth), "Standard ASCII punctuation + RGI Emoji.",
+        "Anomalies", str(anom), "Extended symbols, controls, or unknown chars.",
+        risk_anom
+    )
 
-    # --- 3. SAFETY METRICS ---
-
-    # I. Integrity
-    int_res = stats.get('integrity', {})
-    int_verdict = int_res.get('verdict', 'READY')
-    risk_int = "safe"
-    if int_verdict in ("CORRUPT", "FRACTURED"): risk_int = "crit"
-    elif int_verdict in ("RISKY", "DECAYING"): risk_int = "warn"
-    tt_int = make_tooltip("Integrity", [("FOCUS", "Data Health")], "Corruption check.")
-    col_int = render_col("Integrity", int_verdict, f"Score: {int_res.get('score',0)}", risk_int, tt_int)
-
-    # J. Threat
-    thr_res = stats.get('threat', {})
-    thr_verdict = thr_res.get('verdict', 'READY')
+    # COL 6: SAFETY (Composite)
+    # Main: Threat, Sub: Integrity
+    thr = stats.get('threat', {})
+    thr_v = thr.get('verdict', 'READY')
+    thr_s = thr.get('score', 0)
     risk_thr = "safe"
-    if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: risk_thr = "crit"
-    elif "SUSPICIOUS" in thr_verdict: risk_thr = "warn"
-    tt_thr = make_tooltip("Threat", [("FOCUS", "Exploit Risk")], "Attack check.")
-    col_thr = render_col("Threat", thr_verdict, f"Score: {thr_res.get('score',0)}", risk_thr, tt_thr)
+    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: risk_thr = "crit"
+    elif "SUSPICIOUS" in thr_v: risk_thr = "warn"
 
-    # K. Complexity
-    nsm_level = stats.get('nsm_level', 0)
-    drift = stats.get('drift', 0)
-    comp_val = "LOW"
-    risk_comp = "safe"
-    if nsm_level >= 2 or drift > 10:
-        comp_val = "HIGH"
-        risk_comp = "warn"
-    elif nsm_level == 1 or drift > 0:
-        comp_val = "MED"
+    int_res = stats.get('integrity', {})
+    int_v = int_res.get('verdict', 'READY')
     
-    tt_comp = make_tooltip("Complexity", [("INPUT", "Zalgo / Drift")], "Visual density.")
-    col_comp = render_col("Complexity", comp_val, "", risk_comp, tt_comp)
+    c6 = render_cell(
+        "Audit Result",
+        "Threat", thr_v, f"Exploit Risk Score: {thr_s}",
+        "Integrity", int_v, f"Data Health Score: {int_res.get('score',0)}",
+        risk_thr, "View Ledger"
+    )
 
     # --- ASSEMBLY ---
-    container.innerHTML = "".join([
-        col_vu, col_seg, col_term, 
-        col_white, col_stealth, col_syn, col_anom, col_script,
-        col_int, col_thr, col_comp
-    ])
+    container.innerHTML = "".join([c1, c2, c3, c4, c5, c6])
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
