@@ -5293,7 +5293,7 @@ def analyze_signal_processor_state(data):
         
     elif lookalike_count > 0:
         ident_state = "NOTE"
-        ident_class = "risk-pass"
+        ident_class = "risk-info"
         ident_detail = f"{lookalike_count} Lookalikes"
 
     # Wrap Identity into a dict to match the others
