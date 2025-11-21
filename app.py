@@ -4746,7 +4746,143 @@ def _get_ghost_chain(char: str):
         "casefold": casefold if casefold else "∅",
         "skeleton": skeleton if skeleton else "∅"
     }
+
+def _compute_cluster_identity(cluster_str, base_char_data):
+    """
+    Forensic Cluster Aggregator (Pro Grade).
+    Implements TR-51 Emoji Semantics, UAX #9 Strong Bidi, and UAX #31 Script logic.
+    """
+    # 1. Atomic Shortcut
+    if len(cluster_str) == 1:
+        return {
+            "type_label": "CATEGORY (Gc)",
+            "type_val": f"{base_char_data['category_full']} ({base_char_data['category_short']})",
+            "block_val": base_char_data['block'],
+            "script_val": base_char_data['script'],
+            "bidi_val": base_char_data['bidi'],
+            "age_val": base_char_data['age'],
+            "is_cluster": False,
+            "cluster_mask": INVIS_TABLE[ord(cluster_str)] if ord(cluster_str) < 1114112 else 0,
+            "max_risk_cat": base_char_data['category_short']
+        }
+
+    # 2. Molecular Aggregation
+    blocks = set()
+    scripts = set()
+    bidi_strong = set() # Strong types only (L, R, AL)
+    ages = []
     
+    cluster_mask = 0
+    risk_cats = set()
+    
+    mark_count = 0
+    
+    for char in cluster_str:
+        cp = ord(char)
+        
+        # A. Harvest Data
+        blk = _find_in_ranges(cp, "Blocks") or "No_Block"
+        scr = _find_in_ranges(cp, "Scripts") or "Common"
+        bid = unicodedata.bidirectional(char)
+        cat = unicodedata.category(char)
+        age_str = _find_in_ranges(cp, "Age") or "0.0"
+        
+        # B. Accumulate
+        blocks.add(blk)
+        
+        # UAX #31: Ignore Common/Inherited for script mixing
+        if scr not in ("Common", "Inherited"):
+            scripts.add(scr)
+            
+        # UAX #9: Track only Strong Bidi Types
+        if bid in ("L", "R", "AL"):
+            bidi_strong.add(bid)
+            
+        try: ages.append(float(age_str))
+        except: pass
+        
+        # C. Risk Tracking
+        if cp < 1114112:
+             cluster_mask |= INVIS_TABLE[cp]
+        risk_cats.add(cat)
+        
+        if cat.startswith("M"): mark_count += 1
+
+    # --- SYNTHESIZE TRUTH ---
+
+    # 1. Emoji Semantics (TR-51)
+    # Check against pre-loaded RGI sets (if available)
+    rgi_set = DATA_STORES.get("RGISequenceSet", set())
+    
+    # Default Type
+    if mark_count > 0:
+        type_label = "COMPOSITION"
+        type_val = f"Base + {mark_count} Marks"
+    else:
+        type_label = "SEQUENCE"
+        type_val = f"{len(cluster_str)} Code Points"
+
+    # Specific Overrides
+    if cluster_str in rgi_set:
+        type_label = "EMOJI SEQUENCE"
+        # Distinguish types if possible, or just label RGI
+        if "\u20E3" in cluster_str: type_val = "Keycap Sequence" # Keycap
+        elif "\u200D" in cluster_str: type_val = "ZWJ Sequence"   # ZWJ
+        elif len(cluster_str) == 2 and 0x1F1E6 <= ord(cluster_str[0]) <= 0x1F1FF: type_val = "Flag Sequence" # RI
+        else: type_val = "RGI (Valid)"
+
+    # 2. Block Truth
+    # Prioritize the Base Block, but flag mixture
+    base_block = base_char_data['block']
+    other_blocks = blocks - {base_block}
+    if not other_blocks:
+        block_display = base_block
+    else:
+        block_display = f"{base_block} + {len(other_blocks)} Other"
+
+    # 3. Script Truth (Clean)
+    if not scripts:
+        script_display = "Common / Inherited"
+    elif len(scripts) == 1:
+        script_display = list(scripts)[0]
+    else:
+        script_display = f"Mixed ({', '.join(sorted(scripts))})"
+
+    # 4. Bidi Truth (Strong)
+    if not bidi_strong:
+        bidi_display = base_char_data['bidi'] # Fallback to base (likely Neutral/Weak)
+    elif len(bidi_strong) == 1:
+        bidi_display = list(bidi_strong)[0]
+    else:
+        bidi_display = "Mixed Strong Direction" # Real risk
+
+    # 5. Age Range
+    if ages:
+        min_age = min(ages)
+        max_age = max(ages)
+        age_display = f"{min_age} – {max_age}" if min_age != max_age else str(max_age)
+    else:
+        age_display = "1.1"
+
+    # 6. Max Risk Category (for Macro-Classification)
+    # Precedence: Rot > Control > Mark > Standard
+    max_risk_cat = "Ll" # Default safe
+    if any(c in ("Cn", "Cs", "Co") for c in risk_cats): max_risk_cat = "Cn"
+    elif any(c == "Cf" for c in risk_cats): max_risk_cat = "Cf"
+    elif any(c.startswith("M") for c in risk_cats): max_risk_cat = "Mn"
+    
+    return {
+        "type_label": type_label,
+        "type_val": type_val,
+        "block_val": block_display,
+        "script_val": script_display,
+        "bidi_val": bidi_display,
+        "age_val": age_display,
+        "is_cluster": True,
+        "cluster_mask": cluster_mask,
+        "max_risk_cat": max_risk_cat
+    }
+
 # ---
 # 5. MAIN ORCHESTRATOR
 # ---
@@ -4856,41 +4992,49 @@ def inspect_character(event):
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
-        # --- DATA ENRICHMENT FOR SPEC SHEET V3 ---
-        
-        # 1. Identifier Status (UTS #39)
-        id_status = _find_in_ranges(cp_base, "IdentifierStatus")
-        # Default restricted logic (UAX #31)
-        cat = unicodedata.category(base_char)
-        cat_short = cat # Alias for clarity
-        
-        if not id_status:
-             # Only restrict if not Unassigned/Private/Surrogate (handled by ROT)
-             if cat not in ("Cn", "Co", "Cs"): 
-                 id_status = "Restricted"
-             else: 
-                 id_status = "N/A"
-                 
-        id_type = _find_in_ranges(cp_base, "IdentifierType")
+        # --- PREPARE BASE DATA (For Atomic Fallback) ---
+        cat_short = unicodedata.category(base_char)
+        base_char_data = {
+            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
+            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
+            "category_full": ALIASES.get(cat_short, "N/A"),
+            "category_short": cat_short,
+            "bidi": unicodedata.bidirectional(base_char),
+            "age": _find_in_ranges(cp_base, "Age") or "N/A"
+        }
 
-        # 2. Macro Classification
-        mask = INVIS_TABLE[cp_base] if cp_base < 1114112 else 0
-        macro_type = _classify_macro_type(cp_base, cat_short, id_status, mask)
+        # --- RUN AGGREGATION ENGINE ---
+        cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
+
+        # --- DATA ENRICHMENT (Composite-Aware) ---
+        
+        # 1. Composite Macro-Classification
+        # We use the aggregated risk signals from the cluster engine (max_risk_cat)
+        # instead of just the base character's category.
+        comp_cat = cluster_identity["max_risk_cat"]
+        comp_mask = cluster_identity["cluster_mask"]
+        
+        # Re-eval ID status based on the composite risk category
+        # If the cluster contains Rot/Control, we treat the whole unit as Restricted logic
+        if comp_cat in ("Cn", "Co", "Cs", "Cf"):
+            id_status = "Restricted"
+        else:
+            id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
+            
+        macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
         ghosts = _get_ghost_chain(base_char)
-
-        # 3. Standard Props
+        
+        # 2. Standard Props (Legacy/Fallback)
         bidi_short = unicodedata.bidirectional(base_char)
         gb_prop = _find_in_ranges(cp_base, "GraphemeBreak") or "Other"
-
+        
+        # 3. Components Analysis
         components = []
         zalgo_score = 0
         for ch in target_cluster:
             cat = unicodedata.category(ch)
             name = unicodedata.name(ch, "Unknown")
-            
-            # Stacking Physics
             ccc = unicodedata.combining(ch)
-            
             is_mark = cat.startswith('M')
             if is_mark: zalgo_score += 1
             
@@ -5362,13 +5506,33 @@ def render_inspector_panel(data):
         </div>
         """
 
-    # 4. Final Assembly (No Chips)
+    # 4. Final Assembly (Cluster-Aware Spec Group)
+    # This replaces the old static rows with the dynamic aggregated data
     identity_html = f"""
         <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
         
-        <div class="spec-row" style="margin-bottom: 8px; margin-top: 4px;">
-            <span class="spec-label">BLOCK</span>
-            <span class="spec-value">{data['block']}</span>
+        <div class="spec-group" style="margin-top: 8px;">
+            <div class="spec-row">
+                <span class="spec-label">BLOCK</span>
+                <span class="spec-value">{data['block']}</span>
+            </div>
+            <div class="spec-row">
+                <span class="spec-label">SCRIPT</span>
+                <span class="spec-value">
+                    {data['script']}
+                    <span class="spec-sub">
+                        {f"({data['script_ext']})" if data.get('script_ext') and not data.get('is_cluster') else ""}
+                    </span>
+                </span>
+            </div>
+            <div class="spec-row">
+                <span class="spec-label">{data.get('type_label', 'CATEGORY')}</span>
+                <span class="spec-value">{data.get('type_val', data['category_full'])}</span>
+            </div>
+            <div class="spec-row">
+                <span class="spec-label">AGE</span>
+                <span class="spec-value">{data['age']}</span>
+            </div>
         </div>
 
         <div class="spec-matrix">
@@ -5376,7 +5540,6 @@ def render_inspector_panel(data):
         </div>
         
         {ghost_html}
-    """
 
     # --- COL 6: COMPONENTS TABLE ---
     comp_rows = ""
