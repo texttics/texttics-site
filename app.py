@@ -4411,7 +4411,8 @@ def render_cards(stats_dict, element_id, key_order=None):
         # --- RENDER PATH 3: Simple Cards ---
         elif isinstance(v, (int, float)):
             count = v
-            if count > 0 or (k in ["Total Graphemes", "Total Code Points", "RGI Emoji Sequences", "Whitespace (Total)"]):
+            # Only force "Total" metrics to show if 0. Emoji/Whitespace will now hide if 0.
+            if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
         
     element = document.getElementById(element_id)
