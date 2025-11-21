@@ -2066,7 +2066,7 @@ tr.flag-row-crit {
 }
 
 /* =========================================
-   FORENSIC HUD (The Data Matrix - V5 Final)
+   FORENSIC HUD (The Data Matrix - V7 Scientific)
    ========================================= */
 
 .hud-container {
@@ -2076,11 +2076,11 @@ tr.flag-row-crit {
   gap: 0; 
   margin-top: 1rem;
   
-  /* CHANGED: Remove bottom margin and radius to merge with Console */
+  /* MERGED BOTTOM: Remove margin/radius to attach to console */
   margin-bottom: 0; 
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
-  border-bottom: none; /* Let the console provide the bottom border */
+  border-bottom: none; 
   
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
@@ -2088,7 +2088,7 @@ tr.flag-row-crit {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   font-family: var(--font-sans);
   
-  /* REMOVE visible overflow (Tooltips are gone, we can clip now if needed, but visible is safer) */
+  /* Visible overflow allows for potential future tooltips if needed */
   overflow: visible !important; 
   
   position: relative;
@@ -2099,12 +2099,12 @@ tr.flag-row-crit {
 /* --- HUD CONSOLE (Double-Decker) --- */
 .hud-console-strip {
   display: flex;
-  flex-direction: column; /* Stack them vertically */
+  flex-direction: column; /* Stack rows vertically */
   justify-content: center;
   width: 100%;
-  height: 54px; /* Increased height for 2 rows */
+  height: 54px; /* Fixed height for 2 rows */
   padding: 4px 12px;
-  gap: 2px;
+  gap: 0;
   
   background-color: #f9fafb;
   border: 1px solid var(--color-border);
@@ -2154,40 +2154,39 @@ tr.flag-row-crit {
   font-size: 0.65rem;
   font-weight: 500;
 }
-/* Main Meta (Math/Ref) gets Amber color */
-#console-row-main .console-meta { color: #b45309; }
-#console-row-sub  .console-meta { color: #9ca3af; }
+#console-row-main .console-meta { color: #b45309; } /* Amber */
+#console-row-sub  .console-meta { color: #9ca3af; } /* Gray */
 
-/* Remove the Footer Button Styling since we are deleting it */
-.hud-row-extra { display: none !important; }
-
-/* Squeeze columns slightly for 9-col layout */
-.hud-col { padding: 2px 4px; }
-.hud-row-val-main { font-size: 1.4rem; } /* Slightly smaller to fit 9 cols */
 
 /* --- HUD TEXT UTILITIES (Zero-State Logic) --- */
 .txt-normal { color: var(--color-text); }
-.txt-muted  { color: var(--color-border); } /* For 0 values (Gray) */
-.txt-good   { color: #059669; } /* For 0 risks (Green) */
-.txt-warn   { color: #d97706; } /* For >0 risks */
-.txt-crit   { color: #dc2626; } /* For >0 critical risks */
+.txt-muted  { color: #d1d5db; } /* Gray for 0 values */
+.txt-good   { color: #059669; } /* Green for 0 risks */
+.txt-warn   { color: #d97706; } /* Orange for >0 risks */
+.txt-crit   { color: #dc2626; } /* Red for critical risks */
 .txt-safe   { color: #059669; } /* Explicit Safe status */
+
 
 /* --- HUD COLUMNS (9-Column Layout) --- */
 .hud-col {
   display: flex;
   flex-direction: column;
-  /* Equal spacing distribution */
   justify-content: space-between; 
   padding: 6px 4px;
   border-right: 1px solid var(--color-border-light);
   text-align: center;
   position: relative;
+  /* Force equal width distribution */
+  flex: 1 1 0px;
+  min-width: 0;
+}
+
+.hud-col:last-child {
+  border-right: none;
 }
 
 /* --- ROW EQUALIZATION --- */
-/* We make both Main and Sub rows identical in typography */
-
+/* Scientific Header */
 .hud-row-sci {
   background-color: #f9fafb;
   color: #6b7280;
@@ -2203,13 +2202,14 @@ tr.flag-row-crit {
   text-overflow: ellipsis;
 }
 
+/* Metric Groups (Main & Sub are identical) */
 .hud-metric-group {
-  /* Wraps the Label + Value pair */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 1; /* Take equal vertical space */
+  flex: 1; 
+  min-height: 2.5em; /* Prevent collapse on empty */
 }
 
 .hud-label {
@@ -2219,12 +2219,13 @@ tr.flag-row-crit {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0;
+  line-height: 1;
 }
 
 .hud-val {
-  font-size: 1.1rem; /* UNIFIED SIZE (Was 1.6 main / 0.85 sub) */
+  font-size: 1.1rem; /* UNIFIED SIZE */
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2233,207 +2234,8 @@ tr.flag-row-crit {
   width: 40%;
   height: 1px;
   background-color: #f3f4f6;
-  margin: 2px auto;
+  margin: 3px auto;
 }
 
-/* --- ROW 2: Main Label --- */
-.hud-row-label-main {
-  padding: 8px 2px 0 2px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #374151;
-  
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-/* --- ROW 3: Main Value (The Big Number) --- */
-.hud-row-val-main {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: #111827;
-  line-height: 1.1;
-  padding: 2px 0;
-  font-variant-numeric: tabular-nums;
-}
-
-/* --- ROW 4: Sub Label --- */
-.hud-row-label-sub {
-  margin-top: 4px;
-  font-size: 0.55rem;
-  font-weight: 600;
-  color: #9ca3af;
-  text-transform: uppercase;
-  
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-/* --- ROW 5: Sub Value --- */
-.hud-row-val-sub {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #4b5563;
-  margin-bottom: 8px;
-  font-variant-numeric: tabular-nums;
-  min-height: 1.2em; /* Keeps alignment if empty */
-}
-
-/* --- ROW 6: Footer (Slim Action Bar) --- */
-.hud-row-extra {
-  margin-top: auto; /* Push to bottom */
-  background-color: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  
-  /* [FIX] Forced Slim Height */
-  height: 26px; 
-  min-height: 26px;
-  padding: 0 4px;
-  
-  /* [FIX] Single Row Layout */
-  display: flex;
-  flex-direction: row; 
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  
-  cursor: help;
-  transition: background-color 0.2s;
-  position: relative; /* Anchor for Tooltip */
-}
-
-.hud-extra-btn {
-  font-size: 0.55rem;
-  font-weight: 700;
-  color: #2563eb; /* Link Blue */
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1;
-}
-
-.hud-row-extra:hover {
-  background-color: #eff6ff;
-}
-
-/* --- INFO ICON (Restored Elegant Serif) --- */
-.hud-info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  
-  /* Fixed Dimensions */
-  width: 12px;
-  height: 12px;
-  min-width: 12px; /* Prevent Flex Squishing */
-  
-  border: 1px solid #9ca3af;
-  border-radius: 50%;
-  background-color: #fff;
-  
-  /* [FIX] Typography Reset */
-  font-family: "Times New Roman", serif;
-  font-style: italic;
-  font-weight: 400;
-  text-transform: none !important; /* Override parent uppercase */
-  font-size: 0.65rem;
-  line-height: 1;
-  padding-bottom: 1px; /* Optical centering */
-  
-  color: #6b7280;
-}
-
-.hud-row-extra:hover .hud-info-icon {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-/* --- TOOLTIP (Pop-Up Logic) --- */
-.hud-tooltip {
-  visibility: hidden;
-  opacity: 0;
-  position: absolute;
-  
-  /* Pop UPWARDS from the footer */
-  bottom: 100%; 
-  margin-bottom: 8px; /* Gap between footer and tooltip */
-  
-  /* Center horizontally */
-  left: 50%;
-  transform: translateX(-50%);
-  
-  /* Box Styling */
-  width: max-content;
-  max-width: 220px;
-  background-color: rgba(17, 24, 39, 0.98); /* Opaque Dark */
-  color: white;
-  padding: 8px 10px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-family: var(--font-sans);
-  text-align: left;
-  font-weight: normal;
-  text-transform: none;
-  line-height: 1.4;
-  
-  z-index: 9999; /* Highest Priority */
-  pointer-events: none;
-  transition: opacity 0.15s;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-  border: 1px solid #374151;
-  white-space: normal; /* Allow text wrapping */
-}
-
-/* Trigger */
-.hud-row-extra:hover .hud-tooltip {
-  visibility: visible;
-  opacity: 1;
-}
-
-/* Edge Handling (Prevent screen overflow) */
-.hud-col:first-child .hud-tooltip {
-    left: 0;
-    transform: translateX(0);
-}
-.hud-col:last-child .hud-tooltip {
-    left: auto;
-    right: 0;
-    transform: translateX(0);
-}
-
-/* --- Utility Colors --- */
-.txt-safe { color: #059669; }
-.txt-warn { color: #d97706; }
-.txt-crit { color: #dc2626; }
-.txt-neutral { color: #111827; }
-
-/* Tooltip Internal Layout */
-.tt-header {
-  display: block;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #4b5563;
-}
-.tt-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-.tt-key {
-  color: #9ca3af;
-  font-weight: 600;
-  min-width: 40px;
-}
-.tt-val {
-  color: #d1d5db;
-}
-.tt-info {
-  margin-top: 6px;
-  color: #9ca3af;
-  font-style: italic;
-}
+/* Remove old classes to prevent conflicts */
+.hud-row-extra { display: none !important; }
