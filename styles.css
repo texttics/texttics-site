@@ -1154,11 +1154,12 @@ Stage 2: Heatmap Row Classes
   padding: 1rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start; /* CRITICAL FIX: Align to top, don't float in the middle */
   overflow-y: auto;
   border-right: 1px solid var(--color-border-light); /* Border restored */
 }
 .inspector-header {
+  flex: 0 0 auto; /* CRITICAL FIX: Never let the header shrink/collapse */
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--color-text);
