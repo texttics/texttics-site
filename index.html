@@ -84,7 +84,7 @@
     <main id="main">
 
       <!-- Group 1: Analysis Configuration (Control Plane) -->
-      <section id="control-plane" aria-labelledby="control-plane-title">
+     <section id="control-plane" aria-labelledby="control-plane-title">
         <div class="section-header">
           <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Text Input</h2>
         </div>
@@ -99,14 +99,17 @@
               <span id="status-line" role="status" aria-live="polite" class="status-loading">Loading Unicode data files...</span>
             </div>
             <div class="status-bar-right">
-            <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
-              &#x1F441;&#xFE0E; Reveal Invisibles
-            </button>
+              <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
+                &#x1F441;&#xFE0E; Reveal Invisibles
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+
+        <div id="forensic-hud" class="hud-container">
+            </div>
         
-        <details class="profile-section" id="inspector-panel-wrapper" open>
+        <details class="profile-section" id="inspector-panel-wrapper" open>
           <summary><h3>Character Inspector</h3></summary>
           <div id="inspector-panel-content">
              <div class="inspector-placeholder">
@@ -116,14 +119,14 @@
         </details>
 
         <div class="macro-analysis-control">
-          <button id="btn-run-stage2" class="tool-btn macro-btn"" title="Run macro-analysis on this text">
-            ▥ Analyze Macrostructure
-          </button>
+          <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
+            ▥ Analyze Macrostructure
+          </button>
           <p class="macro-analysis-description">
             Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution of the current text.
           </p>
         </div>
-      </section>
+      </section>
 
       <!-- 
         GROUP 2: THE STRUCTURAL PROFILE
