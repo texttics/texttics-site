@@ -5437,10 +5437,10 @@ def render_inspector_panel(data):
     # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Clean Header V6) ---
+    # --- COL 5: IDENTITY (Grid Layout V5) ---
     
-    # 1. Header Title (Full Name)
-    # Prioritize the specific name unless it's a multi-part cluster
+    # 1. Header
+    # Always prioritize the specific name unless it's a multi-part cluster
     if data.get('is_cluster') and len(data.get('components', [])) > 1:
         header_title = "GRAPHEME CLUSTER"
         header_style = "letter-spacing: 0.05em; color: #4b5563;" 
@@ -5448,7 +5448,31 @@ def render_inspector_panel(data):
         header_title = data['name_base']
         header_style = ""
 
-    # 2. Top Grid (Identity Specs)
+    # 2. Get Global Forensic Context (The Truth Source)
+    active_threats = []
+    try:
+        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
+            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
+            current_idx = data.get('python_idx')
+            if current_idx is not None:
+                idx_marker = f"#{current_idx}"
+                for flag_name, flag_data in global_flags.items():
+                    raw_positions = flag_data.get('positions', [])
+                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
+                        name_lower = flag_name.lower()
+                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
+                        elif "bidi" in name_lower: active_threats.append("BIDI")
+                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
+                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
+                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
+                        elif "tag" in name_lower: active_threats.append("TAG")
+                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
+                        else: active_threats.append("RISK")
+    except Exception: pass
+
+
+    # 4. Top Grid (Identity Specs)
+    # Arranged in a 2x2 layout for density
     type_label = data.get('type_label', 'CATEGORY')
     type_val = data.get('type_val', data['category_full'])
     
@@ -5476,8 +5500,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 3. Bottom Grid (Technical Specs)
-    mt = data['macro_type']
+    # 5. Bottom Grid (Technical Specs)
     matrix_extra_cell = ""
     if mt in ("THREAT", "ROT", "SYNTAX", "LEGACY"):
         status_cls = "id-status-restricted"
@@ -5490,6 +5513,7 @@ def render_inspector_panel(data):
             </div>
         """
     else:
+        # For Standard atoms, we can show something else or keep it balanced
         matrix_extra_cell = f"""
             <div class="matrix-item">
                 <span class="spec-label">SECURITY</span>
@@ -5516,8 +5540,12 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 4. Normalization Ghosts
+    # 6. Normalization Ghosts (Always Show if Data Exists)
     ghost_html = ""
+    # We relax the condition: If we calculated ghosts, we show them.
+    # The calculation logic already filters out "boring" ASCII-only case changes.
+    # If you want *everything*, remove the filter in _get_ghost_chain.
+    # Assuming _get_ghost_chain logic is desired, we just render what it returns.
     if data['ghosts']:
         g = data['ghosts']
         ghost_html = f"""
@@ -5533,13 +5561,13 @@ def render_inspector_panel(data):
         </div>
         """
     else:
+        # Fallback: Show "Stable" if no drift detected, to prove we checked.
         ghost_html = f"""
         <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
             <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
         </div>
         """
 
-    # 5. Final Assembly (NO CHIPS)
     identity_html = f"""
         <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
         
@@ -5578,10 +5606,6 @@ def render_inspector_panel(data):
 
     identity_html = f"""
         <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
-        
-        <div class="spec-capsule">
-            {chips_html}
-        </div>
         
         {identity_grid}
         {technical_grid}
