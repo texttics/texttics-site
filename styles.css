@@ -2165,24 +2165,29 @@ tr.flag-row-crit {
 .hud-col { padding: 2px 4px; }
 .hud-row-val-main { font-size: 1.4rem; } /* Slightly smaller to fit 9 cols */
 
-/* --- The Column (Fluid Vertical Slice) --- */
+/* --- HUD TEXT UTILITIES (Zero-State Logic) --- */
+.txt-normal { color: var(--color-text); }
+.txt-muted  { color: var(--color-border); } /* For 0 values (Gray) */
+.txt-good   { color: #059669; } /* For 0 risks (Green) */
+.txt-warn   { color: #d97706; } /* For >0 risks */
+.txt-crit   { color: #dc2626; } /* For >0 critical risks */
+.txt-safe   { color: #059669; } /* Explicit Safe status */
+
+/* --- HUD COLUMNS (9-Column Layout) --- */
 .hud-col {
-  /* Flex Grow/Shrink equal, Basis 0 forces exact width equality */
-  flex: 1 1 0px; 
-  min-width: 0; 
-  
   display: flex;
   flex-direction: column;
+  /* Equal spacing distribution */
+  justify-content: space-between; 
+  padding: 6px 4px;
   border-right: 1px solid var(--color-border-light);
   text-align: center;
-  position: relative; /* Anchor for internal positioning */
+  position: relative;
 }
 
-.hud-col:last-child {
-  border-right: none;
-}
+/* --- ROW EQUALIZATION --- */
+/* We make both Main and Sub rows identical in typography */
 
-/* --- ROW 1: Scientific Title (Top) --- */
 .hud-row-sci {
   background-color: #f9fafb;
   color: #6b7280;
@@ -2190,12 +2195,45 @@ tr.flag-row-crit {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 700;
-  padding: 6px 2px;
+  padding-bottom: 4px;
   border-bottom: 1px solid #e5e7eb;
-  
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.hud-metric-group {
+  /* Wraps the Label + Value pair */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1; /* Take equal vertical space */
+}
+
+.hud-label {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0;
+}
+
+.hud-val {
+  font-size: 1.1rem; /* UNIFIED SIZE (Was 1.6 main / 0.85 sub) */
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle separator between Main and Sub groups */
+.hud-metric-divider {
+  width: 40%;
+  height: 1px;
+  background-color: #f3f4f6;
+  margin: 2px auto;
 }
 
 /* --- ROW 2: Main Label --- */
