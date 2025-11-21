@@ -2088,8 +2088,8 @@ tr.flag-row-crit {
 /* The Column (Vertical Slice) */
 .hud-col {
   flex: 1; /* Spread evenly */
-  min-width: 120px; /* Prevent crushing */
-  max-width: 160px;
+  min-width: 105px; /* [CHANGED] Reduced from 120px to fit 7 cols */
+  max-width: 140px; /* [CHANGED] Reduced max width for tightness */
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--color-border-light);
