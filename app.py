@@ -827,7 +827,7 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V9 (Keyboard-Safe Symbols + Column Swap).
+    Renders the 'Forensic Matrix' V10 (Light Green Anomalies).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -872,8 +872,15 @@ def render_forensic_hud(t, stats):
             return "txt-muted" if v == 0 else "txt-normal"
         except: return "txt-normal"
 
+    def color_clean(val):
+        """0 is Light Green (Clean), >0 is Orange (Warn)"""
+        try:
+            v = float(val)
+            return "txt-clean" if v == 0 else "txt-warn"
+        except: return "txt-normal"
+
     def color_risk(val):
-        """0 is Green, >0 is Orange"""
+        """0 is Deep Green (Good), >0 is Orange (Warn)"""
         try:
             v = float(val)
             return "txt-good" if v == 0 else "txt-warn"
@@ -942,7 +949,7 @@ def render_forensic_hud(t, stats):
     c3 = render_cell(
         "DELIMITERS", 
         "ASCII", str(ascii_delims), color_neutral(ascii_delims),
-        "NON-ASCII", str(non_ascii_delims), color_neutral(non_ascii_delims),
+        "NON-ASCII", str(non_ascii_delims), color_clean(non_ascii_delims), # Light Green
         d1="Standard ASCII punctuation boundaries.", m1="Count([.?!;,])", r1="Grammar: Std",
         d2="Extended Unicode punctuation (Fullwidth, Inverted, etc).", m2="Count(P) > 0x7F", r2="Grammar: Ext"
     )
@@ -956,42 +963,33 @@ def render_forensic_hud(t, stats):
     c4 = render_cell(
         "WHITESPACE", 
         "STANDARD", str(std_inv), color_neutral(std_inv),
-        "NON-STD", str(non_std_inv), color_risk(non_std_inv),
+        "NON-STD", str(non_std_inv), color_clean(non_std_inv), # Light Green
         d1="Standard layout characters (Space, Tab, CR, LF).", m1="ASCII WS", r1="Layout",
         d2="Obscure or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation"
     )
 
-    # C5: SYMBOLS (Keyboard Safe Logic)
-    # Main: ASCII Operators/Symbols (Exclude C3 delimiters)
-    # Logic: 0x21-0x7E, Not Alphanum, Not {. ? ! ; ,}
-    # This ensures ^, %, $, +, ~ are ALL counted as Standard Keyboard Chars
+    # C5: SYMBOLS
     c3_set = {'.', '?', '!', ';', ','}
     ascii_ops = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum() and c not in c3_set)
     
-    # Sub: Exotic (Non-ASCII Symbols/Punctuation not caught in C3)
-    # If it's > 0x7F and starts with S (Symbol) or P (Punctuation) but wasn't counted in C3 sub
     exotic = 0
     js_arr = window.Array.from_(t)
     for c in js_arr:
         cp = ord(c)
         if cp > 0x7F:
             cat = unicodedata.category(c)
-            # If it's a Symbol (Sk, Sm, So, Sc) it goes here.
-            # If it's Punctuation (P*) it was likely counted in C3, so we focus on Symbols here
             if cat.startswith('S'):
                 exotic += 1
-            # Note: We keep C3 and C5 strictly orthogonal. C3 = Punctuation, C5 = Symbols.
-            # But we handled "Non-ASCII Punct" in C3. So here we only want "Non-ASCII Symbols".
 
     c5 = render_cell(
         "SYMBOLS", 
         "OPERATORS", str(ascii_ops), color_neutral(ascii_ops),
-        "EXOTIC", str(exotic), color_risk(exotic),
+        "EXOTIC", str(exotic), color_clean(exotic), # Light Green
         d1="Standard ASCII symbols (Keyboards: @ # $ % ^ & * _ + = < > / |).", m1="ASCII 0x21-7E", r1="Keyboard",
         d2="Non-ASCII symbols, math operators, and dingbats.", m2="Category: S*", r2="Extended"
     )
 
-    # C6: EMOJI (Moved Here)
+    # C6: EMOJI
     rgi_count = stats.get('rgi_count', 0)
     abnormal = 0
     abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
@@ -1001,7 +999,7 @@ def render_forensic_hud(t, stats):
     c6 = render_cell(
         "EMOJI", 
         "RGI SEQS", str(rgi_count), color_neutral(rgi_count),
-        "IRREGULAR", str(abnormal), color_risk(abnormal),
+        "IRREGULAR", str(abnormal), color_clean(abnormal), # Light Green
         d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: Emoji 15.1",
         d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk"
     )
@@ -1019,7 +1017,7 @@ def render_forensic_hud(t, stats):
     c7 = render_cell(
         "INTEGRITY", 
         "STATUS", int_v, v_cls,
-        "ISSUES", str(int_issues), color_risk(int_issues),
+        "ISSUES", str(int_issues), color_risk(int_issues), # Deep Green
         d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
         d2="Count of active integrity violations found.", m2="Count(Ledger)", r2="Corruptions"
     )
@@ -1037,12 +1035,12 @@ def render_forensic_hud(t, stats):
     c8 = render_cell(
         "THREAT", 
         "STATUS", thr_v, t_cls,
-        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
+        "SIGNALS", str(thr_sigs), color_risk(thr_sigs), # Deep Green
         d1="Assessment of active weaponization or intent.", m1="Threat Score", r1="Auditor: Threat",
         d2="Specific attack vectors and exploit signals.", m2="Count(Ledger)", r2="CVE Patterns"
     )
 
-    # --- ASSEMBLY (SWAPPED C5/C6) ---
+    # --- ASSEMBLY ---
     container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8])
 
 # ---
