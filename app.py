@@ -5383,7 +5383,7 @@ def render_inspector_panel(data):
     if not panel: return
 
     if data is None:
-        panel.innerHTML = ""<div class='inspector-placeholder'>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</div>""
+        panel.innerHTML = "<div class='inspector-placeholder'>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</div>"
         return
         
     if "error" in data:
