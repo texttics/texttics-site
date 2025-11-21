@@ -828,50 +828,134 @@ def render_forensic_hud(t, stats):
     """
     Renders the 'Forensic HUD' - The Triage Dashboard.
     Layout: Volume (Left) | Composition (Center) | Safety (Right).
+    Includes interactive tooltips with UAX #29 comparisons.
     """
     container = document.getElementById("forensic-hud")
-    # [FIX] Removed 'or not t' so it renders even if empty
     if not container: return 
     
     # Ensure string is not None
     if t is None: t = ""
 
+    # --- HELPER: Tooltip Generator ---
+    def make_tooltip(header, rows, info):
+        """Generates the HTML structure for the glass tooltip."""
+        rows_html = ""
+        for k, v in rows:
+            rows_html += f'<div class="tt-row"><span class="tt-key">[{k}]</span><span class="tt-val">{v}</span></div>'
+        
+        return f"""
+        <span class="hud-info-wrapper">
+            <span class="info-icon">i</span>
+            <div class="hud-tooltip">
+                <span class="tt-header">{header}</span>
+                {rows_html}
+                <div class="tt-info">{info}</div>
+            </div>
+        </span>
+        """
+
     # --- 1. VOLUME (The Left Band) ---
-    # Formula: (Letters + Numbers) / 6.0
+    
+    # A. Metric: Volumetric Units (VU)
     count_L = stats.get('major_stats', {}).get("L (Letter)", 0)
     count_N = stats.get('major_stats', {}).get("N (Number)", 0)
-    
-    vu_val = (count_L + count_N) / 6.0
+    vu_val = (count_L + count_N) / 5.0 # Using 5.0 as Standard Typing Unit
     vu_display = f"{vu_val:.1f}"
     
+    # UAX #29 Reference Count (Words)
+    uax_word_count = 0
+    try:
+        word_seg = window.Intl.Segmenter.new("en", {"granularity": "word"})
+        # Filter for isWordLike=true segments
+        uax_word_count = sum(1 for s in word_seg.segment(t) if s.isWordLike)
+    except:
+        uax_word_count = "N/A"
+
+    tt_vu = make_tooltip(
+        "Volumetric Units (VU)",
+        [("MATH", "(Letters + Numbers) / 5.0"), ("REF", f"UAX #29 word segments: {uax_word_count}")],
+        "Approximate count of word-like units, assuming ~5 visible characters per word. Use for comparing text size, not as a tokenizer."
+    )
+
+    # B. Metric: Structural Segments
+    terminators = 0
+    for char in t:
+        if char in {'.', '?', '!', ';', ','}: # Added comma per request
+            terminators += 1
+            
+    if terminators > 0:
+        seg_val = terminators
+        seg_label = "Segments (Delimiters)"
+    else:
+        seg_val = max(1, round(vu_val / 20.0)) if t else 0
+        seg_label = "Segments (Est.)"
+
+    # UAX #29 Reference Count (Sentences)
+    uax_sent_count = 0
+    try:
+        sent_seg = window.Intl.Segmenter.new("en", {"granularity": "sentence"})
+        uax_sent_count = sum(1 for _ in sent_seg.segment(t))
+    except:
+        uax_sent_count = "N/A"
+
+    tt_seg = make_tooltip(
+        "Structural Segments",
+        [("MATH", "VU / 20.0"), ("REF", f"UAX #29 sentence segments: {uax_sent_count}")],
+        "Coarse estimate of sentence-like blocks, assuming ~20 word-units per sentence. Useful for relative comparisons, not for syntax."
+    )
+    
+    # C. Metric: Explicit Delimiters (Tooltip only for the sub-metric context)
+    tt_term = make_tooltip(
+        "Explicit Delimiters",
+        [("TARGET", ". , ? ! ;")],
+        "Count of punctuation marks that typically separate sentences or major clauses."
+    )
+
     vol_html = f"""
     <div class="hud-band">
-        <span class="hud-title">Volumetric Analysis</span>
-        <div class="hud-metric-hero">{vu_display}</div>
-        <div class="hud-metric-sub">Volumetric Units (VU)</div>
-        <div class="hud-metric-sub" style="font-size:0.65rem; opacity:0.8;">(AlphaNum / 6.0)</div>
+        <span class="hud-title">Volumetric Analysis {tt_vu}</span>
+        
+        <div style="margin-bottom: 8px;">
+            <div class="hud-metric-hero">{vu_display}</div>
+            <div class="hud-metric-sub">Volumetric Units (VU)</div>
+            <div class="hud-metric-sub" style="font-size:0.65rem; opacity:0.8;">(AlphaNum / 5.0)</div>
+        </div>
+
+        <div style="border-top: 1px solid var(--color-border-light); padding-top: 6px;">
+            <div style="display:flex; align-items:center; gap:4px;">
+                <span style="font-size: 1.4rem; font-weight: 700; color: var(--color-text); line-height: 1;">{seg_val}</span>
+                {tt_seg}
+            </div>
+            <div class="hud-metric-sub">
+                {seg_label}
+                {tt_term if "Delimiters" in seg_label else ""}
+            </div>
+        </div>
     </div>
     """
 
     # --- 2. COMPOSITION (The Center Band) ---
     
-    # A. Standard Invisibles (Space, Tab, NL)
+    # A. Standard Whitespace
     std_invis_set = {0x20, 0x09, 0x0A, 0x0D}
     count_std_invis = sum(1 for c in t if ord(c) in std_invis_set)
+    tt_std_inv = make_tooltip("Standard Whitespace", [("TARGET", "Space, Tab, LF, CR")], "Normal layout spacing and line breaks (Unicode whitespace / line separators).")
     
     # B. Non-Standard Invisibles
     flags = stats.get('forensic_flags', {})
     count_non_std_invis = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    tt_ns_inv = make_tooltip("Non-standard Invisibles", [("TARGET", "ZWSP, ZWJ, Bidi, Tags...")], "Potential obfuscation / spoofing vector. Review positions in the Integrity Profile.")
     
-    # C. Standard Others (ASCII Punct + RGI Emoji)
+    # C. Standard Others
     count_ascii_punct = 0
     for c in t:
         if 0x21 <= ord(c) <= 0x7E and not c.isalnum():
             count_ascii_punct += 1
     count_rgi = stats.get('rgi_count', 0)
     count_std_others = count_ascii_punct + count_rgi
+    tt_std_oth = make_tooltip("Standard Syntax", [("TARGET", "ASCII Punct, RGI Emoji")], "Standard grammatical punctuation and valid emoji sequences.")
     
-    # D. Non-Standard Others (The Residual)
+    # D. Non-Standard Others
     count_non_std_other = 0
     js_array = window.Array.from_(t)
     for c in js_array:
@@ -886,10 +970,12 @@ def render_forensic_hud(t, stats):
         
         if not (is_alphanum or is_std_invis or is_invis_mask or is_ascii_punct):
             count_non_std_other += 1
+            
+    tt_ns_oth = make_tooltip("Extended / Anomalous", [("TARGET", "Ext. Symbols, Controls...")], "Characters outside standard alphanumerics and syntax. May indicate math spoofing or binary data.")
 
     # E. Script Badge
     script_mix = stats.get('script_mix', "")
-    badge_text = "System Ready" # Default empty state
+    badge_text = "System Ready" 
     badge_cls = ""
     
     if not t:
@@ -907,11 +993,14 @@ def render_forensic_hud(t, stats):
         badge_text = "ASCII-Only"
 
     # Render Mini Boxes
-    def render_box(label, val, risk_level="safe"):
+    def render_box(label, val, risk_level="safe", tooltip=""):
         cls = f"hud-box-{risk_level}" if risk_level != "safe" else ""
         return f"""
         <div class="hud-mini-box {cls}">
-            <span class="hud-mini-label">{label}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="hud-mini-label">{label}</span>
+                {tooltip}
+            </div>
             <span class="hud-mini-val">{val}</span>
         </div>"""
 
@@ -922,10 +1011,10 @@ def render_forensic_hud(t, stats):
     <div class="hud-band hud-band-center">
         <span class="hud-title">Composition Spectrum</span>
         <div class="hud-grid-2x2">
-            {render_box("Std Invisibles", count_std_invis)}
-            {render_box("Non-Std Invis", count_non_std_invis, risk_ns_invis)}
-            {render_box("Std Others", count_std_others)}
-            {render_box("Non-Std Others", count_non_std_other, risk_ns_other)}
+            {render_box("Std Whitespace", count_std_invis, "safe", tt_std_inv)}
+            {render_box("Non-Std Invis", count_non_std_invis, risk_ns_invis, tt_ns_inv)}
+            {render_box("Std Syntax", count_std_others, "safe", tt_std_oth)}
+            {render_box("Ext. / Anomalous", count_non_std_other, risk_ns_other, tt_ns_oth)}
         </div>
         <div class="hud-script-badge {badge_cls}">{badge_text}</div>
     </div>
@@ -933,15 +1022,13 @@ def render_forensic_hud(t, stats):
 
     # --- 3. SAFETY (The Right Band) ---
     
-    # Defaults for empty state
+    # Defaults
     int_verdict = "READY"
     int_score = 0
     int_cls = "hud-gauge-ok"
-    
     thr_verdict = "READY"
     thr_score = 0
     thr_cls = "hud-gauge-ok"
-    
     comp_score = "LOW"
     comp_cls = "hud-gauge-ok"
 
@@ -968,19 +1055,26 @@ def render_forensic_hud(t, stats):
             comp_cls = "hud-gauge-warn"
         elif nsm_level == 1 or drift > 0:
             comp_score = "MED"
+            
+    # Safety Tooltips
+    tt_int = make_tooltip("Integrity Auditor", [("FOCUS", "Data health")], "Aggregates decode-health signals (replacement characters, broken surrogates, noncharacters). High scores indicate corruption, not necessarily attacks.")
+    tt_thr = make_tooltip("Threat Auditor", [("FOCUS", "Exploit risk")], "Scores patterns associated with spoofing and exploit techniques (mixed scripts, Bidi, invisible clusters). Integrity issues do not raise this score.")
     
-    def render_gauge(label, val, cls):
+    def render_gauge(label, val, cls, tooltip=""):
         return f"""
         <div class="hud-gauge-row">
-            <span>{label}</span>
+            <div style="display:flex; align-items:center; gap:4px;">
+                <span>{label}</span>
+                {tooltip}
+            </div>
             <span class="hud-gauge-val {cls}">{val}</span>
         </div>"""
 
     safe_html = f"""
     <div class="hud-band hud-band-right">
         <span class="hud-title">Safety Aggregate</span>
-        {render_gauge("Integrity", f"{int_verdict} ({int_score})", int_cls)}
-        {render_gauge("Threat", f"{thr_verdict} ({thr_score})", thr_cls)}
+        {render_gauge("Integrity", f"{int_verdict} ({int_score})", int_cls, tt_int)}
+        {render_gauge("Threat", f"{thr_verdict} ({thr_score})", thr_cls, tt_thr)}
         {render_gauge("Complexity", comp_score, comp_cls)}
     </div>
     """
