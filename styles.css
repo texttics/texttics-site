@@ -1815,15 +1815,29 @@ tr.flag-row-crit {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 0.75rem;
-  background-color: #f9fafb;
+  background-color: #ffffff;
   padding: 8px;
   border-radius: 6px;
   border: 1px solid #f3f4f6;
+  overflow: hidden;
 }
 
 .matrix-item {
   display: flex;
   flex-direction: column;
+  padding: 8px 12px; /* Add internal breathing room */
+  /* Add internal borders */
+  border-bottom: 1px solid var(--color-border-light);
+  border-right: 1px solid var(--color-border-light);
+}
+
+/* Remove borders from edge items to avoid double lines */
+.matrix-item:nth-child(2n) {
+    border-right: none; /* Right items have no right border */
+}
+
+.matrix-item:nth-last-child(-n+2) {
+    border-bottom: none; /* Bottom items have no bottom border */
 }
 
 .matrix-val {
@@ -1856,10 +1870,23 @@ tr.flag-row-crit {
 /* Ghost Strip (Normalization Chain) */
 .ghost-section {
   margin-top: 10px;
-  background-color: #fff7ed; /* Warning Orange Tint */
+  background-color: #ffffff;
   border: 1px solid #ffedd5;
   border-radius: 4px;
-  padding: 6px;
+  padding: 8px;
+  /* CENTER CONTENT */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+/* Style for the "STABLE" label specifically */
+.ghost-section .spec-label {
+    margin-bottom: 0;
+    color: #111827; /* Dark Gray/Black */
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
 }
 .ghost-strip {
   display: flex;
