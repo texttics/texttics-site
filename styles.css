@@ -2065,146 +2065,181 @@ tr.flag-row-crit {
   color: #b91c1c; /* Red-700 */
 }
 
-/* --- Forensic HUD (The Ticker Strip Pro) --- */
+/* --- Forensic HUD (The Data Matrix) --- */
 .hud-container {
   display: flex;
   flex-direction: row;
+  justify-content: space-between;
   align-items: stretch;
-  gap: 0;
+  gap: 0; /* Borders handle separation */
   margin-top: 1rem;
   margin-bottom: 0.5rem;
   background-color: var(--color-white);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   font-family: var(--font-sans);
-  overflow-x: auto; /* Horizontal scroll if needed */
   
-  /* Width constraint to match Text Input */
-  max-width: 100%; 
-  scrollbar-width: thin; /* Firefox */
+  /* Constraints */
+  overflow-x: auto;
+  max-width: 100%;
 }
 
-/* Individual Column */
+/* The Column (Vertical Slice) */
 .hud-col {
-  flex: 1;
-  min-width: 110px; /* Minimum readable width */
-  max-width: 140px; /* Maximum constraint to fit many */
+  flex: 1; /* Spread evenly */
+  min-width: 120px; /* Prevent crushing */
+  max-width: 160px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   border-right: 1px solid var(--color-border-light);
-  position: relative; /* For absolute positioning of icon */
+  text-align: center;
+  position: relative;
 }
 
 .hud-col:last-child {
   border-right: none;
 }
 
-/* 1. Header Area */
-.hud-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 0.6rem 0.8rem 0 0.8rem;
-  min-height: 24px;
-}
-
-.hud-label {
-  font-size: 0.65rem;
+/* --- ROW 1: Scientific Title (Top) --- */
+.hud-row-sci {
+  background-color: #f9fafb; /* Gray-50 */
+  color: #6b7280; /* Gray-500 */
+  font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 700;
-  color: #6b7280; /* Gray-500 */
-  line-height: 1.2;
+  padding: 6px 4px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* The Info Icon (Top Right) */
-.hud-info-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  font-family: serif;
-  font-style: italic;
+/* --- ROW 2: Main Title (with i) --- */
+.hud-row-label-main {
+  padding: 8px 4px 2px 4px;
   font-size: 0.7rem;
-  color: #9ca3af;
-  border: 1px solid transparent;
-  cursor: help;
-  transition: all 0.2s;
-  margin-left: 4px;
-  margin-top: -2px; /* Slight optical alignment */
-}
-
-.hud-info-trigger:hover {
-  color: var(--color-primary);
-  background-color: #eff6ff;
-  border-color: #bfdbfe;
-}
-
-/* 2. Body Area (Metrics) */
-.hud-body {
-  padding: 0.2rem 0.8rem 0.6rem 0.8rem;
+  font-weight: 600;
+  color: #374151; /* Gray-700 */
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
 }
 
-.hud-main-val {
-  font-size: 1.6rem;
+/* --- ROW 3: Main Digit --- */
+.hud-row-val-main {
+  font-size: 1.75rem; /* Big Impact */
   font-weight: 700;
-  color: var(--color-text);
-  line-height: 1;
+  color: #111827; /* Gray-900 */
+  line-height: 1.1;
+  padding: 2px 4px;
   font-variant-numeric: tabular-nums;
 }
 
-.hud-sub-val {
-  font-size: 0.8rem;
+/* --- ROW 4: Secondary Title (with i) --- */
+.hud-row-label-sub {
+  margin-top: 6px;
+  font-size: 0.6rem;
   font-weight: 600;
-  color: #4b5563; /* Gray-600 - Darker than mute */
-  margin-top: 2px;
-}
-
-.hud-sub-label {
-  font-size: 0.65rem;
   color: #9ca3af; /* Gray-400 */
-  font-weight: 500;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
 }
 
-/* 3. Footer Zone (The "Extra" Area) */
-.hud-footer-zone {
+/* --- ROW 5: Secondary Digit --- */
+.hud-row-val-sub {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #4b5563; /* Gray-600 */
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+  min-height: 1.2em; /* Preserve height even if empty */
+}
+
+/* --- ROW 6: Extra Button (Footer) --- */
+.hud-row-extra {
   margin-top: auto; /* Push to bottom */
-  background-color: #f9fafb; /* Very light gray */
-  border-top: 1px solid var(--color-border-light);
-  padding: 4px 8px;
+  background-color: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  padding: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.hud-extra-btn {
+  display: block;
+  width: 100%;
   text-align: center;
   font-size: 0.65rem;
-  color: #9ca3af;
-  font-weight: 500;
-  cursor: pointer; /* Interaction hint */
-  transition: background-color 0.2s;
-  position: relative; /* Anchor for its own tooltip */
+  font-weight: 700;
+  color: #2563eb; /* Primary Blue */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.hud-footer-zone:hover {
+.hud-row-extra:hover {
   background-color: #eff6ff;
+}
+
+/* --- Interactive Elements --- */
+
+/* The Elegant 'i' */
+.hud-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+  font-family: serif;
+  font-style: italic;
+  font-size: 0.6rem;
+  color: #6b7280;
+  cursor: help;
+  position: relative; /* For Tooltip Anchor */
+}
+
+.hud-info-icon:hover {
+  border-color: var(--color-primary);
   color: var(--color-primary);
+  background-color: #fff;
 }
 
-/* Status Colors */
-.status-safe { color: #059669; }
-.status-warn { color: #d97706; }
-.status-crit { color: #dc2626; }
-.status-neutral { color: #1f2937; }
-
-/* Tooltip (Reused Logic, Adjusted Z-Index) */
+/* The Tooltip (Re-styled for Grid) */
 .hud-tooltip {
-  z-index: 100;
-  min-width: 200px;
-  top: 100%;
-  right: -10px; /* Align somewhat right */
-  left: auto;
-  transform: translateY(4px);
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
+  width: max-content;
+  max-width: 240px;
+  background-color: rgba(17, 24, 39, 0.95);
+  color: white;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-family: var(--font-sans);
+  text-align: left;
+  z-index: 50;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
+
+.hud-info-icon:hover .hud-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Colors */
+.txt-safe { color: #059669; }
+.txt-warn { color: #d97706; }
+.txt-crit { color: #dc2626; }
