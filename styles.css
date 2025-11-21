@@ -1876,7 +1876,7 @@ tr.flag-row-crit {
 .ghost-section.stable {
   background-color: #ffffff;
   border-color: #e5e7eb; /* Neutral Gray Border */
-  border: 2px;
+  border: 1px solid #e5e7eb;
   gap: 10px;
   
 }
