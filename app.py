@@ -824,6 +824,174 @@ def analyze_bidi_structure(t: str, rows: list):
                      
     return penalty_count
 
+def render_forensic_hud(t, stats):
+    """
+    Renders the 'Forensic HUD' - The Triage Dashboard.
+    Layout: Volume (Left) | Composition (Center) | Safety (Right).
+    """
+    container = document.getElementById("forensic-hud")
+    if not container or not t: 
+        if container: container.innerHTML = ""
+        return
+
+    # --- 1. VOLUME (The Left Band) ---
+    # Formula: (Letters + Numbers) / 6.0
+    count_L = stats.get('major_stats', {}).get("L (Letter)", 0)
+    count_N = stats.get('major_stats', {}).get("N (Number)", 0)
+    
+    vu_val = (count_L + count_N) / 6.0
+    vu_display = f"{vu_val:.1f}"
+    
+    vol_html = f"""
+    <div class="hud-band">
+        <span class="hud-title">Volumetric Analysis</span>
+        <div class="hud-metric-hero">{vu_display}</div>
+        <div class="hud-metric-sub">Volumetric Units (VU)</div>
+        <div class="hud-metric-sub" style="font-size:0.65rem; opacity:0.8;">(AlphaNum / 6.0)</div>
+    </div>
+    """
+
+    # --- 2. COMPOSITION (The Center Band) ---
+    # Required: Std Invis, Non-Std Invis, Std Other, Non-Std Other.
+    
+    # A. Standard Invisibles (Space, Tab, NL)
+    # We count these manually for precision
+    std_invis_set = {0x20, 0x09, 0x0A, 0x0D}
+    count_std_invis = sum(1 for c in t if ord(c) in std_invis_set)
+    
+    # B. Non-Standard Invisibles (From Forensic Engine)
+    # We rely on the 'flags' dictionary populated in compute_forensic_stats
+    # 'any_invis' covers everything in the bitmask.
+    # The bitmask EXCLUDES 0x20/Tab/NL, so 'any_invis' IS 'Non-Standard Invisibles'.
+    flags = stats.get('forensic_flags', {})
+    count_non_std_invis = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    
+    # C. Standard Others (ASCII Punct + RGI Emoji)
+    # C.1 ASCII Punctuation
+    count_ascii_punct = 0
+    for c in t:
+        if 0x21 <= ord(c) <= 0x7E and not c.isalnum():
+            count_ascii_punct += 1
+            
+    # C.2 RGI Emoji (Sequence Count)
+    count_rgi = stats.get('rgi_count', 0)
+    count_std_others = count_ascii_punct + count_rgi
+    
+    # D. Non-Standard Others (The Residual)
+    # Total - (L+N) - StdInvis - NonStdInvis - StdOthers
+    # Note: This assumes RGI sequences consume code points roughly equal to their count for the math to balance perfectly, 
+    # which is FALSE. RGI Emoji are multi-char.
+    # CORRECT APPROACH for "Non-Standard Others":
+    # It is simpler to count specific "Weird" categories that we haven't counted yet.
+    # Non-ASCII Symbols + Non-ASCII Punct + Controls (excluding std invis) + Unassigned/PUA/Surrogates.
+    count_non_std_other = 0
+    js_array = window.Array.from_(t)
+    for c in js_array:
+        cp = ord(c)
+        cat = unicodedata.category(c)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        
+        is_alphanum = cat.startswith('L') or cat.startswith('N')
+        is_std_invis = cp in std_invis_set
+        is_invis_mask = (mask & INVIS_ANY_MASK) != 0
+        is_ascii_punct = (0x21 <= cp <= 0x7E and not c.isalnum())
+        
+        # If it is NOT any of the "Standard" or "Known Invisible" buckets, it's "Non-Standard Other"
+        # (This effectively catches Extended Symbols, Extended Punct, Bad Controls)
+        if not (is_alphanum or is_std_invis or is_invis_mask or is_ascii_punct):
+            count_non_std_other += 1
+
+    # E. Script Badge
+    script_mix = stats.get('script_mix', "")
+    badge_text = "ASCII-Only"
+    badge_cls = ""
+    
+    if "CRITICAL" in script_mix: 
+        badge_text = "CRITICAL: Mixed Scripts"
+        badge_cls = "hud-script-crit"
+    elif "Mixed" in script_mix:
+        badge_text = "Mixed Scripts (Safe)"
+    elif "Single" in script_mix:
+        badge_text = "Single Script"
+    elif not stats.get('is_ascii', True):
+        badge_text = "Unicode Extended"
+
+    # Render Mini Boxes
+    def render_box(label, val, risk_level="safe"):
+        cls = f"hud-box-{risk_level}" if risk_level != "safe" else ""
+        return f"""
+        <div class="hud-mini-box {cls}">
+            <span class="hud-mini-label">{label}</span>
+            <span class="hud-mini-val">{val}</span>
+        </div>"""
+
+    # Determine risk colors
+    risk_ns_invis = "crit" if count_non_std_invis > 0 else "safe"
+    risk_ns_other = "warn" if count_non_std_other > 0 else "safe"
+
+    comp_html = f"""
+    <div class="hud-band hud-band-center">
+        <span class="hud-title">Composition Spectrum</span>
+        <div class="hud-grid-2x2">
+            {render_box("Std Invisibles", count_std_invis)}
+            {render_box("Non-Std Invis", count_non_std_invis, risk_ns_invis)}
+            {render_box("Std Others", count_std_others)}
+            {render_box("Non-Std Others", count_non_std_other, risk_ns_other)}
+        </div>
+        <div class="hud-script-badge {badge_cls}">{badge_text}</div>
+    </div>
+    """
+
+    # --- 3. SAFETY (The Right Band) ---
+    # Integrity, Threat, Complexity
+    
+    # Integrity
+    int_res = stats.get('integrity', {})
+    int_score = int_res.get('score', 0)
+    int_verdict = int_res.get('verdict', 'UNKNOWN')
+    int_cls = "hud-gauge-ok"
+    if int_verdict in ("CORRUPT", "FRACTURED"): int_cls = "hud-gauge-crit"
+    elif int_verdict in ("RISKY", "DECAYING"): int_cls = "hud-gauge-warn"
+    
+    # Threat
+    thr_res = stats.get('threat', {})
+    thr_score = thr_res.get('score', 0)
+    thr_verdict = thr_res.get('verdict', 'UNKNOWN')
+    thr_cls = "hud-gauge-ok"
+    if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: thr_cls = "hud-gauge-crit"
+    elif "SUSPICIOUS" in thr_verdict: thr_cls = "hud-gauge-warn"
+    
+    # Complexity (Derived from Zalgo/Drift)
+    # Simple heuristic for the gauge
+    nsm_level = stats.get('nsm_level', 0)
+    drift = stats.get('drift', 0)
+    comp_score = "LOW"
+    comp_cls = "hud-gauge-ok"
+    if nsm_level >= 2 or drift > 10:
+        comp_score = "HIGH"
+        comp_cls = "hud-gauge-warn"
+    elif nsm_level == 1 or drift > 0:
+        comp_score = "MED"
+    
+    def render_gauge(label, val, cls):
+        return f"""
+        <div class="hud-gauge-row">
+            <span>{label}</span>
+            <span class="hud-gauge-val {cls}">{val}</span>
+        </div>"""
+
+    safe_html = f"""
+    <div class="hud-band hud-band-right">
+        <span class="hud-title">Safety Aggregate</span>
+        {render_gauge("Integrity", f"{int_verdict} ({int_score})", int_cls)}
+        {render_gauge("Threat", f"{thr_verdict} ({thr_score})", thr_cls)}
+        {render_gauge("Complexity", comp_score, comp_cls)}
+    </div>
+    """
+
+    # --- ASSEMBLY ---
+    container.innerHTML = vol_html + comp_html + safe_html
+
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
 # ---
@@ -6128,6 +6296,22 @@ def update_all(event=None):
     
     render_toc_counts(toc_counts)
 
+    # --- FORENSIC HUD ---
+    is_ascii_safe = cp_summary.get("ASCII-Compatible", {}).get("is_full", False)
+    
+    hud_stats = {
+        "major_stats": cp_major,
+        "forensic_flags": forensic_map,
+        "rgi_count": emoji_counts.get("RGI Emoji Sequences", 0),
+        "integrity": audit_result,
+        "threat": final_score,
+        "script_mix": script_mix_class,
+        "is_ascii": is_ascii_safe,
+        "nsm_level": nsm_stats["level"],
+        "drift": skel_metrics.get("total_drift", 0)
+    }
+    render_forensic_hud(t, hud_stats)
+    
     # Stage 2 Bridge
     try:
         segments_iterable = GRAPHEME_SEGMENTER.segment(t)
