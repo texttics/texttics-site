@@ -5548,7 +5548,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6. Normalization Ghosts
+    # 6. Normalization Ghosts (Always Show if Data Exists)
     ghost_html = ""
     if data['ghosts']:
         g = data['ghosts']
@@ -5565,6 +5565,7 @@ def render_inspector_panel(data):
         </div>
         """
     else:
+        # CLEAN HTML: No inline styles, uses CSS classes for Black/Green colors
         ghost_html = f"""
         <div class="ghost-section stable">
             <span class="ghost-key">NORMALIZATION:</span>
@@ -5573,78 +5574,6 @@ def render_inspector_panel(data):
         """
 
     # 7. Final Assembly (NO CHIPS)
-    identity_html = f"""
-        <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
-        
-        {identity_grid}
-        {technical_grid}
-        {ghost_html}
-    """
-
-    # 6. Normalization Ghosts (Always Show if Data Exists)
-    ghost_html = ""
-    # We relax the condition: If we calculated ghosts, we show them.
-    # The calculation logic already filters out "boring" ASCII-only case changes.
-    # If you want *everything*, remove the filter in _get_ghost_chain.
-    # Assuming _get_ghost_chain logic is desired, we just render what it returns.
-    if data['ghosts']:
-        g = data['ghosts']
-        ghost_html = f"""
-        <div class="ghost-section">
-            <div class="spec-label" style="margin-bottom:4px;">NORMALIZATION GHOSTS</div>
-            <div class="ghost-strip">
-                <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
-                <div class="ghost-arrow">→</div>
-                <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
-                <div class="ghost-arrow">→</div>
-                <div class="ghost-step">SKEL<br><span>{_escape_html(g['skeleton'])}</span></div>
-            </div>
-        </div>
-        """
-    else:
-        # Fallback: Show "Stable" if no drift detected, to prove we checked.
-        ghost_html = f"""
-        <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
-            <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
-        </div>
-        """
-
-    identity_html = f"""
-        <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
-        
-        {identity_grid}
-        {technical_grid}
-        {ghost_html}
-    """
-
-    # 6. Normalization Ghosts (Always Show if Data Exists)
-    ghost_html = ""
-    # We relax the condition: If we calculated ghosts, we show them.
-    # The calculation logic already filters out "boring" ASCII-only case changes.
-    # If you want *everything*, remove the filter in _get_ghost_chain.
-    # Assuming _get_ghost_chain logic is desired, we just render what it returns.
-    if data['ghosts']:
-        g = data['ghosts']
-        ghost_html = f"""
-        <div class="ghost-section">
-            <div class="spec-label" style="margin-bottom:4px;">NORMALIZATION GHOSTS</div>
-            <div class="ghost-strip">
-                <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
-                <div class="ghost-arrow">→</div>
-                <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
-                <div class="ghost-arrow">→</div>
-                <div class="ghost-step">SKEL<br><span>{_escape_html(g['skeleton'])}</span></div>
-            </div>
-        </div>
-        """
-    else:
-        # Fallback: Show "Stable" if no drift detected, to prove we checked.
-        ghost_html = f"""
-        <div class="ghost-section" style="background-color: #f9fafb; border-color: #e5e7eb;">
-            <div class="spec-label" style="margin-bottom:0; color:#9ca3af;">NORMALIZATION: STABLE</div>
-        </div>
-        """
-
     identity_html = f"""
         <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
         
