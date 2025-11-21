@@ -4838,7 +4838,10 @@ def _compute_cluster_identity(cluster_str, base_char_data):
     if not other_blocks:
         block_display = base_block
     else:
-        block_display = f"{base_block} + {len(other_blocks)} Other"
+        # Explicitly label as 'Block(s)' to distinguish from character count
+        count = len(other_blocks)
+        suffix = "Block" if count == 1 else "Blocks"
+        block_display = f"{base_block} + {count} {suffix}"
 
     # 3. Script Truth (Clean)
     if not scripts:
