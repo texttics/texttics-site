@@ -2016,3 +2016,32 @@ tr.flag-row-crit {
   font-weight: 700;
   letter-spacing: 0.03em;
 }
+
+
+/* --- Dynamic Risk Borders for Lookalikes --- */
+
+/* Default / Note (Blue) - Matches risk-info */
+.ghost-section.lookalikes.risk-info {
+  border-color: #bfdbfe; /* Blue-200 */
+}
+.ghost-section.lookalikes.risk-info .ghost-key {
+  color: #0369a1; /* Sky-700 */
+}
+
+/* Suspicious / Ambiguous (Orange) - Matches risk-warn */
+.ghost-section.lookalikes.risk-warn {
+  border-color: #fed7aa; /* Orange-200 */
+  background-color: #fff7ed; /* Very light orange tint */
+}
+.ghost-section.lookalikes.risk-warn .ghost-key {
+  color: #c2410c; /* Orange-700 */
+}
+
+/* Critical (Red) - Matches risk-fail */
+.ghost-section.lookalikes.risk-fail {
+  border-color: #fecaca; /* Red-200 */
+  background-color: #fef2f2; /* Very light red tint */
+}
+.ghost-section.lookalikes.risk-fail .ghost-key {
+  color: #b91c1c; /* Red-700 */
+}
