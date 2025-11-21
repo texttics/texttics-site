@@ -3675,7 +3675,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
     rows.extend(struct_rows)
 
-    return rows
+    return rows, audit_result
 
 
 def compute_provenance_stats(t: str):
@@ -6102,7 +6102,8 @@ def update_all(event=None):
     vo_run_stats = compute_verticalorientation_analysis(t)
 
     # Module 2.C: Forensic Integrity (HYBRID ENGINE)
-    forensic_rows = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags)
+    # Unpack tuple: rows AND audit_result
+    forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags)
     forensic_map = {row['label']: row for row in forensic_rows}
 
     # Module 2.D: Provenance
@@ -6293,21 +6294,23 @@ def update_all(event=None):
     
     render_toc_counts(toc_counts)
 
-    # --- FORENSIC HUD ---
-    is_ascii_safe = cp_summary.get("ASCII-Compatible", {}).get("is_full", False)
-    
+    # --- FORENSIC HUD (Corrected Hook) ---
+    is_ascii_safe = True
+    if "ASCII-Compatible" in cp_summary:
+        is_ascii_safe = cp_summary["ASCII-Compatible"].get("is_full", False)
+
     hud_stats = {
         "major_stats": cp_major,
         "forensic_flags": forensic_map,
         "rgi_count": emoji_counts.get("RGI Emoji Sequences", 0),
-        "integrity": audit_result,
-        "threat": final_score,
+        "integrity": audit_result,  # Now this variable exists!
+        "threat": final_score,      # This assumes final_score was calc'd above
         "script_mix": script_mix_class,
         "is_ascii": is_ascii_safe,
         "nsm_level": nsm_stats["level"],
         "drift": skel_metrics.get("total_drift", 0)
     }
-    render_forensic_hud(t, hud_stats)
+    render_forensic_hud(t, hud_stats))
     
     # Stage 2 Bridge
     try:
