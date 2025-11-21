@@ -866,9 +866,11 @@ def render_forensic_hud(t, stats):
     uax_word_count = 0
     try:
         word_seg = window.Intl.Segmenter.new("en", {"granularity": "word"})
-        # Filter for isWordLike=true segments
-        uax_word_count = sum(1 for s in word_seg.segment(t) if s.isWordLike)
-    except:
+        # [FIX] Convert JS iterator to array before counting
+        segments = window.Array.from_(word_seg.segment(t))
+        uax_word_count = sum(1 for s in segments if s.isWordLike)
+    except Exception as e:
+        print(f"UAX Word Error: {e}") # For debugging
         uax_word_count = "N/A"
 
     tt_vu = make_tooltip(
@@ -877,34 +879,26 @@ def render_forensic_hud(t, stats):
         "Approximate count of word-like units, assuming ~5 visible characters per word. Use for comparing text size, not as a tokenizer."
     )
 
-    # B. Metric: Structural Segments
+    # B. Metric: Structural Segments (Pure Density)
+    # Formula: VU / 20.0 (Statistical estimation ONLY)
+    # Logic: Always show the calculated density segments.
+    seg_val = max(1, round(vu_val / 20.0)) if t else 0
+    seg_label = "Structural Segments (Est.)"
+
+    # C. Metric: Explicit Delimiters (Raw Count)
     terminators = 0
     for char in t:
-        if char in {'.', '?', '!', ';', ','}: # Added comma per request
+        if char in {'.', '?', '!', ';', ','}:
             terminators += 1
-            
-    if terminators > 0:
-        seg_val = terminators
-        seg_label = "Segments (Delimiters)"
-    else:
-        seg_val = max(1, round(vu_val / 20.0)) if t else 0
-        seg_label = "Segments (Est.)"
-
-    # UAX #29 Reference Count (Sentences)
-    uax_sent_count = 0
-    try:
-        sent_seg = window.Intl.Segmenter.new("en", {"granularity": "sentence"})
-        uax_sent_count = sum(1 for _ in sent_seg.segment(t))
-    except:
-        uax_sent_count = "N/A"
-
+    
+    # Tooltip for Segments (Comparison against UAX)
     tt_seg = make_tooltip(
-        "Structural Segments",
+        "Structural Segments (estimated sentences)",
         [("MATH", "VU / 20.0"), ("REF", f"UAX #29 sentence segments: {uax_sent_count}")],
-        "Coarse estimate of sentence-like blocks, assuming ~20 word-units per sentence. Useful for relative comparisons, not for syntax."
+        "Coarse estimate of sentence-like blocks based on lexical density. Comparing this to Delimiters reveals flow vs. structure."
     )
     
-    # C. Metric: Explicit Delimiters (Tooltip only for the sub-metric context)
+    # Tooltip for Delimiters
     tt_term = make_tooltip(
         "Explicit Delimiters",
         [("TARGET", ". , ? ! ;")],
@@ -921,14 +915,22 @@ def render_forensic_hud(t, stats):
             <div class="hud-metric-sub" style="font-size:0.65rem; opacity:0.8;">(AlphaNum / 5.0)</div>
         </div>
 
-        <div style="border-top: 1px solid var(--color-border-light); padding-top: 6px;">
-            <div style="display:flex; align-items:center; gap:4px;">
-                <span style="font-size: 1.4rem; font-weight: 700; color: var(--color-text); line-height: 1;">{seg_val}</span>
-                {tt_seg}
+        <div style="border-top: 1px solid var(--color-border-light); padding-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            
+            <div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <span style="font-size: 1.2rem; font-weight: 700; color: var(--color-text); line-height: 1;">{seg_val}</span>
+                    {tt_seg}
+                </div>
+                <div class="hud-metric-sub" style="font-size:0.7rem;">Segments</div>
             </div>
-            <div class="hud-metric-sub">
-                {seg_label}
-                {tt_term if "Delimiters" in seg_label else ""}
+
+            <div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <span style="font-size: 1.2rem; font-weight: 700; color: var(--color-text); line-height: 1;">{terminators}</span>
+                    {tt_term}
+                </div>
+                <div class="hud-metric-sub" style="font-size:0.7rem;">Delimiters</div>
             </div>
         </div>
     </div>
