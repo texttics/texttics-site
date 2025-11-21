@@ -5018,7 +5018,7 @@ def inspect_character(event):
         else:
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
             
-        # [FIX] Explicitly define id_type here so it exists for the data payload
+        # Explicitly define id_type
         id_type = _find_in_ranges(cp_base, "IdentifierType")
             
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
@@ -5045,16 +5045,15 @@ def inspect_character(event):
                 'ccc': ccc,
                 'is_base': not is_mark
             })
-            
+
         # --- 4. Forensic 9: Encoding Calculations ---
-        # Calculated immediately before data construction
         
         # A. System Layer
         utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
         utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
         utf32_hex = f"{cp_base:08X}"
         
-        # B. Legacy Layer (Fail-Safe)
+        # B. Legacy Layer
         def try_enc(enc_name):
             try:
                 return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
@@ -5079,7 +5078,6 @@ def inspect_character(event):
         
         confusable_msg = None
         if ghosts:
-             # Use the calculated skeleton from the ghost chain
              skel_val = ghosts['skeleton']
              if skel_val != base_char and skel_val != base_char.casefold():
                  confusable_msg = f"Base maps to: '{skel_val}'"
@@ -5088,44 +5086,45 @@ def inspect_character(event):
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
         data = {
-            "python_idx": python_idx, # [CRITICAL] Links this particle to the Global Threat Ledger
             # --- Navigation & Core Identity ---
+            "python_idx": python_idx, # Critical for Verdict Sync
             "cluster_glyph": target_cluster,
             "prev_glyph": prev_cluster,
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name Found"),
             
-            # --- HUD v3 Logic Signals ---
-            "macro_type": macro_type,
-            "ghosts": ghosts,
+            # --- INJECT AGGREGATED CLUSTER TRUTH ---
+            "is_cluster": cluster_identity["is_cluster"],
+            "type_label": cluster_identity["type_label"],
+            "type_val":   cluster_identity["type_val"],
+            "block":      cluster_identity["block_val"],
+            "script":     cluster_identity["script_val"],
+            "bidi":       cluster_identity["bidi_val"],
+            "age":        cluster_identity["age_val"],
+
+            # --- Logic Signals ---
+            "category_full": base_char_data['category_full'],
+            "category_short": base_char_data['category_short'],
             "id_status": id_status,
             "id_type": id_type,
+            "macro_type": macro_type,
+            "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             
-            # --- Spec Data ---
-            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
-            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
-            "script_ext": _find_in_ranges(cp_base, "ScriptExtensions"),
-            
-            "category": ALIASES.get(cat_short, "N/A"),
-            "category_full": ALIASES.get(cat_short, "N/A"),
-            "category_short": cat_short,
-            
-            "bidi": bidi_short,
-            "age": _find_in_ranges(cp_base, "Age") or "N/A",
             "line_break": _find_in_ranges(cp_base, "LineBreak") or "N/A",
             "word_break": _find_in_ranges(cp_base, "WordBreak") or "N/A",
             "grapheme_break": gb_prop,
 
-            # --- Forensic 9 Payload ---
+            # --- Forensic 9 ---
             "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
             "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
             "url": url_enc, "html": html_enc, "code": code_enc,
             
             # --- Risk Signals ---
             "confusable": confusable_msg,
-            "is_invisible": bool(mask & INVIS_ANY_MASK),
+            # [FIX] Use comp_mask instead of undefined 'mask'
+            "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
             "components": components
         }
