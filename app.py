@@ -5039,6 +5039,12 @@ def inspect_character(event):
         gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
         gb_prop = gb_val if gb_val else "Base (Other)"
         
+        # --- FETCH LOOKALIKES ---
+        # Retrieve the list of visual confusables for this base character
+        inv_map = DATA_STORES.get("InverseConfusables", {})
+        # Keys in JSON are strings of the integer value
+        lookalikes_list = inv_map.get(str(cp_base), [])
+        
         # 3. Components Analysis
         components = []
         zalgo_score = 0
@@ -5122,6 +5128,7 @@ def inspect_character(event):
             "macro_type": macro_type,
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
+            "lookalikes": lookalikes_list,
             
             "line_break": lb_prop,
             "word_break": wb_prop,
@@ -5548,7 +5555,33 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6. Normalization Ghosts (Always Show if Data Exists)
+    # 6A. Lookalikes Section (New Constant Section)
+    lookalike_html = ""
+    if data.get('lookalikes'):
+        count = len(data['lookalikes'])
+        # Join them nicely (e.g., "A, А, Ꭺ")
+        list_str = ", ".join(data['lookalikes'])
+        
+        lookalike_html = f"""
+        <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px;">
+            <span class="ghost-key blue">LOOKALIKES ({count}):</span>
+            <span class="lookalike-list">{list_str}</span>
+        </div>
+        """
+    else:
+        # Optional: Show "Unique" if you want it strictly constant
+        # For now, keeping it cleaner by hiding if none exist, 
+        # but if you want it strictly constant, uncomment below:
+        # lookalike_html = f"""
+        # <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px; border-color: #e5e7eb;">
+        #     <span class="ghost-key" style="color:#9ca3af">LOOKALIKES:</span>
+        #     <span class="lookalike-list" style="color:#9ca3af">None (Unique)</span>
+        # </div>
+        # """
+        pass
+
+    
+    # 6B. Normalization Ghosts (Always Show if Data Exists)
     ghost_html = ""
     if data['ghosts']:
         g = data['ghosts']
@@ -5579,6 +5612,7 @@ def render_inspector_panel(data):
         
         {identity_grid}
         {technical_grid}
+        {lookalike_html}
         {ghost_html}
     """
 
