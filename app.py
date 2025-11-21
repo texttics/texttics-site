@@ -826,39 +826,54 @@ def analyze_bidi_structure(t: str, rows: list):
 
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic HUD' as a single-row Ticker Strip.
-    Structure: Header | Body | Footer (with i).
+    Renders the 'Forensic HUD' V2.
+    Layout: Ticker Strip with Header(i), Body(Main+Sub), Footer(Extra).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
 
-    # --- HELPER: Tooltip & Column Generator ---
+    # --- HELPER: Tooltip Generator ---
     def make_tooltip(header, rows, info):
         rows_html = ""
         for k, v in rows:
             rows_html += f'<div class="tt-row"><span class="tt-key">[{k}]</span><span class="tt-val">{v}</span></div>'
         
         return f"""
-        <span class="hud-info-wrapper">
-            <span class="info-icon">i</span>
-            <div class="hud-tooltip">
-                <span class="tt-header">{header}</span>
-                {rows_html}
-                <div class="tt-info">{info}</div>
-            </div>
-        </span>
+        <div class="hud-tooltip">
+            <span class="tt-header">{header}</span>
+            {rows_html}
+            <div class="tt-info">{info}</div>
+        </div>
         """
 
-    def render_col(label, value, risk_class="neutral", footer_text="", tooltip_html=""):
-        """Generates one vertical slice of the dashboard."""
+    # --- HELPER: Column Renderer ---
+    def render_col(label, main_val, sub_val_html="", risk_class="neutral", tooltip_html="", extra_text="Extra"):
+        """
+        Generates the 3-part column structure.
+        """
+        # If sub_val_html is just text, wrap it. If empty, render nothing.
+        sub_block = ""
+        if sub_val_html:
+            sub_block = f'<div class="hud-sub-val">{sub_val_html}</div>'
+
         return f"""
         <div class="hud-col">
-            <div class="hud-header">{label}</div>
-            <div class="hud-body status-{risk_class}">{value}</div>
-            <div class="hud-footer">
-                {tooltip_html}
-                <span>{footer_text}</span>
+            <div class="hud-header-row">
+                <span class="hud-label">{label}</span>
+                <div class="hud-info-wrapper">
+                    <span class="hud-info-trigger">i</span>
+                    {tooltip_html}
+                </div>
+            </div>
+            
+            <div class="hud-body">
+                <div class="hud-main-val status-{risk_class}">{main_val}</div>
+                {sub_block}
+            </div>
+            
+            <div class="hud-footer-zone" title="Click for extended analysis (Placeholder)">
+                {extra_text}
             </div>
         </div>
         """
@@ -879,19 +894,31 @@ def render_forensic_hud(t, stats):
     count_L = stats.get('major_stats', {}).get("L (Letter)", 0)
     count_N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu_val = (count_L + count_N) / 5.0 
-    tt_vu = make_tooltip("Volumetric Units", [("MATH", "(L+N)/5.0"), ("REF", f"UAX Words: {uax_word_count}")], "Normalized payload mass.")
-    col_vu = render_col("Volume (VU)", f"{vu_val:.1f}", "neutral", "AlphaNum / 5", tt_vu)
+    
+    # Tooltip contains the math
+    tt_vu = make_tooltip("Volumetric Units", 
+        [("MATH", "(L+N)/5.0"), ("REF", f"UAX Words: {uax_word_count}")], 
+        "Normalized payload mass.")
+        
+    # Main: VU, Sub: UAX Words
+    sub_vu = f"{uax_word_count} <span class='hud-sub-label'>UAX Words</span>"
+    col_vu = render_col("Volume (VU)", f"{vu_val:.1f}", sub_vu, "neutral", tt_vu)
 
     # B. Segments
     if vu_val == 0: seg_val = 0
     else: seg_val = max(1, round(vu_val / 20.0))
-    tt_seg = make_tooltip("Segments", [("MATH", "VU/20.0"), ("REF", f"UAX Sentences: {uax_sent_count}")], "Estimated sentence blocks.")
-    col_seg = render_col("Segments", str(seg_val), "neutral", "Density Est.", tt_seg)
+    
+    tt_seg = make_tooltip("Segments", 
+        [("MATH", "VU/20.0"), ("REF", f"UAX Sentences: {uax_sent_count}")], 
+        "Estimated sentence blocks.")
+        
+    sub_seg = f"{uax_sent_count} <span class='hud-sub-label'>UAX Sent.</span>"
+    col_seg = render_col("Segments", str(seg_val), sub_seg, "neutral", tt_seg)
 
     # C. Delimiters
     terminators = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
     tt_term = make_tooltip("Delimiters", [("TARGET", ". , ? ! ;")], "Explicit punctuation boundaries.")
-    col_term = render_col("Delimiters", str(terminators), "neutral", "Hard Bounds", tt_term)
+    col_term = render_col("Delimiters", str(terminators), "", "neutral", tt_term)
 
     # --- 2. COMPOSITION METRICS ---
 
@@ -899,23 +926,23 @@ def render_forensic_hud(t, stats):
     std_invis_set = {0x20, 0x09, 0x0A, 0x0D}
     count_std_invis = sum(1 for c in t if ord(c) in std_invis_set)
     tt_white = make_tooltip("Std Whitespace", [("TARGET", "Space Tab LF CR")], "Layout skeleton.")
-    col_white = render_col("Whitespace", str(count_std_invis), "neutral", "Standard", tt_white)
+    col_white = render_col("Whitespace", str(count_std_invis), "", "neutral", tt_white)
 
-    # E. Stealth (Non-Std Invis) - CRITICAL SIGNAL
+    # E. Stealth (Non-Std Invis)
     flags = stats.get('forensic_flags', {})
     count_stealth = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    risk_stealth = "crit" if count_stealth > 0 else "safe" # Green 0 is good
+    risk_stealth = "crit" if count_stealth > 0 else "safe"
     tt_stealth = make_tooltip("Stealth Matter", [("TARGET", "ZWSP Bidi Tags...")], "Obfuscation vector.")
-    col_stealth = render_col("Stealth", str(count_stealth), risk_stealth, "Non-Standard", tt_stealth)
+    col_stealth = render_col("Stealth", str(count_stealth), "", risk_stealth, tt_stealth)
 
     # F. Syntax
     count_ascii_punct = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum())
     count_rgi = stats.get('rgi_count', 0)
     count_std_others = count_ascii_punct + count_rgi
     tt_syn = make_tooltip("Std Syntax", [("TARGET", "ASCII Punct + Emoji")], "Standard grammar.")
-    col_syn = render_col("Syntax", str(count_std_others), "neutral", "Std Other", tt_syn)
+    col_syn = render_col("Syntax", str(count_std_others), "", "neutral", tt_syn)
 
-    # G. Anomalies (Non-Std Other)
+    # G. Anomalies
     count_anom = 0
     js_array = window.Array.from_(t)
     invis_len = len(INVIS_TABLE)
@@ -928,11 +955,10 @@ def render_forensic_hud(t, stats):
     
     risk_anom = "warn" if count_anom > 0 else "safe"
     tt_anom = make_tooltip("Anomalies", [("TARGET", "Ext. Symbols/Ctrl")], "Exotic/Unknown chars.")
-    col_anom = render_col("Anomalies", str(count_anom), risk_anom, "Non-Std Other", tt_anom)
+    col_anom = render_col("Anomalies", str(count_anom), "", risk_anom, tt_anom)
 
     # H. Script
     script_mix = stats.get('script_mix', "")
-    # Shorten for column width
     script_val = "ASCII"
     risk_script = "safe"
     if "CRITICAL" in script_mix: 
@@ -947,7 +973,7 @@ def render_forensic_hud(t, stats):
         script_val = "UNICODE"
     
     tt_script = make_tooltip("Script Spectrum", [("STATE", script_mix)], "Spoofing detection.")
-    col_script = render_col("Script", script_val, risk_script, "Spectrum", tt_script)
+    col_script = render_col("Script", script_val, "", risk_script, tt_script)
 
     # --- 3. SAFETY METRICS ---
 
@@ -958,7 +984,7 @@ def render_forensic_hud(t, stats):
     if int_verdict in ("CORRUPT", "FRACTURED"): risk_int = "crit"
     elif int_verdict in ("RISKY", "DECAYING"): risk_int = "warn"
     tt_int = make_tooltip("Integrity", [("FOCUS", "Data Health")], "Corruption check.")
-    col_int = render_col("Integrity", int_verdict, risk_int, f"Score: {int_res.get('score',0)}", tt_int)
+    col_int = render_col("Integrity", int_verdict, f"Score: {int_res.get('score',0)}", risk_int, tt_int)
 
     # J. Threat
     thr_res = stats.get('threat', {})
@@ -967,7 +993,7 @@ def render_forensic_hud(t, stats):
     if "WEAPONIZED" in thr_verdict or "HIGH" in thr_verdict: risk_thr = "crit"
     elif "SUSPICIOUS" in thr_verdict: risk_thr = "warn"
     tt_thr = make_tooltip("Threat", [("FOCUS", "Exploit Risk")], "Attack check.")
-    col_thr = render_col("Threat", thr_verdict, risk_thr, f"Score: {thr_res.get('score',0)}", tt_thr)
+    col_thr = render_col("Threat", thr_verdict, f"Score: {thr_res.get('score',0)}", risk_thr, tt_thr)
 
     # K. Complexity
     nsm_level = stats.get('nsm_level', 0)
@@ -981,7 +1007,7 @@ def render_forensic_hud(t, stats):
         comp_val = "MED"
     
     tt_comp = make_tooltip("Complexity", [("INPUT", "Zalgo / Drift")], "Visual density.")
-    col_comp = render_col("Complexity", comp_val, risk_comp, "Entropy", tt_comp)
+    col_comp = render_col("Complexity", comp_val, "", risk_comp, tt_comp)
 
     # --- ASSEMBLY ---
     container.innerHTML = "".join([
