@@ -1858,29 +1858,43 @@ tr.flag-row-crit {
 
 /* --- HUD v3 EXTENSIONS --- */
 
-/* Chip Colors */
-.spec-chip.safe { background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-.spec-chip.threat { background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; }
-.spec-chip.invisible { background-color: #f3e8ff; color: #7e22ce; border-color: #d8b4fe; }
-.spec-chip.syntax { background-color: #f3f4f6; color: #4b5563; border-color: #d1d5db; }
-.spec-chip.complex { background-color: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
-.spec-chip.rot { background-color: #fff1f2; color: #9f1239; border-color: #fecdd3; border-style: dashed; }
-
 /* Ghost Strip (Normalization Chain) */
 .ghost-section {
   margin-top: 10px;
   background-color: #ffffff;
-  border: 1px solid #ffedd5;
+  border: 2px solid #ffedd5;
   border-radius: 4px;
   padding: 8px;
   /* CENTER CONTENT */
   justify-content: center;
   text-align: center;
+  gap: 10px; /* Space between Label and Value */
 }
+
 /* Style for the "STABLE" label specifically */
+/* Specific Override for "Stable" State (Pure White + Gray Border) */
+.ghost-section.stable {
+  background-color: #ffffff;
+  border-color: #e5e7eb; /* Neutral Gray Border */
+}
+/* "NORMALIZATION:" (Black) */
+.ghost-key {
+  color: #111827; /* Dark Black/Gray */
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+/* "STABLE" (Green) */
+.ghost-val-ok {
+  color: #16a34a; /* Bright Green */
+  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
 .ghost-section .spec-label {
     margin-bottom: 0;
-    color: #000000; /* Dark Gray/Black */
+    color: #000000; 
     font-weight: 600;
     background-color: #ffffff;
     font-size: 0.75rem;
