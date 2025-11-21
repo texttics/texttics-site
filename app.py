@@ -5825,6 +5825,12 @@ def compute_threat_score(inputs):
     if "Highly Mixed" in mix_class:
         add_entry(mix_class, THR_BASE_OBFUSCATION, "OBFUSCATION")
 
+    # Forced Presentation (VS15/VS16 on invalid base)
+    # Severity: Low (1 point). It's an anomaly, but rarely an exploit.
+    forced_pres = inputs.get("forced_pres_count", 0)
+    if forced_pres > 0:
+        add_entry(f"Forced Presentation (VS15/VS16)", 1, "SUSPICIOUS")
+        
     # --- 4. SUSPICIOUS (Tier 4) ---
     # Unclosed Bidi (Sloppy) - Only if NOT Malicious
     if inputs.get("has_unclosed_bidi") and not inputs.get("malicious_bidi"):
@@ -6007,6 +6013,12 @@ def update_all(event=None):
         "tags_count": get_count("Flag: Unicode Tags (Plane 14)"),
         
         "suspicious_syntax_vs": get_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
+        
+        # [NEW] Pass Forced Presentation counts
+        "forced_pres_count": (
+            emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("count", 0) +
+            emoji_flags.get("Flag: Forced Text Presentation", {}).get("count", 0)
+        ),
         
         "noise_list": noise_list
     }
