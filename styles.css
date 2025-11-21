@@ -1926,3 +1926,31 @@ tr.flag-row-crit {
   color: #cbd5e1;
   font-size: 1.5rem;
 }
+
+/* --- Lookalikes Section (Blue Frame) --- */
+
+/* Override for "Lookalikes" State (Blue Border) */
+.ghost-section.lookalikes {
+  background-color: #ffffff;
+  /* Blue border matching "NOTE" level */
+  border: 1px solid #bfdbfe; 
+  gap: 8px;
+  
+  /* Allow wrapping if there are many lookalikes */
+  flex-wrap: wrap;
+}
+
+/* Label Color (Dark Blue) */
+.ghost-key.blue {
+  color: #0369a1; /* Sky-700 */
+}
+
+/* Value List Styling */
+.lookalike-list {
+  font-family: var(--font-sans); /* Use Sans for clarity, or Mono if preferred */
+  font-size: 0.8rem;
+  color: #334155; /* Slate-700 */
+  line-height: 1.4;
+  font-weight: 500;
+  word-break: break-all; /* Prevent layout break on massive lists */
+}
