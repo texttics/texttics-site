@@ -175,18 +175,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const hudContainer = document.getElementById('forensic-hud');
   
   // Primary Row Targets
-  const pDef = document.getElementById('c-p-def');
+  const pKey   = document.getElementById('c-p-key'); // [NEW] Label (e.g. "RGI SEQS:")
+  const pDef   = document.getElementById('c-p-def');
   const pLogic = document.getElementById('c-p-logic');
-  const pStd = document.getElementById('c-p-std');
+  const pStd   = document.getElementById('c-p-std');
 
   // Secondary Row Targets
-  const sDef = document.getElementById('c-s-def');
+  const sKey   = document.getElementById('c-s-key'); // [NEW] Label
+  const sDef   = document.getElementById('c-s-def');
   const sLogic = document.getElementById('c-s-logic');
-  const sStd = document.getElementById('c-s-std');
+  const sStd   = document.getElementById('c-s-std');
 
   const defaults = {
-    p: "Hover over a metric for definition.",
-    s: "Secondary context will appear here."
+    pKey: "PRIMARY:",
+    pDef: "Hover over a metric for definition.",
+    sKey: "SECONDARY:",
+    sDef: "Secondary context will appear here."
   };
 
   if (hudContainer && pDef) {
@@ -195,11 +199,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const col = e.target.closest('.hud-col');
       if (col) {
         // Populate Primary
+        const l1 = col.getAttribute('data-l1');
+        if (l1) pKey.textContent = l1 + ":"; // Update Label
+        
         pDef.textContent = col.getAttribute('data-d1') || "";
-        pLogic.textContent = col.getAttribute('data-m1') || ""; // m1 = Logic
-        pStd.textContent = col.getAttribute('data-r1') || "";   // r1 = Std
+        pLogic.textContent = col.getAttribute('data-m1') || "";
+        pStd.textContent = col.getAttribute('data-r1') || "";
 
         // Populate Secondary
+        const l2 = col.getAttribute('data-l2');
+        if (l2) sKey.textContent = l2 + ":"; // Update Label
+
         sDef.textContent = col.getAttribute('data-d2') || "";
         sLogic.textContent = col.getAttribute('data-m2') || "";
         sStd.textContent = col.getAttribute('data-r2') || "";
@@ -208,12 +218,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     hudContainer.addEventListener('mouseout', (e) => {
        if (!e.relatedTarget || !hudContainer.contains(e.relatedTarget)) {
-          // Reset
-          pDef.textContent = defaults.p;
+          // Reset Primary
+          pKey.textContent = defaults.pKey;
+          pDef.textContent = defaults.pDef;
           pLogic.textContent = "";
           pStd.textContent = "";
           
-          sDef.textContent = defaults.s;
+          // Reset Secondary
+          sKey.textContent = defaults.sKey;
+          sDef.textContent = defaults.sDef;
           sLogic.textContent = "";
           sStd.textContent = "";
        }
