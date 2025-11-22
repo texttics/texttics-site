@@ -2569,6 +2569,8 @@ def compute_emoji_analysis(text: str) -> dict:
 
         # [HUD C7 Irregular] Components
         elif kind == "emoji-component":
+            counts["total_emoji_units"] += 1
+            counts["non_rgi_total"] += 1
             counts["components_leaked"] += 1
             counts["emoji_irregular"] += 1
             add_flag("Flag: Standalone Emoji Component", idx)
