@@ -925,19 +925,18 @@ def render_forensic_hud(t, stats):
         "LEXICAL MASS", 
         "UNITS", f"{vu:.1f}", color_neutral(vu),
         "WORDS", str(uax_word), color_neutral(uax_word),
-        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: ~5 chars/word",
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
         d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
     # C2: SEGMENTATION
-    seg_est = max(1, round(vu / 20.0)) if t else 0
-    if not t: seg_est = 0
+    # FIX: Remove rounding to allow fluid 0.1 -> 1.9 -> 2.0 progression
+    seg_est = vu / 20.0
     c2 = render_cell(
         "SEGMENTATION", 
         "EST. BLOCKS", f"{seg_est:.1f}", color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-        # CORRECTION: Explicitly labeled as Estimate
-        d1="Coarse estimate of sentence-like blocks from lexical mass.", m1="VU / 20.0", r1="Heuristic: ~20 words/sent",
+        d1="Coarse estimate of sentence-like blocks from lexical mass.", m1="VU / 20.0", r1="Heuristic: 20 words/sent",
         d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
