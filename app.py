@@ -827,8 +827,8 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats, emoji_consumed=None):
     """
-    Renders the 'Forensic Matrix' V23 (Fix: Range-Based Lookups).
-    Restored functionality by using _find_in_ranges instead of missing set data.
+    Renders the 'Forensic Matrix' V24 (Hybrids Partition Fix).
+    Splits Hybrids into disjoint STABLE vs AMBIGUOUS buckets to prevent double-counting visualization.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -979,29 +979,28 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
         d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # --- PARTITIONING (V23 FIX: Use Range Lookups) ---
-    
-    # Verify data availability (Check if "Emoji" range list exists)
+    # --- PARTITIONING ---
     has_emoji_data = "Emoji" in DATA_STORES
 
     cnt_s_key = 0
     cnt_s_ext = 0
     cnt_s_exotic = 0
-    cnt_h_pict = 0 
-    cnt_h_ambig = 0 
+    
+    # Partition Hybrids into Disjoint Sets
+    cnt_h_stable = 0 # Emoji Presentation = Yes (e.g. Rocket)
+    cnt_h_ambig = 0  # Emoji Presentation = No (e.g. Copyright)
 
     for i, c in enumerate(t):
         if i in emoji_consumed: continue
 
         cp = ord(c)
         
-        # 1. Check Atomic Emoji Properties (Using Range Lookups)
-        # Logic: Emoji=Yes AND Component=No
+        # 1. Hybrids (Unconsumed Emoji Atoms)
         if has_emoji_data and _find_in_ranges(cp, "Emoji") and not _find_in_ranges(cp, "Emoji_Component"):
-            cnt_h_pict += 1
-            
-            # Ambiguity: Emoji=Yes but Emoji_Presentation=No (Text Default)
-            if not _find_in_ranges(cp, "Emoji_Presentation"):
+            # Split by Presentation
+            if _find_in_ranges(cp, "Emoji_Presentation"):
+                cnt_h_stable += 1
+            else:
                 cnt_h_ambig += 1
         
         # 2. Pure Symbols (Non-Emoji S*)
@@ -1009,13 +1008,10 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
             if cp <= 0x7F:
                 cnt_s_key += 1
             elif (0xA0 <= cp <= 0xFF) or (0x20A0 <= cp <= 0x20CF):
-                # Latin-1 / Currency
                 cnt_s_ext += 1
             elif (0x2190 <= cp <= 0x21FF) or (0x2200 <= cp <= 0x22FF):
-                # Arrows / Math
                 cnt_s_ext += 1
             elif (0x2500 <= cp <= 0x25FF):
-                # Boxes / Shapes / Blocks (Non-Emoji)
                 cnt_s_ext += 1
             else:
                 cnt_s_exotic += 1
@@ -1040,17 +1036,16 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
         d2="Rare technical marks, dingbats (non-emoji property).", m2="S* - Non-Emoji", r2="Scope: Exotic"
     )
 
-    # C6: HYBRIDS
-    # Use "N/A" only if data is missing
-    h_val = str(cnt_h_pict) if has_emoji_data else "N/A"
+    # C6: HYBRIDS (Disjoint: Stable vs Ambiguous)
+    h_stab = str(cnt_h_stable) if has_emoji_data else "N/A"
     h_amb = str(cnt_h_ambig) if has_emoji_data else "N/A"
     
     c6 = render_cell(
         "HYBRIDS", 
-        "PICTOGRAPHS", h_val, color_neutral(cnt_h_pict),
+        "STABLE", h_stab, color_neutral(cnt_h_stable),
         "AMBIGUOUS", h_amb, color_clean(cnt_h_ambig),
-        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Emoji=Yes (Unconsumed)", r1="Class: Atom",
-        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering"
+        d1="Emoji atoms with default Emoji presentation (VS16).", m1="Emoji_Pres=Yes", r1="Class: Pictograph",
+        d2="Emoji atoms with default Text presentation (VS15).", m2="Emoji_Pres=No", r2="Risk: Rendering"
     )
 
     # C7: EMOJI
