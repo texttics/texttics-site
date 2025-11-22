@@ -103,55 +103,63 @@
           </div>
         </div>
 
-        <div id="forensic-hud" class="hud-container">
-            </div>
-        
-        <div id="hud-console" class="hud-console-strip">
+        <details class="profile-section" id="hud-panel-wrapper" open>
+          <summary><h2 class="section-title">Forensic Dashboard</h2></summary>
+          
+          <div>
+            <div id="forensic-hud" class="hud-container"></div>
             
-            <div class="console-row" id="console-row-primary">
-                <div class="c-cell-def">
-                    <span class="console-key" id="c-p-key">PRIMARY:</span>
-                    <span class="console-val" id="c-p-def">Hover over a metric for definition.</span>
+            <div id="hud-console" class="hud-console-strip">
+                <div class="console-row" id="console-row-primary">
+                    <div class="c-cell-def">
+                        <span class="console-key" id="c-p-key">PRIMARY:</span>
+                        <span class="console-val" id="c-p-def">Hover over a metric for definition.</span>
+                    </div>
+                    <div class="c-cell-meta">
+                        <span class="console-key">LOGIC:</span>
+                        <span class="console-val" id="c-p-logic"></span>
+                    </div>
+                    <div class="c-cell-meta">
+                        <span class="console-key">STD:</span>
+                        <span class="console-val" id="c-p-std"></span>
+                    </div>
                 </div>
-                <div class="c-cell-meta">
-                    <span class="console-key">LOGIC:</span>
-                    <span class="console-val" id="c-p-logic"></span>
-                </div>
-                <div class="c-cell-meta">
-                    <span class="console-key">STD:</span>
-                    <span class="console-val" id="c-p-std"></span>
-                </div>
-            </div>
 
-            <div class="console-row" id="console-row-secondary">
-                <div class="c-cell-def">
-                    <span class="console-key" id="c-s-key">SECONDARY:</span>
-                    <span class="console-val" id="c-s-def">Secondary context will appear here.</span>
-                </div>
-                <div class="c-cell-meta">
-                    <span class="console-key">LOGIC:</span>
-                    <span class="console-val" id="c-s-logic"></span>
-                </div>
-                <div class="c-cell-meta">
-                    <span class="console-key">STD:</span>
-                    <span class="console-val" id="c-s-std"></span>
+                <div class="console-row" id="console-row-secondary">
+                    <div class="c-cell-def">
+                        <span class="console-key" id="c-s-key">SECONDARY:</span>
+                        <span class="console-val" id="c-s-def">Secondary context will appear here.</span>
+                    </div>
+                    <div class="c-cell-meta">
+                        <span class="console-key">LOGIC:</span>
+                        <span class="console-val" id="c-s-logic"></span>
+                    </div>
+                    <div class="c-cell-meta">
+                        <span class="console-key">STD:</span>
+                        <span class="console-val" id="c-s-std"></span>
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="action-bar">
-          <div class="action-buttons-row">
-            <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
-              ▥ Analyze Macrostructure
-            </button>
-            <button id="copy-report-btn" class="tool-btn report-btn" title="Copy full structured report">
-              Copy Stage 1 Report
-            </button>
           </div>
-          <p class="action-bar-desc">
-            Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
-          </p>
-        </div>
+        </details>
+        
+        <details class="profile-section" id="actions-panel-wrapper" open>
+          <summary><h2 class="section-title">Global Controls</h2></summary>
+          
+          <div class="action-bar">
+            <div class="action-buttons-row">
+              <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
+                ▥ Analyze Macrostructure
+              </button>
+              <button id="copy-report-btn" class="tool-btn report-btn" title="Copy full structured report">
+                Copy Stage 1 Report
+              </button>
+            </div>
+            <p class="action-bar-desc">
+              Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
+            </p>
+          </div>
+        </details>
       </section>
 
       <!-- 
