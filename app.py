@@ -2463,6 +2463,7 @@ def compute_emoji_analysis(text: str) -> dict:
     Scans the text and returns a full report on RGI sequences,
     single-character emoji, and qualification status.
     Populates 'consumed_indices' for disjoint partitioning in the HUD.
+    Enriches 'emoji_list' with Kind (Atomic/Sequence) and RGI status.
     """
     # --- 1. Get Data Stores ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -2470,8 +2471,10 @@ def compute_emoji_analysis(text: str) -> dict:
     qual_map = DATA_STORES.get("EmojiQualificationMap", {})
     
     # --- 2. Initialize Accumulators ---
-    rgi_sequences_count = 0
-    rgi_singles_count = 0
+    rgi_seq_count = 0
+    rgi_atom_count = 0
+    non_rgi_count = 0
+    
     emoji_details_list = []
 
     # Flags
@@ -2505,7 +2508,13 @@ def compute_emoji_analysis(text: str) -> dict:
                 if candidate in INTENT_MODIFYING_ZWJ_SET:
                     flag_intent_mod_zwj.append(f"#{k}")
                     for j in range(k, k + L): consumed_indices.add(j)
-                    emoji_details_list.append({"sequence": candidate, "status": "Intent-Modifying", "index": k})
+                    emoji_details_list.append({
+                        "sequence": candidate, 
+                        "status": "Intent-Modifying", 
+                        "index": k,
+                        "kind": "sequence",
+                        "rgi": False
+                    })
                     break
     
     # --- Main Loop ---
@@ -2525,9 +2534,16 @@ def compute_emoji_analysis(text: str) -> dict:
                 
                 if candidate in rgi_set:
                     matched_sequence = True
-                    rgi_sequences_count += 1
+                    rgi_seq_count += 1
                     status = qual_map.get(candidate, "fully-qualified")
-                    emoji_details_list.append({"sequence": candidate, "status": status, "index": i})
+                    
+                    emoji_details_list.append({
+                        "sequence": candidate, 
+                        "status": status, 
+                        "index": i,
+                        "kind": "sequence" if L > 1 else "atomic", # Single RGI chars are atomic
+                        "rgi": True
+                    })
                     
                     # Flag logic
                     if status == "unqualified": flag_unqualified.append(f"#{i}")
@@ -2540,7 +2556,6 @@ def compute_emoji_analysis(text: str) -> dict:
                             if not _find_in_ranges(base_cp, "Emoji_Presentation"):
                                 flag_forced_emoji.append(f"#{i}")
 
-                    # [CRITICAL] MARK INDICES AS CONSUMED
                     for j in range(i, i + L): consumed_indices.add(j)
                     i += L
                     break
@@ -2558,7 +2573,13 @@ def compute_emoji_analysis(text: str) -> dict:
                     flag_forced_text.append(f"#{i}")
                     consumed = 2
                     final_status = "forced-text"
-                    emoji_details_list.append({"sequence": char + js_array[i+1], "status": final_status, "index": i})
+                    emoji_details_list.append({
+                        "sequence": char + js_array[i+1], 
+                        "status": final_status, 
+                        "index": i,
+                        "kind": "atomic",
+                        "rgi": False
+                    })
             
             if final_status == "unknown":
                 final_status = qual_map.get(char, "unknown")
@@ -2567,10 +2588,11 @@ def compute_emoji_analysis(text: str) -> dict:
                 is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
                 is_ri = window.RegExp.new(r"^\p{Regional_Indicator}$", "u").test(char)
 
+                # Anomaly Checks
                 if is_ri:
                     flag_invalid_ri.append(f"#{i}")
                     if final_status == "unknown": final_status = "component"
-                elif cp == 0x20E3: # Keycap
+                elif cp == 0x20E3: 
                     is_valid_attachment = False
                     if i > 0 and ord(js_array[i-1]) in VALID_KEYCAP_BASES: is_valid_attachment = True
                     if not is_valid_attachment: flag_broken_keycap.append(f"#{i}")
@@ -2582,7 +2604,7 @@ def compute_emoji_analysis(text: str) -> dict:
                     if not is_valid_attachment: flag_illegal_modifier.append(f"#{i}")
                     if final_status == "unknown": final_status = "component"
                 
-                elif cp == 0x1F3F4: # Black Flag Tag Check
+                elif cp == 0x1F3F4: 
                     j = i + 1
                     if j < n and (0xE0020 <= ord(js_array[j]) <= 0xE007E):
                         k = j
@@ -2591,33 +2613,57 @@ def compute_emoji_analysis(text: str) -> dict:
                             flag_illformed_tag.append(f"#{i}")
                             consumed = k - i
                             final_status = "ill-formed-tag"
-                            emoji_details_list.append({"sequence": "".join(js_array[i:k]), "status": "component", "index": i})
+                            emoji_details_list.append({
+                                "sequence": "".join(js_array[i:k]), 
+                                "status": "component", 
+                                "index": i,
+                                "kind": "sequence",
+                                "rgi": False
+                            })
 
                 if is_rgi_single:
-                    rgi_singles_count += 1
+                    rgi_atom_count += 1 # It's an atom, not a sequence
                     if final_status == "unknown": final_status = "fully-qualified"
-                    # [CRITICAL] Mark single RGI emoji as consumed too
                     consumed_indices.add(i)
+                    emoji_details_list.append({
+                        "sequence": char,
+                        "status": final_status,
+                        "index": i,
+                        "kind": "atomic",
+                        "rgi": True
+                    })
                 
                 if is_ivs:
                     if final_status == "unknown": final_status = "component"
                     if f"#{i}" not in flag_component: flag_component.append(f"#{i}")
 
-            if final_status in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
-                emoji_details_list.append({"sequence": char, "status": final_status, "index": i})
+            # Catch-all for non-RGI but interesting things (like TM, Copyright)
+            if final_status in {"minimally-qualified", "unqualified", "component"} and not is_rgi_single:
+                non_rgi_count += 1
+                emoji_details_list.append({
+                    "sequence": char,
+                    "status": final_status,
+                    "index": i,
+                    "kind": "atomic",
+                    "rgi": False
+                })
             
             if final_status == "unqualified": flag_unqualified.append(f"#{i}")
             elif final_status == "minimally-qualified": flag_minimally_qualified.append(f"#{i}")
             elif final_status == "component" and not is_ivs: flag_component.append(f"#{i}")
             elif final_status == "fully-qualified": flag_fully_qualified.append(f"#{i}")
 
-            # Mark Forced Text or Tag Sequences as consumed
             if consumed > 1:
                 for j in range(i, i + consumed): consumed_indices.add(j)
             i += consumed
 
     return {
-        "counts": { "RGI Emoji Sequences": rgi_sequences_count + rgi_singles_count },
+        "counts": { 
+            "RGI Emoji Sequences": rgi_seq_count + rgi_atom_count, # Total RGI Units
+            "RGI Atomic": rgi_atom_count,
+            "RGI Complex": rgi_seq_count,
+            "Non-RGI Emoji-Like": non_rgi_count
+        },
         "flags": {
             "Flag: Unqualified Emoji": {'count': len(flag_unqualified), 'positions': flag_unqualified},
             "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
@@ -2632,7 +2678,7 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Intent-Modifying ZWJ": {'count': len(flag_intent_mod_zwj), 'positions': flag_intent_mod_zwj}
         },
         "emoji_list": emoji_details_list,
-        "consumed_indices": consumed_indices # Return the set
+        "consumed_indices": consumed_indices 
     }
 
 def _parse_script_extensions(txt: str):
@@ -4440,95 +4486,97 @@ def render_status(message):
         # Clear any old inline styles
         status_line.style.color = ""
 
-def render_emoji_qualification_table(emoji_list: list, text_context=None):
-    """Renders the new Emoji Qualification Profile table."""
+def render_emoji_qualification_table(emoji_list, text_context=None):
+    """
+    Renders the Emoji Qualification Profile table.
+    Grouped by unique sequence string.
+    Columns: Sequence | Kind | RGI? | Status | Count | Positions
+    """
     element = document.getElementById("emoji-qualification-body")
     if not element: return
     if not emoji_list:
-        element.innerHTML = "<tr><td colspan='4' class='placeholder-text'>No RGI emoji sequences detected.</td></tr>"
+        element.innerHTML = "<tr><td colspan='6' class='placeholder-text'>No emoji sequences found.</td></tr>"
         return
 
+    # Group by sequence string
     grouped = {}
     for item in emoji_list:
         seq = item.get("sequence", "?")
-        status = item.get("status", "unknown").replace("-", " ").title()
-        index = item.get("index", 0)
-        key = (seq, status)
-        if key not in grouped: grouped[key] = []
-        
-        # [ACTIVE UPDATE] Use the link helper
-        # PASS text_context HERE
-        grouped[key].append(_create_position_link(index, text_context))
+        if seq not in grouped:
+            grouped[seq] = {
+                'status': item.get("status", "unknown"),
+                'kind': item.get("kind", "unknown"),
+                'rgi': item.get("rgi", False),
+                'count': 0, 
+                'indices': []
+            }
+        grouped[seq]['count'] += 1
+        grouped[seq]['indices'].append(item.get("index", 0))
 
-    # 2. Build HTML string
+    # Sort by count desc, then sequence
+    sorted_keys = sorted(grouped.keys(), key=lambda k: (-grouped[k]['count'], k))
+
     html = []
-    
-    # Sort by the first index to keep them in order of appearance
-    try:
-        # We need to strip html tags to sort by the number inside
-        def get_sort_idx(k):
-            raw_link = grouped[k][0] # e.g. <a...>#10</a>
-            # Quick hack to extract number: split by '#' and take the digits
-            try:
-                return int(raw_link.split('#')[1].split('<')[0])
-            except:
-                return 0
-                
-        sorted_keys = sorted(grouped.keys(), key=get_sort_idx)
-    except Exception:
-        sorted_keys = sorted(grouped.keys())
-
-    for key in sorted_keys:
-        seq, status = key
-        positions = grouped[key] # These are now HTML links
+    for seq in sorted_keys:
+        data = grouped[seq]
         
-        count = len(positions)
+        # 1. Sequence (Large)
+        td_seq = f'<td style="font-size: 1.5rem; font-family: var(--font-mono);">{seq}</td>'
         
-        # Use <details> for long position lists
-        POSITION_THRESHOLD = 5
-        if count > POSITION_THRESHOLD:
-            visible_positions = ", ".join(positions[:POSITION_THRESHOLD])
-            hidden_positions = ", ".join(positions[POSITION_THRESHOLD:])
-            pos_html = (
-                f'<details style="cursor: pointer;">'
-                f'<summary>{visible_positions} ... ({count} total)</summary>'
-                f'<div style="padding-top: 8px; user-select: all;">{hidden_positions}</div>'
-                f'</details>'
-            )
+        # 2. Kind Badge
+        k_cls = "legend-badge"
+        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Gray default
+        if data['kind'] == 'sequence':
+            k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue
+        td_kind = f'<td><span class="{k_cls}" style="{k_style}">{data["kind"].upper()}</span></td>'
+        
+        # 3. RGI Badge
+        r_cls = "legend-badge"
+        if data['rgi']:
+            r_style = "background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0;" # Green
+            r_text = "YES"
         else:
-            pos_html = ", ".join(positions)
+            r_style = "background-color: #fffbeb; color: #b45309; border-color: #fcd34d;" # Yellow
+            r_text = "NO"
+        td_rgi = f'<td><span class="{r_cls}" style="{r_style}">{r_text}</span></td>'
 
-        html.append(
-            f'<tr>'
-            f'<th scope="row" style="font-family: var(--font-mono); font-size: 1.1rem;">{seq}</th>'
-            f'<td style="color: var(--color-text); font-weight: normal;">{status}</td>'
-            f'<td>{count}</td>'
-            f'<td>{pos_html}</td>'
-            f'</tr>'
-        )
-    
+        # 4. Status Pill
+        s_text = data['status'].replace('-', ' ').title()
+        s_cls = "legend-pill legend-pill-neutral"
+        if data['status'] == "fully-qualified": s_cls = "legend-pill legend-pill-ok"
+        elif data['status'] == "unqualified": s_cls = "legend-pill legend-pill-warn"
+        td_status = f'<td><span class="{s_cls}">{s_text}</span></td>'
+
+        # 5. Count
+        td_count = f'<td>{data["count"]}</td>'
+
+        # 6. Positions
+        pos_links = create_position_links(data['indices'], text_context)
+        td_pos = f'<td>{pos_links}</td>'
+
+        html.append(f'<tr>{td_seq}{td_kind}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
+
     element.innerHTML = "".join(html)
 
 def render_emoji_summary(emoji_counts, emoji_list):
     """
-    Render a one-line summary like:
-    'RGI Emoji Sequences: 12 • Emoji Components: 6'
+    Render a detailed summary line using the new granular counters.
+    Format: Emoji Units: 5 (RGI: 4 – atomic 4, sequences 0; Non-RGI: 1)
     """
     summary_el = document.getElementById("emoji-summary")
-    if not summary_el:
-        return
+    if not summary_el: return
 
-    rgi_total = emoji_counts.get("RGI Emoji Sequences", 0)
-
-    component_total = 0
-    if emoji_list:
-        for item in emoji_list:
-            if item.get("status", "").lower() == "component":
-                component_total += 1
-
+    total_rgi = emoji_counts.get("RGI Emoji Sequences", 0)
+    rgi_atom = emoji_counts.get("RGI Atomic", 0)
+    rgi_complex = emoji_counts.get("RGI Complex", 0)
+    non_rgi = emoji_counts.get("Non-RGI Emoji-Like", 0)
+    
+    total_units = total_rgi + non_rgi
+    
     summary_el.innerText = (
-        f"RGI Emoji Sequences: {rgi_total} • "
-        f"Emoji Components: {component_total}"
+        f"Emoji Units: {total_units} ("
+        f"RGI: {total_rgi} — atomic {rgi_atom}, sequences {rgi_complex}; "
+        f"Non-RGI: {non_rgi})"
     )
 
 
