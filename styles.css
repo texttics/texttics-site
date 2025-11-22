@@ -2386,10 +2386,8 @@ details.profile-section > summary::-webkit-details-marker {
 
 /* 3. Create a Custom Arrow that sits perfectly inline */
 details.profile-section > summary::before {
-  content: '▶';        /* Geometric triangle */
   font-size: 0.75rem;
   margin-right: 0.75rem; /* Space between arrow and text */
-  color: var(--color-text-muted);
   transition: transform 0.2s ease;
   line-height: 1;      /* Prevents vertical drift */
 }
