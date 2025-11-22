@@ -1001,18 +1001,18 @@ def render_forensic_hud(t, stats):
             elif (0x2190 <= cp <= 0x21FF) or (0x2200 <= cp <= 0x22FF):
                 # Arrows or Mathematical Operators (Safe)
                 cnt_s_ext += 1
-            elif (0x2500 <= cp <= 0x257F):
-                # Box Drawing (Safe Technical)
+            elif (0x2500 <= cp <= 0x25FF):
+                # Box Drawing, Block Elements, & Geometric Shapes (Safe Technical)
                 cnt_s_ext += 1
             else:
-                # Dingbats, Geometric Shapes, etc.
+                # Dingbats, Emoji-like symbols, etc.
                 cnt_s_exotic += 1
 
     # Dynamic Labels
     if cnt_s_ext > 0:
         c5_label = "EXTENDED"
         c5_val = cnt_s_key + cnt_s_ext
-        c5_desc = "Keyboard symbols + Latin-1, Math, Arrows, Boxes."
+        c5_desc = "Keyboard symbols + Latin-1, Math, Arrows, Shapes."
         c5_ref = "Scope: Technical"
     else:
         c5_label = "KEYBOARD"
