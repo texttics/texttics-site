@@ -2161,8 +2161,8 @@ tr.flag-row-crit {
 /* --- HUD TEXT UTILITIES (Zero-State Logic) --- */
 .txt-normal { color: var(--color-text); }
 .txt-muted  { color: #d1d5db; } /* Gray for 0 values */
-.txt-good   { color: #059669; } /* Deep Emerald for Critical Safety */
-.txt-clean  { color: #16a34a; } /* Vibrant Green for 0 Anomalies (Light) */
+.txt-good   { color: #059669; } /* Deep Emerald for Critical Safety (Integrity/Threat) */
+.txt-clean  { color: #6ee7b7; } /* Light Emerald for 0 Anomalies (Matches Gray Lightness) */
 .txt-warn   { color: #d97706; } /* Orange for >0 risks */
 .txt-crit   { color: #dc2626; } /* Red for critical risks */
 .txt-safe   { color: #059669; } /* Deep Emerald for Safe Status */
