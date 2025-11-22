@@ -825,15 +825,16 @@ def analyze_bidi_structure(t: str, rows: list):
     return penalty_count
 
 @create_proxy
-def render_forensic_hud(t, stats, emoji_consumed=None):
+def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V24 (Hybrids Partition Fix).
-    Splits Hybrids into disjoint STABLE vs AMBIGUOUS buckets to prevent double-counting visualization.
+    Renders the 'Forensic Matrix' V25 (Pure View from Cluster Ledger).
+    Columns 5, 6, 7 now consume pre-computed cluster counts for 100% logic consistency.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
-    if emoji_consumed is None: emoji_consumed = set()
+    
+    emoji_counts = stats.get("emoji_counts", {})
 
     # --- HELPER: Cell Builder V4 ---
     def render_cell(sci_title, 
@@ -979,85 +980,44 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
         d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # --- PARTITIONING ---
-    has_emoji_data = "Emoji" in DATA_STORES
-
-    cnt_s_key = 0
-    cnt_s_ext = 0
-    cnt_s_exotic = 0
+    # C5: SYMBOLS (Data from Cluster Ledger)
+    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
+    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
     
-    # Partition Hybrids into Disjoint Sets
-    cnt_h_stable = 0 # Emoji Presentation = Yes (e.g. Rocket)
-    cnt_h_ambig = 0  # Emoji Presentation = No (e.g. Copyright)
-
-    for i, c in enumerate(t):
-        if i in emoji_consumed: continue
-
-        cp = ord(c)
-        
-        # 1. Hybrids (Unconsumed Emoji Atoms)
-        if has_emoji_data and _find_in_ranges(cp, "Emoji") and not _find_in_ranges(cp, "Emoji_Component"):
-            # Split by Presentation
-            if _find_in_ranges(cp, "Emoji_Presentation"):
-                cnt_h_stable += 1
-            else:
-                cnt_h_ambig += 1
-        
-        # 2. Pure Symbols (Non-Emoji S*)
-        elif unicodedata.category(c).startswith('S'):
-            if cp <= 0x7F:
-                cnt_s_key += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x20A0 <= cp <= 0x20CF):
-                cnt_s_ext += 1
-            elif (0x2190 <= cp <= 0x21FF) or (0x2200 <= cp <= 0x22FF):
-                cnt_s_ext += 1
-            elif (0x2500 <= cp <= 0x25FF):
-                cnt_s_ext += 1
-            else:
-                cnt_s_exotic += 1
-
-    # C5: SYMBOLS
-    if cnt_s_ext > 0:
-        c5_label = "EXTENDED"
-        c5_val = cnt_s_key + cnt_s_ext
-        c5_desc = "Keyboard symbols + Latin-1, Math, Arrows, Shapes."
-        c5_ref = "Scope: Technical"
-    else:
+    c5_label = "EXTENDED"
+    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
+    if cnt_s_ext == 0 and cnt_s_exotic == 0:
+        # Fallback for Keyboard symbols if any (we don't track in ledger, but can infer if needed or just leave blank)
         c5_label = "KEYBOARD"
-        c5_val = cnt_s_key
         c5_desc = "Standard ASCII keyboard symbols."
-        c5_ref = "Scope: ASCII"
 
     c5 = render_cell(
         "SYMBOLS", 
-        c5_label, str(c5_val), color_neutral(c5_val),
+        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
         "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
-        d1=c5_desc, m1="S* excluding Emoji", r1=c5_ref,
-        d2="Rare technical marks, dingbats (non-emoji property).", m2="S* - Non-Emoji", r2="Scope: Exotic"
+        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
+        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic"
     )
 
-    # C6: HYBRIDS (Disjoint: Stable vs Ambiguous)
-    h_stab = str(cnt_h_stable) if has_emoji_data else "N/A"
-    h_amb = str(cnt_h_ambig) if has_emoji_data else "N/A"
+    # C6: HYBRIDS (Data from Cluster Ledger)
+    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
     
     c6 = render_cell(
         "HYBRIDS", 
-        "STABLE", h_stab, color_neutral(cnt_h_stable),
-        "AMBIGUOUS", h_amb, color_clean(cnt_h_ambig),
-        d1="Emoji atoms with default Emoji presentation (VS16).", m1="Emoji_Pres=Yes", r1="Class: Pictograph",
-        d2="Emoji atoms with default Text presentation (VS15).", m2="Emoji_Pres=No", r2="Risk: Rendering"
+        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
+        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
+        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
+        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering"
     )
 
-    # C7: EMOJI
-    rgi_count = stats.get('rgi_count', 0)
-    abnormal = 0
-    abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
-    abnormal += flags.get("Flag: Standalone Emoji Component", {}).get("count", 0)
-    abnormal += flags.get("Flag: Broken Keycap Sequence", {}).get("count", 0)
+    # C7: EMOJI (Data from Cluster Ledger)
+    rgi_total = emoji_counts.get("rgi_total", 0)
+    abnormal = emoji_counts.get("emoji_irregular", 0)
     
     c7 = render_cell(
         "EMOJI", 
-        "RGI SEQS", str(rgi_count), color_neutral(rgi_count),
+        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
         "IRREGULAR", str(abnormal), color_clean(abnormal),
         d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
         d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk"
@@ -2463,225 +2423,175 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Scans the text and returns a full report on RGI sequences,
-    single-character emoji, and qualification status.
-    Populates 'consumed_indices' for disjoint partitioning in the HUD.
-    Enriches 'emoji_list' with Kind (Atomic/Sequence) and RGI status.
+    Forensic Cluster Classifier (V3).
+    Segments text into Grapheme Clusters and assigns a single primary classification
+    to each unit (Atomic, Sequence, Component, Text-Symbol).
+    Returns aggregated counts for the HUD and a detailed list for the Profile.
     """
-    # --- 1. Get Data Stores ---
+    # --- 1. Data Access ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
-    max_len = DATA_STORES.get("RGISequenceMaxLen", 0)
     qual_map = DATA_STORES.get("EmojiQualificationMap", {})
     
-    # --- 2. Initialize Accumulators ---
-    rgi_seq_count = 0
-    rgi_atom_count = 0
-    non_rgi_count = 0
+    # --- 2. Init Counters (The "Ledger") ---
+    counts = {
+        # Core Aggregates
+        "total_emoji_units": 0,
+        "rgi_total": 0,
+        "non_rgi_total": 0,
+        
+        # HUD: Symbols (C5)
+        "text_symbols_extended": 0,
+        "text_symbols_exotic": 0,
+        
+        # HUD: Hybrids (C6)
+        "hybrid_pictographs": 0, # Emoji-Atomic with Symbol Base
+        "hybrid_ambiguous": 0,   # Text-Default Presentation
+        
+        # HUD: Emoji (C7)
+        "rgi_atomic": 0,
+        "rgi_sequence": 0,
+        "emoji_irregular": 0,    # Non-RGI, Unqualified, or Components
+        "components_leaked": 0
+    }
     
     emoji_details_list = []
+    flags = {} 
+    
+    def add_flag(key, idx):
+        if key not in flags: flags[key] = {'count': 0, 'positions': []}
+        flags[key]['count'] += 1
+        flags[key]['positions'].append(f"#{idx}")
 
-    # Flags
-    flag_unqualified = []
-    flag_minimally_qualified = []
-    flag_component = []
-    flag_forced_text = []
-    flag_fully_qualified = []
-    flag_illegal_modifier = []
-    flag_illformed_tag = []
-    flag_invalid_ri = []
-    flag_broken_keycap = []
-    flag_forced_emoji = []
-    flag_intent_mod_zwj = []
-    
-    # --- 3. Start Scan Loop ---
-    js_array = window.Array.from_(text)
-    n = len(js_array)
-    i = 0
-    
-    # Track indices that are part of ANY emoji structure (Sequence or Single)
-    consumed_indices = set()
+    if not text:
+        return {"counts": counts, "flags": flags, "emoji_list": []}
 
-    # --- Tier 0 - Intent-Modifying ZWJ Scan ---
-    if INTENT_MODIFYING_MAX_LEN > 1:
-        for k in range(n - 1):
-            if k in consumed_indices: continue
-            max_window = min(INTENT_MODIFYING_MAX_LEN, n - k)
-            for L in range(max_window, 1, -1):
-                candidate = "".join(js_array[k : k + L])
-                if candidate in INTENT_MODIFYING_ZWJ_SET:
-                    flag_intent_mod_zwj.append(f"#{k}")
-                    for j in range(k, k + L): consumed_indices.add(j)
-                    emoji_details_list.append({
-                        "sequence": candidate, 
-                        "status": "Intent-Modifying", 
-                        "index": k,
-                        "kind": "sequence",
-                        "rgi": False
-                    })
-                    break
+    # --- 3. Cluster Segmentation Loop ---
+    # We use the native Segmenter to ensure we analyze Perceptual Units (Clusters)
+    segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
-    # --- Main Loop ---
-    while i < n:
-        if i in consumed_indices:
-            i += 1
-            continue
-            
-        matched_sequence = False
+    for seg in segments_iter:
+        cluster = seg.segment
+        idx = seg.index
+        cp_len = len(cluster) 
+        base_char = cluster[0]
+        base_cp = ord(base_char)
         
-        # --- Tiers 1-3: Greedy RGI Sequence Scan ---
-        if max_len > 1:
-            max_window = min(max_len, n - i)
-            for L in range(max_window, 1, -1):
-                candidate_chars = js_array[i : i + L]
-                candidate = "".join(candidate_chars)
-                
-                if candidate in rgi_set:
-                    matched_sequence = True
-                    rgi_seq_count += 1
-                    status = qual_map.get(candidate, "fully-qualified")
-                    
-                    emoji_details_list.append({
-                        "sequence": candidate, 
-                        "status": status, 
-                        "index": i,
-                        "kind": "sequence" if L > 1 else "atomic", # Single RGI chars are atomic
-                        "rgi": True
-                    })
-                    
-                    # Flag logic
-                    if status == "unqualified": flag_unqualified.append(f"#{i}")
-                    elif status == "minimally-qualified": flag_minimally_qualified.append(f"#{i}")
-                    elif status == "component": flag_component.append(f"#{i}")
-                    elif status == "fully-qualified":
-                        flag_fully_qualified.append(f"#{i}")
-                        if L == 2 and ord(candidate_chars[1]) == 0xFE0F:
-                            base_cp = ord(candidate_chars[0])
-                            if not _find_in_ranges(base_cp, "Emoji_Presentation"):
-                                flag_forced_emoji.append(f"#{i}")
-
-                    for j in range(i, i + L): consumed_indices.add(j)
-                    i += L
-                    break
-
-        # --- Tier 4: Single Character Scan ---
-        if not matched_sequence:
-            char = js_array[i]
-            cp = ord(char)
-            consumed = 1
-            final_status = "unknown"
+        # --- A. Property Lookup ---
+        is_rgi = cluster in rgi_set
+        
+        # Base Properties
+        is_emoji = _find_in_ranges(base_cp, "Emoji")
+        is_ext_pict = _find_in_ranges(base_cp, "Extended_Pictographic")
+        is_emoji_pres = _find_in_ranges(base_cp, "Emoji_Presentation")
+        is_component = _find_in_ranges(base_cp, "Emoji_Component")
+        base_cat = unicodedata.category(base_char)
+        
+        # --- B. Primary Classification (Disjoint Types) ---
+        kind = "other" # Default: Plain Text (Letters/Numbers/Punctuation)
+        status = "none"
+        rgi_status = False
+        
+        # 1. RGI Emoji (Highest Priority)
+        if is_rgi:
+            rgi_status = True
+            status = qual_map.get(cluster, "fully-qualified")
+            kind = "emoji-sequence" if cp_len > 1 else "emoji-atomic"
             
-            # Check forced text (VS15)
-            if i + 1 < n and ord(js_array[i+1]) == 0xFE0E:
-                if _find_in_ranges(cp, "Emoji"):
-                    flag_forced_text.append(f"#{i}")
-                    consumed = 2
-                    final_status = "forced-text"
-                    emoji_details_list.append({
-                        "sequence": char + js_array[i+1], 
-                        "status": final_status, 
-                        "index": i,
-                        "kind": "atomic",
-                        "rgi": False
-                    })
+        # 2. Non-RGI Emoji-Like
+        elif is_emoji or is_ext_pict:
+            rgi_status = False
+            if is_component: 
+                kind = "emoji-component"
+                status = "component"
+            elif cp_len > 1:
+                # Complex but not RGI (e.g. invalid flag, or ZWJ intent mod)
+                kind = "emoji-sequence"
+                status = "unqualified" 
+            else:
+                kind = "emoji-atomic"
+                status = "unqualified"
+                
+        # 3. Text Symbols (Non-Emoji S*)
+        elif base_cat.startswith("S"):
+            kind = "text-symbol"
             
-            if final_status == "unknown":
-                final_status = qual_map.get(char, "unknown")
-                is_rgi_single = _find_in_ranges(cp, "Emoji_Presentation")
-                is_ivs = 0xE0100 <= cp <= 0xE01EF
-                is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
-                is_ri = window.RegExp.new(r"^\p{Regional_Indicator}$", "u").test(char)
+        # --- C. Updates & Aggregation ---
+        
+        # [HUD C5] Text Symbols
+        if kind == "text-symbol":
+            # Simple Heuristic: ASCII + Latin-1 + General Punct/Currency = Extended. Rest = Exotic.
+            if base_cp <= 0xFF or (0x2000 <= base_cp <= 0x29FF):
+                counts["text_symbols_extended"] += 1
+            else:
+                counts["text_symbols_exotic"] += 1
 
-                # Anomaly Checks
-                if is_ri:
-                    flag_invalid_ri.append(f"#{i}")
-                    if final_status == "unknown": final_status = "component"
-                elif cp == 0x20E3: 
-                    is_valid_attachment = False
-                    if i > 0 and ord(js_array[i-1]) in VALID_KEYCAP_BASES: is_valid_attachment = True
-                    if not is_valid_attachment: flag_broken_keycap.append(f"#{i}")
-                    if final_status == "unknown": final_status = "component"
-                
-                if is_modifier:
-                    is_valid_attachment = False
-                    if i > 0 and _find_in_ranges(ord(js_array[i-1]), "Emoji_Modifier_Base"): is_valid_attachment = True
-                    if not is_valid_attachment: flag_illegal_modifier.append(f"#{i}")
-                    if final_status == "unknown": final_status = "component"
-                
-                elif cp == 0x1F3F4: 
-                    j = i + 1
-                    if j < n and (0xE0020 <= ord(js_array[j]) <= 0xE007E):
-                        k = j
-                        while k < n and (0xE0020 <= ord(js_array[k]) <= 0xE007E): k += 1
-                        if k == n or ord(js_array[k]) != 0xE007F:
-                            flag_illformed_tag.append(f"#{i}")
-                            consumed = k - i
-                            final_status = "ill-formed-tag"
-                            emoji_details_list.append({
-                                "sequence": "".join(js_array[i:k]), 
-                                "status": "component", 
-                                "index": i,
-                                "kind": "sequence",
-                                "rgi": False
-                            })
-
-                if is_rgi_single:
-                    rgi_atom_count += 1 # It's an atom, not a sequence
-                    if final_status == "unknown": final_status = "fully-qualified"
-                    consumed_indices.add(i)
-                    emoji_details_list.append({
-                        "sequence": char,
-                        "status": final_status,
-                        "index": i,
-                        "kind": "atomic",
-                        "rgi": True
-                    })
-                
-                if is_ivs:
-                    if final_status == "unknown": final_status = "component"
-                    if f"#{i}" not in flag_component: flag_component.append(f"#{i}")
-
-            # Catch-all for non-RGI but interesting things (like TM, Copyright)
-            if final_status in {"minimally-qualified", "unqualified", "component"} and not is_rgi_single:
-                non_rgi_count += 1
-                emoji_details_list.append({
-                    "sequence": char,
-                    "status": final_status,
-                    "index": i,
-                    "kind": "atomic",
-                    "rgi": False
-                })
+        # [HUD C6] Hybrids (Emoji-Atomic)
+        elif kind == "emoji-atomic":
+            counts["total_emoji_units"] += 1
             
-            if final_status == "unqualified": flag_unqualified.append(f"#{i}")
-            elif final_status == "minimally-qualified": flag_minimally_qualified.append(f"#{i}")
-            elif final_status == "component" and not is_ivs: flag_component.append(f"#{i}")
-            elif final_status == "fully-qualified": flag_fully_qualified.append(f"#{i}")
+            if rgi_status:
+                counts["rgi_total"] += 1
+                counts["rgi_atomic"] += 1
+                if status != "fully-qualified":
+                    counts["emoji_irregular"] += 1
+            else:
+                counts["non_rgi_total"] += 1
+                counts["emoji_irregular"] += 1
+            
+            # Hybrid Partitioning: Only count if base is Symbol (S*)
+            if base_cat.startswith("S"):
+                counts["hybrid_pictographs"] += 1
+                # Ambiguity Check: Text-Default (Emoji=Yes, Pres=No) and no VS16
+                has_vs16 = "\uFE0F" in cluster
+                if not is_emoji_pres and not has_vs16:
+                    counts["hybrid_ambiguous"] += 1
 
-            if consumed > 1:
-                for j in range(i, i + consumed): consumed_indices.add(j)
-            i += consumed
+        # [HUD C7] Sequences
+        elif kind == "emoji-sequence":
+            counts["total_emoji_units"] += 1
+            
+            if rgi_status:
+                counts["rgi_total"] += 1
+                counts["rgi_sequence"] += 1
+                if status != "fully-qualified":
+                    counts["emoji_irregular"] += 1
+            else:
+                counts["non_rgi_total"] += 1
+                counts["emoji_irregular"] += 1
+
+        # [HUD C7 Irregular] Components
+        elif kind == "emoji-component":
+            counts["components_leaked"] += 1
+            counts["emoji_irregular"] += 1
+            add_flag("Flag: Standalone Emoji Component", idx)
+
+        # --- D. Flag Generation & List Population ---
+        
+        # Specific Flags
+        if status == "unqualified": add_flag("Flag: Unqualified Emoji", idx)
+        if status == "minimally-qualified": add_flag("Flag: Minimally-Qualified Emoji", idx)
+        
+        # Logic for "Forced" presentation
+        if cp_len == 2:
+            if cluster[1] == "\uFE0E": # VS15
+                add_flag("Flag: Forced Text Presentation", idx)
+            elif cluster[1] == "\uFE0F" and not is_emoji_pres: # VS16 on text-default
+                add_flag("Flag: Forced Emoji Presentation", idx)
+
+        # Add to details list (used for Profile Table)
+        if kind.startswith("emoji"):
+            emoji_details_list.append({
+                "sequence": cluster,
+                "kind": kind,
+                "rgi": rgi_status,
+                "status": status,
+                "index": idx
+            })
 
     return {
-        "counts": { 
-            "RGI Emoji Sequences": rgi_seq_count + rgi_atom_count, # Total RGI Units
-            "RGI Atomic": rgi_atom_count,
-            "RGI Complex": rgi_seq_count,
-            "Non-RGI Emoji-Like": non_rgi_count
-        },
-        "flags": {
-            "Flag: Unqualified Emoji": {'count': len(flag_unqualified), 'positions': flag_unqualified},
-            "Flag: Minimally-Qualified Emoji": {'count': len(flag_minimally_qualified), 'positions': flag_minimally_qualified},
-            "Flag: Standalone Emoji Component": {'count': len(flag_component), 'positions': flag_component},
-            "Flag: Forced Text Presentation": {'count': len(flag_forced_text), 'positions': flag_forced_text},
-            "Prop: Fully-Qualified Emoji": {'count': len(flag_fully_qualified), 'positions': flag_fully_qualified},
-            "Flag: Illegal Emoji Modifier": {'count': len(flag_illegal_modifier), 'positions': flag_illegal_modifier},
-            "Flag: Ill-formed Tag Sequence": {'count': len(flag_illformed_tag), 'positions': flag_illformed_tag},
-            "Flag: Invalid Regional Indicator": {'count': len(flag_invalid_ri), 'positions': flag_invalid_ri},
-            "Flag: Broken Keycap Sequence": {'count': len(flag_broken_keycap), 'positions': flag_broken_keycap},
-            "Flag: Forced Emoji Presentation": {'count': len(flag_forced_emoji), 'positions': flag_forced_emoji},
-            "Flag: Intent-Modifying ZWJ": {'count': len(flag_intent_mod_zwj), 'positions': flag_intent_mod_zwj}
-        },
-        "emoji_list": emoji_details_list,
-        "consumed_indices": consumed_indices 
+        "counts": counts,
+        "flags": flags,
+        "emoji_list": emoji_details_list
     }
 
 def _parse_script_extensions(txt: str):
@@ -4528,10 +4438,14 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         
         # 2. Kind Badge
         k_cls = "legend-badge"
+        kind_val = data['kind'].replace("emoji-", "").upper() # STRIP PREFIX
         k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Gray default
-        if data['kind'] == 'sequence':
+        if kind_val == 'SEQUENCE':
             k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue
-        td_kind = f'<td><span class="{k_cls}" style="{k_style}">{data["kind"].upper()}</span></td>'
+        elif kind_val == 'COMPONENT':
+            k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red
+            
+        td_kind = f'<td><span class="{k_cls}" style="{k_style}">{kind_val}</span></td>'
         
         # 3. RGI Badge
         r_cls = "legend-badge"
@@ -4548,6 +4462,7 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         s_cls = "legend-pill legend-pill-neutral"
         if data['status'] == "fully-qualified": s_cls = "legend-pill legend-pill-ok"
         elif data['status'] == "unqualified": s_cls = "legend-pill legend-pill-warn"
+        elif data['status'] == "component": s_cls = "legend-pill legend-pill-warn"
         td_status = f'<td><span class="{s_cls}">{s_text}</span></td>'
 
         # 5. Count
@@ -4578,24 +4493,32 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
 
 def render_emoji_summary(emoji_counts, emoji_list):
     """
-    Render a detailed summary line using the new granular counters.
+    Render a detailed summary line using the new granular counters from the Cluster Ledger.
     Format: Emoji Units: 5 (RGI: 4 – atomic 4, sequences 0; Non-RGI: 1)
     """
     summary_el = document.getElementById("emoji-summary")
     if not summary_el: return
 
-    total_rgi = emoji_counts.get("RGI Emoji Sequences", 0)
-    rgi_atom = emoji_counts.get("RGI Atomic", 0)
-    rgi_complex = emoji_counts.get("RGI Complex", 0)
-    non_rgi = emoji_counts.get("Non-RGI Emoji-Like", 0)
+    total_rgi = emoji_counts.get("rgi_total", 0)
+    rgi_atom = emoji_counts.get("rgi_atomic", 0)
+    rgi_complex = emoji_counts.get("rgi_sequence", 0)
+    non_rgi = emoji_counts.get("non_rgi_total", 0)
+    comp_leaked = emoji_counts.get("components_leaked", 0)
     
-    total_units = total_rgi + non_rgi
+    total_units = emoji_counts.get("total_emoji_units", 0)
     
-    summary_el.innerText = (
+    text = (
         f"Emoji Units: {total_units} ("
         f"RGI: {total_rgi} — atomic {rgi_atom}, sequences {rgi_complex}; "
-        f"Non-RGI: {non_rgi})"
+        f"Non-RGI: {non_rgi}"
     )
+    
+    if comp_leaked > 0:
+        text += f"; Components Leaked: {comp_leaked}"
+        
+    text += ")"
+    
+    summary_el.innerText = text
 
 
 def render_cards(stats_dict, element_id, key_order=None):
@@ -6152,17 +6075,17 @@ def update_all(event=None):
 
     # --- 2. Run All Computations ---
 
-    # Emoji Engine
+    # Emoji Engine (V3 Cluster Classifier)
     emoji_report = compute_emoji_analysis(t)
-    
-    # [CRITICAL] Extract consumed indices for HUD deduplication
-    emoji_consumed = emoji_report.get("consumed_indices", set())
-    
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
     emoji_list = emoji_report.get("emoji_list", [])
     
     # Module 2.A: Dual-Atom
+    # Note: We pass emoji_counts, but the logic inside uses 'RGI Emoji Sequences' key
+    # We should map our new keys to the expected old key for backward compat in Summary Cards
+    emoji_counts["RGI Emoji Sequences"] = emoji_counts.get("rgi_total", 0)
+    
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     ccc_stats = compute_combining_class_stats(t)
@@ -6179,7 +6102,6 @@ def update_all(event=None):
     vo_run_stats = compute_verticalorientation_analysis(t)
 
     # Module 2.C: Forensic Integrity (HYBRID ENGINE)
-    # Unpack tuple: rows AND audit_result
     forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags)
     forensic_map = {row['label']: row for row in forensic_rows}
 
@@ -6197,7 +6119,7 @@ def update_all(event=None):
     meta_cards = {
         "Total Code Points": cp_summary.get("Total Code Points", 0),
         "Total Graphemes": gr_summary.get("Total Graphemes", 0),
-        "RGI Emoji Sequences": emoji_counts.get("RGI Emoji Sequences", 0),
+        "RGI Emoji Sequences": emoji_counts.get("rgi_total", 0), # Use new key
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
         "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
         "Latin-1-Compatible": cp_summary.get("Latin-1-Compatible"),
@@ -6238,7 +6160,7 @@ def update_all(event=None):
         "script_mix_class": script_mix_class,
         "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
         "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
-        "rgi_count": meta_cards.get("RGI Emoji Sequences", 0),
+        "rgi_count": emoji_counts.get("rgi_total", 0),
         "tags_count": get_count("Flag: Unicode Tags (Plane 14)"),
         "suspicious_syntax_vs": get_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
         "forced_pres_count": (
@@ -6300,7 +6222,7 @@ def update_all(event=None):
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
         'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
         'prov': sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0),
-        'emoji': meta_cards.get("RGI Emoji Sequences", 0),
+        'emoji': emoji_counts.get("rgi_total", 0),
         'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
     }
 
@@ -6336,7 +6258,7 @@ def update_all(event=None):
     hud_stats = {
         "major_stats": cp_major,
         "forensic_flags": forensic_map,
-        "rgi_count": emoji_counts.get("RGI Emoji Sequences", 0),
+        "emoji_counts": emoji_counts, # Pass the full ledger
         "integrity": audit_result,
         "threat": final_score,
         "script_mix": script_mix_class,
@@ -6345,8 +6267,8 @@ def update_all(event=None):
         "drift": skel_metrics.get("total_drift", 0)
     }
     
-    # [CRITICAL FIX] Pass emoji_consumed to deduplicate Hybrids
-    render_forensic_hud(t, hud_stats, emoji_consumed)
+    # Update HUD (Remove emoji_consumed)
+    render_forensic_hud(t, hud_stats)
     
     # Stage 2 Bridge
     try:
