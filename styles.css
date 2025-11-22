@@ -817,11 +817,12 @@ Stage 2: Heatmap Row Classes
   /* WIDENED Column 4 (Risk) to 215px */
   grid-template-columns: 50px 170px 50px 215px minmax(155px, 1fr) 260px 180px;
 /* REMAP COLUMN 4 NAME TO NEW SIGNAL PROCESSOR */
+}
   
   .col-signal-processor { 
     grid-area: auto; /* Ensures it fits */
     /* Update: The new column is called 'col-signal-processor' in app.py HTML */
-  }
+  
   /* 3. FORCE SCROLL */
   /* This ensures the grid never squashes. 
      It triggers the scrollbar on the parent #inspector-panel-content */
