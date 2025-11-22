@@ -748,22 +748,6 @@ Stage 2: Heatmap Row Classes
   background-color: transparent;
 }
 
-/* Header */
-#inspector-panel-wrapper h3 {
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--color-text);
-  background-color: transparent;
-  border: none;
-  display: inline-block; /* Ensures it sits next to the arrow */
-  vertical-align: middle; /* Aligns optically with the arrow */
-}
-/* Fix summary spacing specifically for Inspector */
-#inspector-panel-wrapper summary {
-  margin-bottom: 0.5rem;
-}
-
 /* --- Inspector Layout v7: The Perfect Hybrid --- */
 
 #inspector-panel-content {
