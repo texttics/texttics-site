@@ -983,8 +983,8 @@ def render_forensic_hud(t, stats):
         d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # C5: SYMBOLS (Category S)
-    # Logic: Partition all Symbols (S) into Keyboard, Extended, or Exotic.
+    # C5: SYMBOLS (Dynamic: KEYBOARD -> EXTENDED)
+    # Logic: Partition all Symbols (S) into Keyboard, Extended (Safe), or Exotic.
     cnt_s_key = 0
     cnt_s_ext = 0
     cnt_s_exotic = 0
@@ -998,16 +998,22 @@ def render_forensic_hud(t, stats):
             elif (0xA0 <= cp <= 0xFF) or (0x20A0 <= cp <= 0x20CF):
                 # Latin-1 Symbols or Currency Block
                 cnt_s_ext += 1
+            elif (0x2190 <= cp <= 0x21FF) or (0x2200 <= cp <= 0x22FF):
+                # Arrows or Mathematical Operators (Safe)
+                cnt_s_ext += 1
+            elif (0x2500 <= cp <= 0x257F):
+                # Box Drawing (Safe Technical)
+                cnt_s_ext += 1
             else:
-                # Math, Arrows, Dingbats
+                # Dingbats, Geometric Shapes, etc.
                 cnt_s_exotic += 1
 
     # Dynamic Labels
     if cnt_s_ext > 0:
         c5_label = "EXTENDED"
         c5_val = cnt_s_key + cnt_s_ext
-        c5_desc = "Keyboard symbols + Common Latin-1/Currency."
-        c5_ref = "Scope: Common"
+        c5_desc = "Keyboard symbols + Latin-1, Math, Arrows, Boxes."
+        c5_ref = "Scope: Technical"
     else:
         c5_label = "KEYBOARD"
         c5_val = cnt_s_key
@@ -1019,7 +1025,7 @@ def render_forensic_hud(t, stats):
         c5_label, str(c5_val), color_neutral(c5_val),
         "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
         d1=c5_desc, m1="Count(S) in Whitelist", r1=c5_ref,
-        d2="Mathematical operators, arrows, boxes, and dingbats.", m2="Category: S* - Safe", r2="Scope: Exotic"
+        d2="Rare technical marks, dingbats, and emoji-like symbols.", m2="Category: S* - Safe", r2="Scope: Exotic"
     )
 
     # C6: EMOJI
