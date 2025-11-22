@@ -827,7 +827,7 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V12 (Final Precision Polish).
+    Renders the 'Forensic Matrix' V14 (Final Scientific & Dynamic Polish).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -896,7 +896,7 @@ def render_forensic_hud(t, stats):
 
     # --- 1. COLUMNS ---
 
-    # C0: ALPHANUMERIC
+    # C0: ALPHANUMERIC (LITERALS / RUNS)
     alpha_chars = sum(1 for c in t if c.isalnum())
     alpha_runs = 0
     in_run = False
@@ -912,51 +912,66 @@ def render_forensic_hud(t, stats):
         "ALPHANUMERIC", 
         "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
         "RUNS", str(alpha_runs), color_neutral(alpha_runs),
-        # CORRECTION: Explicit Unicode scope + "Runs" terminology
         d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
         d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
     )
 
-    # C1: LEXICAL MASS
+    # C1: LEXICAL MASS (UNITS / WORDS)
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
     c1 = render_cell(
         "LEXICAL MASS", 
-        "UNITS", f"{vu:.2f}", color_neutral(vu),
+        "UNITS", f"{vu:.1f}", color_neutral(vu),
         "WORDS", str(uax_word), color_neutral(uax_word),
-        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Def: 1 VU = 5 Literals",
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
         d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
-    # C2: SEGMENTATION
-    # FIX: Exact precision (2 decimals), removed "EST", hard definition
+    # C2: SEGMENTATION (BLOCKS / SENTENCES)
     seg_est = vu / 20.0
     c2 = render_cell(
         "SEGMENTATION", 
-        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "EST. BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-        # CORRECTION: Removed "Estimate", defined strict ratio
         d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
         d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
-    # C3: DELIMITERS
-    ascii_delims = sum(1 for c in t if c in {'.', '?', '!', ';', ','})
-    non_ascii_delims = 0
+    # C3: DELIMITERS (Dynamic: ASCII -> TYPOGRAPHIC)
+    cnt_ascii = 0
+    cnt_comfort = 0
+    cnt_exotic = 0
+    
     for c in t:
-        if unicodedata.category(c).startswith('P') and ord(c) > 0x7F:
-            non_ascii_delims += 1
+        if c in {'.', '?', '!', ';', ','}:
+            cnt_ascii += 1
+        elif unicodedata.category(c).startswith('P'):
+            cp = ord(c)
+            # Whitelist: Latin-1 Supplement (A0-FF) OR General Punctuation subset (2010-2027)
+            if (0xA0 <= cp <= 0xFF) or (0x2010 <= cp <= 0x2027):
+                cnt_comfort += 1
+            else:
+                cnt_exotic += 1
+
+    if cnt_comfort > 0:
+        c3_label = "TYPOGRAPHIC"
+        c3_val = cnt_ascii + cnt_comfort
+        c3_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
+    else:
+        c3_label = "ASCII"
+        c3_val = cnt_ascii
+        c3_desc = "Standard ASCII sentence and clause delimiters."
 
     c3 = render_cell(
         "DELIMITERS", 
-        "ASCII", str(ascii_delims), color_neutral(ascii_delims),
-        "NON-ASCII", str(non_ascii_delims), color_clean(non_ascii_delims),
-        d1="Standard ASCII sentence and clause delimiters.", m1="Count([.?!;,])", r1="Scope: ASCII",
-        d2="Extended Unicode punctuation (Fullwidth, Inverted, etc).", m2="Count(P) > 0x7F", r2="Scope: Unicode"
+        c3_label, str(c3_val), color_neutral(c3_val),
+        "EXOTIC", str(cnt_exotic), color_clean(cnt_exotic),
+        d1=c3_desc, m1="Count(Safe Punct)", r1="Scope: Common",
+        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # C4: WHITESPACE
+    # C4: WHITESPACE (ASCII WS / NON-STD)
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
     flags = stats.get('forensic_flags', {})
@@ -966,33 +981,46 @@ def render_forensic_hud(t, stats):
         "WHITESPACE", 
         "ASCII WS", str(std_inv), color_neutral(std_inv),
         "NON-STD", str(non_std_inv), color_clean(non_std_inv),
-        # CORRECTION: Explicit ASCII label
         d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
         d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk"
     )
 
-    # C5: SYMBOLS
+    # C5: SYMBOLS (Dynamic: KEYBOARD -> EXTENDED)
     c3_set = {'.', '?', '!', ';', ','}
-    ascii_ops = sum(1 for c in t if 0x21 <= ord(c) <= 0x7E and not c.isalnum() and c not in c3_set)
-    
-    exotic = 0
-    js_arr = window.Array.from_(t)
-    for c in js_arr:
+    cnt_key = 0
+    cnt_ext = 0
+    cnt_rare = 0
+
+    for c in t:
         cp = ord(c)
-        if cp > 0x7F:
-            cat = unicodedata.category(c)
-            if cat.startswith('S'):
-                exotic += 1
+        if 0x21 <= cp <= 0x7E and not c.isalnum() and c not in c3_set:
+            cnt_key += 1
+        elif cp > 0x7F and unicodedata.category(c).startswith('S'):
+            if 0xA0 <= cp <= 0xFF: # Latin-1 Symbols
+                cnt_ext += 1
+            elif cp == 0x20AC: # Euro
+                cnt_ext += 1
+            else:
+                cnt_rare += 1
+
+    if cnt_ext > 0:
+        c5_label = "EXTENDED"
+        c5_val = cnt_key + cnt_ext
+        c5_desc = "Keyboard symbols + Common Latin-1 (Currency, Copyright)."
+    else:
+        c5_label = "KEYBOARD"
+        c5_val = cnt_key
+        c5_desc = "Standard ASCII keyboard symbols."
 
     c5 = render_cell(
         "SYMBOLS", 
-        "OPERATORS", str(ascii_ops), color_neutral(ascii_ops),
-        "EXOTIC", str(exotic), color_clean(exotic),
-        d1="Printable ASCII symbols (non-alphanumeric, non-delimiter).", m1="ASCII 0x21-7E", r1="Keyboard Set",
-        d2="Non-ASCII symbols, math operators, and dingbats.", m2="Category: S*", r2="Extended"
+        c5_label, str(c5_val), color_neutral(c5_val),
+        "EXOTIC", str(cnt_rare), color_clean(cnt_rare),
+        d1=c5_desc, m1="ASCII + Latin-1", r1="Scope: Common",
+        d2="Mathematical operators, arrows, boxes, and dingbats.", m2="Category: S* - Safe", r2="Scope: Rare"
     )
 
-    # C6: EMOJI
+    # C6: EMOJI (RGI / IRREGULAR)
     rgi_count = stats.get('rgi_count', 0)
     abnormal = 0
     abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
@@ -1039,7 +1067,6 @@ def render_forensic_hud(t, stats):
         "THREAT", 
         "STATUS", thr_v, t_cls,
         "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
-        # CORRECTION: Attack Vectors term
         d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
         d2="Patterns linked to Unicode spoofing and control-flow tricks.", m2="Count(Ledger)", r2="Attack Vectors"
     )
