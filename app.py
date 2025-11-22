@@ -2574,25 +2574,20 @@ def compute_emoji_analysis(text: str) -> dict:
             add_flag("Flag: Standalone Emoji Component", idx)
 
         # --- D. Flag Generation & List Population ---
-        
-        # Specific Flags
         if status == "unqualified": add_flag("Flag: Unqualified Emoji", idx)
         if status == "minimally-qualified": add_flag("Flag: Minimally-Qualified Emoji", idx)
         
-        # Logic for "Forced" presentation
         if cp_len == 2:
-            if cluster[1] == "\uFE0E": # VS15
-                add_flag("Flag: Forced Text Presentation", idx)
-            elif cluster[1] == "\uFE0F" and not is_emoji_pres: # VS16 on text-default
-                add_flag("Flag: Forced Emoji Presentation", idx)
+            if cluster[1] == "\uFE0E": add_flag("Flag: Forced Text Presentation", idx)
+            elif cluster[1] == "\uFE0F" and not is_emoji_pres: add_flag("Flag: Forced Emoji Presentation", idx)
 
-        # Add to details list (used for Profile Table)
         if kind.startswith("emoji"):
             emoji_details_list.append({
                 "sequence": cluster,
                 "kind": kind,
                 "rgi": rgi_status,
                 "status": status,
+                "base_cat": base_cat, # [NEW] Export Base Category for Table
                 "index": idx
             })
 
@@ -4409,12 +4404,13 @@ def render_status(message):
 
 def render_emoji_qualification_table(emoji_list, text_context=None):
     """
-    Renders the Emoji Qualification Profile table with Forensic Legend.
+    Renders the Emoji Qualification Profile table with Forensic Legend and Base Category.
+    Columns: Sequence | Kind | Base | RGI? | Status | Count | Positions
     """
     element = document.getElementById("emoji-qualification-body")
     if not element: return
     if not emoji_list:
-        element.innerHTML = "<tr><td colspan='6' class='placeholder-text'>No emoji sequences found.</td></tr>"
+        element.innerHTML = "<tr><td colspan='7' class='placeholder-text'>No emoji sequences found.</td></tr>"
         return
 
     # Group by sequence string
@@ -4426,6 +4422,7 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
                 'status': item.get("status", "unknown"),
                 'kind': item.get("kind", "unknown"),
                 'rgi': item.get("rgi", False),
+                'base_cat': item.get("base_cat", "So"),
                 'count': 0, 
                 'indices': []
             }
@@ -4439,31 +4436,37 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     for seq in sorted_keys:
         data = grouped[seq]
         
-        # 1. Sequence (Large)
+        # 1. Sequence
         td_seq = f'<td style="font-size: 1.5rem; font-family: var(--font-mono);">{seq}</td>'
         
         # 2. Kind Badge
         k_cls = "legend-badge"
         kind_raw = data['kind'].replace("emoji-", "").upper()
-        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Gray default
+        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;"
         if kind_raw == 'SEQUENCE':
-            k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue
+            k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;"
         elif kind_raw == 'COMPONENT':
-            k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red
+            k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;"
             
         td_kind = f'<td><span class="{k_cls}" style="{k_style}">{kind_raw}</span></td>'
         
-        # 3. RGI Badge
+        # [NEW] 3. Base Category Badge
+        cat = data.get('base_cat', 'So')
+        cat_label = "SYM" if cat.startswith("S") else ("LET" if cat.startswith("L") else "OTH")
+        cat_style = "background-color: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono);"
+        td_base = f'<td><span style="{cat_style}" title="General Category: {cat}">{cat_label}</span></td>'
+        
+        # 4. RGI Badge
         r_cls = "legend-badge"
         if data['rgi']:
-            r_style = "background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0;" # Green
+            r_style = "background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0;"
             r_text = "YES"
         else:
-            r_style = "background-color: #fffbeb; color: #b45309; border-color: #fcd34d;" # Yellow
+            r_style = "background-color: #fffbeb; color: #b45309; border-color: #fcd34d;"
             r_text = "NO"
         td_rgi = f'<td><span class="{r_cls}" style="{r_style}">{r_text}</span></td>'
 
-        # 4. Status Pill
+        # 5. Status Pill
         s_text = data['status'].replace('-', ' ').title()
         s_cls = "legend-pill legend-pill-neutral"
         if data['status'] == "fully-qualified": s_cls = "legend-pill legend-pill-ok"
@@ -4471,10 +4474,10 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         elif data['status'] == "component": s_cls = "legend-pill legend-pill-warn"
         td_status = f'<td><span class="{s_cls}">{s_text}</span></td>'
 
-        # 5. Count
+        # 6. Count
         td_count = f'<td>{data["count"]}</td>'
 
-        # 6. Positions
+        # 7. Positions
         indices = data['indices']
         links_list = [_create_position_link(idx, text_context) for idx in indices]
         
@@ -4492,24 +4495,30 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
 
         td_pos = f'<td>{pos_html}</td>'
 
-        html.append(f'<tr>{td_seq}{td_kind}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
+        html.append(f'<tr>{td_seq}{td_kind}{td_base}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
 
-    # Add Forensic Legend
+    # Forensic Legend
     legend_html = """
     <tr>
-        <td colspan="6" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <td colspan="7" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
                 <div>
                     <strong>KIND (Structure):</strong><br>
-                    • <b>ATOMIC:</b> Single code point unit.<br>
-                    • <b>SEQUENCE:</b> Multi-character unit (ZWJ, VS, Tags).<br>
-                    • <b>COMPONENT:</b> Leaked structural part (Skin Tone, Region).
+                    • <b>ATOMIC:</b> Single code point.<br>
+                    • <b>SEQUENCE:</b> Multi-char unit.<br>
+                    • <b>COMPONENT:</b> Leaked part.
+                </div>
+                <div>
+                    <strong>BASE (Category):</strong><br>
+                    • <b>SYM:</b> Symbol (S*).<br>
+                    • <b>LET:</b> Letter (L*).<br>
+                    • <b>OTH:</b> Other/Mark.
                 </div>
                 <div>
                     <strong>STATUS (Integrity):</strong><br>
-                    • <b>RGI YES:</b> Recommended for General Interchange (Standard).<br>
-                    • <b>Unqualified:</b> Missing VS16 or non-standard sequence.<br>
-                    • <b>Component:</b> Not intended for standalone display.
+                    • <b>RGI YES:</b> Standard.<br>
+                    • <b>Unqualified:</b> Non-std/Missing VS.<br>
+                    • <b>Component:</b> Fragment.
                 </div>
             </div>
         </td>
