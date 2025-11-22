@@ -2162,7 +2162,7 @@ tr.flag-row-crit {
 .txt-normal { color: var(--color-text); }
 .txt-muted  { color: #d1d5db; } /* Gray for 0 values */
 .txt-good   { color: #059669; } /* Deep Emerald for Critical Safety (Integrity/Threat) */
-.txt-clean  { color: #cbf6e2; } /* Light Green for 0 Anomalies */
+.txt-clean  { color: #bef4db; } /* Light Green for 0 Anomalies */
 .txt-warn   { color: #d97706; } /* Orange for >0 risks */
 .txt-crit   { color: #dc2626; } /* Red for critical risks */
 .txt-safe   { color: #059669; } /* Deep Emerald for Safe Status */
