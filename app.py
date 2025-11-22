@@ -2176,6 +2176,10 @@ def _parse_intentional(txt: str):
     DATA_STORES["IntentionalPairs"] = frozenset(store)
 
 async def load_unicode_data():
+    # Prevent double-loading (Fixes 'frozenset' error)
+    if "Blocks" in DATA_STORES and isinstance(DATA_STORES["Blocks"], frozenset):
+        console.log("LOG: Data already loaded. Skipping re-initialization.")
+        return
     """Fetches, parses, and then triggers a UI update."""
     global LOADING_STATE
     
