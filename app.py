@@ -7,6 +7,8 @@ from pyscript import document, window
 import hashlib
 import re
 
+LOADING_LOCK = False
+
 # Forensic Icon Set (Vector Paths for SVG)
 ICONS = {
     # --- HEADERS ---
@@ -2176,15 +2178,23 @@ def _parse_intentional(txt: str):
     DATA_STORES["IntentionalPairs"] = frozenset(store)
 
 async def load_unicode_data():
-    # Prevent double-loading (Fixes 'frozenset' error)
-    if "Blocks" in DATA_STORES and isinstance(DATA_STORES["Blocks"], frozenset):
-        # Using js.console.log if available, otherwise print
-        try:
-            import js
-            js.console.log("LOG: Data already loaded. Skipping re-initialization.")
-        except:
-            print("LOG: Data already loaded. Skipping re-initialization.")
+
+    # --- USE THE GLOBAL LOCK ---
+    global LOADING_LOCK
+    
+    # 1. Check if another process is already loading
+    if LOADING_LOCK:
+        print("LOG: Loading locked. Skipping concurrent execution.")
         return
+
+    # 2. Check if data is already fully loaded (from a previous completed run)
+    if "Blocks" in DATA_STORES and isinstance(DATA_STORES["Blocks"], frozenset):
+        print("LOG: Data already loaded. Skipping re-initialization.")
+        return
+
+    # 3. Lock the door immediately
+    LOADING_LOCK = True
+    
     """Fetches, parses, and then triggers a UI update."""
     global LOADING_STATE
     
