@@ -845,7 +845,7 @@ def render_forensic_hud(t, stats):
         
         def esc(s): return s.replace('"', '&quot;')
 
-        # [UPDATE] Added data-l1 and data-l2 to pass the dynamic labels to the footer
+        # [CRITICAL UPDATE] Added data-l1 and data-l2 hooks for JS
         return f"""
         <div class="hud-col" 
              data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
