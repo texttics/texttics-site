@@ -2191,13 +2191,24 @@ tr.flag-row-crit {
 .hud-row-sci {
   background-color: #f9fafb;
   color: #6b7280;
-  font-size: 0.55rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 700;
-  padding-bottom: 4px;
+  
+  /* Bigger & Thicker */
+  font-size: 0.65rem; 
+  font-weight: 800; 
+  
+  /* Alignment: Center Middle */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  
+  /* Spacing */
+  padding: 8px 4px; /* Increased padding for vertical centering */
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 4px;
+  
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
