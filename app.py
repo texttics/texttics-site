@@ -827,7 +827,7 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V10 (Light Green Anomalies).
+    Renders the 'Forensic Matrix' V12 (Final Precision Polish).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -911,9 +911,10 @@ def render_forensic_hud(t, stats):
     c0 = render_cell(
         "ALPHANUMERIC", 
         "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
-        "SEQUENCES", str(alpha_runs), color_neutral(alpha_runs),
-        d1="Count of atomic alphanumeric data values (Letters + Numbers).", m1="Count(Alphanum)", r1="Base: Visible",
-        d2="Contiguous runs of alphanumeric data.", m2="Count(Runs)", r2="Pattern: [A-Z0-9]+"
+        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
+        # CORRECTION: Explicit Unicode scope + "Runs" terminology
+        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
+        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
     )
 
     # C1: LEXICAL MASS
@@ -924,8 +925,8 @@ def render_forensic_hud(t, stats):
         "LEXICAL MASS", 
         "UNITS", f"{vu:.1f}", color_neutral(vu),
         "WORDS", str(uax_word), color_neutral(uax_word),
-        d1="Volumetric Mass in Standardized Typing Units.", m1="(L+N) / 5.0", r1="Metric: VU",
-        d2="Linguistic word count via UAX #29.", m2="Intl.Segmenter", r2="UAX #29"
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: ~5 chars/word",
+        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
     # C2: SEGMENTATION
@@ -933,10 +934,11 @@ def render_forensic_hud(t, stats):
     if not t: seg_est = 0
     c2 = render_cell(
         "SEGMENTATION", 
-        "BLOCKS", str(seg_est), color_neutral(seg_est),
+        "EST. BLOCKS", str(seg_est), color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-        d1="Estimated structural blocks based on mass.", m1="VU / 20.0", r1="Metric: Blocks",
-        d2="Linguistic sentence count via UAX #29.", m2="Intl.Segmenter", r2="UAX #29"
+        # CORRECTION: Explicitly labeled as Estimate
+        d1="Coarse estimate of sentence-like blocks from lexical mass.", m1="VU / 20.0", r1="Heuristic: ~20 words/sent",
+        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
     # C3: DELIMITERS
@@ -949,9 +951,9 @@ def render_forensic_hud(t, stats):
     c3 = render_cell(
         "DELIMITERS", 
         "ASCII", str(ascii_delims), color_neutral(ascii_delims),
-        "NON-ASCII", str(non_ascii_delims), color_clean(non_ascii_delims), # Light Green
-        d1="Standard ASCII punctuation boundaries.", m1="Count([.?!;,])", r1="Grammar: Std",
-        d2="Extended Unicode punctuation (Fullwidth, Inverted, etc).", m2="Count(P) > 0x7F", r2="Grammar: Ext"
+        "NON-ASCII", str(non_ascii_delims), color_clean(non_ascii_delims),
+        d1="Standard ASCII sentence and clause delimiters.", m1="Count([.?!;,])", r1="Scope: ASCII",
+        d2="Extended Unicode punctuation (Fullwidth, Inverted, etc).", m2="Count(P) > 0x7F", r2="Scope: Unicode"
     )
 
     # C4: WHITESPACE
@@ -962,10 +964,11 @@ def render_forensic_hud(t, stats):
     
     c4 = render_cell(
         "WHITESPACE", 
-        "STANDARD", str(std_inv), color_neutral(std_inv),
-        "NON-STD", str(non_std_inv), color_clean(non_std_inv), # Light Green
-        d1="Standard layout characters (Space, Tab, CR, LF).", m1="ASCII WS", r1="Layout",
-        d2="Obscure or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation"
+        "ASCII WS", str(std_inv), color_neutral(std_inv),
+        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
+        # CORRECTION: Explicit ASCII label
+        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
+        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk"
     )
 
     # C5: SYMBOLS
@@ -984,8 +987,8 @@ def render_forensic_hud(t, stats):
     c5 = render_cell(
         "SYMBOLS", 
         "OPERATORS", str(ascii_ops), color_neutral(ascii_ops),
-        "EXOTIC", str(exotic), color_clean(exotic), # Light Green
-        d1="Standard ASCII symbols (Keyboards: @ # $ % ^ & * _ + = < > / |).", m1="ASCII 0x21-7E", r1="Keyboard",
+        "EXOTIC", str(exotic), color_clean(exotic),
+        d1="Printable ASCII symbols (non-alphanumeric, non-delimiter).", m1="ASCII 0x21-7E", r1="Keyboard Set",
         d2="Non-ASCII symbols, math operators, and dingbats.", m2="Category: S*", r2="Extended"
     )
 
@@ -999,8 +1002,8 @@ def render_forensic_hud(t, stats):
     c6 = render_cell(
         "EMOJI", 
         "RGI SEQS", str(rgi_count), color_neutral(rgi_count),
-        "IRREGULAR", str(abnormal), color_clean(abnormal), # Light Green
-        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: Emoji 15.1",
+        "IRREGULAR", str(abnormal), color_clean(abnormal),
+        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
         d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk"
     )
 
@@ -1017,9 +1020,9 @@ def render_forensic_hud(t, stats):
     c7 = render_cell(
         "INTEGRITY", 
         "STATUS", int_v, v_cls,
-        "ISSUES", str(int_issues), color_risk(int_issues), # Deep Green
+        "ISSUES", str(int_issues), color_risk(int_issues),
         d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
-        d2="Count of active integrity violations found.", m2="Count(Ledger)", r2="Corruptions"
+        d2="Count of integrity findings (errors + anomalies).", m2="Count(Ledger)", r2="Data Health"
     )
 
     # C8: THREAT
@@ -1035,9 +1038,10 @@ def render_forensic_hud(t, stats):
     c8 = render_cell(
         "THREAT", 
         "STATUS", thr_v, t_cls,
-        "SIGNALS", str(thr_sigs), color_risk(thr_sigs), # Deep Green
-        d1="Assessment of active weaponization or intent.", m1="Threat Score", r1="Auditor: Threat",
-        d2="Specific attack vectors and exploit signals.", m2="Count(Ledger)", r2="CVE Patterns"
+        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
+        # CORRECTION: Attack Vectors term
+        d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
+        d2="Patterns linked to Unicode spoofing and control-flow tricks.", m2="Count(Ledger)", r2="Attack Vectors"
     )
 
     # --- ASSEMBLY ---
