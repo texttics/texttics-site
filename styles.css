@@ -1430,29 +1430,6 @@ Stage 2: Heatmap Row Classes
   cursor: pointer;
 }
 
-/* --- Collapsible Profile Styling --- */
-
-/* The clickable summary header */
-details.profile-section > summary {
-  cursor: pointer; /* Adds the "hand" cursor */
-}
-
-
-/* If you are using a custom triangle (::before), restore this. 
-   If you were using the default browser triangle, you can delete 
-   the ::before and ::-webkit-details-marker blocks.
-*/
-
-/* When open, rotate the custom indicator */
-details[open].profile-section > summary::before {
-  transform: rotate(90deg);
-}
-
-/* THE BLUE HOVER EFFECT */
-details.profile-section > summary:hover {
-  color: var(--color-primary-focus); /* Turns text and marker blue */
-}
-
 /* --- Repertoire Card Styling --- */
 
 .card.card-repertoire {
@@ -2369,14 +2346,16 @@ tr.flag-row-crit {
   transition: color 0.2s ease;
 }
 
-/* --- Profile Section Alignment Fix --- */
+/* --- Profile Section Alignment & Visuals (Consolidated) --- */
 
-/* 1. Turn summary into a flex row to align Arrow + Title */
+/* 1. Turn summary into a flex row (Aligns Arrow + Title) */
 details.profile-section > summary {
   display: flex;
   align-items: center; /* Centers them vertically */
-  cursor: pointer;
+  cursor: pointer;     /* Adds the "hand" cursor */
   list-style: none;    /* Hide the default browser arrow */
+  outline: none;       /* Clean click state */
+  transition: color 0.2s ease;
 }
 
 /* 2. Hide the default arrow for Chrome/Safari/Edge */
@@ -2384,12 +2363,15 @@ details.profile-section > summary::-webkit-details-marker {
   display: none;
 }
 
-/* 3. Create a Custom Arrow that sits perfectly inline */
+/* 3. Create the Custom Arrow (The Pointer) */
 details.profile-section > summary::before {
+  content: '▶';        /* Standard geometric triangle */
   font-size: 0.75rem;
   margin-right: 0.75rem; /* Space between arrow and text */
-  transition: transform 0.2s ease;
+  color: var(--color-text-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
   line-height: 1;      /* Prevents vertical drift */
+  display: inline-block; /* Necessary for rotation to work */
 }
 
 /* 4. Rotate the arrow when opened */
@@ -2397,14 +2379,25 @@ details[open].profile-section > summary::before {
   transform: rotate(90deg);
 }
 
-/* 5. Clean up the Header Title so it fits in the row */
+/* 5. THE BLUE HOVER EFFECT */
+/* Turns the Title Blue */
+details.profile-section > summary:hover .section-title {
+  color: var(--color-primary-focus);
+}
+/* Turns the Arrow Blue */
+details.profile-section > summary:hover::before {
+  color: var(--color-primary-focus);
+}
+
+/* 6. Clean up the Header Title so it fits in the row */
 details.profile-section > summary .section-title {
   margin-bottom: 0;    /* Remove margin that pushes it down */
   flex-grow: 1;        /* Allow the border line to extend fully */
   width: 100%;         /* Ensure full width */
+  transition: color 0.2s ease;
 }
 
-/* 6. Restore spacing to the content (since we removed it from the header) */
+/* 7. Restore spacing to the content (since we removed it from the header) */
 details.profile-section[open] > div,
 details.profile-section[open] > .tabs,
 details.profile-section[open] > table {
