@@ -2137,6 +2137,7 @@ tr.flag-row-crit {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  
 }
 
 .c-cell-meta {
@@ -2169,8 +2170,8 @@ tr.flag-row-crit {
 }
 
 /* Primary Row Colors */
-#console-row-primary .console-key { color: var(--color-primary); }
-#console-row-primary .console-val { color: var(--color-text); font-weight: 600; }
+#console-row-primary .console-key { color: #9ca3af; }
+#console-row-primary .console-val { color: #6b7280; }
 
 /* Secondary Row Colors */
 #console-row-secondary .console-key { color: #9ca3af; }
