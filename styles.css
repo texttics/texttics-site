@@ -762,7 +762,6 @@ Stage 2: Heatmap Row Classes
 /* Fix summary spacing specifically for Inspector */
 #inspector-panel-wrapper summary {
   margin-bottom: 0.5rem;
-  outline: none;
 }
 
 /* --- Inspector Layout v7: The Perfect Hybrid --- */
