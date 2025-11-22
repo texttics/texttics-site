@@ -934,7 +934,7 @@ def render_forensic_hud(t, stats):
     if not t: seg_est = 0
     c2 = render_cell(
         "SEGMENTATION", 
-        "EST. BLOCKS", str(seg_est), color_neutral(seg_est),
+        "EST. BLOCKS", f"{seg_est:.1f}", color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
         # CORRECTION: Explicitly labeled as Estimate
         d1="Coarse estimate of sentence-like blocks from lexical mass.", m1="VU / 20.0", r1="Heuristic: ~20 words/sent",
