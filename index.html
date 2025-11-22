@@ -82,27 +82,21 @@
 
       <!-- Group 1: Analysis Configuration (Control Plane) -->
      <section id="control-plane" aria-labelledby="control-plane-title">
-        <div class="section-header">
-          <h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Text Input</h2>
-        </div>
-      
-        <div class="control-stack">
+        <div class="section-header"><h2 id="control-plane-title" class="section-title" style="border:none; margin:0;">Text Input</h2></div>
+          <div class="control-stack">
           <label for="text-input" class="visually-hidden">Text input</label>
-          <textarea id="text-input" placeholder="Loading Unicode data files..." disabled></textarea>
-      
-          <div class="status-bar">
-            <div class="status-bar-left">
-              <strong>Status:</strong>
-              <span id="status-line" role="status" aria-live="polite" class="status-loading">Loading Unicode data files...</span>
+            <textarea id="text-input" placeholder="Loading Unicode data files..." disabled></textarea>
+              <div class="status-bar">
+                <div class="status-bar-left">
+                  <strong>Status:</strong>
+                    <span id="status-line" role="status" aria-live="polite" class="status-loading">Loading Unicode data files...</span>
+                </div>
+                  <div class="status-bar-right">
+                    <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">&#x1F441;&#xFE0E; Reveal Invisibles</button>
+                </div>
+              </div>
             </div>
-            <div class="status-bar-right">
-              <button id="btn-reveal" class="tool-btn" title="Replace invisible characters with visible tags">
-                &#x1F441;&#xFE0E; Reveal Invisibles
-              </button>
-            </div>
-          </div>
-        </div>
-  </section>
+      </section>
        
       <details class="profile-section" id="hud-panel-wrapper" open>
           <summary><h2 class="section-title">Forensic Dashboard</h2></summary>
