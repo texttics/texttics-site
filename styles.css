@@ -2365,7 +2365,7 @@ details.profile-section > summary::-webkit-details-marker {
 
 /* 3. Create the Custom Arrow (The Pointer) */
 details.profile-section > summary::before {
-  content: '▶';        /* Standard geometric triangle */
+  content: pointer;
   font-size: 0.75rem;
   margin-right: 0.75rem; /* Space between arrow and text */
   color: var(--color-text-muted);
