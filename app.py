@@ -827,7 +827,8 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats, emoji_consumed=None):
     """
-    Renders the 'Forensic Matrix' V22 (Deduped Hybrids with World-Class Logic).
+    Renders the 'Forensic Matrix' V23 (Fix: Range-Based Lookups).
+    Restored functionality by using _find_in_ranges instead of missing set data.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -978,12 +979,10 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
         d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # --- PARTITIONING ---
-    emoji_data = DATA_STORES.get('EmojiData', {})
-    def is_emoji(char): return char in emoji_data.get('Emoji', set())
-    def is_emoji_component(char): return char in emoji_data.get('Emoji_Component', set())
-    def is_emoji_presentation(char): return char in emoji_data.get('Emoji_Presentation', set())
-    has_emoji_data = bool(emoji_data)
+    # --- PARTITIONING (V23 FIX: Use Range Lookups) ---
+    
+    # Verify data availability (Check if "Emoji" range list exists)
+    has_emoji_data = "Emoji" in DATA_STORES
 
     cnt_s_key = 0
     cnt_s_ext = 0
@@ -996,19 +995,27 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
 
         cp = ord(c)
         
-        if has_emoji_data and is_emoji(c) and not is_emoji_component(c):
+        # 1. Check Atomic Emoji Properties (Using Range Lookups)
+        # Logic: Emoji=Yes AND Component=No
+        if has_emoji_data and _find_in_ranges(cp, "Emoji") and not _find_in_ranges(cp, "Emoji_Component"):
             cnt_h_pict += 1
-            if not is_emoji_presentation(c):
+            
+            # Ambiguity: Emoji=Yes but Emoji_Presentation=No (Text Default)
+            if not _find_in_ranges(cp, "Emoji_Presentation"):
                 cnt_h_ambig += 1
         
+        # 2. Pure Symbols (Non-Emoji S*)
         elif unicodedata.category(c).startswith('S'):
             if cp <= 0x7F:
                 cnt_s_key += 1
             elif (0xA0 <= cp <= 0xFF) or (0x20A0 <= cp <= 0x20CF):
+                # Latin-1 / Currency
                 cnt_s_ext += 1
             elif (0x2190 <= cp <= 0x21FF) or (0x2200 <= cp <= 0x22FF):
+                # Arrows / Math
                 cnt_s_ext += 1
             elif (0x2500 <= cp <= 0x25FF):
+                # Boxes / Shapes / Blocks (Non-Emoji)
                 cnt_s_ext += 1
             else:
                 cnt_s_exotic += 1
@@ -1034,6 +1041,7 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
     )
 
     # C6: HYBRIDS
+    # Use "N/A" only if data is missing
     h_val = str(cnt_h_pict) if has_emoji_data else "N/A"
     h_amb = str(cnt_h_ambig) if has_emoji_data else "N/A"
     
