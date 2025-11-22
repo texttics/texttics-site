@@ -930,13 +930,14 @@ def render_forensic_hud(t, stats):
     )
 
     # C2: SEGMENTATION
-    # FIX: Remove rounding to allow fluid 0.1 -> 1.9 -> 2.0 progression
+    # FIX: Exact precision (2 decimals), removed "EST", hard definition
     seg_est = vu / 20.0
     c2 = render_cell(
         "SEGMENTATION", 
-        "EST. BLOCKS", f"{seg_est:.1f}", color_neutral(seg_est),
+        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-        d1="Coarse estimate of sentence-like blocks from lexical mass.", m1="VU / 20.0", r1="Heuristic: 20 words/sent",
+        # CORRECTION: Removed "Estimate", defined strict ratio
+        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
         d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
