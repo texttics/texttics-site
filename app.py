@@ -827,7 +827,7 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V14 (Final Scientific & Dynamic Polish).
+    Renders the 'Forensic Matrix' V13 (Dynamic Tiering & Comfort Zones).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -866,24 +866,15 @@ def render_forensic_hud(t, stats):
 
     # --- COLOR LOGIC ---
     def color_neutral(val):
-        """0 is Gray, >0 is Black"""
-        try:
-            v = float(val)
-            return "txt-muted" if v == 0 else "txt-normal"
+        try: return "txt-muted" if float(val) == 0 else "txt-normal"
         except: return "txt-normal"
 
     def color_clean(val):
-        """0 is Light Green (Clean), >0 is Orange (Warn)"""
-        try:
-            v = float(val)
-            return "txt-clean" if v == 0 else "txt-warn"
+        try: return "txt-clean" if float(val) == 0 else "txt-warn"
         except: return "txt-normal"
 
     def color_risk(val):
-        """0 is Deep Green (Good), >0 is Orange (Warn)"""
-        try:
-            v = float(val)
-            return "txt-good" if v == 0 else "txt-warn"
+        try: return "txt-good" if float(val) == 0 else "txt-warn"
         except: return "txt-normal"
 
     # --- 0. PRE-CALC ---
@@ -896,7 +887,7 @@ def render_forensic_hud(t, stats):
 
     # --- 1. COLUMNS ---
 
-    # C0: ALPHANUMERIC (LITERALS / RUNS)
+    # C0: ALPHANUMERIC
     alpha_chars = sum(1 for c in t if c.isalnum())
     alpha_runs = 0
     in_run = False
@@ -916,7 +907,7 @@ def render_forensic_hud(t, stats):
         d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
     )
 
-    # C1: LEXICAL MASS (UNITS / WORDS)
+    # C1: LEXICAL MASS
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
@@ -928,32 +919,36 @@ def render_forensic_hud(t, stats):
         d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
-    # C2: SEGMENTATION (BLOCKS / SENTENCES)
+    # C2: SEGMENTATION
     seg_est = vu / 20.0
     c2 = render_cell(
         "SEGMENTATION", 
-        "EST. BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
         d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
         d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
     # C3: DELIMITERS (Dynamic: ASCII -> TYPOGRAPHIC)
+    # Logic: Split into ASCII, Comfort (Smart Quotes), and Exotic
     cnt_ascii = 0
     cnt_comfort = 0
     cnt_exotic = 0
     
+    # Definition of Comfort Punctuation (Smart quotes, dashes, bullets)
+    # Ranges: General Punctuation (2000-206F) subset, Latin-1 Punct (A0-BF)
     for c in t:
         if c in {'.', '?', '!', ';', ','}:
             cnt_ascii += 1
         elif unicodedata.category(c).startswith('P'):
             cp = ord(c)
-            # Whitelist: Latin-1 Supplement (A0-FF) OR General Punctuation subset (2010-2027)
+            # Whitelist: Latin-1 Supplement Punctuation OR General Punctuation block (common typography)
             if (0xA0 <= cp <= 0xFF) or (0x2010 <= cp <= 0x2027):
                 cnt_comfort += 1
             else:
                 cnt_exotic += 1
 
+    # Dynamic Labeling
     if cnt_comfort > 0:
         c3_label = "TYPOGRAPHIC"
         c3_val = cnt_ascii + cnt_comfort
@@ -971,7 +966,7 @@ def render_forensic_hud(t, stats):
         d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # C4: WHITESPACE (ASCII WS / NON-STD)
+    # C4: WHITESPACE
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
     flags = stats.get('forensic_flags', {})
@@ -986,23 +981,27 @@ def render_forensic_hud(t, stats):
     )
 
     # C5: SYMBOLS (Dynamic: KEYBOARD -> EXTENDED)
+    # Logic: Split into Keyboard (ASCII), Comfort (Latin-1/Currency), and Exotic
     c3_set = {'.', '?', '!', ';', ','}
     cnt_key = 0
-    cnt_ext = 0
-    cnt_rare = 0
+    cnt_ext = 0 # Safe Extended (Currency, Degree, etc)
+    cnt_rare = 0 # True Exotic (Math, Arrows, Dingbats)
 
     for c in t:
         cp = ord(c)
         if 0x21 <= cp <= 0x7E and not c.isalnum() and c not in c3_set:
             cnt_key += 1
         elif cp > 0x7F and unicodedata.category(c).startswith('S'):
-            if 0xA0 <= cp <= 0xFF: # Latin-1 Symbols
+            # Whitelist: Latin-1 Supplement Symbols (Currency, Copyright, Degree)
+            if 0xA0 <= cp <= 0xFF: 
                 cnt_ext += 1
+            # Whitelist: General Punctuation (Bullets) - handled in C3, but if S category:
             elif cp == 0x20AC: # Euro
                 cnt_ext += 1
             else:
                 cnt_rare += 1
 
+    # Dynamic Labeling
     if cnt_ext > 0:
         c5_label = "EXTENDED"
         c5_val = cnt_key + cnt_ext
@@ -1020,7 +1019,7 @@ def render_forensic_hud(t, stats):
         d2="Mathematical operators, arrows, boxes, and dingbats.", m2="Category: S* - Safe", r2="Scope: Rare"
     )
 
-    # C6: EMOJI (RGI / IRREGULAR)
+    # C6: EMOJI
     rgi_count = stats.get('rgi_count', 0)
     abnormal = 0
     abnormal += flags.get("Flag: Unqualified Emoji", {}).get("count", 0)
