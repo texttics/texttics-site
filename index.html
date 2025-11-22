@@ -45,15 +45,15 @@
           </a>
         </li>
         <li>
-          <a href="#structural-shape">
-            <span class="jump-list-title">Structural Shape</span>
-            <span class="jump-list-subtitle">Profile <span id="toc-shape-count" class="count">(0)</span></span>
-          </a>
-        </li>
-        <li>
           <a href="#structural-integrity">
             <span class="jump-list-title">Structural Integrity</span>
             <span class="jump-list-subtitle">Profile <span id="toc-integrity-count" class="count">(0)</span></span>
+          </a>
+        </li>
+        <li>
+          <a href="#threat-hunting">
+            <span class="jump-list-title">Threat-Hunting</span>
+            <span class="jump-list-subtitle">Profile <span id="toc-threat-count" class="count">(0)</span></span>
           </a>
         </li>
         <li>
@@ -69,9 +69,9 @@
           </a>
         </li>
         <li>
-          <a href="#threat-hunting">
-            <span class="jump-list-title">Threat-Hunting</span>
-            <span class="jump-list-subtitle">Profile <span id="toc-threat-count" class="count">(0)</span></span>
+          <a href="#structural-shape">
+            <span class="jump-list-title">Structural Shape</span>
+            <span class="jump-list-subtitle">Profile <span id="toc-shape-count" class="count">(0)</span></span>
           </a>
         </li>
       </ol>
@@ -168,298 +168,168 @@
              </div>
           </div>
       </details>
-      
-      <!-- Group 2.A: Dual-Atom Profile (Module 1) -->
+
       <details class="fingerprint-section profile-section" id="dual-atom" aria-labelledby="dual-atom-title">
         <summary><h2 id="dual-atom-title" class="section-title">
-  <span>Dual-Atom Profile</span>
-</h2></summary>
+          <span>Dual-Atom Profile</span>
+        </h2></summary>
 
-        <!-- WAI-ARIA Tabs pattern (Overview | Full Breakdown) -->
         <div class="tabs">
           <div role="tablist" aria-label="Dual-Atom tabs">
-            <button role="tab" id="tab-overview" aria-selected="true" aria-controls="panel-overview">
-              Overview
-            </button>
-            <button role="tab" id="tab-breakdown" aria-selected="false" tabindex="-1" aria-controls="panel-breakdown">
-              Full Breakdown (30)
-            </button>
+            <button role="tab" id="tab-overview" aria-selected="true" aria-controls="panel-overview">Overview</button>
+            <button role="tab" id="tab-breakdown" aria-selected="false" tabindex="-1" aria-controls="panel-breakdown">Full Breakdown (30)</button>
           </div>
 
-          <!-- Tab Panel 1: Overview (Default) -->
           <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
-            
             <h3 class="subsection-title">Core Metrics (Totals)</h3>
-            <div class="cards" id="meta-totals-cards">
-              <!-- Python will inject cards here, e.g.:
-              <div class="card"><strong>Total Code Points</strong><div>0</div></div>
-              <div class="card"><strong>Total Graphemes</strong><div>0</div></div>
-              -->
-            </div>
-
+            <div class="cards" id="meta-totals-cards"></div>
             <h3 class="subsection-title">Grapheme Structural Integrity</h3>
-            <div class="cards" id="grapheme-integrity-cards">
-              <!-- Python will inject cards here -->
-            </div>
-
+            <div class="cards" id="grapheme-integrity-cards"></div>
             <h3 class="subsection-title">Combining Class Profile (Zalgo)</h3>
-          <table class="matrix" id="ccc-matrix">
-            <caption>Canonical Combining Class (ccc) Counts (Non-Zero)</caption>
-            <thead>
-              <tr>
-                <th scope="col">Class</th>
-                <th scope="col">Count</th>
-                <th scope="col">Description</th>
-              </tr>
-            </thead>
-            <tbody id="ccc-matrix-body">
-              </tbody>
-          </table>
-
+            <table class="matrix" id="ccc-matrix">
+              <caption>Canonical Combining Class (ccc) Counts</caption>
+              <thead><tr><th scope="col">Class</th><th scope="col">Count</th><th scope="col">Description</th></tr></thead>
+              <tbody id="ccc-matrix-body"></tbody>
+            </table>
             <h3 class="subsection-title">Major Category Parallel View</h3>
             <table class="matrix" id="major-parallel-table">
               <caption>Major Categories - Code Points vs. Graphemes</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Category</th>
-                  <th scope="col">Code Points (Logical)</th>
-                  <th scope="col">Graphemes (Perceptual)</th>
-                </tr>
-              </thead>
-              <tbody id="major-parallel-body">
-                <!-- Python will inject <tr> rows here -->
-              </tbody>
+              <thead><tr><th scope="col">Category</th><th scope="col">Code Points (Logical)</th><th scope="col">Graphemes (Perceptual)</th></tr></thead>
+              <tbody id="major-parallel-body"></tbody>
             </table>
           </div>
 
-          <!-- Tab Panel 2: Full Breakdown -->
           <div id="panel-breakdown" role="tabpanel" aria-labelledby="tab-breakdown" hidden>
             <h3 class="subsection-title">Minor Category Parallel View</h3>
             <table class="matrix" id="minor-parallel-table">
-              <caption>Full Breakdown (30 minor categories) - Code Points vs. Graphemes</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Minor Category</th>
-                  <th scope="col">Code Points (Logical)</th>
-                  <th scope="col">Graphemes (Perceptual)</th>
-                </tr>
-              </thead>
-              <tbody id="minor-parallel-body">
-                <!-- Python will inject <tr> rows here -->
-              </tbody>
+              <caption>Full Breakdown (30 minor categories)</caption>
+              <thead><tr><th scope="col">Minor Category</th><th scope="col">Code Points (Logical)</th><th scope="col">Graphemes (Perceptual)</th></tr></thead>
+              <tbody id="minor-parallel-body"></tbody>
             </table>
           </div>
        </div>
       </details>
 
-      <!-- Group 2.B: Structural Shape Profile (Module 2) -->
-      <details class="fingerprint-section profile-section" id="structural-shape" aria-labelledby="shape-title">
-    <summary><h2 id="shape-title" class="section-title">Structural Shape Profile</h2></summary>
-
-    <h3 class="subsection-title">Major Category Run Analysis</h3>
-    <table class="matrix" id="shape-matrix">
-      <caption>Sequence (Run) Analysis of 7 Major Categories</caption>
-      <thead>
-        <tr>
-          <th scope="col">Metric</th>
-          <th scope="col">Count</th>
-        </tr>
-      </thead>
-      <tbody id="shape-matrix-body">
-      </tbody>
-    </table>
-
-    <h3 class="subsection-title">Minor Category Run Analysis</h3>
-    <table class="matrix" id="minor-shape-matrix">
-      <caption>Sequence (Run) Analysis of 30 Minor Categories</caption>
-      <thead>
-        <tr>
-          <th scope="col">Metric</th>
-          <th scope="col">Count</th>
-        </tr>
-      </thead>
-      <tbody id="minor-shape-matrix-body">
-      </tbody>
-    </table>
-
-    <h3 class="subsection-title">Line Break Run Analysis (UAX #14)</h3>
-    <table class="matrix" id="linebreak-run-matrix">
-      <caption>Sequence (Run) Analysis of Line Break Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="linebreak-run-matrix-body">
-      </tbody>
-    </table>
-
-<h3 class="subsection-title">Bidi Class Run Analysis (UAX #9)</h3>
-    <table class="matrix" id="bidi-run-matrix">
-      <caption>Sequence (Run) Analysis of Bidi Class Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="bidi-run-matrix-body">
-      </tbody>
-    </table>
-
-  <h3 class="subsection-title">Word Break Run Analysis (UAX #29)</h3>
-    <table class="matrix" id="wordbreak-run-matrix">
-      <caption>Sequence (Run) Analysis of Word Break Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="wordbreak-run-matrix-body">
-      </tbody>
-    </table>
-
-    <h3 class="subsection-title">Sentence Break Run Analysis (UAX #29)</h3>
-    <table class="matrix" id="sentencebreak-run-matrix">
-      <caption>Sequence (Run) Analysis of Sentence Break Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="sentencebreak-run-matrix-body">
-      </tbody>
-    </table>
-
-    <h3 class="subsection-title">Grapheme Break Run Analysis (UAX #29)</h3>
-    <table class="matrix" id="graphemebreak-run-matrix">
-      <caption>Sequence (Run) Analysis of Grapheme Break Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="graphemebreak-run-matrix-body">
-      </tbody>
-    </table>
-
-    <h3 class="subsection-title">East Asian Width Run Analysis</h3>
-    <table class="matrix" id="eawidth-run-matrix">
-      <caption>Sequence (Run) Analysis of East Asian Width Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="eawidth-run-matrix-body">
-      </tbody>
-    </table>
-
-    <h3 class="subsection-title">Vertical Orientation Run Analysis</h3>
-    <table class="matrix" id="vo-run-matrix">
-      <caption>Sequence (Run) Analysis of Vertical Orientation Properties</caption>
-      <thead>
-        <tr><th scope="col">Metric</th><th scope="col">Count</th></tr>
-      </thead>
-      <tbody id="vo-run-matrix-body">
-      </tbody>
-    </table>
-        
-  </details>
-
-
-      <!-- Group 2.C: Forensic Integrity Profile (Modules 4, 6, 8) -->
       <details class="fingerprint-section profile-section" id="structural-integrity" aria-labelledby="integrity-title">
-      <summary><h2 id="integrity-title" class="section-title">Structural Integrity Profile</h2></summary>
-      <table class="matrix" id="integrity-matrix">
-        <caption>Integrity Flags (Invisibles, Modifiers, IVS)</caption>
-          <thead>
-            <tr>
-              <th scope="col">Metric</th>
-              <th scope="col">Count</th>
-              <th scope="col">Details / Positions</th>
-            </tr>
-          </thead>
-          <tbody id="integrity-matrix-body">
-            <!-- Python will inject <tr> rows here -->
-          </tbody>
-        </table>
+        <summary><h2 id="integrity-title" class="section-title">Structural Integrity Profile</h2></summary>
+        <table class="matrix" id="integrity-matrix">
+          <caption>Integrity Flags (Invisibles, Modifiers, IVS)</caption>
+            <thead><tr><th scope="col">Metric</th><th scope="col">Count</th><th scope="col">Details / Positions</th></tr></thead>
+            <tbody id="integrity-matrix-body"></tbody>
+          </table>
       </details>
 
-      <!-- Group 2.D: Provenance & Context Profile (Modules 5, 6) -->
-      <details class="fingerprint-section profile-section" id="provenance-context" aria-labelledby="prov-title">
-        <summary><h2 id="prov-title" class="section-title">Provenance &amp; Context Profile</h2></summary>
-        <table class="matrix" id="provenance-matrix">
-          <caption>Script, Script-Extension, Block, Age &amp; Numeric Properties</caption>
-          <thead>
-            <tr>
-              <th scope="col">Metric</th>
-              <th scope="col">Count</th>
-               <th scope="col">Positions</th>
-            </tr>
-          </thead>
-          <tbody id="provenance-matrix-body">
-            <!-- Python will inject <tr> rows here -->
-          </tbody>
-        </table>
-
-        <h3 class="subsection-title">Script Run-Length Analysis</h3>
-    <table class="matrix" id="script-run-matrix">
-    <caption>Sequence (Run) Analysis of Script & Script-Extension Properties</caption>
-    <thead>
-        <tr>
-            <th scope="col">Metric</th>
-            <th scope="col">Count</th>
-            <th scope="col">Positions</th>
-        </tr>
-    </thead>
-      <tbody id="script-run-matrix-body">
-        </tbody>
-    </table>
-        
-      </details>
-
-<details class="fingerprint-section profile-section" id="emoji-forensics" aria-labelledby="emoji-title">
-  <summary><h2 id="emoji-title" class="section-title">Emoji Qualification Profile</h2></summary>
-  <h3 class="subsection-title">RGI Sequence Analysis</h3>
-  <p id="emoji-summary" class="emoji-summary"></p>
-  <table class="matrix" id="emoji-qualification-matrix">
-    <caption>Qualification status for all detected emoji units</caption>
-    <thead>
-      <tr>
-        <th scope="col">Sequence</th>
-        <th scope="col">Kind</th> <th scope="col">RGI?</th> <th scope="col">Status</th>
-        <th scope="col">Count</th>
-        <th scope="col">Positions</th>
-      </tr>
-    </thead>
-    <tbody id="emoji-qualification-body"></tbody>
-  </table>
-</details>
-
-
-<!-- Group 3: Threat-Hunting (Module 7)-->
-<details class="fingerprint-section profile-section" id="threat-hunting" aria-labelledby="threat-title">
+      <details class="fingerprint-section profile-section" id="threat-hunting" aria-labelledby="threat-title">
         <summary><h2 id="threat-title" class="section-title">Threat-Hunting Profile</h2></summary>
         <div id="threat-banner" class="banner-warning" role="alert" hidden></div>
         <h3 class="subsection-title">Threat Flags</h3>
         <table class="matrix" id="threat-report-table">
             <caption>High-level security flags and high-risk runs</caption>
-            <thead>
-                <tr>
-                    <th scope="col">Metric</th>
-                    <th scope="col">Count</th>
-                    <th scope="col">Details / Positions</th>
-                </tr>
-            </thead>
-            <tbody id="threat-report-body">
-                </tbody>
+            <thead><tr><th scope="col">Metric</th><th scope="col">Count</th><th scope="col">Details / Positions</th></tr></thead>
+            <tbody id="threat-report-body"></tbody>
         </table>
-
         <h3 class="subsection-title">Normalization Hashes</h3>
         <table class="matrix" id="threat-hash-report">
             <caption>State Hashes (Forensic, NFKC, NFKC-Casefold, UTS #39 Skeleton)</caption>
-            <thead>
-                <tr>
-                    <th scope="col">State</th>
-                    <th scope="col">Hash (SHA-256)</th>
-                </tr>
-            </thead>
-            <tbody id="threat-hash-report-body">
-                <tr><td colspan="2" class="placeholder-text">No data.</td></tr>
-            </tbody>
+            <thead><tr><th scope="col">State</th><th scope="col">Hash (SHA-256)</th></tr></thead>
+            <tbody id="threat-hash-report-body"><tr><td colspan="2" class="placeholder-text">No data.</td></tr></tbody>
         </table>
-    
         <h3 class="subsection-title">Perceived vs Encoded Character(s)</h3>
         <pre id="confusable-diff-report" class="confusable-report"><p class="placeholder-text">No confusable runs detected.</p></pre>
-    </details>
+      </details>
+
+      <details class="fingerprint-section profile-section" id="provenance-context" aria-labelledby="prov-title">
+        <summary><h2 id="prov-title" class="section-title">Provenance &amp; Context Profile</h2></summary>
+        <table class="matrix" id="provenance-matrix">
+          <caption>Script, Script-Extension, Block, Age &amp; Numeric Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th><th scope="col">Positions</th></tr></thead>
+          <tbody id="provenance-matrix-body"></tbody>
+        </table>
+        <h3 class="subsection-title">Script Run-Length Analysis</h3>
+        <table class="matrix" id="script-run-matrix">
+          <caption>Sequence (Run) Analysis of Script & Script-Extension Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th><th scope="col">Positions</th></tr></thead>
+          <tbody id="script-run-matrix-body"></tbody>
+        </table>
+      </details>
+
+      <details class="fingerprint-section profile-section" id="emoji-forensics" aria-labelledby="emoji-title">
+        <summary><h2 id="emoji-title" class="section-title">Emoji Qualification Profile</h2></summary>
+        <h3 class="subsection-title">RGI Sequence Analysis</h3>
+        <p id="emoji-summary" class="emoji-summary"></p>
+        <table class="matrix" id="emoji-qualification-matrix">
+          <caption>Qualification status for all detected emoji units</caption>
+          <thead><tr><th scope="col">Sequence</th><th scope="col">Kind</th><th scope="col">RGI?</th><th scope="col">Status</th><th scope="col">Count</th><th scope="col">Positions</th></tr></thead>
+          <tbody id="emoji-qualification-body"></tbody>
+        </table>
+      </details>
+
+      <details class="fingerprint-section profile-section" id="structural-shape" aria-labelledby="shape-title">
+        <summary><h2 id="shape-title" class="section-title">Structural Shape Profile</h2></summary>
+        
+        <h3 class="subsection-title">Major Category Run Analysis</h3>
+        <table class="matrix" id="shape-matrix">
+          <caption>Sequence (Run) Analysis of 7 Major Categories</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="shape-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Minor Category Run Analysis</h3>
+        <table class="matrix" id="minor-shape-matrix">
+          <caption>Sequence (Run) Analysis of 30 Minor Categories</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="minor-shape-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Line Break Run Analysis (UAX #14)</h3>
+        <table class="matrix" id="linebreak-run-matrix">
+          <caption>Sequence (Run) Analysis of Line Break Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="linebreak-run-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Bidi Class Run Analysis (UAX #9)</h3>
+        <table class="matrix" id="bidi-run-matrix">
+          <caption>Sequence (Run) Analysis of Bidi Class Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="bidi-run-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Word Break Run Analysis (UAX #29)</h3>
+        <table class="matrix" id="wordbreak-run-matrix">
+          <caption>Sequence (Run) Analysis of Word Break Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="wordbreak-run-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Sentence Break Run Analysis (UAX #29)</h3>
+        <table class="matrix" id="sentencebreak-run-matrix">
+          <caption>Sequence (Run) Analysis of Sentence Break Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="sentencebreak-run-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Grapheme Break Run Analysis (UAX #29)</h3>
+        <table class="matrix" id="graphemebreak-run-matrix">
+          <caption>Sequence (Run) Analysis of Grapheme Break Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="graphemebreak-run-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">East Asian Width Run Analysis</h3>
+        <table class="matrix" id="eawidth-run-matrix">
+          <caption>Sequence (Run) Analysis of East Asian Width Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="eawidth-run-matrix-body"></tbody>
+        </table>
+
+        <h3 class="subsection-title">Vertical Orientation Run Analysis</h3>
+        <table class="matrix" id="vo-run-matrix">
+          <caption>Sequence (Run) Analysis of Vertical Orientation Properties</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Count</th></tr></thead>
+          <tbody id="vo-run-matrix-body"></tbody>
+        </table>
+      </details>
 
     </main>
   </div> <!-- /.lab-bench -->
