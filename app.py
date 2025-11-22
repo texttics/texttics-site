@@ -2000,14 +2000,15 @@ def _parse_emoji_zwj_sequences(txt: str) -> set:
 def _parse_emoji_sequences(txt: str) -> set:
     """
     Parses emoji-sequences.txt for RGI sequences.
-    We ONLY want RGI sequences (Flags, Modifiers, Keycaps), not Basic_Emoji.
+    Includes RGI_Emoji_*, Emoji_Keycap_Sequence, AND Basic_Emoji.
     """
     sequences = set()
     rgi_types = {
         "RGI_Emoji_Flag_Sequence",
         "RGI_Emoji_Tag_Sequence",
         "RGI_Emoji_Modifier_Sequence",
-        "Emoji_Keycap_Sequence"
+        "Emoji_Keycap_Sequence",
+        "Basic_Emoji" # <--- ADDED THIS
     }
     
     for raw in txt.splitlines():
@@ -2023,22 +2024,28 @@ def _parse_emoji_sequences(txt: str) -> set:
             hex_codes_str = parts[0].strip()
             type_field = parts[1].strip()
             
-            # We only care about RGI *sequence* types
             if type_field in rgi_types:
-                
-                # --- THIS IS THE FIX ---
                 # Ensure it's a space-delimited sequence
                 # AND not a range (which this parser doesn't handle)
-                if ' ' in hex_codes_str and '..' not in hex_codes_str:
+                if '..' not in hex_codes_str:
                     hex_codes = hex_codes_str.split()
                     sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
                     sequences.add(sequence_str)
-                # --- END FIX ---
+                
+                # [PATCH] Handle ranges for Basic_Emoji (e.g., 1F1E6..1F1FF)
+                elif type_field == "Basic_Emoji":
+                    # Ranges are common in Basic_Emoji
+                    range_parts = hex_codes_str.split('..')
+                    start = int(range_parts[0], 16)
+                    end = int(range_parts[1], 16) if len(range_parts) > 1 else start
+                    
+                    for cp in range(start, end + 1):
+                        sequences.add(chr(cp))
+
         except Exception as e:
-            # print(f"Skipping malformed SEQ line: {line} | Error: {e}")
-            pass # Ignore malformed lines
+            pass 
             
-    print(f"Loaded {len(sequences)} RGI non-ZWJ sequences (Flags, Modifiers, etc.).")
+    print(f"Loaded {len(sequences)} RGI sequences (including Basic_Emoji).")
     return sequences
 
 def _parse_emoji_variation_sequences(txt: str) -> set:
@@ -4401,9 +4408,7 @@ def render_status(message):
 
 def render_emoji_qualification_table(emoji_list, text_context=None):
     """
-    Renders the Emoji Qualification Profile table.
-    Grouped by unique sequence string.
-    Columns: Sequence | Kind | RGI? | Status | Count | Positions
+    Renders the Emoji Qualification Profile table with Forensic Legend.
     """
     element = document.getElementById("emoji-qualification-body")
     if not element: return
@@ -4438,14 +4443,14 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         
         # 2. Kind Badge
         k_cls = "legend-badge"
-        kind_val = data['kind'].replace("emoji-", "").upper() # STRIP PREFIX
+        kind_raw = data['kind'].replace("emoji-", "").upper()
         k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Gray default
-        if kind_val == 'SEQUENCE':
+        if kind_raw == 'SEQUENCE':
             k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue
-        elif kind_val == 'COMPONENT':
+        elif kind_raw == 'COMPONENT':
             k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red
             
-        td_kind = f'<td><span class="{k_cls}" style="{k_style}">{kind_val}</span></td>'
+        td_kind = f'<td><span class="{k_cls}" style="{k_style}">{kind_raw}</span></td>'
         
         # 3. RGI Badge
         r_cls = "legend-badge"
@@ -4468,11 +4473,10 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         # 5. Count
         td_count = f'<td>{data["count"]}</td>'
 
-        # 6. Positions (Using existing _create_position_link)
+        # 6. Positions
         indices = data['indices']
         links_list = [_create_position_link(idx, text_context) for idx in indices]
         
-        # Collapse if too many positions
         if len(links_list) > 5:
             visible = ", ".join(links_list[:5])
             hidden = ", ".join(links_list[5:])
@@ -4489,7 +4493,29 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
 
         html.append(f'<tr>{td_seq}{td_kind}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
 
-    element.innerHTML = "".join(html)
+    # Add Forensic Legend
+    legend_html = """
+    <tr>
+        <td colspan="6" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                    <strong>KIND (Structure):</strong><br>
+                    • <b>ATOMIC:</b> Single code point unit.<br>
+                    • <b>SEQUENCE:</b> Multi-character unit (ZWJ, VS, Tags).<br>
+                    • <b>COMPONENT:</b> Leaked structural part (Skin Tone, Region).
+                </div>
+                <div>
+                    <strong>STATUS (Integrity):</strong><br>
+                    • <b>RGI YES:</b> Recommended for General Interchange (Standard).<br>
+                    • <b>Unqualified:</b> Missing VS16 or non-standard sequence.<br>
+                    • <b>Component:</b> Not intended for standalone display.
+                </div>
+            </div>
+        </td>
+    </tr>
+    """
+    
+    element.innerHTML = "".join(html) + legend_html
 
 def render_emoji_summary(emoji_counts, emoji_list):
     """
