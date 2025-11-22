@@ -742,7 +742,6 @@ Stage 2: Heatmap Row Classes
 
 /* Wrapper */
 #inspector-panel-wrapper {
-  margin-top: 0.75rem;
   border: none;
   border-radius: var(--radius);
   background-color: transparent;
