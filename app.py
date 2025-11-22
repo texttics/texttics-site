@@ -836,7 +836,7 @@ def render_forensic_hud(t, stats):
     
     emoji_counts = stats.get("emoji_counts", {})
 
-    # --- HELPER: Cell Builder V4 ---
+    # --- HELPER: Cell Builder V5 (Dynamic Footer Labels) ---
     def render_cell(sci_title, 
                     label_1, val_1, class_1,
                     label_2, val_2, class_2,
@@ -845,10 +845,11 @@ def render_forensic_hud(t, stats):
         
         def esc(s): return s.replace('"', '&quot;')
 
+        # [UPDATE] Added data-l1 and data-l2 to pass the dynamic labels to the footer
         return f"""
         <div class="hud-col" 
-             data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
-             data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
+             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
+             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
              
             <div class="hud-row-sci">{sci_title}</div>
             
