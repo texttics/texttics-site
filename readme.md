@@ -476,7 +476,7 @@ This update adds three high-value "triage" flags. One enhances the forensic clar
 
 ## 📈 Addendum: The "Forensic Depth" Upgrade (Stage 1 Enhanced)
 
-**Summary:** This update transitions the tool from a "Passive Detector" (counting characters) to an "Active Analyst" (evaluating structure, clusters, and intent). It introduces an O(1) Bitmask Engine, a Paranoid Self-Test suite, and three new structural analyzers (Bidi Stack, Invisible Clusters, Zalgo/NSM).
+**Summary:** This update transitions the tool from a "Passive Detector" (counting characters) to an "Active Analyst" (evaluating structure, clusters, and intent). It introduces an O(1) Bitmask Engine, a Self-Test suite, and three new structural analyzers (Bidi Stack, Invisible Clusters, Zalgo/NSM).
 
 ### 1. Core Architecture: The Bitmask Engine & Self-Verification
 To handle the complexity of "Invisible" and "Default Ignorable" characters without performance loss or coverage gaps, we replaced the linear lookup model with a **Global Forensic Bitmask**.
@@ -486,7 +486,7 @@ To handle the complexity of "Invisible" and "Default Ignorable" characters witho
     * Each code point is mapped to a bitmask combining 11 properties: `INVIS_DEFAULT_IGNORABLE`, `INVIS_BIDI_CONTROL`, `INVIS_TAG`, `INVIS_JOIN_CONTROL`, `INVIS_ZERO_WIDTH_SPACING`, etc.
     * **Forensic Value:** This allows us to define complex threat signatures (e.g., `INVIS_HIGH_RISK_MASK`) that are checked instantly per character.
 
-* **"Paranoid Mode" Self-Tests (`run_self_tests`):**
+* **"Test Mode" Self-Tests (`run_self_tests`):**
     * **Philosophy:** "Don't assume the data loader works; prove it."
     * **Mechanism:** Immediately after loading Unicode data, the engine runs a self-test suite. It iterates through the raw UCD ranges (e.g., `BidiControl` in `PropList.txt`) and asserts that the corresponding bits are set in `INVIS_TABLE`.
     * **Coverage:** Verifies Bidi, Join Controls, Tags (Plane 14), Default Ignorables, and Do-Not-Emit characters. If a single bit is missing, the console logs a critical failure.
@@ -844,7 +844,7 @@ The system operates in a tight loop, triggered by user interaction.
 **1. Initialization Phase:**
 * `main()` (Entry Point) triggers `load_unicode_data()`.
 * `load_unicode_data()` fetches the 31 `.txt` files.
-* **Paranoid Check:** Immediately runs `run_self_tests()`. This iterates through the raw data ranges and asserts that the `INVIS_TABLE` bitmasks were built correctly. If this fails, the system alerts the console, refusing to "fail silent."
+* **Test Check:** Immediately runs `run_self_tests()`. This iterates through the raw data ranges and asserts that the `INVIS_TABLE` bitmasks were built correctly. If this fails, the system alerts the console, refusing to "fail silent."
 
 **2. The Analysis Loop (`update_all`):**
 This function is bound to the `<textarea>` `input` event.
@@ -938,7 +938,6 @@ In V11, we resolved a critical "split-brain" design flaw where the Threat Engine
     * **Forensic Composition:** Zalgo strings are now correctly identified as **"COMPOSITION: Base + 16 Marks"** rather than masquerading as "Basic Latin."
     * **Block Mixing:** Explicitly flags "Basic Latin + 1 Other Block" to expose the multi-block nature of spoofing attacks.
 
-
 ### 4. The "Forensic HUD" (Global Dashboard)
 *(New in V14-V24)*
 
@@ -983,3 +982,16 @@ While the HUD provides the *Macro* view, the Inspector provides the *Micro* view
 * **Hybrid Bridge Architecture:** To ensure performance without blocking the UI, heavy linguistic segmentation tasks (UAX #29) are offloaded to the browser's native V8 engine via `window.TEXTTICS_CALC_UAX_COUNTS`, while Python handles the deep forensic logic.
 * **CSS "Calm" System:** The UI utilizes a "Calm" white background with thin light-gray borders for stable states, reserving high-contrast colors strictly for active signals.
 * **Robust Data Loader:** The engine now gracefully handles dynamic range-based lookups for Emoji properties, ensuring stability even if specific Unicode data files are updated or missing.
+
+### 8. Cluster-First Disjoint Partition
+
+To achieve a good forensic model, we transitioned the engine to a **Cluster-First** architecture. This ensures that every particle in the text stream is accounted for exactly once, eliminating "phantom" double-counts.
+
+* **Forensic Invariant:** $Hybrids \cap Emoji = \emptyset$.
+* **Mechanism:** The `compute_emoji_analysis` function now classifies clusters into mutually exclusive categories:
+    1.  **Text Symbol (C5):** Pure symbols (S*) with no Emoji property.
+    2.  **Hybrid (C6):** Non-RGI atomic symbols with Emoji property (e.g., `™` text-style).
+    3.  **Emoji (C7):** Any valid RGI unit, whether atomic (`🚀`) or sequence (`🏳️‍🌈`).
+* **The "Rocket" Logic:** Previously, RGI atoms like the Rocket (`🚀`) were counted in both Hybrids and Emoji. The new logic correctly identifies them as RGI and moves them exclusively to the Emoji bucket, preserving mathematical integrity.
+* **Forensic Facet (Base GC):** To preserve the insight that a Rocket is *also* a symbol, the **Emoji Qualification Profile** now includes a **"BASE"** column (e.g., `BASE: SYM`), exposing the underlying character category without corrupting the top-level count.
+* **Ledger Integrity:** The engine now strictly accounts for **Leaked Components** (e.g., standalone Skin Tones) in the total unit count, ensuring that the Header Summary ("13 Units") perfectly matches the visual table rows.
