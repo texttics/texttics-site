@@ -984,14 +984,24 @@ def render_forensic_hud(t, stats):
     )
 
     # C5: SYMBOLS (Dynamic: KEYBOARD -> EXTENDED)
-    # Logic: Partition all Symbols (S) into Keyboard, Extended (Safe), or Exotic.
+    # Logic: Partition Symbols (S) into Keyboard, Extended (Safe), or Exotic.
+    # EXCLUSION: If a symbol is a valid Emoji component, exclude it from here (handled in C6).
     cnt_s_key = 0
     cnt_s_ext = 0
     cnt_s_exotic = 0
 
+    # Access the Emoji Qualification Map from the global DATA_STORES if available
+    emoji_map = DATA_STORES.get('EmojiQualificationMap', {})
+
     for c in t:
         if unicodedata.category(c).startswith('S'):
             cp = ord(c)
+            
+            # EXCLUSION: If it's a fully-qualified emoji base, skip it here.
+            # This prevents double-counting things like ✅ in both Symbols and Emoji.
+            if c in emoji_map and emoji_map[c] == 'fully-qualified':
+                continue
+
             if cp <= 0x7F:
                 # ALL ASCII Symbols (+, =, $, ^, ~)
                 cnt_s_key += 1
@@ -1005,7 +1015,7 @@ def render_forensic_hud(t, stats):
                 # Box Drawing, Block Elements, & Geometric Shapes (Safe Technical)
                 cnt_s_ext += 1
             else:
-                # Dingbats, Emoji-like symbols, etc.
+                # Dingbats, rare marks (only if NOT an emoji)
                 cnt_s_exotic += 1
 
     # Dynamic Labels
