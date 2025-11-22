@@ -2159,6 +2159,7 @@ tr.flag-row-crit {
   letter-spacing: 0.05em;
   margin-right: 8px;
   min-width: 50px; /* Fixed width for alignment */
+  color: #cbd5e1;
 }
 
 .console-val {
