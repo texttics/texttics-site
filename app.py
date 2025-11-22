@@ -1,13 +1,6 @@
 import asyncio
 import json
-try:
-    # Use the full unicodedata2 library if installed
-    import unicodedata2 as unicodedata
-    print("Using full unicodedata2 library.")
-except ImportError:
-    # Fall back to Pyodide's built-in (incomplete) version
-    import unicodedata
-    print("Warning: unicodedata2 not found. Falling back to built-in unicodedata (normalization may be incomplete).")
+import unicodedata
 from pyodide.ffi import create_proxy, to_js
 from pyodide.http import pyfetch
 from pyscript import document, window
