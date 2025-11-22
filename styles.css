@@ -2384,3 +2384,8 @@ details.profile-section[open] > .tabs,
 details.profile-section[open] > table {
   margin-top: 1.5rem;
 }
+/* --- Layout Fix for Nested Action Bar --- */
+/* Remove the explicit margin because the <details> wrapper now handles spacing */
+details.profile-section .action-bar {
+  margin-top: 0;
+}
