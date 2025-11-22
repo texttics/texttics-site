@@ -170,65 +170,54 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
  // ==========================================
-  // 6. HUD CONSOLE BRIDGE (DOUBLE-DECKER)
+  // 6. HUD CONSOLE BRIDGE (STRUCTURED)
   // ==========================================
   const hudContainer = document.getElementById('forensic-hud');
   
-  // Row 1 Elements
-  const row1Label = document.querySelector('#console-row-main .console-label');
-  const row1Content = document.querySelector('#console-row-main .console-content');
-  const row1Meta = document.querySelector('#console-row-main .console-meta');
-  
-  // Row 2 Elements
-  const row2Label = document.querySelector('#console-row-sub .console-label');
-  const row2Content = document.querySelector('#console-row-sub .console-content');
-  const row2Meta = document.querySelector('#console-row-sub .console-meta');
+  // Primary Row Targets
+  const pDef = document.getElementById('c-p-def');
+  const pLogic = document.getElementById('c-p-logic');
+  const pStd = document.getElementById('c-p-std');
+
+  // Secondary Row Targets
+  const sDef = document.getElementById('c-s-def');
+  const sLogic = document.getElementById('c-s-logic');
+  const sStd = document.getElementById('c-s-std');
 
   const defaults = {
-    r1c: "Hover over a metric for primary definition.",
-    r2c: "Secondary context will appear here."
+    p: "Hover over a metric for definition.",
+    s: "Secondary context will appear here."
   };
 
-  if (hudContainer && row1Content) {
+  if (hudContainer && pDef) {
     
     hudContainer.addEventListener('mouseover', (e) => {
       const col = e.target.closest('.hud-col');
       if (col) {
-        // --- ROW 1 UPDATE ---
-        const d1 = col.getAttribute('data-d1') || "";
-        const m1 = col.getAttribute('data-m1') || "";
-        const r1 = col.getAttribute('data-r1') || "";
-        
-        row1Content.textContent = d1;
-        let meta1 = [];
-        if(m1) meta1.push(`[MATH: ${m1}]`);
-        if(r1) meta1.push(`[REF: ${r1}]`);
-        row1Meta.textContent = meta1.join(" ");
+        // Populate Primary
+        pDef.textContent = col.getAttribute('data-d1') || "";
+        pLogic.textContent = col.getAttribute('data-m1') || ""; // m1 = Logic
+        pStd.textContent = col.getAttribute('data-r1') || "";   // r1 = Std
 
-        // --- ROW 2 UPDATE ---
-        const d2 = col.getAttribute('data-d2') || "";
-        const m2 = col.getAttribute('data-m2') || "";
-        const r2 = col.getAttribute('data-r2') || "";
-
-        row2Content.textContent = d2;
-        let meta2 = [];
-        if(m2) meta2.push(`[MATH: ${m2}]`);
-        if(r2) meta2.push(`[REF: ${r2}]`);
-        row2Meta.textContent = meta2.join(" ");
+        // Populate Secondary
+        sDef.textContent = col.getAttribute('data-d2') || "";
+        sLogic.textContent = col.getAttribute('data-m2') || "";
+        sStd.textContent = col.getAttribute('data-r2') || "";
       }
     });
 
     hudContainer.addEventListener('mouseout', (e) => {
        if (!e.relatedTarget || !hudContainer.contains(e.relatedTarget)) {
-          // Reset to defaults
-          row1Content.textContent = defaults.r1c;
-          row1Meta.textContent = "";
-          row2Content.textContent = defaults.r2c;
-          row2Meta.textContent = "";
+          // Reset
+          pDef.textContent = defaults.p;
+          pLogic.textContent = "";
+          pStd.textContent = "";
+          
+          sDef.textContent = defaults.s;
+          sLogic.textContent = "";
+          sStd.textContent = "";
        }
     });
-    
-    // Note: Navigation Click Logic removed as requested
   }
 
   // --- Keyboard Navigation Handler ---
