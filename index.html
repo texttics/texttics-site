@@ -142,21 +142,17 @@
             </div>
         </div>
         
-        <details class="profile-section" id="inspector-panel-wrapper">
-          <summary><h2 class="section-title">Character Inspector</h2></summary>
-          <div id="inspector-panel-content">
-             <div class="inspector-placeholder">
-                 Click within the text input. Properties will be shown for the character immediately to the right of the cursor.
-             </div>
+        <div class="action-bar">
+          <div class="action-buttons-row">
+            <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
+              ▥ Analyze Macrostructure
+            </button>
+            <button id="copy-report-btn" class="tool-btn report-btn" title="Copy full structured report">
+              Copy Stage 1 Report
+            </button>
           </div>
-        </details>
-
-        <div class="macro-analysis-control">
-          <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
-            ▥ Analyze Macrostructure
-          </button>
-          <p class="macro-analysis-description">
-            Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution of the current text.
+          <p class="action-bar-desc">
+            Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
           </p>
         </div>
       </section>
@@ -165,13 +161,19 @@
         GROUP 2: THE STRUCTURAL PROFILE
       -->
 
+<details class="profile-section" id="inspector-panel-wrapper">
+          <summary><h2 class="section-title">Character Inspector</h2></summary>
+          <div id="inspector-panel-content">
+             <div class="inspector-placeholder">
+                 Click within the text input. Properties will be shown for the character immediately to the right of the cursor.
+             </div>
+          </div>
+      </details>
+      
       <!-- Group 2.A: Dual-Atom Profile (Module 1) -->
       <details class="fingerprint-section profile-section" id="dual-atom" aria-labelledby="dual-atom-title">
         <summary><h2 id="dual-atom-title" class="section-title">
   <span>Dual-Atom Profile</span>
-  <button id="copy-report-btn" class="copy-btn" title="Copy full structured report">
-    Copy Stage 1 Report
-  </button>
 </h2></summary>
 
         <!-- WAI-ARIA Tabs pattern (Overview | Full Breakdown) -->
