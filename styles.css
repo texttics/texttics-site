@@ -2279,3 +2279,58 @@ tr.flag-row-crit {
 
 /* Remove old classes to prevent conflicts */
 .hud-row-extra { display: none !important; }
+
+
+/* --- Action Bar (Grouped Global Controls) --- */
+.action-bar {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.action-buttons-row {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+}
+
+.action-bar .tool-btn {
+  flex: 1; /* Both buttons take equal width */
+  justify-content: center;
+  font-size: 1rem;
+  padding: 0.75rem;
+  border-color: var(--color-border);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+.action-bar .tool-btn:hover {
+  background-color: var(--color-white);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* Specific button styling */
+.macro-btn { font-weight: 700; }
+.report-btn { font-weight: 600; }
+
+.action-bar-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border-light);
+}
+
+/* Mobile responsive for buttons */
+@media (max-width: 640px) {
+  .action-buttons-row {
+    flex-direction: column;
+  }
+}
