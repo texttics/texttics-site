@@ -825,11 +825,9 @@ def analyze_bidi_structure(t: str, rows: list):
     return penalty_count
 
 @create_proxy
-@create_proxy
 def render_forensic_hud(t, stats, emoji_consumed=None):
     """
-    Renders the 'Forensic Matrix' V21 (Deduplicated Hybrids).
-    Uses emoji_consumed set to prevent double-counting RGI sequences in C6.
+    Renders the 'Forensic Matrix' V22 (Deduped Hybrids with World-Class Logic).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -980,34 +978,29 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
         d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
     )
 
-    # --- PARTITIONING (Symbols vs Hybrids vs Emoji) ---
+    # --- PARTITIONING ---
     emoji_data = DATA_STORES.get('EmojiData', {})
     def is_emoji(char): return char in emoji_data.get('Emoji', set())
     def is_emoji_component(char): return char in emoji_data.get('Emoji_Component', set())
     def is_emoji_presentation(char): return char in emoji_data.get('Emoji_Presentation', set())
+    has_emoji_data = bool(emoji_data)
 
     cnt_s_key = 0
     cnt_s_ext = 0
     cnt_s_exotic = 0
-    
     cnt_h_pict = 0 
     cnt_h_ambig = 0 
 
     for i, c in enumerate(t):
-        # DEDUPLICATION: If this char was consumed by the Emoji Engine (C7), skip it here.
-        if i in emoji_consumed:
-            continue
+        if i in emoji_consumed: continue
 
         cp = ord(c)
         
-        # 1. Hybrids (Emoji Atoms that are NOT part of a C7 sequence)
-        # Note: Since we skip consumed indices, anything left here is a "loose atom".
-        if is_emoji(c) and not is_emoji_component(c):
+        if has_emoji_data and is_emoji(c) and not is_emoji_component(c):
             cnt_h_pict += 1
             if not is_emoji_presentation(c):
                 cnt_h_ambig += 1
         
-        # 2. Pure Symbols (Non-Emoji S*)
         elif unicodedata.category(c).startswith('S'):
             if cp <= 0x7F:
                 cnt_s_key += 1
@@ -1041,11 +1034,13 @@ def render_forensic_hud(t, stats, emoji_consumed=None):
     )
 
     # C6: HYBRIDS
-    # NOTE: These are now exclusively *Atomic* hybrids (not in sequences)
+    h_val = str(cnt_h_pict) if has_emoji_data else "N/A"
+    h_amb = str(cnt_h_ambig) if has_emoji_data else "N/A"
+    
     c6 = render_cell(
         "HYBRIDS", 
-        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
-        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
+        "PICTOGRAPHS", h_val, color_neutral(cnt_h_pict),
+        "AMBIGUOUS", h_amb, color_clean(cnt_h_ambig),
         d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Emoji=Yes (Unconsumed)", r1="Class: Atom",
         d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering"
     )
@@ -2467,6 +2462,7 @@ def compute_emoji_analysis(text: str) -> dict:
     """
     Scans the text and returns a full report on RGI sequences,
     single-character emoji, and qualification status.
+    Populates 'consumed_indices' for disjoint partitioning in the HUD.
     """
     # --- 1. Get Data Stores ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -2544,7 +2540,7 @@ def compute_emoji_analysis(text: str) -> dict:
                             if not _find_in_ranges(base_cp, "Emoji_Presentation"):
                                 flag_forced_emoji.append(f"#{i}")
 
-                    # MARK INDICES AS CONSUMED
+                    # [CRITICAL] MARK INDICES AS CONSUMED
                     for j in range(i, i + L): consumed_indices.add(j)
                     i += L
                     break
@@ -2571,7 +2567,6 @@ def compute_emoji_analysis(text: str) -> dict:
                 is_modifier = _find_in_ranges(cp, "Emoji_Modifier")
                 is_ri = window.RegExp.new(r"^\p{Regional_Indicator}$", "u").test(char)
 
-                # Anomaly Checks
                 if is_ri:
                     flag_invalid_ri.append(f"#{i}")
                     if final_status == "unknown": final_status = "component"
@@ -2601,6 +2596,8 @@ def compute_emoji_analysis(text: str) -> dict:
                 if is_rgi_single:
                     rgi_singles_count += 1
                     if final_status == "unknown": final_status = "fully-qualified"
+                    # [CRITICAL] Mark single RGI emoji as consumed too
+                    consumed_indices.add(i)
                 
                 if is_ivs:
                     if final_status == "unknown": final_status = "component"
@@ -2614,8 +2611,9 @@ def compute_emoji_analysis(text: str) -> dict:
             elif final_status == "component" and not is_ivs: flag_component.append(f"#{i}")
             elif final_status == "fully-qualified": flag_fully_qualified.append(f"#{i}")
 
-            # MARK INDICES AS CONSUMED
-            for j in range(i, i + consumed): consumed_indices.add(j)
+            # Mark Forced Text or Tag Sequences as consumed
+            if consumed > 1:
+                for j in range(i, i + consumed): consumed_indices.add(j)
             i += consumed
 
     return {
@@ -2634,7 +2632,7 @@ def compute_emoji_analysis(text: str) -> dict:
             "Flag: Intent-Modifying ZWJ": {'count': len(flag_intent_mod_zwj), 'positions': flag_intent_mod_zwj}
         },
         "emoji_list": emoji_details_list,
-        "consumed_indices": consumed_indices
+        "consumed_indices": consumed_indices # Return the set
     }
 
 def _parse_script_extensions(txt: str):
@@ -6090,7 +6088,10 @@ def update_all(event=None):
 
     # Emoji Engine
     emoji_report = compute_emoji_analysis(t)
+    
+    # [CRITICAL] Extract consumed indices for HUD deduplication
     emoji_consumed = emoji_report.get("consumed_indices", set())
+    
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
     emoji_list = emoji_report.get("emoji_list", [])
@@ -6121,7 +6122,6 @@ def update_all(event=None):
     script_run_stats = compute_script_run_analysis(t)
 
     # Module 3: Threat-Hunting
-    # [CRITICAL] Compute this first so we have the metrics!
     threat_results = compute_threat_analysis(t)
     window.latest_threat_data = threat_results
     
@@ -6150,76 +6150,50 @@ def update_all(event=None):
 
     # --- THREAT FLAGS & SCORE LOGIC ---
     
-    # 1. Gather inputs for Threat Score
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
     nsm_stats = analyze_nsm_overload(grapheme_strings)
 
-    # Helper to safely get counts from forensic map
     def get_count(label):
         return forensic_map.get(label, {}).get("count", 0)
 
-    decode_grade_row = forensic_map.get("Integrity Level (Heuristic)", {})
-    decode_grade = decode_grade_row.get("badge", "OK").split(' ')[0] # Extract just "CRITICAL"/"WARNING" from badge string
-    
     malicious_bidi = threat_results.get('bidi_danger', False)
     script_mix_class = threat_results.get('script_mix_class', "")
-
-    # Retrieve metrics safely from the ALREADY COMPUTED threat_results
     skel_metrics = threat_results.get("skel_metrics", {})
     
-    # Gather Noise (for display)
     noise_list = []
     if nsm_stats["level"] >= 1: noise_list.append("Excessive Combining Marks (Zalgo)")
     drift_ascii = skel_metrics.get("drift_ascii", 0)
     if drift_ascii > 0: noise_list.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
 
-    # Inputs for Threat Auditor
     score_inputs = {
         "malicious_bidi": malicious_bidi,
         "has_unclosed_bidi": get_count("Flag: Unclosed Bidi Sequence") > 0,
-        
         "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
         "script_mix_class": script_mix_class,
-        
         "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
         "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
-        # [NEW] Pass RGI count to filter false positives
         "rgi_count": meta_cards.get("RGI Emoji Sequences", 0),
-        
         "tags_count": get_count("Flag: Unicode Tags (Plane 14)"),
-        
         "suspicious_syntax_vs": get_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
-        
-        # [NEW] Pass Forced Presentation counts
         "forced_pres_count": (
             emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("count", 0) +
             emoji_flags.get("Flag: Forced Text Presentation", {}).get("count", 0)
         ),
-        
         "noise_list": noise_list
     }
     
     final_score = compute_threat_score(score_inputs)
     
-    
-    # --- Construct Display Flags ---
     final_threat_flags = {}
-    
-    # 1. Score Row (Exploit Likelihood)
-    # FIX: Use 'verdict' and pre-calculated 'severity_class' from the Auditor
     score_badge = f"{final_score['verdict']} (Score: {final_score['score']})"
-    
-    # Pass the full ledger object to the renderer
     final_threat_flags["Threat Level (Heuristic)"] = {
-        'count': 0,
-        'positions': [], # Legacy field
-        'severity': final_score['severity_class'], # Use the class calculated by the Auditor
+        'count': 0, 'positions': [],
+        'severity': final_score['severity_class'],
         'badge': score_badge,
         'ledger': final_score.get('ledger', []),
         'noise': final_score.get('noise', [])
     }
     
-    # 2. Zalgo Row
     if nsm_stats["count"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
         label = "Flag: Excessive Combining Marks (Zalgo)"
@@ -6230,10 +6204,8 @@ def update_all(event=None):
             'badge': "ZALGO"
         }
 
-    # 3. Merge existing threat flags
     final_threat_flags.update(threat_results['flags'])
     
-    # 4. Merge mapped forensic flags
     inv_vs = forensic_map.get("Flag: Invalid Variation Selector")
     if inv_vs and inv_vs.get("count", 0) > 0:
         final_threat_flags["Suspicious: Invalid Variation Selectors"] = inv_vs
@@ -6257,7 +6229,6 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
 
-    # --- TOC Counts ---
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
         'shape': sum(1 for v in shape_matrix.values() if v > 0) + sum(1 for v in minor_seq_stats.values() if v > 0) + sum(1 for v in lb_run_stats.values() if v > 0) + sum(1 for v in bidi_run_stats.values() if v > 0) + sum(1 for v in wb_run_stats.values() if v > 0) + sum(1 for v in sb_run_stats.values() if v > 0) + sum(1 for v in gb_run_stats.values() if v > 0) + sum(1 for v in eaw_run_stats.values() if v > 0) + sum(1 for v in vo_run_stats.values() if v > 0),
@@ -6267,16 +6238,12 @@ def update_all(event=None):
         'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
     }
 
-    # --- 4. Call All Renderers ---
-    # Note: We pass 'text_context=t' ONLY to renderers that generate clickable position links.
-    
     render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
     render_parallel_table(cp_minor, gr_minor, "minor-parallel-body", ALIASES)
     
-    # Shape & Run Profiles (Counts/Sequences only, no positions to click)
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
@@ -6287,24 +6254,15 @@ def update_all(event=None):
     render_matrix_table(eaw_run_stats, "eawidth-run-matrix-body")
     render_matrix_table(vo_run_stats, "vo-run-matrix-body")
     
-    # Integrity Profile (Has Positions -> Needs Context)
     render_integrity_matrix(forensic_rows, text_context=t)
-    
-    # Provenance Profile (Has Positions -> Needs Context)
     render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True, text_context=t)
     render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True, text_context=t)
-
-    # Emoji Profile (Has Positions -> Needs Context)
     render_emoji_qualification_table(emoji_list, text_context=t)
     render_emoji_summary(emoji_counts, emoji_list)
-
-    # Threat Profile (Has Positions -> Needs Context)
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
-    
     render_toc_counts(toc_counts)
 
-    # --- FORENSIC HUD (Corrected Hook) ---
     is_ascii_safe = True
     if "ASCII-Compatible" in cp_summary:
         is_ascii_safe = cp_summary["ASCII-Compatible"].get("is_full", False)
@@ -6313,14 +6271,15 @@ def update_all(event=None):
         "major_stats": cp_major,
         "forensic_flags": forensic_map,
         "rgi_count": emoji_counts.get("RGI Emoji Sequences", 0),
-        "integrity": audit_result,  # Now this variable exists!
-        "threat": final_score,      # This assumes final_score was calc'd above
+        "integrity": audit_result,
+        "threat": final_score,
         "script_mix": script_mix_class,
         "is_ascii": is_ascii_safe,
         "nsm_level": nsm_stats["level"],
         "drift": skel_metrics.get("total_drift", 0)
     }
     
+    # [CRITICAL FIX] Pass emoji_consumed to deduplicate Hybrids
     render_forensic_hud(t, hud_stats, emoji_consumed)
     
     # Stage 2 Bridge
