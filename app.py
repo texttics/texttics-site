@@ -2545,8 +2545,9 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
             
-            # Hybrid Partitioning: Only count if base is Symbol (S*)
-            if base_cat.startswith("S"):
+            # Hybrid Partitioning: Only count if base is Symbol (S*) AND NOT RGI
+            # This ensures RGI Atoms (like Rocket) move purely to Column 7 (Emoji)
+            if base_cat.startswith("S") and not rgi_status:
                 counts["hybrid_pictographs"] += 1
                 # Ambiguity Check: Text-Default (Emoji=Yes, Pres=No) and no VS16
                 has_vs16 = "\uFE0F" in cluster
