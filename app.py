@@ -827,7 +827,7 @@ def analyze_bidi_structure(t: str, rows: list):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V13 (Dynamic Tiering & Comfort Zones).
+    Renders the 'Forensic Matrix' V15 (Swapped Whitespace/Delimiters).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -923,32 +923,27 @@ def render_forensic_hud(t, stats):
     seg_est = vu / 20.0
     c2 = render_cell(
         "SEGMENTATION", 
-        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "EST. BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
         "SENTENCES", str(uax_sent), color_neutral(uax_sent),
         d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
         d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
     # C3: DELIMITERS (Dynamic: ASCII -> TYPOGRAPHIC)
-    # Logic: Split into ASCII, Comfort (Smart Quotes), and Exotic
     cnt_ascii = 0
     cnt_comfort = 0
     cnt_exotic = 0
     
-    # Definition of Comfort Punctuation (Smart quotes, dashes, bullets)
-    # Ranges: General Punctuation (2000-206F) subset, Latin-1 Punct (A0-BF)
     for c in t:
         if c in {'.', '?', '!', ';', ','}:
             cnt_ascii += 1
         elif unicodedata.category(c).startswith('P'):
             cp = ord(c)
-            # Whitelist: Latin-1 Supplement Punctuation OR General Punctuation block (common typography)
             if (0xA0 <= cp <= 0xFF) or (0x2010 <= cp <= 0x2027):
                 cnt_comfort += 1
             else:
                 cnt_exotic += 1
 
-    # Dynamic Labeling
     if cnt_comfort > 0:
         c3_label = "TYPOGRAPHIC"
         c3_val = cnt_ascii + cnt_comfort
@@ -981,27 +976,23 @@ def render_forensic_hud(t, stats):
     )
 
     # C5: SYMBOLS (Dynamic: KEYBOARD -> EXTENDED)
-    # Logic: Split into Keyboard (ASCII), Comfort (Latin-1/Currency), and Exotic
     c3_set = {'.', '?', '!', ';', ','}
     cnt_key = 0
-    cnt_ext = 0 # Safe Extended (Currency, Degree, etc)
-    cnt_rare = 0 # True Exotic (Math, Arrows, Dingbats)
+    cnt_ext = 0
+    cnt_rare = 0
 
     for c in t:
         cp = ord(c)
         if 0x21 <= cp <= 0x7E and not c.isalnum() and c not in c3_set:
             cnt_key += 1
         elif cp > 0x7F and unicodedata.category(c).startswith('S'):
-            # Whitelist: Latin-1 Supplement Symbols (Currency, Copyright, Degree)
             if 0xA0 <= cp <= 0xFF: 
                 cnt_ext += 1
-            # Whitelist: General Punctuation (Bullets) - handled in C3, but if S category:
             elif cp == 0x20AC: # Euro
                 cnt_ext += 1
             else:
                 cnt_rare += 1
 
-    # Dynamic Labeling
     if cnt_ext > 0:
         c5_label = "EXTENDED"
         c5_val = cnt_key + cnt_ext
@@ -1071,7 +1062,8 @@ def render_forensic_hud(t, stats):
     )
 
     # --- ASSEMBLY ---
-    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8])
+    # NOTE: c4 (Whitespace) is now before c3 (Delimiters)
+    container.innerHTML = "".join([c0, c1, c2, c4, c3, c5, c6, c7, c8])
 
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
