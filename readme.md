@@ -938,31 +938,48 @@ In V11, we resolved a critical "split-brain" design flaw where the Threat Engine
     * **Forensic Composition:** Zalgo strings are now correctly identified as **"COMPOSITION: Base + 16 Marks"** rather than masquerading as "Basic Latin."
     * **Block Mixing:** Explicitly flags "Basic Latin + 1 Other Block" to expose the multi-block nature of spoofing attacks.
 
-### 4. The "Forensic Spec Sheet" HUD (Identity Column)
-*(UI Redesign)*
 
-The Identity Column has been completely redesigned to match the aesthetic of a high-end forensic spec sheet, prioritizing **clarity** and **completeness** over redundancy.
+### 4. The "Forensic HUD" (Global Dashboard)
+*(New in V14-V24)*
 
-* **De-Cluttered Chips:** Removed redundant chips (`ASCII`, `NON-STD`) that duplicated data found elsewhere.
+The application now features a **10-Column Forensic Matrix** serving as the primary "Heads-Up Display" (HUD). This component replaces passive data tables with an active, scientifically calibrated triage instrument.
+
+* **Elastic Tiering ("The Comfort Zone"):** The HUD uses a dynamic labeling system to prevent "analyst fatigue" (false positives). It distinguishes between **Safe Typography** (Smart quotes, Latin-1, Math Operators) and **True Exotics** (Dingbats, Rare Scripts).
+    * **Delimiters:** Shifts dynamically from `ASCII` $\to$ `TYPOGRAPHIC` (if safe smart-quotes are present) $\to$ `EXOTIC` (only for true anomalies).
+    * **Symbols:** Shifts from `KEYBOARD` $\to$ `EXTENDED` (Currency, Math, Arrows, Boxes) $\to$ `EXOTIC` (Risk).
+* **Volumetric Analysis:** Replaces simple "Length" with forensic mass metrics.
+    * **Lexical Mass:** Calculates `Units` based on a standardized keystroke model (`(L+N)/5.0`) to compare payload density across languages.
+    * **Segmentation:** Provides a rigorous `1 Block = 20 Units` structural estimate alongside standard **UAX #29** sentence counting.
+* **Zero-State Logic:** Utilizes a strict color-coding system for cognitive clarity:
+    * **Neutral Metrics (Gray/Black):** Used for volume and standard counts.
+    * **Safety Metrics (Green/Orange/Red):** Used for Integrity, Threat, and Anomalies. "Clean" (0 anomalies) renders in a calm Light Green, distinct from the authoritative Deep Green of "Safe" statuses.
+
+### 5. The Partitioning Engine (Emoji & Hybrids)
+*(New in V19-V24)*
+
+We have implemented a rigorous, **Disjoint Partitioning Strategy** to solve the "Double-Counting" problem inherent in Unicode (e.g., where `✅` is both a Symbol and an Emoji). The engine synchronizes the **Atomic View** (Code Points) with the **Sequence View** (RGI Clusters).
+
+* **Zero Double-Counting:** The engine tracks "consumed indices." If a character is part of a valid **RGI Emoji Sequence** (e.g., the Check Mark in a complex chain), it is consumed by the **Emoji Column (C7)** and strictly excluded from the Symbol/Hybrid counts.
+* **The "Hybrid" Class (C6):** A dedicated forensic bucket for **Atomic Pictographs**—characters with the `Emoji` property that appear as loose atoms (not part of a sequence).
+    * **Primary:** `PICTOGRAPHS` (Atomic Emoji Symbols).
+    * **Secondary:** `AMBIGUOUS` (Text-Default Hybrids). Detects "Shapeshifters"—characters like `™` or `☺` that default to text presentation (`VS15`) but can render as emoji (`VS16`), a primary vector for obfuscation.
+* **Granular Qualification Profile:** The detailed Emoji table now explicitly categorizes every unit as **Atomic** or **Sequence**, and flags **Non-RGI** anomalies separately from standard RGI units.
+
+### 6. The Character Inspector (Micro-Analysis)
+*(Forensic Spec Sheet)*
+
+While the HUD provides the *Macro* view, the Inspector provides the *Micro* view. It connects the *where* (cursor position) to the *what* (deep Unicode properties).
+
 * **The "Truth Chip" System:**
     * **Verdict-Driven:** Chips like `[STACKED]`, `[BIDI]`, `[SPOOF]`, and `[ROT]` appear *only* when the Threat Engine confirms an active vector.
-    * **Context-Aware Color:** `[NOTE]` badges are now **Blue** (matching the Lookalikes box), ensuring strict visual hierarchy alongside Red (Critical) and Orange (Suspicious).
-* **Dynamic Header:** The header title now dynamically shifts from "LATIN LETTER A" to **"GRAPHEME CLUSTER"** when analyzing complex sequences, forcing the analyst to check the component table.
-* **2x2 Technical Matrix:** Replaced the list view with a dense, framed 2x2 grid for technical specs (`Block`, `Script`, `Category`, `Age`), improving scanability and visual density.
+    * **Context-Aware Color:** `[NOTE]` badges use a calm Blue (matching the Lookalikes box), ensuring strict visual hierarchy alongside Red (Critical) and Orange (Suspicious).
+* **Dynamic Identity:** The header dynamically shifts from "LATIN LETTER A" to **"GRAPHEME CLUSTER"** when analyzing complex sequences, forcing the analyst to recognize the multi-part nature of the selection.
+* **Visual Evidence Arrays:**
+    * **Lookalikes Matrix:** Renders a visual grid of potential homoglyphs (e.g., `a` `U+0430` `CYRILLIC`), inheriting the risk color of the verdict.
+    * **Normalization Ghost Strip:** Visualizes the full `RAW` $\to$ `NFKC` $\to$ `SKELETON` transformation chain, exposing "shapeshifting" characters at a glance.
 
-### 5. Visualizing the Threat (Evidence Arrays)
-*(New Visualization Features)*
+### 7. Architectural Polish
 
-We moved beyond simple text lists to **Visual Evidence Arrays**, ensuring threats are visible at a glance.
-
-* **The Lookalikes Matrix:** Instead of a CSV string (`U+0430, U+0061`), we now render a **Visual Grid of Chips**.
-    * **Rich Data:** Each chip displays the Glyph, the Hex Code, and the Script (e.g., `a` `U+0430` `CYRILLIC`).
-    * **Vertical Color Sync:** The Lookalikes box inherits the risk color of the Verdict Panel. If the verdict is **Orange (AMBIGUOUS)**, the Lookalikes box turns **Orange**, visually linking the threat to the evidence.
-* **The "Normalization Ghost" Strip:**
-    * **Always-On Stability:** We now explicitly show **"NORMALIZATION: STABLE"** (in green/black) when no drift is detected, providing affirmative confirmation of safety.
-    * **Visual Chain:** When drift occurs, it renders the full `RAW` → `NFKC` → `SKELETON` transformation chain, allowing analysts to see exactly how a character "shapeshifts" under normalization.
-
-### 6. Architectural Polish
-* **Forensic 9 Restoration:** Fixed a regression where legacy encoding data (`utf8`, `html`, `url`) was temporarily lost during the refactor. The calculation logic was restored and integrated into the new payload.
-* **CSS "Calm" System:** Refined the UI with "Calm" white backgrounds and thin light-gray borders for stable states, reserving high-contrast colors (Red/Orange/Blue) strictly for active signals. This reduces cognitive load during analysis.
-* **Robust Data Loader:** Fixed a critical "unpacking error" in `app.py` to correctly handle the dynamic injection of the new JSON datasets alongside the 31 raw text files.
+* **Hybrid Bridge Architecture:** To ensure performance without blocking the UI, heavy linguistic segmentation tasks (UAX #29) are offloaded to the browser's native V8 engine via `window.TEXTTICS_CALC_UAX_COUNTS`, while Python handles the deep forensic logic.
+* **CSS "Calm" System:** The UI utilizes a "Calm" white background with thin light-gray borders for stable states, reserving high-contrast colors strictly for active signals.
+* **Robust Data Loader:** The engine now gracefully handles dynamic range-based lookups for Emoji properties, ensuring stability even if specific Unicode data files are updated or missing.
