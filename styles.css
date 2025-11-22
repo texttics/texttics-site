@@ -2096,14 +2096,14 @@ tr.flag-row-crit {
   width: 100%;
 }
 
-/* --- HUD CONSOLE (Double-Decker) --- */
+/* --- HUD CONSOLE (Structured Grid) --- */
 .hud-console-strip {
   display: flex;
-  flex-direction: column; /* Stack rows vertically */
+  flex-direction: column;
   justify-content: center;
   width: 100%;
-  height: 54px; /* Fixed height for 2 rows */
-  padding: 4px 12px;
+  height: 54px;
+  padding: 0; /* Padding handled by cells now */
   gap: 0;
   
   background-color: #f9fafb;
@@ -2120,17 +2120,58 @@ tr.flag-row-crit {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 50%; /* Split height evenly */
-  gap: 10px;
+  height: 50%;
+  border-bottom: 1px solid #f3f4f6; /* Separator between Primary/Secondary */
 }
 
-/* Row 1: Main Metric Context */
-#console-row-main .console-label { color: var(--color-primary); }
-#console-row-main .console-content { color: var(--color-text); font-weight: 600; }
+.console-row:last-child {
+  border-bottom: none;
+}
 
-/* Row 2: Sub Metric Context */
-#console-row-sub .console-label { color: var(--color-text-muted); opacity: 0.8; }
-#console-row-sub .console-content { color: var(--color-text-muted); }
+/* --- CONSOLE CELLS (The 2:1:1 Ratio) --- */
+.c-cell-def {
+  flex: 2; /* 50% width */
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.c-cell-meta {
+  flex: 1; /* 25% width */
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid #e5e7eb; /* Vertical Dividers */
+  color: #6b7280;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* --- TEXT STYLING --- */
+.console-key {
+  font-weight: 800;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 8px;
+  min-width: 50px; /* Fixed width for alignment */
+}
+
+.console-val {
+  font-weight: 500;
+}
+
+/* Primary Row Colors */
+#console-row-primary .console-key { color: var(--color-primary); }
+#console-row-primary .console-val { color: var(--color-text); font-weight: 600; }
+
+/* Secondary Row Colors */
+#console-row-secondary .console-key { color: #9ca3af; }
+#console-row-secondary .console-val { color: #6b7280; }
 
 .console-label {
   font-weight: 800;
