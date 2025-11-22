@@ -4558,9 +4558,24 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         # 5. Count
         td_count = f'<td>{data["count"]}</td>'
 
-        # 6. Positions
-        pos_links = create_position_links(data['indices'], text_context)
-        td_pos = f'<td>{pos_links}</td>'
+        # 6. Positions (Using existing _create_position_link)
+        indices = data['indices']
+        links_list = [_create_position_link(idx, text_context) for idx in indices]
+        
+        # Collapse if too many positions
+        if len(links_list) > 5:
+            visible = ", ".join(links_list[:5])
+            hidden = ", ".join(links_list[5:])
+            pos_html = (
+                f'<details style="cursor: pointer;">'
+                f'<summary>{visible} ... ({len(links_list)})</summary>'
+                f'<div style="padding-top: 4px;">{hidden}</div>'
+                f'</details>'
+            )
+        else:
+            pos_html = ", ".join(links_list)
+
+        td_pos = f'<td>{pos_html}</td>'
 
         html.append(f'<tr>{td_seq}{td_kind}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
 
