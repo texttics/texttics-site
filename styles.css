@@ -2348,30 +2348,37 @@ tr.flag-row-crit {
 
 /* --- Profile Section Alignment & Visuals (Native Firefox Arrow) --- */
 
-/* 1. Keep as list-item to preserve the NATIVE BROWSER ARROW */
+/* 1. Keep as list-item to preserve the NATIVE ARROW */
 details.profile-section > summary {
-  display: list-item;       /* This guarantees the native arrow appears */
-  align-items: center;
-  cursor: pointer;          /* Adds "hand" cursor to the row */
+  display: list-item;       /* Guarantees native arrow appears */
+  cursor: pointer;          /* Hand cursor for the arrow area */
   outline: none;
+  transition: color 0.2s ease; /* Smooth color transition for the ARROW */
 }
 
 /* 2. Force the H2 title to sit INLINE next to the arrow */
 details.profile-section > summary .section-title {
-  display: inline-block;    /* Crucial: Moves text up from the next line */
+  display: inline-block;    /* Moves text up from the next line */
   vertical-align: middle;   /* Aligns text vertically with the arrow */
   margin: 0;
-  width: calc(100% - 2rem); /* Stretches the grey border to the right */
-  cursor: pointer;          /* Crucial: Fixes the "cursor not working" bug */
-  transition: color 0.2s ease;
+  width: calc(100% - 2rem); /* Stretches the grey border */
+  cursor: pointer;          /* Hand cursor for the text area */
+  transition: color 0.2s ease; /* Smooth color transition for the TEXT */
 }
 
-/* 3. Blue Hover Effect (Text Only) */
+/* 3. Blue Hover Effect: ARROW */
+/* The native marker inherits color from the summary parent */
+details.profile-section > summary:hover {
+  color: var(--color-primary-focus);
+}
+
+/* 4. Blue Hover Effect: TEXT */
+/* Explicitly coloring the H2 ensures it matches the arrow */
 details.profile-section > summary:hover .section-title {
   color: var(--color-primary-focus);
 }
 
-/* 4. Restore spacing for the content body */
+/* 5. Restore spacing for the content body */
 details.profile-section[open] > div,
 details.profile-section[open] > .tabs,
 details.profile-section[open] > table {
