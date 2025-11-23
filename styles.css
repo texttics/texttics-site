@@ -1427,13 +1427,6 @@ Stage 2: Heatmap Row Classes
   margin-right: 0;   /* Reset right margin */
 }
 
-/* --- REVEAL BUTTON FIX --- */
-#btn-reveal {
-  margin-right: 0; /* Ensures it touches the right edge */
-}
-/* --- END --- */
-
-
 /* --- Repertoire Card Styling --- */
 
 .card.card-repertoire {
@@ -2501,5 +2494,13 @@ details.profile-section .action-bar {
   color: #000000;            /* Black text */
   text-transform: none;      /* Standard casing (not all caps) */
   font-weight: 600;
+  margin-right: 0; /* Ensures it touches the right edge */
 }
-
+/* --- Special Forensic Reveal Buttons (Violet Hover) --- */
+#btn-reveal:hover,
+#btn-reveal2:hover {
+    border-color: #7c3aed;       /* Rigorous Violet Border */
+    color: #7c3aed;              /* Rigorous Violet Text */
+    background-color: #f5f3ff;   /* Very subtle lavender tint */
+    cursor: pointer;
+}
