@@ -6425,7 +6425,7 @@ def reveal_invisibles(event=None):
     el = document.getElementById("text-input")
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
-    reveal2_btn = document.getElementById("btn-reveal2") # Make sure to select this too
+    reveal2_btn = document.getElementById("btn-reveal2") 
     
     if not el or not el.value: return
 
@@ -6500,17 +6500,17 @@ def reveal_invisibles(event=None):
             reveal_btn.style.display = "flex" # Force Stay Visible
             reveal_btn.innerHTML = "Revert to Original &#x21A9;"
             
-        # Ensure Highlight button stays visible too (optional, but good UX)
+        # Ensure Highlight button stays visible too
         if reveal2_btn:
             reveal2_btn.style.display = "flex"
         
-        # 1. Left Status: DO NOT CHANGE (Remains "Input: Ready")
-        # (We purposefully do NOT update status_line here)
+        # [FIX] Left Status: Do NOT touch status_line. 
+        # It stays "Input: Ready" (Green) as requested.
         
-        # 2. Right Status: New Format (Emerald Success)
+        # Right Status: New Format (Emerald Success)
         details_line.className = "status-details success"
         
-        # [FIX] Emerald Eye Icon (Hardcoded Color #047857)
+        # Emerald Eye Icon (Hardcoded Color #047857)
         icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
         
         # "Non-Standard Invisibles: {TOTAL} Deobfuscated {EYE}"
