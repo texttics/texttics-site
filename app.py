@@ -6421,6 +6421,7 @@ def reveal_invisibles(event=None):
     status_line = document.getElementById("status-line")
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
+    reveal2_btn = document.getElementById("btn-reveal2")
     
     if not el or not el.value:
         return
