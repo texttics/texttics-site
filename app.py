@@ -6521,7 +6521,7 @@ def reveal2_invisibles(event=None):
         except:
             char_code = "INVISIBLE"
 
-        details_line.innerHTML = f"{icon_loc}<strong>Highlighter:</strong> #{target_idx} of {count} ({char_code})"
+        details_line.innerHTML = f"<strong>Non-Std Inv. Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;({char_code}){icon_loc}"
 
 # ---
 # 6. INITIALIZATION
