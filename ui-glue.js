@@ -710,11 +710,10 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     }
   }
 
-  // A. Copy Dashboard Metrics
+  // A. Copy HUD Data (Updated: Captures Primary & Secondary)
   const btnCopyHud = document.getElementById('btn-copy-hud');
   if (btnCopyHud) {
     btnCopyHud.addEventListener('click', () => {
-      // Scrape the HUD values
       const hud = document.getElementById('forensic-hud');
       if (!hud) return;
       
@@ -722,9 +721,21 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       const cols = hud.querySelectorAll('.hud-col');
       
       cols.forEach(col => {
-        const label = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
-        const mainVal = col.querySelector('.hud-val')?.textContent.trim() || "0";
-        report += `${label}: ${mainVal}\n`;
+        // 1. Get the Column Header (e.g., ALPHANUMERIC)
+        const header = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
+        
+        // 2. Find all metric groups (LITERALS, RUNS, etc.) in this column
+        const groups = col.querySelectorAll('.hud-metric-group');
+        
+        if (groups.length > 0) {
+            report += `\n[${header}]\n`; // Section Header
+            groups.forEach(group => {
+                const label = group.querySelector('.hud-label')?.textContent.trim() || "VAL";
+                const val = group.querySelector('.hud-val')?.textContent.trim() || "-";
+                // Output format: "  LITERALS: 4"
+                report += `  ${label}: ${val}\n`;
+            });
+        }
       });
       
       copyToClipboard(report, 'btn-copy-hud');
