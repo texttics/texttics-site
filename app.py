@@ -6165,9 +6165,14 @@ def update_all(event=None):
             # HTML Order: Text First, Icon Second
             details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
             
-            # HIDE Reveal and Reveal2 Buttons
-            if reveal_btn: reveal_btn.style.display = "none"
-            if reveal2_btn: reveal2_btn.style.display = "none"
+            # HIDE Reveal Buttons (Only if NOT in Reveal Mode)
+            # We check if the 'reveal-active' class is present. If so, we keep buttons visible
+            # so the user can click "Revert".
+            is_revealed = t_input.classList.contains("reveal-active")
+            
+            if not is_revealed:
+                if reveal_btn: reveal_btn.style.display = "none"
+                if reveal2_btn: reveal2_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
@@ -6414,24 +6419,40 @@ def update_all(event=None):
 @create_proxy
 def reveal_invisibles(event=None):
     """
-    Replaces invisible/control characters in the input with visible tags.
-    Updates UI with Blue/White theme.
+    TOGGLE MODE: Replaces invisible characters with tags.
+    If clicked again, restores the original text.
     """
     el = document.getElementById("text-input")
-    status_line = document.getElementById("status-line")
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
-    reveal2_btn = document.getElementById("btn-reveal2")
+    reveal2_btn = document.getElementById("btn-reveal2") # Make sure to select this too
     
-    if not el or not el.value:
+    if not el or not el.value: return
+
+    # --- 1. REVERT LOGIC (Obfuscate Back) ---
+    if el.getAttribute("data-revealed") == "true":
+        # Restore original text
+        original = el.getAttribute("data-original")
+        if original:
+            el.value = original
+        
+        # Cleanup State
+        el.removeAttribute("data-revealed")
+        el.removeAttribute("data-original")
+        el.classList.remove("reveal-active")
+        
+        # Reset Button Text
+        if reveal_btn: 
+            reveal_btn.innerHTML = "Transform Non-Standard Invisibles &#x21C4;"
+        
+        # Run update to reset UI to "Ready/Detected" state
+        update_all(None)
         return
-    
+
+    # --- 2. TRANSFORM LOGIC ---
     raw_text = el.value
     new_chars = []
     
-    # [SVG ICON] Alert Triangle (Stroke uses currentColor -> will be Blue)
-    ICON_ALERT = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 6px; display: inline-block;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
-
     counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0, "Other": 0 }
     total_replaced = 0
     
@@ -6466,30 +6487,34 @@ def reveal_invisibles(event=None):
             new_chars.append(char)
             
     if total_replaced > 0:
+        # Save state for Undo
+        el.setAttribute("data-original", raw_text)
+        el.setAttribute("data-revealed", "true")
+        
+        # Apply Transformation
         el.value = "".join(new_chars)
         el.classList.add("reveal-active")
         
-        # Hide button (Job Done)
-        if reveal_btn: reveal_btn.style.display = "none"
+        # Update Buttons (Toggle State)
+        if reveal_btn: 
+            reveal_btn.style.display = "flex" # Force Stay Visible
+            reveal_btn.innerHTML = "Revert to Original &#x21A9;"
+            
+        # Ensure Highlight button stays visible too (optional, but good UX)
+        if reveal2_btn:
+            reveal2_btn.style.display = "flex"
         
-        # 1. Update Left Status (BLUE Mode)
-        status_line.className = "status-revealed"
-        status_line.innerHTML = f"{ICON_ALERT}<strong>VISUAL REVEAL MODE:</strong> Raw text replaced with {total_replaced} tags."
+        # 1. Left Status: DO NOT CHANGE (Remains "Input: Ready")
+        # (We purposefully do NOT update status_line here)
         
-        # 2. Update Right Status (Emerald Success Pill)
-        active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
-        breakdown = ", ".join(active_cats)
+        # 2. Right Status: New Format (Emerald Success)
         details_line.className = "status-details success"
         
-        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
-        details_line.innerHTML = f"{icon_eye}<strong>Deobfuscated:</strong> {total_replaced} ({breakdown})"
+        # [FIX] Emerald Eye Icon (Hardcoded Color #047857)
+        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
         
-    else:
-        # Reset
-        status_line.className = "status-ready"
-        status_line.textContent = "No non-standard invisible characters found."
-        details_line.className = "status-details"
-        details_line.textContent = ""
+        # "Non-Standard Invisibles: {TOTAL} Deobfuscated {EYE}"
+        details_line.innerHTML = f"Non-Standard Invisibles:&nbsp;{total_replaced}&nbsp;Deobfuscated&nbsp;{icon_eye}"
 
 
 @create_proxy
