@@ -840,3 +840,48 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       copyToClipboard(report, 'btn-copy-inspector');
     });
   }
+
+// D. Copy All Data (Aggregator)
+  const btnCopyAll = document.getElementById('btn-copy-all-everything');
+  if (btnCopyAll) {
+    btnCopyAll.addEventListener('click', () => {
+      let megaReport = "";
+      const separator = "\n\n==================================================\n\n";
+
+      // 1. Get HUD Data
+      const hud = document.getElementById('forensic-hud');
+      if (hud) {
+        let hudText = "[ HUD Metrics ]\n";
+        const cols = hud.querySelectorAll('.hud-col');
+        cols.forEach(col => {
+          const header = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
+          const groups = col.querySelectorAll('.hud-metric-group');
+          if (groups.length > 0) {
+              hudText += `\n[${header}]\n`;
+              groups.forEach(group => {
+                  const label = group.querySelector('.hud-label')?.textContent.trim() || "VAL";
+                  const val = group.querySelector('.hud-val')?.textContent.trim() || "-";
+                  hudText += `  ${label}: ${val}\n`;
+              });
+          }
+        });
+        megaReport += hudText;
+      }
+
+      // 2. Get Inspector Data (Reusing logic is ideal, but copying for safety/speed here)
+      const inspector = document.getElementById('inspector-panel-content');
+      if (inspector) {
+        // Use the scraped text content for simplicity, or rebuild structure if needed
+        // Ideally, call a shared 'getInspectorText()' function. 
+        // For now, we append the raw text which is generally readable:
+        megaReport += separator + "[ Character Inspector Data ]\n" + inspector.innerText; 
+      }
+
+      // 3. Get Full Profile Data
+      // We call the existing buildStructuredReport function
+      const fullProfile = buildStructuredReport(); 
+      megaReport += separator + "[ Full Structural Profile ]\n" + fullProfile;
+
+      copyToClipboard(megaReport, 'btn-copy-all-everything');
+    });
+  }
