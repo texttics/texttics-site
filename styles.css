@@ -2492,10 +2492,9 @@ details.profile-section .action-bar {
 #btn-reveal,
 #btn-reveal2 {
   border-radius: 999px; /* Fully rounded pill shape */
-  padding-left: 1.25rem;
-  padding-right: 1.25rem;
-  font-size: 0.85rem; /* Slightly smaller text for elegance */
-  text-transform: uppercase; /* Optional: Adds a technical feel */
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  font-size: 0.75rem; /* Slightly smaller text for elegance */
   letter-spacing: 0.03em;
 }
 
