@@ -6443,7 +6443,7 @@ def reveal_invisibles(event=None):
         
         # Reset Button Text
         if reveal_btn: 
-            reveal_btn.innerHTML = "Transform Non-Standard Invisibles &#x21C4;"
+            reveal_btn.innerHTML = "Deobfuscate Non-Std Inv. &#x21C4;"
         
         # Run update to reset UI to "Ready/Detected" state
         update_all(None)
