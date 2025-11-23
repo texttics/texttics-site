@@ -6117,7 +6117,7 @@ def update_all(event=None):
         counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
         total_invis = 0
         
-        # Run scan only if text exists (otherwise total remains 0)
+        # Run scan only if text exists
         if t:
             for char in t:
                 cp = ord(char)
@@ -6151,18 +6151,19 @@ def update_all(event=None):
             if reveal_btn: reveal_btn.style.display = "flex"
             
         else:
-        # Reset
-        status_line.className = "status-ready"
-        icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
-        
-        # UPDATED: Text First, Icon Second
-        status_line.innerHTML = f"Input: Ready {icon_check}"
-        
-        details_line.className = "status-details clean"
-        # UPDATED: Text First, Icon Second
-        details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
-        
-        if reveal_btn: reveal_btn.style.display = "none"
+            # STATE: SAFE / INITIAL (Green Pill + Hide Button)
+            # FIXED: Indentation is correct here (4 spaces)
+            details_line.className = "status-details clean"
+            
+            # Deep Green Checkmark
+            icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
+            
+            # HTML Order: Text First, Icon Second
+            # Note: Make sure your CSS adds margin-left to the SVG for spacing
+            details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
+            
+            # HIDE Reveal Button
+            if reveal_btn: reveal_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
