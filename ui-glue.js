@@ -717,7 +717,7 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       const hud = document.getElementById('forensic-hud');
       if (!hud) return;
       
-      let report = "[ Forensic Dashboard Metrics ]\n";
+      let report = "[ HUD Data ]\n";
       const cols = hud.querySelectorAll('.hud-col');
       
       cols.forEach(col => {
@@ -757,7 +757,7 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       const cp = txt('.inspector-codepoint');
       const name = txt('.inspector-header');
       
-      let report = `[ Character Inspector Report ]\n`;
+      let report = `[ Character Inspector Data ]\n`;
       report += `--------------------------------------------------\n`;
       report += `TARGET:   ${glyph}  (${cp})\n`;
       report += `NAME:     ${name}\n`;
