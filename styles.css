@@ -2536,15 +2536,16 @@ details.profile-section .action-bar {
   letter-spacing: 0.03em;
 }
 
-/* Highlight Button Specifics (Reseveal) */
+/* Highlight Button Specifics (Reveal2) */
 #btn-reveal2 {
-  background-color: #fffbeb; /* Amber-50 background */
-  border-color: #fcd34d;     /* Amber-300 border */
-  color: #b45309;            /* Amber-700 text */
+  background-color: #ffffff; /* White background */
+  border-color: #d1d5db;     /* Light Gray border */
+  color: #000000;            /* Black text */
+  text-transform: none;      /* Standard casing (not all caps) */
+  font-weight: 600;
 }
 
 #btn-reveal2:hover {
-  background-color: #fef3c7; /* Amber-100 */
-  border-color: #f59e0b;     /* Amber-500 */
-  color: #92400e;            /* Amber-800 */
+  background-color: #f3f4f6; /* Light Gray hover */
+  border-color: #9ca3af;     /* Darker border */
 }
