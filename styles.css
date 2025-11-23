@@ -2489,3 +2489,25 @@ details.profile-section .action-bar {
   .copy-group { flex-direction: column; }
   .macro-btn { width: 100%; }
 }
+
+/* --- Status Details (The Right-Side Breakdown) --- */
+.status-details {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #4b5563; /* Slate-600 */
+  margin-right: 1rem; /* Spacing from the button */
+  font-weight: 500;
+  
+  /* Ensure it doesn't break layout on small screens */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px; /* Cap width to prevent button squashing */
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Success checkmark color */
+.status-details strong {
+  color: #059669; /* Emerald-600 */
+}
