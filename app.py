@@ -6108,37 +6108,45 @@ def update_all(event=None):
     if not t_input: return
     t = t_input.value
 
-    # --- 1.5 PASSIVE INVISIBLE SCAN (New) ---
-    # Updates the Right Status Bar immediately on paste
+    # --- 1.5 PASSIVE INVISIBLE SCAN (Enhanced) ---
     details_line = document.getElementById("reveal-details")
-    if details_line and t:
-        counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
-        total_invis = 0
-        
-        for char in t:
-            cp = ord(char)
-            cat = None
+    if details_line:
+        if t:
+            counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
+            total_invis = 0
             
-            if cp in INVISIBLE_MAPPING:
-                rep = INVISIBLE_MAPPING[cp]
-                if "TAG" in rep: cat = "Tag"
-                elif any(x in rep for x in ["RLO","LRO","LRE","RLE","PDF","LRI","RLI","FSI","PDI","ALM","LRM","RLM"]): cat = "Bidi"
-                elif "VS" in rep: cat = "VS"
-                else: cat = "Format"
+            for char in t:
+                cp = ord(char)
+                cat = None
+                if cp in INVISIBLE_MAPPING:
+                    rep = INVISIBLE_MAPPING[cp]
+                    if "TAG" in rep: cat = "Tag"
+                    elif any(x in rep for x in ["RLO","LRO","LRE","RLE","PDF","LRI","RLI","FSI","PDI","ALM","LRM","RLM"]): cat = "Bidi"
+                    elif "VS" in rep: cat = "VS"
+                    else: cat = "Format"
+                elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: cat = "VS"
+                elif 0xE0000 <= cp <= 0xE007F: cat = "Tag"
                 
-            elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: cat = "VS"
-            elif 0xE0000 <= cp <= 0xE007F: cat = "Tag"
-            
-            if cat:
-                counts[cat] += 1
-                total_invis += 1
-                
-        if total_invis > 0:
-            active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
-            # Using "⚠ Detected" instead of "Deobfuscated" since we haven't revealed yet
-            details_line.innerHTML = f"<strong style='color:#d97706'>⚠ Detected:</strong> {total_invis} hidden ({', '.join(active_cats)})"
+                if cat:
+                    counts[cat] += 1
+                    total_invis += 1
+                    
+            if total_invis > 0:
+                # STATE: WARNING (Amber)
+                active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
+                details_line.className = "status-details warn"
+                # Using Vector Icon directly in Python string
+                icon_alert = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
+                details_line.innerHTML = f"{icon_alert}<strong>Detected:</strong> {total_invis} hidden ({', '.join(active_cats)})"
+            else:
+                # STATE: CLEAN (Gray)
+                details_line.className = "status-details clean"
+                icon_check = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
+                details_line.innerHTML = f"{icon_check}No hidden invisibles detected"
         else:
-            details_line.textContent = ""
+            # Empty Input -> Hide the pill
+            details_line.className = "status-details"
+            details_line.innerHTML = ""
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
