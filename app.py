@@ -6417,7 +6417,7 @@ def update_all(event=None):
         print(f"Error packaging data for Stage 2: {e}")
 
 @create_proxy
-def reveal_ie):
+def reveal2_invisibles(event=None):
     """
     TOGGLE MODE: Replaces invisible characters with tags.
     If clicked again, restores the original text.
