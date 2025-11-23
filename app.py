@@ -6491,28 +6491,31 @@ def reveal_invisibles(event=None):
         details_line.className = "status-details"
         details_line.textContent = ""
 
+
 @create_proxy
 def reveal2_invisibles(event=None):
     """
-    HIGHLIGHT MODE: Selects all non-standard invisible characters 
-    in the text input using the browser's Selection API.
-    Does NOT modify the text.
+    HIGHLIGHT MODE: Selects the first non-standard invisible character
+    found in the text input. Correctly handles UTF-16 offsets.
     """
     el = document.getElementById("text-input")
     if not el or not el.value: return
     
-    text = el.value
-    ranges = []
+    # Get text directly from element to ensure sync
+    text = str(el.value)
     
-    # 1. Find positions of all invisibles
-    # We iterate by code point to match Python's logic
-    # But we must map back to UTF-16 indices for the browser DOM
+    # We need to track the current UTF-16 index for the browser selection
+    current_utf16_idx = 0
     
-    utf16_idx = 0
+    target_start = -1
+    target_end = -1
+    count = 0
     
     for char in text:
         cp = ord(char)
-        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 length
+        # Determine UTF-16 length of this character (1 or 2 units)
+        # Characters > 0xFFFF use surrogate pairs (2 units)
+        char_len = 2 if cp > 0xFFFF else 1
         
         is_target = False
         
@@ -6525,31 +6528,30 @@ def reveal2_invisibles(event=None):
             is_target = True
             
         if is_target:
-            # Add range (start, end)
-            ranges.append((utf16_idx, utf16_idx + char_len))
-            
-        utf16_idx += char_len
+            count += 1
+            # Capture the first occurrence
+            if target_start == -1:
+                target_start = current_utf16_idx
+                target_end = current_utf16_idx + char_len
+        
+        # Advance index
+        current_utf16_idx += char_len
 
-    if not ranges:
+    if count == 0:
         return
 
     # 2. Select the characters
-    # Since we can only have ONE selection range in a textarea,
-    # we will select the FIRST occurrence to jump the user to it.
-    # (Browsers do not support multi-range selection in <textarea>)
-    
-    first_range = ranges[0]
-    el.focus()
-    el.setSelectionRange(first_range[0], first_range[1])
+    if target_start != -1:
+        el.focus()
+        el.setSelectionRange(target_start, target_end)
     
     # 3. Provide Feedback
     status_line = document.getElementById("status-line")
     if status_line:
-        count = len(ranges)
         # Amber Highlight Style
         status_line.className = "status-revealed" 
-        status_line.style.backgroundColor = "#fffbeb" # Amber-50
-        status_line.style.color = "#b45309" # Amber-700
+        status_line.style.backgroundColor = "#fffbeb" 
+        status_line.style.color = "#b45309" 
         status_line.style.borderColor = "#fcd34d"
         
         icon_loc = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 6px; display: inline-block;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>"""
