@@ -1435,12 +1435,12 @@ Stage 2: Heatmap Row Classes
   color: #000000; /* PURE BLACK TEXT */
 }
 
-/* STATE: DETECTED (Amber) */
+/* STATE: DETECTED */
 .status-details.warn {
   opacity: 1;
   visibility: visible;
   background-color: #fffbeb;
-  color: #b45309;
+  color: #000000;
   border-color: #fcd34d;
 }
 
