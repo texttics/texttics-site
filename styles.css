@@ -1412,6 +1412,14 @@ Stage 2: Heatmap Row Classes
   padding: 0.25rem 0.4rem;
 }
 
+/* Bright Amber for Revealed State */
+#status-line.status-revealed {
+  background-color: #fff7ed; /* Orange-50 */
+  color: #ea580c;            /* Orange-600 (High Contrast) */
+  border-color: #fdba74;     /* Orange-300 */
+  box-shadow: 0 0 0 1px #fdba74; /* Glow effect */
+}
+
 /* Ensure the button inside the status bar looks correct */
 .status-bar-right .tool-btn {
   border: none;
