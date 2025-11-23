@@ -6151,18 +6151,18 @@ def update_all(event=None):
             if reveal_btn: reveal_btn.style.display = "flex"
             
         else:
-            # STATE: SAFE / INITIAL (Green Pill + Hide Button)
-            # This runs for both "Clean Text" AND "Empty Input"
-            details_line.className = "status-details clean"
-            
-            # Deep Green Checkmark
-            icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
-            
-            # Consistent "Not Found" status
-            details_line.innerHTML = f"{icon_check} Non-Standard Invisibles: Not Found"
-            
-            # HIDE Reveal Button (Nothing to do)
-            if reveal_btn: reveal_btn.style.display = "none"
+        # Reset
+        status_line.className = "status-ready"
+        icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
+        
+        # UPDATED: Text First, Icon Second
+        status_line.innerHTML = f"Input: Ready {icon_check}"
+        
+        details_line.className = "status-details clean"
+        # UPDATED: Text First, Icon Second
+        details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
+        
+        if reveal_btn: reveal_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
