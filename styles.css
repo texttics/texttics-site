@@ -1455,12 +1455,13 @@ Stage 2: Heatmap Row Classes
 
 /* --- ICON COLORING (The Critical Part) --- */
 
-/* Force the Icons to be Deep Green even when text is Black */
+/* --- ICON COLORING (Right-Side Alignment) --- */
 #status-line.status-ready svg,
 .status-details.clean svg {
-  stroke: #15803d; /* Deep Emerald Green */
-  stroke-width: 3; /* Bold lines */
-  margin-right: 6px;
+  stroke: #15803d; 
+  stroke-width: 3; 
+  margin-left: 6px;  /* <--- NEW: Space on the left */
+  margin-right: 0;   /* Reset right margin */
 }
 
 /* --- REVEAL BUTTON FIX --- */
