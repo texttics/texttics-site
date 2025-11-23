@@ -6494,7 +6494,7 @@ def reveal2_invisibles(event=None):
     """
     HIGHLIGHT MODE (btn-reveal2): 
     Step-through finder. Selects the NEXT invisible character relative to cursor.
-    Logic fixed to use selectionEnd to force forward progression.
+    UPDATED: Now correctly syncs with the Inspector Panel.
     """
     el = document.getElementById("text-input")
     details_line = document.getElementById("reveal-details")
@@ -6524,7 +6524,6 @@ def reveal2_invisibles(event=None):
     if count == 0: return
 
     # 2. Find the NEXT target relative to the END of the current selection.
-    # This prevents getting stuck on the current character.
     current_end_pos = el.selectionEnd
     
     target_range = None
@@ -6543,21 +6542,22 @@ def reveal2_invisibles(event=None):
         target_idx = 1
             
     # 4. Execute Selection
-    # We blur and focus to force the browser to repaint the selection UI
     el.blur()
     el.focus()
     el.setSelectionRange(target_range[0], target_range[1])
     
+    # --- SYNC FIX: WAKE UP THE INSPECTOR ---
+    # We manually call the inspector logic to update the bottom panel immediately.
+    # We pass None because the function doesn't actually use the event argument.
+    inspect_character(None)
+    
     # 5. Feedback
     if details_line:
         details_line.className = "status-details warn"
-        # Use a location pin icon
         icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
         
         # Get hex code for display
         try:
-            # We need to find the char in the python string corresponding to this range
-            # This is an approximation for display purposes
             raw_idx = 0
             acc = 0
             for j, char in enumerate(text):
