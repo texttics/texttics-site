@@ -6402,12 +6402,13 @@ def update_all(event=None):
 @create_proxy
 def reveal_invisibles(event=None):
     """
-    Replaces invisible characters, categorizes them by type, 
-    and updates the UI with a forensic breakdown using Vector Icons.
+    Replaces invisible/control characters in the input with visible tags.
+    Updates UI with Blue/White theme.
     """
     el = document.getElementById("text-input")
     status_line = document.getElementById("status-line")
     details_line = document.getElementById("reveal-details")
+    reveal_btn = document.getElementById("btn-reveal")
     
     if not el or not el.value:
         return
@@ -6415,9 +6416,8 @@ def reveal_invisibles(event=None):
     raw_text = el.value
     new_chars = []
     
-    # High-Fidelity Vector Icon (Alert Triangle)
-    # Optimized for 14px height to match text baseline
-    ICON_ALERT = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 5px; display: inline-block;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
+    # [SVG ICON] Alert Triangle (Stroke uses currentColor -> will be Blue)
+    ICON_ALERT = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 6px; display: inline-block;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
 
     counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0, "Other": 0 }
     total_replaced = 0
@@ -6455,32 +6455,26 @@ def reveal_invisibles(event=None):
     if total_replaced > 0:
         el.value = "".join(new_chars)
         el.classList.add("reveal-active")
-
-        # Hide the button (Job Done)
-        reveal_btn = document.getElementById("btn-reveal")
+        
+        # Hide button (Job Done)
         if reveal_btn: reveal_btn.style.display = "none"
         
-        # 1. Update Left Status (Orange/Warning Mode)
+        # 1. Update Left Status (BLUE Mode)
         status_line.className = "status-revealed"
         status_line.innerHTML = f"{ICON_ALERT}<strong>VISUAL REVEAL MODE:</strong> Raw text replaced with {total_replaced} tags."
         
-        # 2. Update Right Status (Emerald/Success Pill)
+        # 2. Update Right Status (Emerald Success Pill)
         active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
         breakdown = ", ".join(active_cats)
-        
         details_line.className = "status-details success"
         
-        # SVG Eye Icon
         icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
-        
         details_line.innerHTML = f"{icon_eye}<strong>Deobfuscated:</strong> {total_replaced} ({breakdown})"
         
     else:
-        # Reset Left Status
+        # Reset
         status_line.className = "status-ready"
         status_line.textContent = "No non-standard invisible characters found."
-        
-        # Hide Right Status (Reset class to hide pill)
         details_line.className = "status-details"
         details_line.textContent = ""
 
