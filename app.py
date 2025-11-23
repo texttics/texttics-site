@@ -6353,69 +6353,72 @@ def update_all(event=None):
 @create_proxy
 def reveal_invisibles(event=None):
     """
-    Replaces invisible/control characters in the input with visible tags.
-    Triggered by the 'Reveal Invisibles' button.
+    Replaces invisible characters, categorizes them by type, 
+    and updates the UI with a forensic breakdown using Vector Icons.
     """
     el = document.getElementById("text-input")
     status_line = document.getElementById("status-line")
+    details_line = document.getElementById("reveal-details")
     
     if not el or not el.value:
         return
     
     raw_text = el.value
-
-    # Build the new string
     new_chars = []
-    replaced_count = 0
+    
+    # High-Fidelity Vector Icon (Alert Triangle)
+    # Optimized for 14px height to match text baseline
+    ICON_ALERT = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 5px; display: inline-block;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
+
+    counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0, "Other": 0 }
+    total_replaced = 0
     
     for char in raw_text:
         cp = ord(char)
-        
-        # Check explicit mapping (ZWSP, Bidi, etc.)
+        replacement = None
+        category = "Other"
+
         if cp in INVISIBLE_MAPPING:
-            new_chars.append(INVISIBLE_MAPPING[cp])
-            replaced_count += 1
-            
-        # Check Variation Selectors (VS1 - VS16)
-        elif 0xFE00 <= cp <= 0xFE0F:
-            vs_num = cp - 0xFE00 + 1
-            new_chars.append(f"[VS{vs_num}]")
-            replaced_count += 1
-            
-        # Check Variation Selectors Supplement (VS17 - VS256)
-        elif 0xE0100 <= cp <= 0xE01EF:
-            vs_num = cp - 0xE0100 + 17
-            new_chars.append(f"[VS{vs_num}]")
-            replaced_count += 1
-            
-        # Check Tag Characters (Plane 14)
+            replacement = INVISIBLE_MAPPING[cp]
+            if "TAG" in replacement: category = "Tag"
+            elif any(x in replacement for x in ["RLO", "LRO", "LRE", "RLE", "PDF", "LRI", "RLI", "FSI", "PDI", "ALM", "LRM", "RLM"]):
+                category = "Bidi"
+            elif "VS" in replacement: category = "VS"
+            else: category = "Format"
+
+        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
+            vs_offset = 1 if cp <= 0xFE0F else 17
+            base = 0xFE00 if cp <= 0xFE0F else 0xE0100
+            replacement = f"[VS{cp - base + vs_offset}]"
+            category = "VS"
+
         elif 0xE0000 <= cp <= 0xE007F:
-             new_chars.append(f"[TAG:U+{cp:04X}]")
-             replaced_count += 1
+             replacement = f"[TAG:U+{cp:04X}]"
+             category = "Tag"
              
+        if replacement:
+            new_chars.append(replacement)
+            counts[category] += 1
+            total_replaced += 1
         else:
             new_chars.append(char)
             
-    if replaced_count > 0:
-        new_text = "".join(new_chars)
-        el.value = new_text
-        
-        # 1. Signal the state change visually (Diagonal Stripes)
+    if total_replaced > 0:
+        el.value = "".join(new_chars)
         el.classList.add("reveal-active")
         
-        # 2. Update Status to BRIGHT AMBER (using new CSS class)
         status_line.className = "status-revealed"
-        status_line.textContent = f"Visual Reveal Active ({replaced_count} tags). Report reflects original raw data."
+        # UPDATE: Use innerHTML to render the SVG + Bold Text
+        status_line.innerHTML = f"{ICON_ALERT}<strong>VISUAL REVEAL MODE:</strong> Raw text replaced with {total_replaced} tags."
         
-        # 3. CRITICAL FORENSIC LOGIC: 
-        # We DO NOT call update_all(None). 
-        # The report must continue to analyze the invisible characters, 
-        # not the bracketed tags we just inserted.
-
+        active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
+        breakdown = ", ".join(active_cats)
+        details_line.innerHTML = f"<strong>✔ Deobfuscated:</strong> {total_replaced} ({breakdown})"
+        
     else:
-        # Reset Status to standard Green/Gray
         status_line.className = "status-ready"
         status_line.textContent = "No non-standard invisible characters found."
+        details_line.textContent = ""
 
 # ---
 # 6. INITIALIZATION
