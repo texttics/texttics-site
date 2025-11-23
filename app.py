@@ -6496,7 +6496,7 @@ def reveal2_invisibles(event=None):
     el.focus()
     el.setSelectionRange(target_range[0], target_range[1])
     
-    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use #{target_idx} in NSI status bar if we need explicit Unicode)
+    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
     # We manually call the inspector logic to update the bottom panel immediately.
     # We pass None because the function doesn't actually use the event argument.
     inspect_character(None)
@@ -6521,7 +6521,7 @@ def reveal2_invisibles(event=None):
         except:
             char_code = "INVISIBLE"
 
-        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;of&nbsp;{count}&nbsp;({char_code})&nbsp;{icon_loc}"
+        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
 
 # ---
 # 6. INITIALIZATION
