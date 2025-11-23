@@ -6356,11 +6356,13 @@ def reveal_invisibles(event=None):
     Replaces invisible/control characters in the input with visible tags.
     Triggered by the 'Reveal Invisibles' button.
     """
-    element = document.getElementById("text-input")
-    if not element: return
+    el = document.getElementById("text-input")
+    status_line = document.getElementById("status-line")
     
-    raw_text = element.value
-    if not raw_text: return
+    if not el or not el.value:
+        return
+    
+    raw_text = el.value
 
     # Build the new string
     new_chars = []
@@ -6369,7 +6371,7 @@ def reveal_invisibles(event=None):
     for char in raw_text:
         cp = ord(char)
         
-        # Check explicit mapping
+        # Check explicit mapping (ZWSP, Bidi, etc.)
         if cp in INVISIBLE_MAPPING:
             new_chars.append(INVISIBLE_MAPPING[cp])
             replaced_count += 1
@@ -6396,25 +6398,24 @@ def reveal_invisibles(event=None):
             
     if replaced_count > 0:
         new_text = "".join(new_chars)
-        element.value = new_text
+        el.value = new_text
         
-        # [IMMUTABLE REVEAL FIX] 
-        # 1. Signal the state change visually
-        element.classList.add("reveal-active")
+        # 1. Signal the state change visually (Diagonal Stripes)
+        el.classList.add("reveal-active")
         
-        # 2. Inform the user clearly
-        render_status(f"Visual Reveal Active ({replaced_count} tags). Report reflects original raw data.")
+        # 2. Update Status to BRIGHT AMBER (using new CSS class)
+        status_line.className = "status-revealed"
+        status_line.textContent = f"Visual Reveal Active ({replaced_count} tags). Report reflects original raw data."
         
-        # 3. CRITICAL: We DO NOT call update_all(None). 
-        # The data model must remain pinned to the 'Evidence' (Raw Text), 
-        # while the UI shows the 'Visualization' (Revealed Text).
-        
-        # 4. Force the Inspector to update immediately to show the "Paused" state
-        # (We simulate a selection event)
-        inspect_character(None)
+        # 3. CRITICAL FORENSIC LOGIC: 
+        # We DO NOT call update_all(None). 
+        # The report must continue to analyze the invisible characters, 
+        # not the bracketed tags we just inserted.
 
     else:
-        render_status("No invisible characters found to reveal.")
+        # Reset Status to standard Green/Gray
+        status_line.className = "status-ready"
+        status_line.textContent = "No non-standard invisible characters found."
 
 # ---
 # 6. INITIALIZATION
