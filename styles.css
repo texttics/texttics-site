@@ -2504,3 +2504,11 @@ details.profile-section .action-bar {
     background-color: #f5f3ff;   /* Very subtle lavender tint */
     cursor: pointer;
 }
+
+/* --- Fix Right Alignment & Spacing --- */
+
+/* 1. Push the text to the far right and remove its right-side gap */
+#reveal-details {
+    margin-left: auto;   /* Forces the element to the far right of the flex container */
+    margin-right: 0;     /* Removes fixed spacing so it touches the edge when alone */
+}
