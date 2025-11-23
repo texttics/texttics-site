@@ -6108,15 +6108,17 @@ def update_all(event=None):
     if not t_input: return
     t = t_input.value
 
-    # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button Logic) ---
+    # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button & Always-On Status) ---
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
     
     if details_line:
+        # Initialize counters
+        counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
+        total_invis = 0
+        
+        # Run scan only if text exists (otherwise total remains 0)
         if t:
-            counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
-            total_invis = 0
-            
             for char in t:
                 cp = ord(char)
                 cat = None
@@ -6133,28 +6135,33 @@ def update_all(event=None):
                     counts[cat] += 1
                     total_invis += 1
                     
-            if total_invis > 0:
-                # DETECTED: Show Warning Pill + Show Button
-                active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
-                
-                details_line.className = "status-details warn"
-                icon_alert = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
-                details_line.innerHTML = f"{icon_alert}<strong>Detected:</strong> {total_invis} hidden ({', '.join(active_cats)})"
-                
-                # SHOW BUTTON
-                if reveal_btn: reveal_btn.style.display = "flex"
-            else:
-                # CLEAN: Show Green Pill + Hide Button
-                details_line.className = "status-details clean"
-                icon_check = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
-                details_line.innerHTML = f"{icon_check}No hidden invisibles detected"
-                
-                # HIDE BUTTON
-                if reveal_btn: reveal_btn.style.display = "none"
+        # LOGIC SPLIT: DETECTED vs. CLEAN/EMPTY
+        if total_invis > 0:
+            # STATE: WARNING (Amber Pill + Show Button)
+            active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
+            
+            details_line.className = "status-details warn"
+            
+            # Amber Alert Icon
+            icon_alert = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
+            
+            details_line.innerHTML = f"{icon_alert}<strong>Detected:</strong> {total_invis} hidden ({', '.join(active_cats)})"
+            
+            # SHOW Reveal Button
+            if reveal_btn: reveal_btn.style.display = "flex"
+            
         else:
-            # EMPTY: Hide Pill + Hide Button
-            details_line.className = "status-details"
-            details_line.innerHTML = ""
+            # STATE: SAFE / INITIAL (Green Pill + Hide Button)
+            # This runs for both "Clean Text" AND "Empty Input"
+            details_line.className = "status-details clean"
+            
+            # Deep Green Checkmark
+            icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
+            
+            # Consistent "Not Found" status
+            details_line.innerHTML = f"{icon_check} Non-Standard Invisibles: Not Found"
+            
+            # HIDE Reveal Button (Nothing to do)
             if reveal_btn: reveal_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
