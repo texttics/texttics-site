@@ -2520,7 +2520,15 @@ def compute_emoji_analysis(text: str) -> dict:
         # 2. Non-RGI Emoji-Like
         elif is_emoji or is_ext_pict:
             rgi_status = False
-            if is_component: 
+
+            # [FIX] ASCII Exception:
+            # ASCII digits (0-9), #, * are technically "Emoji" and "Emoji_Component"
+            # in Unicode (for Keycaps), but in isolation, they are just Text.
+            # We force them to fall through to the "other" (Standard Text) bucket.
+            if base_cp <= 0x7F:
+                pass 
+            
+            elif is_component: 
                 kind = "emoji-component"
                 status = "component"
             elif cp_len > 1:
