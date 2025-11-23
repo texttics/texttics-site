@@ -2490,21 +2490,51 @@ details.profile-section .action-bar {
   .macro-btn { width: 100%; }
 }
 
-/* --- Status Details (The Right-Side Breakdown) --- */
+/* --- Right Status Bar (Forensic Detail Pill) --- */
 .status-details {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #4b5563; /* Slate-600 */
-  margin-right: 1rem; /* Spacing from the button */
-  font-weight: 500;
+  /* Layout */
+  display: inline-flex;
+  align-items: center;
+  margin-right: 1.5rem; /* Increased gap from the button */
   
-  /* Ensure it doesn't break layout on small screens */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 400px; /* Cap width to prevent button squashing */
-  display: inline-block;
-  vertical-align: middle;
+  /* Appearance (Match the Left Status style) */
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 2px 12px;
+  border-radius: 999px; /* Full Pill Shape */
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+  
+  /* Default State (Hidden/Empty) */
+  opacity: 0; 
+  visibility: hidden;
+}
+
+/* State A: Clean / None Detected (Green-ish/Gray) */
+.status-details.clean {
+  opacity: 1;
+  visibility: visible;
+  background-color: #f3f4f6; /* Gray-100 */
+  color: #6b7280;            /* Gray-500 */
+  border-color: #e5e7eb;     /* Gray-200 */
+}
+
+/* State B: Warning / Detected (Amber) */
+.status-details.warn {
+  opacity: 1;
+  visibility: visible;
+  background-color: #fffbeb; /* Amber-50 */
+  color: #b45309;            /* Amber-700 */
+  border-color: #fcd34d;     /* Amber-300 */
+}
+
+/* State C: Success / Deobfuscated (Emerald) */
+.status-details.success {
+  opacity: 1;
+  visibility: visible;
+  background-color: #ecfdf5; /* Emerald-50 */
+  color: #047857;            /* Emerald-700 */
+  border-color: #6ee7b7;     /* Emerald-300 */
 }
 
 /* Success checkmark color */
