@@ -1412,7 +1412,7 @@ Stage 2: Heatmap Row Classes
 .status-details {
   display: inline-flex;
   align-items: center;
-  margin-right: 0rem; /* Gap between pill and button */
+  margin-right: 1rem; /* Gap between pill and button */
   padding: 2px 12px;
   border-radius: 999px;
   font-size: 0.85rem;
