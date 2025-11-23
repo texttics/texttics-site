@@ -2510,13 +2510,24 @@ details.profile-section .action-bar {
   visibility: hidden;
 }
 
-/* State A: Clean / None Detected (Green-ish/Gray) */
+/* State A: Clean / None Detected (Updated Design) */
 .status-details.clean {
   opacity: 1;
   visibility: visible;
-  background-color: #f3f4f6; /* Gray-100 */
-  color: #6b7280;            /* Gray-500 */
-  border-color: #e5e7eb;     /* Gray-200 */
+  
+  /* Background: Light Green (Matches Left Status) */
+  background-color: #f0fdf4; 
+  border-color: #bbf7d0;     
+  
+  /* Text: Dark Bold Gray */
+  color: #374151;            
+  font-weight: 700;          
+}
+
+/* Target the Tick Mark Icon specifically to make it Bold Green */
+.status-details.clean svg {
+  stroke: #15803d; /* Deep Emerald Green */
+  stroke-width: 3; /* Make the lines thicker/bolder */
 }
 
 /* State B: Warning / Detected (Amber) */
