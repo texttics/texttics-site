@@ -1357,19 +1357,15 @@ Stage 2: Heatmap Row Classes
   gap: 0.75rem;
 }
 
-.status-bar-left {
+/* 1. Strip the containers down to invisible wrappers */
+.status-bar-left, 
+.status-bar-right {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.6rem;
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
-  background-color: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.4rem 0.9rem 0.4rem 0.6rem;
-  margin: 0;
-  text-align: left;
 }
 
 .status-bar-left strong {
@@ -1391,10 +1387,16 @@ Stage 2: Heatmap Row Classes
   color: var(--color-text-muted);
   background-color: var(--color-border-light);
 }
+/* 2. Make the Default "Ready" state a nice pill (since "Status:" label is gone) */
 #status-line.status-ready {
-  color: #065f46; /* dark green */
-  background-color: #f0fdf4;
-  border-color: #a7f3d0;
+  background-color: #f0fdf4; /* Light Green */
+  color: #15803d;            /* Deep Green */
+  border: 1px solid #bbf7d0;
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
 }
 #status-line.status-error {
   color: #991b1b;
@@ -1402,22 +1404,27 @@ Stage 2: Heatmap Row Classes
   border-color: #fca5a5;
 }
 
-.status-bar-right {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.25rem 0.4rem;
-}
 
-/* Bright Amber for Revealed State */
+/* 3. NEW: Blue/White Theme for "Revealed" State */
 #status-line.status-revealed {
-  background-color: #fff7ed; /* Orange-50 */
-  color: #ea580c;            /* Orange-600 (High Contrast) */
-  border-color: #fdba74;     /* Orange-300 */
-  box-shadow: 0 0 0 1px #fdba74; /* Glow effect */
+  /* Background: Pure White */
+  background-color: #ffffff;
+  
+  /* Text/Icon: Bright Blue */
+  color: #2563eb; /* Tailwind Blue-600 */
+  
+  /* Border: Blue */
+  border: 1px solid #60a5fa; /* Blue-400 */
+  
+  /* Shape & Typography */
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  
+  /* Optional: Subtle Blue Glow */
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
 }
 
 /* Ensure the button inside the status bar looks correct */
