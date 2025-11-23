@@ -2523,3 +2523,28 @@ details.profile-section .action-bar {
   .copy-group { flex-direction: column; }
   .macro-btn { width: 100%; }
 }
+
+
+/* --- Reveal/Transform Buttons (Pill Shape) --- */
+#btn-reveal,
+#btn-reveal2 {
+  border-radius: 999px; /* Fully rounded pill shape */
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  font-size: 0.85rem; /* Slightly smaller text for elegance */
+  text-transform: uppercase; /* Optional: Adds a technical feel */
+  letter-spacing: 0.03em;
+}
+
+/* Highlight Button Specifics (Reseveal) */
+#btn-reveal2 {
+  background-color: #fffbeb; /* Amber-50 background */
+  border-color: #fcd34d;     /* Amber-300 border */
+  color: #b45309;            /* Amber-700 text */
+}
+
+#btn-reveal2:hover {
+  background-color: #fef3c7; /* Amber-100 */
+  border-color: #f59e0b;     /* Amber-500 */
+  color: #92400e;            /* Amber-800 */
+}
