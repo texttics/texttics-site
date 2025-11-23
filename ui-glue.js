@@ -641,3 +641,27 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     return [-1, -1]; // Signal error to Python
   }
 };
+
+// ==========================================
+  // 7. JUMP LIST AUTO-EXPAND LOGIC
+  // ==========================================
+  const jumpLinks = document.querySelectorAll('.jump-list a');
+  
+  jumpLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      // 1. Get the target ID from the href (e.g., "#dual-atom" -> "dual-atom")
+      const href = link.getAttribute('href');
+      if (!href || !href.startsWith('#')) return;
+      
+      const targetId = href.substring(1);
+      const targetEl = document.getElementById(targetId);
+
+      // 2. If the target is a <details> element, force it OPEN
+      if (targetEl && targetEl.tagName === 'DETAILS') {
+        targetEl.open = true;
+        
+        // Optional: Wait a tiny tick to ensure expansion renders before the jump
+        // (The browser default jump happens after this synchronous code finishes)
+      }
+    });
+  });
