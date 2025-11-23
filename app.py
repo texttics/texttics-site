@@ -6522,7 +6522,7 @@ def reveal2_invisibles(event=None):
             char_code = "INVISIBLE"
 
         details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;of&nbsp;{count}&nbsp;({char_code})&nbsp;{icon_loc}"
-        &nbsp;
+
 # ---
 # 6. INITIALIZATION
 # ---
