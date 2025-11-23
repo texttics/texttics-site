@@ -6113,7 +6113,7 @@ def update_all(event=None):
     # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button & Always-On Status) ---
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
-    reseveal_btn = document.getElementById("btn-reseveal")
+    reveal2_btn = document.getElementById("btn-reveal2")
     
     if details_line:
         # Initialize counters
@@ -6153,7 +6153,7 @@ def update_all(event=None):
             
             # SHOW Reveal and Reseaval Buttons
             if reveal_btn: reveal_btn.style.display = "flex"
-            if reseveal_btn: reseveal_btn.style.display = "flex"
+            if reveal2_btn: reveal2_btn.style.display = "flex"
             
         else:
             # STATE: SAFE / INITIAL (Green Pill + Hide Button)
@@ -6167,7 +6167,7 @@ def update_all(event=None):
             
             # HIDE Reveal and Reseaval Buttons
             if reveal_btn: reveal_btn.style.display = "none"
-            if reseveal_btn: reseveal_btn.style.display = "none"
+            if reveal2_btn: reveal2_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
