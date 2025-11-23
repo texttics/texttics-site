@@ -1345,19 +1345,21 @@ Stage 2: Heatmap Row Classes
 
 
 /* =========================================
-   Status Bar
+   STATUS BAR (Consolidated & Final)
    ========================================= */
 
+/* 1. The Main Container (Fixes the Right-Side Gap) */
 .status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-between; /* Pushes items to edges */
   width: 100%;
-  margin-top: 1rem;
-  gap: 0.75rem;
+  padding: 0;        /* REMOVES GAP */
+  margin-top: 0.5rem;
+  box-sizing: border-box;
 }
 
-/* 1. Strip the containers down to invisible wrappers */
+/* 2. Remove Default Wrappers */
 .status-bar-left, 
 .status-bar-right {
   background-color: transparent !important;
@@ -1368,81 +1370,105 @@ Stage 2: Heatmap Row Classes
   align-items: center;
 }
 
-.status-bar-left strong {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
+/* --- LEFT STATUS (Input: Ready) --- */
 
+/* Base Pill Shape & Typography */
 #status-line {
-  font-size: 0.9rem;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 12px;
   border-radius: 999px;
-  font-weight: 600;
+  font-size: 0.85rem;
   font-family: var(--font-mono);
+  font-weight: 600;
   border: 1px solid transparent;
+  transition: all 0.2s ease;
 }
 
+/* STATE: LOADING (Gray) */
 #status-line.status-loading {
-  color: var(--color-text-muted);
-  background-color: var(--color-border-light);
+  background-color: #f3f4f6;
+  color: #6b7280;
+  border-color: #e5e7eb;
 }
-/* 2. Make the Default "Ready" state a nice pill (since "Status:" label is gone) */
+
+/* STATE: READY (Green Frame, Black Text) */
 #status-line.status-ready {
   background-color: #f0fdf4; /* Light Green */
-  color: #15803d;            /* Deep Green */
-  border: 1px solid #bbf7d0;
-  padding: 2px 12px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-#status-line.status-error {
-  color: #991b1b;
-  background-color: #fef2f2;
-  border-color: #fca5a5;
+  border-color: #bbf7d0;     /* Green Border */
+  color: #000000;            /* PURE BLACK TEXT */
 }
 
-
-/* 3. NEW: Blue/White Theme for "Revealed" State */
+/* STATE: REVEAL ACTIVE (Blue/White) */
 #status-line.status-revealed {
-  /* Background: Pure White */
   background-color: #ffffff;
-  
-  /* Text/Icon: Bright Blue */
-  color: #2563eb; /* Tailwind Blue-600 */
-  
-  /* Border: Blue */
-  border: 1px solid #60a5fa; /* Blue-400 */
-  
-  /* Shape & Typography */
-  padding: 2px 12px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  
-  /* Optional: Subtle Blue Glow */
+  color: #2563eb; /* Blue */
+  border-color: #60a5fa;
   box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
 }
 
-/* Ensure the button inside the status bar looks correct */
-.status-bar-right .tool-btn {
-  border: none;
-  background: transparent;
-  padding: 0.25rem 0.6rem;
-  font-size: 0.9rem;
+/* --- RIGHT STATUS (Forensic Pill) --- */
+
+.status-details {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 1rem; /* Gap between pill and button */
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: var(--color-text-muted);
-  box-shadow: none; /* Remove any button shadow if applied globally */
+  border: 1px solid transparent;
+  
+  /* Start Hidden */
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
 }
 
-.status-bar-right .tool-btn:hover {
-  color: var(--color-primary-focus);
-  background-color: transparent; /* Don't add the blue tint here */
-  cursor: pointer;
+/* STATE: CLEAN (Matches "Ready" - Green Frame, Black Text) */
+.status-details.clean {
+  opacity: 1;
+  visibility: visible;
+  background-color: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #000000; /* PURE BLACK TEXT */
 }
+
+/* STATE: DETECTED (Amber) */
+.status-details.warn {
+  opacity: 1;
+  visibility: visible;
+  background-color: #fffbeb;
+  color: #b45309;
+  border-color: #fcd34d;
+}
+
+/* STATE: DEOBFUSCATED (Emerald) */
+.status-details.success {
+  opacity: 1;
+  visibility: visible;
+  background-color: #ecfdf5;
+  color: #047857;
+  border-color: #6ee7b7;
+}
+
+/* --- ICON COLORING (The Critical Part) --- */
+
+/* Force the Icons to be Deep Green even when text is Black */
+#status-line.status-ready svg,
+.status-details.clean svg {
+  stroke: #15803d; /* Deep Emerald Green */
+  stroke-width: 3; /* Bold lines */
+  margin-right: 6px;
+}
+
+/* --- REVEAL BUTTON FIX --- */
+#btn-reveal {
+  margin-right: 0; /* Ensures it touches the right edge */
+}
+/* --- END --- */
+
 
 /* --- Repertoire Card Styling --- */
 
@@ -2517,17 +2543,18 @@ details.profile-section .action-bar {
   visibility: hidden;
 }
 
-/* State A: Clean / None Detected (Updated Design) */
+/* State: None Detected (Updated Design) */
+/* --- 2. Right Status (Clean State) --- */
 .status-details.clean {
   opacity: 1;
   visibility: visible;
   
-  /* Background: Light Green (Matches Left Status) */
+  /* Frame: Light Green Background + Green Border */
   background-color: #f0fdf4; 
   border-color: #bbf7d0;     
   
-  /* Text: Dark Bold Gray */
-  color: #374151;            
+  /* Text: Pure Black (High Contrast) */
+  color: #000000;            
   font-weight: 700;          
 }
 
