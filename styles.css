@@ -289,43 +289,6 @@ Group 1: Control Plane
    Visual Cues: Amber Palette + Diagonal Hatching
 --- */
 
-#text-input.reveal-active {
-  /* 1. The Forensic Shift (Amber Palette) */
-  background-color: #fffbeb; /* Amber-50 (matches 'High Risk' backgrounds) */
-  border-color: #f59e0b;     /* Amber-500 */
-  color: #451a03;            /* Amber-950 (High contrast, distinct from std text) */
-
-  /* 2. The "Analysis Overlay" Texture (Diagonal Stripes) */
-  /* This subtle texture signals "This is a computed view" */
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 10px,
-    rgba(245, 158, 11, 0.03) 10px, /* Very subtle Amber stripe */
-    rgba(245, 158, 11, 0.03) 20px
-  );
-
-  /* 3. Interaction Hints */
-  /* We keep the cursor as text because they CAN select/copy, 
-     but the look discourages editing. */
-  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.02);
-  transition: all 0.3s ease;
-}
-
-/* Maintain the Forensic Context on Focus */
-#text-input.reveal-active:focus {
-  outline: none;
-  border-color: #d97706; /* Amber-600 */
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); /* Amber Glow instead of Blue */
-}
-
-/* Optional: Adjust the placeholder text if the box is cleared in Reveal Mode */
-#text-input.reveal-active::placeholder {
-  color: #b45309; /* Amber-700 */
-  font-style: italic;
-  opacity: 0.7;
-}
-
 /* Control Plane Toolbar */
 .section-header {
   display: flex;
