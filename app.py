@@ -5115,8 +5115,8 @@ def _compute_cluster_identity(cluster_str, base_char_data):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v3.0: Drift-Proof.
-    Uses localized segmentation to prevent long-distance index drift.
+    Forensic Inspector v3.1: Selection-Aware.
+    Now allows inspection even when text is highlighted/selected (e.g., by the Invisible Finder).
     """
     try:
         text_input = document.getElementById("text-input")
@@ -5125,25 +5125,22 @@ def inspect_character(event):
             return
 
         dom_pos = text_input.selectionStart
-        if dom_pos != text_input.selectionEnd: return
         
+        # [REMOVED BLOCKER] 
+        # Previously, we returned here if selectionStart != selectionEnd.
+        # We removed that check so the Inspector works when the Highlighter selects a char.
+
         # [CRITICAL FIX] Handle Newline normalization mismatch (Windows \r\n vs \n)
-        # We pull the raw value. Browsers normalize newlines in .value to \n.
-        # BUT selectionStart on Windows sometimes counts \r\n (2 chars).
-        # To fix drift, we trust the Python string length logic.
         text = str(text_input.value)
         if not text:
             render_inspector_panel(None)
             return
         
         # 1. Map DOM Index to Python Index
-        # We restart the counter to ensure absolute precision
         python_idx = 0
         utf16_accum = 0
         found_sync = False
         
-        # Optimization: If the text is huge, this loop is slow.
-        # But for Stage 1 accuracy, we must scan from 0 to ensure sync.
         for i, ch in enumerate(text):
             if utf16_accum == dom_pos:
                 python_idx = i
@@ -5151,13 +5148,7 @@ def inspect_character(event):
                 break
             
             # Logic: Is this a surrogate pair? (2 units) or BMP (1 unit)
-            # Python len() is 1 for emoji. UTF-16 is 2.
             step = 2 if ord(ch) > 0xFFFF else 1
-            
-            # Windows Newline Hack: If DOM counts \n as 2, we drift.
-            # We assume standard browser behavior (normalized \n = 1).
-            # If drift persists, it's usually due to this calculation.
-            
             utf16_accum += step
             
             if utf16_accum > dom_pos:
@@ -5170,16 +5161,11 @@ def inspect_character(event):
              render_inspector_panel(None) # End of string
              return
 
-        # 2. Localized Segmentation (The Fix)
-        # Instead of segmenting the whole text, we grab a window around the index
-        # to ensure we find the cluster *at this specific point*.
-        
-        # Define a window (e.g., 50 chars before and after)
+        # 2. Localized Segmentation
         start_search = max(0, python_idx - 50)
         end_search = min(len(text), python_idx + 50)
         local_text = text[start_search:end_search]
         
-        # Offset the target index relative to the local window
         local_target_idx = python_idx - start_search
         
         segments_iter = GRAPHEME_SEGMENTER.segment(local_text)
@@ -5213,11 +5199,10 @@ def inspect_character(event):
         if not target_cluster:
             target_cluster = text[python_idx]
             
-        # 3. Analyze the Cluster (Standard Logic)
+        # 3. Analyze the Cluster
         base_char = target_cluster[0]
         cp_base = ord(base_char)
         
-        # --- PREPARE BASE DATA (For Atomic Fallback) ---
         cat_short = unicodedata.category(base_char)
         base_char_data = {
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
@@ -5228,51 +5213,36 @@ def inspect_character(event):
             "age": _find_in_ranges(cp_base, "Age") or "N/A"
         }
 
-        # --- RUN AGGREGATION ENGINE ---
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
 
-        # --- DATA ENRICHMENT (Composite-Aware) ---
-        
-        # 1. Composite Macro-Classification
         comp_cat = cluster_identity["max_risk_cat"]
         comp_mask = cluster_identity["cluster_mask"]
         
-        # Re-eval ID status based on composite risk
         if comp_cat in ("Cn", "Co", "Cs", "Cf"):
             id_status = "Restricted"
         else:
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
             
-        # Explicitly define id_type
         id_type = _find_in_ranges(cp_base, "IdentifierType")
             
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
         ghosts = _get_ghost_chain(base_char)
         
-        # 2. Standard Props (Legacy/Fallback)
         bidi_short = unicodedata.bidirectional(base_char)
-        # [FIX] Use "Other" as default to match UAX #29 standard for Word Break
         wb_prop = _find_in_ranges(cp_base, "WordBreak") or "Other"
-        
-        # [FIX] Use "Unknown" (XX) as default for Line Break
         lb_prop = _find_in_ranges(cp_base, "LineBreak") or "Unknown"
-        
-        # [FIX] Use "Base (Other)" as clearer alias for default Grapheme Break
         gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
         gb_prop = gb_val if gb_val else "Base (Other)"
         
-        # --- FETCH LOOKALIKES (Rich Data) ---
         inv_map = DATA_STORES.get("InverseConfusables", {})
         raw_lookalikes = inv_map.get(str(cp_base), [])
         
         lookalikes_data = []
         for item in raw_lookalikes:
             try:
-                # Handle both integer and string inputs from JSON
                 if isinstance(item, int):
                     cp = item
                 else:
-                    # Assume Hex String "U+XXXX" or "XXXX"
                     clean = str(item).replace("U+", "").strip()
                     cp = int(clean, 16)
                 
@@ -5290,7 +5260,6 @@ def inspect_character(event):
             except Exception:
                 continue
         
-        # 3. Components Analysis
         components = []
         zalgo_score = 0
         for ch in target_cluster:
@@ -5308,14 +5277,10 @@ def inspect_character(event):
                 'is_base': not is_mark
             })
 
-        # --- 4. Forensic 9: Encoding Calculations ---
-        
-        # A. System Layer
         utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
         utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
         utf32_hex = f"{cp_base:08X}"
         
-        # B. Legacy Layer
         def try_enc(enc_name):
             try:
                 return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
@@ -5325,8 +5290,6 @@ def inspect_character(event):
         ascii_val = try_enc("ascii")
         latin1_val = try_enc("latin-1")
         cp1252_val = try_enc("cp1252")
-        
-        # C. Injection Layer
         url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
         
         if target_cluster.isalnum():
@@ -5336,8 +5299,6 @@ def inspect_character(event):
             
         code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
 
-        # --- 5. Construct Data Payload ---
-        
         confusable_msg = None
         if ghosts:
              skel_val = ghosts['skeleton']
@@ -5348,15 +5309,12 @@ def inspect_character(event):
         if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
 
         data = {
-            # --- Navigation & Core Identity ---
-            "python_idx": python_idx, # Critical for Verdict Sync
+            "python_idx": python_idx,
             "cluster_glyph": target_cluster,
             "prev_glyph": prev_cluster,
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name Found"),
-            
-            # --- INJECT AGGREGATED CLUSTER TRUTH ---
             "is_cluster": cluster_identity["is_cluster"],
             "type_label": cluster_identity["type_label"],
             "type_val":   cluster_identity["type_val"],
@@ -5364,8 +5322,6 @@ def inspect_character(event):
             "script":     cluster_identity["script_val"],
             "bidi":       cluster_identity["bidi_val"],
             "age":        cluster_identity["age_val"],
-
-            # --- Logic Signals ---
             "category_full": base_char_data['category_full'],
             "category_short": base_char_data['category_short'],
             "id_status": id_status,
@@ -5374,19 +5330,13 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "lookalikes_data": lookalikes_data,
-            
             "line_break": lb_prop,
             "word_break": wb_prop,
             "grapheme_break": gb_prop,
-
-            # --- Forensic 9 ---
             "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
             "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
             "url": url_enc, "html": html_enc, "code": code_enc,
-            
-            # --- Risk Signals ---
             "confusable": confusable_msg,
-            # [FIX] Use comp_mask instead of undefined 'mask'
             "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
             "components": components
