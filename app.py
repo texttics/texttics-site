@@ -4407,16 +4407,18 @@ def render_status(message):
     """Updates the status line with text and CSS class."""
     status_line = document.getElementById("status-line")
     if status_line:
-        # Use .innerText for safety and to let the CSS handle styling
-        status_line.innerText = message
         
-        # Determine the new class by *inferring* the state from the message
+        # Determine state and render method based on message
         if message.startswith("Error:"):
             new_class = "status-error"
+            status_line.innerText = message
         elif message.startswith("Ready"):
             new_class = "status-ready"
+            # Restore the SVG and full text for the "Ready" state
+            status_line.innerHTML = 'Input: Ready <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><polyline points="20 6 9 17 4 12"></polyline></svg>'
         else:
             new_class = "status-loading"
+            status_line.innerText = message
         
         # Update the class list
         status_line.classList.remove("status-loading", "status-ready", "status-error")
