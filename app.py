@@ -6490,6 +6490,71 @@ def reveal_invisibles(event=None):
         details_line.className = "status-details"
         details_line.textContent = ""
 
+@create_proxy
+def reveal2_invisibles(event=None):
+    """
+    HIGHLIGHT MODE: Selects all non-standard invisible characters 
+    in the text input using the browser's Selection API.
+    Does NOT modify the text.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    text = el.value
+    ranges = []
+    
+    # 1. Find positions of all invisibles
+    # We iterate by code point to match Python's logic
+    # But we must map back to UTF-16 indices for the browser DOM
+    
+    utf16_idx = 0
+    
+    for char in text:
+        cp = ord(char)
+        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 length
+        
+        is_target = False
+        
+        # Check against our known invisible mapping
+        if cp in INVISIBLE_MAPPING:
+            is_target = True
+        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: # VS
+            is_target = True
+        elif 0xE0000 <= cp <= 0xE007F: # Tags
+            is_target = True
+            
+        if is_target:
+            # Add range (start, end)
+            ranges.append((utf16_idx, utf16_idx + char_len))
+            
+        utf16_idx += char_len
+
+    if not ranges:
+        return
+
+    # 2. Select the characters
+    # Since we can only have ONE selection range in a textarea,
+    # we will select the FIRST occurrence to jump the user to it.
+    # (Browsers do not support multi-range selection in <textarea>)
+    
+    first_range = ranges[0]
+    el.focus()
+    el.setSelectionRange(first_range[0], first_range[1])
+    
+    # 3. Provide Feedback
+    status_line = document.getElementById("status-line")
+    if status_line:
+        count = len(ranges)
+        # Amber Highlight Style
+        status_line.className = "status-revealed" 
+        status_line.style.backgroundColor = "#fffbeb" # Amber-50
+        status_line.style.color = "#b45309" # Amber-700
+        status_line.style.borderColor = "#fcd34d"
+        
+        icon_loc = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 6px; display: inline-block;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>"""
+        
+        status_line.innerHTML = f"{icon_loc}<strong>HIGHLIGHT MODE:</strong> Selected 1st of {count} invisibles."
+
 # ---
 # 6. INITIALIZATION
 # ---
@@ -6514,10 +6579,14 @@ async def main():
     # We listen on the *document* because 'selectionchange' fires on the document
     document.addEventListener("selectionchange", create_proxy(inspect_character))
 
-    # --- NEW: Hook the Reveal Button ---
+    # --- NEW: Hook the Reveal Buttons ---
     reveal_btn = document.getElementById("btn-reveal")
     if reveal_btn:
         reveal_btn.addEventListener("click", reveal_invisibles)
+        
+    reveal2_btn = document.getElementById("btn-reveal2") # [NEW]
+    if reveal2_btn:
+        reveal2_btn.addEventListener("click", reseveal_invisibles)
     
     # --- FIX 3: Un-gate the UI ---
     # Now that the listener is bound and data is loaded,
