@@ -171,26 +171,42 @@
           </div>
         </details>
         
-        <details class="profile-section" id="actions-panel-wrapper">
+        <details class="profile-section" id="actions-panel-wrapper" open>
           <summary><h2 class="section-title">Controls</h2></summary>
           
           <div class="action-bar">
-            <div class="action-buttons-row">
+            
+            <div class="action-row-top">
+              <button id="btn-toggle-profiles" class="tool-btn" title="Toggle all profile sections">
+                ↕ Expand All Profiles
+              </button>
+
+              <div class="action-spacer"></div>
+
+              <div class="copy-group">
+                <button id="btn-copy-hud" class="tool-btn" title="Copy only the Live Metrics table">
+                  Copy Dashboard Metrics
+                </button>
+                <button id="btn-copy-inspector" class="tool-btn" title="Copy only the current Inspector data">
+                  Copy Inspector Data
+                </button>
+                <button id="copy-report-btn" class="tool-btn report-btn" title="Copy the complete dataset (Input + All Profiles)">
+                  Copy Full Forensic Report
+                </button>
+              </div>
+            </div>
+
+            <div class="action-row-bottom">
               <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
                 ▥ Analyze Macrostructure
               </button>
-              <button id="btn-toggle-profiles" class="tool-btn" title="Expand or Collapse all forensic profiles">
-                ↕ Expand All Profiles
-              </button>
-              <button id="copy-report-btn" class="tool-btn report-btn" title="Copy full structured report">
-                Copy Stage 1 Report
-              </button>
             </div>
+
             <p class="action-bar-desc">
               Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
             </p>
           </div>
-        </details>
+      </details>
 
       <!-- 
         GROUP 2: THE STRUCTURAL PROFILE
