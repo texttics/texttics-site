@@ -2510,5 +2510,5 @@ details.profile-section .action-bar {
 /* 1. Push the text to the far right and remove its right-side gap */
 #reveal-details {
     margin-left: auto;   /* Forces the element to the far right of the flex container */
-    margin-right: 0;     /* Removes fixed spacing so it touches the edge when alone */
+    margin-right: 0.25em;  
 }
