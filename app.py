@@ -6107,7 +6107,39 @@ def update_all(event=None):
     t_input = document.getElementById("text-input")
     if not t_input: return
     t = t_input.value
-    
+
+    # --- 1.5 PASSIVE INVISIBLE SCAN (New) ---
+    # Updates the Right Status Bar immediately on paste
+    details_line = document.getElementById("reveal-details")
+    if details_line and t:
+        counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
+        total_invis = 0
+        
+        for char in t:
+            cp = ord(char)
+            cat = None
+            
+            if cp in INVISIBLE_MAPPING:
+                rep = INVISIBLE_MAPPING[cp]
+                if "TAG" in rep: cat = "Tag"
+                elif any(x in rep for x in ["RLO","LRO","LRE","RLE","PDF","LRI","RLI","FSI","PDI","ALM","LRM","RLM"]): cat = "Bidi"
+                elif "VS" in rep: cat = "VS"
+                else: cat = "Format"
+                
+            elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: cat = "VS"
+            elif 0xE0000 <= cp <= 0xE007F: cat = "Tag"
+            
+            if cat:
+                counts[cat] += 1
+                total_invis += 1
+                
+        if total_invis > 0:
+            active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
+            # Using "⚠ Detected" instead of "Deobfuscated" since we haven't revealed yet
+            details_line.innerHTML = f"<strong style='color:#d97706'>⚠ Detected:</strong> {total_invis} hidden ({', '.join(active_cats)})"
+        else:
+            details_line.textContent = ""
+            
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
         render_cards({}, "meta-totals-cards")
