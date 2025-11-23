@@ -6113,6 +6113,7 @@ def update_all(event=None):
     # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button & Always-On Status) ---
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
+    reseveal_btn = document.getElementById("btn-reseveal")
     
     if details_line:
         # Initialize counters
@@ -6143,30 +6144,30 @@ def update_all(event=None):
             
             details_line.className = "status-details warn"
             
-            # [FIX] Amber Alert Icon with HARDCODED Color (stroke="#d97706")
+            # Amber Alert Icon with HARDCODED Color (stroke="#d97706")
             # We removed 'currentColor' so the icon stays Orange even though text is Black.
             icon_alert = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
             
-            # [FIX] Icon First + Explicit Space Character
-            details_line.innerHTML = f"{icon_alert}<strong>Non-Standard Invisibles:</strong> {total_invis}"
+            # Icon First + Explicit Space Character
+            details_line.innerHTML = f"Non-Standard Invisibles: {total_invis} {icon_alert}"
             
-            # SHOW Reveal Button
+            # SHOW Reveal and Reseaval Buttons
             if reveal_btn: reveal_btn.style.display = "flex"
+            if reseveal_btn: reseveal_btn.style.display = "flex"
             
         else:
             # STATE: SAFE / INITIAL (Green Pill + Hide Button)
-            # FIXED: Indentation is correct here (4 spaces)
             details_line.className = "status-details clean"
             
             # Deep Green Checkmark
             icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
             
             # HTML Order: Text First, Icon Second
-            # Note: Make sure your CSS adds margin-left to the SVG for spacing
             details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
             
-            # HIDE Reveal Button
+            # HIDE Reveal and Reseaval Buttons
             if reveal_btn: reveal_btn.style.display = "none"
+            if reseveal_btn: reseveal_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
