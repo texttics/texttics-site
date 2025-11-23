@@ -6151,7 +6151,7 @@ def update_all(event=None):
             # Explicit Space Character + Icon
             details_line.innerHTML = ( f"Non-Standard Invisibles:&nbsp;{total_invis}&nbsp;Found&nbsp;{icon_alert}" )
             
-            # SHOW Reveal and Reseaval Buttons
+            # SHOW Reveal and Reveal2 Buttons
             if reveal_btn: reveal_btn.style.display = "flex"
             if reveal2_btn: reveal2_btn.style.display = "flex"
             
@@ -6165,7 +6165,7 @@ def update_all(event=None):
             # HTML Order: Text First, Icon Second
             details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
             
-            # HIDE Reveal and Reseaval Buttons
+            # HIDE Reveal and Reveal2 Buttons
             if reveal_btn: reveal_btn.style.display = "none"
             if reveal2_btn: reveal2_btn.style.display = "none"
             
@@ -6587,7 +6587,7 @@ async def main():
         
     reveal2_btn = document.getElementById("btn-reveal2") # [NEW]
     if reveal2_btn:
-        reveal2_btn.addEventListener("click", reseveal_invisibles)
+        reveal2_btn.addEventListener("click", reveal2_invisibles)
     
     # --- FIX 3: Un-gate the UI ---
     # Now that the listener is bound and data is loaded,
