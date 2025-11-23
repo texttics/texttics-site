@@ -443,7 +443,7 @@ function buildStructuredReport() {
   report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
 
   // Dual-Atom
-  report.push('\n[ Dual-Atom Fingerprint ]');
+  report.push('\n[ Dual-Atom Profile ]');
   report.push(...parseCards('meta-totals-cards'));
   report.push(...parseCards('grapheme-integrity-cards'));
   report.push(...parseTable('ccc-matrix-body', 'Combining Class: ')); 
