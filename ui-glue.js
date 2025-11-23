@@ -742,21 +742,101 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     });
   }
 
-  // B. Copy Inspector Data
+ // B. Copy Inspector Data (Structured Forensic Format)
   const btnCopyInsp = document.getElementById('btn-copy-inspector');
   if (btnCopyInsp) {
     btnCopyInsp.addEventListener('click', () => {
-      // Scrape the Inspector
-      const inspector = document.getElementById('inspector-panel-content');
-      if (!inspector) return;
+      const root = document.getElementById('inspector-panel-content');
+      if (!root) return;
+
+      // Helper to safely get text
+      const txt = (sel) => root.querySelector(sel)?.textContent.trim() || "";
       
-      // Simple text extraction or you can build a specific format
-      // This grabs the raw text which is usually readable enough for the inspector layout
-      let text = inspector.innerText;
-      // Clean up excessive whitespace
-      text = text.replace(/\n\s*\n/g, '\n');
+      // 1. HEADER: Target Identity
+      const glyph = txt('.inspector-glyph');
+      const cp = txt('.inspector-codepoint');
+      const name = txt('.inspector-header');
       
-      const report = "[ Character Inspector Data ]\n" + text;
+      let report = `[ Character Inspector Report ]\n`;
+      report += `--------------------------------------------------\n`;
+      report += `TARGET:   ${glyph}  (${cp})\n`;
+      report += `NAME:     ${name}\n`;
+      report += `--------------------------------------------------\n\n`;
+
+      // 2. RISK ASSESSMENT (Verdict & Matrix)
+      const verdict = txt('.risk-verdict-text');
+      const level = txt('.risk-header-top');
+      
+      report += `[ RISK ASSESSMENT ]\n`;
+      report += `Verdict:  ${level} - ${verdict}\n`;
+      
+      // Scrape the Diagnostic Matrix rows
+      root.querySelectorAll('.risk-row').forEach(row => {
+          const label = row.querySelector('.risk-facet')?.textContent.trim() || "";
+          const status = row.querySelector('.risk-status')?.textContent.trim() || "";
+          const detail = row.querySelector('.risk-detail')?.textContent.trim() || "";
+          // Format: "Visibility: PASS (Standard ASCII)"
+          if(label) report += `${label.padEnd(12, ' ')}: ${status} (${detail})\n`;
+      });
+      report += `\n`;
+
+      // 3. IDENTITY DETAILS
+      // We scrape the spec-chips or matrix items if present
+      report += `[ IDENTITY PROFILE ]\n`;
+      root.querySelectorAll('.col-identity .matrix-item').forEach(item => {
+          const val = item.querySelector('.matrix-val')?.textContent.trim();
+          const sub = item.querySelector('.matrix-sub')?.textContent.trim();
+          if(val && sub) report += `${sub.padEnd(15, ' ')}: ${val}\n`;
+      });
+      report += `\n`;
+
+      // 4. LOOKALIKES (If present)
+      const lookalikes = root.querySelector('.ghost-section.lookalikes');
+      if (lookalikes) {
+          const count = lookalikes.querySelector('.ghost-key')?.textContent.trim();
+          report += `[ CONFUSABLES ]\n`;
+          report += `${count}\n`;
+          // Grab chips
+          const chips = [];
+          lookalikes.querySelectorAll('.lookalike-chip').forEach(chip => {
+             const lkGlyph = chip.querySelector('.lk-glyph')?.textContent;
+             const lkCp = chip.querySelector('.lk-cp')?.textContent;
+             chips.push(`${lkGlyph} (${lkCp})`);
+          });
+          if(chips.length > 0) report += `Candidates: ${chips.join(', ')}\n`;
+          report += `\n`;
+      }
+
+      // 5. CLUSTER COMPONENTS (Table)
+      report += `[ CLUSTER COMPONENTS ]\n`;
+      const rows = root.querySelectorAll('.structure-table tbody tr');
+      if (rows.length > 0) {
+          // Header
+          report += `CP`.padEnd(10) + `Cat`.padEnd(6) + `CCC`.padEnd(6) + `Name\n`;
+          rows.forEach(row => {
+              const cells = row.querySelectorAll('td');
+              if(cells.length >= 4) {
+                  const cCp = cells[0].textContent.trim().padEnd(10);
+                  const cCat = cells[1].textContent.trim().padEnd(6);
+                  const cCcc = cells[2].textContent.trim().padEnd(6);
+                  const cName = cells[3].textContent.trim();
+                  report += `${cCp}${cCat}${cCcc}${cName}\n`;
+              }
+          });
+      } else {
+          report += "Atomic Character (No Decomposition)\n";
+      }
+      report += `\n`;
+
+      // 6. FORENSIC ENCODINGS
+      report += `[ ENCODINGS ]\n`;
+      root.querySelectorAll('.byte-row').forEach(row => {
+          const label = row.querySelector('.label')?.textContent.replace(':','').trim();
+          // Get the text node following the label
+          const val = row.innerText.split(':')[1]?.trim() || ""; 
+          if(label) report += `${label.padEnd(12, ' ')}: ${val}\n`;
+      });
+
       copyToClipboard(report, 'btn-copy-inspector');
     });
   }
