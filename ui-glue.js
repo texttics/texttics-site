@@ -689,3 +689,63 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       }
     });
   }
+
+// ==========================================
+  // 9. GRANULAR COPY LOGIC
+  // ==========================================
+
+  // Helper: Copy text to clipboard with visual feedback
+  async function copyToClipboard(text, btnId) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById(btnId);
+      if(btn) {
+        const originalText = btn.innerText;
+        btn.innerText = "Copied!";
+        setTimeout(() => btn.innerText = originalText, 2000);
+      }
+    } catch (err) {
+      console.error("Copy failed", err);
+    }
+  }
+
+  // A. Copy Dashboard Metrics
+  const btnCopyHud = document.getElementById('btn-copy-hud');
+  if (btnCopyHud) {
+    btnCopyHud.addEventListener('click', () => {
+      // Scrape the HUD values
+      const hud = document.getElementById('forensic-hud');
+      if (!hud) return;
+      
+      let report = "[ Forensic Dashboard Metrics ]\n";
+      const cols = hud.querySelectorAll('.hud-col');
+      
+      cols.forEach(col => {
+        const label = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
+        const mainVal = col.querySelector('.hud-val')?.textContent.trim() || "0";
+        report += `${label}: ${mainVal}\n`;
+      });
+      
+      copyToClipboard(report, 'btn-copy-hud');
+    });
+  }
+
+  // B. Copy Inspector Data
+  const btnCopyInsp = document.getElementById('btn-copy-inspector');
+  if (btnCopyInsp) {
+    btnCopyInsp.addEventListener('click', () => {
+      // Scrape the Inspector
+      const inspector = document.getElementById('inspector-panel-content');
+      if (!inspector) return;
+      
+      // Simple text extraction or you can build a specific format
+      // This grabs the raw text which is usually readable enough for the inspector layout
+      let text = inspector.innerText;
+      // Clean up excessive whitespace
+      text = text.replace(/\n\s*\n/g, '\n');
+      
+      const report = "[ Character Inspector Data ]\n" + text;
+      copyToClipboard(report, 'btn-copy-inspector');
+    });
+  }
