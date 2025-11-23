@@ -2488,7 +2488,7 @@ details.profile-section .action-bar {
 }
 
 
-/* --- Reveal/Transform Buttons (Pill Shape) --- */
+/* --- Highlight/Deobfuscate Buttons (Pill Shape) --- */
 #btn-reveal,
 #btn-reveal2 {
   border-radius: 999px; /* Fully rounded pill shape */
@@ -2496,10 +2496,6 @@ details.profile-section .action-bar {
   padding-right: 0.75rem;
   font-size: 0.75rem; /* Slightly smaller text for elegance */
   letter-spacing: 0.03em;
-}
-
-/* Highlight Button Specifics (Reveal2) */
-#btn-reveal2 {
   background-color: #ffffff; /* White background */
   border-color: #d1d5db;     /* Light Gray border */
   color: #000000;            /* Black text */
@@ -2507,7 +2503,3 @@ details.profile-section .action-bar {
   font-weight: 600;
 }
 
-#btn-reveal2:hover {
-  background-color: #f3f4f6; /* Light Gray hover */
-  border-color: #9ca3af;     /* Darker border */
-}
