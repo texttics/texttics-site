@@ -2512,3 +2512,76 @@ details.profile-section .action-bar {
     margin-left: auto;   /* Forces the element to the far right of the flex container */
     margin-right: 0.5em;  
 }
+
+/* =========================================
+   FORENSIC ENCODING STRIP (The "14" Row)
+   ========================================= */
+
+.encoding-strip {
+  display: flex;
+  width: 100%;
+  height: 50px; /* Compact height */
+  overflow-x: auto; /* Horizontal Scroll enabled */
+  overflow-y: hidden;
+  background-color: #ffffff;
+  border: 1px solid var(--color-border);
+  border-top: none; /* Merge with console above */
+  
+  /* Scrollbar styling for sleek look */
+  scrollbar-width: thin;
+  scrollbar-color: #e5e7eb transparent;
+}
+
+.encoding-strip::-webkit-scrollbar {
+  height: 4px;
+}
+.encoding-strip::-webkit-scrollbar-thumb {
+  background-color: #e5e7eb;
+  border-radius: 4px;
+}
+
+/* Individual Cell */
+.enc-cell {
+  flex: 0 0 auto; /* Don't shrink, fixed width based on content */
+  min-width: 85px; /* Ensure enough space for labels */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-right: 1px solid #f3f4f6;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  transition: background-color 0.2s;
+}
+
+.enc-cell:last-child {
+  border-right: none;
+  background-color: #f9fafb; /* Slight tint for "Other" */
+}
+
+/* Upper Row: Label */
+.enc-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #6b7280;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Lower Row: Value */
+.enc-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* Status Colors (Forensic Signals) */
+.enc-safe { color: #15803d; background-color: #f0fdf4; width: 100%; text-align: center; } /* 100% */
+.enc-risk { color: #b45309; } /* 1-99% */
+.enc-dead { color: #d1d5db; opacity: 0.6; } /* 0% */
+
+/* Hover effect for inspection */
+.enc-cell:hover {
+  background-color: #f3f4f6;
+  cursor: help;
+}
