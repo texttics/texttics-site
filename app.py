@@ -6060,10 +6060,10 @@ def compute_threat_score(inputs):
 
 def render_encoding_footprint(t: str):
     """
-    Forensic Signal Engine v3.0:
-    1. Validates UTF structural integrity (catching lone surrogates).
-    2. Calculates 'Signal Strength' (Coverage of Non-ASCII characters).
-    3. Defines 'Other' as characters surviving all legacy filters.
+    Forensic Signal Engine v4.0 (Exclusivity):
+    1. UTF Integrity: Validates structure.
+    2. Signal Strength: Coverage of Non-ASCII characters.
+    3. Exclusivity: Identifies encodings that uniquely explain specific characters.
     """
     container = document.getElementById("encoding-footprint")
     if not container: return
@@ -6074,22 +6074,39 @@ def render_encoding_footprint(t: str):
     total_chars = len(t)
     
     # --- 1. SIGNAL EXTRACTION ---
-    # Identify the "Signal" (Non-ASCII characters). 
-    # These are the only characters that provide forensic differentiation.
     non_ascii_chars = [c for c in t if ord(c) >= 128]
     total_non_ascii = len(non_ascii_chars)
     has_signal = total_non_ascii > 0
     
-    # "Unsupported" Set: Track chars that fail ALL legacy filters
-    # We start with the set of all indices, and remove them as they are 'explained' by legacy codecs
-    unsupported_indices = set(range(total_chars)) if has_signal else set()
+    # --- 2. EXCLUSIVITY PASS ---
+    # We determine which codec 'owns' each non-ascii char.
+    # legacy_codecs list excludes UTFs
+    legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
+    
+    # Maps codec_label -> count of unique characters only IT can encode
+    exclusive_counts = {item[0]: 0 for item in legacy_codecs}
+    
+    if has_signal:
+        for char in non_ascii_chars:
+            # Find all codecs that support this char
+            supported_by = []
+            for label, codec, _ in legacy_codecs:
+                try:
+                    char.encode(codec)
+                    supported_by.append(label)
+                except UnicodeEncodeError:
+                    pass
+            
+            # If exactly one codec supports it, it's an Exclusive Match
+            if len(supported_by) == 1:
+                exclusive_counts[supported_by[0]] += 1
 
+    # HTML Generation
     html_buffer = []
     
     for label, codec, tooltip in FORENSIC_ENCODINGS:
         try:
             # --- A. COMPUTE TOTAL COVERAGE ---
-            # We MUST attempt actual encoding to catch surrogates in UTF-8/16/32
             try:
                 t.encode(codec)
                 valid_count = total_chars
@@ -6100,19 +6117,13 @@ def render_encoding_footprint(t: str):
 
             pct_total = (valid_count / total_chars) * 100
             
-            # --- B. COMPUTE SIGNAL STRENGTH (The Forensics) ---
-            # How much of the "Foreign" (Non-ASCII) text does this codec explain?
+            # --- B. COMPUTE SIGNAL STRENGTH ---
             signal_strength = 0.0
-            is_relevant = False
+            exclusive_hits = 0
             
             if "utf" in codec:
-                # Modern Anchors: Relevance is purely structural (integrity)
-                is_relevant = True
-                # For UTF, Signal Strength is just Total Integrity
-                signal_strength = pct_total 
+                signal_strength = pct_total
             elif has_signal:
-                # Legacy Filters: Calculate coverage of ONLY non-ascii chars
-                # Optimization: We only encode the non-ascii subset
                 non_ascii_str = "".join(non_ascii_chars)
                 try:
                     non_ascii_str.encode(codec)
@@ -6123,102 +6134,79 @@ def render_encoding_footprint(t: str):
                     valid_signal = len(valid_s)
                 
                 signal_strength = (valid_signal / total_non_ascii) * 100
-                
-                # "Other" Logic: If a char is covered by this legacy codec, remove it from "Unsupported"
-                if valid_signal > 0:
-                    # This is computationally expensive to do perfectly per-index for 13 codecs on large text.
-                    # For the visual "Other" bucket, we can approximate or do it strictly.
-                    # Strict approach for the "Other" metric below.
-                    pass 
-            else:
-                # ASCII-Only Text: Legacy codecs have 0% Signal Strength (they add no info)
-                signal_strength = 0.0
-
+                exclusive_hits = exclusive_counts.get(label, 0)
+            
             # --- C. DETERMINE VISUAL STATE ---
             val_class = "enc-risk" # Default
             val_text = f"{pct_total:.1f}%"
             
-            # Case 1: Modern Anchors (UTF)
+            # Special Border for Exclusive Matches
+            extra_style = "" 
+            
             if "utf" in codec:
                 if valid_count == total_chars:
-                    val_class = "enc-safe" # Green
+                    val_class = "enc-safe"
                     val_text = "100%"
                 else:
-                    val_class = "enc-dead" # Broken Unicode (Surrogates)
-                    val_text = f"{pct_total:.1f}%" # Show damage report
-                    
-            # Case 2: Legacy Filters (The Sieve)
+                    val_class = "enc-dead"
+                    val_text = f"{pct_total:.1f}%"
             else:
                 if not has_signal:
-                    # ASCII Mode: Dim everything
-                    val_class = "enc-dead" 
-                    val_text = "100%" # It covers it, but it's boring
-                elif signal_strength == 100.0:
-                    # Perfect Signal Match: This codec explains ALL foreign chars
-                    val_class = "enc-safe" 
+                    val_class = "enc-dead"
                     val_text = "100%"
+                elif signal_strength == 100.0:
+                    val_class = "enc-safe"
+                    val_text = "100%"
+                    # If this codec has exclusive hits, give it the Gold Standard
+                    if exclusive_hits > 0:
+                        extra_style = "border-bottom: 3px solid #d97706;" # Amber underline
+                        val_text = "MATCH" # Stronger word
                 elif valid_count == 0:
                     val_class = "enc-dead"
                     val_text = "0%"
                 else:
-                    # Partial Match (Mojibake Risk)
                     val_class = "enc-risk"
                     val_text = f"{pct_total:.1f}%"
 
-            # --- D. TOOLTIP CONSTRUCTION ---
+            # --- D. TOOLTIP ---
+            detail = ""
             if "utf" in codec:
                 detail = "Valid Unicode." if valid_count == total_chars else "Contains invalid surrogates."
             elif not has_signal:
-                detail = "ASCII-only text. Compatible, but adds no provenance signal."
+                detail = "ASCII-only text. Adds no provenance signal."
             else:
-                detail = f"Non-ASCII Signal Strength: {signal_strength:.1f}%"
-            
-            full_title = f"{label}\nTotal Coverage: {pct_total:.1f}%\n{detail}\n{tooltip}"
+                detail = f"Signal Strength: {signal_strength:.1f}%"
+                if exclusive_hits > 0:
+                    detail += f"\n🔥 EXCLUSIVE MATCH: Explains {exclusive_hits} unique char(s)!"
 
             html_buffer.append(f"""
-                <div class="enc-cell" title="{full_title}">
+                <div class="enc-cell" title="{label}\n{detail}\n{tooltip}" style="{extra_style}">
                     <div class="enc-label">{label}</div>
                     <div class="enc-val {val_class}">{val_text}</div>
                 </div>
             """)
             
         except Exception:
-            html_buffer.append(f"""
-                <div class="enc-cell" title="Codec Error">
-                    <div class="enc-label">{label}</div>
-                    <div class="enc-val enc-dead">ERR</div>
-                </div>
-            """)
+            html_buffer.append(f"""<div class="enc-cell"><div class="enc-label">{label}</div><div class="enc-val enc-dead">ERR</div></div>""")
 
-    # --- 2. THE "OTHER" COLUMN (The Residuals) ---
-    # Definition: Characters not representable in ANY of the 13 legacy filters.
-    # We must scan the text once.
-    legacy_codecs = [c for _, c, _ in FORENSIC_ENCODINGS if "utf" not in c]
-    
+    # --- The "Other" Column ---
     unsupported_count = 0
     for char in t:
-        # Optimization: ASCII always supported
         if ord(char) < 128: continue
-        
         supported = False
-        for codec in legacy_codecs:
+        for _, l_codec, _ in legacy_codecs:
             try:
-                char.encode(codec)
+                char.encode(l_codec)
                 supported = True
                 break
-            except UnicodeEncodeError:
-                continue
-        
-        if not supported:
-            unsupported_count += 1
+            except: continue
+        if not supported: unsupported_count += 1
             
     other_pct = (unsupported_count / total_chars) * 100
-    
-    other_cls = "enc-dead" 
-    if other_pct > 0: other_cls = "enc-risk" # Orange if residuals exist
+    other_cls = "enc-dead" if other_pct == 0 else "enc-risk"
     
     html_buffer.append(f"""
-        <div class="enc-cell" title="Other: {other_pct:.1f}%\nCharacters that defy ALL 13 legacy filters (e.g., Emoji, Mathematical Symbols, Historic Scripts).">
+        <div class="enc-cell" title="Other: {other_pct:.1f}%\nCharacters not representable in ANY listed legacy filter.">
             <div class="enc-label">Other</div>
             <div class="enc-val {other_cls}">{other_pct:.1f}%</div>
         </div>
