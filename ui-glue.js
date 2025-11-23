@@ -665,3 +665,27 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       }
     });
   });
+
+// ==========================================
+  // 8. PROFILE TOGGLE LOGIC (Dual-Action)
+  // ==========================================
+  const toggleBtn = document.getElementById('btn-toggle-profiles');
+  // Select ONLY the data profiles (exclude Dashboard/Inspector)
+  const reportSections = document.querySelectorAll('.fingerprint-section');
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      // Check state: Is there at least one section closed?
+      const isAnyClosed = Array.from(reportSections).some(el => !el.hasAttribute('open'));
+
+      if (isAnyClosed) {
+        // Action: EXPAND ALL
+        reportSections.forEach(el => el.open = true);
+        toggleBtn.innerText = "↕ Collapse All Profiles";
+      } else {
+        // Action: COLLAPSE ALL
+        reportSections.forEach(el => el.open = false);
+        toggleBtn.innerText = "↕ Expand All Profiles";
+      }
+    });
+  }
