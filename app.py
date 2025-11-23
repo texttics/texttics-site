@@ -6447,17 +6447,28 @@ def reveal_invisibles(event=None):
         el.value = "".join(new_chars)
         el.classList.add("reveal-active")
         
+        # 1. Update Left Status (Orange/Warning Mode)
         status_line.className = "status-revealed"
-        # UPDATE: Use innerHTML to render the SVG + Bold Text
         status_line.innerHTML = f"{ICON_ALERT}<strong>VISUAL REVEAL MODE:</strong> Raw text replaced with {total_replaced} tags."
         
+        # 2. Update Right Status (Emerald/Success Pill)
         active_cats = [f"{k}: {v}" for k, v in counts.items() if v > 0]
         breakdown = ", ".join(active_cats)
-        details_line.innerHTML = f"<strong>✔ Deobfuscated:</strong> {total_replaced} ({breakdown})"
+        
+        details_line.className = "status-details success"
+        
+        # SVG Eye Icon
+        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
+        
+        details_line.innerHTML = f"{icon_eye}<strong>Deobfuscated:</strong> {total_replaced} ({breakdown})"
         
     else:
+        # Reset Left Status
         status_line.className = "status-ready"
         status_line.textContent = "No non-standard invisible characters found."
+        
+        # Hide Right Status (Reset class to hide pill)
+        details_line.className = "status-details"
         details_line.textContent = ""
 
 # ---
