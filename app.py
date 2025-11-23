@@ -6455,6 +6455,10 @@ def reveal_invisibles(event=None):
     if total_replaced > 0:
         el.value = "".join(new_chars)
         el.classList.add("reveal-active")
+
+        # Hide the button (Job Done)
+        reveal_btn = document.getElementById("btn-reveal")
+        if reveal_btn: reveal_btn.style.display = "none"
         
         # 1. Update Left Status (Orange/Warning Mode)
         status_line.className = "status-revealed"
