@@ -59,6 +59,29 @@ INVIS_HIGH_RISK_MASK = INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DO_NOT_EMIT
 # The O(1) Lookup Table (Populated in load_unicode_data)
 INVIS_TABLE = [0] * 1114112  # Covers all of Unicode (0x110000)
 
+# --- FORENSIC ENCODING PROFILES ---
+# Tier 0 (Modern) + Tier 1 (Legacy)
+FORENSIC_ENCODINGS = [
+    # --- TIER 0: MODERN ANCHORS (Reference) ---
+    ("UTF-8", "utf_8", "Universal Web Standard"),
+    ("UTF-16", "utf_16", "Windows/JavaScript Native"),
+    ("UTF-32", "utf_32", "True Code Point Storage"),
+    
+    # --- TIER 1: LEGACY FILTERS (Provenance) ---
+    ("ASCII", "ascii", "Universal Baseline (7-bit)"),
+    ("Win-1252", "cp1252", "Western / Windows (ANSI)"),
+    ("ISO-8859-1", "latin_1", "Western / Strict Protocol"),
+    ("MacRoman", "mac_roman", "Legacy Apple / Classic Mac"),
+    ("CP437", "cp437", "DOS / Terminal / Warez Art"),
+    ("Win-1251", "cp1251", "Cyrillic Legacy"),
+    ("Win-1256", "cp1256", "Arabic Legacy"),
+    ("Win-1253", "cp1253", "Greek Legacy"),
+    ("Win-1255", "cp1255", "Hebrew Legacy"),
+    ("Shift_JIS", "shift_jis", "Japanese Legacy"),
+    ("Big5", "big5", "Traditional Chinese"),
+    ("EUC-KR", "euc_kr", "Korean Legacy"),
+    ("GBK", "gbk", "Simp. Chinese Legacy")
+]
 
 def build_invis_table():
     """
@@ -6035,6 +6058,93 @@ def compute_threat_score(inputs):
         "noise": inputs.get("noise_list", []) # Pass noise list for display
     }
 
+def render_encoding_footprint(t: str):
+    """
+    Calculates and renders the Forensic Encoding Strip.
+    Columns: Modern Anchors + Legacy Filters + Other.
+    """
+    container = document.getElementById("encoding-footprint")
+    if not container: return
+    if not t:
+        container.innerHTML = ""
+        return
+
+    total_chars = len(t)
+    html_buffer = []
+    
+    for label, codec, tooltip in FORENSIC_ENCODINGS:
+        try:
+            valid_count = 0
+            
+            # Optimization: UTFs are always 100% for valid Python strings
+            if "utf" in codec:
+                valid_count = total_chars
+            else:
+                # FASTEST METHOD: encode(ignore) -> decode
+                try:
+                    # Try strict first (Fast path for 100% coverage)
+                    t.encode(codec)
+                    valid_count = total_chars
+                except UnicodeEncodeError:
+                    # Fallback: Count surviving chars
+                    valid_bytes = t.encode(codec, 'ignore')
+                    # We must decode back to count *characters*, not bytes
+                    valid_string = valid_bytes.decode(codec)
+                    valid_count = len(valid_string)
+
+            pct = (valid_count / total_chars) * 100
+            
+            # Styling
+            if valid_count == total_chars:
+                val_class = "enc-safe" 
+                val_text = "100%"
+                cell_title = f"{label}: 100% Coverage\n{tooltip}"
+            elif valid_count == 0:
+                val_class = "enc-dead"
+                val_text = "0%"
+                cell_title = f"{label}: 0% Coverage\nIncompatible."
+            else:
+                val_class = "enc-risk"
+                val_text = f"{pct:.1f}%"
+                cell_title = f"{label}: {pct:.1f}% Coverage\nPartial compatibility. Mojibake risk."
+
+            html_buffer.append(f"""
+                <div class="enc-cell" title="{cell_title}">
+                    <div class="enc-label">{label}</div>
+                    <div class="enc-val {val_class}">{val_text}</div>
+                </div>
+            """)
+            
+        except Exception:
+            html_buffer.append(f"""
+                <div class="enc-cell" title="Codec Error">
+                    <div class="enc-label">{label}</div>
+                    <div class="enc-val enc-dead">ERR</div>
+                </div>
+            """)
+
+    # --- The "Other" Column (Unusual) ---
+    # Definition: Characters outside the BMP (Supplementary Planes).
+    # Most legacy encodings (except GB18030) are strictly BMP-bound.
+    non_bmp_count = 0
+    for char in t:
+        if ord(char) > 0xFFFF:
+            non_bmp_count += 1
+            
+    other_pct = (non_bmp_count / total_chars) * 100
+    
+    other_cls = "enc-dead" # Default gray
+    if other_pct > 0: other_cls = "enc-risk" # Orange if present (Unusual)
+    
+    html_buffer.append(f"""
+        <div class="enc-cell" title="Other: {other_pct:.1f}%\nCharacters in Supplementary Planes (Emoji, Historic) that defy legacy encodings.">
+            <div class="enc-label">Other</div>
+            <div class="enc-val {other_cls}">{other_pct:.1f}%</div>
+        </div>
+    """)
+
+    container.innerHTML = "".join(html_buffer)
+
 # ---
 # 6. MAIN ORCHESTRATOR
 # ---
@@ -6344,6 +6454,9 @@ def update_all(event=None):
     
     # Update HUD (Remove emoji_consumed)
     render_forensic_hud(t, hud_stats)
+
+    # --- NEW: Render Encoding Strip ---
+    render_encoding_footprint(t)
     
     # Stage 2 Bridge
     try:
