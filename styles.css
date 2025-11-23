@@ -1412,7 +1412,7 @@ Stage 2: Heatmap Row Classes
 .status-details {
   display: inline-flex;
   align-items: center;
-  margin-right: 1rem; /* Gap between pill and button */
+  margin-right: 0rem; /* Gap between pill and button */
   padding: 2px 12px;
   border-radius: 999px;
   font-size: 0.85rem;
@@ -2522,68 +2522,4 @@ details.profile-section .action-bar {
   .action-spacer { display: none; }
   .copy-group { flex-direction: column; }
   .macro-btn { width: 100%; }
-}
-
-/* --- Right Status Bar (Forensic Detail Pill) --- */
-.status-details {
-  /* Layout */
-  display: inline-flex;
-  align-items: center;
-  margin-right: 1.5rem; /* Increased gap from the button */
-  
-  /* Appearance (Match the Left Status style) */
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  padding: 2px 12px;
-  border-radius: 999px; /* Full Pill Shape */
-  border: 1px solid transparent;
-  transition: all 0.3s ease;
-  
-  /* Default State (Hidden/Empty) */
-  opacity: 0; 
-  visibility: hidden;
-}
-
-/* State: None Detected (Updated Design) */
-/* --- 2. Right Status (Clean State) --- */
-.status-details.clean {
-  opacity: 1;
-  visibility: visible;
-  
-  /* Frame: Light Green Background + Green Border */
-  background-color: #f0fdf4; 
-  border-color: #bbf7d0;     
-  
-  /* Text: Pure Black (High Contrast) */
-  color: #000000;            
-  font-weight: 700;          
-}
-
-/* Target the Tick Mark Icon specifically to make it Bold Green */
-.status-details.clean svg {
-  stroke: #15803d; /* Deep Emerald Green */
-  stroke-width: 3; /* Make the lines thicker/bolder */
-}
-
-/* State B: Warning / Detected (Amber) */
-.status-details.warn {
-  opacity: 1;
-  visibility: visible;
-  background-color: #fffbeb; /* Amber-50 */
-  color: #b45309;            /* Amber-700 */
-  border-color: #fcd34d;     /* Amber-300 */
-}
-
-/* State C: Success / Deobfuscated (Emerald) */
-.status-details.success {
-  opacity: 1;
-  visibility: visible;
-  background-color: #ecfdf5; /* Emerald-50 */
-  color: #047857;            /* Emerald-700 */
-  border-color: #6ee7b7;     /* Emerald-300 */
-}
-
-/* Success checkmark color */
-.status-details strong {
-  color: #059669; /* Emerald-600 */
 }
