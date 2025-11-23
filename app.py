@@ -6587,8 +6587,6 @@ def reveal2_invisibles(event=None):
 # 6. INITIALIZATION
 # ---
 
-# [THIS IS IN app.py]
-
 async def main():
     """Main entry point: Loads data, then hooks the input."""
     
@@ -6599,29 +6597,27 @@ async def main():
     await load_unicode_data()
     
     # --- FIX 2: Bind listener *after* await ---
-    # This ensures the listener is bound in the SAME interpreter
-    # that just loaded the data.
     text_input_element.addEventListener("input", update_all)
     
     # --- NEW: Hook the Inspector Panel ---
-    # We listen on the *document* because 'selectionchange' fires on the document
     document.addEventListener("selectionchange", create_proxy(inspect_character))
 
     # --- NEW: Hook the Reveal Buttons ---
     reveal_btn = document.getElementById("btn-reveal")
     if reveal_btn:
+        # Ensure we bind to the correct function name 'reveal_invisibles'
+        # (Make sure the function 'reveal_invisibles' is actually defined above!)
         reveal_btn.addEventListener("click", reveal_invisibles)
         
     reveal2_btn = document.getElementById("btn-reveal2") # [NEW]
     if reveal2_btn:
+        # Ensure we bind to the correct function name 'reveal2_invisibles'
         reveal2_btn.addEventListener("click", reveal2_invisibles)
     
     # --- FIX 3: Un-gate the UI ---
-    # Now that the listener is bound and data is loaded,
-    # enable the text area for the user.
     text_input_element.disabled = False
     text_input_element.placeholder = "Paste or type here..."
-    print("Text...tics is ready.") # A good sign to see in the console
+    print("Text...tics is ready.")
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
