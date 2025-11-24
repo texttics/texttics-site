@@ -843,7 +843,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     # 6. Format Status Message (Individualized)
     # Format: "Threat Signals Highlighter: #19 of 25 — Trojan Source"
-    status_msg = f"<strong>{category_label} Highlighter:</strong> #{hit_index} of {len(targets)}"
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp#{hit_index} of {len(targets)}"
     
     # 7. Update LEFT-SIDE Status
     hud_status = document.getElementById("hud-stepper-status")
@@ -853,9 +853,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         hud_status.style.display = "inline-flex" # Force visible
         
         # Search/Locate Icon (Blue)
-        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
+        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
         
-        hud_status.innerHTML = f"{icon} {status_msg}"
+        hud_status.innerHTML = f"{status_msg} {icon}"
     
     # 8. Force update inspector for the new selection
     inspect_character(None)
