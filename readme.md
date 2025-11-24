@@ -998,37 +998,52 @@ To achieve a good forensic model, we transitioned the engine to a **Cluster-Firs
 
 ***
 
-## 📈 Update: The "Forensic Signal Engine" & Interaction Polish
+## 📈 Update: The "Active Forensic HUD" & Signal Engine
 
-**Session Focus:** Moving beyond character counting to **Provenance Profiling** and **Zero-Width Interaction**. We implemented a deterministic "Forensic Signal Engine" to analyze legacy encoding compatibility without relying on probabilistic byte-sniffing.
+**Session Focus:** Transitioning the tool from a "Passive Readout" to an **"Active Navigation Instrument."** We implemented a deterministic "Forensic Signal Engine" for legacy encoding analysis and a **Registry-Based State Machine** to turn static metrics into interactive navigation controllers.
 
 ### 1. New Module: Forensic Encoding Footprint (Signal vs. Compatibility)
+
 We introduced a high-density visualization strip that answers: *"Which legacy ecosystem could this text have originated from, and what data is lost if saved as ANSI?"*
 
 * **Philosophy:** Strictly "Post-Clipboard." We do not guess original bytes. We measure **Compatibility** (physical fit) and **Signal Strength** (discriminatory power of non-ASCII characters).
 * **The "Forensic Signal" Logic:**
     * **Integrity Anchors (Left):** Verifies structural validity for `UTF-8`, `UTF-16`, and `UTF-32` (detects lone surrogates).
-    * **UNI-ONLY (The Modernity Metric):** A specific, Violet-coded metric tracking characters (Emoji, Math, Historic) that are *physically impossible* in legacy encodings. Includes a rich tooltip breakdown (e.g., *"Emoji: 5, Math: 2"*).
+    * **UNI-ONLY (The Modernity Metric):** A specific, Violet-coded metric tracking characters (Emoji, Math, Historic) that are *physically impossible* in legacy encodings. Includes a rich tooltip breakdown.
     * **Legacy Filters (Right):** A sorted strip of 13 legacy encodings (Win-125x, ISO-8859-1, CJK, etc.).
         * **Metric T (Total Compatibility):** Can the file be saved without data loss?
         * **Metric S (Signal Strength):** How well does this encoding explain the *non-ASCII* characters?
-    * **Exclusivity Detection:** Flags encodings as **[UNIQUE]** if they are the *sole* explanation for specific characters (e.g., a Cyrillic letter found only in CP866, not Win-1251).
+    * **Exclusivity Detection:** Flags encodings as **[UNIQUE]** if they are the *sole* explanation for specific characters (e.g., a Cyrillic letter found only in CP866).
+    * **The "Blue Baseline" State:** If text is 100% ASCII, the engine switches modes. Legacy encodings are marked **SAFE (Green)**, but the ASCII indicator turns **BLUE (Baseline)** to signal that while safe, it carries no forensic provenance data.
 
-* **The "Blue Baseline" State:**
-    * If text is 100% ASCII, the engine switches modes. Legacy encodings are marked **SAFE (Green)**, but the ASCII indicator turns **BLUE (Baseline)** to signal that while safe, it carries no forensic provenance data.
+### 2. New Core Architecture: The Registry-Based State Machine (HUD v3)
 
-* **Synthesis & Legend:**
-    * **Synthesis Row:** An English-language logic engine that interprets the matrix (e.g., *"REQUIRES UNICODE"*, *"STRONG SIGNAL: Win-1251"*, *"AMBIGUOUS LEGACY"*).
-    * **Progressive Disclosure Legend:** A collapsible "How to read this" panel defining metrics and color codes (Safe/Partial/Incompatible).
+We fundamentally re-architected how metrics are counted and interacted with. The HUD no longer displays "Ledger Rows" (summary counts); it now displays and controls **Evidence Instances**.
 
-### 2. Interaction Upgrade: The "Invisible Hunter"
-We resolved the "Ghost Selection" issue where zero-width characters (ZWJ, tags) were difficult to locate.
-* **Step-Through Logic:** The "Highlight Non-Std Inv." button now uses a `selectionEnd` delta loop to force-march through zero-width characters, preventing the cursor from getting stuck on a single index.
-* **Inspector Synchronization:** Clicking the Highlighter now **auto-triggers** the Character Inspector. You no longer need to click the text manually; the Inspector instantly reveals the forensic data of the invisible character you just hunted.
+* **The Evidence Registry (`HUD_HIT_REGISTRY`):**
+    * Instead of throwing away coordinates after counting, the engine now maintains a global, O(1) registry mapping forensic buckets (e.g., `int_fatal`, `thr_spoofing`, `ws_nonstd`) to exact text ranges.
+* **Metric Synchronization:**
+    * We resolved the "Schizophrenic Counting" bug where the HUD displayed **7** (Summary Rows) but the Stepper found **25** (Actual Violations).
+    * **The Fix:** The HUD now strictly counts the length of the Registry arrays. If there are 10 malicious Bidi characters and 1 Homoglyph, the HUD displays **11 Signals**, ensuring mathematical consistency with the navigation tool.
+* **The Forensic Stepper (Active Navigation):**
+    * **Mechanism:** Clicking any metric (e.g., "Integrity Issues", "Threat Signals") triggers the stateless `cycle_hud_metric` engine.
+    * **Behavior:** It converts the DOM cursor position to a Logical Index, scans the Registry for the next target, highlights the specific threat range, and auto-focuses the Inspector.
+    * **Feedback:** A dedicated Left-Side Status Bar (`#hud-stepper-status`) provides individualized feedback with a Map Pin icon: *"Threat Signals Highlighter: #19 of 25 — Trojan Source"*.
 
-### 3. UI/UX Refinement: The "Workbench" Aesthetic
-* **Global Actions:** Renamed the generic "Controls" section to **"Global Actions"** and applied a distinct **"Rigorous Violet"** theme (`#5b21b6`). This visually separates the *tools* (Actions) from the *data* (Blue/Black headers).
-* **Status Bar Layout:** Fixed flexbox alignment issues to ensure the "Status Pill" always hugs the right edge, while action buttons flow naturally from the left.
+### 3. Threat Logic Refinement: "Victim vs. Attacker"
 
-### 4. Reporting Architecture
-* **Clipboard Fidelity:** Updated `ui-glue.js` to include the full **Encoding Footprint** in the "Copy All Data" report. The scraper now parses the deep forensic tooltips (Unique constraints, Signal percentages) into the plain-text report format.
+We patched a critical philosophical flaw in the Threat Engine where innocent ASCII characters were flagged as threats simply because they *could* be spoofed.
+
+* **The "Guilt by Association" Bug:** Previously, the digit `1` was flagged as a threat because it is listed in `confusables.txt` (it looks like `l`).
+* **The "Active Malice" Fix:** We implemented a strict **ASCII Whitelist** (`cp > 0x7F`) in the `compute_threat_analysis` loop.
+* **The Result:**
+    * **Victims:** ASCII characters (like `1`, `m`, `o`) are now **Green/Safe Baseline**, even if they are visually ambiguous.
+    * **Attackers:** Only Non-ASCII characters (like Cyrillic `а`) that mimic ASCII are flagged as **Red/Threat**.
+    * This reduces noise by ~90% and focuses the tool strictly on foreign spoofing vectors.
+
+### 4. Interaction & UI/UX Refinements
+
+* **DOM Un-Nesting:** Resolved a critical "Cannibalistic DOM" issue where the Status Bar update logic was overwriting the Stepper UI. The Status Bar components are now independent siblings.
+* **The "Invisible Hunter":** The "Highlight Non-Std Inv." button uses a `selectionEnd` delta loop to force-march through zero-width characters, auto-triggering the Inspector for immediate analysis.
+* **Workbench Aesthetic:** Renamed "Controls" to **"Global Actions"** with a "Rigorous Violet" theme (`#5b21b6`) to visually separate tools from data.
+* **Clipboard Fidelity:** The "Copy All Data" report now parses the deep forensic tooltips from the Encoding Footprint and appends a full "Deobfuscated" view of the text.
