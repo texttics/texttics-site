@@ -3929,106 +3929,186 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
         return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
 
 
-def _render_forensic_diff_stream(t: str, threat_indices: set[int], confusables_map: dict) -> str:
+def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Renderer (v2.0).
-    Generates a "Diff Stream" with Blast Radius context.
-    - Collapses safe text into pills: [ ... 120 safe ... ]
-    - Expands context around threats.
-    - Renders threats as specific "Perception vs Reality" stacks.
+    Forensic X-Ray Engine v3.1 (Cross-Script Labeling).
+    1. Aggregates threats.
+    2. Clusters them into actionable cases.
+    3. Generates Safe Skeleton for one-click sanitization.
+    4. [NEW] Calculates Script Drift (e.g. Cyr->Lat) for visual stacks.
     """
-    if not t or not threat_indices:
-        return ""
+    if not t: return ""
+    
+    # 1. Aggregate all Threats
+    all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
+    if not all_threats: return ""
 
-    js_array = window.Array.from_(t) # Logical characters
+    js_array = window.Array.from_(t)
     text_len = len(js_array)
     
-    # 1. Build Boolean Mask (True = Show, False = Hide)
-    mask = [False] * text_len
-    BLAST_RADIUS = 20
-    
-    for idx in threat_indices:
-        start = max(0, idx - BLAST_RADIUS)
-        end = min(text_len, idx + BLAST_RADIUS + 1)
-        for i in range(start, end):
-            mask[i] = True
-            
-    # 2. Iterate & Chunk
-    html_parts = []
-    i = 0
-    
-    # Common Phishing Targets (Heuristic Badge)
-    TARGETS = ["paypal", "google", "apple", "microsoft", "amazon", "facebook", "instagram", "whatsapp", "bank", "secure", "login", "signin", "account", "update", "http", "https", "www"]
-    
-    while i < text_len:
-        if not mask[i]:
-            # --- COLLAPSED REGION ---
-            # Count consecutive false
-            j = i
-            while j < text_len and not mask[j]:
-                j += 1
-            
-            gap_len = j - i
-            # Only collapse if gap is significant (> 10 chars)
-            if gap_len > 10:
-                html_parts.append(f'<span class="context-pill" title="{gap_len} safe characters collapsed">[ ... {gap_len} safe ... ]</span>')
+    # 2. Cluster Logic
+    clusters = []
+    if all_threats:
+        current_cluster = [all_threats[0]]
+        # BLAST_RADIUS: How close threats must be to merge into one "Case"
+        MERGE_DIST = 15 
+        
+        for i in range(1, len(all_threats)):
+            if all_threats[i] - all_threats[i-1] <= MERGE_DIST:
+                current_cluster.append(all_threats[i])
             else:
-                # Too small to collapse, just render
-                chunk = "".join(js_array[i:j])
-                html_parts.append(_escape_html(chunk))
-            
-            i = j
-        else:
-            # --- ACTIVE THREAT REGION ---
-            # Find end of true region
-            j = i
-            while j < text_len and mask[j]:
-                j += 1
-            
-            # Extract the raw substring for Heuristic Analysis
-            raw_segment = "".join(js_array[i:j])
-            lower_seg = raw_segment.lower()
-            
-            # Heuristic Badge Logic
-            badge_html = ""
-            for target in TARGETS:
-                if target in lower_seg:
-                    badge_html = f'<span class="xray-badge-phish">TARGET: {target.upper()}</span>'
-                    break
-            
-            html_parts.append('<div class="xray-segment">')
-            if badge_html: html_parts.append(badge_html)
-            
-            # Render characters one by one to handle Stacks
-            for k in range(i, j):
-                char = js_array[k]
-                cp = ord(char)
-                
-                if k in threat_indices:
-                    # --- THE FORENSIC STACK ---
-                    # Top: Perception (The Lie)
-                    # Bottom: Reality (The Skeleton)
-                    skeleton = confusables_map.get(cp, "?")
-                    
-                    # If skeleton is multi-char, take first or limit
-                    skel_disp = skeleton[0] if skeleton else "?"
-                    if len(skeleton) > 1: skel_disp += ".."
-                    
-                    stack_html = (
-                        f'<span class="xray-stack" title="Perception: {char} (U+{cp:04X})\nReality: {skeleton}">'
-                        f'<span class="xray-top">{_escape_html(char)}</span>'
-                        f'<span class="xray-bot">{_escape_html(skel_disp)}</span>'
-                        f'</span>'
-                    )
-                    html_parts.append(stack_html)
-                else:
-                    # Normal Context Character
-                    html_parts.append(_escape_html(char))
-            
-            html_parts.append('</div>')
-            i = j
+                clusters.append(current_cluster)
+                current_cluster = [all_threats[i]]
+        clusters.append(current_cluster)
 
-    return '<div class="xray-container">' + "".join(html_parts) + '</div>'
+    # Common Targets for Heuristic Labeling
+    TARGETS = ["paypal", "google", "apple", "microsoft", "amazon", "facebook", 
+               "instagram", "whatsapp", "bank", "secure", "login", "signin", 
+               "account", "update", "http", "https", "www"]
+
+    html_output = ['<div class="xray-stream-wrapper">']
+    
+    prev_end = 0
+    
+    for idx, clust in enumerate(clusters):
+        start_idx = clust[0]
+        end_idx = clust[-1]
+        
+        # Define Context Window (Blast Radius)
+        ctx_start = max(0, start_idx - 10)
+        ctx_end = min(text_len, end_idx + 11)
+        
+        # Collapse gap between previous cluster and this one
+        if ctx_start > prev_end:
+            gap = ctx_start - prev_end
+            if gap > 0:
+                html_output.append(f'<div class="xray-spacer">[ ... {gap} safe characters ... ]</div>')
+        
+        # --- BUILD THE CLUSTER CONTENT ---
+        cluster_html_parts = []
+        safe_string_parts = []
+        threat_types = set()
+        
+        for i in range(ctx_start, ctx_end):
+            char = js_array[i]
+            cp = ord(char)
+            
+            # A. Sanitization Logic (The "Safe" View)
+            if i in invisible_indices:
+                # Invisible -> Remove
+                pass 
+            elif i in bidi_indices:
+                # Bidi -> Remove
+                pass
+            elif i in confusable_indices:
+                # Confusable -> Map to Skeleton
+                skel = confusables_map.get(cp, char)
+                safe_string_parts.append(skel)
+            else:
+                # Safe -> Keep
+                safe_string_parts.append(char)
+
+            # B. Visual Rendering Logic
+            if i in confusable_indices:
+                threat_types.add("SPOOF")
+                skel = confusables_map.get(cp, "?")
+                disp_skel = skel[0] + (".." if len(skel)>1 else "") if skel else "?"
+                
+                # --- [NEW] Script Drift Calculation ---
+                script_tag = ""
+                try:
+                    # 1. Get Source Script
+                    src_sc = _find_in_ranges(cp, "Scripts") or "Common"
+                    
+                    # 2. Get Target Script (from Skeleton)
+                    skel_cp = ord(skel[0]) if skel else 0
+                    dst_sc = _find_in_ranges(skel_cp, "Scripts") or "Common"
+                    
+                    # 3. Generate Tag if scripts differ (and aren't generic)
+                    # We ignore "Inherited" (accents) and "Common" (punctuation) to reduce noise
+                    if src_sc != dst_sc and src_sc not in ("Common", "Inherited") and dst_sc not in ("Common", "Inherited"):
+                        # Abbreviate (Latin->Lat, Cyrillic->Cyr, Greek->Gre)
+                        s_abbr = src_sc[:3]
+                        d_abbr = dst_sc[:3]
+                        script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
+                except: pass
+                # --------------------------------------
+
+                stack = (
+                    f'<span class="xray-stack stack-spoof" title="Spoofing Risk\nRaw: {char}\nSafe: {skel}">'
+                    f'<span class="xray-top">{_escape_html(char)}</span>'
+                    f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
+                    f'{script_tag}'
+                    f'</span>'
+                )
+                cluster_html_parts.append(stack)
+                
+            elif i in invisible_indices:
+                threat_types.add("OBFUSCATE")
+                marker = (
+                    f'<span class="xray-stack stack-invis" title="Hidden Character (Obfuscation)">'
+                    f'<span class="xray-top" style="color:#7c3aed;">&bull;</span>'
+                    f'<span class="xray-bot">DEL</span>'
+                    f'</span>'
+                )
+                cluster_html_parts.append(marker)
+                
+            elif i in bidi_indices:
+                threat_types.add("EXECUTION")
+                marker = (
+                    f'<span class="xray-stack stack-bidi" title="Bidi Control (Execution Risk)">'
+                    f'<span class="xray-top" style="color:#d97706;">&harr;</span>'
+                    f'<span class="xray-bot">CLR</span>'
+                    f'</span>'
+                )
+                cluster_html_parts.append(marker)
+                
+            else:
+                # Safe context char
+                cluster_html_parts.append(_escape_html(char))
+
+        # --- CLUSTER HEADER ANALYSIS ---
+        full_raw_snippet = "".join(js_array[ctx_start:ctx_end]).lower()
+        safe_snippet_final = "".join(safe_string_parts)
+        
+        # Check Brands
+        brand_badge = ""
+        for t in TARGETS:
+            if t in full_raw_snippet or t in safe_snippet_final.lower():
+                brand_badge = f'<span class="cluster-badge badge-brand">TARGET: {t.upper()}</span>'
+                break
+        
+        # Build Type Badges
+        type_badges = ""
+        for t in threat_types:
+            cls = "badge-spoof" if t == "SPOOF" else ("badge-invis" if t == "OBFUSCATE" else "badge-bidi")
+            type_badges += f'<span class="cluster-badge {cls}">{t}</span>'
+
+        # --- RENDER THE CARD ---
+        safe_str_escaped = _escape_html(safe_snippet_final).replace('"', '&quot;')
+        
+        card = f"""
+        <div class="cluster-card">
+            <div class="cluster-header">
+                <div class="cluster-meta">
+                    <span class="cluster-id">#{idx + 1}</span>
+                    {type_badges}
+                    {brand_badge}
+                </div>
+                <button class="safe-copy-btn" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_escaped}', this)">
+                    Copy Safe Snippet
+                </button>
+            </div>
+            <div class="cluster-body">
+                {"".join(cluster_html_parts)}
+            </div>
+        </div>
+        """
+        html_output.append(card)
+        prev_end = ctx_end
+
+    html_output.append('</div>')
+    return "".join(html_output)
 
 
 def _generate_uts39_skeleton_metrics(t: str):
