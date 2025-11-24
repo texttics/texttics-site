@@ -6252,7 +6252,7 @@ def render_encoding_footprint(t: str):
             elif cat in ("Co", "Cn"): breakdown["Private"] += 1
             else: breakdown["Other"] += 1
         bd_str = "\n".join([f"• {k}: {v}" for k,v in breakdown.items() if v > 0])
-        other_tooltip = f"[UNI-ONLY] Beyond Legacy\n• Requires Unicode: {unsupported_count} char(s) cannot be saved as ANSI.\n• Breakdown:\n{bd_str}"
+        other_tooltip = f"[UNI-ONLY] Beyond Legacy\n• Requires Unicode: {unsupported_count} char(s) cannot be saved as ANSI.\n Breakdown:\n{bd_str}"
 
     integrity_html.append(f"""
         <div class="enc-cell enc-cell-other" title="{other_tooltip}">
