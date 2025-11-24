@@ -6180,10 +6180,8 @@ def compute_threat_score(inputs):
 
 def render_encoding_footprint(t: str):
     """
-    Forensic Signal Engine v12.0 (Definitive):
-    1. Terminology: 'Compatibility' (T) vs 'Signal' (S).
-    2. Baseline: ASCII is BLUE (Safe Reference) in mixed mode.
-    3. Integrity: Strict UTF validation.
+    Forensic Signal Engine v12.1 (Detail Upgrade):
+    Now reports specific unique characters (Glyph, U+, Legacy Hex) with clickable positions.
     """
     integrity_container = document.getElementById("encoding-integrity")
     provenance_container = document.getElementById("encoding-provenance")
@@ -6197,25 +6195,48 @@ def render_encoding_footprint(t: str):
         return
 
     total_chars = len(t)
-    non_ascii_chars = [c for c in t if ord(c) >= 128]
-    total_non_ascii = len(non_ascii_chars)
-    has_signal = total_non_ascii > 0
+    # We need indices for the detail report, so we'll iterate properly below.
+    # Quick check for signal existence:
+    has_signal = any(ord(c) >= 128 for c in t)
     
-    # --- 1. EXCLUSIVITY ---
+    # --- 1. EXCLUSIVITY & DETAIL TRACKING ---
     legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
-    exclusive_counts = {item[0]: 0 for item in legacy_codecs}
+    # Store full details: label -> list of {char, cp, idx, bytes_hex}
+    exclusive_details = {item[0]: [] for item in legacy_codecs}
     
+    total_non_ascii = 0
+    non_ascii_chars = [] # Keep for signal strength calc
+
     if has_signal:
-        for char in non_ascii_chars:
+        for i, char in enumerate(t):
+            if ord(char) < 128: continue
+            
+            total_non_ascii += 1
+            non_ascii_chars.append(char)
+            
             supported_by = []
+            valid_encodings = [] # Stores (label, bytes)
+            
             for label, codec, _ in legacy_codecs:
                 try:
-                    char.encode(codec)
+                    enc_bytes = char.encode(codec)
                     supported_by.append(label)
+                    valid_encodings.append((label, enc_bytes))
                 except UnicodeEncodeError:
                     pass
+            
+            # If exactly one legacy codec supports this character, it's a Unique Signal
             if len(supported_by) == 1:
-                exclusive_counts[supported_by[0]] += 1
+                target_label = supported_by[0]
+                target_bytes = valid_encodings[0][1]
+                hex_str = " ".join(f"{b:02X}" for b in target_bytes)
+                
+                exclusive_details[target_label].append({
+                    'char': char,
+                    'cp': ord(char),
+                    'idx': i,
+                    'bytes': hex_str
+                })
 
     # --- 2. RENDER LOOP ---
     integrity_html = []
@@ -6240,6 +6261,7 @@ def render_encoding_footprint(t: str):
                 signal_strength = pct_total
                 if pct_total < 100: utf_broken = True
             elif has_signal:
+                # Reconstruct non-ascii string for bulk check
                 non_ascii_str = "".join(non_ascii_chars)
                 try:
                     non_ascii_str.encode(codec)
@@ -6250,7 +6272,8 @@ def render_encoding_footprint(t: str):
                     valid_signal = len(valid_s)
                 signal_strength = (valid_signal / total_non_ascii) * 100
             
-            uniq_hits = exclusive_counts.get(label, 0)
+            # Retrieve details count
+            uniq_hits = len(exclusive_details.get(label, []))
             
             # --- VISUAL STATUS LOGIC ---
             status_cls = ""
@@ -6427,10 +6450,28 @@ def render_encoding_footprint(t: str):
         elif not has_signal:
             badge_class = "syn-universal"; badge_text = "UNIVERSAL ASCII"
             summary_text = "Text is <strong>100% 7-bit ASCII</strong>. Compatible with all systems."
-        elif any(x['unique'] > 0 for x in provenance_data):
-            best = provenance_data[0]
-            badge_class = "syn-match"; badge_text = f"UNIQUE SIGNAL: {best['label']}"
-            summary_text = f"Contains <strong>{best['unique']} unique character(s)</strong> specific to <strong>{best['label']}</strong>."
+        elif any(len(v) > 0 for v in exclusive_details.values()):
+            # Find best match (label with highest unique count)
+            best_label = max(exclusive_details, key=lambda k: len(exclusive_details[k]))
+            hits = exclusive_details[best_label]
+            count = len(hits)
+            
+            badge_class = "syn-match"; badge_text = f"UNIQUE SIGNAL: {best_label}"
+            
+            # Build Detailed Breakdown
+            details = []
+            for h in hits[:5]: # Top 5 to avoid bloat
+                # Create clickable link using the bridge function
+                pos_link = _create_position_link(h['idx'], t)
+                char_disp = _escape_html(h['char'])
+                details.append(f"<strong>{char_disp}</strong> (U+{h['cp']:04X} &rarr; {h['bytes']}) at {pos_link}")
+            
+            details_str = ", ".join(details)
+            if count > 5:
+                details_str += f", and {count - 5} more"
+            
+            summary_text = f"Contains <strong>{count} unique character(s)</strong> specific to <strong>{best_label}</strong>: {details_str}."
+            
         elif perfect_candidates:
             candidates = ", ".join(perfect_candidates[:3])
             badge_class = "syn-universal"; badge_text = "AMBIGUOUS LEGACY"
