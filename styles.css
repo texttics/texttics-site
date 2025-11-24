@@ -3100,3 +3100,22 @@ details.profile-section .action-bar {
   box-shadow: 0 0 0 4px #fef2f2; /* Faux padding bloom */
   border-radius: 2px;
 }
+
+/* --- HUD Stepper Status (Center-Left) --- */
+
+/* Active State (Blue/Indigo Theme) */
+.status-hud-active {
+  background-color: #eff6ff; /* Blue-50 */
+  color: #1e40af;            /* Blue-800 */
+  border-color: #bfdbfe;     /* Blue-200 */
+  
+  /* Visibility Logic */
+  display: inline-flex !important;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Ensure the icon inside matches the text color */
+.status-hud-active svg {
+  stroke: #1e40af; 
+}
