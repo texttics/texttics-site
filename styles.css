@@ -3121,7 +3121,7 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   FORENSIC CLUSTER STREAM (v3.0)
+   FORENSIC CLUSTER STREAM (v3.1 - Layout Fix)
    ========================================= */
 
 .xray-stream-wrapper {
@@ -3143,20 +3143,16 @@ details.profile-section .action-bar {
   border: 1px dashed #e5e7eb;
   align-self: center;
   width: 50%;
+  margin: 8px 0;
 }
 
-/* The "Case Card" */
+/* The "Case Card" Frame */
 .cluster-card {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   background-color: #ffffff;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  transition: border-color 0.2s;
-}
-
-.cluster-card:hover {
-  border-color: #d1d5db;
 }
 
 /* Header: Metadata + Actions */
@@ -3164,7 +3160,7 @@ details.profile-section .action-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
+  padding: 8px 12px;
   background-color: #f8fafc;
   border-bottom: 1px solid #f1f5f9;
 }
@@ -3173,21 +3169,22 @@ details.profile-section .action-bar {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap; /* Allow badges to wrap on mobile */
 }
 
 .cluster-id {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #64748b;
 }
 
 /* Badges */
 .cluster-badge {
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   border: 1px solid transparent;
@@ -3206,9 +3203,10 @@ details.profile-section .action-bar {
   color: #475569;
   font-size: 0.7rem;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 3px 10px;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 
 .safe-copy-btn:hover {
@@ -3217,34 +3215,48 @@ details.profile-section .action-bar {
   background: #eff6ff;
 }
 
-/* The Content Stream */
+/* --- THE FIX IS HERE --- */
 .cluster-body {
-  padding: 10px;
+  padding: 16px;
   font-family: var(--font-mono);
-  font-size: 0.95rem;
-  line-height: 1.6;
-  word-break: break-all;
+  font-size: 1rem;
+  color: #1f2937;
   background-color: #ffffff;
   
-  /* Use flex-wrap for natural text flow, but keep stacks intact */
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1px; /* Tight character spacing */
+  /* 1. Use Block, not Flex. This lets text flow naturally. */
+  display: block; 
+  
+  /* 2. Increase Line Height so the tall stacks don't overlap the text lines */
+  line-height: 3.2; 
+  
+  /* 3. Break long strings if needed */
+  word-break: break-all;
 }
 
 /* Stacks (Shared Base) */
 .xray-stack {
+  /* Make the stack behave like a single "Word" in the sentence */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin: 0 1px;
-  padding: 0 2px;
-  border-radius: 3px;
+  
+  /* Vertical alignment fixes the "floating" look */
+  vertical-align: middle; 
+  
+  margin: 0 2px;
+  padding: 0 3px;
+  border-radius: 4px;
   cursor: help;
-  min-width: 1.1em;
+  min-width: 1.4em;
   border: 1px solid transparent;
+  
+  /* Reset line-height inside the stack so it's tight */
+  line-height: 1.1; 
+  
+  /* Slight negative margin to sit better on the text line */
+  position: relative;
+  top: -2px;
 }
 
 .stack-spoof { background-color: #fff1f2; border-color: #fecaca; }
@@ -3253,38 +3265,36 @@ details.profile-section .action-bar {
 
 /* Stack Typography */
 .xray-top {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 800;
-  line-height: 1;
   color: #1f2937;
+  padding-bottom: 2px;
 }
 .stack-spoof .xray-top { color: #dc2626; }
 
 .xray-bot {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  line-height: 1;
   color: #64748b;
   text-transform: uppercase;
-  margin-top: 1px;
-  border-top: 1px dotted rgba(0,0,0,0.1);
+  border-top: 1px dotted rgba(0,0,0,0.2);
   width: 100%;
   text-align: center;
+  padding-top: 2px;
 }
 
-/* New Script Drift Tag (Lat->Cyr) */
+/* Script Tag Fix */
 .xray-script-tag {
   font-size: 0.5rem;
   font-weight: 800;
-  color: #991b1b; /* Deep Red Text */
-  margin-top: 2px;
+  color: #991b1b; 
+  margin-top: 1px;
   line-height: 1;
   white-space: nowrap;
   letter-spacing: 0.02em;
   opacity: 0.9;
-  
-  /* Visual Separation from the Skeleton below */
-  border-top: 1px dotted rgba(220, 38, 38, 0.3);
+  border-top: 1px solid rgba(220, 38, 38, 0.15);
   width: 100%;
   text-align: center;
+  padding-top: 1px;
 }
