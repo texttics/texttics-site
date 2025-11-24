@@ -843,7 +843,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     # 6. Format Status Message (Individualized)
     # Format: "Threat Signals Highlighter: #19 of 25 — Trojan Source"
-    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp#{hit_index} of {len(targets)}"
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp#{hit_index} of {len(targets)}&nbsp#"
     
     # 7. Update LEFT-SIDE Status
     hud_status = document.getElementById("hud-stepper-status")
