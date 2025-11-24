@@ -114,6 +114,54 @@ function getDeobfuscatedText(text) {
     return output;
 }
 
+// --- Shared Helper: Scrape Encoding Dashboard (v6.0 Split) ---
+function parseEncodingStrip() {
+  const lines = [];
+  
+  // 1. Scrape Integrity Panel
+  const integrityContainer = document.getElementById('encoding-integrity');
+  // 2. Scrape Provenance Strip
+  const provenanceContainer = document.getElementById('encoding-provenance');
+  
+  // If UI isn't ready, return empty
+  if (!integrityContainer && !provenanceContainer) return lines;
+
+  lines.push('\n[ ENCODING FOOTPRINT ]');
+  
+  // Combine cells from both containers
+  const allCells = [
+      ...(integrityContainer ? integrityContainer.querySelectorAll('.enc-cell') : []),
+      ...(provenanceContainer ? provenanceContainer.querySelectorAll('.enc-cell') : [])
+  ];
+
+  if (allCells.length === 0) return lines;
+  
+  allCells.forEach(cell => {
+      const label = cell.querySelector('.enc-label')?.textContent.trim();
+      
+      // Get primary value (Big Number)
+      const valPrim = cell.querySelector('.enc-val-primary')?.textContent.trim();
+      
+      // Get secondary signal (Small Number), if exists
+      const valSec = cell.querySelector('.enc-val-secondary')?.textContent.trim();
+      
+      // Reconstruct value string: "100% (S:100%)"
+      let valueStr = valPrim;
+      if (valSec) valueStr += ` (${valSec})`;
+
+      // Check for Unique Marker (The Diamond or Tooltip Match)
+      let statusMarker = "";
+      if (label.includes('◈')) statusMarker = " [UNIQUE]";
+
+      // Clean up label text
+      const cleanLabel = label.replace('◈', '').trim();
+
+      lines.push(`  ${cleanLabel}: ${valueStr}${statusMarker}`);
+  });
+  
+  return lines;
+}
+
 // ==========================================
 // 1. DOM & EVENT LISTENERS
 // ==========================================
@@ -758,7 +806,7 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     }
   }
 
-  // A. Copy HUD Data (Updated: Captures Primary & Secondary)
+  // A. Copy HUD Data (Updated: Includes Encoding Strip)
   const btnCopyHud = document.getElementById('btn-copy-hud');
   if (btnCopyHud) {
     btnCopyHud.addEventListener('click', () => {
@@ -768,23 +816,27 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       let report = "[ HUD Data ]\n";
       const cols = hud.querySelectorAll('.hud-col');
       
+      // Part 1: Vertical Columns (Alphanumeric, etc.)
       cols.forEach(col => {
-        // 1. Get the Column Header (e.g., ALPHANUMERIC)
         const header = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
-        
-        // 2. Find all metric groups (LITERALS, RUNS, etc.) in this column
         const groups = col.querySelectorAll('.hud-metric-group');
         
         if (groups.length > 0) {
-            report += `\n[${header}]\n`; // Section Header
+            report += `\n[${header}]\n`; 
             groups.forEach(group => {
                 const label = group.querySelector('.hud-label')?.textContent.trim() || "VAL";
                 const val = group.querySelector('.hud-val')?.textContent.trim() || "-";
-                // Output format: "  LITERALS: 4"
                 report += `  ${label}: ${val}\n`;
             });
         }
       });
+
+      // Part 2: Encoding Strip (NEW)
+      // We call the helper function we just added
+      const encodingLines = parseEncodingStrip();
+      if (encodingLines.length > 0) {
+          report += encodingLines.join("\n");
+      }
       
       copyToClipboard(report, 'btn-copy-hud');
     });
