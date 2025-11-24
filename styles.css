@@ -3017,3 +3017,43 @@ details.profile-section .action-bar {
 #actions-panel-wrapper > summary:hover .section-icon {
     color: #8b5cf6; /* Lighter Violet for Icon */
 }
+
+/* =========================================
+   INTERACTIVE HUD METRICS (Stepper)
+   ========================================= */
+
+.hud-interactive {
+  cursor: pointer;
+  border-bottom: 2px dotted currentColor; /* Visual hint */
+  transition: all 0.15s ease-in-out;
+  position: relative;
+  z-index: 10;
+}
+
+/* Hover Effects */
+.hud-interactive:hover {
+  transform: scale(1.1);
+  z-index: 20;
+}
+
+/* Click Feedback */
+.hud-interactive:active {
+  transform: scale(0.95);
+}
+
+/* Risk-Specific Tints (On Hover) */
+.hud-interactive-risk:hover {
+  color: #d97706; /* Amber */
+  background-color: #fffbeb;
+  box-shadow: 0 0 0 4px #fffbeb; /* Faux padding */
+  border-radius: 2px;
+  border-bottom-style: solid;
+}
+
+.hud-interactive-crit:hover {
+  color: #dc2626; /* Red */
+  background-color: #fef2f2;
+  box-shadow: 0 0 0 4px #fef2f2; /* Faux padding */
+  border-radius: 2px;
+  border-bottom-style: solid;
+}
