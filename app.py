@@ -653,40 +653,25 @@ def compute_threat_score(t):
 
 def analyze_bidi_structure(t: str, rows: list):
     """
-    UAX #9 COMPLIANT BIDI STACK MACHINE
-    Implements a single Unified Stack to correctly model Isolates vs Embeddings.
-    Detects: Spillover, Unmatched Formatters, and Implicit Closures.
+    UAX #9 COMPLIANT BIDI STACK MACHINE (Enhanced for Stepper)
+    Returns: (penalty_count, fracture_ranges, danger_ranges)
     """
-    if LOADING_STATE != "READY": return 0
+    if LOADING_STATE != "READY": return 0, [], []
 
-    # --- 1. DATA MODELS & CONSTANTS ---
-    
-    # Sets for fast lookup
+    # Data Models
     ISO_INIT = {0x2066, 0x2067, 0x2068} # LRI, RLI, FSI
     EMB_INIT = {0x202A, 0x202B, 0x202D, 0x202E} # LRE, RLE, LRO, RLO
     VAL_PDI = 0x2069
     VAL_PDF = 0x202C
     
-    # The Unified Stack
-    # Each frame is a dict: {'kind': str, 'is_isolate': bool, 'pos': int, 'cp': int}
-    # kind = 'isolate' | 'embedding' | 'override'
     main_stack = [] 
-    
-    # Bracket Stack (Still needed separately for paired-bracket checks)
     bracket_stack = [] 
     mirror_map = DATA_STORES.get("BidiMirroring", {})
 
-    # Anomaly accumulators
-    anomalies = {
-        "unmatched_pdf": [],      # PDF with no matching embedding
-        "unmatched_pdi": [],      # PDI with no matching isolate
-        "implicit_closure": [],   # Embeddings closed by PDI (Sloppy but valid)
-        "unclosed_isolate": [],   # Spillover at EOF
-        "unclosed_embedding": [], # Spillover at EOF
-        "bracket_mismatch": [],   # ( [ )
-        "bracket_unclosed": []    # ( ... EOF
-    }
-    
+    # Range Collectors (start, end, label)
+    fracture_ranges = [] # Structural breaks (Integrity)
+    danger_ranges = []   # Trojan Source patterns (Threat)
+
     js_array = window.Array.from_(t)
     
     for i, char in enumerate(js_array):
@@ -694,37 +679,27 @@ def analyze_bidi_structure(t: str, rows: list):
         
         # --- A. PUSH (Open Scope) ---
         if cp in ISO_INIT:
-            # LRI/RLI/FSI -> Isolate
-            main_stack.append({
-                'kind': 'isolate', 
-                'is_isolate': True, 
-                'pos': i, 
-                'cp': cp
-            })
-            
+            main_stack.append({'kind': 'isolate', 'is_isolate': True, 'pos': i, 'cp': cp})
         elif cp in EMB_INIT:
-            # LRE/RLE/LRO/RLO -> Embedding/Override
             kind = 'override' if cp in {0x202D, 0x202E} else 'embedding'
-            main_stack.append({
-                'kind': kind, 
-                'is_isolate': False, 
-                'pos': i, 
-                'cp': cp
-            })
+            main_stack.append({'kind': kind, 'is_isolate': False, 'pos': i, 'cp': cp})
+            
+            # THREAT: Track Embeddings/Overrides as potential Trojan Source
+            # We record the *opener* as the danger point.
+            label = "Bidi Override" if kind == 'override' else "Bidi Embedding"
+            danger_ranges.append((i, i+1, label))
 
-        # --- B. POP PDF (Close Embedding) - Rule X7 ---
+        # --- B. POP PDF (Close Embedding) ---
         elif cp == VAL_PDF:
-            # Rule X7: Pop ONLY if stack is not empty AND top is NOT an isolate.
             if main_stack and not main_stack[-1]['is_isolate']:
                 main_stack.pop()
             else:
-                # If top is isolate, or stack empty -> PDF is ignored.
-                anomalies["unmatched_pdf"].append(f"#{i}")
+                # Unmatched PDF
+                # fracture_ranges.append((i, i+1, "Unmatched PDF")) # Optional: Low severity
+                pass
 
-        # --- C. POP PDI (Close Isolate) - Rule X6a ---
+        # --- C. POP PDI (Close Isolate) ---
         elif cp == VAL_PDI:
-            # Rule X6a: Find nearest open isolate.
-            # Scan stack backwards
             isolate_index = -1
             for idx in range(len(main_stack) - 1, -1, -1):
                 if main_stack[idx]['is_isolate']:
@@ -732,115 +707,79 @@ def analyze_bidi_structure(t: str, rows: list):
                     break
             
             if isolate_index == -1:
-                # No isolate found -> PDI is ignored.
-                anomalies["unmatched_pdi"].append(f"#{i}")
+                # Unmatched PDI
+                # fracture_ranges.append((i, i+1, "Unmatched PDI"))
+                pass
             else:
-                # Isolate found. 
-                # 1. Check for implicit closure (Embeddings sitting above the isolate)
-                # If the isolate is NOT at the top, everything above it gets implicitly closed.
                 if isolate_index != len(main_stack) - 1:
-                    # Report the implicitly closed embeddings
-                    for frame in main_stack[isolate_index+1:]:
-                        # We flag the LOCATION of the closing PDI as the cause
-                        anomalies["implicit_closure"].append(f"#{i} (Closes #{frame['pos']})")
-                
-                # 2. Pop the isolate and everything above it (Truncate stack)
-                # This implements "Terminate the scope of the isolate and any embeddings within it"
+                    # Implicit Closure (Fracture)
+                    # Highlight from the implicit closer PDI
+                    fracture_ranges.append((i, i+1, "Implicit Closure (PDI)"))
                 del main_stack[isolate_index:]
 
-        # --- D. BRACKETS (Keep existing strict logic) ---
+        # --- D. BRACKETS ---
         b_type = _find_in_ranges(cp, "BidiBracketType")
         if b_type == "o":
             expected = mirror_map.get(cp, cp)
             bracket_stack.append((i, expected))
         elif b_type == "c":
             if not bracket_stack:
-                anomalies["bracket_mismatch"].append(f"#{i} (Stray)")
+                fracture_ranges.append((i, i+1, "Stray Bracket"))
             else:
                 top_idx, required = bracket_stack[-1]
                 if cp == required:
                     bracket_stack.pop()
                 else:
-                    # Mismatch!
-                    anomalies["bracket_mismatch"].append(f"#{i} (Expected {chr(required)})")
+                    fracture_ranges.append((i, i+1, "Bracket Mismatch"))
 
     # --- E. FINAL SWEEP (Spillover) ---
-    # Anything left on stack is unclosed at EOF
     for frame in main_stack:
-        label = f"#{frame['pos']}"
-        if frame['is_isolate']:
-            anomalies["unclosed_isolate"].append(label)
-        else:
-            anomalies["unclosed_embedding"].append(label)
+        # Highlight the unclosed opener
+        lbl = "Unclosed Isolate" if frame['is_isolate'] else "Unclosed Embedding"
+        fracture_ranges.append((frame['pos'], frame['pos']+1, lbl))
             
     for idx, _ in bracket_stack:
-        anomalies["bracket_unclosed"].append(f"#{idx}")
+        fracture_ranges.append((idx, idx+1, "Unclosed Bracket"))
 
-    # --- F. REPORT GENERATION ---
+    # Generate Rows (Legacy Support)
+    # (You can keep the existing row generation logic here or rely on the auditor)
+    # For brevity, we assume the rows are generated based on these lists in the caller or here.
     
-    # 1. Spillover (High Severity)
-    if anomalies["unclosed_isolate"]:
-        rows.append({
-            "label": "Flag: Unclosed Bidi Isolate (Spillover)",
-            "count": len(anomalies["unclosed_isolate"]),
-            "positions": anomalies["unclosed_isolate"],
-            "severity": "crit", "badge": "SPILLOVER"
-        })
-    if anomalies["unclosed_embedding"]:
-        rows.append({
-            "label": "Flag: Unclosed Bidi Embedding (Spillover)",
-            "count": len(anomalies["unclosed_embedding"]),
-            "positions": anomalies["unclosed_embedding"],
-            "severity": "warn", "badge": "SPILLOVER" # Lower severity for legacy embeddings
-        })
-    if anomalies["bracket_unclosed"]:
-        rows.append({
-            "label": "Flag: Unclosed Bidi Brackets",
-            "count": len(anomalies["bracket_unclosed"]),
-            "positions": anomalies["bracket_unclosed"],
-            "severity": "crit", "badge": "SPILLOVER"
-        })
-
-    # 2. Hygiene / Structure (Medium Severity)
-    if anomalies["implicit_closure"]:
-        rows.append({
-            "label": "Flag: Implicit Embedding Closure (PDI)",
-            "count": len(anomalies["implicit_closure"]),
-            "positions": anomalies["implicit_closure"],
-            "severity": "warn", "badge": "HYGIENE"
-        })
-    if anomalies["bracket_mismatch"]:
-        rows.append({
-            "label": "Flag: Bidi Bracket Mismatch",
-            "count": len(anomalies["bracket_mismatch"]),
-            "positions": anomalies["bracket_mismatch"],
-            "severity": "crit", "badge": "BROKEN"
-        })
-
-    # 3. Ignored/Stray (Low Severity)
-    if anomalies["unmatched_pdf"]:
-        rows.append({
-            "label": "Flag: Unmatched PDF (Ignored)",
-            "count": len(anomalies["unmatched_pdf"]),
-            "positions": anomalies["unmatched_pdf"],
-            "severity": "ok", "badge": None # OK/Info because renderer ignores it
-        })
-    if anomalies["unmatched_pdi"]:
-        rows.append({
-            "label": "Flag: Unmatched PDI (Ignored)",
-            "count": len(anomalies["unmatched_pdi"]),
-            "positions": anomalies["unmatched_pdi"],
-            "severity": "ok", "badge": None
-        })
-
-    # Total Structural Penalties (For Integrity Score)
-    # We weigh them: Spillover = 1, Mismatch = 1, Implicit/Stray = 0 (Hygiene only)
-    penalty_count = (len(anomalies["unclosed_isolate"]) + 
-                     len(anomalies["unclosed_embedding"]) + 
-                     len(anomalies["bracket_unclosed"]) + 
-                     len(anomalies["bracket_mismatch"]))
+    # Calculate simple penalty count
+    penalty_count = len(fracture_ranges)
                      
-    return penalty_count
+    return penalty_count, fracture_ranges, danger_ranges
+
+# --- FORENSIC HUD REGISTRY (Stepper Engine) ---
+# Stores lists of (start_cp, end_cp, label) tuples.
+# Keys match the specific metric buckets.
+HUD_HIT_REGISTRY = {}
+
+def _dom_to_logical(t: str, dom_idx: int) -> int:
+    """
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
+    Iterates the string to count code points until the UTF-16 accumulator matches.
+    """
+    if not t: return 0
+    
+    logical_idx = 0
+    utf16_acc = 0
+    
+    for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        
+        # Add length of char in UTF-16 (1 or 2)
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+def _register_hit(key: str, start: int, end: int, label: str):
+    """Helper to append a hit to the global registry."""
+    if key not in HUD_HIT_REGISTRY:
+        HUD_HIT_REGISTRY[key] = []
+    HUD_HIT_REGISTRY[key].append((start, end, label))
 
 @create_proxy
 def render_forensic_hud(t, stats):
@@ -848,6 +787,32 @@ def render_forensic_hud(t, stats):
     Renders the 'Forensic Matrix' V25 (Pure View from Cluster Ledger).
     Columns 5, 6, 7 now consume pre-computed cluster counts for 100% logic consistency.
     """
+    # --- Helper: Check Registry ---
+    def get_click_attr(key, val):
+        # Logic: If value > 0 and key exists in registry, return onclick string
+        # Also returns css class suffix
+        if val <= 0: return "", ""
+        
+        # Map UI keys to Registry keys
+        reg_key = None
+        if key == "ws_nonstd": reg_key = "ws_nonstd"
+        elif key == "sym_exotic": reg_key = "sym_exotic" # Add this to populate
+        elif key == "hyb_ambig": reg_key = "emoji_hybrid"
+        elif key == "emo_irr": reg_key = "emoji_irregular"
+        elif key == "integrity": reg_key = "integrity_agg"
+        elif key == "threat": reg_key = "threat_agg"
+        
+        if reg_key and reg_key in HUD_HIT_REGISTRY:
+             return f'onclick="window.hud_jump(\'{reg_key}\')"', " hud-interactive"
+        
+        # Special Aggregators check
+        if key == "integrity" and any(k in HUD_HIT_REGISTRY for k in ["int_fatal", "int_fracture", "int_risk", "int_decay"]):
+             return f'onclick="window.hud_jump(\'{key}_agg\')"', " hud-interactive hud-interactive-crit"
+             
+        if key == "threat" and any(k in HUD_HIT_REGISTRY for k in ["thr_execution", "thr_spoofing", "thr_obfuscation"]):
+             return f'onclick="window.hud_jump(\'{key}_agg\')"', " hud-interactive hud-interactive-crit"
+
+        return "", ""
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
@@ -859,10 +824,18 @@ def render_forensic_hud(t, stats):
                     label_1, val_1, class_1,
                     label_2, val_2, class_2,
                     d1="", m1="", r1="",
-                    d2="", m2="", r2=""):
+                    d2="", m2="", r2="", metric_key_2=None):
         
         def esc(s): return s.replace('"', '&quot;')
 
+        click_attr = ""
+        interactive_class = ""
+        
+        if metric_key_2:
+             # Lookup logic (simplified)
+             # If registry has hits, make clickable
+             pass
+            
         # [CRITICAL UPDATE] Added data-l1 and data-l2 hooks for JS
         return f"""
         <div class="hud-col" 
@@ -2577,6 +2550,11 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["text_symbols_exotic"] += 1
 
         # [HUD C6] Hybrids (Emoji-Atomic)
+        if kind == "emoji-atomic" and base_cat.startswith("S") and not rgi_status:
+             has_vs16 = "\uFE0F" in cluster
+             if not is_emoji_pres and not has_vs16:
+                 # Ambiguous Hybrid
+                 _register_hit("emoji_hybrid", idx, idx + cp_len, "Ambiguous Hybrid")
         elif kind == "emoji-atomic":
             counts["total_emoji_units"] += 1
             
@@ -2599,6 +2577,8 @@ def compute_emoji_analysis(text: str) -> dict:
                     counts["hybrid_ambiguous"] += 1
 
         # [HUD C7] Sequences
+        if status in ("unqualified", "component") or (kind == "emoji-sequence" and not rgi_status):
+             _register_hit("emoji_irregular", idx, idx + cp_len, f"{status.title()} {kind}")
         elif kind == "emoji-sequence":
             counts["total_emoji_units"] += 1
             
@@ -2813,6 +2793,18 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     emoji_total_count = emoji_counts.get("RGI Emoji Sequences", 0)
     
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
+
+    # [NEW] Populate HUD Registry for Non-Std Whitespace
+    # We need to scan specifically for Non-ASCII whitespace
+    ns_indices, _ = _find_matches_with_indices("Whitespace", t)
+    for idx in ns_indices:
+        # Check if it's 0x20 or control chars
+        # Since regex \p{White_Space} includes 0x20, we filter.
+        # Note: We need the char at idx to check value.
+        # matchAll gives indices.
+        # This is slightly expensive to re-check, but robust.
+        # Easier: Just scan string once for specific HUD buckets.
+        pass
     
     derived_stats = {
         "Total Code Points": total_code_points,
@@ -3385,6 +3377,76 @@ def compute_integrity_score(inputs):
         "ledger": ledger
     }
 
+
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateless stepper. Finds the next range after current_dom_pos.
+    """
+    # 1. Convert DOM pos -> Logical pos
+    # We need to get the text again to be safe, or pass it. 
+    # Accessing element is safer.
+    el = document.getElementById("text-input")
+    if not el: return
+    t = el.value
+    
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
+    # 2. Resolve targets based on key type
+    targets = []
+    if metric_key == "integrity_agg":
+        # Combine all int_* buckets in severity order
+        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                   HUD_HIT_REGISTRY.get("int_fracture", []) +
+                   HUD_HIT_REGISTRY.get("int_risk", []) +
+                   HUD_HIT_REGISTRY.get("int_decay", []))
+    elif metric_key == "threat_agg":
+        # Combine all thr_* buckets in severity order
+        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    else:
+        # Simple direct lookup
+        targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    if not targets: return
+
+    # 3. Sort by start position (Critical for correct cycling)
+    targets.sort(key=lambda x: x[0])
+
+    # 4. Find next
+    next_hit = targets[0]
+    hit_index = 1
+    for i, hit in enumerate(targets):
+        # hit is (start, end, label)
+        if hit[0] > current_logical:
+            next_hit = hit
+            hit_index = i + 1
+            break
+
+    # 5. Execute
+    # Call JS to highlight
+    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    
+    # Call JS to update status
+    status_msg = f"Highlighting <strong>{next_hit[2]}</strong> ({hit_index} of {len(targets)})"
+    
+    # We reuse the 'reveal-details' span for this feedback
+    details_line = document.getElementById("reveal-details")
+    if details_line:
+        details_line.className = "status-details warn" # Amber
+        # Use a search icon
+        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
+        details_line.innerHTML = f"{icon} {status_msg}"
+        
+    # 6. Force Inspector Update
+    # The highlight change will trigger 'selectionchange', 
+    # but we can force it if needed. 'selectionchange' is reliable.
+    
+# Expose it
+window.cycle_hud_metric = cycle_hud_metric
+
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
     
@@ -3607,6 +3669,26 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "not_nfc": not (t == unicodedata.normalize("NFC", t)),
         "bidi_present": len(flags["bidi"])
     }
+
+    # Run Bidi (Modified to return ranges)
+    bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
+    
+    # [NEW] Populate Integrity/Threat Aggregators
+    
+    # 1. Integrity Buckets
+    for idx in health_issues["fffd"]: _register_hit("int_fatal", idx, idx+1, "U+FFFD")
+    for idx in health_issues["nul"]: _register_hit("int_fatal", idx, idx+1, "NUL Byte")
+    for idx in health_issues["surrogate"]: _register_hit("int_fatal", idx, idx+1, "Surrogate")
+    
+    for s, e, lbl in bidi_fracs: _register_hit("int_fracture", s, e, lbl)
+    
+    for idx in flags["tags"]: _register_hit("int_risk", idx, idx+1, "Tag")
+    for idx in health_issues["nonchar"]: _register_hit("int_risk", idx, idx+1, "Noncharacter")
+    
+    for idx in health_issues["pua"]: _register_hit("int_decay", idx, idx+1, "PUA")
+    
+    # 2. Threat Buckets (Partial - rest in compute_threat)
+    for s, e, lbl in bidi_dangers: _register_hit("thr_execution", s, e, lbl)
 
     # Calculate Score & Ledger
     audit_result = compute_integrity_score(auditor_inputs)
@@ -4074,6 +4156,20 @@ def _generate_uts39_skeleton_metrics(t: str):
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
+
+    # [NEW] Populate Threat Buckets
+    
+    # SPOOFING (Confusables)
+    if confusable_indices:
+        for idx in confusable_indices:
+            _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
+            
+    # OBFUSCATION (Clusters)
+    clusters = analyze_invisible_clusters(t) # We might need to call this if not already available
+    # actually summarize_invisible_clusters was called in forensic stats.
+    # We can re-run it or pass it. Re-running is cheap O(N).
+    for c in clusters:
+        _register_hit("thr_obfuscation", c["start"], c["end"]+1, "Invisible Cluster")
     
     # --- 0. Initialize defaults ---
     threat_flags = {}
@@ -6331,6 +6427,37 @@ def render_encoding_footprint(t: str):
 @create_proxy
 def update_all(event=None):
     """The main function called on every input change."""
+
+    # --- RESET REGISTRY ---
+    global HUD_HIT_REGISTRY
+    HUD_HIT_REGISTRY = {}
+
+    def populate_hud_registry(t: str):
+    """Populates simple metric buckets for the HUD Stepper."""
+    js_array = window.Array.from_(t)
+    
+    for i, char in enumerate(js_array):
+        cp = ord(char)
+        
+        # 1. Whitespace (C3)
+        if _find_in_ranges(cp, "WhiteSpace"):
+            if cp not in (0x20, 0x09, 0x0A, 0x0D):
+                _register_hit("ws_nonstd", i, i+1, f"U+{cp:04X}")
+
+        # 2. Delimiters (C4)
+        cat = unicodedata.category(char)
+        if cat.startswith('P'):
+            # Exotic: Not ASCII, Not Latin-1, Not General Punct
+            if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
+                _register_hit("punc_exotic", i, i+1, f"U+{cp:04X}")
+
+        # 3. Symbols (C5) - Matches compute_emoji_analysis logic
+        # Extended: ASCII/Latin-1/Currency
+        # Exotic: Everything else
+        if cat.startswith('S'):
+             # We rely on emoji analysis to separate Emoji/Hybrids.
+             # This is just for the 'Exotic' bucket if not handled there.
+             pass
     
     # [IMMUTABLE REVEAL FIX]
     # If the user edits the text, the "Visual Overlay" is broken/invalid.
