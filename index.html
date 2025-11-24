@@ -189,25 +189,25 @@
                 
                 <div id="enc-legend-content" class="enc-legend-panel" hidden>
                     <div class="legend-col">
-                        <span class="legend-title">METRICS</span>
+                        <span class="legend-title">METRICS (DEPENDS ON MODE)</span>
                         <div class="legend-item">
-                            <span class="leg-key">S (Signal):</span> % of <em class="highlight-text">Non-ASCII</em> chars this encoding explains.<br>High S = Strong Candidate.
+                            <span class="leg-key">S (Signal):</span> % of <em class="highlight-text">Non-ASCII</em> characters this encoding explains.<br>(Used in Mixed/Signal Mode).
                         </div>
                         <div class="legend-item">
-                            <span class="leg-key">T (Total):</span> % of <em class="highlight-text">ALL</em> chars encodable in this legacy set.
+                            <span class="leg-key">T (Total):</span> % of <em class="highlight-text">ALL</em> characters encodable in this legacy set.<br>(Used in ASCII/Baseline Mode).
                         </div>
                     </div>
 
                     <div class="legend-col">
                         <span class="legend-title">STATUS COLORS</span>
                         <div class="legend-item">
-                            <span class="leg-badge leg-green">100%</span> <strong>SAFE:</strong> Full coverage, no data loss.
+                            <span class="leg-badge leg-green">100%</span> <strong>SAFE:</strong> Full coverage. No data loss.
                         </div>
                         <div class="legend-item">
-                            <span class="leg-badge leg-orange">&lt;100%</span> <strong>PARTIAL:</strong> Some characters lost (Mojibake).
+                            <span class="leg-badge leg-orange">&lt;100%</span> <strong>PARTIAL:</strong> Data loss / Mojibake risk.
                         </div>
                         <div class="legend-item">
-                            <span class="leg-badge leg-gray">0%</span> <strong>NONE:</strong> Irrelevant for this text.
+                            <span class="leg-badge leg-gray">0%</span> <strong>NONE:</strong> Incompatible (Signal Mode only).
                         </div>
                     </div>
 
@@ -217,13 +217,14 @@
                             <span class="leg-icon">◈</span> <strong>Unique Coverage:</strong> The only tracked legacy encoding that supports these specific characters.
                         </div>
                         <div class="legend-item">
-                            <span class="leg-badge leg-baseline">BASELINE</span> <strong>ASCII:</strong> 7-bit Universal text. Carries no specific provenance signal.
+                            <span class="leg-badge leg-baseline">BASELINE</span> <strong>ASCII:</strong> 7-bit Universal text.
                         </div>
                         <div class="legend-item">
-                            <span class="leg-key leg-violet">UNI-ONLY:</span> Characters impossible in legacy sets (Emoji, Math). Requires UTF-8.
+                            <span class="leg-key leg-violet">UNI-ONLY:</span> Characters impossible in legacy sets.
                         </div>
                     </div>
                 </div>
+           
             </div>
 
           </div> 
