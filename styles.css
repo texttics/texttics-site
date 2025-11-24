@@ -2697,3 +2697,47 @@ details.profile-section .action-bar {
   background-color: #fafafa;
   min-width: 70px;
 }
+
+/* --- Forensic Synthesis Row (The Explanation) --- */
+.enc-synthesis-row {
+  background-color: #f8fafc; /* Very light gray-blue */
+  border: 1px solid var(--color-border);
+  border-top: none; /* Attach to dashboard above */
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 0 0 var(--radius) var(--radius); /* Rounded bottom corners only */
+}
+
+/* Badge Styles for the Synthesis */
+.syn-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.syn-universal { background-color: #f3f4f6; color: #374151; border: 1px solid #d1d5db; } /* Gray */
+.syn-modern    { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; } /* Blue */
+.syn-match     { background-color: #fffbeb; color: #b45309; border: 1px solid #fcd34d; } /* Amber */
+.syn-critical  { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; } /* Red */
+
+/* The Text Explanation */
+.syn-text {
+  line-height: 1.4;
+  flex-grow: 1;
+}
+
+.syn-text strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+
