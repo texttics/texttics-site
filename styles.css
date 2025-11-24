@@ -2911,15 +2911,34 @@ details.profile-section .action-bar {
   border: 1px solid transparent;
 }
 
-/* Badge Colors */
-.leg-green    { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
-.leg-orange   { color: #b45309; background: #fffbeb; border-color: #fcd34d; }
-.leg-gray     { color: #6b7280; background: #f3f4f6; border-color: #e5e7eb; }
-.leg-baseline { color: #4b5563; background: #f3f4f6; border-color: #d1d5db; width: auto; padding: 0 6px; }
-.leg-violet   { color: #7c3aed; font-weight: 800; }
-
 .leg-icon {
   color: #d97706;
   font-weight: bold;
   margin-right: 4px;
 }
+
+/* --- Status Colors v12 --- */
+.status-safe     { color: #15803d; background-color: #f0fdf4; } /* Green (Candidate) */
+.status-risk     { color: #b45309; background-color: #fffbeb; } /* Orange (Partial) */
+.status-dead     { color: #9ca3af; background-color: #f3f4f6; } /* Gray (Incompatible) */
+.status-uniq     { color: #b45309; background-color: #fffbeb; border-bottom: 3px solid #d97706; } /* Unique */
+.status-modern   { color: #7c3aed; background-color: #f5f3ff; font-weight: 800; } /* Violet (Uni-Only) */
+
+/* NEW: Blue Baseline (Safe but Reference) */
+.status-baseline { 
+    color: #2563eb; 
+    background-color: #eff6ff; 
+    border: 1px solid #bfdbfe; 
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+/* Legend Badges to match */
+.leg-green    { color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.leg-orange   { color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; }
+.leg-gray     { color: #9ca3af; background: #f3f4f6; border: 1px solid #e5e7eb; }
+.leg-blue     { color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; }
+.leg-violet   { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
