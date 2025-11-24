@@ -995,3 +995,40 @@ To achieve a good forensic model, we transitioned the engine to a **Cluster-Firs
 * **The "Rocket" Logic:** Previously, RGI atoms like the Rocket (`🚀`) were counted in both Hybrids and Emoji. The new logic correctly identifies them as RGI and moves them exclusively to the Emoji bucket, preserving mathematical integrity.
 * **Forensic Facet (Base GC):** To preserve the insight that a Rocket is *also* a symbol, the **Emoji Qualification Profile** now includes a **"BASE"** column (e.g., `BASE: SYM`), exposing the underlying character category without corrupting the top-level count.
 * **Ledger Integrity:** The engine now strictly accounts for **Leaked Components** (e.g., standalone Skin Tones) in the total unit count, ensuring that the Header Summary ("13 Units") perfectly matches the visual table rows.
+
+***
+
+## 📈 Update: The "Forensic Signal Engine" & Interaction Polish
+
+**Session Focus:** Moving beyond character counting to **Provenance Profiling** and **Zero-Width Interaction**. We implemented a deterministic "Forensic Signal Engine" to analyze legacy encoding compatibility without relying on probabilistic byte-sniffing.
+
+### 1. New Module: Forensic Encoding Footprint (Signal vs. Compatibility)
+We introduced a high-density visualization strip that answers: *"Which legacy ecosystem could this text have originated from, and what data is lost if saved as ANSI?"*
+
+* **Philosophy:** Strictly "Post-Clipboard." We do not guess original bytes. We measure **Compatibility** (physical fit) and **Signal Strength** (discriminatory power of non-ASCII characters).
+* **The "Forensic Signal" Logic:**
+    * **Integrity Anchors (Left):** Verifies structural validity for `UTF-8`, `UTF-16`, and `UTF-32` (detects lone surrogates).
+    * **UNI-ONLY (The Modernity Metric):** A specific, Violet-coded metric tracking characters (Emoji, Math, Historic) that are *physically impossible* in legacy encodings. Includes a rich tooltip breakdown (e.g., *"Emoji: 5, Math: 2"*).
+    * **Legacy Filters (Right):** A sorted strip of 13 legacy encodings (Win-125x, ISO-8859-1, CJK, etc.).
+        * **Metric T (Total Compatibility):** Can the file be saved without data loss?
+        * **Metric S (Signal Strength):** How well does this encoding explain the *non-ASCII* characters?
+    * **Exclusivity Detection:** Flags encodings as **[UNIQUE]** if they are the *sole* explanation for specific characters (e.g., a Cyrillic letter found only in CP866, not Win-1251).
+
+* **The "Blue Baseline" State:**
+    * If text is 100% ASCII, the engine switches modes. Legacy encodings are marked **SAFE (Green)**, but the ASCII indicator turns **BLUE (Baseline)** to signal that while safe, it carries no forensic provenance data.
+
+* **Synthesis & Legend:**
+    * **Synthesis Row:** An English-language logic engine that interprets the matrix (e.g., *"REQUIRES UNICODE"*, *"STRONG SIGNAL: Win-1251"*, *"AMBIGUOUS LEGACY"*).
+    * **Progressive Disclosure Legend:** A collapsible "How to read this" panel defining metrics and color codes (Safe/Partial/Incompatible).
+
+### 2. Interaction Upgrade: The "Invisible Hunter"
+We resolved the "Ghost Selection" issue where zero-width characters (ZWJ, tags) were difficult to locate.
+* **Step-Through Logic:** The "Highlight Non-Std Inv." button now uses a `selectionEnd` delta loop to force-march through zero-width characters, preventing the cursor from getting stuck on a single index.
+* **Inspector Synchronization:** Clicking the Highlighter now **auto-triggers** the Character Inspector. You no longer need to click the text manually; the Inspector instantly reveals the forensic data of the invisible character you just hunted.
+
+### 3. UI/UX Refinement: The "Workbench" Aesthetic
+* **Global Actions:** Renamed the generic "Controls" section to **"Global Actions"** and applied a distinct **"Rigorous Violet"** theme (`#5b21b6`). This visually separates the *tools* (Actions) from the *data* (Blue/Black headers).
+* **Status Bar Layout:** Fixed flexbox alignment issues to ensure the "Status Pill" always hugs the right edge, while action buttons flow naturally from the left.
+
+### 4. Reporting Architecture
+* **Clipboard Fidelity:** Updated `ui-glue.js` to include the full **Encoding Footprint** in the "Copy All Data" report. The scraper now parses the deep forensic tooltips (Unique constraints, Signal percentages) into the plain-text report format.
