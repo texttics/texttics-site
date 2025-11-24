@@ -6060,10 +6060,10 @@ def compute_threat_score(inputs):
 
 def render_encoding_footprint(t: str):
     """
-    Forensic Signal Engine v9.0 (Compatibility & Damage Model):
-    1. Integrity Panel: UTF Validators + 'Unicode Only' Analysis (with Breakdown).
-    2. Provenance Strip: Ranked by Signal Strength (Non-ASCII coverage).
-    3. Metrics: Primary = Signal %, Secondary = Total %.
+    Forensic Signal Engine v10.0 (Progressive Disclosure):
+    1. ASCII Handling: Renders 'BASELINE' badge instead of '0%' signal.
+    2. Progressive Disclosure: Hides low-signal encodings behind a 'Show More' toggle.
+    3. Smart Filtering: Always shows Unique matches and High-Signal candidates.
     """
     integrity_container = document.getElementById("encoding-integrity")
     provenance_container = document.getElementById("encoding-provenance")
@@ -6082,15 +6082,13 @@ def render_encoding_footprint(t: str):
     total_non_ascii = len(non_ascii_chars)
     has_signal = total_non_ascii > 0
     
-    # --- 1. UNICODE ONLY ANALYSIS (The "Why") ---
-    # Identify characters that fail ALL tracked legacy filters.
+    # --- 1. PRE-CALCULATIONS (Same as v9) ---
     legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
     legacy_codecs_list = [item[1] for item in legacy_codecs]
     
     unsupported_chars = []
     exclusive_counts = {item[0]: 0 for item in legacy_codecs}
     
-    # Combined Pass: Breakdown + Exclusivity
     if has_signal:
         for char in non_ascii_chars:
             supported_by = []
@@ -6100,20 +6098,16 @@ def render_encoding_footprint(t: str):
                     supported_by.append(label)
                 except UnicodeEncodeError:
                     pass
-            
-            if not supported_by:
-                unsupported_chars.append(char)
-            elif len(supported_by) == 1:
-                exclusive_counts[supported_by[0]] += 1
+            if not supported_by: unsupported_chars.append(char)
+            elif len(supported_by) == 1: exclusive_counts[supported_by[0]] += 1
 
     unsupported_count = len(unsupported_chars)
     other_pct = (unsupported_count / total_chars) * 100
     
-    # --- 2. BUILD INTEGRITY PANEL (Left) ---
+    # --- 2. RENDER INTEGRITY PANEL (Left) ---
     integrity_html = []
     utf_broken = False
     
-    # A. UTF Anchors
     for label, codec, tooltip in FORENSIC_ENCODINGS:
         if "utf" not in codec: continue
         try:
@@ -6136,28 +6130,19 @@ def render_encoding_footprint(t: str):
             </div>
         """)
 
-    # B. Unicode Only (The Residual)
+    # Unicode Only Cell
     other_style = "status-dead"
     other_tooltip = "All characters fit within tracked legacy encodings."
-    
     if unsupported_count > 0:
-        other_style = "status-modern" # Violet
-        # Generate Semantic Breakdown for Tooltip
+        other_style = "status-modern"
         breakdown = {"Emoji": 0, "Math": 0, "Private": 0, "Other": 0}
         for ch in unsupported_chars:
             cat = unicodedata.category(ch)
             cp = ord(ch)
-            # Simple heuristics for display
-            if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
-                breakdown["Emoji"] += 1
-            elif cat == "Sm":
-                breakdown["Math"] += 1
-            elif cat in ("Co", "Cn"):
-                breakdown["Private"] += 1
-            else:
-                breakdown["Other"] += 1
-        
-        # Format Tooltip
+            if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"): breakdown["Emoji"] += 1
+            elif cat == "Sm": breakdown["Math"] += 1
+            elif cat in ("Co", "Cn"): breakdown["Private"] += 1
+            else: breakdown["Other"] += 1
         bd_str = "\n".join([f"• {k}: {v}" for k,v in breakdown.items() if v > 0])
         other_tooltip = f"REQUIRED UNICODE: {unsupported_count} char(s)\nThese cannot be saved as ANSI/Legacy:\n{bd_str}"
 
@@ -6171,27 +6156,25 @@ def render_encoding_footprint(t: str):
         </div>
     """)
 
-    # --- 3. BUILD PROVENANCE STRIP (Right) ---
+    # --- 3. BUILD PROVENANCE DATA (Right) ---
     provenance_data = []
     
     for label, codec, tooltip in FORENSIC_ENCODINGS:
         if "utf" in codec: continue
         try:
-            # Total Coverage
+            # Calc Total
             try:
                 t.encode(codec)
                 valid_count = total_chars
-            except UnicodeEncodeError:
+            except:
                 valid_bytes = t.encode(codec, 'ignore')
                 valid_s = valid_bytes.decode(codec)
                 valid_count = len(valid_s)
             pct_total = (valid_count / total_chars) * 100
             
-            # Signal Strength (The Primary Metric)
+            # Calc Signal
             signal_strength = 0.0
             if has_signal:
-                # Recalc signal specific to this codec
-                # (Optimization: We could cache this, but string op is fast enough for 13 items)
                 non_ascii_str = "".join(non_ascii_chars)
                 try:
                     non_ascii_str.encode(codec)
@@ -6204,47 +6187,105 @@ def render_encoding_footprint(t: str):
             
             uniq_hits = exclusive_counts.get(label, 0)
             
-            # Visual Logic
-            if not has_signal:
-                status_cls = "status-dead" # ASCII is boring
-            elif signal_strength == 100.0:
-                status_cls = "status-safe"
-                if uniq_hits > 0: status_cls = "status-uniq" # Unique Match
-            elif signal_strength > 0:
-                status_cls = "status-risk" # Partial
-            else:
-                status_cls = "status-dead" # Irrelevant
-            
-            # Text formatting
-            detail_text = f"Non-ASCII Signal: {signal_strength:.1f}%"
-            lbl_display = label + (' ◈' if uniq_hits > 0 else '')
-            
-            # METRIC SWAP: Primary is Signal, Secondary is Total
+            # Store raw data
             provenance_data.append({
-                'html': f"""
-                    <div class="enc-cell" title="{label}\n{detail_text}\nTotal Coverage: {pct_total:.1f}%\n{tooltip}">
-                        <div class="enc-label">{lbl_display}</div>
-                        <div class="enc-metrics">
-                            <span class="enc-val-primary {status_cls}">{signal_strength:.0f}%</span>
-                            <span class="enc-val-secondary">T:{pct_total:.0f}%</span>
-                        </div>
-                    </div>
-                """,
-                'signal': signal_strength, 'total': pct_total, 'unique': uniq_hits, 'label': label
+                'label': label, 'codec': codec, 'tooltip': tooltip,
+                'signal': signal_strength, 'total': pct_total, 'unique': uniq_hits
             })
-
-        except Exception: pass
+        except: pass
 
     # Sort: Unique > Signal > Total > Name
     provenance_data.sort(key=lambda x: (-x['unique'], -x['signal'], -x['total'], x['label']))
+
+    # --- 4. VISIBILITY LOGIC (Progressive Disclosure) ---
+    # We want to hide "boring" items (0% signal, no uniqueness) unless they are the best total match.
     
-    prov_html = [item['html'] for item in provenance_data]
+    # Find max total coverage among all items
+    max_total = max((x['total'] for x in provenance_data), default=0)
+    
+    prov_html = []
+    hidden_count = 0
+    
+    for item in provenance_data:
+        label = item['label']
+        sig = item['signal']
+        tot = item['total']
+        uniq = item['unique']
+        
+        # Visibility Rule:
+        # Show if: Has Signal OR Is Unique OR Is Top Total Match (if no signal exists)
+        # Hide if: Signal is 0 AND Not Unique AND (Total < Max Total OR we already have enough visible)
+        
+        is_visible = True
+        if has_signal:
+            # If we have signal, hide 0% signal items unless they are unique
+            if sig == 0 and uniq == 0:
+                is_visible = False
+        else:
+            # ASCII Mode: Show all? Or just top? Let's show top 5 total matches (which are all 100%)
+            # Actually for ASCII, all are 100% total, so just show first 5, hide rest
+            if len(prov_html) >= 5:
+                is_visible = False
+
+        # Force visibility for "ASCII" if it's in the list (it's a useful baseline anchor)
+        if label == "ASCII": is_visible = True
+
+        # HTML Construction
+        status_cls = "status-dead"
+        if not has_signal:
+            status_cls = "status-dead"
+        elif sig == 100.0:
+            status_cls = "status-uniq" if uniq > 0 else "status-safe"
+        elif sig > 0:
+            status_cls = "status-risk"
+            
+        detail = f"Signal: {sig:.1f}%"
+        lbl_display = label + (' ◈' if uniq > 0 else '')
+        
+        # Special Render for ASCII in Signal Mode
+        val_primary = f"{sig:.0f}%"
+        
+        if label == "ASCII" and has_signal:
+            # Render "BASELINE" badge
+            val_primary = '<span class="enc-val-baseline">BASELINE</span>'
+            detail = "Ref: 7-bit"
+            status_cls = "" # Remove color from parent span
+        
+        # CSS Class for hiding
+        row_class = "enc-cell"
+        if not is_visible:
+            row_class += " enc-hidden"
+            hidden_count += 1
+            
+        html = f"""
+            <div class="{row_class}" title="{label}\n{detail}\nTotal Coverage: {tot:.1f}%\n{item['tooltip']}">
+                <div class="enc-label">{lbl_display}</div>
+                <div class="enc-metrics">
+                    <span class="enc-val-primary {status_cls}">{val_primary}</span>
+                    <span class="enc-val-secondary">T:{tot:.0f}%</span>
+                </div>
+            </div>
+        """
+        prov_html.append(html)
+
+    # Add "Show More" Button if needed
+    if hidden_count > 0:
+        prov_html.append(f"""
+            <div class="enc-expand-btn" onclick="document.querySelectorAll('.enc-hidden').forEach(e => e.classList.remove('enc-hidden')); this.style.display='none';">
+                <span>+{hidden_count}</span>
+                <span>More</span>
+            </div>
+        """)
 
     integrity_container.innerHTML = "".join(integrity_html)
     provenance_container.innerHTML = "".join(prov_html)
 
-    # --- 4. SYNTHESIS LOGIC (Report) ---
+    # --- 5. SYNTHESIS LOGIC (Report) ---
     if synthesis_container:
+        # ... [Synthesis Logic remains exactly the same as v9.0] ...
+        # (Omitting for brevity, use v9 synthesis block here)
+        
+        # Copying v9 Synthesis Block for completeness:
         badge_class = "syn-universal"
         badge_text = "ANALYSIS"
         summary_text = ""
@@ -6263,7 +6304,7 @@ def render_encoding_footprint(t: str):
         elif any(x['unique'] > 0 for x in provenance_data):
             best = provenance_data[0]
             badge_class = "syn-match"; badge_text = f"UNIQUE SIGNAL: {best['label']}"
-            summary_text = f"Contains <strong>{best['unique']} character(s)</strong> that are unique to <strong>{best['label']}</strong> among the tracked set."
+            summary_text = f"Contains <strong>{best['unique']} unique character(s)</strong> specific to <strong>{best['label']}</strong>."
         elif perfect_candidates:
             candidates = ", ".join(perfect_candidates[:3])
             badge_class = "syn-universal"; badge_text = "AMBIGUOUS LEGACY"
