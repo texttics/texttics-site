@@ -3421,6 +3421,18 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     current_logical = _dom_to_logical(t, current_dom_pos)
 
+    # 1. Define Human-Readable Labels
+    labels = {
+        "integrity_agg": "Integrity Issues",
+        "threat_agg": "Threat Signals",
+        "ws_nonstd": "Non-Std Whitespace",
+        "punc_exotic": "Exotic Delimiters",
+        "sym_exotic": "Exotic Symbols",
+        "emoji_hybrid": "Hybrid Emoji",
+        "emoji_irregular": "Irregular Emoji"
+    }
+    category_label = labels.get(metric_key, "Forensic Metric")
+
     # 2. Resolve targets based on key type
     targets = []
     if metric_key == "integrity_agg":
@@ -3441,7 +3453,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 3. Sort by start position
     targets.sort(key=lambda x: x[0])
 
-    # 4. Find next (Loop Logic Fixed for Contiguous Runs)
+    # 4. Find next (Loop Logic: Use >= to catch contiguous runs)
     next_hit = targets[0]
     hit_index = 1
     
@@ -3452,23 +3464,26 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             hit_index = i + 1
             break
 
-    # 5. Execute
+    # 5. Execute Highlight
     window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
-    status_msg = f"Highlighting <strong>{next_hit[2]}</strong> ({hit_index} of {len(targets)})"
+    # 6. Format Status Message (Individualized)
+    # Format: "Threat Signals Highlighter: #19 of 25 (Trojan Source)"
+    status_msg = f"<strong>{category_label} Highlighter:</strong> #{hit_index} of {len(targets)} <span style='opacity:0.8; font-weight:400;'>— {next_hit[2]}</span>"
     
-    # [FIX] Target the NEW Left-Side HUD Status
+    # 7. Update LEFT-SIDE Status
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
-        # Use Blue/Indigo styling for HUD interactions
+        # Apply Active Blue Styling
         hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex" # Force visible
         
-        # Search/Locate Icon
+        # Search/Locate Icon (Blue)
         icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
         
         hud_status.innerHTML = f"{icon} {status_msg}"
     
-    # Force update inspector for the new selection
+    # 8. Force update inspector for the new selection
     inspect_character(None)
     
 
