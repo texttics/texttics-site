@@ -6060,9 +6060,9 @@ def compute_threat_score(inputs):
 
 def render_encoding_footprint(t: str):
     """
-    Encoding Compatibility Footprint v5.0 (Rigorous):
+    Forensic Repertoire Footprint v5.1 (Strict):
     Analyzes which legacy encodings *could* represent this Unicode string losslessly.
-    This is a compatibility analysis, not a probabilistic origin detector.
+    Visualizes repertoire coverage and unique constraints.
     """
     container = document.getElementById("encoding-footprint")
     if not container: return
@@ -6073,16 +6073,12 @@ def render_encoding_footprint(t: str):
     total_chars = len(t)
     
     # --- 1. SIGNAL EXTRACTION ---
-    # We focus on Non-ASCII characters as the only discriminatory signal.
     non_ascii_chars = [c for c in t if ord(c) >= 128]
     total_non_ascii = len(non_ascii_chars)
     has_signal = total_non_ascii > 0
     
-    # --- 2. EXCLUSIVITY PASS (The "Sole Candidate" Logic) ---
-    # We determine if any legacy codec is the *unique* solution for a character among our tracked set.
+    # --- 2. EXCLUSIVITY PASS (Unique Coverage Logic) ---
     legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
-    
-    # Maps codec_label -> count of unique characters only IT can encode (relative to our list)
     exclusive_counts = {item[0]: 0 for item in legacy_codecs}
     
     if has_signal:
@@ -6095,7 +6091,7 @@ def render_encoding_footprint(t: str):
                 except UnicodeEncodeError:
                     pass
             
-            # If exactly one tracked codec supports it, it is a Sole Candidate for that char
+            # If exactly one tracked codec supports it, it has Unique Coverage
             if len(supported_by) == 1:
                 exclusive_counts[supported_by[0]] += 1
 
@@ -6104,7 +6100,7 @@ def render_encoding_footprint(t: str):
     
     for label, codec, tooltip in FORENSIC_ENCODINGS:
         try:
-            # --- A. COMPUTE TOTAL COMPATIBILITY ---
+            # --- A. COMPUTE TOTAL COVERAGE ---
             try:
                 t.encode(codec)
                 valid_count = total_chars
@@ -6115,12 +6111,11 @@ def render_encoding_footprint(t: str):
 
             pct_total = (valid_count / total_chars) * 100
             
-            # --- B. COMPUTE NON-ASCII COMPATIBILITY ---
+            # --- B. COMPUTE NON-ASCII COVERAGE ---
             signal_strength = 0.0
             exclusive_hits = 0
             
             if "utf" in codec:
-                # For UTF, compatibility is 100% unless broken (surrogates)
                 signal_strength = pct_total
             elif has_signal:
                 non_ascii_str = "".join(non_ascii_chars)
@@ -6136,7 +6131,7 @@ def render_encoding_footprint(t: str):
                 exclusive_hits = exclusive_counts.get(label, 0)
             
             # --- C. DETERMINE VISUAL STATE ---
-            val_class = "enc-risk" # Default: Partial compatibility
+            val_class = "enc-risk"
             val_text = f"{pct_total:.1f}%"
             extra_style = ""
             
@@ -6145,41 +6140,37 @@ def render_encoding_footprint(t: str):
                     val_class = "enc-safe"
                     val_text = "100%"
                 else:
-                    val_class = "enc-dead" # Broken Unicode
+                    val_class = "enc-dead" # Malformed Unicode
                     val_text = f"{pct_total:.1f}%"
             else:
                 if not has_signal:
-                    # ASCII text is compatible with everything, but uninformative
-                    val_class = "enc-dead" 
-                    val_text = "100%" 
+                    val_class = "enc-dead"
+                    val_text = "100%" # ASCII-only noise
                 elif signal_strength == 100.0:
-                    # Fully compatible with the non-ASCII signal
                     val_class = "enc-safe"
                     val_text = "100%"
                     
-                    # Only highlight as "Candidate" if it explains something unique
+                    # "UNIQUE COVERAGE" (Fact, not prediction)
                     if exclusive_hits > 0:
-                        extra_style = "border-bottom: 3px solid #d97706;" 
-                        # We use "CANDIDATE" instead of "MATCH" to be scientifically honest
-                        val_text = "CANDIDATE" 
+                        extra_style = "border-bottom: 3px solid #d97706;"
+                        val_text = "UNIQUE" # Factual set membership
                 elif valid_count == 0:
                     val_class = "enc-dead"
                     val_text = "0%"
                 else:
-                    # Partial compatibility (Mojibake likely)
                     val_class = "enc-risk"
                     val_text = f"{pct_total:.1f}%"
 
-            # --- D. SCIENTIFIC TOOLTIP ---
+            # --- D. TOOLTIP (Honest Reporting) ---
             detail = ""
             if "utf" in codec:
                 detail = "Valid Unicode Structure." if valid_count == total_chars else "Contains invalid lone surrogates."
             elif not has_signal:
-                detail = "Text is ASCII-only. Compatible, but adds no specific provenance information."
+                detail = "Text is ASCII-only. Compatible, but adds no provenance signal."
             else:
                 detail = f"Non-ASCII Compatibility: {signal_strength:.1f}%"
                 if exclusive_hits > 0:
-                    detail += f"\n⚠️ SOLE CANDIDATE: Uniquely supports {exclusive_hits} char(s) among tracked set."
+                    detail += f"\n⚠️ UNIQUE COVERAGE: The only tracked legacy encoding that supports {exclusive_hits} char(s)."
 
             html_buffer.append(f"""
                 <div class="enc-cell" title="{label}\nTotal Compatibility: {pct_total:.1f}%\n{detail}\n{tooltip}" style="{extra_style}">
@@ -6191,29 +6182,24 @@ def render_encoding_footprint(t: str):
         except Exception:
             html_buffer.append(f"""<div class="enc-cell"><div class="enc-label">{label}</div><div class="enc-val enc-dead">ERR</div></div>""")
 
-    # --- 3. THE "OTHER" COLUMN (The Residuals) ---
-    # Strictly defined as characters that fail ALL tracked legacy codecs.
-    legacy_codecs_list = [item[1] for item in legacy_codecs]
-    
+    # --- 3. THE "OTHER" COLUMN ---
     unsupported_count = 0
     for char in t:
         if ord(char) < 128: continue
-        
         supported = False
-        for l_codec in legacy_codecs_list:
+        for _, l_codec, _ in legacy_codecs:
             try:
                 char.encode(l_codec)
                 supported = True
                 break
             except: continue
-        
         if not supported: unsupported_count += 1
             
     other_pct = (unsupported_count / total_chars) * 100
     other_cls = "enc-dead" if other_pct == 0 else "enc-risk"
     
     html_buffer.append(f"""
-        <div class="enc-cell" title="Other: {other_pct:.1f}%\nCharacters not representable in any of the 13 legacy encodings tracked here.\nLikely Emoji, Mathematical Symbols, or unlisted Scripts.">
+        <div class="enc-cell" title="Other: {other_pct:.1f}%\nCharacters not representable in ANY of the 13 legacy encodings tracked here.\nLikely Emoji, Mathematical Symbols, or unlisted Scripts.">
             <div class="enc-label">Other</div>
             <div class="enc-val {other_cls}">{other_pct:.1f}%</div>
         </div>
