@@ -2753,4 +2753,43 @@ details.profile-section .action-bar {
   color: #111827;
 }
 
+/* --- v10.0 Progressive Disclosure Styles --- */
 
+/* ASCII Baseline Badge */
+.enc-val-baseline {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #6b7280; /* Gray-500 */
+  background-color: #f3f4f6; /* Gray-100 */
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  letter-spacing: 0.03em;
+}
+
+/* "Show More" Expand Button */
+.enc-expand-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-width: 60px;
+  padding: 0 12px;
+  cursor: pointer;
+  background-color: #f9fafb;
+  border-left: 1px dashed #d1d5db;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.enc-expand-btn:hover {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+/* Hidden Class for Low-Signal Items */
+.enc-hidden {
+  display: none !important;
+}
