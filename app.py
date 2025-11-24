@@ -4341,13 +4341,23 @@ def compute_threat_analysis(t: str):
             final_html_report = _render_confusable_summary_view(t, set(confusable_indices), confusables_map)
         else:
             final_html_report = ""
-            
-        # --- [NEW] Populate Threat Registry (MOVED TO BOTTOM) ---
         
-        # SPOOFING
-        if confusable_indices:
+        # SPOOFING (Logic Filter)
+        # [FIX] Do NOT register Common/Inherited drifts (like Em Dash) as "Spoofing" in HUD.
+        if confusable_indices and LOADING_STATE == "READY":
+            # We must re-check script property since we didn't store it per-index
+            # This is fast enough for the post-processing step
+            js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
-                _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
+                try:
+                    char = js_array_raw[idx]
+                    cp = ord(char)
+                    sc = _find_in_ranges(cp, "Scripts")
+                    
+                    # Only register if it's NOT Common/Inherited (Benign Drift)
+                    if sc not in ("Common", "Inherited"):
+                        _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
+                except: pass
             
         # OBFUSCATION (Clusters)
         clusters = analyze_invisible_clusters(t)
@@ -5480,7 +5490,7 @@ def inspect_character(event):
 
 def analyze_signal_processor_state(data):
     """
-    Forensic State Machine v5.1 (Fixed Data Structures).
+    Forensic State Machine v5.2 (Fixed Data Structures & Cross-Script Logic).
     Standardizes all facets to dictionaries to prevent NameError.
     """
     
@@ -5511,7 +5521,10 @@ def analyze_signal_processor_state(data):
     # Check the global set we loaded from JSON
     is_ascii_confusable = (cp in ASCII_CONFUSABLES)
     
-    is_cross_script_confusable = raw_confusable and not is_ascii
+    # [FIX] Cross-Script requires the source to NOT be Common/Inherited.
+    # Em Dash (Common) -> Hyphen (Common) is NOT a cross-script threat.
+    is_common_script = script in ("Common", "Inherited")
+    is_cross_script_confusable = raw_confusable and not is_ascii and not is_common_script
     
     stack_msg = data.get('stack_msg') or ""
     mark_count = 0
@@ -5585,7 +5598,8 @@ def analyze_signal_processor_state(data):
         ident_detail = detail_text
         reasons.append("Confusable Identity")
         
-    elif is_ascii_confusable: 
+    elif is_ascii_confusable or (raw_confusable and is_common_script): 
+        # [FIX] Common/Inherited confusions (like Em Dash) fall here (Note/Blue), not Warn/Orange
         current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
         ident_state = "NOTE"
         ident_class = "risk-info"
@@ -6718,6 +6732,23 @@ def update_all(event=None):
         flag_data = emoji_flags.get(flag_key, {})
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
+
+    # Unqualified
+    unq_pos = emoji_flags.get("Flag: Unqualified Emoji", {}).get("positions", [])
+    for pos_str in unq_pos:
+        try:
+            idx = int(pos_str.replace("#", ""))
+            _register_hit("thr_suspicious", idx, idx+1, "Unqualified Emoji")
+        except: pass
+
+    # Forced Presentation
+    forced_pos = emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("positions", []) + \
+                 emoji_flags.get("Flag: Forced Text Presentation", {}).get("positions", [])
+    for pos_str in forced_pos:
+        try:
+            idx = int(pos_str.replace("#", ""))
+            _register_hit("thr_suspicious", idx, idx+1, "Forced Presentation")
+        except: pass
 
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
