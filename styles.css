@@ -3121,7 +3121,7 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   FORENSIC CLUSTER STREAM (v3.3 - Sane Logic)
+   FORENSIC CLUSTER STREAM (v4.0 - Code Strip Architecture)
    ========================================= */
 
 .xray-stream-wrapper {
@@ -3215,7 +3215,7 @@ details.profile-section .action-bar {
   background: #eff6ff;
 }
 
-/* --- THE FIX --- */
+/* --- THE FIX IS HERE --- */
 
 .cluster-body {
   padding: 16px;
@@ -3224,37 +3224,44 @@ details.profile-section .action-bar {
   color: #1f2937;
   background-color: #ffffff;
   
-  /* 1. Sane Line Height: Enough room for text, but not "lanes" */
-  line-height: 2.2; 
+  /* 1. Code Strip Logic: Horizontal Scroll, No Wrapping */
+  white-space: pre; 
+  overflow-x: auto;
+  overflow-y: hidden;
   
-  /* 2. Block display allows natural wrapping */
-  display: block; 
+  /* 2. Sane Line Height: Let the stacks define the height */
+  line-height: 1.5; 
   
-  /* 3. Break only on overflow, not everywhere */
-  overflow-wrap: break-word; 
+  /* 3. Flex Layout for Perfect Vertical Alignment */
+  display: flex;
+  align-items: center; /* Forces EVERYTHING to the middle line */
+  height: auto;
 }
 
-/* Stacks (Shared Base) */
+/* Scrollbar Polish */
+.cluster-body::-webkit-scrollbar { height: 6px; }
+.cluster-body::-webkit-scrollbar-thumb { background-color: #e5e7eb; border-radius: 4px; }
+
+/* Stacks (Unified Model) */
 .xray-stack {
+  /* Acts like a character but holds vertical content */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   
-  /* Vertical Align Middle: Centers the stack on the text line equator */
+  /* Vertical Alignment is handled by parent flex, but this is backup */
   vertical-align: middle; 
   
-  margin: 0 2px;
-  padding: 2px 3px;
+  margin: 0 1px; /* Tight spacing */
+  padding: 2px 4px;
   border-radius: 4px;
   cursor: help;
   min-width: 1.2em;
   border: 1px solid transparent;
   
-  /* Tight internal line height for the stack itself */
+  /* Reset line-height inside so text is tight */
   line-height: 1.1; 
-  
-  /* Visual pop */
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
@@ -3264,9 +3271,10 @@ details.profile-section .action-bar {
 
 /* Stack Typography */
 .xray-top {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 800;
   color: #1f2937;
+  padding-bottom: 2px;
 }
 .stack-spoof .xray-top { color: #dc2626; }
 
@@ -3278,9 +3286,19 @@ details.profile-section .action-bar {
   border-top: 1px dotted rgba(0,0,0,0.2);
   width: 100%;
   text-align: center;
+  padding-top: 2px;
 }
 
-/* Reduce noise: Hide script tag by default, rely on Tooltip */
+/* Script Tag (Restored & Compressed) */
 .xray-script-tag {
-  display: none;
+  display: block; /* Show it */
+  font-size: 0.5rem;
+  font-weight: 800;
+  color: #991b1b; 
+  margin-top: 1px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0.8;
+  width: 100%;
+  text-align: center;
 }
