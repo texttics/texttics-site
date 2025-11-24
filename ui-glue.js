@@ -1017,3 +1017,40 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       copyToClipboard(megaReport, 'btn-copy-all-everything');
     });
   }
+
+// ==========================================
+  // 10. FORENSIC LEGEND TOGGLE
+  // ==========================================
+  const legendBtn = document.getElementById('btn-legend-toggle');
+  const legendContent = document.getElementById('enc-legend-content');
+  const legendKey = 'texttics_legend_open'; // localStorage key
+
+  if (legendBtn && legendContent) {
+    
+    // 1. Check saved state
+    const savedState = localStorage.getItem(legendKey);
+    if (savedState === 'true') {
+      legendContent.classList.add('active');
+      legendContent.removeAttribute('hidden');
+      legendBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    // 2. Toggle Handler
+    legendBtn.addEventListener('click', () => {
+      const isHidden = legendContent.hasAttribute('hidden');
+      
+      if (isHidden) {
+        // OPEN IT
+        legendContent.classList.add('active');
+        legendContent.removeAttribute('hidden');
+        legendBtn.setAttribute('aria-expanded', 'true');
+        localStorage.setItem(legendKey, 'true');
+      } else {
+        // CLOSE IT
+        legendContent.classList.remove('active');
+        legendContent.setAttribute('hidden', '');
+        legendBtn.setAttribute('aria-expanded', 'false');
+        localStorage.setItem(legendKey, 'false');
+      }
+    });
+  }
