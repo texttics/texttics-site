@@ -181,22 +181,48 @@
             
             <div id="encoding-synthesis" class="enc-synthesis-row"></div>
             
-            <div class="enc-legend-panel">
-                <div class="legend-col">
-                    <span class="legend-title">METRICS</span>
-                    <div class="legend-item"><span class="leg-key">T (Total):</span> % of ALL characters that fit this encoding.</div>
-                    <div class="legend-item"><span class="leg-key">S (Signal):</span> % of NON-ASCII characters that fit. High 'S' = Strong Candidate.</div>
-                </div>
-                <div class="legend-col">
-                    <span class="legend-title">STATUS</span>
-                    <div class="legend-item"><span class="leg-badge leg-green">100%</span> Safe / Compatible.</div>
-                    <div class="legend-item"><span class="leg-badge leg-orange"> &lt;100%</span> Partial Match (Data Loss).</div>
-                    <div class="legend-item"><span class="leg-badge leg-gray">0%</span> Incompatible / Irrelevant.</div>
-                </div>
-                <div class="legend-col">
-                    <span class="legend-title">FLAGS</span>
-                    <div class="legend-item"><span class="leg-icon">◈</span> <strong>Unique Coverage:</strong> This encoding is the <em>sole</em> explanation for at least one character.</div>
-                    <div class="legend-item"><span class="leg-key leg-violet">UNI-ONLY:</span> Characters impossible in Legacy encodings (e.g. Emoji). Requires UTF-8.</div>
+            <div class="enc-legend-wrapper">
+                <button type="button" id="btn-legend-toggle" class="legend-header" aria-expanded="false">
+                    <span class="legend-trigger-text">How to read this dashboard</span>
+                    <span class="legend-icon">▼</span>
+                </button>
+                
+                <div id="enc-legend-content" class="enc-legend-panel" hidden>
+                    <div class="legend-col">
+                        <span class="legend-title">METRICS</span>
+                        <div class="legend-item">
+                            <span class="leg-key">S (Signal):</span> % of <em class="highlight-text">Non-ASCII</em> chars this encoding explains.<br>High S = Strong Candidate.
+                        </div>
+                        <div class="legend-item">
+                            <span class="leg-key">T (Total):</span> % of <em class="highlight-text">ALL</em> chars encodable in this legacy set.
+                        </div>
+                    </div>
+
+                    <div class="legend-col">
+                        <span class="legend-title">STATUS COLORS</span>
+                        <div class="legend-item">
+                            <span class="leg-badge leg-green">100%</span> <strong>SAFE:</strong> Full coverage, no data loss.
+                        </div>
+                        <div class="legend-item">
+                            <span class="leg-badge leg-orange">&lt;100%</span> <strong>PARTIAL:</strong> Some characters lost (Mojibake).
+                        </div>
+                        <div class="legend-item">
+                            <span class="leg-badge leg-gray">0%</span> <strong>NONE:</strong> Irrelevant for this text.
+                        </div>
+                    </div>
+
+                    <div class="legend-col">
+                        <span class="legend-title">FLAGS & ANCHORS</span>
+                        <div class="legend-item">
+                            <span class="leg-icon">◈</span> <strong>Unique Coverage:</strong> The only tracked legacy encoding that supports these specific characters.
+                        </div>
+                        <div class="legend-item">
+                            <span class="leg-badge leg-baseline">BASELINE</span> <strong>ASCII:</strong> 7-bit Universal text. Carries no specific provenance signal.
+                        </div>
+                        <div class="legend-item">
+                            <span class="leg-key leg-violet">UNI-ONLY:</span> Characters impossible in legacy sets (Emoji, Math). Requires UTF-8.
+                        </div>
+                    </div>
                 </div>
             </div>
 
