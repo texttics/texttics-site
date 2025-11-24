@@ -1333,6 +1333,19 @@ Stage 2: Heatmap Row Classes
   align-items: center;
 }
 
+/* --- Spacing for the New HTML Layout --- */
+.status-bar-right {
+    /* Adds consistent 12px space between Buttons and Status */
+    gap: 12px; 
+}
+
+/* Optional: Ensure individual margins don't double-up the space */
+#btn-reveal,
+#btn-reveal2,
+#reveal-details {
+    margin: 0;
+}
+
 /* --- LEFT STATUS (Input: Ready) --- */
 
 /* Base Pill Shape & Typography */
