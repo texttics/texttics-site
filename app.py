@@ -6177,8 +6177,8 @@ def render_encoding_footprint(t: str):
                     else:
                         status_cls = "status-risk" # Orange
                     
-                    val_primary = f"{signal_strength:.0f}%"
-                    val_secondary = f"T:{pct_total:.0f}%"
+                    val_primary = f"S:{signal_strength:.0f}%"
+                    val_secondary = f"C:{pct_total:.0f}%"
                     
                     report_lines.append(f"• Compatibility: {pct_total:.1f}% of this text fits this encoding.")
                     report_lines.append(f"• Signal Strength: {signal_strength:.1f}% of non-ASCII characters.")
