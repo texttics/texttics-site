@@ -3121,7 +3121,7 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   FORENSIC CLUSTER STREAM (v3.2 - Sane Flow)
+   FORENSIC CLUSTER STREAM (v3.3 - Sane Logic)
    ========================================= */
 
 .xray-stream-wrapper {
@@ -3153,11 +3153,6 @@ details.profile-section .action-bar {
   background-color: #ffffff;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  transition: border-color 0.2s;
-}
-
-.cluster-card:hover {
-  border-color: #d1d5db;
 }
 
 /* Header: Metadata + Actions */
@@ -3220,7 +3215,7 @@ details.profile-section .action-bar {
   background: #eff6ff;
 }
 
-/* --- THE FIX IS HERE --- */
+/* --- THE FIX --- */
 
 .cluster-body {
   padding: 16px;
@@ -3229,38 +3224,37 @@ details.profile-section .action-bar {
   color: #1f2937;
   background-color: #ffffff;
   
-  /* 1. Standard Block Flow (Paragraph mode) */
-  display: block;
+  /* 1. Sane Line Height: Enough room for text, but not "lanes" */
+  line-height: 2.2; 
   
-  /* 2. Massive Line Height: This creates "Lanes" for the stacks to sit in without crashing */
-  line-height: 3.8; 
+  /* 2. Block display allows natural wrapping */
+  display: block; 
   
-  /* 3. Break Logic */
-  word-break: break-all;
+  /* 3. Break only on overflow, not everywhere */
+  overflow-wrap: break-word; 
 }
 
 /* Stacks (Shared Base) */
 .xray-stack {
-  /* Inline-Flex acts like a letter, but keeps internal vertical stack */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   
-  /* 4. ALIGNMENT FIX: Align the CENTER of the stack with the CENTER of the text line */
-  vertical-align: middle;
+  /* Vertical Align Middle: Centers the stack on the text line equator */
+  vertical-align: middle; 
   
   margin: 0 2px;
-  padding: 2px 4px;
+  padding: 2px 3px;
   border-radius: 4px;
   cursor: help;
   min-width: 1.2em;
   border: 1px solid transparent;
   
-  /* Reset line-height inside the stack so the internal text is tight */
+  /* Tight internal line height for the stack itself */
   line-height: 1.1; 
   
-  /* Shadow adds depth to separate it from the "flat" safe text */
+  /* Visual pop */
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
@@ -3270,36 +3264,23 @@ details.profile-section .action-bar {
 
 /* Stack Typography */
 .xray-top {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 800;
   color: #1f2937;
-  padding-bottom: 2px;
 }
 .stack-spoof .xray-top { color: #dc2626; }
 
 .xray-bot {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
   border-top: 1px dotted rgba(0,0,0,0.2);
   width: 100%;
   text-align: center;
-  padding-top: 2px;
 }
 
-/* Script Tag (Lat->Cyr) */
+/* Reduce noise: Hide script tag by default, rely on Tooltip */
 .xray-script-tag {
-  font-size: 0.5rem;
-  font-weight: 800;
-  color: #991b1b; 
-  margin-top: 2px;
-  line-height: 1;
-  white-space: nowrap;
-  letter-spacing: 0.02em;
-  opacity: 0.9;
-  border-top: 1px solid rgba(220, 38, 38, 0.15);
-  width: 100%;
-  text-align: center;
-  padding-top: 1px;
+  display: none;
 }
