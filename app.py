@@ -4345,14 +4345,15 @@ def compute_threat_analysis(t: str):
         # SPOOFING (Logic Filter)
         # [FIX] Do NOT register Common/Inherited drifts (like Em Dash) as "Spoofing" in HUD.
         if confusable_indices and LOADING_STATE == "READY":
-            # We must re-check script property since we didn't store it per-index
-            # This is fast enough for the post-processing step
             js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
                 try:
                     char = js_array_raw[idx]
                     cp = ord(char)
-                    sc = _find_in_ranges(cp, "Scripts")
+                    
+                    # [CRITICAL FIX] Default to "Common" if lookup returns None.
+                    # This prevents symbols (arrows, math) from being flagged as "Foreign Script" threats.
+                    sc = _find_in_ranges(cp, "Scripts") or "Common"
                     
                     # Only register if it's NOT Common/Inherited (Benign Drift)
                     if sc not in ("Common", "Inherited"):
