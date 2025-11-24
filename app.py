@@ -844,7 +844,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 6. Format Message (Fix Spacing & Alignment)
     # We put the Icon AT THE END (Right side)
     # We use a standard space ' ' after </strong>
-    status_msg = f"<strong>{category_label} Highlighter:</strong> #{hit_index} of {len(targets)}"
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
     
     # 7. Update UI
     hud_status = document.getElementById("hud-stepper-status")
