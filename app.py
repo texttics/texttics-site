@@ -6398,7 +6398,7 @@ def render_encoding_footprint(t: str):
         """
 
 # ---
-# 6. THE FINAL ORCHESTRATOR
+# 6. MAIN ORCHESTRATOR
 # ---
 
 # Ensure registry exists at module level
@@ -6827,6 +6827,167 @@ def update_all(event=None):
         window.TEXTTICS_CORE_DATA = core_data_js
     except Exception as e:
         print(f"Error packaging data for Stage 2: {e}")
+
+@create_proxy
+def reveal_invisibles(event=None):
+    """
+    TRANSFORM MODE (btn-reveal): 
+    Replaces invisible characters with visible tags (e.g. [ZWSP]).
+    Toggle: Click again to Revert.
+    """
+    el = document.getElementById("text-input")
+    details_line = document.getElementById("reveal-details")
+    reveal_btn = document.getElementById("btn-reveal")
+    reveal2_btn = document.getElementById("btn-reveal2")
+    
+    if not el or not el.value: return
+
+    # --- 1. REVERT LOGIC (Obfuscate Back) ---
+    if el.getAttribute("data-revealed") == "true":
+        original = el.getAttribute("data-original")
+        if original: el.value = original
+        
+        el.removeAttribute("data-revealed")
+        el.removeAttribute("data-original")
+        el.classList.remove("reveal-active")
+        
+        if reveal_btn: 
+            reveal_btn.innerHTML = "Transform Non-Standard Invisibles &#x21C4;"
+        
+        # Reset UI
+        update_all(None)
+        return
+
+    # --- 2. TRANSFORM LOGIC ---
+    raw_text = el.value
+    new_chars = []
+    total_replaced = 0
+    
+    for char in raw_text:
+        cp = ord(char)
+        replacement = None
+        
+        if cp in INVISIBLE_MAPPING:
+            replacement = INVISIBLE_MAPPING[cp]
+        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
+            vs_offset = 1 if cp <= 0xFE0F else 17
+            base = 0xFE00 if cp <= 0xFE0F else 0xE0100
+            replacement = f"[VS{cp - base + vs_offset}]"
+        elif 0xE0000 <= cp <= 0xE007F:
+             replacement = f"[TAG:U+{cp:04X}]"
+             
+        if replacement:
+            new_chars.append(replacement)
+            total_replaced += 1
+        else:
+            new_chars.append(char)
+            
+    if total_replaced > 0:
+        # Save state
+        el.setAttribute("data-original", raw_text)
+        el.setAttribute("data-revealed", "true")
+        el.value = "".join(new_chars)
+        el.classList.add("reveal-active")
+        
+        # Toggle Button Text
+        if reveal_btn: 
+            reveal_btn.style.display = "flex"
+            reveal_btn.innerHTML = "Revert to Original &#x21A9;"
+            
+        if reveal2_btn: reveal2_btn.style.display = "flex"
+        
+        # Update RIGHT Status (Left remains "Input: Ready")
+        details_line.className = "status-details success"
+        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
+        details_line.innerHTML = f"Non-Standard Invisibles:&nbsp;{total_replaced}&nbsp;Deobfuscated&nbsp;{icon_eye}"
+
+@create_proxy
+def reveal2_invisibles(event=None):
+    """
+    HIGHLIGHT MODE (btn-reveal2): 
+    Step-through finder. Selects the NEXT invisible character relative to cursor.
+    UPDATED: Now correctly syncs with the Inspector Panel.
+    """
+    el = document.getElementById("text-input")
+    details_line = document.getElementById("reveal-details")
+    
+    if not el or not el.value: return
+    
+    text = str(el.value)
+    ranges = []
+    current_utf16_idx = 0
+    
+    # 1. Map all invisible positions
+    for char in text:
+        cp = ord(char)
+        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
+        
+        is_target = False
+        if cp in INVISIBLE_MAPPING: is_target = True
+        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: is_target = True
+        elif 0xE0000 <= cp <= 0xE007F: is_target = True
+            
+        if is_target:
+            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
+            
+        current_utf16_idx += char_len
+
+    count = len(ranges)
+    if count == 0: return
+
+    # 2. Find the NEXT target relative to the END of the current selection.
+    current_end_pos = el.selectionEnd
+    
+    target_range = None
+    target_idx = 1
+    
+    # Scan for the first range that starts AFTER (or at) the current cursor end
+    for i, r in enumerate(ranges):
+        if r[0] >= current_end_pos:
+            target_range = r
+            target_idx = i + 1
+            break
+            
+    # 3. Wrap-around Logic (Infinite Cycle)
+    if target_range is None:
+        target_range = ranges[0]
+        target_idx = 1
+            
+    # 4. Execute Selection
+    el.blur()
+    el.focus()
+    el.setSelectionRange(target_range[0], target_range[1])
+    
+    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
+    # We manually call the inspector logic to update the bottom panel immediately.
+    # We pass None because the function doesn't actually use the event argument.
+    inspect_character(None)
+    
+    # 5. Feedback
+    if details_line:
+        details_line.className = "status-details warn"
+        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+        
+        # Get hex code for display
+        try:
+            raw_idx = 0
+            acc = 0
+            for j, char in enumerate(text):
+                slen = 2 if ord(char) > 0xFFFF else 1
+                if acc == target_range[0]:
+                    raw_idx = j
+                    break
+                acc += slen
+            
+            char_code = f"U+{ord(text[raw_idx]):04X}"
+        except:
+            char_code = "INVISIBLE"
+
+        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
+
+# ---
+# 6. INITIALIZATION
+# ---
 
 async def main():
     """Main entry point: Loads data, then hooks the input."""
