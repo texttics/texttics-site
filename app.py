@@ -6922,6 +6922,9 @@ def reveal2_invisibles(event=None):
 
         details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
 
+# The Bridge
+window.cycle_hud_metric = cycle_hud_metric
+
 # ---
 # 6. INITIALIZATION
 # ---
