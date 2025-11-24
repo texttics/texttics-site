@@ -6180,8 +6180,8 @@ def render_encoding_footprint(t: str):
                     val_primary = f"S:{signal_strength:.0f}%"
                     val_secondary = f"C:{pct_total:.0f}%"
                     
-                    report_lines.append(f"• Compatibility: {pct_total:.1f}% of this text fits this encoding.")
                     report_lines.append(f"• Signal Strength: {signal_strength:.1f}% of non-ASCII characters.")
+                    report_lines.append(f"• Compatibility: {pct_total:.1f}% of this text fits this encoding.")
                     
                     if uniq_hits > 0:
                         report_lines.append(f"\n◈ UNIQUE MATCH: Sole supporter of {uniq_hits} specific character(s).")
