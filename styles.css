@@ -2609,6 +2609,7 @@ details.profile-section .action-bar {
   height: 58px; /* Slightly taller for dual metrics */
   background-color: #ffffff;
   border: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-light);
   border-top: none; 
   font-family: var(--font-mono);
 }
