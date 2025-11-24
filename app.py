@@ -2876,22 +2876,22 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     repertoire_stats = {
         "ASCII-Compatible": {
             "count": ascii_count,
-            "pct": round((ascii_count / (total_code_points + epsilon)) * 100, 2),
+            "pct": round((ascii_count / (total_code_points + epsilon)) * 100, 1),
             "is_full": ascii_count == total_code_points and total_code_points > 0
         },
         "Latin-1-Compatible": {
             "count": latin1_count,
-            "pct": round((latin1_count / (total_code_points + epsilon)) * 100, 2),
+            "pct": round((latin1_count / (total_code_points + epsilon)) * 100, 1),
             "is_full": latin1_count == total_code_points and total_code_points > 0
         },
         "BMP Coverage": {
             "count": bmp_count,
-            "pct": round((bmp_count / (total_code_points + epsilon)) * 100, 2),
+            "pct": round((bmp_count / (total_code_points + epsilon)) * 100, 1),
             "is_full": supplementary_count == 0 and total_code_points > 0
         },
         "Supplementary Planes": {
             "count": supplementary_count,
-            "pct": round((supplementary_count / (total_code_points + epsilon)) * 100, 2),
+            "pct": round((supplementary_count / (total_code_points + epsilon)) * 100, 1),
             "is_full": False # This badge doesn't make sense here
         }
     }
