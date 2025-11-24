@@ -3121,115 +3121,170 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   FORENSIC X-RAY STREAM (Diff View)
+   FORENSIC CLUSTER STREAM (v3.0)
    ========================================= */
 
-/* 1. The Scrolling Container */
-.xray-container {
+.xray-stream-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+/* The Collapsed Spacer */
+.xray-spacer {
+  text-align: center;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  font-family: var(--font-mono);
+  padding: 4px;
+  background-color: #f9fafb;
+  border-radius: 4px;
+  border: 1px dashed #e5e7eb;
+  align-self: center;
+  width: 50%;
+}
+
+/* The "Case Card" */
+.cluster-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background-color: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: border-color 0.2s;
+}
+
+.cluster-card:hover {
+  border-color: #d1d5db;
+}
+
+/* Header: Metadata + Actions */
+.cluster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cluster-meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px;
-  background-color: #ffffff;
-  border: 1px solid var(--color-border);
+}
+
+.cluster-id {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* Badges */
+.cluster-badge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.badge-brand { background: #111827; color: #f59e0b; border-color: #111827; } /* Black/Gold */
+.badge-spoof { background: #fef2f2; color: #dc2626; border-color: #fecaca; } /* Red */
+.badge-invis { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; } /* Purple */
+.badge-bidi  { background: #fffbeb; color: #d97706; border-color: #fcd34d; } /* Amber */
+
+/* Copy Safe Button */
+.safe-copy-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
   border-radius: 4px;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.safe-copy-btn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+/* The Content Stream */
+.cluster-body {
+  padding: 10px;
   font-family: var(--font-mono);
   font-size: 0.95rem;
-  line-height: 1.5;
+  line-height: 1.6;
+  word-break: break-all;
+  background-color: #ffffff;
   
-  /* Horizontal Scroll Logic */
-  overflow-x: auto;
-  white-space: nowrap;
-  width: 100%;
-  min-height: 80px; /* Ensure height for stacks */
-  
-  /* Scrollbar Polish */
-  scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
-}
-
-.xray-container::-webkit-scrollbar {
-  height: 6px;
-}
-.xray-container::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
-  border-radius: 4px;
-}
-
-/* 2. The "Blast Radius" Segment */
-.xray-segment {
-  display: inline-flex;
+  /* Use flex-wrap for natural text flow, but keep stacks intact */
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  background-color: #f9fafb; /* Subtle gray highlighting the context */
-  border: 1px dashed #e5e7eb;
-  border-radius: 4px;
-  padding: 4px 8px;
-  position: relative; /* Anchor for the badge */
-  margin-top: 14px; /* Make room for the badge */
+  gap: 1px; /* Tight character spacing */
 }
 
-/* 3. The Collapsed Context Pill */
-.context-pill {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  background-color: #f3f4f6;
-  padding: 2px 8px;
-  border-radius: 99px;
-  user-select: none;
-  border: 1px solid #e5e7eb;
-}
-
-/* 4. THE FORENSIC STACK (The "Truth" Visualizer) */
+/* Stacks (Shared Base) */
 .xray-stack {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   margin: 0 1px;
-  vertical-align: middle;
-  cursor: help;
-  
-  /* Box it */
-  background-color: #fff1f2; /* Light Red bg */
-  border: 1px solid #fecaca; /* Red border */
-  border-radius: 3px;
   padding: 0 2px;
-  min-width: 1.2em;
+  border-radius: 3px;
+  cursor: help;
+  min-width: 1.1em;
+  border: 1px solid transparent;
 }
 
-/* Top: Perception (The Lie) */
+.stack-spoof { background-color: #fff1f2; border-color: #fecaca; }
+.stack-invis { background-color: #f5f3ff; border-color: #ddd6fe; }
+.stack-bidi  { background-color: #fffbeb; border-color: #fcd34d; }
+
+/* Stack Typography */
 .xray-top {
   font-size: 1rem;
   font-weight: 800;
-  color: #dc2626; /* Bright Red */
   line-height: 1;
-  padding-bottom: 1px;
-  border-bottom: 1px dotted #fca5a5;
+  color: #1f2937;
 }
+.stack-spoof .xray-top { color: #dc2626; }
 
-/* Bottom: Reality (The Skeleton) */
 .xray-bot {
-  font-size: 0.7rem;
-  color: #6b7280; /* Muted Gray */
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 700;
   line-height: 1;
-  padding-top: 1px;
+  color: #64748b;
   text-transform: uppercase;
+  margin-top: 1px;
+  border-top: 1px dotted rgba(0,0,0,0.1);
+  width: 100%;
+  text-align: center;
 }
 
-/* 5. The Phishing Badge */
-.xray-badge-phish {
-  position: absolute;
-  top: -18px;
-  left: 0;
-  background-color: #111827; /* Black */
-  color: #fbbf24; /* Amber Text */
-  font-size: 0.6rem;
+/* New Script Drift Tag (Lat->Cyr) */
+.xray-script-tag {
+  font-size: 0.5rem;
   font-weight: 800;
-  padding: 1px 6px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  z-index: 2;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  color: #991b1b; /* Deep Red Text */
+  margin-top: 2px;
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  opacity: 0.9;
+  
+  /* Visual Separation from the Skeleton below */
+  border-top: 1px dotted rgba(220, 38, 38, 0.3);
+  width: 100%;
+  text-align: center;
 }
