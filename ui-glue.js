@@ -114,7 +114,7 @@ function getDeobfuscatedText(text) {
     return output;
 }
 
-// --- Shared Helper: Scrape Encoding Dashboard (v6.0 Split) ---
+// --- Shared Helper: Scrape Encoding Dashboard (v7.0 Forensic Detail) ---
 function parseEncodingStrip() {
   const lines = [];
   
@@ -137,26 +137,47 @@ function parseEncodingStrip() {
   if (allCells.length === 0) return lines;
   
   allCells.forEach(cell => {
-      const label = cell.querySelector('.enc-label')?.textContent.trim();
+      // 1. Get Basic Label (e.g. "GBK")
+      let label = cell.querySelector('.enc-label')?.textContent.trim() || "UNKNOWN";
       
-      // Get primary value (Big Number)
+      // 2. Get Visual Values (e.g. "80%", "S:40%")
       const valPrim = cell.querySelector('.enc-val-primary')?.textContent.trim();
-      
-      // Get secondary signal (Small Number), if exists
       const valSec = cell.querySelector('.enc-val-secondary')?.textContent.trim();
       
+      // 3. Get Deep Forensic Context from Tooltip
+      const title = cell.getAttribute('title') || "";
+      let details = "";
+      
+      if (title) {
+          const parts = title.split('\n');
+          // Tooltip format: 
+          // Line 0: Label
+          // Line 1: Total Coverage: X%
+          // Line 2: Signal Coverage / ASCII note
+          // Line 3+: Unique/Exclusive details (Optional)
+          
+          // We want everything AFTER the Total Coverage line
+          // Filter out the Label and Total lines to get the "Meat"
+          const meaningfulParts = parts.slice(2).filter(p => p.trim() !== "");
+          
+          if (meaningfulParts.length > 0) {
+              // Join with a separator for the report
+              details = " | " + meaningfulParts.join(" | ");
+          }
+      }
+
       // Reconstruct value string: "100% (S:100%)"
       let valueStr = valPrim;
       if (valSec) valueStr += ` (${valSec})`;
 
-      // Check for Unique Marker (The Diamond or Tooltip Match)
+      // Check for Unique Marker in Label
       let statusMarker = "";
-      if (label.includes('◈')) statusMarker = " [UNIQUE]";
+      if (label.includes('◈')) {
+          statusMarker = " [UNIQUE]";
+          label = label.replace('◈', '').trim();
+      }
 
-      // Clean up label text
-      const cleanLabel = label.replace('◈', '').trim();
-
-      lines.push(`  ${cleanLabel}: ${valueStr}${statusMarker}`);
+      lines.push(`  ${label}: ${valueStr}${statusMarker}${details}`);
   });
   
   return lines;
