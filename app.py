@@ -6482,6 +6482,7 @@ def update_all(event=None):
     # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button & Always-On Status) ---
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
+    reveal2_btn = document.getElementById("btn-reveal2")
     
     if details_line:
         # Initialize counters
