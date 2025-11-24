@@ -6060,24 +6060,27 @@ def compute_threat_score(inputs):
 
 def render_encoding_footprint(t: str):
     """
-    Forensic Repertoire Footprint v5.1 (Strict):
-    Analyzes which legacy encodings *could* represent this Unicode string losslessly.
-    Visualizes repertoire coverage and unique constraints.
+    Forensic Dashboard v6.0 (Sorted & Split):
+    1. Validates UTF Integrity (Left Panel).
+    2. Calculates Signal Strength (Non-ASCII Coverage).
+    3. Dynamically sorts Legacy Filters by Signal Strength (Right Panel).
     """
-    container = document.getElementById("encoding-footprint")
-    if not container: return
+    integrity_container = document.getElementById("encoding-integrity")
+    provenance_container = document.getElementById("encoding-provenance")
+    
+    if not integrity_container or not provenance_container: return
+    
     if not t:
-        container.innerHTML = ""
+        integrity_container.innerHTML = ""
+        provenance_container.innerHTML = ""
         return
 
     total_chars = len(t)
-    
-    # --- 1. SIGNAL EXTRACTION ---
     non_ascii_chars = [c for c in t if ord(c) >= 128]
     total_non_ascii = len(non_ascii_chars)
     has_signal = total_non_ascii > 0
     
-    # --- 2. EXCLUSIVITY PASS (Unique Coverage Logic) ---
+    # --- 1. EXCLUSIVITY PASS ---
     legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
     exclusive_counts = {item[0]: 0 for item in legacy_codecs}
     
@@ -6090,122 +6093,137 @@ def render_encoding_footprint(t: str):
                     supported_by.append(label)
                 except UnicodeEncodeError:
                     pass
-            
-            # If exactly one tracked codec supports it, it has Unique Coverage
             if len(supported_by) == 1:
                 exclusive_counts[supported_by[0]] += 1
 
-    # HTML Generation
-    html_buffer = []
+    # --- 2. DATA COLLECTION & PROCESSING ---
+    integrity_html = []
+    provenance_data = [] # List of dicts for sorting
     
     for label, codec, tooltip in FORENSIC_ENCODINGS:
         try:
-            # --- A. COMPUTE TOTAL COVERAGE ---
+            # Compute Total
             try:
                 t.encode(codec)
                 valid_count = total_chars
             except UnicodeEncodeError:
                 valid_bytes = t.encode(codec, 'ignore')
-                valid_string = valid_bytes.decode(codec)
-                valid_count = len(valid_string)
-
+                valid_s = valid_bytes.decode(codec)
+                valid_count = len(valid_s)
+            
             pct_total = (valid_count / total_chars) * 100
             
-            # --- B. COMPUTE NON-ASCII COVERAGE ---
+            # Compute Signal
             signal_strength = 0.0
-            exclusive_hits = 0
-            
             if "utf" in codec:
-                signal_strength = pct_total
+                signal_strength = pct_total # For UTF, Signal = Integrity
             elif has_signal:
                 non_ascii_str = "".join(non_ascii_chars)
                 try:
                     non_ascii_str.encode(codec)
                     valid_signal = total_non_ascii
-                except UnicodeEncodeError:
+                except:
                     valid_b = non_ascii_str.encode(codec, 'ignore')
                     valid_s = valid_b.decode(codec)
                     valid_signal = len(valid_s)
-                
                 signal_strength = (valid_signal / total_non_ascii) * 100
-                exclusive_hits = exclusive_counts.get(label, 0)
             
-            # --- C. DETERMINE VISUAL STATE ---
-            val_class = "enc-risk"
-            val_text = f"{pct_total:.1f}%"
-            extra_style = ""
+            # Exclusivity
+            uniq_hits = exclusive_counts.get(label, 0)
             
+            # --- BUILD UI OBJECTS ---
+            
+            # A. INTEGRITY ANCHORS (UTF)
             if "utf" in codec:
-                if valid_count == total_chars:
-                    val_class = "enc-safe"
-                    val_text = "100%"
-                else:
-                    val_class = "enc-dead" # Malformed Unicode
-                    val_text = f"{pct_total:.1f}%"
+                status_cls = "status-safe" if valid_count == total_chars else "status-dead"
+                val_txt = "100%" if valid_count == total_chars else f"{pct_total:.1f}%"
+                
+                integrity_html.append(f"""
+                    <div class="enc-cell" title="{label}\nStructure: {tooltip}\nStatus: {val_txt}">
+                        <div class="enc-label">{label}</div>
+                        <div class="enc-val-primary {status_cls}">{val_txt}</div>
+                    </div>
+                """)
+                
+            # B. PROVENANCE FILTERS (Legacy)
             else:
+                # Determine Status Color
                 if not has_signal:
-                    val_class = "enc-dead"
-                    val_text = "100%" # ASCII-only noise
+                    status_cls = "status-dead" # ASCII Noise
                 elif signal_strength == 100.0:
-                    val_class = "enc-safe"
-                    val_text = "100%"
-                    
-                    # "UNIQUE COVERAGE" (Fact, not prediction)
-                    if exclusive_hits > 0:
-                        extra_style = "border-bottom: 3px solid #d97706;"
-                        val_text = "UNIQUE" # Factual set membership
+                    status_cls = "status-safe" # Candidate
+                    if uniq_hits > 0: status_cls = "status-uniq" # Unique
                 elif valid_count == 0:
-                    val_class = "enc-dead"
-                    val_text = "0%"
+                    status_cls = "status-dead"
                 else:
-                    val_class = "enc-risk"
-                    val_text = f"{pct_total:.1f}%"
-
-            # --- D. TOOLTIP (Honest Reporting) ---
-            detail = ""
-            if "utf" in codec:
-                detail = "Valid Unicode Structure." if valid_count == total_chars else "Contains invalid lone surrogates."
-            elif not has_signal:
-                detail = "Text is ASCII-only. Compatible, but adds no provenance signal."
-            else:
-                detail = f"Non-ASCII Compatibility: {signal_strength:.1f}%"
-                if exclusive_hits > 0:
-                    detail += f"\n⚠️ UNIQUE COVERAGE: The only tracked legacy encoding that supports {exclusive_hits} char(s)."
-
-            html_buffer.append(f"""
-                <div class="enc-cell" title="{label}\nTotal Compatibility: {pct_total:.1f}%\n{detail}\n{tooltip}" style="{extra_style}">
-                    <div class="enc-label">{label}</div>
-                    <div class="enc-val {val_class}">{val_text}</div>
-                </div>
-            """)
-            
+                    status_cls = "status-risk" # Partial
+                
+                # Tooltip Logic
+                detail = f"Signal Coverage (Non-ASCII): {signal_strength:.1f}%"
+                if uniq_hits > 0: detail += f"\n◈ UNIQUE: Explains {uniq_hits} char(s) exclusively."
+                
+                # Store for Sorting
+                provenance_data.append({
+                    'html': f"""
+                        <div class="enc-cell" title="{label}\nTotal Coverage: {pct_total:.1f}%\n{detail}\n{tooltip}">
+                            <div class="enc-label">
+                                {label} { '◈' if uniq_hits > 0 else '' }
+                            </div>
+                            <div class="enc-metrics">
+                                <span class="enc-val-primary {status_cls}">{pct_total:.0f}%</span>
+                                <span class="enc-val-secondary">S:{signal_strength:.0f}%</span>
+                            </div>
+                        </div>
+                    """,
+                    'signal': signal_strength,
+                    'total': pct_total,
+                    'unique': uniq_hits,
+                    'label': label # Stable sort fallback
+                })
+                
         except Exception:
-            html_buffer.append(f"""<div class="enc-cell"><div class="enc-label">{label}</div><div class="enc-val enc-dead">ERR</div></div>""")
+            pass
 
-    # --- 3. THE "OTHER" COLUMN ---
+    # --- 3. SORTING LOGIC (The Intelligence) ---
+    # Sort Priority: 
+    # 1. Unique Hits (Desc) -> "The One True Encoding"
+    # 2. Signal Strength (Desc) -> "Best Explainers"
+    # 3. Total Coverage (Desc) -> "Best Fit"
+    # 4. Label (Asc) -> "Stable A-Z"
+    
+    provenance_data.sort(key=lambda x: (-x['unique'], -x['signal'], -x['total'], x['label']))
+    
+    # --- 4. RENDER PROVENANCE ---
+    prov_html = [item['html'] for item in provenance_data]
+    
+    # Add "Other" Column (Always Last)
+    # Calc Other logic...
+    legacy_codecs_list = [item[1] for item in legacy_codecs]
     unsupported_count = 0
     for char in t:
         if ord(char) < 128: continue
         supported = False
-        for _, l_codec, _ in legacy_codecs:
+        for l_codec in legacy_codecs_list:
             try:
                 char.encode(l_codec)
                 supported = True
                 break
             except: continue
         if not supported: unsupported_count += 1
-            
-    other_pct = (unsupported_count / total_chars) * 100
-    other_cls = "enc-dead" if other_pct == 0 else "enc-risk"
     
-    html_buffer.append(f"""
-        <div class="enc-cell" title="Other: {other_pct:.1f}%\nCharacters not representable in ANY of the 13 legacy encodings tracked here.\nLikely Emoji, Mathematical Symbols, or unlisted Scripts.">
+    other_pct = (unsupported_count / total_chars) * 100
+    other_cls = "status-dead" if other_pct == 0 else "status-risk"
+    
+    prov_html.append(f"""
+        <div class="enc-cell" title="Unicode-Only / Beyond Legacy\nCharacters not representable in ANY tracked legacy encoding.\n(e.g. Emoji, Historic Scripts)">
             <div class="enc-label">Other</div>
-            <div class="enc-val {other_cls}">{other_pct:.1f}%</div>
+            <div class="enc-val-primary {other_cls}">{other_pct:.1f}%</div>
         </div>
     """)
 
-    container.innerHTML = "".join(html_buffer)
+    # Inject
+    integrity_container.innerHTML = "".join(integrity_html)
+    provenance_container.innerHTML = "".join(prov_html)
 
 # ---
 # 6. MAIN ORCHESTRATOR
