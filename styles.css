@@ -153,7 +153,7 @@ Main Two-Column "Lab Bench" Layout
 .lab-bench {
   display: grid;
   grid-template-columns: var(--width-jump-list) 1fr;
-  max-width: 1600px;
+  max-width: 1700px;
   margin: 0 auto;
   gap: var(--spacing-8);
   padding: var(--spacing-8);
