@@ -3459,7 +3459,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "norm_excl": [], "norm_fold": [],
         "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
         "vs_all": [], "invalid_vs": [], "discouraged": [], 
-        "other_ctrl": [], "esc": [], "interlinear": [], # Specific trackers
+        "other_ctrl": [], "esc": [], "interlinear": [], 
         "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": []
     }
     
@@ -3506,13 +3506,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     health_issues["nonchar"].append(i)
                 if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
 
-                # --- Specific Dangerous Controls [NEW] ---
-                if cp == 0x001B: # ESC (Terminal Injection)
-                    legacy_indices["esc"].append(i)
-                
-                if 0xFFF9 <= cp <= 0xFFFB: # Interlinear Controls
-                    legacy_indices["interlinear"].append(i)
-
+                # --- Specific Dangerous Controls ---
+                if cp == 0x001B: legacy_indices["esc"].append(i)
+                if 0xFFF9 <= cp <= 0xFFFB: legacy_indices["interlinear"].append(i)
                 if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085 and cp != 0x001B:
                     legacy_indices["other_ctrl"].append(i)
 
@@ -3574,33 +3570,17 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
                 if mask & INVIS_ANY_MASK: flags["any_invis"].append(i)
 
-                # --- 17.0 Syntax Spoofing & Sibe Quotes ---
-                # Detects Variation Selectors attached to Syntax (Punctuation, Symbols, Separators).
-                # Covers: Sibe Quotes (Quote+VS3), Math Obfuscation, and Space+VS trim bypass.
-                # CRITICAL: Must strictly exempt valid VS15/VS16 Emoji sequences to avoid false positives.
+                # --- 17.0 Syntax Spoofing ---
                 if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
                     if i > 0:
                         prev_char = js_array[i-1]
                         prev_cp = ord(prev_char)
-                        prev_cat = unicodedata.category(prev_char) # e.g. 'Po', 'Sm', 'Zs'
-                        
-                        # Target: Punctuation (P), Symbols (S), Separators (Z)
+                        prev_cat = unicodedata.category(prev_char)
                         if prev_cat[0] in ('P', 'S', 'Z'):
-                            
-                            # 1. CHECK EXEMPTION: Valid Emoji Presentation Sequence?
-                            # Rule: Base must be Emoji/Pictographic AND VS must be VS15/VS16.
                             is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
                                             _find_in_ranges(prev_cp, "Extended_Pictographic")
-                            
                             is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
-                            
-                            if is_emoji_base and is_pres_selector:
-                                pass # SAFE: Standard, RGI-compliant presentation (e.g. ❤️)
-                            else:
-                                # DANGER DETECTED:
-                                # Case A: Syntax + VS (e.g. " + VS3) -> Sibe Quote Attack
-                                # Case B: Space + VS (e.g. ' ' + VS1) -> Trim Bypass
-                                # Case C: Emoji + Bad VS (e.g. 😈 + VS1) -> Steganography/Obfuscation
+                            if not (is_emoji_base and is_pres_selector):
                                 legacy_indices["suspicious_syntax_vs"].append(i)
 
                 # --- Identifiers ---
@@ -3633,35 +3613,54 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
-    # --- 1. STRUCTURAL FEEDBACK LOOP (Gather Data) ---
+    # --- 1. STRUCTURAL FEEDBACK LOOP ---
     struct_rows = []
     
-    # Run Sub-Analyzers
-    bidi_broken_count = analyze_bidi_structure(t, struct_rows)
+    # [FIXED] Call analyze_bidi_structure ONLY ONCE and unpack correctly
+    bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
     analyze_combining_structure(t, struct_rows)
 
-    # --- 2. INTEGRITY AUDITOR (The Logic Engine) ---
-    # We gather all raw signals into a clean input object for the auditor.
+    # --- [NEW] Populate Integrity Aggregator Buckets (Ranges) ---
+    for idx in health_issues["fffd"]: _register_hit("int_fatal", idx, idx+1, "U+FFFD")
+    for idx in health_issues["nul"]: _register_hit("int_fatal", idx, idx+1, "NUL Byte")
+    for idx in health_issues["surrogate"]: _register_hit("int_fatal", idx, idx+1, "Surrogate")
+    
+    for s, e, lbl in bidi_fracs: _register_hit("int_fracture", s, e, lbl)
+    
+    # Keycaps
+    for pos_str in emoji_flags.get("Flag: Broken Keycap Sequence", {}).get("positions", []):
+        try:
+            idx = int(pos_str.replace("#", ""))
+            _register_hit("int_fracture", idx, idx+1, "Broken Keycap")
+        except: pass
+
+    for idx in flags["tags"]: _register_hit("int_risk", idx, idx+1, "Tag")
+    for idx in health_issues["nonchar"]: _register_hit("int_risk", idx, idx+1, "Noncharacter")
+    for idx in health_issues["donotemit"]: _register_hit("int_risk", idx, idx+1, "Do-Not-Emit")
+    
+    for idx in health_issues["pua"]: _register_hit("int_decay", idx, idx+1, "PUA")
+    for idx in health_issues["bom_mid"]: _register_hit("int_decay", idx, idx+1, "Internal BOM")
+    for idx in legacy_indices["other_ctrl"]: _register_hit("int_decay", idx, idx+1, "Legacy Control")
+    
+    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
+    for s, e, lbl in bidi_dangers: _register_hit("thr_execution", s, e, lbl)
+    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
+    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
+
+    # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
-        # FATAL
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
         "nul": len(health_issues["nul"]),
-        
-        # FRACTURE
-        "bidi_broken_count": bidi_broken_count,
+        "bidi_broken_count": bidi_pen, # CORRECT: Integer Count
         "broken_keycap": len(emoji_flags.get("Flag: Broken Keycap Sequence", {}).get("positions", [])), 
-        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), # Using syntax VS as proxy for hidden marks logic
-        
-        # RISK
+        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
         "tags": len(flags["tags"]),
         "nonchar": len(health_issues["nonchar"]),
         "invalid_vs": len(legacy_indices["invalid_vs"]),
         "donotemit": len(health_issues["donotemit"]),
-        "max_cluster_len": cluster_max_len, # For cluster containment logic
-        
-        # DECAY
+        "max_cluster_len": cluster_max_len,
         "bom": len(health_issues["bom_mid"]),
         "pua": len(health_issues["pua"]),
         "legacy_ctrl": len(legacy_indices["other_ctrl"]),
@@ -3670,58 +3669,33 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "bidi_present": len(flags["bidi"])
     }
 
-    # Run Bidi (Modified to return ranges)
-    bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
-    
-    # [NEW] Populate Integrity/Threat Aggregators
-    
-    # 1. Integrity Buckets
-    for idx in health_issues["fffd"]: _register_hit("int_fatal", idx, idx+1, "U+FFFD")
-    for idx in health_issues["nul"]: _register_hit("int_fatal", idx, idx+1, "NUL Byte")
-    for idx in health_issues["surrogate"]: _register_hit("int_fatal", idx, idx+1, "Surrogate")
-    
-    for s, e, lbl in bidi_fracs: _register_hit("int_fracture", s, e, lbl)
-    
-    for idx in flags["tags"]: _register_hit("int_risk", idx, idx+1, "Tag")
-    for idx in health_issues["nonchar"]: _register_hit("int_risk", idx, idx+1, "Noncharacter")
-    
-    for idx in health_issues["pua"]: _register_hit("int_decay", idx, idx+1, "PUA")
-    
-    # 2. Threat Buckets (Partial - rest in compute_threat)
-    for s, e, lbl in bidi_dangers: _register_hit("thr_execution", s, e, lbl)
-
-    # Calculate Score & Ledger
     audit_result = compute_integrity_score(auditor_inputs)
 
-    # --- 3. RENDER SCORE ROW (With Ledger) ---
+    # --- Render Rows ---
     rows.append({
         "label": "Integrity Level (Heuristic)",
         "count": audit_result["score"],
         "severity": audit_result["severity_class"],
         "badge": f"{audit_result['verdict']} (Score: {audit_result['score']})",
-        "ledger": audit_result["ledger"], # [NEW] Pass the structured ledger
-        "positions": [] # Legacy fallback
+        "ledger": audit_result["ledger"],
+        "positions": [] 
     })
 
-    # --- 4. ADD DETAIL ROWS (Standard Flags) ---
-    # We keep the full detail list for the "Flat View", 
-    # even though the score is calculated via the Ledger.
-    
-    # FATAL / HIGH RISK
+    # FATAL
     add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
-    add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "warn") # Downgraded to WARN per new logic
+    add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "warn")
     add_row("Surrogates (Broken)", len(health_issues["surrogate"]), health_issues["surrogate"], "crit")
     
-    # PROTOCOL / INTERCHANGE
-    add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "warn") # General presence is warn
+    # PROTOCOL
+    add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "warn")
     add_row("Flag: Unicode Tags (Plane 14)", len(flags["tags"]), flags["tags"], "warn")
     add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
     add_row("Flag: Invalid Variation Selector", len(legacy_indices["invalid_vs"]), legacy_indices["invalid_vs"], "warn")
     add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "warn")
 
-    # INVISIBLES & HYGIENE
+    # INVISIBLES
     add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
     add_row("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)", len(flags["join"]), flags["join"], "warn")
     add_row("Flag: Zero-Width Spacing (ZWSP / WJ / BOM)", len(flags["zw_space"]), flags["zw_space"], "warn")
@@ -3744,7 +3718,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("Flag: Deceptive Newline (NEL)", len(legacy_indices["deceptive_nel"]), legacy_indices["deceptive_nel"], "warn")
     add_row("Flag: Security Discouraged (Compatibility)", len(legacy_indices["discouraged"]), legacy_indices["discouraged"], "warn")
 
-    # INFORMATIONAL / OK PROPERTIES
+    # INFORMATIONAL
     add_row("Flag: Bidi Paired Bracket (Open)", len(legacy_indices["bidi_bracket_open"]), legacy_indices["bidi_bracket_open"], "ok")
     add_row("Flag: Bidi Paired Bracket (Close)", len(legacy_indices["bidi_bracket_close"]), legacy_indices["bidi_bracket_close"], "ok")
     add_row("Prop: Extender", len(legacy_indices["extender"]), legacy_indices["extender"], "ok")
