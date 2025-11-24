@@ -2546,10 +2546,9 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3).
-    Segments text into Grapheme Clusters and assigns a single primary classification
-    to each unit (Atomic, Sequence, Component, Text-Symbol).
-    Returns aggregated counts for the HUD and a detailed list for the Profile.
+    Forensic Cluster Classifier (V3.1).
+    Segments text into Grapheme Clusters and assigns a single primary classification.
+    Logic Patch: Suppresses 'Unqualified' flags for Text-Default symbols (Arrows, Math) to reduce noise.
     """
     # --- 1. Data Access ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -2589,7 +2588,6 @@ def compute_emoji_analysis(text: str) -> dict:
         return {"counts": counts, "flags": flags, "emoji_list": []}
 
     # --- 3. Cluster Segmentation Loop ---
-    # We use the native Segmenter to ensure we analyze Perceptual Units (Clusters)
     segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
     for seg in segments_iter:
@@ -2610,7 +2608,7 @@ def compute_emoji_analysis(text: str) -> dict:
         base_cat = unicodedata.category(base_char)
         
         # --- B. Primary Classification (Disjoint Types) ---
-        kind = "other" # Default: Plain Text (Letters/Numbers/Punctuation)
+        kind = "other"
         status = "none"
         rgi_status = False
         
@@ -2624,10 +2622,7 @@ def compute_emoji_analysis(text: str) -> dict:
         elif is_emoji or is_ext_pict:
             rgi_status = False
 
-            # [FIX] ASCII Exception:
-            # ASCII digits (0-9), #, * are technically "Emoji" and "Emoji_Component"
-            # in Unicode (for Keycaps), but in isolation, they are just Text.
-            # We force them to fall through to the "other" (Standard Text) bucket.
+            # ASCII Exception (Digits 0-9, #, *)
             if base_cp <= 0x7F:
                 pass 
             
@@ -2635,7 +2630,7 @@ def compute_emoji_analysis(text: str) -> dict:
                 kind = "emoji-component"
                 status = "component"
             elif cp_len > 1:
-                # Complex but not RGI (e.g. invalid flag, or ZWJ intent mod)
+                # Complex but not RGI
                 kind = "emoji-sequence"
                 status = "unqualified" 
             else:
@@ -2650,7 +2645,6 @@ def compute_emoji_analysis(text: str) -> dict:
         
         # [HUD C5] Text Symbols
         if kind == "text-symbol":
-            # Simple Heuristic: ASCII + Latin-1 + General Punct/Currency = Extended. Rest = Exotic.
             if base_cp <= 0xFF or (0x2000 <= base_cp <= 0x29FF):
                 counts["text_symbols_extended"] += 1
             else:
@@ -2660,7 +2654,6 @@ def compute_emoji_analysis(text: str) -> dict:
         if kind == "emoji-atomic" and base_cat.startswith("S") and not rgi_status:
              has_vs16 = "\uFE0F" in cluster
              if not is_emoji_pres and not has_vs16:
-                 # Ambiguous Hybrid
                  _register_hit("emoji_hybrid", idx, idx + cp_len, "Ambiguous Hybrid")
         elif kind == "emoji-atomic":
             counts["total_emoji_units"] += 1
@@ -2674,21 +2667,18 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
             
-            # Hybrid Partitioning: Only count if base is Symbol (S*) AND NOT RGI
-            # This ensures RGI Atoms (like Rocket) move purely to Column 7 (Emoji)
             if base_cat.startswith("S") and not rgi_status:
                 counts["hybrid_pictographs"] += 1
-                # Ambiguity Check: Text-Default (Emoji=Yes, Pres=No) and no VS16
                 has_vs16 = "\uFE0F" in cluster
                 if not is_emoji_pres and not has_vs16:
                     counts["hybrid_ambiguous"] += 1
 
         # [HUD C7] Sequences
         if status in ("unqualified", "component") or (kind == "emoji-sequence" and not rgi_status):
-             _register_hit("emoji_irregular", idx, idx + cp_len, f"{status.title()} {kind}")
+             # [FIX] Do not register hits for Text-Default atoms here (handled in flags below)
+             pass
         elif kind == "emoji-sequence":
             counts["total_emoji_units"] += 1
-            
             if rgi_status:
                 counts["rgi_total"] += 1
                 counts["rgi_sequence"] += 1
@@ -2706,9 +2696,18 @@ def compute_emoji_analysis(text: str) -> dict:
             counts["emoji_irregular"] += 1
             add_flag("Flag: Standalone Emoji Component", idx)
 
-        # --- D. Flag Generation & List Population ---
-        if status == "unqualified": add_flag("Flag: Unqualified Emoji", idx)
-        if status == "minimally-qualified": add_flag("Flag: Minimally-Qualified Emoji", idx)
+        # --- D. Flag Generation (Noise Filter Applied) ---
+        
+        if status == "unqualified":
+            # [LOGIC PATCH] Only flag if it SHOULD be an emoji but isn't.
+            # 1. It is 'Emoji_Presentation' (Smiley) but bare. -> FLAG.
+            # 2. It is a Sequence (Base + Mark) but invalid. -> FLAG.
+            # 3. It is 'Text Default' (Arrow) and bare. -> IGNORE (It's just text).
+            if is_emoji_pres or cp_len > 1:
+                add_flag("Flag: Unqualified Emoji", idx)
+        
+        if status == "minimally-qualified": 
+            add_flag("Flag: Minimally-Qualified Emoji", idx)
         
         if cp_len == 2:
             if cluster[1] == "\uFE0E": add_flag("Flag: Forced Text Presentation", idx)
@@ -2720,7 +2719,7 @@ def compute_emoji_analysis(text: str) -> dict:
                 "kind": kind,
                 "rgi": rgi_status,
                 "status": status,
-                "base_cat": base_cat, # [NEW] Export Base Category for Table
+                "base_cat": base_cat, 
                 "index": idx
             })
 
