@@ -6459,6 +6459,35 @@ def _dom_to_logical(t: str, dom_idx: int) -> int:
         
     return logical_idx
 
+def populate_hud_registry(t: str):
+    """Populates simple metric buckets for the HUD Stepper."""
+    js_array = window.Array.from_(t)
+    
+    for i, char in enumerate(js_array):
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        
+        # 1. Whitespace / Non-Std (C3)
+        if mask & INVIS_ANY_MASK:
+             label = "Non-Std"
+             if mask & INVIS_NON_ASCII_SPACE: label = "Deceptive Space"
+             elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
+             elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
+             elif mask & INVIS_TAG: label = "Tag"
+             
+             _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
+
+        # 2. Delimiters (C4)
+        cat = unicodedata.category(char)
+        if cat.startswith('P'):
+            if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
+                _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
+
+        # 3. Symbols (C5)
+        if cat.startswith('S'):
+             if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
+                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
+
 
 @create_proxy
 def update_all(event=None):
