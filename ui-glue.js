@@ -435,6 +435,41 @@ function buildStructuredReport() {
     return lines;
   };
 
+// --- Helper: Scrape Encoding Strip ---
+  const parseEncodingStrip = () => {
+    const lines = [];
+    const container = document.getElementById('encoding-footprint');
+    if (!container) return lines;
+
+    const cells = container.querySelectorAll('.enc-cell');
+    if (cells.length === 0) return lines;
+
+    lines.push('\n[ Encoding Compatibility Footprint ]');
+    
+    cells.forEach(cell => {
+        const label = cell.querySelector('.enc-label')?.textContent.trim();
+        const val = cell.querySelector('.enc-val')?.textContent.trim();
+        const title = cell.getAttribute('title') || "";
+        
+        // Extract extra details from tooltip if available
+        // Tooltip format: "Label\nTotal: X%\nDetail..."
+        let extra = "";
+        if (title.includes('\n')) {
+            const parts = title.split('\n');
+            // Grab the 3rd line if it exists (usually the detail/signal strength)
+            if (parts.length >= 3) extra = ` (${parts[2]})`;
+        }
+        
+        // Check for "UNIQUE" or "CANDIDATE" status
+        let statusMarker = "";
+        if (val === "UNIQUE" || val === "CANDIDATE") statusMarker = " [!]";
+
+        lines.push(`  ${label}: ${val}${statusMarker}${extra}`);
+    });
+    
+    return lines;
+  };
+    
   // --- Build Report Sections ---
   report.push('--- Text...tics Structural Profile ---');
   report.push(`Timestamp: ${new Date().toISOString()}`);
@@ -497,12 +532,16 @@ function buildStructuredReport() {
     report.push(`4. UTS #39 Skeleton:  ${t.get('skeleton')}`);
   }
 
-  // --- NEW: DEOBFUSCATED VIEW ---
+    // --- NEW: Add Encoding Strip ---
+  report.push(...parseEncodingStrip());
+    
   report.push('\n[ Forensic Deobfuscation (Revealed) ]');
   const rawInput = getVal('#text-input');
   const revealed = getDeobfuscatedText(rawInput);
   report.push(revealed);
   // ------------------------------
+
+    
 
   return report.join('\n');
 }
