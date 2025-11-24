@@ -4246,10 +4246,15 @@ def compute_threat_analysis(t: str):
                 except Exception:
                     pass 
                 
-                # --- C. Confusable Indexing ---
-                if cp in confusables_map and window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
-                    found_confusable = True
-                    confusable_indices.append(i)
+                # --- C. Confusable Indexing (Threat Registry) ---
+                # LOGIC FIX: Only flag NON-ASCII characters as threats.
+                # ASCII chars (like '1' or 'a') are the "Victims" of spoofing, not the "Weapons".
+                if cp > 0x7F and cp in confusables_map:
+                    # Ensure it's visible content (Letter, Number, Punct, Symbol)
+                    # We filter out invisible format controls here because they have their own "Invisible" flag
+                    if window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
+                        found_confusable = True
+                        confusable_indices.append(i)
 
             # --- 4. Populate Threat Flags ---
             
