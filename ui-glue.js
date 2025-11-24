@@ -1054,3 +1054,67 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       }
     });
   }
+
+// ==========================================
+// 11. FORENSIC HIGHLIGHTER ENGINE (Range & Stepper)
+// ==========================================
+
+/**
+ * Converts Logical Code Point Indices (Python) to DOM UTF-16 Indices (JS)
+ * and selects the range.
+ * @param {number} startCP - Inclusive start index (Code Points)
+ * @param {number} endCP   - Exclusive end index (Code Points)
+ */
+window.TEXTTICS_HIGHLIGHT_RANGE = (startCP, endCP) => {
+  const textArea = document.getElementById('text-input');
+  if (!textArea) return;
+  const text = textArea.value;
+
+  let domStart = 0;
+  let domEnd = 0;
+  let cpIndex = 0;
+  let foundStart = false;
+
+  // Iterate by codepoint to map indices
+  for (const char of text) {
+    if (cpIndex === startCP) {
+      domStart = domEnd;
+      foundStart = true;
+    }
+    if (cpIndex === endCP) {
+      break; // Reached exclusive end
+    }
+
+    // Advance DOM index by UTF-16 units (1 or 2)
+    domEnd += char.length;
+    cpIndex++;
+  }
+  
+  // Handle edge case where range ends at EOF
+  if (cpIndex === startCP) domStart = domEnd;
+
+  textArea.focus();
+  textArea.setSelectionRange(domStart, domEnd);
+  
+  // Force scroll to selection
+  textArea.blur();
+  textArea.focus();
+};
+
+/**
+ * Bridge to Python Stepper
+ * Passes the metric key and the current DOM cursor position.
+ */
+window.hud_jump = (key) => {
+  const textArea = document.getElementById('text-input');
+  // Use selectionStart to ensure we step forward from the beginning of current highlight
+  // or selectionEnd if you prefer stepping from the end. 
+  // Standard UX usually steps from the *end* of the current selection to find the next one.
+  const currentPos = textArea.selectionEnd; 
+  
+  if (window.cycle_hud_metric) {
+    window.cycle_hud_metric(key, currentPos);
+  } else {
+    console.warn("Python bridge 'cycle_hud_metric' not ready.");
+  }
+};
