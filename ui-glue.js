@@ -180,6 +180,17 @@ function parseEncodingStrip() {
       lines.push(`  ${label}: ${valueStr}${statusMarker}${details}`);
   });
   
+    const synthesisRow = document.getElementById('encoding-synthesis');
+    if (synthesisRow) {
+        const badge = synthesisRow.querySelector('.syn-badge')?.textContent.trim();
+        const text = synthesisRow.querySelector('.syn-text')?.textContent.trim();
+        if (badge && text) {
+            lines.push(`\n  [ SYNTHESIS ]`);
+            lines.push(`  VERDICT: ${badge}`);
+            lines.push(`  NOTE:    ${text}`);
+        }
+    }
+    
   return lines;
 }
 
