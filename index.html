@@ -180,8 +180,28 @@
             </div>
             
             <div id="encoding-synthesis" class="enc-synthesis-row"></div>
+            
+            <div class="enc-legend-panel">
+                <div class="legend-col">
+                    <span class="legend-title">METRICS</span>
+                    <div class="legend-item"><span class="leg-key">T (Total):</span> % of ALL characters that fit this encoding.</div>
+                    <div class="legend-item"><span class="leg-key">S (Signal):</span> % of NON-ASCII characters that fit. High 'S' = Strong Candidate.</div>
+                </div>
+                <div class="legend-col">
+                    <span class="legend-title">STATUS</span>
+                    <div class="legend-item"><span class="leg-badge leg-green">100%</span> Safe / Compatible.</div>
+                    <div class="legend-item"><span class="leg-badge leg-orange"> &lt;100%</span> Partial Match (Data Loss).</div>
+                    <div class="legend-item"><span class="leg-badge leg-gray">0%</span> Incompatible / Irrelevant.</div>
+                </div>
+                <div class="legend-col">
+                    <span class="legend-title">FLAGS</span>
+                    <div class="legend-item"><span class="leg-icon">◈</span> <strong>Unique Coverage:</strong> This encoding is the <em>sole</em> explanation for at least one character.</div>
+                    <div class="legend-item"><span class="leg-key leg-violet">UNI-ONLY:</span> Characters impossible in Legacy encodings (e.g. Emoji). Requires UTF-8.</div>
+                </div>
+            </div>
 
-          </div> </details>
+          </div> 
+     </details>
         
         <details class="profile-section" id="actions-panel-wrapper">
           <summary><h2 class="section-title">Controls</h2></summary>
