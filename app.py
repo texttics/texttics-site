@@ -6060,10 +6060,10 @@ def compute_threat_score(inputs):
 
 def render_encoding_footprint(t: str):
     """
-    Forensic Signal Engine v8.0 (Apex):
-    1. Unified Pass: Calculates Signal, Exclusivity, and 'Other' in one optimized sweep.
-    2. Memoization: Caches encoding results per unique character (massive speedup).
-    3. Atomic Consistency: Ensures 'Other' is the strict mathematical complement of the legacy set.
+    Forensic Signal Engine v9.0 (Compatibility & Damage Model):
+    1. Integrity Panel: UTF Validators + 'Unicode Only' Analysis (with Breakdown).
+    2. Provenance Strip: Ranked by Signal Strength (Non-ASCII coverage).
+    3. Metrics: Primary = Signal %, Secondary = Total %.
     """
     integrity_container = document.getElementById("encoding-integrity")
     provenance_container = document.getElementById("encoding-provenance")
@@ -6082,56 +6082,102 @@ def render_encoding_footprint(t: str):
     total_non_ascii = len(non_ascii_chars)
     has_signal = total_non_ascii > 0
     
-    # --- 1. UNIFIED ANALYSIS PASS (Memoized) ---
+    # --- 1. UNICODE ONLY ANALYSIS (The "Why") ---
+    # Identify characters that fail ALL tracked legacy filters.
     legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
+    legacy_codecs_list = [item[1] for item in legacy_codecs]
     
-    # Counters
-    codec_signal_hits = {item[0]: 0 for item in legacy_codecs}
-    codec_unique_hits = {item[0]: 0 for item in legacy_codecs}
-    other_count = 0
+    unsupported_chars = []
+    exclusive_counts = {item[0]: 0 for item in legacy_codecs}
     
-    # Cache: char -> list of supporting codec labels
-    # This prevents re-encoding the same character thousands of times
-    char_support_cache = {}
-
+    # Combined Pass: Breakdown + Exclusivity
     if has_signal:
         for char in non_ascii_chars:
-            # Check cache first
-            if char in char_support_cache:
-                supported_by = char_support_cache[char]
-            else:
-                # Not in cache: Test all legacy codecs
-                supported_by = []
-                for label, codec, _ in legacy_codecs:
-                    try:
-                        char.encode(codec)
-                        supported_by.append(label)
-                    except UnicodeEncodeError:
-                        pass
-                char_support_cache[char] = supported_by
+            supported_by = []
+            for label, codec, _ in legacy_codecs:
+                try:
+                    char.encode(codec)
+                    supported_by.append(label)
+                except UnicodeEncodeError:
+                    pass
             
-            # Distribute stats
             if not supported_by:
-                other_count += 1
-            else:
-                # Increment signal for EVERY supporting codec
-                for label in supported_by:
-                    codec_signal_hits[label] += 1
-                
-                # Increment unique ONLY if it's the single supporter
-                if len(supported_by) == 1:
-                    codec_unique_hits[supported_by[0]] += 1
+                unsupported_chars.append(char)
+            elif len(supported_by) == 1:
+                exclusive_counts[supported_by[0]] += 1
 
-    # --- 2. RENDER & SORT LOOP ---
+    unsupported_count = len(unsupported_chars)
+    other_pct = (unsupported_count / total_chars) * 100
+    
+    # --- 2. BUILD INTEGRITY PANEL (Left) ---
     integrity_html = []
+    utf_broken = False
+    
+    # A. UTF Anchors
+    for label, codec, tooltip in FORENSIC_ENCODINGS:
+        if "utf" not in codec: continue
+        try:
+            t.encode(codec)
+            valid_count = total_chars
+        except UnicodeEncodeError:
+            valid_bytes = t.encode(codec, 'ignore')
+            valid_s = valid_bytes.decode(codec)
+            valid_count = len(valid_s)
+            utf_broken = True
+
+        pct_total = (valid_count / total_chars) * 100
+        status_cls = "status-safe" if valid_count == total_chars else "status-dead"
+        val_txt = "100%" if valid_count == total_chars else f"{pct_total:.1f}%"
+        
+        integrity_html.append(f"""
+            <div class="enc-cell" title="{label}\nStructure: {tooltip}\nStatus: {val_txt}">
+                <div class="enc-label">{label}</div>
+                <div class="enc-val-primary {status_cls}">{val_txt}</div>
+            </div>
+        """)
+
+    # B. Unicode Only (The Residual)
+    other_style = "status-dead"
+    other_tooltip = "All characters fit within tracked legacy encodings."
+    
+    if unsupported_count > 0:
+        other_style = "status-modern" # Violet
+        # Generate Semantic Breakdown for Tooltip
+        breakdown = {"Emoji": 0, "Math": 0, "Private": 0, "Other": 0}
+        for ch in unsupported_chars:
+            cat = unicodedata.category(ch)
+            cp = ord(ch)
+            # Simple heuristics for display
+            if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
+                breakdown["Emoji"] += 1
+            elif cat == "Sm":
+                breakdown["Math"] += 1
+            elif cat in ("Co", "Cn"):
+                breakdown["Private"] += 1
+            else:
+                breakdown["Other"] += 1
+        
+        # Format Tooltip
+        bd_str = "\n".join([f"• {k}: {v}" for k,v in breakdown.items() if v > 0])
+        other_tooltip = f"REQUIRED UNICODE: {unsupported_count} char(s)\nThese cannot be saved as ANSI/Legacy:\n{bd_str}"
+
+    integrity_html.append(f"""
+        <div class="enc-cell enc-cell-other" title="{other_tooltip}">
+            <div class="enc-label">UNI-ONLY</div>
+            <div class="enc-metrics" style="flex-direction: column; gap: 0;">
+                <span class="enc-val-primary {other_style}">{other_pct:.1f}%</span>
+                <span class="enc-val-secondary" style="font-size: 0.6rem;">{unsupported_count} chars</span>
+            </div>
+        </div>
+    """)
+
+    # --- 3. BUILD PROVENANCE STRIP (Right) ---
     provenance_data = []
-    utf_broken = False 
     
     for label, codec, tooltip in FORENSIC_ENCODINGS:
+        if "utf" in codec: continue
         try:
-            # A. Total Coverage (Must be done on full string 't')
-            # Optimization: For legacy, we can infer it from signal+ascii, 
-            # but to be safe against edge cases, we keep the fast encode check.
+            # Total Coverage
             try:
                 t.encode(codec)
                 valid_count = total_chars
@@ -6139,132 +6185,92 @@ def render_encoding_footprint(t: str):
                 valid_bytes = t.encode(codec, 'ignore')
                 valid_s = valid_bytes.decode(codec)
                 valid_count = len(valid_s)
-            
             pct_total = (valid_count / total_chars) * 100
             
-            # B. Signal Strength (From Pre-calculated Counters)
+            # Signal Strength (The Primary Metric)
             signal_strength = 0.0
-            uniq_hits = 0
+            if has_signal:
+                # Recalc signal specific to this codec
+                # (Optimization: We could cache this, but string op is fast enough for 13 items)
+                non_ascii_str = "".join(non_ascii_chars)
+                try:
+                    non_ascii_str.encode(codec)
+                    valid_signal = total_non_ascii
+                except:
+                    valid_b = non_ascii_str.encode(codec, 'ignore')
+                    valid_s = valid_b.decode(codec)
+                    valid_signal = len(valid_s)
+                signal_strength = (valid_signal / total_non_ascii) * 100
             
-            if "utf" in codec:
-                # For UTF, Signal = Total Integrity
-                signal_strength = pct_total
-                if pct_total < 100: utf_broken = True
-            elif has_signal:
-                # Use the precise counters from Step 1
-                hits = codec_signal_hits.get(label, 0)
-                signal_strength = (hits / total_non_ascii) * 100
-                uniq_hits = codec_unique_hits.get(label, 0)
+            uniq_hits = exclusive_counts.get(label, 0)
             
-            # --- BUILD UI ---
-            if "utf" in codec:
-                status_cls = "status-safe" if valid_count == total_chars else "status-dead"
-                val_txt = "100%" if valid_count == total_chars else f"{pct_total:.1f}%"
-                
-                integrity_html.append(f"""
-                    <div class="enc-cell" title="{label}\nStructure: {tooltip}\nStatus: {val_txt}">
-                        <div class="enc-label">{label}</div>
-                        <div class="enc-val-primary {status_cls}">{val_txt}</div>
-                    </div>
-                """)
+            # Visual Logic
+            if not has_signal:
+                status_cls = "status-dead" # ASCII is boring
+            elif signal_strength == 100.0:
+                status_cls = "status-safe"
+                if uniq_hits > 0: status_cls = "status-uniq" # Unique Match
+            elif signal_strength > 0:
+                status_cls = "status-risk" # Partial
             else:
-                # Legacy Styling
-                if not has_signal:
-                    status_cls = "status-dead"
-                elif signal_strength == 100.0:
-                    status_cls = "status-uniq" if uniq_hits > 0 else "status-safe"
-                elif valid_count == 0:
-                    status_cls = "status-dead"
-                else:
-                    status_cls = "status-risk"
-                
-                detail = f"S:{signal_strength:.0f}%"
-                # Add diamond if unique
-                lbl_display = label + (' ◈' if uniq_hits > 0 else '')
-                
-                provenance_data.append({
-                    'html': f"""
-                        <div class="enc-cell" title="{label}\nSignal Coverage: {signal_strength:.1f}%\nTotal Coverage: {pct_total:.1f}%\nUnique Chars: {uniq_hits}\n{tooltip}">
-                            <div class="enc-label">{lbl_display}</div>
-                            <div class="enc-metrics">
-                                <span class="enc-val-primary {status_cls}">{pct_total:.0f}%</span>
-                                <span class="enc-val-secondary">{detail}</span>
-                            </div>
+                status_cls = "status-dead" # Irrelevant
+            
+            # Text formatting
+            detail_text = f"Non-ASCII Signal: {signal_strength:.1f}%"
+            lbl_display = label + (' ◈' if uniq_hits > 0 else '')
+            
+            # METRIC SWAP: Primary is Signal, Secondary is Total
+            provenance_data.append({
+                'html': f"""
+                    <div class="enc-cell" title="{label}\n{detail_text}\nTotal Coverage: {pct_total:.1f}%\n{tooltip}">
+                        <div class="enc-label">{lbl_display}</div>
+                        <div class="enc-metrics">
+                            <span class="enc-val-primary {status_cls}">{signal_strength:.0f}%</span>
+                            <span class="enc-val-secondary">T:{pct_total:.0f}%</span>
                         </div>
-                    """,
-                    'signal': signal_strength,
-                    'total': pct_total,
-                    'unique': uniq_hits,
-                    'label': label
-                })
+                    </div>
+                """,
+                'signal': signal_strength, 'total': pct_total, 'unique': uniq_hits, 'label': label
+            })
 
         except Exception: pass
 
     # Sort: Unique > Signal > Total > Name
     provenance_data.sort(key=lambda x: (-x['unique'], -x['signal'], -x['total'], x['label']))
     
-    # Add Other Column (Pre-calculated)
-    other_pct = (other_count / total_chars) * 100
-    other_cls = "status-dead" if other_pct == 0 else "status-risk"
-    
     prov_html = [item['html'] for item in provenance_data]
-    prov_html.append(f"""
-        <div class="enc-cell" title="Unicode-Only / Beyond Legacy\n{other_count} chars not representable in ANY tracked legacy encoding.\n(e.g. Emoji, Historic Scripts)">
-            <div class="enc-label">Other</div>
-            <div class="enc-val-primary {other_cls}">{other_pct:.1f}%</div>
-        </div>
-    """)
 
     integrity_container.innerHTML = "".join(integrity_html)
     provenance_container.innerHTML = "".join(prov_html)
 
-    # --- 3. SYNTHESIS LOGIC (Report Generation) ---
+    # --- 4. SYNTHESIS LOGIC (Report) ---
     if synthesis_container:
         badge_class = "syn-universal"
         badge_text = "ANALYSIS"
         summary_text = ""
         
-        # Find the best candidate(s)
         perfect_candidates = [d['label'] for d in provenance_data if d['signal'] == 100.0]
         
-        # 1. CORRUPTION
         if utf_broken:
-            badge_class = "syn-critical"
-            badge_text = "CORRUPT DATA"
-            summary_text = "This text contains <strong>invalid Unicode sequences</strong> (lone surrogates). It is structurally broken and may cause errors."
-            
-        # 2. MODERN / OTHER
+            badge_class = "syn-critical"; badge_text = "CORRUPT DATA"
+            summary_text = "Text contains <strong>invalid Unicode sequences</strong> (lone surrogates)."
         elif other_pct > 0:
-            badge_class = "syn-modern"
-            badge_text = "REQUIRES UNICODE"
-            summary_text = f"Text contains <strong>{other_count} character(s)</strong> (e.g. Emoji, Math) outside standard legacy encodings. <strong>Do not save as ANSI.</strong>"
-            
-        # 3. ASCII
+            badge_class = "syn-modern"; badge_text = "REQUIRES UNICODE"
+            summary_text = f"Text contains <strong>{unsupported_count} character(s)</strong> (e.g. Emoji, Math) that <strong>cannot be saved as ANSI</strong> without data loss."
         elif not has_signal:
-            badge_class = "syn-universal"
-            badge_text = "UNIVERSAL ASCII"
-            summary_text = "Text is <strong>100% 7-bit ASCII</strong>. Compatible with virtually every system. No specific provenance can be determined."
-            
-        # 4. UNIQUE MATCH
+            badge_class = "syn-universal"; badge_text = "UNIVERSAL ASCII"
+            summary_text = "Text is <strong>100% 7-bit ASCII</strong>. Compatible with all systems."
         elif any(x['unique'] > 0 for x in provenance_data):
             best = provenance_data[0]
-            badge_class = "syn-match"
-            badge_text = f"STRONG SIGNAL: {best['label']}"
-            summary_text = f"Text contains <strong>{best['unique']} character(s)</strong> that are unique to <strong>{best['label']}</strong> among the tracked set. Suggests specific origin."
-            
-        # 5. AMBIGUOUS (Shared)
+            badge_class = "syn-match"; badge_text = f"UNIQUE SIGNAL: {best['label']}"
+            summary_text = f"Contains <strong>{best['unique']} character(s)</strong> that are unique to <strong>{best['label']}</strong> among the tracked set."
         elif perfect_candidates:
             candidates = ", ".join(perfect_candidates[:3])
-            if len(perfect_candidates) > 3: candidates += ", etc."
-            badge_class = "syn-universal"
-            badge_text = "AMBIGUOUS LEGACY"
-            summary_text = f"Fully compatible with multiple encodings (<strong>{candidates}</strong>). Contains no unique characters to distinguish them."
-            
-        # 6. MIXED / PARTIAL
+            badge_class = "syn-universal"; badge_text = "AMBIGUOUS LEGACY"
+            summary_text = f"Non-ASCII characters are fully compatible with multiple encodings (<strong>{candidates}</strong>)."
         else:
-            badge_class = "syn-critical"
-            badge_text = "MIXED / UNKNOWN"
-            summary_text = "Text does not fit perfectly into any single legacy encoding tracked here. Likely a mix of sources (Mojibake) or an unlisted encoding."
+            badge_class = "syn-critical"; badge_text = "MIXED / MOJIBAKE"
+            summary_text = "Text does not fit perfectly into any single legacy encoding. Likely a mix of sources."
 
         synthesis_container.innerHTML = f"""
             <div class="syn-badge {badge_class}">{badge_text}</div>
