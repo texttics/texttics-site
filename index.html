@@ -243,49 +243,7 @@
           </div>
       </details>
 
-      <details class="fingerprint-section profile-section" id="dual-atom" aria-labelledby="dual-atom-title">
-        <summary><h2 id="dual-atom-title" class="section-title">
-          <span>Dual-Atom Profile</span>
-        </h2></summary>
-
-        <div class="tabs">
-          <div role="tablist" aria-label="Dual-Atom tabs">
-            <button role="tab" id="tab-overview" aria-selected="true" aria-controls="panel-overview">Overview</button>
-            <button role="tab" id="tab-breakdown" aria-selected="false" tabindex="-1" aria-controls="panel-breakdown">Full Breakdown (30)</button>
-          </div>
-
-          <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
-            <h3 class="subsection-title">Core Metrics (Totals)</h3>
-            <div class="cards" id="meta-totals-cards"></div>
-            <h3 class="subsection-title">Grapheme Structural Integrity</h3>
-            <div class="cards" id="grapheme-integrity-cards"></div>
-            <h3 class="subsection-title">Combining Class Profile (Zalgo)</h3>
-            <table class="matrix" id="ccc-matrix">
-              <caption>Canonical Combining Class (ccc) Counts</caption>
-              <thead><tr><th scope="col">Class</th><th scope="col">Count</th><th scope="col">Description</th></tr></thead>
-              <tbody id="ccc-matrix-body"></tbody>
-            </table>
-            <h3 class="subsection-title">Major Category Parallel View</h3>
-            <table class="matrix" id="major-parallel-table">
-              <caption>Major Categories - Code Points vs. Graphemes</caption>
-              <thead><tr><th scope="col">Category</th><th scope="col">Code Points (Logical)</th><th scope="col">Graphemes (Perceptual)</th></tr></thead>
-              <tbody id="major-parallel-body"></tbody>
-            </table>
-          </div>
-
-          <div id="panel-breakdown" role="tabpanel" aria-labelledby="tab-breakdown" hidden>
-            <h3 class="subsection-title">Minor Category Parallel View</h3>
-            <table class="matrix" id="minor-parallel-table">
-              <caption>Full Breakdown (30 minor categories)</caption>
-              <thead><tr><th scope="col">Minor Category</th><th scope="col">Code Points (Logical)</th><th scope="col">Graphemes (Perceptual)</th></tr></thead>
-              <tbody id="minor-parallel-body"></tbody>
-            </table>
-          </div>
-       </div>
-      </details>
-      
-      
-        <details class="profile-section" id="actions-panel-wrapper">
+      <details class="profile-section" id="actions-panel-wrapper">
           <summary><h2 class="section-title">Actions</h2></summary>
           
           <div class="action-bar">
@@ -325,8 +283,50 @@
             </p>
           </div>
       </details>
-
+      
+    
       <!-- GROUP 2: THE STRUCTURAL PROFILE -->
+
+         <details class="fingerprint-section profile-section" id="dual-atom" aria-labelledby="dual-atom-title">
+        <summary><h2 id="dual-atom-title" class="section-title">
+          <span>Dual-Atom Profile</span>
+        </h2></summary>
+
+        <div class="tabs">
+          <div role="tablist" aria-label="Dual-Atom tabs">
+            <button role="tab" id="tab-overview" aria-selected="true" aria-controls="panel-overview">Overview</button>
+            <button role="tab" id="tab-breakdown" aria-selected="false" tabindex="-1" aria-controls="panel-breakdown">Full Breakdown (30)</button>
+          </div>
+
+          <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+            <h3 class="subsection-title">Core Metrics (Totals)</h3>
+            <div class="cards" id="meta-totals-cards"></div>
+            <h3 class="subsection-title">Grapheme Structural Integrity</h3>
+            <div class="cards" id="grapheme-integrity-cards"></div>
+            <h3 class="subsection-title">Combining Class Profile (Zalgo)</h3>
+            <table class="matrix" id="ccc-matrix">
+              <caption>Canonical Combining Class (ccc) Counts</caption>
+              <thead><tr><th scope="col">Class</th><th scope="col">Count</th><th scope="col">Description</th></tr></thead>
+              <tbody id="ccc-matrix-body"></tbody>
+            </table>
+            <h3 class="subsection-title">Major Category Parallel View</h3>
+            <table class="matrix" id="major-parallel-table">
+              <caption>Major Categories - Code Points vs. Graphemes</caption>
+              <thead><tr><th scope="col">Category</th><th scope="col">Code Points (Logical)</th><th scope="col">Graphemes (Perceptual)</th></tr></thead>
+              <tbody id="major-parallel-body"></tbody>
+            </table>
+          </div>
+
+          <div id="panel-breakdown" role="tabpanel" aria-labelledby="tab-breakdown" hidden>
+            <h3 class="subsection-title">Minor Category Parallel View</h3>
+            <table class="matrix" id="minor-parallel-table">
+              <caption>Full Breakdown (30 minor categories)</caption>
+              <thead><tr><th scope="col">Minor Category</th><th scope="col">Code Points (Logical)</th><th scope="col">Graphemes (Perceptual)</th></tr></thead>
+              <tbody id="minor-parallel-body"></tbody>
+            </table>
+          </div>
+       </div>
+      </details>
 
       <details class="fingerprint-section profile-section" id="structural-integrity" aria-labelledby="integrity-title">
         <summary><h2 id="integrity-title" class="section-title">Structural Integrity Profile</h2></summary>
