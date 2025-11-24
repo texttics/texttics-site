@@ -2366,8 +2366,32 @@ tr.flag-row-crit {
   transition: color 0.2s ease;
 }
 
-/* --- Profile Section Alignment & Visuals (Native Firefox Arrow) --- */
 
+/* --- Profile Section Alignment & Visuals (Native Firefox Arrow) --- */
+/* --- Section Title Icons --- */
+.section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  color: var(--color-primary); /* Make it Pop */
+  opacity: 0.8;
+  vertical-align: middle;
+  transform: translateY(-1px); /* Optical alignment */
+}
+
+/* Ensure the SVG inherits size correctly */
+.section-icon svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+/* Optional: Make the "Actions" header slightly bolder/darker */
+#actions-panel-wrapper .section-title {
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: #1e3a8a; /* Darker Blue for the Workbench Header */
+}
 /* 1. Keep as list-item to preserve the NATIVE ARROW */
 details.profile-section > summary {
   display: list-item;       /* Guarantees native arrow appears */
