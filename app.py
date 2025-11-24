@@ -6450,19 +6450,6 @@ def populate_hud_registry(t: str):
              # We rely on emoji analysis to separate Emoji/Hybrids.
              # This is just for the 'Exotic' bucket if not handled there.
              pass
-    
-    # [IMMUTABLE REVEAL FIX]
-    # If the user edits the text, the "Visual Overlay" is broken/invalid.
-    # We must strip the warning class and treat this as new Raw Evidence.
-    t_input = document.getElementById("text-input")
-    if t_input and t_input.classList.contains("reveal-active"):
-        t_input.classList.remove("reveal-active")
-    
-    # --- 0. Debug Logging (Optional) ---
-    try:
-        blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
-    except Exception:
-        pass
 
 @create_proxy
 def update_all(event=None):
