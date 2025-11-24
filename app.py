@@ -3928,198 +3928,107 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
         # Failsafe
         return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
 
-def _tokenize_for_pvr(text: str) -> list:
-    """
-    Hybrid Tokenizer for PVR View.
-    Splits on: 1. Whitespace, 2. Major Punctuation, 3. Hard Length Cap.
-    Prevents DOM Bloat on minified code, URLs, or large blobs.
-    """
-    tokens = []
-    if not text: return tokens
-    
-    # Use window.Array.from to respect surrogate pairs/graphemes (JS-aligned)
-    js_array = window.Array.from_(text)
-    total_len = len(js_array)
-    
-    # Configuration
-    MAX_TOKEN_LEN = 50 # Force split after 50 chars (Safety Cap)
-    
-    # Set of punctuation that should act as token boundaries
-    PUNCT_SET = set(".,;:!?()[]{}<>\"'/\\|@#")
-    
-    current_start = 0
-    current_type = None # 'word' or 'gap'
-    
-    i = 0
-    while i < total_len:
-        char = js_array[i]
-        is_space = char.isspace()
-        is_punct = char in PUNCT_SET
-        
-        # Determine type of current char
-        # Punctuation is treated as a 'delimiter' that breaks a word
-        if is_space:
-            char_type = 'gap'
-        elif is_punct:
-            char_type = 'punct'
-        else:
-            char_type = 'word'
-            
-        # Initial State
-        if current_type is None:
-            current_type = char_type
-            current_start = i
-            i += 1
-            continue
-            
-        # Check for Break Conditions
-        should_break = False
-        
-        # 1. Type Change (Word -> Space, etc.)
-        if char_type != current_type:
-            should_break = True
-            
-        # 2. Punctuation Logic: Always breaks from Word, and breaks from itself
-        # (This isolates dots in URLs: "paypal" "." "com")
-        elif char_type == 'punct': 
-            should_break = True 
-            
-        # 3. Hard Cap (DoS Protection for long blobs)
-        elif (i - current_start) >= MAX_TOKEN_LEN:
-            should_break = True
-            
-        if should_break:
-            # Flush previous token
-            segment_text = "".join(js_array[current_start:i])
-            if segment_text:
-                # Map internal types to output types ('word' or 'gap')
-                # We map 'punct' to 'word' so the renderer can highlight it if it's a confusable
-                out_type = 'gap' if current_type == 'gap' else 'word'
-                tokens.append({'type': out_type, 'text': segment_text})
-                
-            current_start = i
-            current_type = char_type
-            
-        i += 1
-        
-    # Flush Final Token
-    segment_text = "".join(js_array[current_start:])
-    if segment_text:
-        out_type = 'gap' if current_type == 'gap' else 'word'
-        tokens.append({'type': out_type, 'text': segment_text})
 
-    return tokens
-
-def _render_confusable_summary_view(
-    t: str,
-    confusable_indices: set[int],
-    confusables_map: dict
-) -> str:
+def _render_forensic_diff_stream(t: str, threat_indices: set[int], confusables_map: dict) -> str:
     """
-    Renders the "Perception vs. Reality" HTML, collapsing "usual"
-    words into [...] blocks using the "hot token + neighbours"
-    algorithm.
-
-    IMPORTANT: This version detects "hot" tokens purely by checking
-    code points against `confusables_map`, so it does not depend
-    on any external index bookkeeping.
+    Forensic X-Ray Renderer (v2.0).
+    Generates a "Diff Stream" with Blast Radius context.
+    - Collapses safe text into pills: [ ... 120 safe ... ]
+    - Expands context around threats.
+    - Renders threats as specific "Perception vs Reality" stacks.
     """
-    tokens = _tokenize_for_pvr(t)
-    if not tokens:
+    if not t or not threat_indices:
         return ""
 
-    # --- Build a set of "hot" code points from the pre-filtered indices ---
-    # This is the correct logic: we build our "hot" set ONLY
-    # from the confusable_indices that were passed in.
-    hot_cps: set[int] = set()
-    js_array = window.Array.from_(t) # Use JS array for correct indexing
+    js_array = window.Array.from_(t) # Logical characters
     text_len = len(js_array)
-
-    if confusable_indices:
-        for idx in confusable_indices:
-            try:
-                i = int(idx)
-            except Exception:
-                continue # Skip malformed indices
-
-            if 0 <= i < text_len:
-                ch = js_array[i] # Use index on the JS array
-                if ch:
-                    hot_cps.add(ord(ch))
-
-    # If there are no confusable code points at all, there is
-    # nothing interesting to show – return empty so the caller
-    # can display "No confusable runs detected."
-    if not hot_cps:
-        return ""
-
-    # --- Pass 1: figure out which tokens are "hot" ---
-    hot_token_indices: set[int] = set()
-    for i, token in enumerate(tokens):
-        token_text = token.get("text") or ""
-        # A token is "hot" if any of its characters has a code point
-        # present in the confusables map.
-        if any(ord(ch) in hot_cps for ch in token_text):
-            hot_token_indices.add(i)
-
-    # --- Pass 2: The "Keep Set" is *only* the hot tokens ---
-    # We no longer add any neighbours, per the new requirement.
-    keep_indices: set[int] = hot_token_indices
-    num_tokens = len(tokens) # Get token count once
-
-    # --- Pass 3: Render with Ellipsis ---
-    final_html: list[str] = []
-
-    # If, for some reason, we still have nothing to keep, bail out.
-    # This prevents the "pure [...]" output.
-    if not keep_indices:
-        # This fallback should now be rarely, if ever, used.
-        return _escape_html(t)
-
-    # --- Pass 3: render, collapsing everything else into [...] ---
-    final_html_parts: list[str] = []
-    ellipsis_open = False
-
-    for i, token in enumerate(tokens):
-        token_type = token.get("type")
-        token_text = token.get("text", "")
-
-        # Always preserve tokens that contain a newline so that
-        # line structure stays recognizable.
-        if token_type == "gap" and "\n" in token_text:
-            final_html_parts.append(_escape_html(token_text))
-            ellipsis_open = False  # newline resets the condenser
-            continue
-
-        if i in keep_indices:
-            # This token (or its neighbour) is interesting: render fully.
-            ellipsis_open = False
-
-            if token_type == "gap":
-                # For gaps we don't try to highlight characters, just escape.
-                final_html_parts.append(_escape_html(token_text))
-
-            elif token_type == "word":
-                # For word tokens, walk character-by-character so we can
-                # wrap the confusable ones in <span> with metadata.
-                for ch in token_text:
-                    cp = ord(ch)
-                    if cp in hot_cps:
-                        final_html_parts.append(
-                            _build_confusable_span(ch, cp, confusables_map)
-                        )
-                    else:
-                        final_html_parts.append(_escape_html(ch))
+    
+    # 1. Build Boolean Mask (True = Show, False = Hide)
+    mask = [False] * text_len
+    BLAST_RADIUS = 20
+    
+    for idx in threat_indices:
+        start = max(0, idx - BLAST_RADIUS)
+        end = min(text_len, idx + BLAST_RADIUS + 1)
+        for i in range(start, end):
+            mask[i] = True
+            
+    # 2. Iterate & Chunk
+    html_parts = []
+    i = 0
+    
+    # Common Phishing Targets (Heuristic Badge)
+    TARGETS = ["paypal", "google", "apple", "microsoft", "amazon", "facebook", "instagram", "whatsapp", "bank", "secure", "login", "signin", "account", "update", "http", "https", "www"]
+    
+    while i < text_len:
+        if not mask[i]:
+            # --- COLLAPSED REGION ---
+            # Count consecutive false
+            j = i
+            while j < text_len and not mask[j]:
+                j += 1
+            
+            gap_len = j - i
+            # Only collapse if gap is significant (> 10 chars)
+            if gap_len > 10:
+                html_parts.append(f'<span class="context-pill" title="{gap_len} safe characters collapsed">[ ... {gap_len} safe ... ]</span>')
             else:
-                # Any unexpected token type – just escape.
-                final_html_parts.append(_escape_html(token_text))
+                # Too small to collapse, just render
+                chunk = "".join(js_array[i:j])
+                html_parts.append(_escape_html(chunk))
+            
+            i = j
         else:
-            # Boring token – compress it into a single [...]
-            if not ellipsis_open:
-                final_html_parts.append(" [...] ")
-                ellipsis_open = True
+            # --- ACTIVE THREAT REGION ---
+            # Find end of true region
+            j = i
+            while j < text_len and mask[j]:
+                j += 1
+            
+            # Extract the raw substring for Heuristic Analysis
+            raw_segment = "".join(js_array[i:j])
+            lower_seg = raw_segment.lower()
+            
+            # Heuristic Badge Logic
+            badge_html = ""
+            for target in TARGETS:
+                if target in lower_seg:
+                    badge_html = f'<span class="xray-badge-phish">TARGET: {target.upper()}</span>'
+                    break
+            
+            html_parts.append('<div class="xray-segment">')
+            if badge_html: html_parts.append(badge_html)
+            
+            # Render characters one by one to handle Stacks
+            for k in range(i, j):
+                char = js_array[k]
+                cp = ord(char)
+                
+                if k in threat_indices:
+                    # --- THE FORENSIC STACK ---
+                    # Top: Perception (The Lie)
+                    # Bottom: Reality (The Skeleton)
+                    skeleton = confusables_map.get(cp, "?")
+                    
+                    # If skeleton is multi-char, take first or limit
+                    skel_disp = skeleton[0] if skeleton else "?"
+                    if len(skeleton) > 1: skel_disp += ".."
+                    
+                    stack_html = (
+                        f'<span class="xray-stack" title="Perception: {char} (U+{cp:04X})\nReality: {skeleton}">'
+                        f'<span class="xray-top">{_escape_html(char)}</span>'
+                        f'<span class="xray-bot">{_escape_html(skel_disp)}</span>'
+                        f'</span>'
+                    )
+                    html_parts.append(stack_html)
+                else:
+                    # Normal Context Character
+                    html_parts.append(_escape_html(char))
+            
+            html_parts.append('</div>')
+            i = j
 
-    return "".join(final_html_parts)
+    return '<div class="xray-container">' + "".join(html_parts) + '</div>'
 
 
 def _generate_uts39_skeleton_metrics(t: str):
@@ -4335,9 +4244,23 @@ def compute_threat_analysis(t: str):
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        # --- 7. HTML Report ---
-        if found_confusable:
-            final_html_report = _render_confusable_summary_view(t, set(confusable_indices), confusables_map)
+        # --- 7. HTML Report (Forensic Diff Stream) ---
+        # Filter indices for the visual report too (No Em Dash alarms)
+        visual_threat_indices = set()
+        if confusable_indices:
+            js_array_raw = window.Array.from_(t)
+            for idx in confusable_indices:
+                try:
+                    char = js_array_raw[idx]
+                    cp = ord(char)
+                    sc = _find_in_ranges(cp, "Scripts")
+                    # Same filter: Ignore Common/Inherited
+                    if sc not in ("Common", "Inherited"):
+                        visual_threat_indices.add(idx)
+                except: pass
+
+        if visual_threat_indices:
+            final_html_report = _render_forensic_diff_stream(t, visual_threat_indices, confusables_map)
         else:
             final_html_report = ""
         
