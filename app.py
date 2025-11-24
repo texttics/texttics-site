@@ -4130,20 +4130,6 @@ def _generate_uts39_skeleton_metrics(t: str):
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
-
-    # [NEW] Populate Threat Buckets
-    
-    # SPOOFING (Confusables)
-    if confusable_indices:
-        for idx in confusable_indices:
-            _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
-            
-    # OBFUSCATION (Clusters)
-    clusters = analyze_invisible_clusters(t) # We might need to call this if not already available
-    # actually summarize_invisible_clusters was called in forensic stats.
-    # We can re-run it or pass it. Re-running is cheap O(N).
-    for c in clusters:
-        _register_hit("thr_obfuscation", c["start"], c["end"]+1, "Invisible Cluster")
     
     # --- 0. Initialize defaults ---
     threat_flags = {}
@@ -4161,7 +4147,7 @@ def compute_threat_analysis(t: str):
     nf_string = ""
     nf_casefold_string = ""
     skeleton_string = ""
-    skel_metrics = {} # [NEW]
+    skel_metrics = {} 
     final_html_report = ""
 
     # --- 1. Early Exit ---
@@ -4183,15 +4169,10 @@ def compute_threat_analysis(t: str):
         # --- 5. Skeleton & Drift (Refined Logic) ---
         
         # A. The Skeleton String (Standard Identity)
-        # Derived from the Canonical (Casefolded) form, for standard equivalence hashing.
-        # We re-use the metrics function but ignore the metrics here.
         skeleton_string, _ = _generate_uts39_skeleton_metrics(nf_casefold_string)
         
         # B. The Forensic Drift Metrics (Forensic Insight)
         # [DRIFT BLINDNESS FIX]
-        # We calculate drift by comparing the RAW input (t) against its Skeleton mapping.
-        # This captures normalization changes (e.g. Fullwidth -> ASCII) as "Drift",
-        # preserving the evidence of the original "weirdness".
         _, skel_metrics = _generate_uts39_skeleton_metrics(t)
 
         # --- 3. Run checks on RAW string ---
@@ -4229,7 +4210,6 @@ def compute_threat_analysis(t: str):
                 if cp in confusables_map and window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                     found_confusable = True
                     confusable_indices.append(i)
-                
 
             # --- 4. Populate Threat Flags ---
             
@@ -4255,6 +4235,8 @@ def compute_threat_analysis(t: str):
                     'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
+                # Registry: Suspicious
+                _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
             # 2. Extension Mix
             if len(clean_ext) > 2:
@@ -4270,20 +4252,18 @@ def compute_threat_analysis(t: str):
             # 3. Single Script / ASCII status
             if len(clean_base) == 0:
                 if is_non_ascii_LNS:
-                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': ["No specific script letters found."]}
+                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': []}
                 else:
-                     threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': ["Text is pure 7-bit ASCII."]}
+                     threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': []}
             elif len(clean_base) == 1:
                 s_name = list(clean_base)[0]
                 if s_name == "Latin" and is_non_ascii_LNS:
-                     threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': ["Latin script with non-ASCII characters."]}
+                     threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': []}
                 elif not threat_flags: 
-                     threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': ["Text is consistent."]}
+                     threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
 
         # --- 5. Skeleton Drift (METRICS ENGINE) ---
-        skeleton_string, skel_metrics = _generate_uts39_skeleton_metrics(nf_casefold_string)
-        
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
             details = []
@@ -4319,6 +4299,20 @@ def compute_threat_analysis(t: str):
             final_html_report = _render_confusable_summary_view(t, set(confusable_indices), confusables_map)
         else:
             final_html_report = ""
+            
+        # --- [NEW] Populate Threat Registry (MOVED TO BOTTOM) ---
+        
+        # SPOOFING
+        if confusable_indices:
+            for idx in confusable_indices:
+                _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
+            
+        # OBFUSCATION (Clusters)
+        clusters = analyze_invisible_clusters(t)
+        for c in clusters:
+            label = "Invisible Cluster"
+            if c.get("high_risk"): label += " [High Risk]"
+            _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
@@ -4333,7 +4327,7 @@ def compute_threat_analysis(t: str):
         'html_report': final_html_report,
         'bidi_danger': bool(bidi_danger_indices),
         'script_mix_class': script_mix_class,
-        'skel_metrics': skel_metrics, # [KEY] Pass metrics to scorer
+        'skel_metrics': skel_metrics, 
         'raw': t, 'nfkc': nf_string, 'nfkc_cf': nf_casefold_string, 'skeleton': skeleton_string
     }
     
