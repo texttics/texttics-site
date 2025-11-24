@@ -6954,7 +6954,7 @@ def reveal2_invisibles(event=None):
         except:
             char_code = "INVISIBLE"
 
-        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
+        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>"
 
 # The Bridge
 window.cycle_hud_metric = cycle_hud_metric
