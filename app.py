@@ -804,10 +804,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         "emoji_hybrid": "Hybrid Emoji",
         "emoji_irregular": "Irregular Emoji"
     }
-    # Default fallback if key is missing
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 2. Resolve targets based on key type
+    # 2. Resolve targets
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -824,40 +823,38 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 3. Sort by start position
+    # 3. Sort & Find Next
     targets.sort(key=lambda x: x[0])
-
-    # 4. Find next (Loop Logic: Use >= to catch contiguous runs)
     next_hit = targets[0]
     hit_index = 1
     
     for i, hit in enumerate(targets):
-        # hit is (start, end, label)
         if hit[0] >= current_logical:
             next_hit = hit
             hit_index = i + 1
             break
 
-    # 5. Execute Highlight
+    # 4. Execute Highlight
     window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
-    # 6. Format Status Message (Individualized)
-    # Format: "Threat Signals Highlighter: #19 of 25 — Trojan Source"
-    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp#{hit_index} of {len(targets)}&nbsp#"
+    # 5. Define Icon LOCALLY (Safety Fix)
+    # We use triple quotes to avoid syntax errors with inner quotes
+    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+
+    # 6. Format Message (Fix Spacing & Alignment)
+    # We put the Icon AT THE END (Right side)
+    # We use a standard space ' ' after </strong>
+    status_msg = f"<strong>{category_label} Highlighter:</strong> #{hit_index} of {len(targets)}"
     
-    # 7. Update LEFT-SIDE Status
+    # 7. Update UI
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
-        # Apply Active Blue Styling
         hud_status.className = "status-details status-hud-active"
-        hud_status.style.display = "inline-flex" # Force visible
-        
-        # Search/Locate Icon (Blue)
-        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-        
-        hud_status.innerHTML = f"{status_msg}&nbsp#{icon}"
+        hud_status.style.display = "inline-flex"
+        # Text First, Icon Second
+        hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
-    # 8. Force update inspector for the new selection
+    # 8. Update Inspector
     inspect_character(None)
 
 @create_proxy
