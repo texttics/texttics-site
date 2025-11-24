@@ -784,59 +784,62 @@ def _register_hit(key: str, start: int, end: int, label: str):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V25 (Pure View from Cluster Ledger).
-    Columns 5, 6, 7 now consume pre-computed cluster counts for 100% logic consistency.
+    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
     """
-    # --- Helper: Check Registry ---
-    def get_click_attr(key, val):
-        # Logic: If value > 0 and key exists in registry, return onclick string
-        # Also returns css class suffix
-        if val <= 0: return "", ""
-        
-        # Map UI keys to Registry keys
-        reg_key = None
-        if key == "ws_nonstd": reg_key = "ws_nonstd"
-        elif key == "sym_exotic": reg_key = "sym_exotic" # Add this to populate
-        elif key == "hyb_ambig": reg_key = "emoji_hybrid"
-        elif key == "emo_irr": reg_key = "emoji_irregular"
-        elif key == "integrity": reg_key = "integrity_agg"
-        elif key == "threat": reg_key = "threat_agg"
-        
-        if reg_key and reg_key in HUD_HIT_REGISTRY:
-             return f'onclick="window.hud_jump(\'{reg_key}\')"', " hud-interactive"
-        
-        # Special Aggregators check
-        if key == "integrity" and any(k in HUD_HIT_REGISTRY for k in ["int_fatal", "int_fracture", "int_risk", "int_decay"]):
-             return f'onclick="window.hud_jump(\'{key}_agg\')"', " hud-interactive hud-interactive-crit"
-             
-        if key == "threat" and any(k in HUD_HIT_REGISTRY for k in ["thr_execution", "thr_spoofing", "thr_obfuscation"]):
-             return f'onclick="window.hud_jump(\'{key}_agg\')"', " hud-interactive hud-interactive-crit"
-
-        return "", ""
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
     
     emoji_counts = stats.get("emoji_counts", {})
 
-    # --- HELPER: Cell Builder V5 (Dynamic Footer Labels) ---
+    # --- INTERACTION HELPER ---
+    def get_interaction(val, key, severity="warn"):
+        """Checks registry and returns CSS class and onclick attribute."""
+        try:
+            if float(val) <= 0: return "", ""
+        except: return "", ""
+        
+        has_hits = False
+        target_key = key
+        
+        if key == "integrity":
+            # Aggregator check
+            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "integrity_agg"
+                has_hits = True
+        elif key == "threat":
+            # Aggregator check
+            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "threat_agg"
+                has_hits = True
+        else:
+            # Direct check
+            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
+                has_hits = True
+                
+        if has_hits:
+            cls = " hud-interactive"
+            if severity == "crit": cls += " hud-interactive-crit"
+            elif severity == "warn": cls += " hud-interactive-risk"
+            
+            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
+            return cls, attr
+            
+        return "", ""
+
+    # --- HELPER: Cell Builder ---
     def render_cell(sci_title, 
                     label_1, val_1, class_1,
                     label_2, val_2, class_2,
                     d1="", m1="", r1="",
-                    d2="", m2="", r2="", metric_key_2=None):
+                    d2="", m2="", r2="",
+                    reg_key_2=None, risk_2="warn"): # New Args
         
         def esc(s): return s.replace('"', '&quot;')
-
-        click_attr = ""
-        interactive_class = ""
         
-        if metric_key_2:
-             # Lookup logic (simplified)
-             # If registry has hits, make clickable
-             pass
-            
-        # [CRITICAL UPDATE] Added data-l1 and data-l2 hooks for JS
+        # Check for interaction on Value 2 (Secondary Metric)
+        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
+
         return f"""
         <div class="hud-col" 
              data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
@@ -853,7 +856,7 @@ def render_forensic_hud(t, stats):
 
             <div class="hud-metric-group">
                 <div class="hud-label">{label_2}</div>
-                <div class="hud-val {class_2}">{val_2}</div>
+                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
             </div>
 
         </div>
@@ -924,7 +927,7 @@ def render_forensic_hud(t, stats):
         d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
     )
 
-    # C3: WHITESPACE
+    # C3: WHITESPACE (Interactive)
     std_set = {0x20, 0x09, 0x0A, 0x0D}
     std_inv = sum(1 for c in t if ord(c) in std_set)
     flags = stats.get('forensic_flags', {})
@@ -935,10 +938,11 @@ def render_forensic_hud(t, stats):
         "ASCII WS", str(std_inv), color_neutral(std_inv),
         "NON-STD", str(non_std_inv), color_clean(non_std_inv),
         d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
-        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk"
+        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+        reg_key_2="ws_nonstd" # LINK
     )
 
-    # C4: DELIMITERS
+    # C4: DELIMITERS (Interactive)
     cnt_p_ascii = 0
     cnt_p_comfort = 0
     cnt_p_exotic = 0
@@ -969,17 +973,17 @@ def render_forensic_hud(t, stats):
         c4_label, str(c4_val), color_neutral(c4_val),
         "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
         d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
-        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic"
+        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+        reg_key_2="punc_exotic" # LINK
     )
 
-    # C5: SYMBOLS (Data from Cluster Ledger)
+    # C5: SYMBOLS (Interactive)
     cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
     cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
     
     c5_label = "EXTENDED"
     c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
     if cnt_s_ext == 0 and cnt_s_exotic == 0:
-        # Fallback for Keyboard symbols if any (we don't track in ledger, but can infer if needed or just leave blank)
         c5_label = "KEYBOARD"
         c5_desc = "Standard ASCII keyboard symbols."
 
@@ -988,10 +992,11 @@ def render_forensic_hud(t, stats):
         c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
         "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
         d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
-        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic"
+        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+        reg_key_2="sym_exotic" # LINK
     )
 
-    # C6: HYBRIDS (Data from Cluster Ledger)
+    # C6: HYBRIDS (Interactive)
     cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
     cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
     
@@ -1000,10 +1005,11 @@ def render_forensic_hud(t, stats):
         "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
         "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
         d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
-        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering"
+        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+        reg_key_2="emoji_hybrid" # LINK
     )
 
-    # C7: EMOJI (Data from Cluster Ledger)
+    # C7: EMOJI (Interactive)
     rgi_total = emoji_counts.get("rgi_total", 0)
     abnormal = emoji_counts.get("emoji_irregular", 0)
     
@@ -1012,10 +1018,11 @@ def render_forensic_hud(t, stats):
         "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
         "IRREGULAR", str(abnormal), color_clean(abnormal),
         d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
-        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk"
+        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+        reg_key_2="emoji_irregular" # LINK
     )
 
-    # C8: INTEGRITY
+    # C8: INTEGRITY (Interactive Aggregator)
     int_res = stats.get('integrity', {})
     int_v = int_res.get('verdict', 'INTACT')
     int_issues = len(int_res.get('ledger',[]))
@@ -1025,35 +1032,43 @@ def render_forensic_hud(t, stats):
     if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
     elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
     
+    # Determine risk color for the count button
+    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
+
     c8 = render_cell(
         "INTEGRITY", 
         "STATUS", int_v, v_cls,
         "ISSUES", str(int_issues), color_risk(int_issues),
         d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
-        d2="Count of integrity findings (errors + anomalies).", m2="Count(Ledger)", r2="Data Health"
+        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Ledger)", r2="Data Health",
+        reg_key_2="integrity", risk_2=risk_level # LINK
     )
 
-    # C9: THREAT
+    # C9: THREAT (Interactive Aggregator)
     thr_res = stats.get('threat', {})
     thr_v = thr_res.get('verdict', 'CLEAR')
     thr_sigs = len(thr_res.get('ledger',[]))
     if thr_sigs == 0: thr_v = "CLEAR"
 
     t_cls = "txt-safe"
-    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: t_cls = "txt-crit"
-    elif "SUSPICIOUS" in thr_v: t_cls = "txt-warn"
+    risk_level_thr = "warn"
+    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: 
+        t_cls = "txt-crit"
+        risk_level_thr = "crit"
+    elif "SUSPICIOUS" in thr_v: 
+        t_cls = "txt-warn"
 
     c9 = render_cell(
         "THREAT", 
         "STATUS", thr_v, t_cls,
         "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
         d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
-        d2="Patterns linked to Unicode spoofing and control-flow tricks.", m2="Count(Ledger)", r2="Attack Vectors"
+        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Ledger)", r2="Attack Vectors",
+        reg_key_2="threat", risk_2=risk_level_thr # LINK
     )
 
     # --- ASSEMBLY ---
     container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
-
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
 # ---
@@ -6411,13 +6426,19 @@ def populate_hud_registry(t: str):
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
                 _register_hit("punc_exotic", i, i+1, f"U+{cp:04X}")
 
-        # 3. Symbols (C5) - Matches compute_emoji_analysis logic
+        # 3. Symbols (C5)
         # Extended: ASCII/Latin-1/Currency
         # Exotic: Everything else
         if cat.startswith('S'):
              # We rely on emoji analysis to separate Emoji/Hybrids.
              # This is just for the 'Exotic' bucket if not handled there.
-             pass
+             # Check if simple symbol (not emoji/hybrid)
+             if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
+                 # We only register if it's NOT being handled by the Emoji engine.
+                 # But since HUD_HIT_REGISTRY is additive, we can just add it.
+                 # However, Emoji engine handles "hybrid_pictographs".
+                 # We'll trust the visual C5 logic: anything strictly "Exotic".
+                 _register_hit("sym_exotic", i, i+1, f"U+{cp:04X}")
 
 @create_proxy
 def update_all(event=None):
