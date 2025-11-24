@@ -3057,3 +3057,46 @@ details.profile-section .action-bar {
   border-radius: 2px;
   border-bottom-style: solid;
 }
+
+/* =========================================
+   INTERACTIVE HUD METRICS (Stepper)
+   ========================================= */
+
+/* The Base Interactive Class */
+.hud-interactive {
+  cursor: pointer;
+  border-bottom: 2px dotted currentColor; /* Visual hint: "I am actionable" */
+  transition: all 0.15s ease-in-out;
+  position: relative;
+  z-index: 10;
+}
+
+/* Hover Effects (Scale Up) */
+.hud-interactive:hover {
+  transform: scale(1.1);
+  z-index: 20;
+  border-bottom-style: solid; /* Solid line on hover */
+}
+
+/* Click Feedback (Press Down) */
+.hud-interactive:active {
+  transform: scale(0.95);
+}
+
+/* --- Risk-Specific Tints (On Hover) --- */
+
+/* Amber Tint for Warnings (e.g. Non-Std Whitespace) */
+.hud-interactive-risk:hover {
+  color: #d97706; /* Amber-600 */
+  background-color: #fffbeb; /* Amber-50 */
+  box-shadow: 0 0 0 4px #fffbeb; /* Faux padding bloom */
+  border-radius: 2px;
+}
+
+/* Red Tint for Criticals (e.g. Threat, Integrity) */
+.hud-interactive-crit:hover {
+  color: #dc2626; /* Red-600 */
+  background-color: #fef2f2; /* Red-50 */
+  box-shadow: 0 0 0 4px #fef2f2; /* Faux padding bloom */
+  border-radius: 2px;
+}
