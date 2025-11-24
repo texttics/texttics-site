@@ -6424,15 +6424,7 @@ def render_encoding_footprint(t: str):
 # 6. MAIN ORCHESTRATOR
 # ---
 
-@create_proxy
-def update_all(event=None):
-    """The main function called on every input change."""
-
-    # --- RESET REGISTRY ---
-    global HUD_HIT_REGISTRY
-    HUD_HIT_REGISTRY = {}
-
-    def populate_hud_registry(t: str):
+def populate_hud_registry(t: str):
     """Populates simple metric buckets for the HUD Stepper."""
     js_array = window.Array.from_(t)
     
@@ -6472,14 +6464,37 @@ def update_all(event=None):
     except Exception:
         pass
 
+@create_proxy
+def update_all(event=None):
+    """The main function called on every input change."""
+
+    # --- RESET REGISTRY ---
+    global HUD_HIT_REGISTRY
+    HUD_HIT_REGISTRY = {}
+
+    # [IMMUTABLE REVEAL FIX]
+    # If the user edits the text, the "Visual Overlay" is broken/invalid.
+    # We must strip the warning class and treat this as new Raw Evidence.
+    t_input = document.getElementById("text-input")
+    if t_input and t_input.classList.contains("reveal-active"):
+        t_input.classList.remove("reveal-active")
+    
+    # --- 0. Debug Logging (Optional) ---
+    try:
+        blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
+    except Exception:
+        pass
+
     t_input = document.getElementById("text-input")
     if not t_input: return
     t = t_input.value
+    
+    # --- [NEW] Populate Simple HUD Metrics ---
+    populate_hud_registry(t)
 
     # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button & Always-On Status) ---
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
-    reveal2_btn = document.getElementById("btn-reveal2")
     
     if details_line:
         # Initialize counters
