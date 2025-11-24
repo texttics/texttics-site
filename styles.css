@@ -3119,3 +3119,117 @@ details.profile-section .action-bar {
 .status-hud-active svg {
   stroke: #d97706; 
 }
+
+/* =========================================
+   FORENSIC X-RAY STREAM (Diff View)
+   ========================================= */
+
+/* 1. The Scrolling Container */
+.xray-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background-color: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  
+  /* Horizontal Scroll Logic */
+  overflow-x: auto;
+  white-space: nowrap;
+  width: 100%;
+  min-height: 80px; /* Ensure height for stacks */
+  
+  /* Scrollbar Polish */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+.xray-container::-webkit-scrollbar {
+  height: 6px;
+}
+.xray-container::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 4px;
+}
+
+/* 2. The "Blast Radius" Segment */
+.xray-segment {
+  display: inline-flex;
+  align-items: center;
+  background-color: #f9fafb; /* Subtle gray highlighting the context */
+  border: 1px dashed #e5e7eb;
+  border-radius: 4px;
+  padding: 4px 8px;
+  position: relative; /* Anchor for the badge */
+  margin-top: 14px; /* Make room for the badge */
+}
+
+/* 3. The Collapsed Context Pill */
+.context-pill {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  background-color: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 99px;
+  user-select: none;
+  border: 1px solid #e5e7eb;
+}
+
+/* 4. THE FORENSIC STACK (The "Truth" Visualizer) */
+.xray-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 1px;
+  vertical-align: middle;
+  cursor: help;
+  
+  /* Box it */
+  background-color: #fff1f2; /* Light Red bg */
+  border: 1px solid #fecaca; /* Red border */
+  border-radius: 3px;
+  padding: 0 2px;
+  min-width: 1.2em;
+}
+
+/* Top: Perception (The Lie) */
+.xray-top {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #dc2626; /* Bright Red */
+  line-height: 1;
+  padding-bottom: 1px;
+  border-bottom: 1px dotted #fca5a5;
+}
+
+/* Bottom: Reality (The Skeleton) */
+.xray-bot {
+  font-size: 0.7rem;
+  color: #6b7280; /* Muted Gray */
+  font-weight: 600;
+  line-height: 1;
+  padding-top: 1px;
+  text-transform: uppercase;
+}
+
+/* 5. The Phishing Badge */
+.xray-badge-phish {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  background-color: #111827; /* Black */
+  color: #fbbf24; /* Amber Text */
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  z-index: 2;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
