@@ -1462,8 +1462,8 @@ Stage 2: Heatmap Row Classes
   position: absolute;
   bottom: 8px;
   right: 8px;
-  font-size: 0.75rem; /* FIXED: was 0.25rem which is too small */
-  font-weight: 300;
+  font-size: 0.5rem; /* FIXED: was 0.25rem which is too small */
+  font-weight: 600;
   color: #198754; 
   background-color: #e9f7ef; 
   padding: 1px 4px;
@@ -1474,7 +1474,7 @@ Stage 2: Heatmap Row Classes
   position: absolute;
   bottom: 8px;
   right: 8px;
-  font-size: 0.75rem;
+  font-size: 0.5rem;
   font-weight: 600;           /* Slightly bolder to read */
   color: var(--color-primary); /* Uses your App's Blue (#2563eb) */
   background-color: #eff6ff;   /* Very light blue background */
