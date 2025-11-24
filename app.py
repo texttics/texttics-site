@@ -781,6 +781,85 @@ def _register_hit(key: str, start: int, end: int, label: str):
         HUD_HIT_REGISTRY[key] = []
     HUD_HIT_REGISTRY[key].append((start, end, label))
 
+
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateless stepper. Finds the next range after current_dom_pos.
+    Updates the LEFT-SIDE HUD Status bar.
+    """
+    el = document.getElementById("text-input")
+    if not el: return
+    t = el.value
+    
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
+    # 1. Define Human-Readable Labels
+    labels = {
+        "integrity_agg": "Integrity Issues",
+        "threat_agg": "Threat Signals",
+        "ws_nonstd": "Non-Std Whitespace",
+        "punc_exotic": "Exotic Delimiters",
+        "sym_exotic": "Exotic Symbols",
+        "emoji_hybrid": "Hybrid Emoji",
+        "emoji_irregular": "Irregular Emoji"
+    }
+    # Default fallback if key is missing
+    category_label = labels.get(metric_key, "Forensic Metric")
+
+    # 2. Resolve targets based on key type
+    targets = []
+    if metric_key == "integrity_agg":
+        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                   HUD_HIT_REGISTRY.get("int_fracture", []) +
+                   HUD_HIT_REGISTRY.get("int_risk", []) +
+                   HUD_HIT_REGISTRY.get("int_decay", []))
+    elif metric_key == "threat_agg":
+        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    else:
+        targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    if not targets: return
+
+    # 3. Sort by start position
+    targets.sort(key=lambda x: x[0])
+
+    # 4. Find next (Loop Logic: Use >= to catch contiguous runs)
+    next_hit = targets[0]
+    hit_index = 1
+    
+    for i, hit in enumerate(targets):
+        # hit is (start, end, label)
+        if hit[0] >= current_logical:
+            next_hit = hit
+            hit_index = i + 1
+            break
+
+    # 5. Execute Highlight
+    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    
+    # 6. Format Status Message (Individualized)
+    # Format: "Threat Signals Highlighter: #19 of 25 — Trojan Source"
+    status_msg = f"<strong>{category_label} Highlighter:</strong> #{hit_index} of {len(targets)} <span style='opacity:0.8; font-weight:400;'>— {next_hit[2]}</span>"
+    
+    # 7. Update LEFT-SIDE Status
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        # Apply Active Blue Styling
+        hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex" # Force visible
+        
+        # Search/Locate Icon (Blue)
+        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
+        
+        hud_status.innerHTML = f"{icon} {status_msg}"
+    
+    # 8. Force update inspector for the new selection
+    inspect_character(None)
+
 @create_proxy
 def render_forensic_hud(t, stats):
     """
@@ -6380,111 +6459,6 @@ def _dom_to_logical(t: str, dom_idx: int) -> int:
         
     return logical_idx
 
-@create_proxy
-def cycle_hud_metric(metric_key, current_dom_pos):
-    """
-    Stateless stepper. Finds the next range after current_dom_pos.
-    Updates the LEFT-SIDE HUD Status bar.
-    """
-    el = document.getElementById("text-input")
-    if not el: return
-    t = el.value
-    
-    current_logical = _dom_to_logical(t, current_dom_pos)
-
-    # 1. Define Human-Readable Labels
-    labels = {
-        "integrity_agg": "Integrity Issues",
-        "threat_agg": "Threat Signals",
-        "ws_nonstd": "Non-Std Whitespace",
-        "punc_exotic": "Exotic Delimiters",
-        "sym_exotic": "Exotic Symbols",
-        "emoji_hybrid": "Hybrid Emoji",
-        "emoji_irregular": "Irregular Emoji"
-    }
-    category_label = labels.get(metric_key, "Forensic Metric")
-
-    # 2. Resolve targets based on key type
-    targets = []
-    if metric_key == "integrity_agg":
-        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
-                   HUD_HIT_REGISTRY.get("int_fracture", []) +
-                   HUD_HIT_REGISTRY.get("int_risk", []) +
-                   HUD_HIT_REGISTRY.get("int_decay", []))
-    elif metric_key == "threat_agg":
-        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
-                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
-                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
-                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
-    else:
-        targets = HUD_HIT_REGISTRY.get(metric_key, [])
-
-    if not targets: return
-
-    # 3. Sort by start position
-    targets.sort(key=lambda x: x[0])
-
-    # 4. Find next (Loop Logic: Use >= to catch contiguous runs)
-    next_hit = targets[0]
-    hit_index = 1
-    
-    for i, hit in enumerate(targets):
-        # hit is (start, end, label)
-        if hit[0] >= current_logical:
-            next_hit = hit
-            hit_index = i + 1
-            break
-
-    # 5. Execute Highlight
-    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
-    
-    # 6. Format Status Message (Individualized)
-    # Format: "Threat Signals Highlighter: #19 of 25 (Trojan Source)"
-    status_msg = f"<strong>{category_label} Highlighter:</strong> #{hit_index} of {len(targets)} <span style='opacity:0.8; font-weight:400;'>— {next_hit[2]}</span>"
-    
-    # 7. Update LEFT-SIDE Status
-    hud_status = document.getElementById("hud-stepper-status")
-    if hud_status:
-        # Apply Active Blue Styling
-        hud_status.className = "status-details status-hud-active"
-        hud_status.style.display = "inline-flex" # Force visible
-        
-        # Search/Locate Icon (Blue)
-        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
-        
-        hud_status.innerHTML = f"{icon} {status_msg}"
-    
-    # 8. Force update inspector for the new selection
-    inspect_character(None)
-
-def populate_hud_registry(t: str):
-    """Populates simple metric buckets for the HUD Stepper."""
-    js_array = window.Array.from_(t)
-    
-    for i, char in enumerate(js_array):
-        cp = ord(char)
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        
-        # 1. Whitespace / Non-Std (C3)
-        if mask & INVIS_ANY_MASK:
-             label = "Non-Std"
-             if mask & INVIS_NON_ASCII_SPACE: label = "Deceptive Space"
-             elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
-             elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
-             elif mask & INVIS_TAG: label = "Tag"
-             
-             _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
-
-        # 2. Delimiters (C4)
-        cat = unicodedata.category(char)
-        if cat.startswith('P'):
-            if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
-                _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
-
-        # 3. Symbols (C5)
-        if cat.startswith('S'):
-             if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
 
 @create_proxy
 def update_all(event=None):
