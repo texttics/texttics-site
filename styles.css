@@ -3121,7 +3121,7 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   FORENSIC CLUSTER STREAM (v3.1 - Layout Fix)
+   FORENSIC CLUSTER STREAM (v3.2 - Sane Flow)
    ========================================= */
 
 .xray-stream-wrapper {
@@ -3153,6 +3153,11 @@ details.profile-section .action-bar {
   background-color: #ffffff;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: border-color 0.2s;
+}
+
+.cluster-card:hover {
+  border-color: #d1d5db;
 }
 
 /* Header: Metadata + Actions */
@@ -3169,7 +3174,7 @@ details.profile-section .action-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap; /* Allow badges to wrap on mobile */
+  flex-wrap: wrap;
 }
 
 .cluster-id {
@@ -3190,10 +3195,10 @@ details.profile-section .action-bar {
   border: 1px solid transparent;
 }
 
-.badge-brand { background: #111827; color: #f59e0b; border-color: #111827; } /* Black/Gold */
-.badge-spoof { background: #fef2f2; color: #dc2626; border-color: #fecaca; } /* Red */
-.badge-invis { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; } /* Purple */
-.badge-bidi  { background: #fffbeb; color: #d97706; border-color: #fcd34d; } /* Amber */
+.badge-brand { background: #111827; color: #f59e0b; border-color: #111827; }
+.badge-spoof { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+.badge-invis { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
+.badge-bidi  { background: #fffbeb; color: #d97706; border-color: #fcd34d; }
 
 /* Copy Safe Button */
 .safe-copy-btn {
@@ -3216,6 +3221,7 @@ details.profile-section .action-bar {
 }
 
 /* --- THE FIX IS HERE --- */
+
 .cluster-body {
   padding: 16px;
   font-family: var(--font-mono);
@@ -3223,40 +3229,39 @@ details.profile-section .action-bar {
   color: #1f2937;
   background-color: #ffffff;
   
-  /* 1. Use Block, not Flex. This lets text flow naturally. */
-  display: block; 
+  /* 1. Standard Block Flow (Paragraph mode) */
+  display: block;
   
-  /* 2. Increase Line Height so the tall stacks don't overlap the text lines */
-  line-height: 3.2; 
+  /* 2. Massive Line Height: This creates "Lanes" for the stacks to sit in without crashing */
+  line-height: 3.8; 
   
-  /* 3. Break long strings if needed */
+  /* 3. Break Logic */
   word-break: break-all;
 }
 
 /* Stacks (Shared Base) */
 .xray-stack {
-  /* Make the stack behave like a single "Word" in the sentence */
+  /* Inline-Flex acts like a letter, but keeps internal vertical stack */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   
-  /* Vertical alignment fixes the "floating" look */
-  vertical-align: middle; 
+  /* 4. ALIGNMENT FIX: Align the CENTER of the stack with the CENTER of the text line */
+  vertical-align: middle;
   
   margin: 0 2px;
-  padding: 0 3px;
+  padding: 2px 4px;
   border-radius: 4px;
   cursor: help;
-  min-width: 1.4em;
+  min-width: 1.2em;
   border: 1px solid transparent;
   
-  /* Reset line-height inside the stack so it's tight */
+  /* Reset line-height inside the stack so the internal text is tight */
   line-height: 1.1; 
   
-  /* Slight negative margin to sit better on the text line */
-  position: relative;
-  top: -2px;
+  /* Shadow adds depth to separate it from the "flat" safe text */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .stack-spoof { background-color: #fff1f2; border-color: #fecaca; }
@@ -3273,7 +3278,7 @@ details.profile-section .action-bar {
 .stack-spoof .xray-top { color: #dc2626; }
 
 .xray-bot {
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
@@ -3283,12 +3288,12 @@ details.profile-section .action-bar {
   padding-top: 2px;
 }
 
-/* Script Tag Fix */
+/* Script Tag (Lat->Cyr) */
 .xray-script-tag {
   font-size: 0.5rem;
   font-weight: 800;
   color: #991b1b; 
-  margin-top: 1px;
+  margin-top: 2px;
   line-height: 1;
   white-space: nowrap;
   letter-spacing: 0.02em;
