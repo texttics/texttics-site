@@ -3394,10 +3394,10 @@ def compute_integrity_score(inputs):
 
 
 @create_proxy
-@create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
     Stateless stepper. Finds the next range after current_dom_pos.
+    Updates the LEFT-SIDE HUD Status bar.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -3405,7 +3405,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     current_logical = _dom_to_logical(t, current_dom_pos)
 
-    # 2. Resolve targets
+    # 2. Resolve targets based on key type
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -3425,13 +3425,12 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 3. Sort by start position
     targets.sort(key=lambda x: x[0])
 
-    # 4. Find next (Loop Logic Fixed)
+    # 4. Find next (Loop Logic Fixed for Contiguous Runs)
     next_hit = targets[0]
     hit_index = 1
     
-    # [FIX] Use >= to catch contiguous runs. 
-    # Since highlighting moves cursor to 'end', the next start is equal to current end.
     for i, hit in enumerate(targets):
+        # hit is (start, end, label)
         if hit[0] >= current_logical:
             next_hit = hit
             hit_index = i + 1
@@ -3442,14 +3441,20 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     status_msg = f"Highlighting <strong>{next_hit[2]}</strong> ({hit_index} of {len(targets)})"
     
-    details_line = document.getElementById("reveal-details")
-    if details_line:
-        details_line.className = "status-details warn" 
-        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
-        details_line.innerHTML = f"{icon} {status_msg}"
+    # [FIX] Target the NEW Left-Side HUD Status
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        # Use Blue/Indigo styling for HUD interactions
+        hud_status.className = "status-details status-hud-active"
+        
+        # Search/Locate Icon
+        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
+        
+        hud_status.innerHTML = f"{icon} {status_msg}"
     
     # Force update inspector for the new selection
     inspect_character(None)
+    
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
@@ -6396,6 +6401,99 @@ def render_encoding_footprint(t: str):
 # 6. MAIN ORCHESTRATOR
 # ---
 
+# Ensure registry exists at module level
+if 'HUD_HIT_REGISTRY' not in globals():
+    HUD_HIT_REGISTRY = {}
+
+def _register_hit(key: str, start: int, end: int, label: str):
+    """Helper to append a hit to the global registry."""
+    if key not in HUD_HIT_REGISTRY:
+        HUD_HIT_REGISTRY[key] = []
+    HUD_HIT_REGISTRY[key].append((start, end, label))
+
+def _dom_to_logical(t: str, dom_idx: int) -> int:
+    """
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
+    """
+    if not t: return 0
+    
+    logical_idx = 0
+    utf16_acc = 0
+    
+    for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateless stepper. Finds the next range after current_dom_pos.
+    Updates the LEFT-SIDE HUD Status bar (hud-stepper-status).
+    """
+    el = document.getElementById("text-input")
+    if not el: return
+    t = el.value
+    
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
+    # 2. Resolve targets based on key type
+    targets = []
+    if metric_key == "integrity_agg":
+        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                   HUD_HIT_REGISTRY.get("int_fracture", []) +
+                   HUD_HIT_REGISTRY.get("int_risk", []) +
+                   HUD_HIT_REGISTRY.get("int_decay", []))
+    elif metric_key == "threat_agg":
+        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    else:
+        targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    if not targets: return
+
+    # 3. Sort by start position
+    targets.sort(key=lambda x: x[0])
+
+    # 4. Find next (Loop Logic: Use >= to catch contiguous runs)
+    next_hit = targets[0]
+    hit_index = 1
+    
+    for i, hit in enumerate(targets):
+        # hit is (start, end, label)
+        if hit[0] >= current_logical:
+            next_hit = hit
+            hit_index = i + 1
+            break
+
+    # 5. Execute Highlight
+    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    
+    status_msg = f"Highlighting <strong>{next_hit[2]}</strong> ({hit_index} of {len(targets)})"
+    
+    # 6. Update LEFT-SIDE Status (Separate from NSI)
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        # Apply Active Blue Styling
+        hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex" # Force visible
+        
+        # Search/Locate Icon (Blue)
+        icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
+        
+        hud_status.innerHTML = f"{icon} {status_msg}"
+    
+    # 7. Force update inspector for the new selection
+    inspect_character(None)
+
+# Expose it
+window.cycle_hud_metric = cycle_hud_metric
+
 def populate_hud_registry(t: str):
     """Populates simple metric buckets for the HUD Stepper."""
     js_array = window.Array.from_(t)
@@ -6405,10 +6503,7 @@ def populate_hud_registry(t: str):
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
         # 1. Whitespace / Non-Std (C3)
-        # [FIX] Use the exact same Bitmask logic as the HUD Counter
-        # The HUD "Non-Std" metric counts INVIS_ANY_MASK.
         if mask & INVIS_ANY_MASK:
-             # Label logic: precise labeling for the user
              label = "Non-Std"
              if mask & INVIS_NON_ASCII_SPACE: label = "Deceptive Space"
              elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
@@ -6420,15 +6515,11 @@ def populate_hud_registry(t: str):
         # 2. Delimiters (C4)
         cat = unicodedata.category(char)
         if cat.startswith('P'):
-            # Exotic: Not ASCII, Not Latin-1, Not General Punct
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
                 _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
 
         # 3. Symbols (C5)
-        # Extended: ASCII/Latin-1/Currency
         if cat.startswith('S'):
-             # We trust the visual C5 logic: anything strictly "Exotic"
-             # (Not ASCII, Not Latin-1, Not Currency Block)
              if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
                  _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
 
@@ -6436,22 +6527,22 @@ def populate_hud_registry(t: str):
 def update_all(event=None):
     """The main function called on every input change."""
 
-    # --- RESET REGISTRY ---
-    global HUD_HIT_REGISTRY
-    HUD_HIT_REGISTRY = {}
+    # --- RESET REGISTRY (SAFE METHOD) ---
+    # Use .clear() to preserve the object reference across scopes
+    HUD_HIT_REGISTRY.clear()
 
     # [IMMUTABLE REVEAL FIX]
-    # If the user edits the text, the "Visual Overlay" is broken/invalid.
-    # We must strip the warning class and treat this as new Raw Evidence.
     t_input = document.getElementById("text-input")
     if t_input and t_input.classList.contains("reveal-active"):
         t_input.classList.remove("reveal-active")
     
-    # --- 0. Debug Logging (Optional) ---
-    try:
-        blocks_len = len(DATA_STORES.get("Blocks", {}).get("ranges", []))
-    except Exception:
-        pass
+    # [NEW] RESET HUD STATUS BAR (Left Side)
+    # When typing, the previous highlighting context is lost.
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        hud_status.style.display = "none"
+        hud_status.className = "status-details" # Reset classes
+        hud_status.innerHTML = ""
 
     t_input = document.getElementById("text-input")
     if not t_input: return
@@ -6460,17 +6551,14 @@ def update_all(event=None):
     # --- [NEW] Populate Simple HUD Metrics ---
     populate_hud_registry(t)
 
-    # --- 1.5 PASSIVE INVISIBLE SCAN (Smart Button & Always-On Status) ---
+    # --- 1.5 PASSIVE INVISIBLE SCAN (Right Side) ---
     details_line = document.getElementById("reveal-details")
     reveal_btn = document.getElementById("btn-reveal")
     reveal2_btn = document.getElementById("btn-reveal2")
     
     if details_line:
-        # Initialize counters
         counts = { "Format": 0, "Bidi": 0, "Tag": 0, "VS": 0 }
         total_invis = 0
-        
-        # Run scan only if text exists
         if t:
             for char in t:
                 cp = ord(char)
@@ -6488,38 +6576,17 @@ def update_all(event=None):
                     counts[cat] += 1
                     total_invis += 1
                     
-        # LOGIC SPLIT: DETECTED vs. CLEAN/EMPTY
         if total_invis > 0:
-            # STATE: WARNING (Amber Pill + Show Button)
-            
             details_line.className = "status-details warn"
-            
-            # Amber Alert Icon with HARDCODED Color (stroke="#d97706")
-            # We removed 'currentColor' so the icon stays Orange even though text is Black.
             icon_alert = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>"""
-            
-            # Explicit Space Character + Icon
             details_line.innerHTML = ( f"Non-Standard Invisibles:&nbsp;{total_invis}&nbsp;Found&nbsp;{icon_alert}" )
-            
-            # SHOW Reveal and Reveal2 Buttons
             if reveal_btn: reveal_btn.style.display = "flex"
             if reveal2_btn: reveal2_btn.style.display = "flex"
-            
         else:
-            # STATE: SAFE / INITIAL (Green Pill + Hide Button)
             details_line.className = "status-details clean"
-            
-            # Deep Green Checkmark
             icon_check = """<svg style="display:inline-block; vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>"""
-            
-            # HTML Order: Text First, Icon Second
             details_line.innerHTML = f"Non-Standard Invisibles: Not Found {icon_check}"
-            
-            # HIDE Reveal Buttons (Only if NOT in Reveal Mode)
-            # We check if the 'reveal-active' class is present. If so, we keep buttons visible
-            # so the user can click "Revert".
             is_revealed = t_input.classList.contains("reveal-active")
-            
             if not is_revealed:
                 if reveal_btn: reveal_btn.style.display = "none"
                 if reveal2_btn: reveal2_btn.style.display = "none"
@@ -6550,22 +6617,18 @@ def update_all(event=None):
 
     # --- 2. Run All Computations ---
 
-    # Emoji Engine (V3 Cluster Classifier)
+    # Emoji Engine
     emoji_report = compute_emoji_analysis(t)
     emoji_counts = emoji_report.get("counts", {})
     emoji_flags = emoji_report.get("flags", {})
     emoji_list = emoji_report.get("emoji_list", [])
-    
-    # Module 2.A: Dual-Atom
-    # Note: We pass emoji_counts, but the logic inside uses 'RGI Emoji Sequences' key
-    # We should map our new keys to the expected old key for backward compat in Summary Cards
     emoji_counts["RGI Emoji Sequences"] = emoji_counts.get("rgi_total", 0)
     
     cp_summary, cp_major, cp_minor = compute_code_point_stats(t, emoji_counts)
     gr_summary, gr_major, gr_minor, grapheme_forensics = compute_grapheme_stats(t)
     ccc_stats = compute_combining_class_stats(t)
     
-    # Module 2.B: Shape
+    # Shape
     major_seq_stats = compute_sequence_stats(t)
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
@@ -6576,15 +6639,15 @@ def update_all(event=None):
     eaw_run_stats = compute_eastasianwidth_analysis(t)
     vo_run_stats = compute_verticalorientation_analysis(t)
 
-    # Module 2.C: Forensic Integrity (HYBRID ENGINE)
+    # Integrity (Populates Registry)
     forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags)
     forensic_map = {row['label']: row for row in forensic_rows}
 
-    # Module 2.D: Provenance
+    # Provenance
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
 
-    # Module 3: Threat-Hunting
+    # Threat (Populates Registry)
     threat_results = compute_threat_analysis(t)
     window.latest_threat_data = threat_results
     
@@ -6594,7 +6657,7 @@ def update_all(event=None):
     meta_cards = {
         "Total Code Points": cp_summary.get("Total Code Points", 0),
         "Total Graphemes": gr_summary.get("Total Graphemes", 0),
-        "RGI Emoji Sequences": emoji_counts.get("rgi_total", 0), # Use new key
+        "RGI Emoji Sequences": emoji_counts.get("rgi_total", 0), 
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
         "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
         "Latin-1-Compatible": cp_summary.get("Latin-1-Compatible"),
@@ -6607,12 +6670,10 @@ def update_all(event=None):
     ]
     grapheme_cards = grapheme_forensics
     
-    # 2.B Matrices
     shape_matrix = major_seq_stats
     prov_matrix = provenance_stats
 
     # --- THREAT FLAGS & SCORE LOGIC ---
-    
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
     nsm_stats = analyze_nsm_overload(grapheme_strings)
 
@@ -6768,199 +6829,6 @@ def update_all(event=None):
         window.TEXTTICS_CORE_DATA = core_data_js
     except Exception as e:
         print(f"Error packaging data for Stage 2: {e}")
-
-@create_proxy
-def reveal_invisibles(event=None):
-    """
-    TRANSFORM MODE (btn-reveal): 
-    Replaces invisible characters with visible tags (e.g. [ZWSP]).
-    Toggle: Click again to Revert.
-    """
-    el = document.getElementById("text-input")
-    details_line = document.getElementById("reveal-details")
-    reveal_btn = document.getElementById("btn-reveal")
-    reveal2_btn = document.getElementById("btn-reveal2")
-    
-    if not el or not el.value: return
-
-    # --- 1. REVERT LOGIC (Obfuscate Back) ---
-    if el.getAttribute("data-revealed") == "true":
-        original = el.getAttribute("data-original")
-        if original: el.value = original
-        
-        el.removeAttribute("data-revealed")
-        el.removeAttribute("data-original")
-        el.classList.remove("reveal-active")
-        
-        if reveal_btn: 
-            reveal_btn.innerHTML = "Transform Non-Standard Invisibles &#x21C4;"
-        
-        # Reset UI
-        update_all(None)
-        return
-
-    # --- 2. TRANSFORM LOGIC ---
-    raw_text = el.value
-    new_chars = []
-    total_replaced = 0
-    
-    for char in raw_text:
-        cp = ord(char)
-        replacement = None
-        
-        if cp in INVISIBLE_MAPPING:
-            replacement = INVISIBLE_MAPPING[cp]
-        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
-            vs_offset = 1 if cp <= 0xFE0F else 17
-            base = 0xFE00 if cp <= 0xFE0F else 0xE0100
-            replacement = f"[VS{cp - base + vs_offset}]"
-        elif 0xE0000 <= cp <= 0xE007F:
-             replacement = f"[TAG:U+{cp:04X}]"
-             
-        if replacement:
-            new_chars.append(replacement)
-            total_replaced += 1
-        else:
-            new_chars.append(char)
-            
-    if total_replaced > 0:
-        # Save state
-        el.setAttribute("data-original", raw_text)
-        el.setAttribute("data-revealed", "true")
-        el.value = "".join(new_chars)
-        el.classList.add("reveal-active")
-        
-        # Toggle Button Text
-        if reveal_btn: 
-            reveal_btn.style.display = "flex"
-            reveal_btn.innerHTML = "Revert to Original &#x21A9;"
-            
-        if reveal2_btn: reveal2_btn.style.display = "flex"
-        
-        # Update RIGHT Status (Left remains "Input: Ready")
-        details_line.className = "status-details success"
-        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
-        details_line.innerHTML = f"Non-Standard Invisibles:&nbsp;{total_replaced}&nbsp;Deobfuscated&nbsp;{icon_eye}"
-
-@create_proxy
-def reveal2_invisibles(event=None):
-    """
-    HIGHLIGHT MODE (btn-reveal2): 
-    Step-through finder. Selects the NEXT invisible character relative to cursor.
-    UPDATED: Now correctly syncs with the Inspector Panel.
-    """
-    el = document.getElementById("text-input")
-    details_line = document.getElementById("reveal-details")
-    
-    if not el or not el.value: return
-    
-    text = str(el.value)
-    ranges = []
-    current_utf16_idx = 0
-    
-    # 1. Map all invisible positions
-    for char in text:
-        cp = ord(char)
-        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
-        
-        is_target = False
-        if cp in INVISIBLE_MAPPING: is_target = True
-        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: is_target = True
-        elif 0xE0000 <= cp <= 0xE007F: is_target = True
-            
-        if is_target:
-            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
-            
-        current_utf16_idx += char_len
-
-    count = len(ranges)
-    if count == 0: return
-
-    # 2. Find the NEXT target relative to the END of the current selection.
-    current_end_pos = el.selectionEnd
-    
-    target_range = None
-    target_idx = 1
-    
-    # Scan for the first range that starts AFTER (or at) the current cursor end
-    for i, r in enumerate(ranges):
-        if r[0] >= current_end_pos:
-            target_range = r
-            target_idx = i + 1
-            break
-            
-    # 3. Wrap-around Logic (Infinite Cycle)
-    if target_range is None:
-        target_range = ranges[0]
-        target_idx = 1
-            
-    # 4. Execute Selection
-    el.blur()
-    el.focus()
-    el.setSelectionRange(target_range[0], target_range[1])
-    
-    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
-    # We manually call the inspector logic to update the bottom panel immediately.
-    # We pass None because the function doesn't actually use the event argument.
-    inspect_character(None)
-    
-    # 5. Feedback
-    if details_line:
-        details_line.className = "status-details warn"
-        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-        
-        # Get hex code for display
-        try:
-            raw_idx = 0
-            acc = 0
-            for j, char in enumerate(text):
-                slen = 2 if ord(char) > 0xFFFF else 1
-                if acc == target_range[0]:
-                    raw_idx = j
-                    break
-                acc += slen
-            
-            char_code = f"U+{ord(text[raw_idx]):04X}"
-        except:
-            char_code = "INVISIBLE"
-
-        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
-
-# ---
-# 6. INITIALIZATION
-# ---
-
-async def main():
-    """Main entry point: Loads data, then hooks the input."""
-    
-    # --- FIX 1: Get element first ---
-    text_input_element = document.getElementById("text-input")
-    
-    # Start loading the external data and wait for it to finish.
-    await load_unicode_data()
-    
-    # --- FIX 2: Bind listener *after* await ---
-    text_input_element.addEventListener("input", update_all)
-    
-    # --- NEW: Hook the Inspector Panel ---
-    document.addEventListener("selectionchange", create_proxy(inspect_character))
-
-    # --- NEW: Hook the Reveal Buttons ---
-    reveal_btn = document.getElementById("btn-reveal")
-    if reveal_btn:
-        # Ensure we bind to the correct function name 'reveal_invisibles'
-        # (Make sure the function 'reveal_invisibles' is actually defined above!)
-        reveal_btn.addEventListener("click", reveal_invisibles)
-        
-    reveal2_btn = document.getElementById("btn-reveal2") # [NEW]
-    if reveal2_btn:
-        # Ensure we bind to the correct function name 'reveal2_invisibles'
-        reveal2_btn.addEventListener("click", reveal2_invisibles)
-    
-    # --- FIX 3: Un-gate the UI ---
-    text_input_element.disabled = False
-    text_input_element.placeholder = "Paste or type here..."
-    print("Text...tics is ready.")
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
