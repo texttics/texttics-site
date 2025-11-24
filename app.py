@@ -1025,7 +1025,15 @@ def render_forensic_hud(t, stats):
     # C8: INTEGRITY (Interactive Aggregator)
     int_res = stats.get('integrity', {})
     int_v = int_res.get('verdict', 'INTACT')
-    int_issues = len(int_res.get('ledger',[]))
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    int_issues = (
+        len(HUD_HIT_REGISTRY.get("int_fatal", [])) +
+        len(HUD_HIT_REGISTRY.get("int_fracture", [])) +
+        len(HUD_HIT_REGISTRY.get("int_risk", [])) +
+        len(HUD_HIT_REGISTRY.get("int_decay", []))
+    )
+    
     if int_issues == 0: int_v = "INTACT"
     
     v_cls = "txt-safe"
@@ -1040,14 +1048,22 @@ def render_forensic_hud(t, stats):
         "STATUS", int_v, v_cls,
         "ISSUES", str(int_issues), color_risk(int_issues),
         d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
-        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Ledger)", r2="Data Health",
+        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Registry Hits)", r2="Data Health",
         reg_key_2="integrity", risk_2=risk_level # LINK
     )
 
     # C9: THREAT (Interactive Aggregator)
     thr_res = stats.get('threat', {})
     thr_v = thr_res.get('verdict', 'CLEAR')
-    thr_sigs = len(thr_res.get('ledger',[]))
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    thr_sigs = (
+        len(HUD_HIT_REGISTRY.get("thr_execution", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_spoofing", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_obfuscation", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    )
+    
     if thr_sigs == 0: thr_v = "CLEAR"
 
     t_cls = "txt-safe"
@@ -1063,7 +1079,7 @@ def render_forensic_hud(t, stats):
         "STATUS", thr_v, t_cls,
         "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
         d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
-        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Ledger)", r2="Attack Vectors",
+        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Registry Hits)", r2="Attack Vectors",
         reg_key_2="threat", risk_2=risk_level_thr # LINK
     )
 
