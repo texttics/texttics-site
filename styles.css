@@ -3105,9 +3105,9 @@ details.profile-section .action-bar {
 
 /* Active State (Blue/Indigo Theme) */
 .status-hud-active {
-  background-color: #eff6ff; /* Blue-50 */
-  color: #1e40af;            /* Blue-800 */
-  border-color: #bfdbfe;     /* Blue-200 */
+  background-color: #fffbeb; /* Amber-50 */
+  color: #000000;            /* PURE BLACK TEXT */
+  border-color: #fcd34d;     /* Amber-300 (The Orange Border) */
   
   /* Visibility Logic */
   display: inline-flex !important;
@@ -3115,7 +3115,7 @@ details.profile-section .action-bar {
   visibility: visible;
 }
 
-/* Ensure the icon inside matches the text color */
+/* Ensure the icon inside matches the border color (Dark Orange) */
 .status-hud-active svg {
-  stroke: #1e40af; 
+  stroke: #d97706; 
 }
