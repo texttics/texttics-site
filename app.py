@@ -3394,73 +3394,62 @@ def compute_integrity_score(inputs):
 
 
 @create_proxy
+@create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
     Stateless stepper. Finds the next range after current_dom_pos.
     """
-    # 1. Convert DOM pos -> Logical pos
-    # We need to get the text again to be safe, or pass it. 
-    # Accessing element is safer.
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
     current_logical = _dom_to_logical(t, current_dom_pos)
 
-    # 2. Resolve targets based on key type
+    # 2. Resolve targets
     targets = []
     if metric_key == "integrity_agg":
-        # Combine all int_* buckets in severity order
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
                    HUD_HIT_REGISTRY.get("int_fracture", []) +
                    HUD_HIT_REGISTRY.get("int_risk", []) +
                    HUD_HIT_REGISTRY.get("int_decay", []))
     elif metric_key == "threat_agg":
-        # Combine all thr_* buckets in severity order
         targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
                    HUD_HIT_REGISTRY.get("thr_spoofing", []) +
                    HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
                    HUD_HIT_REGISTRY.get("thr_suspicious", []))
     else:
-        # Simple direct lookup
         targets = HUD_HIT_REGISTRY.get(metric_key, [])
 
     if not targets: return
 
-    # 3. Sort by start position (Critical for correct cycling)
+    # 3. Sort by start position
     targets.sort(key=lambda x: x[0])
 
-    # 4. Find next
+    # 4. Find next (Loop Logic Fixed)
     next_hit = targets[0]
     hit_index = 1
+    
+    # [FIX] Use >= to catch contiguous runs. 
+    # Since highlighting moves cursor to 'end', the next start is equal to current end.
     for i, hit in enumerate(targets):
-        # hit is (start, end, label)
-        if hit[0] > current_logical:
+        if hit[0] >= current_logical:
             next_hit = hit
             hit_index = i + 1
             break
 
     # 5. Execute
-    # Call JS to highlight
     window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
-    # Call JS to update status
     status_msg = f"Highlighting <strong>{next_hit[2]}</strong> ({hit_index} of {len(targets)})"
     
-    # We reuse the 'reveal-details' span for this feedback
     details_line = document.getElementById("reveal-details")
     if details_line:
-        details_line.className = "status-details warn" # Amber
-        # Use a search icon
+        details_line.className = "status-details warn" 
         icon = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>"""
         details_line.innerHTML = f"{icon} {status_msg}"
-        
-    # 6. Force Inspector Update
-    # The highlight change will trigger 'selectionchange', 
-    # but we can force it if needed. 'selectionchange' is reliable.
     
-# Expose it
-window.cycle_hud_metric = cycle_hud_metric
+    # Force update inspector for the new selection
+    inspect_character(None)
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
@@ -6413,32 +6402,35 @@ def populate_hud_registry(t: str):
     
     for i, char in enumerate(js_array):
         cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
-        # 1. Whitespace (C3)
-        if _find_in_ranges(cp, "WhiteSpace"):
-            if cp not in (0x20, 0x09, 0x0A, 0x0D):
-                _register_hit("ws_nonstd", i, i+1, f"U+{cp:04X}")
+        # 1. Whitespace / Non-Std (C3)
+        # [FIX] Use the exact same Bitmask logic as the HUD Counter
+        # The HUD "Non-Std" metric counts INVIS_ANY_MASK.
+        if mask & INVIS_ANY_MASK:
+             # Label logic: precise labeling for the user
+             label = "Non-Std"
+             if mask & INVIS_NON_ASCII_SPACE: label = "Deceptive Space"
+             elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
+             elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
+             elif mask & INVIS_TAG: label = "Tag"
+             
+             _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
 
         # 2. Delimiters (C4)
         cat = unicodedata.category(char)
         if cat.startswith('P'):
             # Exotic: Not ASCII, Not Latin-1, Not General Punct
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
-                _register_hit("punc_exotic", i, i+1, f"U+{cp:04X}")
+                _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
 
         # 3. Symbols (C5)
         # Extended: ASCII/Latin-1/Currency
-        # Exotic: Everything else
         if cat.startswith('S'):
-             # We rely on emoji analysis to separate Emoji/Hybrids.
-             # This is just for the 'Exotic' bucket if not handled there.
-             # Check if simple symbol (not emoji/hybrid)
+             # We trust the visual C5 logic: anything strictly "Exotic"
+             # (Not ASCII, Not Latin-1, Not Currency Block)
              if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 # We only register if it's NOT being handled by the Emoji engine.
-                 # But since HUD_HIT_REGISTRY is additive, we can just add it.
-                 # However, Emoji engine handles "hybrid_pictographs".
-                 # We'll trust the visual C5 logic: anything strictly "Exotic".
-                 _register_hit("sym_exotic", i, i+1, f"U+{cp:04X}")
+                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
 
 @create_proxy
 def update_all(event=None):
