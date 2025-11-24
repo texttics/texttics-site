@@ -4324,25 +4324,47 @@ def compute_threat_analysis(t: str):
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        # --- 7. HTML Report (Forensic Diff Stream) ---
-        # Filter indices for the visual report too (No Em Dash alarms)
-        visual_threat_indices = set()
+        # --- 7. HTML Report (Forensic Diff Stream v3) ---
+        
+        # A. Collect indices for visuals
+        vis_confusables = set()
         if confusable_indices:
             js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
                 try:
                     char = js_array_raw[idx]
                     cp = ord(char)
-                    sc = _find_in_ranges(cp, "Scripts")
-                    # Same filter: Ignore Common/Inherited
+                    sc = _find_in_ranges(cp, "Scripts") or "Common"
                     if sc not in ("Common", "Inherited"):
-                        visual_threat_indices.add(idx)
+                        vis_confusables.add(idx)
+                except: pass
+        
+        # B. Collect other vectors
+        vis_invisibles = set()
+        clusters = analyze_invisible_clusters(t)
+        for c in clusters:
+            for k in range(c["start"], c["end"] + 1):
+                vis_invisibles.add(k)
+                
+        vis_bidi = set()
+        if bidi_danger_indices:
+            # bidi_danger_indices is a list of strings "#12", convert to int
+            for s in bidi_danger_indices:
+                try: vis_bidi.add(int(s.replace("#","")))
                 except: pass
 
-        if visual_threat_indices:
-            final_html_report = _render_forensic_diff_stream(t, visual_threat_indices, confusables_map)
+        # C. Render if ANY threat exists
+        if vis_confusables or vis_invisibles or vis_bidi:
+            # [FIX] Pass ALL 5 required arguments correctly
+            final_html_report = _render_forensic_diff_stream(
+                t, 
+                vis_confusables, 
+                vis_invisibles, 
+                vis_bidi, 
+                confusables_map
+            )
         else:
-            final_html_report = ""
+            final_html_report = '<p class="placeholder-text">No active threat clusters detected.</p>'
         
         # SPOOFING (Logic Filter)
         # [FIX] Do NOT register Common/Inherited drifts (like Em Dash) as "Spoofing" in HUD.
