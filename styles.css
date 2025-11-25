@@ -3121,7 +3121,7 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   FORENSIC CLUSTER STREAM (v4.0 - Code Strip Architecture)
+   FORENSIC CLUSTER STREAM (v4.0 - Baseline Fix)
    ========================================= */
 
 .xray-stream-wrapper {
@@ -3131,7 +3131,6 @@ details.profile-section .action-bar {
   padding: 4px 0;
 }
 
-/* The Collapsed Spacer */
 .xray-spacer {
   text-align: center;
   font-size: 0.7rem;
@@ -3146,7 +3145,6 @@ details.profile-section .action-bar {
   margin: 8px 0;
 }
 
-/* The "Case Card" Frame */
 .cluster-card {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
@@ -3155,7 +3153,6 @@ details.profile-section .action-bar {
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
-/* Header: Metadata + Actions */
 .cluster-header {
   display: flex;
   justify-content: space-between;
@@ -3179,7 +3176,6 @@ details.profile-section .action-bar {
   color: #64748b;
 }
 
-/* Badges */
 .cluster-badge {
   font-size: 0.65rem;
   font-weight: 800;
@@ -3195,7 +3191,6 @@ details.profile-section .action-bar {
 .badge-invis { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
 .badge-bidi  { background: #fffbeb; color: #d97706; border-color: #fcd34d; }
 
-/* Copy Safe Button */
 .safe-copy-btn {
   background: #ffffff;
   border: 1px solid #cbd5e1;
@@ -3215,69 +3210,67 @@ details.profile-section .action-bar {
   background: #eff6ff;
 }
 
-/* --- THE FIX IS HERE --- */
+/* --- THE LAYOUT ENGINE --- */
 
 .cluster-body {
   padding: 16px;
+  /* Use Code-Block styling */
   font-family: var(--font-mono);
-  font-size: 1rem;
+  font-size: 1.1rem; /* Readable size */
   color: #1f2937;
   background-color: #ffffff;
   
-  /* 1. Code Strip Logic: Horizontal Scroll, No Wrapping */
+  /* Single Line Stream (Scrollable) */
   white-space: pre; 
   overflow-x: auto;
   overflow-y: hidden;
+  display: block;
   
-  /* 2. Sane Line Height: Let the stacks define the height */
-  line-height: 1.5; 
+  /* Baseline Alignment Helper */
+  line-height: 1.5;
   
-  /* 3. Flex Layout for Perfect Vertical Alignment */
-  display: flex;
-  align-items: center; /* Forces EVERYTHING to the middle line */
-  height: auto;
+  /* Add room at the bottom for the hanging stacks */
+  padding-bottom: 3rem; 
 }
 
 /* Scrollbar Polish */
-.cluster-body::-webkit-scrollbar { height: 6px; }
+.cluster-body::-webkit-scrollbar { height: 8px; }
 .cluster-body::-webkit-scrollbar-thumb { background-color: #e5e7eb; border-radius: 4px; }
 
-/* Stacks (Unified Model) */
+/* Stacks (Baseline Aligned) */
 .xray-stack {
-  /* Acts like a character but holds vertical content */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   
-  /* Vertical Alignment is handled by parent flex, but this is backup */
-  vertical-align: middle; 
+  /* CRITICAL: Align the 'Perception' char with the text baseline */
+  vertical-align: baseline;
   
-  margin: 0 1px; /* Tight spacing */
-  padding: 2px 4px;
+  margin: 0 1px;
+  padding: 0 3px;
   border-radius: 4px;
   cursor: help;
   min-width: 1.2em;
   border: 1px solid transparent;
   
-  /* Reset line-height inside so text is tight */
-  line-height: 1.1; 
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  /* Reset internal line height */
+  line-height: 1; 
 }
 
 .stack-spoof { background-color: #fff1f2; border-color: #fecaca; }
 .stack-invis { background-color: #f5f3ff; border-color: #ddd6fe; }
 .stack-bidi  { background-color: #fffbeb; border-color: #fcd34d; }
 
-/* Stack Typography */
+/* The Top Char (Aligns with "Login: p") */
 .xray-top {
   font-size: 1.1rem;
   font-weight: 800;
   color: #1f2937;
-  padding-bottom: 2px;
+  padding-bottom: 3px; /* Slight visual buffer */
 }
 .stack-spoof .xray-top { color: #dc2626; }
 
+/* The Hanging Info (Below Baseline) */
 .xray-bot {
   font-size: 0.6rem;
   font-weight: 700;
@@ -3289,9 +3282,9 @@ details.profile-section .action-bar {
   padding-top: 2px;
 }
 
-/* Script Tag (Restored & Compressed) */
+/* The Script Tag (Deepest Hanging) */
 .xray-script-tag {
-  display: block; /* Show it */
+  display: block;
   font-size: 0.5rem;
   font-weight: 800;
   color: #991b1b; 
