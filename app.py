@@ -7196,3 +7196,213 @@ async def main():
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
+
+# ==========================================
+# 13. FORENSIC WORKBENCH MODULE (Remediation)
+# ==========================================
+
+def _is_safe_strict(cp, cat, mask):
+    """
+    STRICT POLICY:
+    - ALLOW: L (Letter), N (Number), P (Punctuation), S (Symbol).
+    - ALLOW: Standard ASCII Whitespace (0x20, 0x09, 0x0A, 0x0D).
+    - DENY: Everything else (Cf, Co, Cn, Cs, Bidi, Tags, ZWJ, VS).
+    """
+    # 1. Hard Allow: ASCII Standard Whitespace
+    if cp in (0x20, 0x09, 0x0A, 0x0D): return True
+    
+    # 2. Hard Deny: Bidi, Tags, Invisibles (Bitmask Check)
+    if mask & (INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DEFAULT_IGNORABLE | INVIS_ZERO_WIDTH_SPACING):
+        return False
+        
+    # 3. Hard Deny: Bad Categories
+    if cat in ('Cf', 'Co', 'Cn', 'Cs', 'Cc'): return False
+    
+    # 4. Allow Visible Content
+    if cat[0] in ('L', 'N', 'P', 'S'): return True
+    
+    # 5. Default Deny (Unforeseen marks/separators in Strict mode)
+    return False
+
+@create_proxy
+def py_sanitize_string(mode="STRICT"):
+    """
+    Workbench Action: Sanitize.
+    Returns a JSON string { "safe_text": str, "stats": dict } to JS.
+    """
+    input_el = document.getElementById("text-input")
+    if not input_el or not input_el.value: return "{}"
+    
+    raw = input_el.value
+    stats = {
+        "removed_bidi": 0,
+        "removed_invisible": 0,
+        "normalized_spaces": 0,
+        "removed_count": 0
+    }
+    
+    buffer = []
+    
+    # --- MODE B: CONSERVATIVE (Grapheme-Aware) ---
+    if mode == "CONSERVATIVE":
+        # Logic: Preserve RGI Emoji sequences whole. Filter everything else.
+        rgi_set = DATA_STORES.get("RGISequenceSet", set())
+        segments = GRAPHEME_SEGMENTER.segment(raw)
+        
+        for seg in segments:
+            g_str = seg.segment
+            
+            # 1. Pass RGI sequences intact
+            if g_str in rgi_set:
+                buffer.append(g_str)
+                continue
+                
+            # 2. Otherwise, filter atoms inside the grapheme
+            for char in g_str:
+                cp = ord(char)
+                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+                
+                # Deny Bidi & Tags (Always dangerous)
+                if mask & (INVIS_BIDI_CONTROL | INVIS_TAG):
+                    stats["removed_bidi"] += 1
+                    continue
+                
+                # Deny High-Risk Invisibles (but allow ZWJ/VS if they survived RGI check? No, loose ZWJ is bad.)
+                if mask & (INVIS_DEFAULT_IGNORABLE):
+                    stats["removed_invisible"] += 1
+                    continue
+                    
+                buffer.append(char)
+
+    # --- MODE A: STRICT (Character-by-Character) ---
+    else:
+        for char in raw:
+            cp = ord(char)
+            cat = unicodedata.category(char)
+            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+            
+            # 1. Normalization: Convert Non-Std Spaces to 0x20
+            if cat == 'Zs' and cp != 0x20:
+                buffer.append(' ')
+                stats["normalized_spaces"] += 1
+                continue
+            
+            # 2. Strict Filtering
+            if _is_safe_strict(cp, cat, mask):
+                buffer.append(char)
+            else:
+                if mask & INVIS_BIDI_CONTROL: stats["removed_bidi"] += 1
+                elif mask & INVIS_ANY_MASK: stats["removed_invisible"] += 1
+                else: stats["removed_count"] += 1
+
+    # --- Final Normalization (NFC) ---
+    # Collapses combining marks and fixes canonical ordering
+    clean_str = "".join(buffer)
+    final_str = unicodedata.normalize("NFC", clean_str)
+    
+    return json.dumps({
+        "safe_text": final_str,
+        "stats": stats
+    })
+
+@create_proxy
+def py_get_code_snippet(lang="python"):
+    """
+    Workbench Action: Copy as Code.
+    Generates a safe, escaped string literal for developers.
+    """
+    input_el = document.getElementById("text-input")
+    if not input_el or not input_el.value: return ""
+    
+    raw = input_el.value
+    out = []
+    
+    # Escaping Map for Controls
+    CTRL_MAP = {
+        '\n': '\\n', '\r': '\\r', '\t': '\\t', 
+        '\\': '\\\\', '"': '\\"', "'": "\\'"
+    }
+    
+    for char in raw:
+        cp = ord(char)
+        
+        # 1. Safe ASCII Printable
+        if 32 <= cp <= 126:
+            if char in CTRL_MAP:
+                out.append(CTRL_MAP[char])
+            else:
+                out.append(char)
+                
+        # 2. Safe Controls
+        elif char in CTRL_MAP:
+            out.append(CTRL_MAP[char])
+            
+        # 3. Unicode Escaping
+        else:
+            if lang == "python":
+                if cp <= 0xFFFF:
+                    out.append(f"\\u{cp:04x}")
+                else:
+                    out.append(f"\\U{cp:08x}") # Python 8-digit
+            else: # javascript
+                if cp <= 0xFFFF:
+                    out.append(f"\\u{cp:04x}")
+                else:
+                    out.append(f"\\u{{{cp:x}}}") # ES6 syntax
+                    
+    # Wrap in quotes
+    safe_body = "".join(out)
+    if lang == "python":
+        return f'"{safe_body}"'
+    else:
+        return f'"{safe_body}"' # JS string
+
+@create_proxy
+def py_generate_evidence():
+    """
+    Workbench Action: Evidence.
+    Packages the current forensic state into a downloadable JSON artifact.
+    """
+    if not hasattr(window, "TEXTTICS_CORE_DATA"):
+        return
+        
+    # 1. Retrieve Data
+    core_data = window.TEXTTICS_CORE_DATA.to_py()
+    raw_text = core_data.get("raw_text", "")
+    
+    # 2. Generate Metadata
+    import datetime
+    meta = {
+        "tool": "Text...tics Stage 1",
+        "version": "1.0.0",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "input_hash_sha256": hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
+        "input_length_codepoints": len(raw_text)
+    }
+    
+    # 3. Create Artifact
+    artifact = {
+        "metadata": meta,
+        "forensic_profile": core_data
+    }
+    
+    # 4. Trigger Download via JS
+    json_str = json.dumps(artifact, indent=2, ensure_ascii=False)
+    
+    # Create a temporary blob/link in JS
+    js_blob = window.Blob.new([json_str], { "type": "application/json" })
+    js_url = window.URL.createObjectURL(js_blob)
+    
+    link = document.createElement("a")
+    link.href = js_url
+    fname = f"forensic_evidence_{meta['timestamp'][:19].replace(':','-')}.json"
+    link.setAttribute("download", fname)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(js_url)
+
+# Expose new functions
+window.py_sanitize_string = py_sanitize_string
+window.py_get_code_snippet = py_get_code_snippet
+window.py_generate_evidence = py_generate_evidence
