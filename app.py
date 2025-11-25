@@ -4151,11 +4151,23 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         full_raw_snippet = "".join(js_array[ctx_start:ctx_end]).lower()
         safe_snippet_final = "".join(safe_string_parts)
         
-        brand_badge = ""
+        # --- Multi-Target Logic (Fixed: Aggregates all matches) ---
+        found_targets = []
         for t in TARGETS:
+            # Check identifying keywords (brands, protocols, sensitive terms)
             if t in full_raw_snippet or t in safe_snippet_final.lower():
-                brand_badge = f'<span class="cluster-badge badge-brand">TARGET: {t.upper()}</span>'
-                break
+                found_targets.append(t.upper())
+        
+        brand_badge = ""
+        if found_targets:
+            # Show all found targets, comma-separated (e.g., "TARGET: PAYPAL, LOGIN")
+            # We limit to 3 to prevent the badge from breaking the layout.
+            display_targets = found_targets[:3]
+            if len(found_targets) > 3:
+                display_targets.append("...")
+            
+            label = ", ".join(display_targets)
+            brand_badge = f'<span class="cluster-badge badge-brand">TARGET: {label}</span>'
         
         type_badges_html = []
         for t in THREAT_PRIORITY:
