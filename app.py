@@ -4517,18 +4517,19 @@ def compute_threat_analysis(t: str):
                         _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
-        # OBFUSCATION (Clusters) - With VS Noise Filter
+        # OBFUSCATION (Clusters) - With VS Noise Filter & Safety Clamp
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
             # Check if this cluster is JUST a Variation Selector (VS1-VS16)
-            # If so, skip it here because it's covered by "Forced Presentation" or "Syntax Spoofing"
-            # This prevents double-counting.
             is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
             
             if not is_just_vs:
                 label = "Invisible Cluster"
                 if c.get("high_risk"): label += " [High Risk]"
-                _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
+                
+                # FIX: Clamp highlight to 1 char (s, s+1) to prevent Bidi rendering crashes
+                # when a cluster overlaps with directionality overrides.
+                _register_hit("thr_obfuscation", c["start"], c["start"]+1, label)
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
