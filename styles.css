@@ -1320,6 +1320,7 @@ Stage 2: Heatmap Row Classes
   padding: 0;        /* REMOVES GAP */
   margin-top: 0.5rem;
   box-sizing: border-box;
+  gap: 15px;
 }
 
 /* 2. Remove Default Wrappers */
@@ -1331,6 +1332,7 @@ Stage 2: Heatmap Row Classes
   margin: 0;
   display: inline-flex;
   align-items: center;
+  gap: 15px;
 }
 
 /* --- Spacing for the New HTML Layout --- */
