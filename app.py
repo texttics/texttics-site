@@ -4390,6 +4390,26 @@ def compute_threat_analysis(t: str):
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
+                # --- A2. Terminal Injection Check ---
+                if cp == 0x001B: 
+                    esc_indices.append(i)
+
+                # --- A3. Syntax Spoofing Check (VS on Symbol) ---
+                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+                if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
+                    if i > 0:
+                        prev_char = js_array_raw[i-1]
+                        prev_cp = ord(prev_char)
+                        try:
+                            prev_cat = unicodedata.category(prev_char)
+                            if prev_cat.startswith(('P', 'S', 'Z')):
+                                is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
+                                                _find_in_ranges(prev_cp, "Extended_Pictographic")
+                                is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
+                                if not (is_emoji_base and is_pres_selector):
+                                    syntax_vs_indices.append(i)
+                        except: pass
+
                 # --- B. Mixed-Script Detection (Spec-Compliant) ---
                 try:
                     category = unicodedata.category(char)[0] 
