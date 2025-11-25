@@ -3445,8 +3445,8 @@ details.profile-section .action-bar {
     padding: 0.6rem 0.5rem; /* Vertical padding normalized */
     /* UNIFORM TYPOGRAPHY */
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 0.85rem !important; /* Force equality */
-    font-weight: 600;
+    font-size: 1rem !important; /* Force equality */
+    font-weight: 700;
     
     transition: all 0.2s ease;
     gap: 6px; 
