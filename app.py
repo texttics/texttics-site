@@ -4338,6 +4338,9 @@ def compute_threat_analysis(t: str):
     
     # --- Trackers ---
     bidi_danger_indices = []
+    esc_indices = []          # [FIX] Local tracker for ESC
+    syntax_vs_indices = []    # [FIX] Local tracker for Syntax Spoofing
+    
     base_scripts_in_use = set() 
     ext_scripts_in_use = set()
     is_non_ascii_LNS = False 
