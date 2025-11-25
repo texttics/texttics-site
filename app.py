@@ -3715,39 +3715,35 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
 
     # --- 8. PRE-CALC CONSUMED INDICES (Priority Consumption) ---
-    # We must collect ALL indices already claimed by higher-priority threats (Execution/Bidi)
-    # to prevent "Double Counting" them as generic Invisible Clusters.
-    consumed_indices = set()
-    
-    # A. Bidi Indices (Converted from "#12" strings)
-    for s in bidi_danger_indices:
-        try: consumed_indices.add(int(s.replace("#","")))
-        except: pass
+        consumed_indices = set()
         
-    # B. Syntax Spoofing Indices (Integers)
-    for idx in legacy_indices["suspicious_syntax_vs"]:
-        consumed_indices.add(idx)
-
-    # OBFUSCATION (Clusters) - With VS Noise Filter & Safety Clamp
-    clusters = analyze_invisible_clusters(t)
-    for c in clusters:
-        # Check for overlap with higher priority threats
-        cluster_range = set(range(c["start"], c["end"] + 1))
-        if not cluster_range.isdisjoint(consumed_indices):
-            # This cluster contains characters already flagged as EXECUTION.
-            # Skip it to prevent double-counting and stepper overlap.
-            continue
-
-        # 1. NOISE FILTER: Check if this cluster is JUST a Variation Selector
-        is_just_vs = (c["length"] == 1 and (c["mask_union"] & INVIS_VARIATION_STANDARD))
-        
-        if not is_just_vs:
-            label = "Invisible Cluster"
-            if c.get("high_risk"): label += " [High Risk]"
+        # A. Bidi Indices (Converted from "#12" strings)
+        for s in bidi_danger_indices:
+            try: consumed_indices.add(int(s.replace("#","")))
+            except: pass
             
-            # CRITICAL FIX: Zero-Width Registration (start, start).
-            # Prevents browser selection glitches on large invisible blocks.
-            _register_hit("thr_obfuscation", c["start"], c["start"], label)
+        # B. Syntax Spoofing Indices (Use local list)
+        for idx in syntax_vs_indices:
+            consumed_indices.add(idx)
+
+        # OBFUSCATION (Clusters) - With VS Noise Filter & Safety Clamp
+        clusters = analyze_invisible_clusters(t)
+        for c in clusters:
+            # Check for overlap with higher priority threats
+            cluster_range = set(range(c["start"], c["end"] + 1))
+            if not cluster_range.isdisjoint(consumed_indices):
+                continue
+
+            # 1. NOISE FILTER: Check if this cluster is JUST a Variation Selector
+            is_just_vs = (c["length"] == 1 and (c["mask_union"] & INVIS_VARIATION_STANDARD))
+            
+            if not is_just_vs:
+                label = "Invisible Cluster"
+                if c.get("high_risk"): label += " [High Risk]"
+                
+                # CRITICAL FIX: Zero-Width Registration (start, start).
+                # Prevents browser selection glitches on large invisible blocks.
+                _register_hit("thr_obfuscation", c["start"], c["start"], label)
 
     # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
@@ -4338,7 +4334,6 @@ def compute_threat_analysis(t: str):
     
     # --- Trackers ---
     bidi_danger_indices = []
-    esc_indices = []          # [FIX] Local tracker for ESC
     syntax_vs_indices = []    # [FIX] Local tracker for Syntax Spoofing
     
     base_scripts_in_use = set() 
@@ -4390,9 +4385,21 @@ def compute_threat_analysis(t: str):
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
-                # --- A2. Terminal Injection Check ---
-                if cp == 0x001B: 
-                    esc_indices.append(i)
+                # --- A2. Syntax Spoofing Check (Local Re-calc for Consumption) ---
+                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+                if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
+                    if i > 0:
+                        prev_char = js_array_raw[i-1]
+                        prev_cp = ord(prev_char)
+                        try:
+                            prev_cat = unicodedata.category(prev_char)
+                            if prev_cat.startswith(('P', 'S', 'Z')):
+                                is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
+                                                _find_in_ranges(prev_cp, "Extended_Pictographic")
+                                is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
+                                if not (is_emoji_base and is_pres_selector):
+                                    syntax_vs_indices.append(i)
+                        except: pass
 
                 # --- A3. Syntax Spoofing Check (VS on Symbol) ---
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
