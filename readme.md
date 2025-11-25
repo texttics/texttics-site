@@ -1077,3 +1077,33 @@ We successfully audited and hardened the engine to reach a "Local Maximum" of ut
 * **Visual & Cognitive Polish:**
     * **Fact-Based Dashboard:** We removed noisy "Target Guessing" (e.g., "Target: PayPal") in favor of deterministic **Cluster-Level Counters** (e.g., `[10 EXECUTION] [3 SPOOF]`).
     * **Unified Mental Model:** A global "Scoreboard" at the top and a "Legend" at the bottom now share the exact same terminology and color coding, significantly reducing the cognitive load for non-expert analysts.
+
+🛠️ New Module: The Forensic Workbench (Remediation)
+
+This update introduces a dedicated Remediation & Evidence layer to the Actions panel, transforming the tool from a passive analyzer into an active forensic instrument.
+
+The Problem
+
+Detecting a threat is only step one. Analysts and developers often struggle with the next step: "How do I safely move this malicious string into a ticket, a unit test, or a report without triggering the exploit myself?"
+
+The Solution: Three Active Workflows
+
+The new Forensic Workbench provides three distinct pipelines for handling hazardous text safely:
+
+1. 🛡️ Sanitization Engine (The "Fixer")
+
+Instantly neutralizes invisible and structural threats while preserving the visual text.
+
+Strict Mode: The "Nuke" option. Drops all Bidi controls, Tags, invisible formatters, private use characters, and non-standard whitespace. Forces NFC normalization. Ideal for logs and legacy databases.
+
+Conservative Mode: The "Human" option. Preserves valid RGI Emoji sequences (including ZWJ families) while stripping structural threats from the rest of the string. Ideal for chat apps and tickets.
+
+2. 💻 Encapsulation Engine (The "Developer")
+
+Generates safe, escaped string literals for immediate use in source code.
+
+Copy as Python/JS: Escapes dangerous characters (quotes, backslashes, controls) and converts non-ASCII text into safe Unicode escapes (e.g., \u202E or \u{1F4A9}). This allows developers to write unit tests that reproduce the attack without making the source file itself malicious.
+
+3. 💾 Evidence Engine (The "Chain of Custody")
+
+Download as JSON: Generates a forensic artifact containing the full analysis profile, timestamps, and a SHA-256 cryptographic hash of the input. This provides an immutable record of the analysis for incident response logs.
