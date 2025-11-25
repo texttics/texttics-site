@@ -3301,15 +3301,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         max_len = len(js_array) 
         
         for s, e, lbl in merged_bidi: 
-            # Ensure width is at least 1, but doesn't exceed text length
-            # We clamp 'e' to max_len
-            safe_e = min(max_len, max(e, s + 1))
+            # [CRITICAL FIX] Use (s, s+1) instead of (s, s) or ensure range has width
+            end_pos = max(e, s + 1)
+            _register_hit("thr_execution", s, end_pos, lbl)
             
-            if s < safe_e:
-                _register_hit("thr_execution", s, safe_e, lbl)
-
     # 2. Other Execution Threats
-    # [CRITICAL FIX] Use (idx, idx+1)
+    # [CRITICAL FIX] Use (idx, idx+1) to ensure width 1
     for idx in legacy_indices.get("esc", []): 
         _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
     
@@ -6299,36 +6296,23 @@ def render_encoding_footprint(t: str):
 if 'HUD_HIT_REGISTRY' not in globals():
     HUD_HIT_REGISTRY = {}
 
-def _register_hit(key: str, start: int, end: int, label: str, max_span=100):
-    """
-    Helper to append a hit to the global registry.
+def _register_hit(key: str, start: int, end: int, label: str):
+    """Helper to append a hit to the global registry.
     
-    INVARIANT ENFORCEMENT:
-    1. Ranges must be atomic or localized (span <= max_span).
-    2. Document-wide aggregates (0, len) are strictly REJECTED.
-    3. Zero-width ranges are expanded to width 1.
+    Enforces sane ranges so the HUD stepper + DOM highlighter never
+    receive zero-width or inverted spans.
     """
     if key not in HUD_HIT_REGISTRY:
         HUD_HIT_REGISTRY[key] = []
         
     try:
-        s, e = int(start), int(end)
+        s = int(start)
+        e = int(end)
         
-        # [CRITICAL ARCHITECTURAL FIX]
-        # Reject suspiciously large ranges that look like document-wide aggregates.
-        # The Stepper is for navigation, not summary stats.
-        span = e - s
-        if span > max_span:
-            # Optional: Log to console to catch the upstream culprit
-            # print(f"HUD_REGISTRY REJECT: {key} span={span} label='{label}'")
-            return 
-
-        # Enforce Atomic Visibility (Minimum Width = 1)
-        if e <= s:
-            e = s + 1
-        if s < 0:
-            s = 0
-        if e < s:
+        # [CRITICAL FIX] Enforce Atomic Visibility (Minimum Width = 1)
+        # This prevents the "Select All" browser glitch caused by zero-width 
+        # selections (s, s).
+        if e <= s: 
             e = s + 1
             
         HUD_HIT_REGISTRY[key].append((s, e, label))
