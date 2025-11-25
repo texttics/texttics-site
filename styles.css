@@ -3413,3 +3413,72 @@ details.profile-section .action-bar {
 .cluster-card {
   scroll-margin-top: 120px; 
 }
+
+/* --- TIER 2: FORENSIC WORKBENCH --- */
+.workbench-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px;
+    background: #f8fafc; /* Very Light Slate */
+    border-bottom: 1px solid var(--color-border);
+}
+
+.wb-group {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+/* Label Separator */
+.action-separator-labeled {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 12px 0 4px 0;
+}
+.action-separator-labeled::before,
+.action-separator-labeled::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--color-border);
+}
+.action-separator-labeled span {
+    padding: 0 10px;
+    font-weight: 600;
+}
+
+/* Workbench Buttons */
+.wb-btn-strict {
+    background-color: #eff6ff; /* Blue-50 */
+    color: #1e40af; /* Blue-800 */
+    border-color: #bfdbfe;
+}
+.wb-btn-strict:hover { background-color: #dbeafe; }
+
+.wb-btn-cons {
+    background-color: #fff7ed; /* Orange-50 */
+    color: #9a3412; /* Orange-800 */
+    border-color: #fed7aa;
+}
+.wb-btn-cons:hover { background-color: #ffedd5; }
+
+.wb-btn-code {
+    background-color: #f0fdf4; /* Green-50 */
+    color: #166534; /* Green-800 */
+    border-color: #bbf7d0;
+    font-family: var(--font-mono);
+    font-size: 0.8rem !important;
+}
+.wb-btn-code:hover { background-color: #dcfce7; }
+
+.wb-btn-evidence {
+    background-color: #faf5ff; /* Purple-50 */
+    color: #6b21a8; /* Purple-800 */
+    border-color: #e9d5ff;
+}
+.wb-btn-evidence:hover { background-color: #f3e8ff; }
