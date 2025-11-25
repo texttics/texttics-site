@@ -3709,11 +3709,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             # We point the cursor AT the threat rather than selecting it.
             _register_hit("thr_execution", s, s, lbl)
 
-   # 2. Other Execution Threats
-        # CRITICAL FIX: Use local lists 'esc_indices' and 'syntax_vs_indices'
-        # CRITICAL FIX: Zero-Width Registration (idx, idx) to prevent selection bugs.
-        for idx in esc_indices: _register_hit("thr_execution", idx, idx, "Terminal Injection")
-        for idx in syntax_vs_indices: _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
+    # 2. Other Execution Threats
+    # CRITICAL FIX: Use 'legacy_indices' dictionary lookups here
+    for idx in legacy_indices["esc"]: 
+        _register_hit("thr_execution", idx, idx, "Terminal Injection")
+    
+    for idx in legacy_indices["suspicious_syntax_vs"]: 
+        _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
 
         # --- 8. PRE-CALC CONSUMED INDICES (Priority Consumption) ---
         # We must collect ALL indices already claimed by higher-priority threats (Execution/Bidi)
