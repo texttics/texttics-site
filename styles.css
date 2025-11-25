@@ -3395,3 +3395,85 @@ tr.flag-row-crit {
   width: 1.1em;
   height: 1.1em;
 }
+
+/* =========================================
+   SMART TOOLTIP ENGINE (Violet Forensic Theme)
+   ========================================= */
+
+/* 1. Base Button Prep */
+.macro-btn {
+    position: relative; /* Anchors the tooltip to the button */
+    /* ... existing macro-btn styles ... */
+}
+
+/* 2. The Tooltip Body (Hidden by default) */
+.macro-btn::before {
+    content: attr(data-tooltip); /* Pulls text from HTML */
+    
+    /* Positioning (Above the button) */
+    position: absolute;
+    bottom: 100%;       
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px); /* Center & lift slightly */
+    
+    /* Box Model */
+    width: max-content;
+    max-width: 260px;   /* Constrains width for readability */
+    padding: 8px 12px;
+    margin-bottom: 8px; /* Space for the arrow */
+    border-radius: 6px;
+    
+    /* Visual Style (Dark Violet Theme) */
+    background-color: #1e1b4b; /* Very Dark Violet (Indigo-950) */
+    color: #e0e7ff;            /* Light Indigo Text */
+    border: 1px solid #4338ca; /* Indigo-700 Border */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    
+    /* Typography */
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.4;
+    text-align: center;
+    white-space: pre-wrap; /* Allows the line break (&#xa;) to work */
+    z-index: 100;
+    
+    /* Animation State: Hidden */
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none; 
+}
+
+/* 3. The Little Triangle Arrow */
+.macro-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(0px);
+    
+    /* Triangle Shape */
+    border-width: 6px;
+    border-style: solid;
+    border-color: #1e1b4b transparent transparent transparent; /* Arrow matches Background */
+    
+    /* Animation State: Hidden */
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 100;
+}
+
+/* 4. HOVER STATE (Reveal) */
+.macro-btn:hover::before,
+.macro-btn:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-12px); /* Float Up Effect */
+}
+
+/* Arrow specific transform adjust */
+.macro-btn:hover::after {
+    transform: translateX(-50%) translateY(-4px);
+}
