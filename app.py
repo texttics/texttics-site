@@ -3929,21 +3929,33 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
         return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
 
 
+def _escape_for_js(s: str) -> str:
+    """
+    Sanitizes a string for insertion into a single-quoted JS function call.
+    Handles backslashes, single quotes, and newlines to prevent syntax errors.
+    """
+    return (s.replace("\\", "\\\\")
+             .replace("'", "\\'")
+             .replace("\n", "\\n")
+             .replace("\r", "\\r"))
+
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v4.1 (Visual Sanitization).
-    1. Clusters threats.
-    2. [CRITICAL] Flattens newlines/tabs in the visual layer to prevent layout breaks.
-    3. Uses Inline-Block HTML architecture.
+    Forensic X-Ray Engine v5.0 (The Compressor).
+    1. Collapses contiguous invisible threats into "Multi-Stacks" (DEL x N).
+    2. Visualizes Control characters (Newline -> ↵).
+    3. Securely escapes JS interactions.
     """
     if not t: return ""
     
+    # Combine and sort all threats
     all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
     if not all_threats: return ""
 
     js_array = window.Array.from_(t)
     text_len = len(js_array)
     
+    # 1. Cluster Formation
     clusters = []
     if all_threats:
         current_cluster = [all_threats[0]]
@@ -3960,6 +3972,9 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                "instagram", "whatsapp", "bank", "secure", "login", "signin", 
                "account", "update", "http", "https", "www"]
 
+    # Priority list for badges (Deterministic Order)
+    THREAT_PRIORITY = ["EXECUTION", "SPOOF", "OBFUSCATE"]
+
     html_output = ['<div class="xray-stream-wrapper">']
     prev_end = 0
     
@@ -3967,32 +3982,27 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         start_idx = clust[0]
         end_idx = clust[-1]
         
+        # Define Blast Radius
         ctx_start = max(0, start_idx - 10)
         ctx_end = min(text_len, end_idx + 11)
         
+        # Gap Renderer
         if ctx_start > prev_end:
             gap = ctx_start - prev_end
             if gap > 0:
-                html_output.append(f'<div class="xray-spacer">[ ... {gap} safe characters ... ]</div>')
+                html_output.append(f'<div class="xray-spacer">[ ... {gap} safe characters skipped ... ]</div>')
         
         cluster_html_parts = []
         safe_string_parts = []
         threat_types = set()
         
-        for i in range(ctx_start, ctx_end):
+        # --- THE RENDER LOOP (Lookahead Enabled) ---
+        i = ctx_start
+        while i < ctx_end:
             char = js_array[i]
             cp = ord(char)
             
-            # [VISUAL SANITIZATION] 
-            # Flatten layout-breaking chars for the visual strip.
-            # Use a symbol for newline if it's NOT a threat, or just space.
-            # If it IS a threat (e.g. NSI), it gets a stack anyway.
-            if char in ('\n', '\r', '\t', '\v', '\f'):
-                char_vis = ' ' 
-            else:
-                char_vis = char
-            
-            # A. Sanitization Logic (Safe Copy)
+            # A. Safe String Construction (Data Layer)
             if i in invisible_indices: pass 
             elif i in bidi_indices: pass
             elif i in confusable_indices:
@@ -4001,10 +4011,53 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             else:
                 safe_string_parts.append(char)
 
-            # B. Visual Rendering Logic
-            if i in confusable_indices:
+            # B. Visual Layer (Visual Sanitization)
+            # Map layout-breaking controls to visible glyphs for the STREAM
+            char_vis = char
+            if char == '\n': char_vis = '↵'
+            elif char == '\r': char_vis = '↵'
+            elif char == '\t': char_vis = '⇥'
+            elif char in ('\v', '\f'): char_vis = '␉'
+            
+            # C. Threat Logic with Lookahead Compression
+            
+            # Case 1: Invisible / Obfuscation (Compressible)
+            if i in invisible_indices:
+                threat_types.add("OBFUSCATE")
+                
+                # Look ahead for consecutive invisibles
+                run_len = 1
+                lookahead = i + 1
+                while lookahead < ctx_end and lookahead in invisible_indices:
+                    run_len += 1
+                    lookahead += 1
+                
+                if run_len > 1:
+                    # Render Compressed Stack
+                    marker = (
+                        f'<span class="xray-stack stack-invis" title="{run_len} hidden characters (Obfuscation)">'
+                        f'<span class="xray-top">×{run_len}</span>'
+                        f'<span class="xray-bot">DEL</span>'
+                        f'</span>'
+                    )
+                    cluster_html_parts.append(marker)
+                    i += run_len # Skip the loop forward
+                    continue # Next iteration
+                else:
+                    # Single Invisible
+                    marker = (
+                        f'<span class="xray-stack stack-invis" title="Hidden Character (Obfuscation)">'
+                        f'<span class="xray-top">&bull;</span>'
+                        f'<span class="xray-bot">DEL</span>'
+                        f'</span>'
+                    )
+                    cluster_html_parts.append(marker)
+
+            # Case 2: Confusable / Spoof
+            elif i in confusable_indices:
                 threat_types.add("SPOOF")
                 skel = confusables_map.get(cp, "?")
+                # Truncate skeleton if long
                 disp_skel = skel[0] + (".." if len(skel)>1 else "") if skel else "?"
                 
                 script_tag = ""
@@ -4018,26 +4071,19 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                         script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
                 except: pass
 
-                # Use _escape_html(char_vis) to prevent layout breaks in the Top of the stack
+                # Safety: Escape title attributes
+                title_safe = f"Spoofing Risk&#10;Raw: {_escape_html(char)}&#10;Safe: {_escape_html(skel)}"
+                
                 stack = (
-                    f'<span class="xray-stack stack-spoof" title="Spoofing Risk\nRaw: {char}\nSafe: {skel}">'
+                    f'<span class="xray-stack stack-spoof" title="{title_safe}">'
                     f'<span class="xray-top">{_escape_html(char_vis)}</span>'
                     f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
                     f'{script_tag}'
                     f'</span>'
                 )
                 cluster_html_parts.append(stack)
-                
-            elif i in invisible_indices:
-                threat_types.add("OBFUSCATE")
-                marker = (
-                    f'<span class="xray-stack stack-invis" title="Hidden Character (Obfuscation)">'
-                    f'<span class="xray-top" style="color:#7c3aed;">&bull;</span>'
-                    f'<span class="xray-bot">DEL</span>'
-                    f'</span>'
-                )
-                cluster_html_parts.append(marker)
-                
+
+            # Case 3: Bidi / Execution
             elif i in bidi_indices:
                 threat_types.add("EXECUTION")
                 marker = (
@@ -4047,37 +4093,42 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     f'</span>'
                 )
                 cluster_html_parts.append(marker)
-                
+
+            # Case 4: Context (Safe)
             else:
-                # Context: Use the sanitized char
                 cluster_html_parts.append(_escape_html(char_vis))
+            
+            i += 1 # Increment loop
 
         full_raw_snippet = "".join(js_array[ctx_start:ctx_end]).lower()
         safe_snippet_final = "".join(safe_string_parts)
         
+        # Badges (Deterministic)
         brand_badge = ""
         for t in TARGETS:
             if t in full_raw_snippet or t in safe_snippet_final.lower():
                 brand_badge = f'<span class="cluster-badge badge-brand">TARGET: {t.upper()}</span>'
                 break
         
-        type_badges = ""
-        for t in threat_types:
-            cls = "badge-spoof" if t == "SPOOF" else ("badge-invis" if t == "OBFUSCATE" else "badge-bidi")
-            type_badges += f'<span class="cluster-badge {cls}">{t}</span>'
-
-        safe_str_escaped = _escape_html(safe_snippet_final).replace('"', '&quot;')
+        type_badges_html = []
+        for t in THREAT_PRIORITY:
+            if t in threat_types:
+                cls = "badge-spoof" if t == "SPOOF" else ("badge-invis" if t == "OBFUSCATE" else "badge-bidi")
+                type_badges_html.append(f'<span class="cluster-badge {cls}">{t}</span>')
+        
+        # Button Safety Logic
+        safe_str_js = _escape_for_js(safe_snippet_final)
         
         card = f"""
         <div class="cluster-card">
             <div class="cluster-header">
                 <div class="cluster-meta">
                     <span class="cluster-id">#{idx + 1}</span>
-                    {type_badges}
+                    {"".join(type_badges_html)}
                     {brand_badge}
                 </div>
-                <button class="safe-copy-btn" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_escaped}', this)">
-                    Copy Safe Snippet
+                <button class="safe-copy-btn" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_js}', this)">
+                    Copy Sanitized Snippet
                 </button>
             </div>
             <div class="cluster-body">
