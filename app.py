@@ -3682,21 +3682,19 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     
     # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
     
-    # 1. Cluster Bidi Dangers (Fix for "12 Signals" Flood)
+    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
+    
+    # 1. Cluster Bidi Dangers (Fix for Flood)
     if bidi_dangers:
-        # Sort by start position
         bidi_dangers.sort(key=lambda x: x[0])
         
-        # Merging Logic
         merged_bidi = []
         if bidi_dangers:
             curr_s, curr_e, curr_lbl = bidi_dangers[0]
             for i in range(1, len(bidi_dangers)):
                 next_s, next_e, next_lbl = bidi_dangers[i]
-                # If adjacent (or overlapping), merge
                 if next_s <= curr_e:
                     curr_e = max(curr_e, next_e)
-                    # Keep the label generic if we merge
                     if "Sequence" not in curr_lbl: curr_lbl = "Bidi Sequence"
                 else:
                     merged_bidi.append((curr_s, curr_e, curr_lbl))
@@ -3704,8 +3702,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
             
         for s, e, lbl in merged_bidi: 
-            # FIX: Highlight only the first character (s, s+1) to prevent 
-            # the browser's "Whole Row" Bidi rendering glitch.
+            # CRITICAL FIX: Use 's, s+1' (not 's, e').
+            # Highlighting a range of Bidi controls causes browser rendering selection crashes.
             _register_hit("thr_execution", s, s+1, lbl)
 
     # 2. Other Execution Threats
@@ -4517,18 +4515,18 @@ def compute_threat_analysis(t: str):
                         _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
-        # OBFUSCATION (Clusters) - With VS Noise Filter & Safety Clamp
+        # OBFUSCATION (Clusters) - With VS Noise Filter
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
-            # Check if this cluster is JUST a Variation Selector (VS1-VS16)
+            # Filter out Clusters that are just VS chars (avoid double-count)
             is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
             
             if not is_just_vs:
                 label = "Invisible Cluster"
                 if c.get("high_risk"): label += " [High Risk]"
                 
-                # FIX: Clamp highlight to 1 char (s, s+1) to prevent Bidi rendering crashes
-                # when a cluster overlaps with directionality overrides.
+                # CRITICAL FIX: Use 'start, start+1' (not 'end+1').
+                # Highlighting 17 hidden characters provides no value and risks Bidi overlap crashes.
                 _register_hit("thr_obfuscation", c["start"], c["start"]+1, label)
 
     except Exception as e:
