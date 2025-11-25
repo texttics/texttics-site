@@ -3206,7 +3206,8 @@ tr.flag-row-crit {
     
     /* Positioning */
     width: fit-content;
-    margin: -10px auto 1rem auto; /* Pulls it up closer to status line */
+    /* CHANGED: Removed bottom margin (was 1rem) to close the gap */
+    margin: -10px auto 0 auto;
     
     /* STYLE: Transparent + Violet Border */
     background-color: transparent;
@@ -3221,6 +3222,19 @@ tr.flag-row-crit {
     list-style: none;
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+/* 2. NEW: Wrapper Spacing Logic (The "Pick Up" Fix) */
+/* This targets the <details> container itself */
+#actions-panel-wrapper {
+    /* Pulls the next section (HUD) up significantly to sit under the button */
+    /* This eats into the page's default 2rem gap */
+    margin-bottom: -1.5rem; 
+}
+
+/* SAFETY: When you click to OPEN the panel, restore space so it fits */
+#actions-panel-wrapper[open] {
+    margin-bottom: 0;
 }
 
 /* This targets the <h2> or text inside the button specifically */
