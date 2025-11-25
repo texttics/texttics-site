@@ -6303,8 +6303,7 @@ def _register_hit(key: str, start: int, end: int, label: str):
 
 def _dom_to_logical(t: str, dom_idx: int) -> int:
     """
-    Converts a DOM UTF-16 index to a Python Logical Code Point index.
-    Iterates the string to count code points until the UTF-16 accumulator matches.
+    INPUT CONVERTER: Browser DOM Index (UTF-16) -> Python Logical Index.
     """
     if not t: return 0
     
@@ -6320,6 +6319,23 @@ def _dom_to_logical(t: str, dom_idx: int) -> int:
         logical_idx += 1
         
     return logical_idx
+
+def _logical_to_dom(t: str, logical_idx: int) -> int:
+    """
+    OUTPUT CONVERTER: Python Logical Index -> Browser DOM Index (UTF-16).
+    Required for window.TEXTTICS_HIGHLIGHT_RANGE to work with Emojis.
+    """
+    if not t or logical_idx <= 0: return 0
+    
+    # Slice string up to the logical index (Python counts by Code Point)
+    sub = t[:logical_idx]
+    
+    # Calculate length in UTF-16 code units (BMP=1, Astral=2)
+    # This strictly matches JS string.length behavior
+    try:
+        return len(sub.encode('utf-16-le')) // 2
+    except:
+        return logical_idx # Fallback
 
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
@@ -6337,7 +6353,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     except:
         dom_pos_int = 0
         
-    # 1. Convert Browser Position to Logical Position
+    # 1. Convert Browser Position to Logical Position (Input)
     current_logical = _dom_to_logical(t, dom_pos_int)
 
     # 2. Define Human-Readable Labels
@@ -6370,7 +6386,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not targets: return
 
     # 4. Sort & Find Next
-    # Sort primarily by start, secondarily by end
     targets.sort(key=lambda x: (x[0], x[1]))
     
     next_hit = targets[0] # Default to wrap around (first item)
@@ -6386,7 +6401,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
             
     # 5. Execute Highlight
-    # CRITICAL FIX: Convert Logical Index BACK to DOM Index before sending to JS.
+    # CRITICAL FIX: Convert Logical Index BACK to DOM Index (Output)
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
