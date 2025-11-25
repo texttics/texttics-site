@@ -3198,59 +3198,58 @@ tr.flag-row-crit {
    UNIFIED ACTIONS PANEL & WORKBENCH (Compact & Centered)
    ========================================= */
 
-/* 1. The "Actions" Toggle Button (Violet Theme - SLIM & HIGHER) */
+/* 1. The "Actions" Toggle Button (Violet Theme - FIXED) */
 #actions-panel-wrapper > summary {
     display: flex;
     justify-content: center;
     align-items: center;
     
-    /* Centering & Positioning */
+    /* Positioning */
     width: fit-content;
-    /* Negative top margin pulls it closer to the status bar (5px gap visual) */
-    margin: -10px auto 1rem auto; 
+    margin: -10px auto 1rem auto; /* Pulls it up closer to status line */
     
-    /* STYLE: Transparent + Violet Border + Rect-Pill */
+    /* STYLE: Transparent + Violet Border */
     background-color: transparent;
-    border: 1px solid #8b5cf6; /* Thinner border (1px) for slim look */
+    border: 1px solid #8b5cf6;
     color: #7c3aed !important; 
     
-    /* SLIM SIZE: Reduced padding and font for "Twice Smaller" look */
-    padding: 3px 32px;  /* 3px top/bottom gives you that ~24px height naturally */ 
-    border-radius: 8px; /* Tighter radius */
-    /* 3. ENSURE the border is clean */
-    border: 1px solid #8b5cf6;
-    /* Typography */
-    font-weight: 800;
-    font-size: 0.8rem; /* Smaller font */
-    line-height: 1;
-    letter-spacing: 0.02em;
+    /* SIZE: Padding controls the size now. */
+    padding: 3px 24px; 
+    /* removed height: ... let padding handle it */
+    border-radius: 8px;
+    
     list-style: none;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
-/* Ensure Inner Text/Icon inherits the Violet Color */
+/* This targets the <h2> or text inside the button specifically */
 #actions-panel-wrapper > summary .section-title,
-#actions-panel-wrapper > summary .section-icon {
-    color: #7c3aed !important; 
-    font-weight: 800;
-    font-size: 0.8rem; /* Match parent */
+#actions-panel-wrapper > summary h2 {
+    border: none !important;     /* REMOVES THE HORIZONTAL LINE */
+    margin: 0 !important;        /* REMOVES THE EMPTY SPACE BELOW */
+    padding: 0 !important;       /* REMOVES ANY EXTRA PADDING */
+    
+    font-size: 0.8rem !important;
+    font-weight: 800 !important;
+    color: #7c3aed !important;   /* Violet Text */
+    line-height: 1 !important;   /* Ensures text sits tight */
 }
 
+/* Hide the default triangle */
 #actions-panel-wrapper > summary::-webkit-details-marker { display: none; }
 
-/* Header Hover State */
+/* Hover State */
 #actions-panel-wrapper > summary:hover {
     background-color: #f5f3ff; 
     border-color: #7c3aed;     
-    color: #6d28d9 !important; 
     transform: translateY(-1px);
     box-shadow: 0 1px 3px rgba(124, 58, 237, 0.15);
 }
 
 #actions-panel-wrapper > summary:hover .section-title,
-#actions-panel-wrapper > summary:hover .section-icon {
-    color: #6d28d9 !important;
+#actions-panel-wrapper > summary:hover h2 {
+    color: #6d28d9 !important; /* Darker Violet on Hover */
 }
 
 /* 2. The Main Container (CENTERED LAYOUT) */
