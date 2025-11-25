@@ -3889,10 +3889,11 @@ def _generate_uts39_skeleton(t: str):
         return "" # Return empty string on failure
 
 def _escape_html(s: str):
-    """Escapes basic HTML characters."""
+    """Escapes basic HTML characters including quotes for attribute safety."""
     s = s.replace("&", "&amp;")
     s = s.replace("<", "&lt;")
     s = s.replace(">", "&gt;")
+    s = s.replace('"', "&quot;")
     return s
 
 def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
@@ -3941,10 +3942,10 @@ def _escape_for_js(s: str) -> str:
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v5.1 (Polished).
-    1. Lookahead Compression for invisibles.
-    2. Styled Control Glyphs (Gray Newlines).
-    3. Secure JS escaping.
+    Forensic X-Ray Engine v5.2 (Semantics Polish).
+    1. Safe Escaping: Quotes handled in tooltips.
+    2. Semantic Labels: DEL -> HID.
+    3. Explicit Actions: Button labeled 'Copy Safe Slice' with scope tooltip.
     """
     if not t: return ""
     
@@ -3996,7 +3997,8 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             char = js_array[i]
             cp = ord(char)
             
-            # A. Safe String
+            # A. Safe String Construction (The "Sanitization" Logic)
+            # Rule: Invisibles/Bidi are DROPPED. Confusables are MAPPED to Skeleton.
             if i in invisible_indices: pass 
             elif i in bidi_indices: pass
             elif i in confusable_indices:
@@ -4006,7 +4008,6 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 safe_string_parts.append(char)
 
             # B. Visual Layer (Styled Controls)
-            # Wrap control glyphs in span for gray styling
             char_vis = _escape_html(char)
             if char == '\n': char_vis = '<span class="xray-control">↵</span>'
             elif char == '\r': char_vis = '<span class="xray-control">↵</span>'
@@ -4028,7 +4029,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     marker = (
                         f'<span class="xray-stack stack-invis" title="{run_len} hidden characters (Obfuscation)">'
                         f'<span class="xray-top">×{run_len}</span>'
-                        f'<span class="xray-bot">DEL</span>'
+                        f'<span class="xray-bot">HID</span>'
                         f'</span>'
                     )
                     cluster_html_parts.append(marker)
@@ -4038,7 +4039,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     marker = (
                         f'<span class="xray-stack stack-invis" title="Hidden Character (Obfuscation)">'
                         f'<span class="xray-top">&bull;</span>'
-                        f'<span class="xray-bot">DEL</span>'
+                        f'<span class="xray-bot">HID</span>'
                         f'</span>'
                     )
                     cluster_html_parts.append(marker)
@@ -4081,7 +4082,6 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 cluster_html_parts.append(marker)
 
             else:
-                # Standard char (using the pre-computed visual)
                 cluster_html_parts.append(char_vis)
             
             i += 1
@@ -4103,6 +4103,13 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         
         safe_str_js = _escape_for_js(safe_snippet_final)
         
+        # Explicit Tooltip for Copy Semantics
+        copy_title = (
+            "Copies ONLY this local slice.\n"
+            "• Suspicious chars replaced by safe skeletons\n"
+            "• Invisibles/Bidi dropped entirely"
+        )
+        
         card = f"""
         <div class="cluster-card">
             <div class="cluster-header">
@@ -4111,8 +4118,8 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     {"".join(type_badges_html)}
                     {brand_badge}
                 </div>
-                <button class="safe-copy-btn" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_js}', this)">
-                    Copy Sanitized Snippet
+                <button class="safe-copy-btn" title="{copy_title}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_js}', this)">
+                    Copy Safe Slice
                 </button>
             </div>
             <div class="cluster-body">
