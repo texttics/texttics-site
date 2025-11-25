@@ -6374,10 +6374,8 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V8 - Grapheme Snap). 
-    Implements the 'Grapheme Bisection' fix.
-    It snaps the start/end indices to the nearest visual boundaries 
-    to prevent the browser from panicking and selecting all text.
+    Stateful stepper (Diagnostic V9). 
+    Includes instrumentation to debug Grapheme Snapping failures on signals #6 and #7.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6427,62 +6425,68 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight with Grapheme Snapping
-    # Convert Logic (Code Points) -> DOM (UTF-16) first
+    # 5. Execute Highlight with Robust Grapheme Snapping AND LOGGING
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    raw_dom_s = _logical_to_dom(t, log_s)
-    raw_dom_e = _logical_to_dom(t, log_e)
-    
-    safe_s = raw_dom_s
-    safe_e = raw_dom_e
+    # === DIAGNOSTIC LOGGING (Check Console) ===
+    if next_idx >= 4:  # Log signals #5, #6, #7
+        print(f"=== SIGNAL #{next_idx + 1} DEBUG ===")
+        print(f"  Logical Range: ({log_s}, {log_e}) span={log_e - log_s}")
+        print(f"  Label: {next_hit[2] if len(next_hit) > 2 else 'N/A'}")
+        print(f"  Text Length: {len(t)} chars")
+    # === END DIAGNOSTIC ===
 
-    # [THE FIX] Grapheme Boundary Snapping
-    # We iterate through browser-defined segments to find the atomic boundaries.
+    # Convert to DOM (UTF-16) indices
+    dom_s = _logical_to_dom(t, log_s)
+    dom_e = _logical_to_dom(t, log_e)
+    
+    # === DIAGNOSTIC LOGGING ===
+    if next_idx >= 4:
+        print(f"  DOM Range (pre-snap): ({dom_s}, {dom_e})")
+    # === END DIAGNOSTIC ===
+    
+    safe_s = None
+    safe_e = None
+    
     try:
+        # Explicitly convert JS Iterator to Array
         segments_iter = GRAPHEME_SEGMENTER.segment(t)
         segments = window.Array.from_(segments_iter)
         
-        # Helper: UTF-16 length
-        def get_len(s): return len(s.encode('utf-16-le')) // 2
-
-        found_s = False
-        found_e = False
-
         for seg in segments:
             g_start = seg.index
-            g_len = get_len(seg.segment)
+            g_str = seg.segment
+            # Calculate UTF-16 length
+            g_len = len(g_str.encode('utf-16-le')) // 2
             g_end = g_start + g_len
             
-            # Snap START: If raw_s falls inside this cluster, move it to cluster Start
-            if not found_s and g_start <= raw_dom_s < g_end:
+            # Does this grapheme start at or before our target?
+            if g_start <= dom_s < g_end:
                 safe_s = g_start
-                found_s = True
             
-            # Snap END: If raw_e falls inside this cluster, move it to cluster End
-            # (We use < g_end because selections are exclusive at the end)
-            if not found_e and g_start < raw_dom_e <= g_end:
+            # Does this grapheme end at or after our target?
+            if safe_s is not None:
                 safe_e = g_end
-                found_e = True
-            elif not found_e and raw_dom_e <= g_start:
-                # If we passed the target without hitting (edge case), snap to current
-                safe_e = g_start
-                found_e = True
-                
-            if found_s and found_e:
-                break
-                
+                if g_end >= dom_e:
+                    break
     except Exception as e:
-        print(f"Snap Error: {e}")
-        # Fallback to raw values if segmentation crashes
-        safe_s = raw_dom_s
-        safe_e = raw_dom_e
+        print(f"Stepper Segmentation Error: {e}")
+        pass 
 
-    # Final Safety Clamp
+    # Fallbacks if segmentation failed or target wasn't found
+    if safe_s is None: safe_s = dom_s
+    if safe_e is None: safe_e = max(dom_e, safe_s + 1)
+
+    # Final safety: Ensure we never have a zero-width selection
     if safe_e <= safe_s: safe_e = safe_s + 1
-    
-    # Apply to DOM
+
+    # === DIAGNOSTIC LOGGING ===
+    if next_idx >= 4:
+        print(f"  Final Safe Range: ({safe_s}, {safe_e})")
+        print(f"  Calling HIGHLIGHT_RANGE({safe_s}, {safe_e})")
+    # === END DIAGNOSTIC ===
+
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
     # 6. Update Status UI
