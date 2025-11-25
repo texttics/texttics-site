@@ -3684,15 +3684,20 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     
     # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
     
-    # 1. Cluster Bidi Dangers (Fix for Flood)
+    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
+    
+    # 1. Cluster Bidi Dangers (Fix for Flood & Row-Selection Glitch)
     if bidi_dangers:
+        # Sort by start position
         bidi_dangers.sort(key=lambda x: x[0])
         
+        # Merging Logic
         merged_bidi = []
         if bidi_dangers:
             curr_s, curr_e, curr_lbl = bidi_dangers[0]
             for i in range(1, len(bidi_dangers)):
                 next_s, next_e, next_lbl = bidi_dangers[i]
+                # If adjacent (or overlapping), merge
                 if next_s <= curr_e:
                     curr_e = max(curr_e, next_e)
                     if "Sequence" not in curr_lbl: curr_lbl = "Bidi Sequence"
@@ -3702,9 +3707,14 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
             
         for s, e, lbl in merged_bidi: 
-            # CRITICAL FIX: Use 's, s+1' (not 's, e').
-            # Highlighting a range of Bidi controls causes browser rendering selection crashes.
+            # CRITICAL FIX: Register only the START (s, s+1)
+            # Highlighting the full range (s, e) of a Bidi block is what causes the 
+            # "Whole Row" selection glitch in browsers.
             _register_hit("thr_execution", s, s+1, lbl)
+
+    # 2. Other Execution Threats
+    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
+    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
     # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
