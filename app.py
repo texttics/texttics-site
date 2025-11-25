@@ -6299,18 +6299,31 @@ def render_encoding_footprint(t: str):
 if 'HUD_HIT_REGISTRY' not in globals():
     HUD_HIT_REGISTRY = {}
 
-def _register_hit(key: str, start: int, end: int, label: str):
-    """Helper to append a hit to the global registry."""
+def _register_hit(key: str, start: int, end: int, label: str, max_span=100):
+    """
+    Helper to append a hit to the global registry.
+    
+    INVARIANT ENFORCEMENT:
+    1. Ranges must be atomic or localized (span <= max_span).
+    2. Document-wide aggregates (0, len) are strictly REJECTED.
+    3. Zero-width ranges are expanded to width 1.
+    """
     if key not in HUD_HIT_REGISTRY:
         HUD_HIT_REGISTRY[key] = []
-    # SAFETY FIX: Ensure ints and prevent None
+        
     try:
         s, e = int(start), int(end)
         
-        # === THE ONLY FIX THAT MATTERS ===
-        # 1. Never allow zero-width
-        # 2. Never allow negative or inverted ranges
-        # 3. Force minimum visible selection
+        # [CRITICAL ARCHITECTURAL FIX]
+        # Reject suspiciously large ranges that look like document-wide aggregates.
+        # The Stepper is for navigation, not summary stats.
+        span = e - s
+        if span > max_span:
+            # Optional: Log to console to catch the upstream culprit
+            # print(f"HUD_REGISTRY REJECT: {key} span={span} label='{label}'")
+            return 
+
+        # Enforce Atomic Visibility (Minimum Width = 1)
         if e <= s:
             e = s + 1
         if s < 0:
