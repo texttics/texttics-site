@@ -4529,7 +4529,11 @@ def compute_threat_analysis(t: str):
             if not is_just_vs:
                 label = "Invisible Cluster"
                 if c.get("high_risk"): label += " [High Risk]"
-                _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
+                
+                # CRITICAL FIX: Register only the START (start, start+1).
+                # Prevents large invisible selections from overlapping with Bidi
+                # and breaking the stepper navigation.
+                _register_hit("thr_obfuscation", c["start"], c["start"]+1, label)
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
