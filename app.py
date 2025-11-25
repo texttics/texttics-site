@@ -830,7 +830,8 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     hit_index = 1
     
     for i, hit in enumerate(targets):
-        if hit[0] >= current_logical:
+        # CRITICAL FIX: Change '>=' to '>' to prevent getting stuck on zero-width chars
+        if hit[0] > current_logical:
             next_hit = hit
             hit_index = i + 1
             break
