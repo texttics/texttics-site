@@ -6905,13 +6905,6 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
 
-    # Unqualified
-    unq_pos = emoji_flags.get("Flag: Unqualified Emoji", {}).get("positions", [])
-    for pos_str in unq_pos:
-        try:
-            idx = int(pos_str.replace("#", ""))
-            _register_hit("thr_suspicious", idx, idx+1, "Unqualified Emoji")
-        except: pass
 
     # Forced Presentation
     forced_pos = emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("positions", []) + \
