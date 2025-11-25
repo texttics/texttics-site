@@ -6341,9 +6341,9 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V4 - Grapheme Aware). 
-    Snaps selection to Visual Grapheme Boundaries to prevent 'Select All' glitches
-    caused by browser rendering ambiguities on zero-width/complex characters.
+    Stateful stepper (Fixed V5 - Robust Iteration). 
+    Correctly converts the JS Segmenter iterator to an Array to ensure
+    grapheme snapping actually executes, preventing 'Select All' bugs.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6393,7 +6393,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight with Grapheme Snapping
+    # 5. Execute Highlight with Robust Grapheme Snapping
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
@@ -6401,36 +6401,41 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
     
-    # [CRITICAL FIX] Grapheme Snapping
-    # Instead of trusting dom_s/dom_e (which might be inside a Zalgo cluster),
-    # we find the visual grapheme boundaries that enclose this range.
     safe_s = None
     safe_e = None
     
     try:
-        segments = GRAPHEME_SEGMENTER.segment(t)
+        # [CRITICAL FIX] Explicitly convert JS Iterator to Array
+        # Without this, the loop below often fails to run in PyScript.
+        segments_iter = GRAPHEME_SEGMENTER.segment(t)
+        segments = window.Array.from_(segments_iter)
+        
         for seg in segments:
             g_start = seg.index
             g_str = seg.segment
-            # Calculate UTF-16 length of the segment
+            # Calculate UTF-16 length
             g_len = len(g_str.encode('utf-16-le')) // 2
             g_end = g_start + g_len
             
-            # Does this grapheme contain our start?
+            # Does this grapheme start at or before our target?
             if g_start <= dom_s < g_end:
                 safe_s = g_start
             
-            # Does this grapheme contain our end? (Or extend the range)
+            # Does this grapheme end at or after our target?
             if safe_s is not None:
                 safe_e = g_end
                 if g_end >= dom_e:
                     break
-    except Exception:
-        pass # Fallback to raw indices if segmentation fails
+    except Exception as e:
+        print(f"Stepper Segmentation Error: {e}")
+        pass 
 
-    # Apply Fallbacks
+    # Fallbacks if segmentation failed or target wasn't found
     if safe_s is None: safe_s = dom_s
-    if safe_e is None: safe_e = max(dom_e, safe_s + 1) # Ensure min width 1
+    if safe_e is None: safe_e = max(dom_e, safe_s + 1)
+
+    # Final safety: Ensure we never have a zero-width selection
+    if safe_e <= safe_s: safe_e = safe_s + 1
 
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
@@ -6445,7 +6450,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         hud_status.style.display = "inline-flex"
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
-    # 7. Update Inspector
     inspect_character(None)
 
 @create_proxy
