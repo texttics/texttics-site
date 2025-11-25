@@ -3402,15 +3402,6 @@ details.profile-section .action-bar {
 
 /* --- v6.1 Polish: Interactive Banner & Legend Alignment --- */
 
-/* Make summary stats clearly interactive */
-.xray-summary-stat:hover {
-  background-color: #ffffff;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  padding: 0 4px;
-  margin: 0 -4px; /* Offset the padding so layout doesn't jump */
-}
-
 /* Text colors for the summary stats to match badges */
 .stat-exec { color: #d97706; } /* Amber */
 .stat-spoof { color: #dc2626; } /* Red */
