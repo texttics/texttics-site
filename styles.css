@@ -3207,8 +3207,8 @@ tr.flag-row-crit {
     /* Positioning */
     width: fit-content;
     
-  /* CHANGED: -10px (Top), Auto (Right), 2px (Bottom gap), Auto (Left) */
-    margin: -10px auto 2px auto;
+  /* CHANGED: -10px (Top), Auto (Right), 4px (Bottom gap), Auto (Left) */
+    margin: -10px auto 4px auto;
     
     /* STYLE: Transparent + Violet Border */
     background-color: transparent;
