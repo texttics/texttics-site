@@ -3215,10 +3215,10 @@ tr.flag-row-crit {
     color: #7c3aed !important; 
     
     /* SLIM SIZE: Reduced padding and font for "Twice Smaller" look */
-    padding: 2px 24px; 
-    height: 24px;      /* Explicit small height */
+    padding: 3px 32px;  /* 3px top/bottom gives you that ~24px height naturally */ 
     border-radius: 8px; /* Tighter radius */
-    
+    /* 3. ENSURE the border is clean */
+    border: 1px solid #8b5cf6;
     /* Typography */
     font-weight: 800;
     font-size: 0.8rem; /* Smaller font */
