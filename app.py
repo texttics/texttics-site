@@ -3932,20 +3932,28 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
 
 def _escape_for_js(s: str) -> str:
     """
-    Sanitizes a string for insertion into a single-quoted JS function call.
-    Handles backslashes, single quotes, and newlines to prevent syntax errors.
+    Sanitizes a string for safe insertion into a JS single-quoted string literal.
+    Escapes backslashes, quotes, newlines, and dangerous HTML-like sequences.
     """
-    return (s.replace("\\", "\\\\")
-             .replace("'", "\\'")
-             .replace("\n", "\\n")
-             .replace("\r", "\\r"))
+    # 1. Backslash must be first to avoid double-escaping
+    s = s.replace("\\", "\\\\")
+    # 2. Escape quotes
+    s = s.replace("'", "\\'")
+    s = s.replace('"', '\\"')
+    # 3. Escape whitespace control chars
+    s = s.replace("\n", "\\n")
+    s = s.replace("\r", "\\r")
+    # 4. Defensive: Break potentially dangerous tags if they somehow sneaked in
+    s = s.replace("</", "<\\/")
+    return s
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v5.2 (Semantics Polish).
-    1. Safe Escaping: Quotes handled in tooltips.
-    2. Semantic Labels: DEL -> HID.
-    3. Explicit Actions: Button labeled 'Copy Safe Slice' with scope tooltip.
+    Forensic X-Ray Engine v5.3 (Hardened).
+    1. Security: Rigorous JS/HTML escaping.
+    2. Semantics: Explicit "Local Slice" contracts in UI.
+    3. Depth: Richer tooltips with U+XXXX and Script names.
+    4. A11y: Keyboard focus and ARIA labels on stacks.
     """
     if not t: return ""
     
@@ -3986,7 +3994,8 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         if ctx_start > prev_end:
             gap = ctx_start - prev_end
             if gap > 0:
-                html_output.append(f'<div class="xray-spacer">[ ... {gap} safe characters skipped ... ]</div>')
+                # [SEMANTIC FIX] Explicitly state that skipped chars are omitted from the view
+                html_output.append(f'<div class="xray-spacer">[ ... {gap} safe characters omitted from this slice ... ]</div>')
         
         cluster_html_parts = []
         safe_string_parts = []
@@ -3997,8 +4006,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             char = js_array[i]
             cp = ord(char)
             
-            # A. Safe String Construction (The "Sanitization" Logic)
-            # Rule: Invisibles/Bidi are DROPPED. Confusables are MAPPED to Skeleton.
+            # A. Safe String Logic
             if i in invisible_indices: pass 
             elif i in bidi_indices: pass
             elif i in confusable_indices:
@@ -4007,7 +4015,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             else:
                 safe_string_parts.append(char)
 
-            # B. Visual Layer (Styled Controls)
+            # B. Visual Layer
             char_vis = _escape_html(char)
             if char == '\n': char_vis = '<span class="xray-control">↵</span>'
             elif char == '\r': char_vis = '<span class="xray-control">↵</span>'
@@ -4018,7 +4026,6 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             if i in invisible_indices:
                 threat_types.add("OBFUSCATE")
                 
-                # Compression Lookahead
                 run_len = 1
                 lookahead = i + 1
                 while lookahead < ctx_end and lookahead in invisible_indices:
@@ -4026,8 +4033,11 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     lookahead += 1
                 
                 if run_len > 1:
+                    # [A11Y] Added tabindex and aria-label
                     marker = (
-                        f'<span class="xray-stack stack-invis" title="{run_len} hidden characters (Obfuscation)">'
+                        f'<span class="xray-stack stack-invis" tabindex="0" '
+                        f'title="{run_len} hidden characters (Obfuscation)" '
+                        f'aria-label="{run_len} hidden characters">'
                         f'<span class="xray-top">×{run_len}</span>'
                         f'<span class="xray-bot">HID</span>'
                         f'</span>'
@@ -4037,7 +4047,9 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     continue
                 else:
                     marker = (
-                        f'<span class="xray-stack stack-invis" title="Hidden Character (Obfuscation)">'
+                        f'<span class="xray-stack stack-invis" tabindex="0" '
+                        f'title="Hidden Character (Obfuscation)" '
+                        f'aria-label="Hidden character">'
                         f'<span class="xray-top">&bull;</span>'
                         f'<span class="xray-bot">HID</span>'
                         f'</span>'
@@ -4050,6 +4062,9 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 disp_skel = skel[0] + (".." if len(skel)>1 else "") if skel else "?"
                 
                 script_tag = ""
+                src_sc = "Unknown"
+                dst_sc = "Unknown"
+                
                 try:
                     src_sc = _find_in_ranges(cp, "Scripts") or "Com"
                     skel_cp = ord(skel[0]) if skel else 0
@@ -4060,10 +4075,21 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                         script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
                 except: pass
 
-                title_safe = f"Spoofing Risk&#10;Raw: {_escape_html(char)}&#10;Safe: {_escape_html(skel)}"
+                # [FORENSIC DEPTH FIX] Richer Tooltip with U+XXXX and Scripts
+                # Prevents "Raw: a / Safe: a" ambiguity
+                safe_cp_display = f"U+{ord(skel[0]):04X}" if skel else "?"
                 
+                title_safe = (
+                    f"Spoofing Risk&#10;"
+                    f"Raw: {_escape_html(char)} (U+{cp:04X}, {src_sc})&#10;"
+                    f"Safe: {_escape_html(skel)} ({safe_cp_display}, {dst_sc})"
+                )
+                
+                # [A11Y] Added tabindex and aria-label
                 stack = (
-                    f'<span class="xray-stack stack-spoof" title="{title_safe}">'
+                    f'<span class="xray-stack stack-spoof" tabindex="0" '
+                    f'title="{title_safe}" '
+                    f'aria-label="Spoofing Risk: Raw {_escape_html(char)} vs Safe {_escape_html(skel)}">'
                     f'<span class="xray-top">{_escape_html(char)}</span>'
                     f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
                     f'{script_tag}'
@@ -4074,7 +4100,9 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             elif i in bidi_indices:
                 threat_types.add("EXECUTION")
                 marker = (
-                    f'<span class="xray-stack stack-bidi" title="Bidi Control (Execution Risk)">'
+                    f'<span class="xray-stack stack-bidi" tabindex="0" '
+                    f'title="Bidi Control (Execution Risk)" '
+                    f'aria-label="Bidi Control">'
                     f'<span class="xray-top" style="color:#d97706;">&harr;</span>'
                     f'<span class="xray-bot">CLR</span>'
                     f'</span>'
@@ -4103,16 +4131,17 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         
         safe_str_js = _escape_for_js(safe_snippet_final)
         
-        # Explicit Tooltip for Copy Semantics
+        # [SEMANTIC FIX] Explicit Scope in Tooltip
         copy_title = (
-            "Copies ONLY this local slice.\n"
-            "• Suspicious chars replaced by safe skeletons\n"
-            "• Invisibles/Bidi dropped entirely"
+            "Copies ONLY this local slice (ctx_start..ctx_end).\n"
+            "• Confusables replaced by safe skeletons (UTS #39)\n"
+            "• Invisibles/Bidi controls dropped entirely\n"
+            "• Skipped characters outside this slice are NOT included."
         )
         
         card = f"""
-        <div class="cluster-card">
-            <div class="cluster-header">
+        <div class="cluster-card" role="group" aria-labelledby="cluster-header-{idx}">
+            <div class="cluster-header" id="cluster-header-{idx}">
                 <div class="cluster-meta">
                     <span class="cluster-id">#{idx + 1}</span>
                     {"".join(type_badges_html)}
