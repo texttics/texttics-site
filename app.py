@@ -3683,10 +3683,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     
     # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
     
-    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
-    
-    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
-    
     # 1. Cluster Bidi Dangers (Fix for Flood & Row-Selection Glitch)
     if bidi_dangers:
         # Sort by start position
@@ -3708,10 +3704,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
             
         for s, e, lbl in merged_bidi: 
-            # CRITICAL FIX: Register only the START (s, s+1)
-            # Highlighting the full range (s, e) of a Bidi block is what causes the 
-            # "Whole Row" selection glitch in browsers.
-            _register_hit("thr_execution", s, s+1, lbl)
+            _register_hit("thr_execution", s, e, lbl)
 
     # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
