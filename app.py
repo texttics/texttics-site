@@ -3709,12 +3709,15 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             # We point the cursor AT the threat rather than selecting it.
             _register_hit("thr_execution", s, s, lbl)
 
-    # 2. Other Execution Threats
-    # CRITICAL FIX: Zero-Width Registration (idx, idx).
-    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx, "Terminal Injection")
-    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
+   # 2. Other Execution Threats
+        # CRITICAL FIX: Use local lists 'esc_indices' and 'syntax_vs_indices'
+        # CRITICAL FIX: Zero-Width Registration (idx, idx) to prevent selection bugs.
+        for idx in esc_indices: _register_hit("thr_execution", idx, idx, "Terminal Injection")
+        for idx in syntax_vs_indices: _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
 
-    # --- 8. PRE-CALC CONSUMED INDICES (Priority Consumption) ---
+        # --- 8. PRE-CALC CONSUMED INDICES (Priority Consumption) ---
+        # We must collect ALL indices already claimed by higher-priority threats (Execution/Bidi)
+        # to prevent "Double Counting" them as generic Invisible Clusters.
         consumed_indices = set()
         
         # A. Bidi Indices (Converted from "#12" strings)
@@ -3732,6 +3735,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             # Check for overlap with higher priority threats
             cluster_range = set(range(c["start"], c["end"] + 1))
             if not cluster_range.isdisjoint(consumed_indices):
+                # This cluster contains characters already flagged as EXECUTION.
+                # Skip it to prevent double-counting and stepper overlap.
                 continue
 
             # 1. NOISE FILTER: Check if this cluster is JUST a Variation Selector
@@ -3744,10 +3749,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 # CRITICAL FIX: Zero-Width Registration (start, start).
                 # Prevents browser selection glitches on large invisible blocks.
                 _register_hit("thr_obfuscation", c["start"], c["start"], label)
-
-    # 2. Other Execution Threats
-    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
-    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
     # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
