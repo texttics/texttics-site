@@ -3417,6 +3417,7 @@ details.profile-section .action-bar {
 /* --- TIER 2: FORENSIC WORKBENCH (Fluid Single-Row Layout) --- */
 .workbench-row {
     display: flex;
+    width: 100%;
     flex-direction: row;
     flex-wrap: nowrap; /* Force single line */
     align-items: stretch; /* Force equal height for all buttons */
@@ -3426,25 +3427,10 @@ details.profile-section .action-bar {
     border-bottom: 1px solid var(--color-border);
 }
 
-/* The Groups act as fluid containers */
+/* Remove the "Groups" concept visually.
+   We display contents directly so all buttons are siblings in the layout flow. */
 .wb-group {
-    display: flex;
-    gap: 8px; /* Gutter between buttons inside a group */
-}
-
-/* Group A: Sanitization (Needs more width for text labels) */
-.wb-group:nth-child(1) {
-    flex: 1; /* Takes 2x space */
-}
-
-/* Group B: Code (Compact) */
-.wb-group:nth-child(2) {
-    flex: 1; /* Takes ~1.2x space */
-}
-
-/* Group C: Evidence (Fills remaining space) */
-.wb-group:nth-child(3) {
-    flex: 1; /* Slightly smaller is fine, but flex-grow will fill gap */
+    display: contents; 
 }
 
 /* Shared Workbench Button Styles */
@@ -3456,11 +3442,15 @@ details.profile-section .action-bar {
     text-align: center;
     white-space: nowrap; /* Prevent ugly text wrapping */
     height: auto; /* Allow stretch to work */
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 0.5rem; /* Vertical padding normalized */
+    /* UNIFORM TYPOGRAPHY */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.85rem !important; /* Force equality */
     font-weight: 600;
+    
     transition: all 0.2s ease;
-    /* Ensure icons don't smash text */
     gap: 6px; 
+    border-radius: 4px; /* Ensure corners match */
 }
 
 /* Specific Colors (Retained) */
@@ -3476,7 +3466,6 @@ details.profile-section .action-bar {
 
 .wb-btn-code {
     background-color: #f0fdf4; color: #166534; border-color: #bbf7d0;
-    font-family: var(--font-mono);
     font-size: 0.8rem !important;
 }
 .wb-btn-code:hover { background-color: #dcfce7; }
