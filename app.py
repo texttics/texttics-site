@@ -6358,9 +6358,8 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V10 - OOB Clamp). 
-    Fixes 'Select All' glitch by strictly clamping indices to the calculated UTF-16 bounds.
-    Prevents drift from Newlines/Astral chars from pushing selection off the cliff.
+    Stateful stepper (Fixed V11 - Clean & Robust). 
+    Reliable navigation now that zero-width registry entries are banned.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6416,7 +6415,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight with Robust Grapheme Snapping
+    # 5. Execute Highlight
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
@@ -6424,39 +6423,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
     
-    safe_s = None
-    safe_e = None
-    
-    try:
-        # Convert JS Iterator to Array to ensure loop runs
-        segments_iter = GRAPHEME_SEGMENTER.segment(t)
-        segments = window.Array.from_(segments_iter)
-        
-        for seg in segments:
-            g_start = seg.index
-            g_str = seg.segment
-            g_len = len(g_str.encode('utf-16-le')) // 2
-            g_end = g_start + g_len
-            
-            # Match Start
-            if g_start <= dom_s < g_end:
-                safe_s = g_start
-            
-            # Match End
-            if safe_s is not None:
-                safe_e = g_end
-                if g_end >= dom_e:
-                    break
-    except Exception:
-        pass 
-
-    # Fallbacks
-    if safe_s is None: safe_s = dom_s
-    if safe_e is None: safe_e = max(dom_e, safe_s + 1)
-
-    # [CRITICAL FIX] Final Hard Clamp to Prevent OOB
-    safe_s = max(0, min(safe_s, max_dom_len))
-    safe_e = max(safe_s + 1, min(safe_e, max_dom_len))
+    # Final Hard Clamp to Prevent OOB
+    safe_s = max(0, min(dom_s, max_dom_len))
+    safe_e = max(safe_s + 1, min(dom_e, max_dom_len))
 
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
