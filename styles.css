@@ -3326,3 +3326,17 @@ details.profile-section .action-bar {
   width: 100%;
   text-align: center;
 }
+/* Add interaction hint to stacks (Discoverability Fix) */
+.xray-stack:hover .xray-top {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  opacity: 0.9;
+}
+
+/* Ensure Copy Button flexes properly with new label length */
+.safe-copy-btn {
+  /* Previous styles remain, just ensuring whitespace doesn't wrap awkwardly */
+  white-space: nowrap; 
+  flex-shrink: 0;
+}
