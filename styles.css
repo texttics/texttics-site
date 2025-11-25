@@ -2329,59 +2329,6 @@ tr.flag-row-crit {
   transform: translateY(-1px); /* Optical alignment */
 }
 
-/* Ensure the SVG inherits size correctly */
-.section-icon svg {
-  width: 1.1em;
-  height: 1.1em;
-}
-
-/* Optional: Make the "Actions" header slightly bolder/darker */
-#actions-panel-wrapper .section-title {
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    color: #1e3a8a; /* Darker Blue for the Workbench Header */
-}
-/* 1. Keep as list-item to preserve the NATIVE ARROW */
-details.profile-section > summary {
-  display: list-item;       /* Guarantees native arrow appears */
-  cursor: pointer;          /* Hand cursor for the arrow area */
-  outline: none;
-  transition: color 0.2s ease; /* Smooth color transition for the ARROW */
-}
-
-/* 2. Force the H2 title to sit INLINE next to the arrow */
-details.profile-section > summary .section-title {
-  display: inline-block;    /* Moves text up from the next line */
-  vertical-align: middle;   /* Aligns text vertically with the arrow */
-  margin: 0;
-  width: calc(100% - 2rem); /* Stretches the grey border */
-  cursor: pointer;          /* Hand cursor for the text area */
-  transition: color 0.2s ease; /* Smooth color transition for the TEXT */
-}
-
-/* 3. Blue Hover Effect: ARROW */
-/* The native marker inherits color from the summary parent */
-details.profile-section > summary:hover {
-  color: var(--color-primary-focus);
-}
-
-/* 4. Blue Hover Effect: TEXT */
-/* Explicitly coloring the H2 ensures it matches the arrow */
-details.profile-section > summary:hover .section-title {
-  color: var(--color-primary-focus);
-}
-
-/* 5. Restore spacing for the content body */
-details.profile-section[open] > div,
-details.profile-section[open] > .tabs,
-details.profile-section[open] > table {
-  margin-top: 1.5rem;
-}
-/* --- Layout Fix for Nested Action Bar --- */
-/* Remove the explicit margin because the <details> wrapper now handles spacing */
-details.profile-section .action-bar {
-  margin-top: 0;
-}
 
 /* --- Highlight/Deobfuscate Buttons (Pill Shape) --- */
 #btn-reveal,
@@ -2852,54 +2799,6 @@ details.profile-section .action-bar {
 .leg-blue     { color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; }
 .leg-violet   { color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; }
 
-/* --- Workbench / Global Actions Styling (Violet Theme) --- */
-
-/* --- Specific Styling for "Actions" Header Only --- */
-#actions-panel-wrapper > summary {
-    /* Center the summary content */
-    display: flex;
-    justify-content: center; 
-    align-items: center;
-    
-    /* Constrain width & Center block */
-    max-width: 200px; /* Or whatever narrow width you prefer */
-    margin: 0 auto 1rem auto; /* Center horizontally + bottom margin */
-    
-    /* Visual Polish */
-    padding: 4px 12px;
-    background-color: #f0fdf4; /* Optional: Give it a subtle pill background? */
-    border: 1px solid #bbf7d0; /* Optional border */
-    border-radius: 999px; /* Pill shape */
-    list-style: none; /* Hide default marker if you want clean control */
-}
-
-/* Hide default marker for this specific summary if you want total control */
-#actions-panel-wrapper > summary::-webkit-details-marker {
-    display: none;
-}
-
-/* Adjust the inner H2 to fit the new layout */
-#actions-panel-wrapper .section-title {
-    font-size: 0.9rem; /* Smaller text */
-    border-bottom: none; /* Remove the underline */
-    margin-bottom: 0;
-    padding-bottom: 0;
-    width: auto; /* Let it shrink */
-}
-
-/* 2. Hover State: Vivid Light Violet */
-#actions-panel-wrapper > summary:hover {
-    color: #8b5cf6; /* Lighter Violet for Triangle */
-}
-
-#actions-panel-wrapper > summary:hover .section-title {
-    color: #8b5cf6; /* Lighter Violet for Text */
-}
-
-#actions-panel-wrapper > summary:hover .section-icon {
-    color: #8b5cf6; /* Lighter Violet for Icon */
-}
-
 /* =========================================
    INTERACTIVE HUD METRICS (Stepper)
    ========================================= */
@@ -3296,7 +3195,7 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   UNIFIED ACTIONS PANEL & WORKBENCH (Final Polish)
+   UNIFIED ACTIONS PANEL & WORKBENCH (Clean & Uniform)
    ========================================= */
 
 /* 1. The "Actions" Toggle Button (Violet Theme) */
@@ -3312,7 +3211,7 @@ details.profile-section .action-bar {
     /* STYLE: Transparent + Violet Border + Rect-Pill */
     background-color: transparent;
     border: 2px solid #8b5cf6; /* Violet-500 */
-    color: #7c3aed;            /* Violet-600 (Text) */
+    color: #7c3aed !important; /* Violet-600 (Text) - FORCE VIOLET */
     
     /* Rect-Pill Hybrid Shape */
     padding: 6px 32px;
@@ -3327,16 +3226,28 @@ details.profile-section .action-bar {
     transition: all 0.2s ease;
 }
 
+/* Ensure Inner Text/Icon inherits the Violet Color */
+#actions-panel-wrapper > summary .section-title,
+#actions-panel-wrapper > summary .section-icon {
+    color: #7c3aed !important; 
+    font-weight: 800;
+}
+
+#actions-panel-wrapper > summary::-webkit-details-marker { display: none; }
+
 /* Header Hover State */
 #actions-panel-wrapper > summary:hover {
     background-color: #f5f3ff; /* Violet-50 */
     border-color: #7c3aed;     /* Violet-600 */
-    color: #6d28d9;            /* Violet-700 */
+    color: #6d28d9 !important; /* Violet-700 */
     transform: translateY(-1px);
     box-shadow: 0 2px 5px rgba(124, 58, 237, 0.15);
 }
 
-#actions-panel-wrapper > summary::-webkit-details-marker { display: none; }
+#actions-panel-wrapper > summary:hover .section-title,
+#actions-panel-wrapper > summary:hover .section-icon {
+    color: #6d28d9 !important;
+}
 
 /* 2. The Main Container */
 .action-bar {
@@ -3370,38 +3281,59 @@ details.profile-section .action-bar {
 .wb-group { display: contents; }
 .action-spacer { display: none; }
 
-/* 4. UNIVERSAL BUTTON STYLING (The "Alive" Engine) */
-/* Targets ALL buttons inside .action-bar (Top, Middle, Bottom) */
-.action-bar .tool-btn {
-    flex: 1; /* Equal Width */
+/* 4. UNIVERSAL BUTTON STYLING (The "Unifier" Engine) */
+/* Targets ALL buttons: Top, Middle, Bottom, Macro, Workbench */
+.action-bar .tool-btn,
+.macro-btn,
+.wb-btn-strict, 
+.wb-btn-cons, 
+.wb-btn-code, 
+.wb-btn-evidence {
+    flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     
-    /* Typography */
-    font-family: var(--font-sans);
+    /* UNIFIED TYPOGRAPHY */
+    font-family: var(--font-sans) !important; /* Overrides Mono on Code btn */
     font-size: 0.9rem !important;
     font-weight: 600 !important;
     line-height: 1;
     white-space: nowrap;
+    letter-spacing: normal;
     
-    /* Box Model */
+    /* UNIFIED BOX MODEL */
     height: 42px;
     padding: 0 12px;
     gap: 8px;
     border-radius: 4px;
     
+    /* UNIFIED COLORS: TRANSPARENT DEFAULT */
+    background-color: transparent !important;
+    border: 1px solid #d1d5db !important; /* Neutral Gray Border */
+    color: #4b5563 !important;            /* Neutral Gray Text */
+    
     /* Base Transition */
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     position: relative;
+    box-shadow: none !important;
 }
 
-/* GLOBAL HOVER EFFECT (Lift & Pop) */
-.action-bar .tool-btn:hover {
+/* 5. UNIVERSAL HOVER EFFECT */
+/* All buttons behave exactly the same on hover */
+.action-bar .tool-btn:hover,
+.macro-btn:hover,
+.wb-btn-strict:hover, 
+.wb-btn-cons:hover, 
+.wb-btn-code:hover, 
+.wb-btn-evidence:hover {
+    background-color: #f5f3ff !important; /* Very Light Violet Tint */
+    border-color: #8b5cf6 !important;     /* Violet Border */
+    color: #7c3aed !important;            /* Violet Text */
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    z-index: 2; /* Bring to front */
+    box-shadow: 0 2px 4px rgba(124, 58, 237, 0.1) !important;
+    z-index: 2;
 }
 
 /* Click Effect */
@@ -3410,68 +3342,10 @@ details.profile-section .action-bar {
     box-shadow: none;
 }
 
-/* --- A. Top Row Buttons (Copy Data) --- */
-/* Previously "Dead" - Now Active Blue */
-.copy-group .tool-btn,
-#btn-toggle-profiles {
-    background-color: #ffffff;
-    border: 1px solid #d1d5db; /* Neutral Gray */
-    color: #4b5563;            /* Neutral Text */
-}
-
-.copy-group .tool-btn:hover,
-#btn-toggle-profiles:hover {
-    border-color: #3b82f6;     /* Bright Blue */
-    color: #2563eb;            /* Primary Blue */
-    background-color: #eff6ff; /* Light Blue Tint */
-}
-
-/* --- B. Middle Row (Workbench Colors) --- */
-.wb-btn-strict {
-    background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;
-}
-.wb-btn-strict:hover { background-color: #dbeafe; border-color: #60a5fa; }
-
-.wb-btn-cons {
-    background-color: #fff7ed; color: #9a3412; border: 1px solid #fed7aa;
-}
-.wb-btn-cons:hover { background-color: #ffedd5; border-color: #fb923c; }
-
-.wb-btn-code {
-    background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;
-    font-family: var(--font-mono) !important;
-    font-size: 0.8rem !important;
-    letter-spacing: -0.02em;
-}
-.wb-btn-code:hover { background-color: #dcfce7; border-color: #4ade80; }
-
-.wb-btn-evidence {
-    background-color: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff;
-}
-.wb-btn-evidence:hover { background-color: #f3e8ff; border-color: #c084fc; }
-
-/* --- C. Bottom Row (Macro) --- */
+/* 6. Layout Fixes */
 .action-row-bottom {
     width: 100%;
     margin-top: 4px;
-}
-
-.macro-btn {
-    width: 100%;
-    height: 42px;
-    background-color: #f9fafb; /* Light Gray Base */
-    border: 1px solid #d1d5db;
-    color: #4b5563;
-    font-size: 0.9rem !important;
-    font-weight: 700 !important;
-}
-
-/* Revive Macro Hover */
-.macro-btn:hover {
-    background-color: #ffffff;
-    border-color: #2563eb;
-    color: #2563eb;
-    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.1);
 }
 
 /* Responsive: Stack on Mobile */
@@ -3482,4 +3356,10 @@ details.profile-section .action-bar {
     .action-bar .tool-btn {
         flex: 1 1 45%;
     }
+}
+
+/* SVG Icon Sizing */
+.section-icon svg {
+  width: 1.1em;
+  height: 1.1em;
 }
