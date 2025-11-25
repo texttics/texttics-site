@@ -4196,22 +4196,20 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         cluster_html_list.append(card)
         prev_end = ctx_end
 
-    # --- 3. Construct Interactive Summary ---
+    # --- 3. Construct Interactive Summary (Simplified to Scoreboard) ---
     summary_parts = []
     
-    def make_jump_link(count, label, target_id, color_class):
+    def make_stat_badge(count, label, color_class):
         if count == 0: return ""
-        onclick = f"document.getElementById('{target_id}').scrollIntoView({{behavior: 'smooth', block: 'center'}})" if target_id else ""
-        style = 'cursor: pointer; border-bottom: 1px dotted currentColor;' if target_id else ''
-        return (f'<span class="xray-summary-stat {color_class}" style="{style}" onclick="{onclick}" '
-                f'title="Jump to first {label} cluster"><strong>{count}</strong> {label}</span>')
+        # [UX POLISH] Static Scoreboard. Removed click-to-jump logic (redundant/noisy).
+        return f'<span class="{color_class}"><strong>{count}</strong> {label}</span>'
 
     if total_exec > 0: 
-        summary_parts.append(make_jump_link(total_exec, "Execution", first_exec_id, "stat-exec"))
+        summary_parts.append(make_stat_badge(total_exec, "Execution", "stat-exec"))
     if total_spoof > 0: 
-        summary_parts.append(make_jump_link(total_spoof, "Spoofing", first_spoof_id, "stat-spoof"))
+        summary_parts.append(make_stat_badge(total_spoof, "Spoofing", "stat-spoof"))
     if total_obfus > 0: 
-        summary_parts.append(make_jump_link(total_obfus, "Obfuscation", first_obfus_id, "stat-obfus"))
+        summary_parts.append(make_stat_badge(total_obfus, "Obfuscation", "stat-obfus"))
     
     summary_text = ", ".join(summary_parts)
     
