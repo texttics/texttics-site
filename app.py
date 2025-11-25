@@ -6358,8 +6358,10 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V11 - Clean & Robust). 
-    Reliable navigation now that zero-width registry entries are banned.
+    Stateful stepper (Fixed V12 - EOF Safety). 
+    1. Fixes OOB crashes by calculating true DOM length.
+    2. Fixes 'Select All' at End-Of-File by backing up the start index 
+       instead of collapsing the end index to zero-width.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6419,14 +6421,23 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # Convert to DOM (UTF-16) indices
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
     
-    # Final Hard Clamp to Prevent OOB
-    safe_s = max(0, min(dom_s, max_dom_len))
-    safe_e = max(safe_s + 1, min(dom_e, max_dom_len))
+    # Fallback safety
+    if dom_e <= dom_s: dom_e = dom_s + 1
 
+    # [CRITICAL FIX] EOF Safety Logic
+    # If the selection goes past the end, clamp it.
+    safe_s = min(dom_s, max_dom_len)
+    safe_e = min(dom_e, max_dom_len)
+    
+    # If clamping caused a collapse (safe_s == safe_e), 
+    # BACK UP safe_s to ensure we select the last character.
+    if safe_e <= safe_s:
+        safe_s = max(0, safe_e - 1)
+        # If still equal (empty string case), force 0,0 but that's fine
+        
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
     # 6. Update Status UI
@@ -6865,15 +6876,6 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
 
-
-    # Forced Presentation
-    forced_pos = emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("positions", []) + \
-                 emoji_flags.get("Flag: Forced Text Presentation", {}).get("positions", [])
-    for pos_str in forced_pos:
-        try:
-            idx = int(pos_str.replace("#", ""))
-            _register_hit("thr_suspicious", idx, idx+1, "Forced Presentation")
-        except: pass
 
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
