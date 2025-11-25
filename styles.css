@@ -3296,10 +3296,10 @@ details.profile-section .action-bar {
 }
 
 /* =========================================
-   UNIFIED ACTIONS PANEL & WORKBENCH
+   UNIFIED ACTIONS PANEL & WORKBENCH (Final Polish)
    ========================================= */
 
-/* 1. The "Actions" Toggle Button (Summary) */
+/* 1. The "Actions" Toggle Button (Violet Theme) */
 #actions-panel-wrapper > summary {
     display: flex;
     justify-content: center;
@@ -3307,146 +3307,150 @@ details.profile-section .action-bar {
     
     /* Centering */
     width: fit-content;
-    margin: 0 auto 1.5rem auto; /* Center horizontally with bottom gap */
+    margin: 0 auto 1.5rem auto; 
     
     /* STYLE: Transparent + Violet Border + Rect-Pill */
     background-color: transparent;
-    border: 2px solid #8b5cf6; /* Vivid Violet */
-    color: #5b21b6;            /* Darker Violet text */
+    border: 2px solid #8b5cf6; /* Violet-500 */
+    color: #7c3aed;            /* Violet-600 (Text) */
     
     /* Rect-Pill Hybrid Shape */
     padding: 6px 32px;
-    border-radius: 12px;       /* The "Hybrid" radius */
+    border-radius: 12px;
     
     /* Typography */
-    font-weight: 700;
+    font-weight: 800;
     font-size: 0.95rem;
     letter-spacing: 0.02em;
-    list-style: none;          /* Remove default arrow */
+    list-style: none;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
-/* Hover State */
+/* Header Hover State */
 #actions-panel-wrapper > summary:hover {
-    background-color: #f5f3ff; /* Very light violet tint */
-    border-color: #7c3aed;     /* Darker border on hover */
+    background-color: #f5f3ff; /* Violet-50 */
+    border-color: #7c3aed;     /* Violet-600 */
+    color: #6d28d9;            /* Violet-700 */
     transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(124, 58, 237, 0.15);
 }
 
-/* Hide Webkit default arrow */
-#actions-panel-wrapper > summary::-webkit-details-marker {
-    display: none;
-}
+#actions-panel-wrapper > summary::-webkit-details-marker { display: none; }
 
-/* 2. The Main Container (Restored to 100% Width) */
+/* 2. The Main Container */
 .action-bar {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    
-    /* FORCE FULL WIDTH */
     width: 100%; 
-    max-width: none; 
     padding: 16px; 
     margin: 0;
-    
     background-color: var(--color-white);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
-/* 3. Top Row: Data Copy Buttons */
-.action-row-top {
+/* 3. Row Layouts */
+.action-row-top, .workbench-row, .copy-group {
     display: flex;
     width: 100%;
     gap: 12px;
     align-items: stretch;
 }
 
-/* Hide the old spacer */
-.action-spacer { display: none; }
-
-/* Copy Group Container */
-.copy-group {
-    display: flex;
-    width: 100%;
-    gap: 12px;
-}
-
-/* 4. Middle Row: Forensic Workbench */
+/* Specific spacing for middle row */
 .workbench-row {
-    display: flex;
-    width: 100%;
-    gap: 12px;
-    padding: 12px 0; /* Vertical breathing room */
+    padding: 12px 0;
     border-top: 1px dashed var(--color-border-light);
     border-bottom: 1px dashed var(--color-border-light);
-    
-    /* Reset flex settings to align perfectly with top row */
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: stretch;
 }
 
-/* Unwrap the groups */
-.wb-group {
-    display: contents;
-}
+.wb-group { display: contents; }
+.action-spacer { display: none; }
 
-/* 5. UNIVERSAL BUTTON STYLING (Alignment Enforcer) */
-/* This targets BOTH Top Row and Workbench Row buttons */
+/* 4. UNIVERSAL BUTTON STYLING (The "Alive" Engine) */
+/* Targets ALL buttons inside .action-bar (Top, Middle, Bottom) */
 .action-bar .tool-btn {
-    flex: 1; /* Every button takes equal width */
+    flex: 1; /* Equal Width */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     
-    /* UNIFORM TYPOGRAPHY */
+    /* Typography */
     font-family: var(--font-sans);
-    font-size: 0.9rem !important; /* Force match */
-    font-weight: 600 !important;  /* Force match */
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
     line-height: 1;
-    
-    /* UNIFORM DIMENSIONS */
-    height: 42px; /* Fixed height for perfect alignment */
-    padding: 0 12px;
     white-space: nowrap;
     
-    border-radius: 4px;
-    border: 1px solid var(--color-border);
-    background-color: var(--color-white);
-    color: var(--color-text);
-    transition: all 0.15s ease;
+    /* Box Model */
+    height: 42px;
+    padding: 0 12px;
     gap: 8px;
+    border-radius: 4px;
+    
+    /* Base Transition */
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
 }
 
-/* Specific Colors */
-.wb-btn-strict {
-    background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;
+/* GLOBAL HOVER EFFECT (Lift & Pop) */
+.action-bar .tool-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    z-index: 2; /* Bring to front */
 }
-.wb-btn-strict:hover { background-color: #dbeafe; }
+
+/* Click Effect */
+.action-bar .tool-btn:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+/* --- A. Top Row Buttons (Copy Data) --- */
+/* Previously "Dead" - Now Active Blue */
+.copy-group .tool-btn,
+#btn-toggle-profiles {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db; /* Neutral Gray */
+    color: #4b5563;            /* Neutral Text */
+}
+
+.copy-group .tool-btn:hover,
+#btn-toggle-profiles:hover {
+    border-color: #3b82f6;     /* Bright Blue */
+    color: #2563eb;            /* Primary Blue */
+    background-color: #eff6ff; /* Light Blue Tint */
+}
+
+/* --- B. Middle Row (Workbench Colors) --- */
+.wb-btn-strict {
+    background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;
+}
+.wb-btn-strict:hover { background-color: #dbeafe; border-color: #60a5fa; }
 
 .wb-btn-cons {
-    background-color: #fff7ed; color: #9a3412; border-color: #fed7aa;
+    background-color: #fff7ed; color: #9a3412; border: 1px solid #fed7aa;
 }
-.wb-btn-cons:hover { background-color: #ffedd5; }
+.wb-btn-cons:hover { background-color: #ffedd5; border-color: #fb923c; }
 
-/* Code Buttons: Visual adjustment for Mono font */
 .wb-btn-code {
-    background-color: #f0fdf4; color: #166534; border-color: #bbf7d0;
+    background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;
     font-family: var(--font-mono) !important;
-    font-size: 0.8rem !important; /* Mono looks bigger, so we step it down 0.1rem */
+    font-size: 0.8rem !important;
     letter-spacing: -0.02em;
 }
-.wb-btn-code:hover { background-color: #dcfce7; }
+.wb-btn-code:hover { background-color: #dcfce7; border-color: #4ade80; }
 
 .wb-btn-evidence {
-    background-color: #faf5ff; color: #6b21a8; border-color: #e9d5ff;
+    background-color: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff;
 }
-.wb-btn-evidence:hover { background-color: #f3e8ff; }
+.wb-btn-evidence:hover { background-color: #f3e8ff; border-color: #c084fc; }
 
-/* 6. Bottom Row: Macro Button */
+/* --- C. Bottom Row (Macro) --- */
 .action-row-bottom {
     width: 100%;
     margin-top: 4px;
@@ -3454,10 +3458,20 @@ details.profile-section .action-bar {
 
 .macro-btn {
     width: 100%;
-    background-color: var(--color-bg);
+    height: 42px;
+    background-color: #f9fafb; /* Light Gray Base */
+    border: 1px solid #d1d5db;
+    color: #4b5563;
     font-size: 0.9rem !important;
     font-weight: 700 !important;
-    height: 42px;
+}
+
+/* Revive Macro Hover */
+.macro-btn:hover {
+    background-color: #ffffff;
+    border-color: #2563eb;
+    color: #2563eb;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.1);
 }
 
 /* Responsive: Stack on Mobile */
@@ -3466,6 +3480,6 @@ details.profile-section .action-bar {
         flex-wrap: wrap;
     }
     .action-bar .tool-btn {
-        flex: 1 1 45%; /* 2 per row */
+        flex: 1 1 45%;
     }
 }
