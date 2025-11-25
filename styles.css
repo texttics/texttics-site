@@ -3479,38 +3479,41 @@ tr.flag-row-crit {
 }
 
 /* =========================================
-   RESTORE: GENERAL PROFILE HOVERS (Blue Theme)
+   RESTORE: GENERAL PROFILE HOVERS & LAYOUT (Fixed)
    ========================================= */
 
-/* 1. Target all standard sections (HUD, Inspector, Profiles) */
+/* 1. Target all standard sections */
 details.profile-section > summary {
-    display: list-item;       /* Ensures the native arrow is visible */
+    display: list-item;       /* Keep native arrow */
     cursor: pointer;
     outline: none;
     transition: color 0.2s ease;
+    
+    /* FORCE ONE LINE */
+    white-space: nowrap;      /* Prevents wrapping */
+    list-style-position: inside; /* Keeps arrow tight to text */
 }
 
 /* 2. Target the Title Text inside */
 details.profile-section > summary .section-title {
-    display: inline-block;
-    vertical-align: middle;
-    cursor: pointer;
+    display: inline-block !important; /* Sit naturally next to arrow */
+    width: auto !important;           /*  FIX: Stops the line break */
+    vertical-align: middle;           /* Centers text with arrow */
+    margin: 0;
+    padding-left: 6px;                /* Tiny gap between arrow and text */
+    
     transition: color 0.2s ease;
 }
 
 /* 3. THE BLUE HOVER RESTORATION */
 details.profile-section > summary:hover {
-    color: #2563eb; /* Primary Blue (matches your theme) */
+    color: #2563eb; 
 }
 
 details.profile-section > summary:hover .section-title {
-    color: #2563eb; /* Ensures text turns blue too */
+    color: #2563eb; 
 }
 
-/* 4. Ensure the Arrow turns blue too */
 details.profile-section > summary:hover::marker {
     color: #2563eb;
 }
-
-/* Note: The #actions-panel-wrapper ID is stronger than these classes, 
-   so your Actions button will stay Violet while these turn Blue. */
