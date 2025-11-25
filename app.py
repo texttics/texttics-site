@@ -2136,9 +2136,10 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3.1).
+    Forensic Cluster Classifier (V3.2).
     Segments text into Grapheme Clusters and assigns a single primary classification.
-    Logic Patch: Suppresses 'Unqualified' flags for Text-Default symbols (Arrows, Math) to reduce noise.
+    Logic Patch: Now correctly tracks LOGICAL indices (Code Points) to prevent
+    DOM-Index double-conversion bugs in the HUD Stepper.
     """
     # --- 1. Data Access ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -2180,9 +2181,16 @@ def compute_emoji_analysis(text: str) -> dict:
     # --- 3. Cluster Segmentation Loop ---
     segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
+    # [CRITICAL FIX] Manually track Logical Index (Code Point Count)
+    # The segmenter provides DOM indices (UTF-16 units), which breaks the Stepper.
+    current_logical_idx = 0
+    
     for seg in segments_iter:
         cluster = seg.segment
-        idx = seg.index
+        # idx = seg.index  <-- DO NOT USE THIS (It is DOM/UTF-16)
+        
+        idx = current_logical_idx # Use our manual logical counter
+        
         cp_len = len(cluster) 
         base_char = cluster[0]
         base_cp = ord(base_char)
@@ -2289,10 +2297,6 @@ def compute_emoji_analysis(text: str) -> dict:
         # --- D. Flag Generation (Noise Filter Applied) ---
         
         if status == "unqualified":
-            # [LOGIC PATCH] Only flag if it SHOULD be an emoji but isn't.
-            # 1. It is 'Emoji_Presentation' (Smiley) but bare. -> FLAG.
-            # 2. It is a Sequence (Base + Mark) but invalid. -> FLAG.
-            # 3. It is 'Text Default' (Arrow) and bare. -> IGNORE (It's just text).
             if is_emoji_pres or cp_len > 1:
                 add_flag("Flag: Unqualified Emoji", idx)
         
@@ -2312,6 +2316,9 @@ def compute_emoji_analysis(text: str) -> dict:
                 "base_cat": base_cat, 
                 "index": idx
             })
+            
+        # [CRITICAL] Advance the logical index by the number of code points in this cluster
+        current_logical_idx += cp_len
 
     return {
         "counts": counts,
