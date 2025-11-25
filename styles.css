@@ -1308,49 +1308,45 @@ Stage 2: Heatmap Row Classes
 
 
 /* =========================================
-   STATUS BAR (Consolidated & Final)
+   STATUS BAR (Consolidated & Precision Spaced)
    ========================================= */
 
-/* 1. The Main Container (Fixes the Right-Side Gap) */
+/* 1. The Main Container */
 .status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* Pushes items to edges */
+  justify-content: space-between;
   width: 100%;
-  padding: 0;        /* REMOVES GAP */
+  padding: 0;
   margin-top: 0.5rem;
   box-sizing: border-box;
-  gap: 15px;
+  gap: 15px; /* Ensures space if Left/Right meet in middle */
 }
 
-/* 2. Remove Default Wrappers */
+/* 2. Unified Wrappers (Left & Right) */
 .status-bar-left, 
 .status-bar-right {
   background-color: transparent !important;
   border: none !important;
   padding: 0 !important;
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 15px;
+  margin: 0 !important;
+  
+  /* FORCE FLEX to make 'gap' work */
+  display: flex !important;
+  align-items: center !important;
+  
+  /* THE ONLY SOURCE OF TRUTH FOR SPACING */
+  gap: 15px !important; 
 }
 
-/* --- Spacing for the New HTML Layout --- */
-.status-bar-right {
-    /* Adds consistent 12px space between Buttons and Status */
-    gap: 15px; 
-}
-
-/* Optional: Ensure individual margins don't double-up the space */
-#btn-reveal,
-#btn-reveal2,
-#reveal-details {
-    margin: 0;
+/* 3. SAFETY RESET: Remove ALL margins from buttons/pills inside */
+/* This kills the 'margin-right: 1rem' and any other hidden margins */
+.status-bar-left > *,
+.status-bar-right > * {
+  margin: 0 !important; 
 }
 
 /* --- LEFT STATUS (Input: Ready) --- */
-
-/* Base Pill Shape & Typography */
 #status-line {
   display: inline-flex;
   align-items: center;
@@ -1363,34 +1359,33 @@ Stage 2: Heatmap Row Classes
   transition: all 0.2s ease;
 }
 
-/* STATE: LOADING (Gray) */
 #status-line.status-loading {
   background-color: #f3f4f6;
   color: #6b7280;
   border-color: #e5e7eb;
 }
 
-/* STATE: READY (Green Frame, Black Text) */
 #status-line.status-ready {
-  background-color: #f0fdf4; /* Light Green */
-  border-color: #bbf7d0;     /* Green Border */
-  color: #000000;            /* PURE BLACK TEXT */
+  background-color: #f0fdf4; 
+  border-color: #bbf7d0;     
+  color: #000000;            
 }
 
-/* STATE: REVEAL ACTIVE (Blue/White) */
 #status-line.status-revealed {
   background-color: #ffffff;
-  color: #2563eb; /* Blue */
+  color: #2563eb; 
   border-color: #60a5fa;
   box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
 }
 
 /* --- RIGHT STATUS (Forensic Pill) --- */
-
 .status-details {
   display: inline-flex;
   align-items: center;
-  margin-right: 1rem; /* Gap between pill and button */
+  
+  /* FIXED: REMOVED margin-right: 1rem; */
+  margin: 0; 
+  
   padding: 2px 12px;
   border-radius: 999px;
   font-size: 0.85rem;
@@ -1398,22 +1393,19 @@ Stage 2: Heatmap Row Classes
   font-weight: 600;
   border: 1px solid transparent;
   
-  /* Start Hidden */
   opacity: 0;
   visibility: hidden;
   transition: all 0.3s ease;
 }
 
-/* STATE: CLEAN (Matches "Ready" - Green Frame, Black Text) */
 .status-details.clean {
   opacity: 1;
   visibility: visible;
   background-color: #f0fdf4;
   border-color: #bbf7d0;
-  color: #000000; /* PURE BLACK TEXT */
+  color: #000000; 
 }
 
-/* STATE: DETECTED */
 .status-details.warn {
   opacity: 1;
   visibility: visible;
@@ -1422,24 +1414,12 @@ Stage 2: Heatmap Row Classes
   border-color: #fcd34d;
 }
 
-/* STATE: DEOBFUSCATED (Emerald) */
 .status-details.success {
   opacity: 1;
   visibility: visible;
   background-color: #ecfdf5;
   color: #047857;
   border-color: #6ee7b7;
-}
-
-/* --- ICON COLORING (The Critical Part) --- */
-
-/* --- ICON COLORING (Right-Side Alignment) --- */
-#status-line.status-ready svg,
-.status-details.clean svg {
-  stroke: #15803d; 
-  stroke-width: 3; 
-  margin-left: 6px;  /* <--- NEW: Space on the left */
-  margin-right: 0;   /* Reset right margin */
 }
 
 /* --- Repertoire Card Styling --- */
