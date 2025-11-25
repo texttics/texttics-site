@@ -3704,7 +3704,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
             
         for s, e, lbl in merged_bidi: 
-            _register_hit("thr_execution", s, e, lbl)
+            # FIX: Highlight only the first character (s, s+1) to prevent 
+            # the browser's "Whole Row" Bidi rendering glitch.
+            _register_hit("thr_execution", s, s+1, lbl)
 
     # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
@@ -4515,12 +4517,18 @@ def compute_threat_analysis(t: str):
                         _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
-        # OBFUSCATION (Clusters)
+        # OBFUSCATION (Clusters) - With VS Noise Filter
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
-            label = "Invisible Cluster"
-            if c.get("high_risk"): label += " [High Risk]"
-            _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
+            # Check if this cluster is JUST a Variation Selector (VS1-VS16)
+            # If so, skip it here because it's covered by "Forced Presentation" or "Syntax Spoofing"
+            # This prevents double-counting.
+            is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
+            
+            if not is_just_vs:
+                label = "Invisible Cluster"
+                if c.get("high_risk"): label += " [High Risk]"
+                _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
