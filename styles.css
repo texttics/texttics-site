@@ -2279,61 +2279,7 @@ tr.flag-row-crit {
 .hud-row-extra { display: none !important; }
 
 
-/* --- Action Bar (Grouped Global Controls) --- */
-.action-bar {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-white);
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: 100%;
-  padding: 0.5rem;
-}
 
-.action-buttons-row {
-  display: flex;
-  gap: 1rem;
-  width: 100%;
-}
-
-.action-bar .tool-btn {
-  flex: 1; /* Both buttons take equal width */
-  justify-content: center;
-  font-size: 1rem;
-  padding: 0.75rem;
-  border-color: var(--color-border);
-  background-color: var(--color-bg);
-  color: var(--color-text);
-}
-
-.action-bar .tool-btn:hover {
-  background-color: var(--color-white);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-/* Specific button styling */
-.macro-btn { font-weight: 700; }
-.report-btn { font-weight: 600; }
-
-.action-bar-desc {
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
-  text-align: center;
-  margin: 0;
-  padding-top: 0.5rem;
-  border-top: 1px dashed var(--color-border-light);
-}
-
-/* Mobile responsive for buttons */
-@media (max-width: 640px) {
-  .action-buttons-row {
-    flex-direction: column;
-  }
-}
 
 /* --- Collapsible Masthead --- */
 
@@ -2436,97 +2382,6 @@ details.profile-section[open] > table {
 details.profile-section .action-bar {
   margin-top: 0;
 }
-
-/* --- Action Bar Layout (Compact & Centered) --- */
-.action-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem; /* Tight gap between rows */
-  
-  /* COMPACT CENTERED TOOLBELT */
-  width: 100%;
-  max-width: 900px; /* Constrain width */
-  margin: 1rem auto 0 auto; /* Center horizontally */
-  padding: 0.5rem; /* Slim padding */
-  
-  background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-}
-
-/* Row 1: Top Controls */
-.action-row-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 1rem;
-}
-
-/* The Spacer (Pushes Copy buttons to the right, or creates a gap) */
-.action-spacer {
-  flex-grow: 0;
-  width: 2rem; /* The specific gap size you asked for */
-  border-right: 1px dashed var(--color-border-light); /* Optional visual divider */
-  margin-right: 0.5rem;
-  height: 2rem;
-}
-
-/* Grouping the Copy Buttons */
-.copy-group {
-  display: flex;
-  gap: 0.5rem;
-  flex-grow: 1; /* Fills remaining space */
-}
-
-.copy-group .tool-btn {
-  flex: 1;
-  font-size: 0.85rem; /* Slightly smaller text for utility buttons */
-  padding: 0.5rem;
-}
-
-/* Highlight the "Full Report" button slightly */
-.report-btn {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  font-weight: 700;
-}
-
-/* Row 2: Bottom Controls (Centered) */
-.action-row-bottom {
-  display: flex;
-  justify-content: center; /* Center the Macro button */
-  width: 100%;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-border-light); /* Visual separation */
-}
-
-/* The Big Macro Button */
-.macro-btn {
-  width: 60%; /* Not full width, but prominent */
-  font-size: 1.1rem;
-  padding: 0.75rem;
-  background-color: var(--color-bg);
-  border: 2px solid var(--color-border);
-}
-.macro-btn:hover {
-  border-color: var(--color-primary-focus);
-  color: var(--color-primary-focus);
-  background-color: #eff6ff;
-}
-
-/* Mobile Responsiveness */
-@media (max-width: 768px) {
-  .action-row-top {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .action-spacer { display: none; }
-  .copy-group { flex-direction: column; }
-  .macro-btn { width: 100%; }
-}
-
 
 /* --- Highlight/Deobfuscate Buttons (Pill Shape) --- */
 #btn-reveal,
@@ -3440,46 +3295,133 @@ details.profile-section .action-bar {
   scroll-margin-top: 120px; 
 }
 
-/* --- TIER 2: FORENSIC WORKBENCH (Fluid Single-Row Layout) --- */
+/* =========================================
+   UNIFIED ACTIONS PANEL & WORKBENCH
+   ========================================= */
+
+/* 1. The "Actions" Toggle Button (Summary) */
+#actions-panel-wrapper > summary {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    /* Centering */
+    width: fit-content;
+    margin: 0 auto 1.5rem auto; /* Center horizontally with bottom gap */
+    
+    /* STYLE: Transparent + Violet Border + Rect-Pill */
+    background-color: transparent;
+    border: 2px solid #8b5cf6; /* Vivid Violet */
+    color: #5b21b6;            /* Darker Violet text */
+    
+    /* Rect-Pill Hybrid Shape */
+    padding: 6px 32px;
+    border-radius: 12px;       /* The "Hybrid" radius */
+    
+    /* Typography */
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+    list-style: none;          /* Remove default arrow */
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* Hover State */
+#actions-panel-wrapper > summary:hover {
+    background-color: #f5f3ff; /* Very light violet tint */
+    border-color: #7c3aed;     /* Darker border on hover */
+    transform: translateY(-1px);
+}
+
+/* Hide Webkit default arrow */
+#actions-panel-wrapper > summary::-webkit-details-marker {
+    display: none;
+}
+
+/* 2. The Main Container (Restored to 100% Width) */
+.action-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    
+    /* FORCE FULL WIDTH */
+    width: 100%; 
+    max-width: none; 
+    padding: 16px; 
+    margin: 0;
+    
+    background-color: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+}
+
+/* 3. Top Row: Data Copy Buttons */
+.action-row-top {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    align-items: stretch;
+}
+
+/* Hide the old spacer */
+.action-spacer { display: none; }
+
+/* Copy Group Container */
+.copy-group {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+}
+
+/* 4. Middle Row: Forensic Workbench */
 .workbench-row {
     display: flex;
     width: 100%;
-    flex-direction: row;
-    flex-wrap: nowrap; /* Force single line */
-    align-items: stretch; /* Force equal height for all buttons */
-    justify-content: space-between; /* Distribute groups across full width */
-    gap: 12px; /* Consistent gutter between groups */
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--color-border);
-}
-
-/* Remove the "Groups" concept visually.
-   We display contents directly so all buttons are siblings in the layout flow. */
-.wb-group {
-    display: contents; 
-}
-
-/* Shared Workbench Button Styles */
-.wb-group .tool-btn {
-    display: flex;
-    flex: 1; /* Each button fills its share of the group */
-    align-items: center; /* Vertical center */
-    justify-content: center; /* Horizontal center */
-    text-align: center;
-    white-space: nowrap; /* Prevent ugly text wrapping */
-    height: auto; /* Allow stretch to work */
-    padding: 0.6rem 0.5rem; /* Vertical padding normalized */
-    /* UNIFORM TYPOGRAPHY */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 1rem !important; /* Force equality */
-    font-weight: 700;
+    gap: 12px;
+    padding: 12px 0; /* Vertical breathing room */
+    border-top: 1px dashed var(--color-border-light);
+    border-bottom: 1px dashed var(--color-border-light);
     
-    transition: all 0.2s ease;
-    gap: 6px; 
-    border-radius: 4px; /* Ensure corners match */
+    /* Reset flex settings to align perfectly with top row */
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
 }
 
-/* Specific Colors (Retained) */
+/* Unwrap the groups */
+.wb-group {
+    display: contents;
+}
+
+/* 5. UNIVERSAL BUTTON STYLING (Alignment Enforcer) */
+/* This targets BOTH Top Row and Workbench Row buttons */
+.action-bar .tool-btn {
+    flex: 1; /* Every button takes equal width */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    
+    /* UNIFORM TYPOGRAPHY */
+    font-family: var(--font-sans);
+    font-size: 0.9rem !important; /* Force match */
+    font-weight: 600 !important;  /* Force match */
+    line-height: 1;
+    
+    /* UNIFORM DIMENSIONS */
+    height: 42px; /* Fixed height for perfect alignment */
+    padding: 0 12px;
+    white-space: nowrap;
+    
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-white);
+    color: var(--color-text);
+    transition: all 0.15s ease;
+    gap: 8px;
+}
+
+/* Specific Colors */
 .wb-btn-strict {
     background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;
 }
@@ -3490,9 +3432,12 @@ details.profile-section .action-bar {
 }
 .wb-btn-cons:hover { background-color: #ffedd5; }
 
+/* Code Buttons: Visual adjustment for Mono font */
 .wb-btn-code {
     background-color: #f0fdf4; color: #166534; border-color: #bbf7d0;
-    font-size: 0.8rem !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.8rem !important; /* Mono looks bigger, so we step it down 0.1rem */
+    letter-spacing: -0.02em;
 }
 .wb-btn-code:hover { background-color: #dcfce7; }
 
@@ -3501,12 +3446,26 @@ details.profile-section .action-bar {
 }
 .wb-btn-evidence:hover { background-color: #f3e8ff; }
 
-/* Responsive Tweak: Stack on very small mobile screens if needed */
-@media (max-width: 700px) {
-    .workbench-row {
+/* 6. Bottom Row: Macro Button */
+.action-row-bottom {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.macro-btn {
+    width: 100%;
+    background-color: var(--color-bg);
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    height: 42px;
+}
+
+/* Responsive: Stack on Mobile */
+@media (max-width: 1000px) {
+    .action-row-top, .workbench-row, .copy-group {
         flex-wrap: wrap;
     }
-    .wb-group {
-        flex: 1 1 100%; /* Full width rows on mobile */
+    .action-bar .tool-btn {
+        flex: 1 1 45%; /* 2 per row */
     }
 }
