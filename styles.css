@@ -1422,6 +1422,16 @@ Stage 2: Heatmap Row Classes
   border-color: #6ee7b7;
 }
 
+/* --- ICON RESTORATION (The Fix) --- */
+/* This targets the SVG inside the pills to restore Color & Gap */
+#status-line.status-ready svg,
+.status-details.clean svg {
+  stroke: #15803d !important;   /* Force Green Color */
+  stroke-width: 3;
+  margin-left: 8px !important;  /* Force 8px Gap */
+  margin-right: 0 !important;
+}
+
 /* --- Repertoire Card Styling --- */
 
 .card.card-repertoire {
