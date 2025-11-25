@@ -3294,18 +3294,19 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
         
         for s, e, lbl in merged_bidi: 
-            # CRITICAL FIX: Zero-Width Registration (s, s)
-            # Prevents browser selection crashes on Bidi text.
-            _register_hit("thr_execution", s, s, lbl)
+            # [CRITICAL FIX] Use (s, s+1) instead of (s, s)
+            # We enforce a width of 1 so the highlight selects the Bidi control character itself.
+            # Using (s, s) causes browsers to freak out and select all text.
+            end_pos = max(e, s + 1)
+            _register_hit("thr_execution", s, end_pos, lbl)
 
     # 2. Other Execution Threats
-    # FIX: Use 'legacy_indices' dictionary which is defined in this function.
-    # CRITICAL FIX: Zero-Width Registration (idx, idx).
+    # [CRITICAL FIX] Use (idx, idx+1)
     for idx in legacy_indices.get("esc", []): 
-        _register_hit("thr_execution", idx, idx, "Terminal Injection")
+        _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
     
     for idx in legacy_indices.get("suspicious_syntax_vs", []): 
-        _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
+        _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
     # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
@@ -6340,15 +6341,14 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V2). 
-    Uses DOM attributes to track index state, enabling navigation of 
-    overlapping/zero-width hits that stateless cursor logic skips.
+    Stateful stepper (Fixed V3). 
+    Enforces minimum selection width to prevent 'Select All' glitches on Zalgo/Bidi.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # 2. Define Human-Readable Labels (Keep existing logic)
+    # [Keep existing Labels/Targets logic...]
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -6360,7 +6360,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 3. Resolve targets (Keep existing logic)
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -6377,11 +6376,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 4. Sort & Stateful Index Resolution
-    # We sort to ensure deterministic order
+    # Sort & Stateful Index Resolution
     targets.sort(key=lambda x: (x[0], x[1]))
     
-    # [FIX] Retrieve last visited index for this specific metric from DOM
     state_attr = f"data-hud-idx-{metric_key}"
     last_idx = -1
     try:
@@ -6389,26 +6386,29 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         if val is not None: last_idx = int(val)
     except: pass
     
-    # Calculate next index (Circular Buffer)
     next_idx = (last_idx + 1) % len(targets)
     next_hit = targets[next_idx]
     
-    # [FIX] Save new state to DOM immediately
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight
+    # Execute Highlight
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
     
+    # [CRITICAL FIX] Force Minimum Width of 1
+    # This prevents the "Select All" glitch by ensuring we select the character,
+    # not just a zero-width insertion point.
+    if dom_e <= dom_s:
+        dom_e = dom_s + 1
+    
     window.TEXTTICS_HIGHLIGHT_RANGE(dom_s, dom_e)
     
-    # 6. Update Status UI
+    # Update Status UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
     
-    # [FIX] Display accurate 1-based index
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{next_idx + 1} of {len(targets)}"
     
     hud_status = document.getElementById("hud-stepper-status")
@@ -6417,7 +6417,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         hud_status.style.display = "inline-flex"
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
-    # 7. Update Inspector
     inspect_character(None)
 
 @create_proxy
