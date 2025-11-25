@@ -3681,7 +3681,32 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in legacy_indices["other_ctrl"]: _register_hit("int_decay", idx, idx+1, "Legacy Control")
     
     # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
-    for s, e, lbl in bidi_dangers: _register_hit("thr_execution", s, e, lbl)
+    
+    # 1. Cluster Bidi Dangers (Fix for "12 Signals" Flood)
+    if bidi_dangers:
+        # Sort by start position
+        bidi_dangers.sort(key=lambda x: x[0])
+        
+        # Merging Logic
+        merged_bidi = []
+        if bidi_dangers:
+            curr_s, curr_e, curr_lbl = bidi_dangers[0]
+            for i in range(1, len(bidi_dangers)):
+                next_s, next_e, next_lbl = bidi_dangers[i]
+                # If adjacent (or overlapping), merge
+                if next_s <= curr_e:
+                    curr_e = max(curr_e, next_e)
+                    # Keep the label generic if we merge
+                    if "Sequence" not in curr_lbl: curr_lbl = "Bidi Sequence"
+                else:
+                    merged_bidi.append((curr_s, curr_e, curr_lbl))
+                    curr_s, curr_e, curr_lbl = next_s, next_e, next_lbl
+            merged_bidi.append((curr_s, curr_e, curr_lbl))
+            
+        for s, e, lbl in merged_bidi: 
+            _register_hit("thr_execution", s, e, lbl)
+
+    # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
     for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
