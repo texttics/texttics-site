@@ -44,6 +44,13 @@
             <span class="jump-list-subtitle">Source &amp; Status</span>
           </a>
         </li>
+
+        <li>
+          <a href="#actions-panel-wrapper">
+            <span class="jump-list-title">Actions</span>
+            <span class="jump-list-subtitle">Controls</span>
+          </a>
+        </li>
         
         <li>
           <a href="#hud-panel-wrapper">
@@ -56,13 +63,6 @@
           <a href="#inspector-panel-wrapper">
             <span class="jump-list-title">Character Inspector</span>
             <span class="jump-list-subtitle">Interactive Tool</span>
-          </a>
-        </li>
-        
-        <li>
-          <a href="#actions-panel-wrapper">
-            <span class="jump-list-title">Actions</span>
-            <span class="jump-list-subtitle">Controls</span>
           </a>
         </li>
 
@@ -133,7 +133,64 @@
           </div>
             </div>
       </section>
-       
+
+      <details class="profile-section" id="actions-panel-wrapper">
+          <summary><h2 class="section-title">Actions</h2></summary>
+          
+          <div class="action-bar">
+            
+            <div class="action-row-top">
+              <button id="btn-toggle-profiles" class="tool-btn" title="Toggle all profile sections">
+                ↕ Expand All Profiles
+              </button>
+
+              <div class="action-spacer"></div>
+
+              <div class="copy-group">
+                <button id="btn-copy-hud" class="tool-btn" title="Copy only the Live Metrics table">
+                  Copy HUD Data
+                </button>
+                <button id="btn-copy-inspector" class="tool-btn" title="Copy only the current Inspector data">
+                  Copy Inspector Data
+                </button>
+                <button id="copy-report-btn" class="tool-btn report-btn" title="Copy the complete dataset (Input + All Profiles)">
+                  Copy Full Profile Data
+                </button>
+                <button id="btn-copy-all-everything" class="tool-btn" title="Copy HUD + Inspector + Full Profile into one clipboard">
+                  Copy All Data
+                </button>
+                
+              </div>
+            </div>
+            
+            <div class="workbench-row">
+                <div class="wb-group">
+                    <button id="btn-sanitize-strict" class="tool-btn wb-btn-strict" title="Strict Mode: Drops Bidi, Invisibles, Tags, Private Use, and non-std formats. Normalizes to NFC.">Sanitize Strictly</button>
+                    <button id="btn-sanitize-conservative" class="tool-btn wb-btn-cons" title="Conservative Mode: Keeps RGI Emoji & valid ZWJ sequences. Drops Bidi/Tags. Normalizes to NFC.">Sanitize Conservatively</button>
+                </div>
+
+                <div class="wb-group">
+                    <button id="btn-copy-py" class="tool-btn wb-btn-code" title="Copy as Safe Python String (Escaped)">Copy as Python</button>
+                    <button id="btn-copy-js" class="tool-btn wb-btn-code" title="Copy as Safe JavaScript String (ES6 Escaped)">Copy as JavaScript</button>
+                </div>
+
+                <div class="wb-group">
+                    <button id="btn-export-json" class="tool-btn wb-btn-evidence" title="Download Full Forensic Artifact (JSON)">Download as JSON</button>
+                </div>
+            </div>
+
+            <div class="action-row-bottom">
+              <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
+                ▥ Analyze Macrostructure
+              </button>
+            </div>
+
+            <p class="action-bar-desc">
+              Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
+            </p>
+          </div>
+      </details>
+      
      <details class="profile-section" id="hud-panel-wrapper">
           <summary><h2 class="section-title">Head-Up Display</h2></summary>
           
@@ -241,64 +298,6 @@
              </div>
           </div>
       </details>
-
-      <details class="profile-section" id="actions-panel-wrapper">
-          <summary><h2 class="section-title">Actions</h2></summary>
-          
-          <div class="action-bar">
-            
-            <div class="action-row-top">
-              <button id="btn-toggle-profiles" class="tool-btn" title="Toggle all profile sections">
-                ↕ Expand All Profiles
-              </button>
-
-              <div class="action-spacer"></div>
-
-              <div class="copy-group">
-                <button id="btn-copy-hud" class="tool-btn" title="Copy only the Live Metrics table">
-                  Copy HUD Data
-                </button>
-                <button id="btn-copy-inspector" class="tool-btn" title="Copy only the current Inspector data">
-                  Copy Inspector Data
-                </button>
-                <button id="copy-report-btn" class="tool-btn report-btn" title="Copy the complete dataset (Input + All Profiles)">
-                  Copy Full Profile Data
-                </button>
-                <button id="btn-copy-all-everything" class="tool-btn" title="Copy HUD + Inspector + Full Profile into one clipboard">
-                  Copy All Data
-                </button>
-                
-              </div>
-            </div>
-            
-            <div class="workbench-row">
-                <div class="wb-group">
-                    <button id="btn-sanitize-strict" class="tool-btn wb-btn-strict" title="Strict Mode: Drops Bidi, Invisibles, Tags, Private Use, and non-std formats. Normalizes to NFC.">Sanitize Strictly</button>
-                    <button id="btn-sanitize-conservative" class="tool-btn wb-btn-cons" title="Conservative Mode: Keeps RGI Emoji & valid ZWJ sequences. Drops Bidi/Tags. Normalizes to NFC.">Sanitize Conservatively</button>
-                </div>
-
-                <div class="wb-group">
-                    <button id="btn-copy-py" class="tool-btn wb-btn-code" title="Copy as Safe Python String (Escaped)">Copy as Python</button>
-                    <button id="btn-copy-js" class="tool-btn wb-btn-code" title="Copy as Safe JavaScript String (ES6 Escaped)">Copy as JavaScript</button>
-                </div>
-
-                <div class="wb-group">
-                    <button id="btn-export-json" class="tool-btn wb-btn-evidence" title="Download Full Forensic Artifact (JSON)">Download as JSON</button>
-                </div>
-            </div>
-
-            <div class="action-row-bottom">
-              <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
-                ▥ Analyze Macrostructure
-              </button>
-            </div>
-
-            <p class="action-bar-desc">
-              Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
-            </p>
-          </div>
-      </details>
-      
     
       <!-- GROUP 2: THE STRUCTURAL PROFILE -->
 
