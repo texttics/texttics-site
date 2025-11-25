@@ -3717,10 +3717,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
     for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
-    # 2. Other Execution Threats
-    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
-    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
-
     # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
         "fffd": len(health_issues["fffd"]),
@@ -4526,22 +4522,18 @@ def compute_threat_analysis(t: str):
                         _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
-        # OBFUSCATION (Clusters) - With VS Noise Filter & Safety Clamp
+        # OBFUSCATION (Clusters) - With VS Noise Filter
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
-            # 1. NOISE FILTER: Check if this cluster is JUST a Variation Selector (VS1-VS16)
-            # If so, skip it. It is already flagged as "Forced Presentation" or "Syntax Spoofing".
-            # This prevents the "Double Count" bug.
-            is_just_vs = (c["length"] == 1 and (c["mask_union"] & INVIS_VARIATION_STANDARD))
+            # Check if this cluster is JUST a Variation Selector (VS1-VS16)
+            # If so, skip it here because it's covered by "Forced Presentation" or "Syntax Spoofing"
+            # This prevents double-counting.
+            is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
             
             if not is_just_vs:
                 label = "Invisible Cluster"
                 if c.get("high_risk"): label += " [High Risk]"
-                
-                # 2. SAFETY CLAMP: Highlight only the START (s, s+1).
-                # Highlighting the full range of an invisible cluster (e.g. 17 chars) causes 
-                # browser rendering crashes if it overlaps with Bidi controls.
-                _register_hit("thr_obfuscation", c["start"], c["start"]+1, label)
+                _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
