@@ -6349,20 +6349,15 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V7 - UTF-16 Clamping). 
-    Fixes 'Select All' glitch by clamping DOM indices to the exact UTF-16 byte length.
+    Stateful stepper (Fixed V8 - Grapheme Snap). 
+    Implements the 'Grapheme Bisection' fix.
+    It snaps the start/end indices to the nearest visual boundaries 
+    to prevent the browser from panicking and selecting all text.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # [CRITICAL] Calculate DOM Length (UTF-16 units), NOT Python Length
-    # Python len("😀") is 1. DOM length is 2. We must clamp to DOM length.
-    try:
-        t_dom_len = len(t.encode('utf-16-le')) // 2
-    except:
-        t_dom_len = len(t)
-
     # 2. Define Human-Readable Labels
     labels = {
         "integrity_agg": "Integrity Issues",
@@ -6407,50 +6402,62 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight with Robust Grapheme Snapping
+    # 5. Execute Highlight with Grapheme Snapping
+    # Convert Logic (Code Points) -> DOM (UTF-16) first
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # Convert to DOM (UTF-16) indices
-    dom_s = _logical_to_dom(t, log_s)
-    dom_e = _logical_to_dom(t, log_e)
+    raw_dom_s = _logical_to_dom(t, log_s)
+    raw_dom_e = _logical_to_dom(t, log_e)
     
-    safe_s = None
-    safe_e = None
-    
+    safe_s = raw_dom_s
+    safe_e = raw_dom_e
+
+    # [THE FIX] Grapheme Boundary Snapping
+    # We iterate through browser-defined segments to find the atomic boundaries.
     try:
         segments_iter = GRAPHEME_SEGMENTER.segment(t)
         segments = window.Array.from_(segments_iter)
         
+        # Helper: UTF-16 length
+        def get_len(s): return len(s.encode('utf-16-le')) // 2
+
+        found_s = False
+        found_e = False
+
         for seg in segments:
             g_start = seg.index
-            g_str = seg.segment
-            g_len = len(g_str.encode('utf-16-le')) // 2
+            g_len = get_len(seg.segment)
             g_end = g_start + g_len
             
-            # Match Start
-            if g_start <= dom_s < g_end:
+            # Snap START: If raw_s falls inside this cluster, move it to cluster Start
+            if not found_s and g_start <= raw_dom_s < g_end:
                 safe_s = g_start
+                found_s = True
             
-            # Match End (Expand to cover full grapheme)
-            if safe_s is not None:
+            # Snap END: If raw_e falls inside this cluster, move it to cluster End
+            # (We use < g_end because selections are exclusive at the end)
+            if not found_e and g_start < raw_dom_e <= g_end:
                 safe_e = g_end
-                if g_end >= dom_e:
-                    break
+                found_e = True
+            elif not found_e and raw_dom_e <= g_start:
+                # If we passed the target without hitting (edge case), snap to current
+                safe_e = g_start
+                found_e = True
+                
+            if found_s and found_e:
+                break
+                
     except Exception as e:
-        print(f"Stepper Segmentation Error: {e}")
-        pass 
+        print(f"Snap Error: {e}")
+        # Fallback to raw values if segmentation crashes
+        safe_s = raw_dom_s
+        safe_e = raw_dom_e
 
-    # Fallbacks
-    if safe_s is None: safe_s = dom_s
-    if safe_e is None: safe_e = max(dom_e, safe_s + 1)
-
-    # [CRITICAL FIX] Clamp final indices to Valid DOM Length
-    # Using 0 and t_dom_len ensures we never ask the browser to select 
-    # index 11 of a 10-char string (which triggers 'Select All').
-    safe_s = max(0, min(safe_s, t_dom_len))
-    safe_e = max(safe_s + 1, min(safe_e, t_dom_len))
-
+    # Final Safety Clamp
+    if safe_e <= safe_s: safe_e = safe_s + 1
+    
+    # Apply to DOM
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
     # 6. Update Status UI
