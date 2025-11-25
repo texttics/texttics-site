@@ -3949,13 +3949,15 @@ def _escape_for_js(s: str) -> str:
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v6.1 (Consolidated).
-    1. Tuning: MERGE_DIST increased to 40 to prevent fragmentation.
-    2. UX: Clickable Summary Stats jump to relevant clusters.
-    3. Consistency: Legend matches Banner terminology exactly.
-    4. A11y: Full ARIA support and keyboard hints.
+    Forensic X-Ray Engine v7.1 (Universal Structure).
+    1. Focus: Dictionary-free structural detection (Host/Addr/Token).
+    2. Tuning: MERGE_DIST=40.
+    3. Security: Hardened escaping.
+    4. A11y: Full ARIA support.
     """
     if not t: return ""
+    # Ensure regex is available
+    import re
     
     all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
     if not all_threats: return ""
@@ -3978,21 +3980,13 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 current_cluster = [all_threats[i]]
         clusters.append(current_cluster)
 
-    TARGETS = ["paypal", "google", "apple", "microsoft", "amazon", "facebook", 
-               "instagram", "whatsapp", "bank", "secure", "login", "signin", 
-               "account", "update", "http", "https", "www"]
-
+    # [REMOVED] Hardcoded TARGETS list (Replaced by Dynamic Engine)
     THREAT_PRIORITY = ["EXECUTION", "SPOOF", "OBFUSCATE"]
 
     # --- 2. Render Clusters & Track First Occurrences ---
     cluster_html_list = []
     
-    # Navigation Anchors
-    first_exec_id = None
-    first_spoof_id = None
-    first_obfus_id = None
-    
-    # Global Counters
+    # Global Counters for Summary
     total_exec = 0
     total_spoof = 0
     total_obfus = 0
@@ -4002,29 +3996,11 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
     for idx, clust in enumerate(clusters):
         cluster_id = f"cluster-{idx}"
         
-        # Analyze cluster composition for tagging
-        has_exec = False
-        has_spoof = False
-        has_obfus = False
-        
-        # Scan cluster for types
+        # Update Globals
         for p in clust:
-            if p in bidi_indices: has_exec = True
-            if p in confusable_indices: has_spoof = True
-            if p in invisible_indices: has_obfus = True
-            
-        # Update Globals & Anchors
-        if has_exec:
-            total_exec += sum(1 for p in clust if p in bidi_indices)
-            if first_exec_id is None: first_exec_id = cluster_id
-            
-        if has_spoof:
-            total_spoof += sum(1 for p in clust if p in confusable_indices)
-            if first_spoof_id is None: first_spoof_id = cluster_id
-            
-        if has_obfus:
-            total_obfus += sum(1 for p in clust if p in invisible_indices)
-            if first_obfus_id is None: first_obfus_id = cluster_id
+            if p in bidi_indices: total_exec += 1
+            if p in confusable_indices: total_spoof += 1
+            if p in invisible_indices: total_obfus += 1
 
         # --- Cluster Rendering Logic ---
         start_idx = clust[0]
@@ -4151,24 +4127,96 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         full_raw_snippet = "".join(js_array[ctx_start:ctx_end]).lower()
         safe_snippet_final = "".join(safe_string_parts)
         
-        # --- Multi-Target Logic (Fixed: Aggregates all matches) ---
-        found_targets = []
-        for t in TARGETS:
-            # Check identifying keywords (brands, protocols, sensitive terms)
-            if t in full_raw_snippet or t in safe_snippet_final.lower():
-                found_targets.append(t.upper())
+        # --- 3. Dynamic Focus Engine (Universal & Structure-Driven) ---
+        # No dictionaries. Purely identifies structural tokens (Hosts, Handles, Keywords)
+        # that act as the "host" for spoofing, obfuscation, or execution threats.
         
-        brand_badge = ""
-        if found_targets:
-            # Show all found targets, comma-separated (e.g., "TARGET: PAYPAL, LOGIN")
-            # We limit to 3 to prevent the badge from breaking the layout.
-            display_targets = found_targets[:3]
-            if len(found_targets) > 3:
-                display_targets.append("...")
+        raw_slice = "".join(js_array[ctx_start:ctx_end])
+        
+        def _build_token_skeleton(start_abs: int, end_abs: int) -> str:
+            """Normalize a token span using the global confusables map."""
+            chars = []
+            for j in range(start_abs, end_abs + 1):
+                ch = js_array[j]
+                cp = ord(ch)
+                # If threat, use skeleton; else use original
+                if j in confusable_indices:
+                    skel = confusables_map.get(cp, ch)
+                    chars.append(skel)
+                else:
+                    chars.append(ch)
+            return "".join(chars)
+
+        # Structural Buckets
+        suspicious_tokens = {"HOST": [], "ADDR": [], "TOKEN": []}
+        
+        # Regex: Unicode-aware identifier-like sequences
+        # Matches 3+ chars: Alphanumeric (Unicode), Dot, At, Dash, Underscore
+        # This captures 'пример.ru' just as well as 'paypal.com'
+        token_pattern = r"[\w.@-]{3,}"
+        
+        for m in re.finditer(token_pattern, raw_slice):
+            start_rel = m.start()
+            end_rel = m.end() - 1
             
-            label = ", ".join(display_targets)
-            brand_badge = f'<span class="cluster-badge badge-brand">TARGET: {label}</span>'
+            start_abs = ctx_start + start_rel
+            end_abs = ctx_start + end_rel
+            
+            # CRITICAL FILTER: The token must be "infected"
+            # It is relevant only if it contains OR touches a threat.
+            has_threat = False
+            
+            # Check range: start-1 to end+1 to catch adjacent invisibles/bidi
+            # This catches 'H[ZWJ]idden' where ZWJ is between letters
+            check_start = max(0, start_abs - 1)
+            check_end = min(len(js_array), end_abs + 2)
+            
+            for pos in range(check_start, check_end):
+                if pos in confusable_indices or pos in invisible_indices or pos in bidi_indices:
+                    has_threat = True
+                    break
+            
+            if not has_threat:
+                continue
+
+            # Build Skeleton for Display
+            token_raw = m.group()
+            skel = _build_token_skeleton(start_abs, end_abs)
+            
+            # Structural Classification
+            if "@" in token_raw and "." in token_raw:
+                kind = "ADDR" # Email-like
+            elif "." in token_raw and "@" not in token_raw:
+                kind = "HOST" # Domain-like
+            else:
+                kind = "TOKEN" # Keyword
+                
+            # Dedupe
+            if skel not in suspicious_tokens[kind]:
+                suspicious_tokens[kind].append(skel)
+
+        # --- Construct FOCUS Badge ---
+        focus_bits = []
+
+        def _format_bucket(kind_key, label):
+            vals = suspicious_tokens.get(kind_key, [])
+            if not vals: return
+            # Limit to 2 examples per category
+            sample = vals[:2]
+            if len(vals) > 2: sample.append("...")
+            focus_bits.append(f"{label}: {', '.join(sample)}")
+
+        _format_bucket("HOST", "Host")
+        _format_bucket("ADDR", "Addr")
+        _format_bucket("TOKEN", "Focus")
+
+        brand_badge = ""
+        if focus_bits:
+            focus_label = " | ".join(focus_bits)
+            safe_label = _escape_html(focus_label)
+            brand_badge = f'<span class="cluster-badge badge-brand">FOCUS: {safe_label}</span>'
         
+        # --- Threat Badges ---
         type_badges_html = []
         for t in THREAT_PRIORITY:
             if t in threat_types:
@@ -4208,12 +4256,11 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         cluster_html_list.append(card)
         prev_end = ctx_end
 
-    # --- 3. Construct Interactive Summary (Simplified to Scoreboard) ---
+    # --- 3. Construct Summary Scoreboard ---
     summary_parts = []
     
     def make_stat_badge(count, label, color_class):
         if count == 0: return ""
-        # [UX POLISH] Static Scoreboard. Removed click-to-jump logic (redundant/noisy).
         return f'<span class="{color_class}"><strong>{count}</strong> {label}</span>'
 
     if total_exec > 0: 
