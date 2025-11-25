@@ -1118,3 +1118,35 @@ window.hud_jump = (key) => {
     console.warn("Python bridge 'cycle_hud_metric' not ready.");
   }
 };
+
+// ==========================================
+// 12. SAFE COPY BRIDGE (From Python)
+// ==========================================
+
+/**
+ * Handles the "Copy Safe Slice" action triggered from the Python renderer.
+ * @param {string} safeText - The sanitized string passed from Python.
+ * @param {HTMLElement} btnElement - The button element that was clicked.
+ */
+window.TEXTTICS_COPY_SAFE = async (safeText, btnElement) => {
+  if (!safeText) return;
+
+  try {
+    await navigator.clipboard.writeText(safeText);
+
+    // Visual Feedback
+    const originalText = btnElement.innerText;
+    btnElement.innerText = "Copied!";
+    btnElement.classList.add('copied'); // Re-use the existing .copied style
+
+    // Revert after 2 seconds
+    setTimeout(() => {
+      btnElement.innerText = originalText;
+      btnElement.classList.remove('copied');
+    }, 2000);
+
+  } catch (err) {
+    console.error("Safe Copy Failed:", err);
+    btnElement.innerText = "Error!";
+  }
+};
