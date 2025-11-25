@@ -1047,3 +1047,33 @@ We patched a critical philosophical flaw in the Threat Engine where innocent ASC
 * **The "Invisible Hunter":** The "Highlight Non-Std Inv." button uses a `selectionEnd` delta loop to force-march through zero-width characters, auto-triggering the Inspector for immediate analysis.
 * **Workbench Aesthetic:** Renamed "Controls" to **"Global Actions"** with a "Rigorous Violet" theme (`#5b21b6`) to visually separate tools from data.
 * **Clipboard Fidelity:** The "Copy All Data" report now parses the deep forensic tooltips from the Encoding Footprint and appends a full "Deobfuscated" view of the text.
+
+
+## 🛡️ Update: The Forensic X-Ray Engine (v8.0)
+
+**Session Goal:** To transform the "Perceived vs. Reality" view from a passive visualization into an active, forensically accurate **"Sparse Forensic Stream."** We moved from heuristic guessing to a deterministic, architecture-driven approach that prioritizes data correctness and cognitive clarity.
+
+### 1. Architecture & Logic: The "Sparse Stream" Renderer
+The new "Perceived vs Encoded" block is powered by a **Clustering & Priority State Machine** designed to handle massive inputs without overwhelming the analyst.
+
+* **Context Clustering Algorithm:**
+    * Instead of rendering the full text, the engine identifies "Threat Hotspots."
+    * It aggregates threats within a tunable heuristic window (`MERGE_DIST = 40`) to form **Context Clusters**.
+    * This creates a "Sparse View," rendering only the relevant slices of text while mathematically summarizing the gaps (e.g., `[ ... 103 safe characters omitted ... ]`).
+* **The Render Priority Stack:**
+    * The engine iterates through the text using a strict **Threat Hierarchy** to resolve overlapping properties (e.g., a character that is both "Invisible" and "Bidi"):
+        1.  **`EXECUTION` (Critical):** Bidi Controls (Trojan Source). *Always renders first.*
+        2.  **`OBFUSCATION` (High):** Invisible/Format characters. *Compressed into Run-Length Stacks (e.g., `×17 HID`).*
+        3.  **`SPOOFING` (Medium):** Confusables. *Renders with Script Tags (e.g., `Cyr→Lat`).*
+        4.  **`SAFE` (Baseline):** Standard text. *Rendered with a "Context Halo" (dimmed opacity) to reduce noise.*
+
+### 2. Engineering Achievements: Logic, Security & Ergonomics
+We successfully audited and hardened the engine to reach a "Local Maximum" of utility and safety:
+
+* **Logic Repair (The Priority Inversion Fix):** We patched a critical flaw where Bidi controls were being masked by the "Invisible" check. The engine now strictly enforces `Execution > Obfuscation`, ensuring dangerous controls like `RLO` render as high-visibility Amber **BIDI** stacks rather than generic Purple hidden tags.
+* **Security Hardening (XSS & Contracts):**
+    * **Double-Layer Escaping:** The interactive "Copy Safe Slice" button now uses a rigorous pipeline (`_escape_for_js` + `_escape_html`) to prevent attribute injection attacks via malicious inputs.
+    * **Explicit Contracts:** Vague labels were replaced with precise definitions. `DEL` (often confused with "Delete Key") became **`HID`** (Hidden), and tooltips now explicitly define the sanitization rules (Confusables mapped to Skeleton; Invisibles dropped).
+* **Visual & Cognitive Polish:**
+    * **Fact-Based Dashboard:** We removed noisy "Target Guessing" (e.g., "Target: PayPal") in favor of deterministic **Cluster-Level Counters** (e.g., `[10 EXECUTION] [3 SPOOF]`).
+    * **Unified Mental Model:** A global "Scoreboard" at the top and a "Legend" at the bottom now share the exact same terminology and color coding, significantly reducing the cognitive load for non-expert analysts.
