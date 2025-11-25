@@ -3704,7 +3704,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
             
         for s, e, lbl in merged_bidi: 
-            _register_hit("thr_execution", s, e, lbl)
+            # CRITICAL FIX: Register only the START (s, s+1).
+            # Highlighting the full range (s, e) of a Bidi block triggers 
+            # browser "Whole Row" selection glitches. We clamp to 1 char.
+            _register_hit("thr_execution", s, s+1, lbl)
 
     # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
