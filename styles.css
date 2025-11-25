@@ -3197,6 +3197,7 @@ details.profile-section .action-bar {
   border: 1px solid transparent;
   line-height: 1;
   white-space: nowrap;
+  flex-shrink: 0; /* Prevent squashing */
 }
 
 .badge-brand { background: #111827; color: #f59e0b; border-color: #111827; }
