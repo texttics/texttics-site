@@ -3949,25 +3949,22 @@ def _escape_for_js(s: str) -> str:
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v7.1 (Universal Structure).
-    1. Focus: Dictionary-free structural detection (Host/Addr/Token).
-    2. Tuning: MERGE_DIST=40.
-    3. Security: Hardened escaping.
-    4. A11y: Full ARIA support.
+    Forensic X-Ray Engine v8.0 (Fact-Based & Priority Fixed).
+    1. Header: Shows precise counts (e.g., "10 EXECUTION") instead of generic tags.
+    2. Logic Fix: Checks BIDI before INVISIBLE to prevent masking Execution threats.
+    3. Focus: Removed all brand/target guessing logic.
     """
     if not t: return ""
-    # Ensure regex is available
-    import re
     
+    # Combine all threats for clustering
     all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
     if not all_threats: return ""
 
     js_array = window.Array.from_(t)
     text_len = len(js_array)
     
-    # --- 1. Clustering (Tuned for Context) ---
+    # --- 1. Clustering ---
     clusters = []
-    # [TUNING] Increased from 15 to 40 to keep sentences together
     MERGE_DIST = 40 
     
     if all_threats:
@@ -3980,10 +3977,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 current_cluster = [all_threats[i]]
         clusters.append(current_cluster)
 
-    # [REMOVED] Hardcoded TARGETS list (Replaced by Dynamic Engine)
-    THREAT_PRIORITY = ["EXECUTION", "SPOOF", "OBFUSCATE"]
-
-    # --- 2. Render Clusters & Track First Occurrences ---
+    # --- 2. Render Clusters ---
     cluster_html_list = []
     
     # Global Counters for Summary
@@ -3996,11 +3990,34 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
     for idx, clust in enumerate(clusters):
         cluster_id = f"cluster-{idx}"
         
-        # Update Globals
+        # --- Cluster-Level Statistics (The New Dashboard) ---
+        # We calculate exact counts for *this specific cluster*
+        c_exec = 0
+        c_spoof = 0
+        c_obfus = 0
+        
         for p in clust:
-            if p in bidi_indices: total_exec += 1
-            if p in confusable_indices: total_spoof += 1
-            if p in invisible_indices: total_obfus += 1
+            if p in bidi_indices: 
+                c_exec += 1
+                total_exec += 1
+            # Note: An index can be both bidi and invisible, but we count types independently here for stats
+            if p in confusable_indices: 
+                c_spoof += 1
+                total_spoof += 1
+            if p in invisible_indices: 
+                c_obfus += 1
+                total_obfus += 1
+
+        # Generate The Fact-Based Badges
+        # We use the existing CSS classes: badge-bidi, badge-spoof, badge-invis
+        cluster_badges = []
+        
+        if c_exec > 0:
+            cluster_badges.append(f'<span class="cluster-badge badge-bidi">{c_exec} EXECUTION</span>')
+        if c_spoof > 0:
+            cluster_badges.append(f'<span class="cluster-badge badge-spoof">{c_spoof} SPOOF</span>')
+        if c_obfus > 0:
+            cluster_badges.append(f'<span class="cluster-badge badge-invis">{c_obfus} OBFUSCATE</span>')
 
         # --- Cluster Rendering Logic ---
         start_idx = clust[0]
@@ -4016,14 +4033,13 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         
         cluster_html_parts = []
         safe_string_parts = []
-        threat_types = set()
         
         i = ctx_start
         while i < ctx_end:
             char = js_array[i]
             cp = ord(char)
             
-            # Safe String Construction
+            # Safe String Logic (Sanitization)
             if i in invisible_indices: pass 
             elif i in bidi_indices: pass
             elif i in confusable_indices:
@@ -4041,12 +4057,27 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             
             safe_wrapper = f'<span class="xray-safe">{char_vis}</span>'
 
-            # Threat Logic
-            if i in invisible_indices:
-                threat_types.add("OBFUSCATE")
+            # --- RENDER PRIORITY FIX (CRITICAL) ---
+            # 1. EXECUTION (Bidi) - Highest priority. 
+            # Must check first because Bidi chars are often also "Invisible".
+            if i in bidi_indices:
+                marker = (
+                    f'<span class="xray-stack stack-bidi" tabindex="0" '
+                    f'title="Bidi Control (Execution Risk)" '
+                    f'aria-label="Bidi Control">'
+                    f'<span class="xray-top" style="color:#d97706;">&harr;</span>'
+                    f'<span class="xray-bot">BIDI</span>'
+                    f'</span>'
+                )
+                cluster_html_parts.append(marker)
+
+            # 2. OBFUSCATION (Invisible)
+            elif i in invisible_indices:
                 run_len = 1
                 lookahead = i + 1
-                while lookahead < ctx_end and lookahead in invisible_indices:
+                # Lookahead must consume contiguous invisibles that are NOT bidi
+                # If we hit a bidi char, we stop the run so it gets its own BIDI stack
+                while lookahead < ctx_end and lookahead in invisible_indices and lookahead not in bidi_indices:
                     run_len += 1
                     lookahead += 1
                 
@@ -4073,8 +4104,8 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     )
                     cluster_html_parts.append(marker)
 
+            # 3. SPOOFING (Confusables)
             elif i in confusable_indices:
-                threat_types.add("SPOOF")
                 skel = confusables_map.get(cp, "?")
                 disp_skel = skel[0] + (".." if len(skel)>1 else "") if skel else "?"
                 
@@ -4107,123 +4138,13 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 )
                 cluster_html_parts.append(stack)
 
-            elif i in bidi_indices:
-                threat_types.add("EXECUTION")
-                marker = (
-                    f'<span class="xray-stack stack-bidi" tabindex="0" '
-                    f'title="Bidi Control (Execution Risk)" '
-                    f'aria-label="Bidi Control">'
-                    f'<span class="xray-top" style="color:#d97706;">&harr;</span>'
-                    f'<span class="xray-bot">CLR</span>'
-                    f'</span>'
-                )
-                cluster_html_parts.append(marker)
-
+            # 4. Safe Character
             else:
                 cluster_html_parts.append(safe_wrapper)
             
             i += 1
 
-        full_raw_snippet = "".join(js_array[ctx_start:ctx_end]).lower()
-        safe_snippet_final = "".join(safe_string_parts)
-        
-        # --- 3. Dynamic Focus Engine (Universal & Structure-Driven) ---
-        # No dictionaries. Purely identifies structural tokens (Hosts, Handles, Keywords)
-        # that act as the "host" for spoofing, obfuscation, or execution threats.
-        
-        raw_slice = "".join(js_array[ctx_start:ctx_end])
-        
-        def _build_token_skeleton(start_abs: int, end_abs: int) -> str:
-            """Normalize a token span using the global confusables map."""
-            chars = []
-            for j in range(start_abs, end_abs + 1):
-                ch = js_array[j]
-                cp = ord(ch)
-                # If threat, use skeleton; else use original
-                if j in confusable_indices:
-                    skel = confusables_map.get(cp, ch)
-                    chars.append(skel)
-                else:
-                    chars.append(ch)
-            return "".join(chars)
-
-        # Structural Buckets
-        suspicious_tokens = {"HOST": [], "ADDR": [], "TOKEN": []}
-        
-        # Regex: Unicode-aware identifier-like sequences
-        # Matches 3+ chars: Alphanumeric (Unicode), Dot, At, Dash, Underscore
-        # This captures 'пример.ru' just as well as 'paypal.com'
-        token_pattern = r"[\w.@-]{3,}"
-        
-        for m in re.finditer(token_pattern, raw_slice):
-            start_rel = m.start()
-            end_rel = m.end() - 1
-            
-            start_abs = ctx_start + start_rel
-            end_abs = ctx_start + end_rel
-            
-            # CRITICAL FILTER: The token must be "infected"
-            # It is relevant only if it contains OR touches a threat.
-            has_threat = False
-            
-            # Check range: start-1 to end+1 to catch adjacent invisibles/bidi
-            # This catches 'H[ZWJ]idden' where ZWJ is between letters
-            check_start = max(0, start_abs - 1)
-            check_end = min(len(js_array), end_abs + 2)
-            
-            for pos in range(check_start, check_end):
-                if pos in confusable_indices or pos in invisible_indices or pos in bidi_indices:
-                    has_threat = True
-                    break
-            
-            if not has_threat:
-                continue
-
-            # Build Skeleton for Display
-            token_raw = m.group()
-            skel = _build_token_skeleton(start_abs, end_abs)
-            
-            # Structural Classification
-            if "@" in token_raw and "." in token_raw:
-                kind = "ADDR" # Email-like
-            elif "." in token_raw and "@" not in token_raw:
-                kind = "HOST" # Domain-like
-            else:
-                kind = "TOKEN" # Keyword
-                
-            # Dedupe
-            if skel not in suspicious_tokens[kind]:
-                suspicious_tokens[kind].append(skel)
-
-        # --- Construct FOCUS Badge ---
-        focus_bits = []
-
-        def _format_bucket(kind_key, label):
-            vals = suspicious_tokens.get(kind_key, [])
-            if not vals: return
-            # Limit to 2 examples per category
-            sample = vals[:2]
-            if len(vals) > 2: sample.append("...")
-            focus_bits.append(f"{label}: {', '.join(sample)}")
-
-        _format_bucket("HOST", "Host")
-        _format_bucket("ADDR", "Addr")
-        _format_bucket("TOKEN", "Focus")
-
-        brand_badge = ""
-        if focus_bits:
-            focus_label = " | ".join(focus_bits)
-            safe_label = _escape_html(focus_label)
-            brand_badge = f'<span class="cluster-badge badge-brand">FOCUS: {safe_label}</span>'
-        
-        # --- Threat Badges ---
-        type_badges_html = []
-        for t in THREAT_PRIORITY:
-            if t in threat_types:
-                cls = "badge-spoof" if t == "SPOOF" else ("badge-invis" if t == "OBFUSCATE" else "badge-bidi")
-                type_badges_html.append(f'<span class="cluster-badge {cls}">{t}</span>')
-        
-        safe_str_js = _escape_for_js(safe_snippet_final)
+        safe_str_js = _escape_for_js("".join(safe_string_parts))
         safe_str_attr = _escape_html(safe_str_js)
         
         copy_title = (
@@ -4241,8 +4162,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             <div class="cluster-header" id="cluster-header-{idx}">
                 <div class="cluster-meta">
                     <span class="cluster-id" title="{cluster_count_tooltip}">#{idx + 1}</span>
-                    {"".join(type_badges_html)}
-                    {brand_badge}
+                    {"".join(cluster_badges)}
                 </div>
                 <button class="safe-copy-btn" title="{copy_title_attr}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">
                     Copy Safe Slice
