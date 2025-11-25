@@ -6340,23 +6340,15 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateless stepper. Finds the next range after current_dom_pos.
-    Updates the LEFT-SIDE HUD Status bar.
+    Stateful stepper (Fixed V2). 
+    Uses DOM attributes to track index state, enabling navigation of 
+    overlapping/zero-width hits that stateless cursor logic skips.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # SAFETY: Default to 0 if dom_pos is missing/None
-    try:
-        dom_pos_int = int(current_dom_pos)
-    except:
-        dom_pos_int = 0
-        
-    # 1. Convert Browser Position to Logical Position (Input)
-    current_logical = _dom_to_logical(t, dom_pos_int)
-
-    # 2. Define Human-Readable Labels
+    # 2. Define Human-Readable Labels (Keep existing logic)
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -6368,7 +6360,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 3. Resolve targets
+    # 3. Resolve targets (Keep existing logic)
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -6385,23 +6377,26 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 4. Sort & Find Next
+    # 4. Sort & Stateful Index Resolution
+    # We sort to ensure deterministic order
     targets.sort(key=lambda x: (x[0], x[1]))
     
-    next_hit = targets[0] # Default to wrap around (first item)
-    hit_index = 1
+    # [FIX] Retrieve last visited index for this specific metric from DOM
+    state_attr = f"data-hud-idx-{metric_key}"
+    last_idx = -1
+    try:
+        val = el.getAttribute(state_attr)
+        if val is not None: last_idx = int(val)
+    except: pass
     
-    for i, hit in enumerate(targets):
-        start, end, lbl = hit
-        
-        # LOGIC FIX: Strictly > prevents sticking to the current selection
-        if start > current_logical:
-            next_hit = hit
-            hit_index = i + 1
-            break
+    # Calculate next index (Circular Buffer)
+    next_idx = (last_idx + 1) % len(targets)
+    next_hit = targets[next_idx]
+    
+    # [FIX] Save new state to DOM immediately
+    el.setAttribute(state_attr, str(next_idx))
             
     # 5. Execute Highlight
-    # CRITICAL FIX: Convert Logical Index BACK to DOM Index (Output)
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
@@ -6412,7 +6407,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     # 6. Update Status UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
+    
+    # [FIX] Display accurate 1-based index
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{next_idx + 1} of {len(targets)}"
     
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
