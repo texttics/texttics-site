@@ -6374,13 +6374,20 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Diagnostic V9). 
-    Includes instrumentation to debug Grapheme Snapping failures on signals #6 and #7.
+    Stateful stepper (Fixed V10 - OOB Clamp). 
+    Fixes 'Select All' glitch by strictly clamping indices to the calculated UTF-16 bounds.
+    Prevents drift from Newlines/Astral chars from pushing selection off the cliff.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
+    # [CRITICAL] Calculate DOM Upper Bound (UTF-16 units)
+    try:
+        max_dom_len = len(t.encode('utf-16-le')) // 2
+    except:
+        max_dom_len = len(t)
+
     # 2. Define Human-Readable Labels
     labels = {
         "integrity_agg": "Integrity Issues",
@@ -6425,67 +6432,47 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight with Robust Grapheme Snapping AND LOGGING
+    # 5. Execute Highlight with Robust Grapheme Snapping
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # === DIAGNOSTIC LOGGING (Check Console) ===
-    if next_idx >= 4:  # Log signals #5, #6, #7
-        print(f"=== SIGNAL #{next_idx + 1} DEBUG ===")
-        print(f"  Logical Range: ({log_s}, {log_e}) span={log_e - log_s}")
-        print(f"  Label: {next_hit[2] if len(next_hit) > 2 else 'N/A'}")
-        print(f"  Text Length: {len(t)} chars")
-    # === END DIAGNOSTIC ===
-
     # Convert to DOM (UTF-16) indices
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
-    
-    # === DIAGNOSTIC LOGGING ===
-    if next_idx >= 4:
-        print(f"  DOM Range (pre-snap): ({dom_s}, {dom_e})")
-    # === END DIAGNOSTIC ===
     
     safe_s = None
     safe_e = None
     
     try:
-        # Explicitly convert JS Iterator to Array
+        # Convert JS Iterator to Array to ensure loop runs
         segments_iter = GRAPHEME_SEGMENTER.segment(t)
         segments = window.Array.from_(segments_iter)
         
         for seg in segments:
             g_start = seg.index
             g_str = seg.segment
-            # Calculate UTF-16 length
             g_len = len(g_str.encode('utf-16-le')) // 2
             g_end = g_start + g_len
             
-            # Does this grapheme start at or before our target?
+            # Match Start
             if g_start <= dom_s < g_end:
                 safe_s = g_start
             
-            # Does this grapheme end at or after our target?
+            # Match End
             if safe_s is not None:
                 safe_e = g_end
                 if g_end >= dom_e:
                     break
-    except Exception as e:
-        print(f"Stepper Segmentation Error: {e}")
+    except Exception:
         pass 
 
-    # Fallbacks if segmentation failed or target wasn't found
+    # Fallbacks
     if safe_s is None: safe_s = dom_s
     if safe_e is None: safe_e = max(dom_e, safe_s + 1)
 
-    # Final safety: Ensure we never have a zero-width selection
-    if safe_e <= safe_s: safe_e = safe_s + 1
-
-    # === DIAGNOSTIC LOGGING ===
-    if next_idx >= 4:
-        print(f"  Final Safe Range: ({safe_s}, {safe_e})")
-        print(f"  Calling HIGHLIGHT_RANGE({safe_s}, {safe_e})")
-    # === END DIAGNOSTIC ===
+    # [CRITICAL FIX] Final Hard Clamp to Prevent OOB
+    safe_s = max(0, min(safe_s, max_dom_len))
+    safe_e = max(safe_s + 1, min(safe_e, max_dom_len))
 
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
