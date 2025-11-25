@@ -3949,11 +3949,22 @@ def _escape_for_js(s: str) -> str:
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v5.3 (Hardened).
-    1. Security: Rigorous JS/HTML escaping.
-    2. Semantics: Explicit "Local Slice" contracts in UI.
-    3. Depth: Richer tooltips with U+XXXX and Script names.
-    4. A11y: Keyboard focus and ARIA labels on stacks.
+    Forensic X-Ray Engine v5.4 (Security Hardened).
+
+    Visual contract:
+      • Only a local slice [ctx_start..ctx_end] around each threat is shown.
+      • Gaps are summarized as "[ ... N safe characters omitted from this slice ... ]".
+
+    Sanitization contract (what "Copy Safe Slice" does):
+      • Confusables → replaced by their UTS #39 skeletons.
+      • Invisible + bidi control chars → dropped entirely.
+      • All other code points are preserved as-is.
+
+    Hardening:
+      • JS string escaping via _escape_for_js.
+      • HTML attribute escaping via _escape_html for titles / onclick payload.
+      • Tooltips include U+XXXX and Script names.
+      • Stacks are keyboard focusable (tabindex=0) with ARIA labels.
     """
     if not t: return ""
     
@@ -4076,7 +4087,6 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 except: pass
 
                 # [FORENSIC DEPTH FIX] Richer Tooltip with U+XXXX and Scripts
-                # Prevents "Raw: a / Safe: a" ambiguity
                 safe_cp_display = f"U+{ord(skel[0]):04X}" if skel else "?"
                 
                 title_safe = (
@@ -4085,7 +4095,6 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     f"Safe: {_escape_html(skel)} ({safe_cp_display}, {dst_sc})"
                 )
                 
-                # [A11Y] Added tabindex and aria-label
                 stack = (
                     f'<span class="xray-stack stack-spoof" tabindex="0" '
                     f'title="{title_safe}" '
@@ -4129,7 +4138,11 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 cls = "badge-spoof" if t == "SPOOF" else ("badge-invis" if t == "OBFUSCATE" else "badge-bidi")
                 type_badges_html.append(f'<span class="cluster-badge {cls}">{t}</span>')
         
+        # [SECURITY FIX] Double-Layer Escaping
+        # 1. Escape for JS literal
         safe_str_js = _escape_for_js(safe_snippet_final)
+        # 2. Escape for HTML attribute (prevent " breaking the onclick)
+        safe_str_attr = _escape_html(safe_str_js)
         
         # [SEMANTIC FIX] Explicit Scope in Tooltip
         copy_title = (
@@ -4138,6 +4151,8 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             "• Invisibles/Bidi controls dropped entirely\n"
             "• Skipped characters outside this slice are NOT included."
         )
+        # [SECURITY FIX] Escape the tooltip content too
+        copy_title_attr = _escape_html(copy_title)
         
         card = f"""
         <div class="cluster-card" role="group" aria-labelledby="cluster-header-{idx}">
@@ -4147,7 +4162,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     {"".join(type_badges_html)}
                     {brand_badge}
                 </div>
-                <button class="safe-copy-btn" title="{copy_title}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_js}', this)">
+                <button class="safe-copy-btn" title="{copy_title_attr}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">
                     Copy Safe Slice
                 </button>
             </div>
