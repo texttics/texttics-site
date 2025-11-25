@@ -3340,3 +3340,62 @@ details.profile-section .action-bar {
   white-space: nowrap; 
   flex-shrink: 0;
 }
+
+/* --- Forensic Summary Bar --- */
+.xray-summary-bar {
+  background-color: #f0f9ff; /* Lightest blue */
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #0369a1;
+  margin-bottom: 12px;
+  font-family: var(--font-sans);
+}
+
+.xray-summary-title {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+  font-size: 0.75rem;
+}
+
+/* --- Forensic Legend --- */
+.xray-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: #64748b;
+  padding: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.xray-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.xray-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-spoof { background-color: #fca5a5; } /* Red */
+.dot-invis { background-color: #c4b5fd; } /* Violet */
+.dot-bidi  { background-color: #fcd34d; } /* Amber */
+
+/* --- Context Halo (Focus on Threats) --- */
+.xray-safe {
+  opacity: 0.8; /* Slight dimming of safe text */
+  transition: opacity 0.2s;
+}
+
+/* On hover of the card, bring safe text back to full focus */
+.cluster-card:hover .xray-safe {
+  opacity: 1;
+}
