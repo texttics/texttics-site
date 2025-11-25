@@ -1,6 +1,7 @@
 import asyncio
 import json
 import unicodedata
+import hashlib
 from pyodide.ffi import create_proxy, to_js
 from pyodide.http import pyfetch
 from pyscript import document, window
@@ -7231,7 +7232,9 @@ def py_sanitize_string(mode="STRICT"):
     Returns a JSON string { "safe_text": str, "stats": dict } to JS.
     """
     input_el = document.getElementById("text-input")
-    if not input_el or not input_el.value: return "{}"
+    
+    # [FIX] Return empty string on empty input so JS bridge exits cleanly
+    if not input_el or not input_el.value: return ""
     
     raw = input_el.value
     stats = {
@@ -7265,11 +7268,13 @@ def py_sanitize_string(mode="STRICT"):
                 # Deny Bidi & Tags (Always dangerous)
                 if mask & (INVIS_BIDI_CONTROL | INVIS_TAG):
                     stats["removed_bidi"] += 1
+                    stats["removed_count"] += 1 # [FIX] Update total
                     continue
                 
-                # Deny High-Risk Invisibles (but allow ZWJ/VS if they survived RGI check? No, loose ZWJ is bad.)
+                # Deny High-Risk Invisibles 
                 if mask & (INVIS_DEFAULT_IGNORABLE):
                     stats["removed_invisible"] += 1
+                    stats["removed_count"] += 1 # [FIX] Update total
                     continue
                     
                 buffer.append(char)
@@ -7291,9 +7296,12 @@ def py_sanitize_string(mode="STRICT"):
             if _is_safe_strict(cp, cat, mask):
                 buffer.append(char)
             else:
-                if mask & INVIS_BIDI_CONTROL: stats["removed_bidi"] += 1
-                elif mask & INVIS_ANY_MASK: stats["removed_invisible"] += 1
-                else: stats["removed_count"] += 1
+                if mask & INVIS_BIDI_CONTROL: 
+                    stats["removed_bidi"] += 1
+                elif mask & INVIS_ANY_MASK: 
+                    stats["removed_invisible"] += 1
+                
+                stats["removed_count"] += 1
 
     # --- Final Normalization (NFC) ---
     # Collapses combining marks and fixes canonical ordering
@@ -7317,25 +7325,27 @@ def py_get_code_snippet(lang="python"):
     raw = input_el.value
     out = []
     
-    # Escaping Map for Controls
+    # Escaping Map for Controls (Must handle backslash first!)
     CTRL_MAP = {
-        '\n': '\\n', '\r': '\\r', '\t': '\\t', 
-        '\\': '\\\\', '"': '\\"', "'": "\\'"
+        '\\': '\\\\', 
+        '"': '\\"', 
+        "'": "\\'",
+        '\n': '\\n', 
+        '\r': '\\r', 
+        '\t': '\\t'
     }
     
     for char in raw:
         cp = ord(char)
         
-        # 1. Safe ASCII Printable
-        if 32 <= cp <= 126:
-            if char in CTRL_MAP:
-                out.append(CTRL_MAP[char])
-            else:
-                out.append(char)
-                
-        # 2. Safe Controls
-        elif char in CTRL_MAP:
+        # 1. Handle Syntax Chars (Backslashes, Quotes, Newlines)
+        if char in CTRL_MAP:
             out.append(CTRL_MAP[char])
+            continue
+
+        # 2. Safe ASCII Printable (32-126)
+        if 32 <= cp <= 126:
+            out.append(char)
             
         # 3. Unicode Escaping
         else:
@@ -7367,17 +7377,27 @@ def py_generate_evidence():
         return
         
     # 1. Retrieve Data
-    core_data = window.TEXTTICS_CORE_DATA.to_py()
+    # [FIX] Ensure we handle the proxy object correctly
+    try:
+        core_data = window.TEXTTICS_CORE_DATA.to_py()
+    except:
+        # Fallback if it's already a dict (rare, but safe)
+        core_data = window.TEXTTICS_CORE_DATA
+        
     raw_text = core_data.get("raw_text", "")
     
     # 2. Generate Metadata
     import datetime
+    # [FIX] Ensure we have a robust timestamp
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    
     meta = {
         "tool": "Text...tics Stage 1",
-        "version": "1.0.0",
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "version": "1.1.0",
+        "timestamp": now_iso,
         "input_hash_sha256": hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
-        "input_length_codepoints": len(raw_text)
+        "input_length_codepoints": len(raw_text),
+        "sanitization_modes_available": ["STRICT", "CONSERVATIVE"]
     }
     
     # 3. Create Artifact
@@ -7395,7 +7415,7 @@ def py_generate_evidence():
     
     link = document.createElement("a")
     link.href = js_url
-    fname = f"forensic_evidence_{meta['timestamp'][:19].replace(':','-')}.json"
+    fname = f"forensic_evidence_{now_iso[:19].replace(':','-')}.json"
     link.setAttribute("download", fname)
     document.body.appendChild(link)
     link.click()
