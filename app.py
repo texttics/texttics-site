@@ -3931,10 +3931,10 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v4.0 (Sanitized Stream).
-    1. Aggregates threats into clusters.
-    2. [FIX] Sanitizes newlines in safe text to prevent layout breaking.
-    3. Renders Stacks using Baseline Architecture.
+    Forensic X-Ray Engine v4.1 (Visual Sanitization).
+    1. Clusters threats.
+    2. [CRITICAL] Flattens newlines/tabs in the visual layer to prevent layout breaks.
+    3. Uses Inline-Block HTML architecture.
     """
     if not t: return ""
     
@@ -3983,17 +3983,23 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             char = js_array[i]
             cp = ord(char)
             
-            # [FIX] Visual Sanitization: Flatten newlines for the visual strip
-            char_vis = char.replace('\n', ' ').replace('\r', ' ')
+            # [VISUAL SANITIZATION] 
+            # Flatten layout-breaking chars for the visual strip.
+            # Use a symbol for newline if it's NOT a threat, or just space.
+            # If it IS a threat (e.g. NSI), it gets a stack anyway.
+            if char in ('\n', '\r', '\t', '\v', '\f'):
+                char_vis = ' ' 
+            else:
+                char_vis = char
             
-            # A. Sanitization Logic
+            # A. Sanitization Logic (Safe Copy)
             if i in invisible_indices: pass 
             elif i in bidi_indices: pass
             elif i in confusable_indices:
                 skel = confusables_map.get(cp, char)
                 safe_string_parts.append(skel)
             else:
-                safe_string_parts.append(char) # Keep original for copy
+                safe_string_parts.append(char)
 
             # B. Visual Rendering Logic
             if i in confusable_indices:
@@ -4012,10 +4018,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                         script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
                 except: pass
 
-                # Stack with original char in title, but sanitized char_vis in display? 
-                # No, threats are usually visible. 
-                # But safe context might be newlines.
-                
+                # Use _escape_html(char_vis) to prevent layout breaks in the Top of the stack
                 stack = (
                     f'<span class="xray-stack stack-spoof" title="Spoofing Risk\nRaw: {char}\nSafe: {skel}">'
                     f'<span class="xray-top">{_escape_html(char_vis)}</span>'
@@ -4046,7 +4049,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 cluster_html_parts.append(marker)
                 
             else:
-                # [FIX] Use sanitized char for context so layout doesn't break
+                # Context: Use the sanitized char
                 cluster_html_parts.append(_escape_html(char_vis))
 
         full_raw_snippet = "".join(js_array[ctx_start:ctx_end]).lower()
