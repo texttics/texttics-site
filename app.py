@@ -6341,14 +6341,15 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V3). 
-    Enforces minimum selection width to prevent 'Select All' glitches on Zalgo/Bidi.
+    Stateful stepper (Fixed V4 - Grapheme Aware). 
+    Snaps selection to Visual Grapheme Boundaries to prevent 'Select All' glitches
+    caused by browser rendering ambiguities on zero-width/complex characters.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # [Keep existing Labels/Targets logic...]
+    # 2. Define Human-Readable Labels
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -6360,6 +6361,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
+    # 3. Resolve targets
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -6376,7 +6378,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # Sort & Stateful Index Resolution
+    # 4. Sort & Stateful Index Resolution
     targets.sort(key=lambda x: (x[0], x[1]))
     
     state_attr = f"data-hud-idx-{metric_key}"
@@ -6391,22 +6393,48 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # Execute Highlight
+    # 5. Execute Highlight with Grapheme Snapping
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
+    # Convert to DOM (UTF-16) indices
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
     
-    # [CRITICAL FIX] Force Minimum Width of 1
-    # This prevents the "Select All" glitch by ensuring we select the character,
-    # not just a zero-width insertion point.
-    if dom_e <= dom_s:
-        dom_e = dom_s + 1
+    # [CRITICAL FIX] Grapheme Snapping
+    # Instead of trusting dom_s/dom_e (which might be inside a Zalgo cluster),
+    # we find the visual grapheme boundaries that enclose this range.
+    safe_s = None
+    safe_e = None
     
-    window.TEXTTICS_HIGHLIGHT_RANGE(dom_s, dom_e)
+    try:
+        segments = GRAPHEME_SEGMENTER.segment(t)
+        for seg in segments:
+            g_start = seg.index
+            g_str = seg.segment
+            # Calculate UTF-16 length of the segment
+            g_len = len(g_str.encode('utf-16-le')) // 2
+            g_end = g_start + g_len
+            
+            # Does this grapheme contain our start?
+            if g_start <= dom_s < g_end:
+                safe_s = g_start
+            
+            # Does this grapheme contain our end? (Or extend the range)
+            if safe_s is not None:
+                safe_e = g_end
+                if g_end >= dom_e:
+                    break
+    except Exception:
+        pass # Fallback to raw indices if segmentation fails
+
+    # Apply Fallbacks
+    if safe_s is None: safe_s = dom_s
+    if safe_e is None: safe_e = max(dom_e, safe_s + 1) # Ensure min width 1
+
+    window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
-    # Update Status UI
+    # 6. Update Status UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
     
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{next_idx + 1} of {len(targets)}"
@@ -6417,6 +6445,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         hud_status.style.display = "inline-flex"
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
+    # 7. Update Inspector
     inspect_character(None)
 
 @create_proxy
