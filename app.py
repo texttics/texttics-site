@@ -3949,35 +3949,27 @@ def _escape_for_js(s: str) -> str:
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v6.0 (Professional Grade).
-    Adds Global Summary, Legend, and Context Visuals.
+    Forensic X-Ray Engine v6.1 (Consolidated).
+    1. Tuning: MERGE_DIST increased to 40 to prevent fragmentation.
+    2. UX: Clickable Summary Stats jump to relevant clusters.
+    3. Consistency: Legend matches Banner terminology exactly.
+    4. A11y: Full ARIA support and keyboard hints.
     """
     if not t: return ""
     
     all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
     if not all_threats: return ""
 
-    # --- 1. Global Metrics Calculation ---
-    count_spoof = len(confusable_indices)
-    count_obfus = len(invisible_indices)
-    count_exec = len(bidi_indices)
-    total_threats = count_spoof + count_obfus + count_exec
-    
-    summary_parts = []
-    if count_exec > 0: summary_parts.append(f"<strong>{count_exec}</strong> Execution")
-    if count_spoof > 0: summary_parts.append(f"<strong>{count_spoof}</strong> Spoofing")
-    if count_obfus > 0: summary_parts.append(f"<strong>{count_obfus}</strong> Obfuscation")
-    
-    summary_text = ", ".join(summary_parts)
-    
-    # --- 2. Cluster Logic (unchanged) ---
     js_array = window.Array.from_(t)
     text_len = len(js_array)
     
+    # --- 1. Clustering (Tuned for Context) ---
     clusters = []
+    # [TUNING] Increased from 15 to 40 to keep sentences together
+    MERGE_DIST = 40 
+    
     if all_threats:
         current_cluster = [all_threats[0]]
-        MERGE_DIST = 15 
         for i in range(1, len(all_threats)):
             if all_threats[i] - all_threats[i-1] <= MERGE_DIST:
                 current_cluster.append(all_threats[i])
@@ -3992,18 +3984,49 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
 
     THREAT_PRIORITY = ["EXECUTION", "SPOOF", "OBFUSCATE"]
 
-    # Start output with Summary Bar
-    html_output = [
-        f'<div class="xray-summary-bar">'
-        f'<span class="xray-summary-title">Forensic Scan:</span>'
-        f'{summary_text} across <strong>{len(clusters)}</strong> active clusters.'
-        f'</div>',
-        '<div class="xray-stream-wrapper">'
-    ]
+    # --- 2. Render Clusters & Track First Occurrences ---
+    cluster_html_list = []
+    
+    # Navigation Anchors
+    first_exec_id = None
+    first_spoof_id = None
+    first_obfus_id = None
+    
+    # Global Counters
+    total_exec = 0
+    total_spoof = 0
+    total_obfus = 0
     
     prev_end = 0
     
     for idx, clust in enumerate(clusters):
+        cluster_id = f"cluster-{idx}"
+        
+        # Analyze cluster composition for tagging
+        has_exec = False
+        has_spoof = False
+        has_obfus = False
+        
+        # Scan cluster for types
+        for p in clust:
+            if p in bidi_indices: has_exec = True
+            if p in confusable_indices: has_spoof = True
+            if p in invisible_indices: has_obfus = True
+            
+        # Update Globals & Anchors
+        if has_exec:
+            total_exec += sum(1 for p in clust if p in bidi_indices)
+            if first_exec_id is None: first_exec_id = cluster_id
+            
+        if has_spoof:
+            total_spoof += sum(1 for p in clust if p in confusable_indices)
+            if first_spoof_id is None: first_spoof_id = cluster_id
+            
+        if has_obfus:
+            total_obfus += sum(1 for p in clust if p in invisible_indices)
+            if first_obfus_id is None: first_obfus_id = cluster_id
+
+        # --- Cluster Rendering Logic ---
         start_idx = clust[0]
         end_idx = clust[-1]
         
@@ -4013,7 +4036,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         if ctx_start > prev_end:
             gap = ctx_start - prev_end
             if gap > 0:
-                html_output.append(f'<div class="xray-spacer">[ ... {gap} safe characters omitted from this slice ... ]</div>')
+                cluster_html_list.append(f'<div class="xray-spacer">[ ... {gap} safe characters omitted from this slice ... ]</div>')
         
         cluster_html_parts = []
         safe_string_parts = []
@@ -4024,7 +4047,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             char = js_array[i]
             cp = ord(char)
             
-            # A. Safe String Logic
+            # Safe String Construction
             if i in invisible_indices: pass 
             elif i in bidi_indices: pass
             elif i in confusable_indices:
@@ -4033,20 +4056,18 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             else:
                 safe_string_parts.append(char)
 
-            # B. Visual Layer
+            # Visual Layer
             char_vis = _escape_html(char)
             if char == '\n': char_vis = '<span class="xray-control">↵</span>'
             elif char == '\r': char_vis = '<span class="xray-control">↵</span>'
             elif char == '\t': char_vis = '<span class="xray-control">⇥</span>'
             elif char in ('\v', '\f'): char_vis = '<span class="xray-control">␉</span>'
             
-            # Context Halo: Wrap safe chars in a dim span
             safe_wrapper = f'<span class="xray-safe">{char_vis}</span>'
 
-            # C. Threat Logic
+            # Threat Logic
             if i in invisible_indices:
                 threat_types.add("OBFUSCATE")
-                
                 run_len = 1
                 lookahead = i + 1
                 while lookahead < ctx_end and lookahead in invisible_indices:
@@ -4082,15 +4103,13 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 disp_skel = skel[0] + (".." if len(skel)>1 else "") if skel else "?"
                 
                 script_tag = ""
-                src_sc = "Unknown"
-                dst_sc = "Unknown"
+                src_sc = "Unknown"; dst_sc = "Unknown"
                 try:
                     src_sc = _find_in_ranges(cp, "Scripts") or "Com"
                     skel_cp = ord(skel[0]) if skel else 0
                     dst_sc = _find_in_ranges(skel_cp, "Scripts") or "Com"
                     if src_sc != dst_sc and src_sc not in ("Common", "Inherited") and dst_sc not in ("Common", "Inherited"):
-                        s_abbr = src_sc[:3]
-                        d_abbr = dst_sc[:3]
+                        s_abbr = src_sc[:3]; d_abbr = dst_sc[:3]
                         script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
                 except: pass
 
@@ -4145,6 +4164,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 type_badges_html.append(f'<span class="cluster-badge {cls}">{t}</span>')
         
         safe_str_js = _escape_for_js(safe_snippet_final)
+        safe_str_attr = _escape_html(safe_str_js)
         
         copy_title = (
             "Copies ONLY this local slice (ctx_start..ctx_end).\n"
@@ -4154,15 +4174,17 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         )
         copy_title_attr = _escape_html(copy_title)
         
+        cluster_count_tooltip = f"Cluster {idx + 1} of {len(clusters)}"
+        
         card = f"""
-        <div class="cluster-card" role="group" aria-labelledby="cluster-header-{idx}">
+        <div class="cluster-card" id="{cluster_id}" role="group" aria-labelledby="cluster-header-{idx}">
             <div class="cluster-header" id="cluster-header-{idx}">
                 <div class="cluster-meta">
-                    <span class="cluster-id">#{idx + 1}</span>
+                    <span class="cluster-id" title="{cluster_count_tooltip}">#{idx + 1}</span>
                     {"".join(type_badges_html)}
                     {brand_badge}
                 </div>
-                <button class="safe-copy-btn" title="{copy_title_attr}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_js}', this)">
+                <button class="safe-copy-btn" title="{copy_title_attr}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">
                     Copy Safe Slice
                 </button>
             </div>
@@ -4171,19 +4193,47 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             </div>
         </div>
         """
-        html_output.append(card)
+        cluster_html_list.append(card)
         prev_end = ctx_end
 
-    html_output.append('</div>')
+    # --- 3. Construct Interactive Summary ---
+    summary_parts = []
     
-    # --- 3. Forensic Legend ---
+    def make_jump_link(count, label, target_id, color_class):
+        if count == 0: return ""
+        onclick = f"document.getElementById('{target_id}').scrollIntoView({{behavior: 'smooth', block: 'center'}})" if target_id else ""
+        style = 'cursor: pointer; border-bottom: 1px dotted currentColor;' if target_id else ''
+        return (f'<span class="xray-summary-stat {color_class}" style="{style}" onclick="{onclick}" '
+                f'title="Jump to first {label} cluster"><strong>{count}</strong> {label}</span>')
+
+    if total_exec > 0: 
+        summary_parts.append(make_jump_link(total_exec, "Execution", first_exec_id, "stat-exec"))
+    if total_spoof > 0: 
+        summary_parts.append(make_jump_link(total_spoof, "Spoofing", first_spoof_id, "stat-spoof"))
+    if total_obfus > 0: 
+        summary_parts.append(make_jump_link(total_obfus, "Obfuscation", first_obfus_id, "stat-obfus"))
+    
+    summary_text = ", ".join(summary_parts)
+    
+    # --- 4. Construct Legend (Aligned) ---
     legend_html = (
         '<div class="xray-legend">'
-        '<span class="xray-legend-item"><span class="xray-dot dot-spoof"></span><strong>SPOOF:</strong> Lookalike Homoglyphs</span>'
-        '<span class="xray-legend-item"><span class="xray-dot dot-invis"></span><strong>HID:</strong> Hidden/Zero-Width</span>'
-        '<span class="xray-legend-item"><span class="xray-dot dot-bidi"></span><strong>BIDI:</strong> Control Characters</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-bidi"></span><strong>EXECUTION:</strong> Bidi/Control (BIDI)</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-spoof"></span><strong>SPOOFING:</strong> Homoglyphs (SPOOF)</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-invis"></span><strong>OBFUSCATION:</strong> Hidden/Zero-Width (HID)</span>'
         '</div>'
     )
+
+    # Final Assembly
+    html_output = [
+        f'<div class="xray-summary-bar">'
+        f'<span class="xray-summary-title">Forensic Scan:</span>'
+        f'{summary_text} across <strong>{len(clusters)}</strong> active clusters.'
+        f'</div>',
+        '<div class="xray-stream-wrapper">'
+    ]
+    html_output.extend(cluster_html_list)
+    html_output.append('</div>')
     html_output.append(legend_html)
     
     return "".join(html_output)
