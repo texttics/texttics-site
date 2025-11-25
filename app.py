@@ -6306,6 +6306,18 @@ def _register_hit(key: str, start: int, end: int, label: str):
     # SAFETY FIX: Ensure ints and prevent None
     try:
         s, e = int(start), int(end)
+        
+        # === THE ONLY FIX THAT MATTERS ===
+        # 1. Never allow zero-width
+        # 2. Never allow negative or inverted ranges
+        # 3. Force minimum visible selection
+        if e <= s:
+            e = s + 1
+        if s < 0:
+            s = 0
+        if e < s:
+            e = s + 1
+            
         HUD_HIT_REGISTRY[key].append((s, e, label))
     except:
         pass
