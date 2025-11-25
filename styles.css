@@ -2289,6 +2289,8 @@ tr.flag-row-crit {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 100%;
+  padding: 0.5rem;
 }
 
 .action-buttons-row {
@@ -2997,20 +2999,37 @@ details.profile-section .action-bar {
 
 /* --- Workbench / Global Actions Styling (Violet Theme) --- */
 
-/* 1. Base State: Dark Rigorous Violet */
+/* --- Specific Styling for "Actions" Header Only --- */
 #actions-panel-wrapper > summary {
-    color: #5b21b6; /* Colors the native Triangle marker */
-    transition: color 0.2s ease;
+    /* Center the summary content */
+    display: flex;
+    justify-content: center; 
+    align-items: center;
+    
+    /* Constrain width & Center block */
+    max-width: 200px; /* Or whatever narrow width you prefer */
+    margin: 0 auto 1rem auto; /* Center horizontally + bottom margin */
+    
+    /* Visual Polish */
+    padding: 4px 12px;
+    background-color: #f0fdf4; /* Optional: Give it a subtle pill background? */
+    border: 1px solid #bbf7d0; /* Optional border */
+    border-radius: 999px; /* Pill shape */
+    list-style: none; /* Hide default marker if you want clean control */
 }
 
+/* Hide default marker for this specific summary if you want total control */
+#actions-panel-wrapper > summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Adjust the inner H2 to fit the new layout */
 #actions-panel-wrapper .section-title {
-    color: #5b21b6; /* Colors the Header Text */
-    transition: color 0.2s ease;
-}
-
-#actions-panel-wrapper .section-icon {
-    color: #5b21b6; /* Colors the Slider Icon */
-    transition: color 0.2s ease;
+    font-size: 0.9rem; /* Smaller text */
+    border-bottom: none; /* Remove the underline */
+    margin-bottom: 0;
+    padding-bottom: 0;
+    width: auto; /* Let it shrink */
 }
 
 /* 2. Hover State: Vivid Light Violet */
