@@ -1150,3 +1150,88 @@ window.TEXTTICS_COPY_SAFE = async (safeText, btnElement) => {
     btnElement.innerText = "Error!";
   }
 };
+
+// ==========================================
+// 13. FORENSIC WORKBENCH BRIDGE
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // --- A. Sanitization Handlers ---
+    const handleSanitize = (mode) => {
+        if (window.py_sanitize_string) {
+            // Call Python, which returns a JSON string report
+            const reportJson = window.py_sanitize_string(mode);
+            if (!reportJson) return;
+
+            try {
+                const report = JSON.parse(reportJson);
+                // 1. Copy to Clipboard
+                navigator.clipboard.writeText(report.safe_text).then(() => {
+                    // 2. Show Smart Toast
+                    const stats = report.stats;
+                    let msg = `Sanitized (${mode}): `;
+                    const details = [];
+                    if (stats.removed_bidi > 0) details.push(`${stats.removed_bidi} Bidi`);
+                    if (stats.removed_invisible > 0) details.push(`${stats.removed_invisible} Invis`);
+                    if (stats.normalized_spaces > 0) details.push(`${stats.normalized_spaces} Spaces`);
+                    
+                    if (details.length === 0 && stats.removed_count === 0) {
+                        msg += "Text was already clean.";
+                    } else {
+                        msg += "Removed " + (details.join(", ") || `${stats.removed_count} items`);
+                    }
+                    
+                    // Use existing button for feedback source
+                    const btnId = mode === 'STRICT' ? 'btn-sanitize-strict' : 'btn-sanitize-conservative';
+                    const btn = document.getElementById(btnId);
+                    const originalText = btn.innerText;
+                    btn.innerText = "Copied!";
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.innerText = originalText;
+                        btn.classList.remove('copied');
+                    }, 2000);
+                    
+                    console.log(`[Workbench] ${msg}`);
+                });
+            } catch (e) {
+                console.error("Sanitization Error:", e);
+            }
+        }
+    };
+
+    const btnStrict = document.getElementById('btn-sanitize-strict');
+    if (btnStrict) btnStrict.addEventListener('click', () => handleSanitize('STRICT'));
+
+    const btnCons = document.getElementById('btn-sanitize-conservative');
+    if (btnCons) btnCons.addEventListener('click', () => handleSanitize('CONSERVATIVE'));
+
+
+    // --- B. Encapsulation Handlers ---
+    const handleEscape = (lang) => {
+        if (window.py_get_code_snippet) {
+            const code = window.py_get_code_snippet(lang);
+            if (code) {
+                copyToClipboard(code, lang === 'python' ? 'btn-copy-py' : 'btn-copy-js');
+            }
+        }
+    };
+
+    const btnPy = document.getElementById('btn-copy-py');
+    if (btnPy) btnPy.addEventListener('click', () => handleEscape('python'));
+
+    const btnJs = document.getElementById('btn-copy-js');
+    if (btnJs) btnJs.addEventListener('click', () => handleEscape('javascript'));
+
+
+    // --- C. Evidence Handler ---
+    const btnJson = document.getElementById('btn-export-json');
+    if (btnJson) {
+        btnJson.addEventListener('click', () => {
+            if (window.py_generate_evidence) {
+                window.py_generate_evidence(); // Triggers download from Python
+            }
+        });
+    }
+});
