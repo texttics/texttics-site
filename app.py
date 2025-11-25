@@ -3702,12 +3702,52 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     merged_bidi.append((curr_s, curr_e, curr_lbl))
                     curr_s, curr_e, curr_lbl = next_s, next_e, next_lbl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
-            
+        
         for s, e, lbl in merged_bidi: 
-            # CRITICAL FIX: Register only the START (s, s+1).
-            # Highlighting the full range (s, e) of a Bidi block triggers 
-            # browser "Whole Row" selection glitches. We clamp to 1 char.
-            _register_hit("thr_execution", s, s+1, lbl)
+            # CRITICAL FIX: Zero-Width Registration (s, s).
+            # We point the cursor AT the threat rather than selecting it.
+            # Selecting Bidi controls (even 1 char) causes browser rendering crashes.
+            _register_hit("thr_execution", s, s, lbl)
+
+    # 2. Other Execution Threats
+    # CRITICAL FIX: Zero-Width Registration (idx, idx) for these too.
+    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx, "Terminal Injection")
+    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx, "Syntax Spoofing")
+
+    # --- 8. PRE-CALC CONSUMED INDICES (Priority Consumption) ---
+    # We must collect ALL indices already claimed by higher-priority threats (Execution/Bidi)
+    # to prevent "Double Counting" them as generic Invisible Clusters.
+    consumed_indices = set()
+    
+    # A. Bidi Indices (Converted from "#12" strings)
+    for s in bidi_danger_indices:
+        try: consumed_indices.add(int(s.replace("#","")))
+        except: pass
+        
+    # B. Syntax Spoofing Indices (Integers)
+    for idx in legacy_indices["suspicious_syntax_vs"]:
+        consumed_indices.add(idx)
+
+    # OBFUSCATION (Clusters) - With VS Noise Filter & Safety Clamp
+    clusters = analyze_invisible_clusters(t)
+    for c in clusters:
+        # Check for overlap with higher priority threats
+        cluster_range = set(range(c["start"], c["end"] + 1))
+        if not cluster_range.isdisjoint(consumed_indices):
+            # This cluster contains characters already flagged as EXECUTION.
+            # Skip it to prevent double-counting and stepper overlap.
+            continue
+
+        # 1. NOISE FILTER: Check if this cluster is JUST a Variation Selector
+        is_just_vs = (c["length"] == 1 and (c["mask_union"] & INVIS_VARIATION_STANDARD))
+        
+        if not is_just_vs:
+            label = "Invisible Cluster"
+            if c.get("high_risk"): label += " [High Risk]"
+            
+            # CRITICAL FIX: Zero-Width Registration (start, start).
+            # Prevents browser selection glitches on large invisible blocks.
+            _register_hit("thr_obfuscation", c["start"], c["start"], label)
 
     # 2. Other Execution Threats
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
