@@ -3195,31 +3195,34 @@ tr.flag-row-crit {
 }
 
 /* =========================================
-   UNIFIED ACTIONS PANEL & WORKBENCH (Clean & Uniform)
+   UNIFIED ACTIONS PANEL & WORKBENCH (Compact & Centered)
    ========================================= */
 
-/* 1. The "Actions" Toggle Button (Violet Theme) */
+/* 1. The "Actions" Toggle Button (Violet Theme - SLIM & HIGHER) */
 #actions-panel-wrapper > summary {
     display: flex;
     justify-content: center;
     align-items: center;
     
-    /* Centering */
+    /* Centering & Positioning */
     width: fit-content;
-    margin: 0 auto 1.5rem auto; 
+    /* Negative top margin pulls it closer to the status bar (5px gap visual) */
+    margin: -10px auto 1rem auto; 
     
     /* STYLE: Transparent + Violet Border + Rect-Pill */
     background-color: transparent;
-    border: 2px solid #8b5cf6; /* Violet-500 */
-    color: #7c3aed !important; /* Violet-600 (Text) - FORCE VIOLET */
+    border: 1px solid #8b5cf6; /* Thinner border (1px) for slim look */
+    color: #7c3aed !important; 
     
-    /* Rect-Pill Hybrid Shape */
-    padding: 6px 32px;
-    border-radius: 12px;
+    /* SLIM SIZE: Reduced padding and font for "Twice Smaller" look */
+    padding: 2px 24px; 
+    height: 24px;      /* Explicit small height */
+    border-radius: 8px; /* Tighter radius */
     
     /* Typography */
     font-weight: 800;
-    font-size: 0.95rem;
+    font-size: 0.8rem; /* Smaller font */
+    line-height: 1;
     letter-spacing: 0.02em;
     list-style: none;
     cursor: pointer;
@@ -3231,17 +3234,18 @@ tr.flag-row-crit {
 #actions-panel-wrapper > summary .section-icon {
     color: #7c3aed !important; 
     font-weight: 800;
+    font-size: 0.8rem; /* Match parent */
 }
 
 #actions-panel-wrapper > summary::-webkit-details-marker { display: none; }
 
 /* Header Hover State */
 #actions-panel-wrapper > summary:hover {
-    background-color: #f5f3ff; /* Violet-50 */
-    border-color: #7c3aed;     /* Violet-600 */
-    color: #6d28d9 !important; /* Violet-700 */
+    background-color: #f5f3ff; 
+    border-color: #7c3aed;     
+    color: #6d28d9 !important; 
     transform: translateY(-1px);
-    box-shadow: 0 2px 5px rgba(124, 58, 237, 0.15);
+    box-shadow: 0 1px 3px rgba(124, 58, 237, 0.15);
 }
 
 #actions-panel-wrapper > summary:hover .section-title,
@@ -3249,26 +3253,31 @@ tr.flag-row-crit {
     color: #6d28d9 !important;
 }
 
-/* 2. The Main Container */
+/* 2. The Main Container (CENTERED LAYOUT) */
 .action-bar {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    
+    /* CENTER ALIGNMENT CONSTRAINT */
     width: 100%; 
+    max-width: 900px; /* Prevents buttons from stretching to far right */
+    margin: 0 auto;   /* Centers the panel itself */
+    
     padding: 16px; 
-    margin: 0;
     background-color: var(--color-white);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
-/* 3. Row Layouts */
+/* 3. Row Layouts (CENTERED CONTENT) */
 .action-row-top, .workbench-row, .copy-group {
     display: flex;
     width: 100%;
     gap: 12px;
     align-items: stretch;
+    justify-content: center; /* Ensures buttons are centered in the row */
 }
 
 /* Specific spacing for middle row */
@@ -3282,20 +3291,21 @@ tr.flag-row-crit {
 .action-spacer { display: none; }
 
 /* 4. UNIVERSAL BUTTON STYLING (The "Unifier" Engine) */
-/* Targets ALL buttons: Top, Middle, Bottom, Macro, Workbench */
 .action-bar .tool-btn,
 .macro-btn,
 .wb-btn-strict, 
 .wb-btn-cons, 
 .wb-btn-code, 
 .wb-btn-evidence {
-    flex: 1;
+    flex: 1; /* Keeps them equal width */
+    max-width: 250px; /* Stop them from becoming huge on wide screens */
+    
     display: inline-flex;
     align-items: center;
     justify-content: center;
     
     /* UNIFIED TYPOGRAPHY */
-    font-family: var(--font-sans) !important; /* Overrides Mono on Code btn */
+    font-family: var(--font-sans) !important;
     font-size: 0.9rem !important;
     font-weight: 600 !important;
     line-height: 1;
@@ -3310,27 +3320,32 @@ tr.flag-row-crit {
     
     /* UNIFIED COLORS: TRANSPARENT DEFAULT */
     background-color: transparent !important;
-    border: 1px solid #d1d5db !important; /* Neutral Gray Border */
-    color: #4b5563 !important;            /* Neutral Gray Text */
+    border: 1px solid #d1d5db !important; 
+    color: #4b5563 !important;            
     
-    /* Base Transition */
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     position: relative;
     box-shadow: none !important;
 }
 
+/* Special Case: Macro Button (Bottom) - Centered but wider */
+.macro-btn {
+    flex: 0 1 auto; /* Don't force stretch */
+    width: 100%;    /* Allow fill up to max-width */
+    max-width: 100%; /* Fill the container (which is already constrained to 900px) */
+}
+
 /* 5. UNIVERSAL HOVER EFFECT */
-/* All buttons behave exactly the same on hover */
 .action-bar .tool-btn:hover,
 .macro-btn:hover,
 .wb-btn-strict:hover, 
 .wb-btn-cons:hover, 
 .wb-btn-code:hover, 
 .wb-btn-evidence:hover {
-    background-color: #f5f3ff !important; /* Very Light Violet Tint */
-    border-color: #8b5cf6 !important;     /* Violet Border */
-    color: #7c3aed !important;            /* Violet Text */
+    background-color: #f5f3ff !important; 
+    border-color: #8b5cf6 !important;     
+    color: #7c3aed !important;            
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(124, 58, 237, 0.1) !important;
     z-index: 2;
@@ -3346,6 +3361,8 @@ tr.flag-row-crit {
 .action-row-bottom {
     width: 100%;
     margin-top: 4px;
+    display: flex;
+    justify-content: center; /* Center the bottom button */
 }
 
 /* Responsive: Stack on Mobile */
@@ -3355,6 +3372,7 @@ tr.flag-row-crit {
     }
     .action-bar .tool-btn {
         flex: 1 1 45%;
+        max-width: none; /* Allow full width on mobile */
     }
 }
 
