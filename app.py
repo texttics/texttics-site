@@ -780,7 +780,12 @@ def _register_hit(key: str, start: int, end: int, label: str):
     """Helper to append a hit to the global registry."""
     if key not in HUD_HIT_REGISTRY:
         HUD_HIT_REGISTRY[key] = []
-    HUD_HIT_REGISTRY[key].append((start, end, label))
+    # SAFETY FIX: Ensure ints and prevent None
+    try:
+        s, e = int(start), int(end)
+        HUD_HIT_REGISTRY[key].append((s, e, label))
+    except:
+        pass
 
 
 @create_proxy
@@ -793,7 +798,13 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not el: return
     t = el.value
     
-    current_logical = _dom_to_logical(t, current_dom_pos)
+    # SAFETY: Default to 0 if dom_pos is missing/None
+    try:
+        dom_pos_int = int(current_dom_pos)
+    except:
+        dom_pos_int = 0
+        
+    current_logical = _dom_to_logical(t, dom_pos_int)
 
     # 1. Define Human-Readable Labels
     labels = {
@@ -825,27 +836,39 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not targets: return
 
     # 3. Sort & Find Next
-    targets.sort(key=lambda x: x[0])
-    next_hit = targets[0]
+    # Sort primarily by start, secondarily by end to ensure consistent order
+    targets.sort(key=lambda x: (x[0], x[1]))
+    
+    next_hit = targets[0] # Default to wrap around (first item)
     hit_index = 1
     
+    found_next = False
+
     for i, hit in enumerate(targets):
-        # CRITICAL FIX: Change '>=' to '>' to prevent getting stuck on zero-width chars
-        if hit[0] > current_logical:
+        start, end, lbl = hit
+        
+        # LOGIC FIX: 
+        # 1. If strict > current, it's definitely next.
+        # 2. If == current, ONLY accept if we haven't highlighted it yet? 
+        #    Actually, for stateless stepping, strictly > is safer to prevent sticking.
+        if start > current_logical:
             next_hit = hit
             hit_index = i + 1
+            found_next = True
             break
-
+            
     # 4. Execute Highlight
-    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    # CRITICAL FIX: Explicit int casting for JS Bridge to prevent "Select All" glitch
+    s_safe = int(next_hit[0])
+    e_safe = int(next_hit[1])
+    
+    window.TEXTTICS_HIGHLIGHT_RANGE(s_safe, e_safe)
     
     # 5. Define Icon LOCALLY (Safety Fix)
     # We use triple quotes to avoid syntax errors with inner quotes
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
 
-    # 6. Format Message (Fix Spacing & Alignment)
-    # We put the Icon AT THE END (Right side)
-    # We use a standard space ' ' after </strong>
+    # 6. Format Message
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
     
     # 7. Update UI
@@ -853,7 +876,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if hud_status:
         hud_status.className = "status-details status-hud-active"
         hud_status.style.display = "inline-flex"
-        # Text First, Icon Second
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
     # 8. Update Inspector
