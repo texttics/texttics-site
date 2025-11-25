@@ -3276,10 +3276,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in health_issues["bom_mid"]: _register_hit("int_decay", idx, idx+1, "Internal BOM")
     for idx in legacy_indices["other_ctrl"]: _register_hit("int_decay", idx, idx+1, "Legacy Control")
     
-    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
-    
     # 1. Cluster Bidi Dangers (Fix for Flood & Row-Selection Glitch)
-    # FIX: Use 'bidi_dangers' (list of tuples), which is defined in this function.
     if bidi_dangers:
         # Sort by start position
         bidi_dangers.sort(key=lambda x: x[0])
@@ -3287,7 +3284,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         # Merging Logic
         merged_bidi = []
         if bidi_dangers:
-            # Unpack the tuple (start, end, label)
             curr_s, curr_e, curr_lbl = bidi_dangers[0]
             for i in range(1, len(bidi_dangers)):
                 next_s, next_e, next_lbl = bidi_dangers[i]
@@ -3300,12 +3296,17 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     curr_s, curr_e, curr_lbl = next_s, next_e, next_lbl
             merged_bidi.append((curr_s, curr_e, curr_lbl))
         
+        # [SAFETY FIX] Clamp range to text length to prevent overflow
+        # We use Logical Length here because _register_hit expects Logical Indices
+        max_len = len(js_array) 
+        
         for s, e, lbl in merged_bidi: 
-            # [CRITICAL FIX] Use (s, s+1) instead of (s, s)
-            # We enforce a width of 1 so the highlight selects the Bidi control character itself.
-            # Using (s, s) causes browsers to freak out and select all text.
-            end_pos = max(e, s + 1)
-            _register_hit("thr_execution", s, end_pos, lbl)
+            # Ensure width is at least 1, but doesn't exceed text length
+            # We clamp 'e' to max_len
+            safe_e = min(max_len, max(e, s + 1))
+            
+            if s < safe_e:
+                _register_hit("thr_execution", s, safe_e, lbl)
 
     # 2. Other Execution Threats
     # [CRITICAL FIX] Use (idx, idx+1)
