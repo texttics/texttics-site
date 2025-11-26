@@ -6296,10 +6296,9 @@ if 'HUD_HIT_REGISTRY' not in globals():
     HUD_HIT_REGISTRY = {}
 
 def _register_hit(key: str, start: int, end: int, label: str):
-    """Helper to append a hit to the global registry.
-    
-    Enforces sane ranges so the HUD stepper + DOM highlighter never
-    receive zero-width or inverted spans.
+    """
+    Helper to append a hit to the global registry.
+    Enforces sane ranges and integer types to prevent highlighter crashes.
     """
     if key not in HUD_HIT_REGISTRY:
         HUD_HIT_REGISTRY[key] = []
@@ -6309,8 +6308,7 @@ def _register_hit(key: str, start: int, end: int, label: str):
         e = int(end)
         
         # [CRITICAL FIX] Enforce Atomic Visibility (Minimum Width = 1)
-        # This prevents the "Select All" browser glitch caused by zero-width 
-        # selections (s, s).
+        # A selection of (5, 5) is invisible. We force (5, 6) so the user sees the cursor.
         if e <= s: 
             e = s + 1
             
@@ -6360,10 +6358,9 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V23 - The "Guiding Star" Logic).
+    Stateful stepper (Fixed V24 - The "Reveal2" Standard).
     1. Adopts the exact Linear Accumulator logic from 'reveal2_invisibles'.
-    2. Iterates string once to calculate exact UTF-16 DOM offsets.
-    3. Performs Smart ZWJ expansion at the Logical level before scanning.
+    2. Implements "Magnetic Anchoring" for ZWJs/Marks (snaps to base char).
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6413,34 +6410,33 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 3. LOGICAL PRE-PROCESSING (Smart ZWJ Expansion)
-    # We adjust the Logical Indices (Python) first.
+    # 3. LOGICAL PRE-PROCESSING (Magnetic Anchoring)
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
+    # Safe-guard for index out of bounds
+    log_s = max(0, log_s)
+    log_e = min(len(t), log_e)
+    
+    # Check if the target is purely "Glue" (ZWJ, Marks, Format)
+    # If so, we expand LEFT to include the Base Character so the user sees something.
     hit_text = t[log_s:log_e]
-    is_zwj = len(hit_text) > 0 and all(c == '\u200d' for c in hit_text)
+    
+    is_glue = False
+    if hit_text:
+        # Check first char of hit
+        first_cp = ord(hit_text[0])
+        cat = unicodedata.category(hit_text[0])
+        # ZWJ (200D), Marks (Mn, Me), or Format (Cf)
+        if first_cp == 0x200D or cat in ('Mn', 'Me', 'Cf'):
+            is_glue = True
 
-    if is_zwj:
-        # Expand LEFT: Skip adjacent ZWJs until we hit a solid anchor
-        while log_s > 0:
-            if t[log_s - 1] == '\u200d':
-                log_s -= 1
-            else:
-                log_s -= 1 # Include the solid anchor
-                break
-        
-        # Expand RIGHT: Skip adjacent ZWJs until we hit a solid anchor
-        while log_e < len(t):
-            if t[log_e] == '\u200d':
-                log_e += 1
-            else:
-                log_e += 1 # Include the solid anchor
-                break
+    if is_glue and log_s > 0:
+        # Expand Left to grab the anchor
+        log_s -= 1
 
-    # 4. THE GUIDING STAR SCANNER (DOM Coordinate Calculation)
+    # 4. THE REVEAL2 SCANNER (Exact DOM Alignment)
     # We scan the text linearly. 'acc' tracks the DOM (UTF-16) position.
-    # 'i' tracks the Python (Logical) position.
     
     dom_s = 0
     dom_e = 0
@@ -6455,8 +6451,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         if i == log_e:
             dom_e = acc
             
-        # Calculate width exactly as the browser sees it
-        # Supplementary characters (>FFFF) are 2 units. BMP is 1 unit.
+        # Calculate width exactly as the browser sees it (The Reveal2 Standard)
         slen = 2 if ord(char) > 0xFFFF else 1
         acc += slen
         
@@ -6488,6 +6483,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 def render_forensic_hud(t, stats):
     """
     Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
+    Safe rendering that handles None types and empty stats gracefully.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -6505,6 +6501,7 @@ def render_forensic_hud(t, stats):
         has_hits = False
         target_key = key
         
+        # Aggregate logic for top-level metrics
         if key == "integrity":
             if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
                 target_key = "integrity_agg"
@@ -6514,6 +6511,7 @@ def render_forensic_hud(t, stats):
                 target_key = "threat_agg"
                 has_hits = True
         else:
+            # Direct key lookup
             if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
                 has_hits = True
                 
@@ -6535,7 +6533,7 @@ def render_forensic_hud(t, stats):
                     d2="", m2="", r2="",
                     reg_key_2=None, risk_2="warn"): 
         
-        def esc(s): return s.replace('"', '&quot;')
+        def esc(s): return str(s).replace('"', '&quot;')
         int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
 
         return f"""
