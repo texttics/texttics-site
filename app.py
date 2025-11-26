@@ -6252,8 +6252,7 @@ def render_inspector_panel(data):
                     <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
                 </div>
                 
-                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 6px 0; opacity: 0.6;">
-                <div class="section-label" style="margin-bottom:4px; color:#b91c1c;">EXPLOIT VECTORS</div>
+                <div class="section-label" style="margin-bottom:4px; color:#374151; margin-top: 8px;">EXPLOIT VECTORS</div>
                 
                 <div class="byte-row"><span class="label">Base64:</span>{data['base64']}</div>
                 <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data['shell'])}</div>
