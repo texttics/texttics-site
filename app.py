@@ -6345,15 +6345,14 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
     """
     if not t or logical_idx <= 0: return 0
     
-    # Slice string up to the logical index (Python counts by Code Point)
+    # Slice string up to the logical index
     sub = t[:logical_idx]
     
-    # Calculate length in UTF-16 code units (BMP=1, Astral=2)
-    # This strictly matches JS string.length behavior
-    try:
-        return len(sub.encode('utf-16-le')) // 2
-    except:
-        return logical_idx # Fallback
+    # [CRITICAL FIX] Handle CORRUPT text (Lone Surrogates)
+    # We must use 'replace' to ensure encode() does not throw.
+    # U+FFFD (Replacement) is 1 unit in UTF-16, same as a valid char, 
+    # so the length calculation remains DOM-accurate.
+    return len(sub.encode('utf-16-le', errors='replace')) // 2
 
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
