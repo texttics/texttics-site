@@ -47,12 +47,15 @@ INVIS_SOFT_HYPHEN        = 1 << 8
 INVIS_NON_ASCII_SPACE    = 1 << 9
 INVIS_NONSTANDARD_NL     = 1 << 10
 
+# 1. A new bit flag for Critical Controls
+INVIS_CRITICAL_CONTROL   = 1 << 11
+
 # Aggregates
 INVIS_ANY_MASK = (
     INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL | INVIS_ZERO_WIDTH_SPACING |
     INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_VARIATION_STANDARD |
     INVIS_VARIATION_IDEOG | INVIS_DO_NOT_EMIT | INVIS_SOFT_HYPHEN |
-    INVIS_NON_ASCII_SPACE | INVIS_NONSTANDARD_NL
+    INVIS_NON_ASCII_SPACE | INVIS_NONSTANDARD_NL | INVIS_CRITICAL_CONTROL
 )
 INVIS_HIGH_RISK_MASK = INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DO_NOT_EMIT
 
@@ -182,6 +185,18 @@ def build_invis_table():
     # or create a new mask. For now, leaving them as visual characters is safer 
     # unless you want to flag them as "Suspicious". 
     # (Recommendation: Leave unmasked for now, rely on the [TAG] mapping in Part 1 for visibility).
+
+    # Map NUL (0x00), ESC (0x1B), and DEL (0x7F) to the Bitmask
+    # This ensures the O(1) engine sees them as "Invisibles" too.
+    apply_mask([(0x0000, 0x0000), (0x001B, 0x001B), (0x007F, 0x007F)], INVIS_CRITICAL_CONTROL)
+    
+    # Optional: Map C0 controls (0x00-0x1F) excluding whitespace (TAB/LF/CR)
+    # This aligns the Bitmask perfectly with the 'reveal2' Dictionary
+    c0_controls = []
+    for cp in range(0x00, 0x20):
+        if cp not in (0x09, 0x0A, 0x0D): # Skip TAB, LF, CR
+            c0_controls.append((cp, cp))
+    apply_mask(c0_controls, INVIS_CRITICAL_CONTROL)
 
 def run_self_tests():
     """
