@@ -738,29 +738,28 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
 
     # 4. Execute Highlight
-    
     if metric_key == "threat_agg":
-    log_start, log_end = next_hit[0], next_hit[1]
-
-    # Run UTF-16 index math fully inside JS and return a JSON string, not a raw array proxy.
-    js_code = f"""
-    (() => {{
-        const el = document.getElementById("text-input");
-        if (!el) return "[-1,-1]";
-        const t = el.value;
-        const seq = Array.from(t);
-        let acc = 0, domStart = -1, domEnd = -1;
-        for (let i = 0; i < seq.length; i++) {{
-            if (i === {log_start}) domStart = acc;
-            if (i === {log_end}) {{ domEnd = acc; break; }}
-            const code = seq[i].codePointAt(0);
-            acc += (code > 0xFFFF ? 2 : 1);
-        }}
-        if (domEnd === -1 && {log_end} >= seq.length) domEnd = acc;
-        return JSON.stringify([domStart, domEnd]);
-    }})();
-    """
-
+        log_start, log_end = next_hit[0], next_hit[1]
+    
+        # Run UTF-16 index math fully inside JS and return a JSON string, not a raw array proxy.
+        js_code = f"""
+        (() => {{
+            const el = document.getElementById("text-input");
+            if (!el) return "[-1,-1]";
+            const t = el.value;
+            const seq = Array.from(t);
+            let acc = 0, domStart = -1, domEnd = -1;
+            for (let i = 0; i < seq.length; i++) {{
+                if (i === {log_start}) domStart = acc;
+                if (i === {log_end}) {{ domEnd = acc; break; }}
+                const code = seq[i].codePointAt(0);
+                acc += (code > 0xFFFF ? 2 : 1);
+            }}
+            if (domEnd === -1 && {log_end} >= seq.length) domEnd = acc;
+            return JSON.stringify([domStart, domEnd]);
+        }})();
+        """
+    
         try:
             # Convert JS JSON string → Python list
             import json
@@ -777,6 +776,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             return
     else:
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+
 
 
     
