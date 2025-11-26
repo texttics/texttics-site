@@ -695,8 +695,19 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not el: return
     t = el.value
     
-    # 1. Map DOM Position to Logical Index
-    current_logical = _dom_to_logical(t, current_dom_pos)
+    # 1. Map DOM Position to Logical Index (Pure Python)
+    # We iterate the Python string to find which Logical Index corresponds to the Cursor's UTF-16 position.
+    current_logical = 0
+    if t:
+        utf16_acc = 0
+        for i, char in enumerate(t):
+            if utf16_acc >= current_dom_pos:
+                current_logical = i
+                break
+            utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        else:
+            # Cursor is at the very end
+            current_logical = len(t)
 
     # 2. Define Human-Readable Labels
     labels = {
@@ -740,81 +751,54 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 5. Execute Highlight
     if metric_key == "threat_agg":
-        # HYBRID BRIDGE: Run Index Math in JS to ensure perfect sync with Registry
-        # The Registry was built using JS 'Array.from', so we must step using JS 'Array.from'.
+        # PURE PYTHON DOM CALCULATION
+        # We calculate the UTF-16 offsets manually in Python.
+        # This bypasses the JS/Python length mismatch entirely.
         
         log_start = next_hit[0]
         log_end = next_hit[1]
-
-        # We read the value directly from DOM inside JS to avoid passing huge strings across the bridge
-        js_code = f"""
-        (function(s, e) {{
-            const el = document.getElementById("text-input");
-            if (!el) return [-1, -1];
-            
-            const t = el.value;
-            const seq = Array.from(t);
-            
-            let acc = 0;
-            let domStart = -1;
-            let domEnd = -1;
-            
-            for (let i = 0; i < seq.length; i++) {{
-                if (i === s) domStart = acc;
-                if (i === e) {{ domEnd = acc; break; }}
-                
-                // UTF-16 Accumulation (1 unit for BMP, 2 for Astral)
-                const code = seq[i].codePointAt(0);
-                acc += (code > 0xFFFF ? 2 : 1);
-            }}
-            
-            // Edge Case: Target is exactly at the end of the string
-            if (domEnd === -1 && e >= seq.length) domEnd = acc;
-            
-            return [domStart, domEnd];
-        }})({log_start}, {log_end});
-        """
         
-        try:
-            # Execute and unpack results
-            res = window.eval(js_code)
-            if hasattr(res, "to_py"):
-                res = res.to_py()
+        dom_start = -1
+        dom_end = -1
+        
+        acc = 0
+        # Iterate Python string to match Registry indices perfectly
+        for i, char in enumerate(t):
+            if i == log_start: dom_start = acc
+            if i == log_end: dom_end = acc; break 
             
-            dom_start = int(res[0])
-            dom_end = int(res[1])
-            
-            # Safety Guard
-            if dom_start == -1 or dom_end == -1:
-                print(f"[ThreatAgg] Highlight Sync Error: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}")
-                return
-
-            # Apply Selection
-            el.focus()
-            el.setSelectionRange(dom_start, dom_end)
-            
-        except Exception as e:
-            print(f"[ThreatAgg] Bridge Failure: {e}")
+            # UTF-16 Math: BMP=1, Astral=2
+            acc += (2 if ord(char) > 0xFFFF else 1)
+        
+        # Handle end-of-string edge case
+        if dom_end == -1:
+            # If log_end is at or past the end of string, use the final accumulated length
+            if log_end >= len(t): dom_end = acc
+        
+        # Safety: Abort if start index missing (e.g. Registry is stale compared to text)
+        if dom_start == -1:
+            print(f"[ThreatAgg] Registry Desync: Logical {log_start} not found in text (len {len(t)})")
             return
 
+        el.focus()
+        el.setSelectionRange(dom_start, dom_end)
+        
     else:
         # [LEGACY PATH] Keep existing logic for other metrics
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
 
-    # 6. Define Icon LOCALLY
+    # 6. Feedback UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
 
-    # 7. Format Message
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
     
-    # 8. Update UI
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
         hud_status.className = "status-details status-hud-active"
         hud_status.style.display = "inline-flex"
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
-    # 9. Update Inspector
+    # 7. Update Inspector
     inspect_character(None)
 
 @create_proxy
