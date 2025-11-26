@@ -819,58 +819,47 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
 
     # 4. Execute Highlight
-    if metric_key == "threat_agg":
-        # Threat Indices in Registry are Logical (code point indices).
-        # Convert to DOM (UTF-16 units) using reveal2-style math.
-        
-        # Use the EXACT sequence source used to build the registry
-        js_sequence = window.Array.from_(t)
-        
-        log_start = next_hit[0]
-        log_end = next_hit[1]
-        
-        # [FIX] Calculate total length safely for the clamp (No encode crash)
-        # This counts 2 units for Astral (>FFFF), 1 for everything else (including Surrogates)
-        total_utf16_len = sum(2 if ord(c) > 0xFFFF else 1 for c in t)
-        
-        dom_start = -1  # Sentinel for miss detection
-        dom_end = -1
-        
-        acc = 0
-        # Iterate the LIVE string 't'
-        for i, char in enumerate(t):
-            # Set positions BEFORE adding width (start of char)
-            if i == log_start: dom_start = acc
-            if i == log_end: 
-                dom_end = acc
-                break  # Early exit if end found
-            
-            # Width Calc: Consistent with utf16_length
-            cp = ord(char)
-            width = 1 if 0xD800 <= cp <= 0xDFFF else (2 if cp > 0xFFFF else 1)
-            acc += width
-            
-        # Catch-all if target is at end of string
-        if dom_end == -1: dom_end = acc
-        
-        # Debug: Log misses for forensics
-        if dom_start == -1:
-            print(f"[Text...tics] Threat highlight miss: logical start {log_start} not found (text len={len(t)})")
-            return  # ABORT: Prevent any highlight
-        
-        # Safety Clamp (Prevent invalid ranges)
-        dom_start = min(max(dom_start, 0), total_utf16_len)
-        dom_end = min(max(dom_end, dom_start), total_utf16_len)
-        
-        # Prevent zero-length (select at least 1 unit if range exists)
-        if dom_start == dom_end and log_end > log_start:
-            dom_end = min(dom_start + 1, total_utf16_len)
+     
+    if metric_key == "threat_agg": 
+        js_sequence = window.Array.from_(t) 
+        log_start = next_hit[0] 
+        log_end = next_hit[1] 
+    
+        # [FIX] Calculate total length safely for the clamp (No encode crash) 
+        # This counts 2 units for Astral (>FFFF), 1 for everything else (including Surrogates) 
+        total_utf16_len = sum(2 if ord(c) > 0xFFFF else 1 for c in t) 
+    
+        # [NEW] Bounds Check: Detect stale registry (text changed after analysis)
+        len_seq = len(js_sequence)  # Code point length
+        if log_start >= len_seq or log_end > len_seq:
+            print(f"[Text...tics] Stale threat index {log_start}-{log_end} (current len={len_seq}), skipping highlight")
+            return  # ABORT: Prevent invalid selection/freezes
+    
+        # Initialize to -1 to detect "Missed Target" 
+        dom_start = -1 
+        dom_end = -1 
+        acc = 0 
+        for i, char in enumerate(js_sequence): 
+            if i == log_start: dom_start = acc 
+            if i == log_end: dom_end = acc; break 
+            # UTF-16 Math: Astral chars (>FFFF) are 2 units 
+            try: 
+                acc += (2 if ord(char) > 0xFFFF else 1) 
+            except: 
+                acc += 1 
+        # Catch-all: If indices were beyond the sequence length 
+        if dom_start == -1: dom_start = acc 
+        if dom_end == -1: dom_end = acc 
+        # Safety Clamp: Ensure we don't select past the end 
+        dom_start = min(dom_start, total_utf16_len) 
+        dom_end = min(dom_end, total_utf16_len) 
+        # Ensure start <= end 
+        if dom_start > dom_end: dom_start = dom_end 
+        window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end) 
+    else: 
+        # [LEGACY PATH] Everyone else uses raw indices (Status Quo maintained) 
+        window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1]) 
 
-        window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
-        
-    else:
-        # Legacy path for others
-        window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
     # 5. Define Icon LOCALLY (Safety Fix)
     # We use triple quotes to avoid syntax errors with inner quotes
