@@ -746,29 +746,21 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
         js_code = f"""
         (function(s, e) {{
-            const el = document.getElementById("text-input");
-            if (!el) return [-1, -1];
-    
-            const t = el.value;
-            const seq = Array.from(t);
-    
-            let acc = 0;
-            let domStart = -1;
-            let domEnd = -1;
-    
-            for (let i = 0; i < seq.length; i++) {{
-                if (i === s) domStart = acc;
-                if (i === e) {{ domEnd = acc; break; }}
-    
-                const code = seq[i].codePointAt(0);
-                acc += (code > 0xFFFF ? 2 : 1);
-            }}
-    
-            // If target is exactly at the end of the sequence
-            if (domEnd === -1 && e >= seq.length) domEnd = acc;
-    
-            return [domStart, domEnd];
+          const el = document.getElementById("text-input");
+          if (!el) return JSON.stringify({{"len": -1, "slice": null}});
+          const t = el.value;
+          const seq = Array.from(t);
+          const slice = seq.slice(Math.max(0, s - 5), s + 5).map(c => c.codePointAt(0).toString(16));
+          return JSON.stringify({{"len": seq.length, "slice": slice, "text_snippet": t.slice(Math.max(0, s - 5), s + 5)}});
         }})({log_start}, {log_end});
+        """
+        res = window.eval(js_code)
+        import json
+        dbg = json.loads(res)
+        print("[ThreatAgg-DBG] seq.length:", dbg["len"])
+        print("[ThreatAgg-DBG] around logical index", log_start, "slice:", dbg["slice"], "text:", dbg["text_snippet"])
+        print("[ThreatAgg-DBG] raw Python slice:", repr(t_python[ max(0, log_start -5) : log_start +5 ]))
+
         """
     
         try:
