@@ -2490,9 +2490,9 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3.1).
+    Forensic Cluster Classifier (V3.2 - Python Index Sync).
     Segments text into Grapheme Clusters and assigns a single primary classification.
-    Logic Patch: Suppresses 'Unqualified' flags for Text-Default symbols (Arrows, Math) to reduce noise.
+    NOW uses a manual Python index counter to align perfectly with the Registry.
     """
     # --- 1. Data Access ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -2500,23 +2500,16 @@ def compute_emoji_analysis(text: str) -> dict:
     
     # --- 2. Init Counters (The "Ledger") ---
     counts = {
-        # Core Aggregates
         "total_emoji_units": 0,
         "rgi_total": 0,
         "non_rgi_total": 0,
-        
-        # HUD: Symbols (C5)
         "text_symbols_extended": 0,
         "text_symbols_exotic": 0,
-        
-        # HUD: Hybrids (C6)
-        "hybrid_pictographs": 0, # Emoji-Atomic with Symbol Base
-        "hybrid_ambiguous": 0,   # Text-Default Presentation
-        
-        # HUD: Emoji (C7)
+        "hybrid_pictographs": 0, 
+        "hybrid_ambiguous": 0,   
         "rgi_atomic": 0,
         "rgi_sequence": 0,
-        "emoji_irregular": 0,    # Non-RGI, Unqualified, or Components
+        "emoji_irregular": 0,    
         "components_leaked": 0
     }
     
@@ -2534,9 +2527,17 @@ def compute_emoji_analysis(text: str) -> dict:
     # --- 3. Cluster Segmentation Loop ---
     segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
+    # [SYNC FIX] Initialize Manual Python Index Counter
+    # We cannot use seg.index (JS UTF-16) because it drifts from Python Logical Indices.
+    current_python_idx = 0
+    
     for seg in segments_iter:
         cluster = seg.segment
-        idx = seg.index
+        
+        # [SYNC FIX] Use our manual counter
+        idx = current_python_idx
+        
+        # Calculate lengths
         cp_len = len(cluster) 
         base_char = cluster[0]
         base_cp = ord(base_char)
@@ -2566,15 +2567,12 @@ def compute_emoji_analysis(text: str) -> dict:
         elif is_emoji or is_ext_pict:
             rgi_status = False
 
-            # ASCII Exception (Digits 0-9, #, *)
             if base_cp <= 0x7F:
                 pass 
-            
             elif is_component: 
                 kind = "emoji-component"
                 status = "component"
             elif cp_len > 1:
-                # Complex but not RGI
                 kind = "emoji-sequence"
                 status = "unqualified" 
             else:
@@ -2592,12 +2590,8 @@ def compute_emoji_analysis(text: str) -> dict:
             if base_cp <= 0xFF or (0x2000 <= base_cp <= 0x29FF):
                 counts["text_symbols_extended"] += 1
             else:
-                # [FIX] Exclude U+FFFD (Replacement Char) from Exotic Symbols.
-                # It is already flagged as a FATAL error in the Integrity column.
                 if base_cp != 0xFFFD:
                     counts["text_symbols_exotic"] += 1
-                    
-                    # Register the hit (Smart Logic)
                     _register_hit("sym_exotic", idx, idx + cp_len, f"Exotic Symbol (U+{base_cp:04X})")
 
         # [HUD C6] Hybrids (Emoji-Atomic)
@@ -2625,7 +2619,6 @@ def compute_emoji_analysis(text: str) -> dict:
 
         # [HUD C7] Sequences
         if status in ("unqualified", "component") or (kind == "emoji-sequence" and not rgi_status):
-             # [FIX] Do not register hits for Text-Default atoms here (handled in flags below)
              pass
         elif kind == "emoji-sequence":
             counts["total_emoji_units"] += 1
@@ -2646,13 +2639,9 @@ def compute_emoji_analysis(text: str) -> dict:
             counts["emoji_irregular"] += 1
             add_flag("Flag: Standalone Emoji Component", idx)
 
-        # --- D. Flag Generation (Noise Filter Applied) ---
+        # --- D. Flag Generation ---
         
         if status == "unqualified":
-            # [LOGIC PATCH] Only flag if it SHOULD be an emoji but isn't.
-            # 1. It is 'Emoji_Presentation' (Smiley) but bare. -> FLAG.
-            # 2. It is a Sequence (Base + Mark) but invalid. -> FLAG.
-            # 3. It is 'Text Default' (Arrow) and bare. -> IGNORE (It's just text).
             if is_emoji_pres or cp_len > 1:
                 add_flag("Flag: Unqualified Emoji", idx)
         
@@ -2672,6 +2661,9 @@ def compute_emoji_analysis(text: str) -> dict:
                 "base_cat": base_cat, 
                 "index": idx
             })
+
+        # [SYNC FIX] Advance the Python Index by the logical length of the cluster
+        current_python_idx += cp_len
 
     return {
         "counts": counts,
