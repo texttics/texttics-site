@@ -7175,6 +7175,7 @@ def update_all(event=None):
     render_emoji_summary(emoji_counts, emoji_list)
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
+    render_intel_console(t, final_threat_flags, provenance_stats)
     render_toc_counts(toc_counts)
 
     is_ascii_safe = True
