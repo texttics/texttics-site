@@ -2441,11 +2441,10 @@ def _find_matches_with_indices(regex_key: str, text: str):
         print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
         return [], 0
 
-# Note the new argument: emoji_counts
 def compute_code_point_stats(t: str, emoji_counts: dict):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
 
-# 1. Get derived stats (from full string)
+    # 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
     # This is robust and avoids all formatting/JS bridge errors.
@@ -2492,22 +2491,17 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
             "is_full": False # This badge doesn't make sense here
         }
     }
-   # We get the count directly from the emoji engine's report
+    
+    # We get the count directly from the emoji engine's report
     emoji_total_count = emoji_counts.get("RGI Emoji Sequences", 0)
     
+    # Calculate total whitespace count for the Card (safe to use JS count here)
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
 
-    # [NEW] Populate HUD Registry for Non-Std Whitespace
-    # We need to scan specifically for Non-ASCII whitespace
-    ns_indices, _ = _find_matches_with_indices("Whitespace", t)
-    for idx in ns_indices:
-        # Check if it's 0x20 or control chars
-        # Since regex \p{White_Space} includes 0x20, we filter.
-        # Note: We need the char at idx to check value.
-        # matchAll gives indices.
-        # This is slightly expensive to re-check, but robust.
-        # Easier: Just scan string once for specific HUD buckets.
-        pass
+    # [FIX] REMOVED REDUNDANT REGISTRY LOGIC
+    # We do NOT populate 'ws_nonstd' here. 
+    # It is handled safely in 'populate_hud_registry' using a Python linear scan.
+    # Using JS regex indices here would cause Index Drift.
     
     derived_stats = {
         "Total Code Points": total_code_points,
@@ -2516,15 +2510,12 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     }
 
     # 2. Get 29 minor categories (Honest Mode)
-    # --- THIS IS THE FIX ---
-    # We now use our proven-correct helper function for all 29 categories.
     minor_stats = {}
     sum_of_29_cats = 0
     for key in MINOR_CATEGORIES_29.keys():
         _, count = _find_matches_with_indices(key, t)
         minor_stats[key] = count
         sum_of_29_cats += count
-    # --- END OF FIX ---
 
     # 3. Calculate 'Cn' as the remainder
     minor_stats["Cn"] = total_code_points - sum_of_29_cats
@@ -6330,45 +6321,49 @@ def _register_hit(key: str, start: int, end: int, label: str):
 def _dom_to_logical(t: str, dom_idx: int) -> int:
     """
     INPUT CONVERTER: Browser DOM Index (UTF-16) -> Python Logical Index.
+    Uses the 'Reveal2' Linear Accumulator logic to prevent drift.
     """
-    if not t: return 0
+    if not t or dom_idx < 0: return 0
     
-    logical_idx = 0
-    utf16_acc = 0
+    acc = 0 # Tracks DOM Position (UTF-16 units)
     
-    for char in t:
-        if utf16_acc >= dom_idx:
-            return logical_idx
+    # Linear Scan: Matches browser's internal cursor logic exactly
+    for i, char in enumerate(t):
+        # If we've reached the target DOM position, return current Logical Index (i)
+        if acc >= dom_idx:
+            return i
         
-        # Add length of char in UTF-16 (1 or 2)
-        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
-        logical_idx += 1
+        # Advance Accumulator: 2 units for High/Low Surrogates, 1 for BMP
+        acc += 2 if ord(char) > 0xFFFF else 1
         
-    return logical_idx
+    return len(t)
 
 def _logical_to_dom(t: str, logical_idx: int) -> int:
     """
     OUTPUT CONVERTER: Python Logical Index -> Browser DOM Index (UTF-16).
-    Required for window.TEXTTICS_HIGHLIGHT_RANGE to work with Emojis.
+    Uses the 'Reveal2' Linear Accumulator logic to prevent drift.
     """
-    if not t or logical_idx <= 0: return 0
+    if not t or logical_idx < 0: return 0
     
-    # Slice string up to the logical index
-    sub = t[:logical_idx]
+    acc = 0 # Tracks DOM Position (UTF-16 units)
     
-    # [CRITICAL FIX] Handle CORRUPT text (Lone Surrogates)
-    # We must use 'replace' to ensure encode() does not throw.
-    # U+FFFD (Replacement) is 1 unit in UTF-16, same as a valid char, 
-    # so the length calculation remains DOM-accurate.
-    return len(sub.encode('utf-16-le', errors='replace')) // 2
+    # Linear Scan: Counts exactly how many UTF-16 units exist before the target
+    for i, char in enumerate(t):
+        if i == logical_idx:
+            return acc
+            
+        # Advance Accumulator: 2 units for High/Low Surrogates, 1 for BMP
+        acc += 2 if ord(char) > 0xFFFF else 1
+        
+    return acc
 
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V21 - Robust Linear Scan).
-    1. Replaces fragile conversion logic with a Linear UTF-16 Scanner (matches Reveal2).
-    2. Implements 'Smart ZWJ': Selects [Left + ZWJ + Right] to visualize the bond.
-    3. Eliminates Index Drift (selecting random letters).
+    Stateful stepper (Fixed V23 - The "Guiding Star" Logic).
+    1. Adopts the exact Linear Accumulator logic from 'reveal2_invisibles'.
+    2. Iterates string once to calculate exact UTF-16 DOM offsets.
+    3. Performs Smart ZWJ expansion at the Logical level before scanning.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6418,8 +6413,8 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 3. LOGICAL EXPANSION (The "Smart Idea")
-    # We adjust the indices in the Python domain (Logical) first.
+    # 3. LOGICAL PRE-PROCESSING (Smart ZWJ Expansion)
+    # We adjust the Logical Indices (Python) first.
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
@@ -6427,47 +6422,47 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     is_zwj = len(hit_text) > 0 and all(c == '\u200d' for c in hit_text)
 
     if is_zwj:
-        # Expand LEFT to find nearest non-ZWJ neighbor
+        # Expand LEFT: Skip adjacent ZWJs until we hit a solid anchor
         while log_s > 0:
             if t[log_s - 1] == '\u200d':
                 log_s -= 1
             else:
-                log_s -= 1 # Include the neighbor
+                log_s -= 1 # Include the solid anchor
                 break
         
-        # Expand RIGHT to find nearest non-ZWJ neighbor
+        # Expand RIGHT: Skip adjacent ZWJs until we hit a solid anchor
         while log_e < len(t):
             if t[log_e] == '\u200d':
                 log_e += 1
             else:
-                log_e += 1 # Include the neighbor
+                log_e += 1 # Include the solid anchor
                 break
 
-    # 4. ROBUST DOM CONVERSION (The "Reveal2" Method)
-    # Instead of slicing/encoding, we iterate and count UTF-16 units.
-    # This guarantees 100% alignment with the browser's selection engine.
+    # 4. THE GUIDING STAR SCANNER (DOM Coordinate Calculation)
+    # We scan the text linearly. 'acc' tracks the DOM (UTF-16) position.
+    # 'i' tracks the Python (Logical) position.
     
     dom_s = 0
     dom_e = 0
-    current_dom_acc = 0
+    acc = 0
     
-    # Scan loop (Guiding Star Logic)
     for i, char in enumerate(t):
-        # Capture Start
+        # Capture Start when logical index matches
         if i == log_s:
-            dom_s = current_dom_acc
+            dom_s = acc
             
-        # Capture End
+        # Capture End when logical index matches
         if i == log_e:
-            dom_e = current_dom_acc
+            dom_e = acc
             
-        # Advance accumulator by UTF-16 width (Emoji=2, ASCII=1)
-        char_dom_len = 2 if ord(char) > 0xFFFF else 1
-        current_dom_acc += char_dom_len
-    
-    # Handle case where selection ends at the very end of string
+        # Calculate width exactly as the browser sees it
+        # Supplementary characters (>FFFF) are 2 units. BMP is 1 unit.
+        slen = 2 if ord(char) > 0xFFFF else 1
+        acc += slen
+        
+    # Edge Case: If selection ends at the very end of the string
     if log_e == len(t):
-        dom_e = current_dom_acc
+        dom_e = acc
 
     # Safety Clamp
     if dom_e <= dom_s: dom_e = dom_s + 1
