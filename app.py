@@ -750,6 +750,417 @@ def analyze_bidi_structure(t: str, rows: list):
                      
     return penalty_count, fracture_ranges, danger_ranges
 
+# --- FORENSIC HUD REGISTRY (Stepper Engine) ---
+# Stores lists of (start_cp, end_cp, label) tuples.
+# Keys match the specific metric buckets.
+HUD_HIT_REGISTRY = {}
+
+def _dom_to_logical(t: str, dom_idx: int) -> int:
+    """
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
+    Iterates the string to count code points until the UTF-16 accumulator matches.
+    """
+    if not t: return 0
+    
+    logical_idx = 0
+    utf16_acc = 0
+    
+    for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        
+        # Add length of char in UTF-16 (1 or 2)
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+def _register_hit(key: str, start: int, end: int, label: str):
+    """Helper to append a hit to the global registry."""
+    if key not in HUD_HIT_REGISTRY:
+        HUD_HIT_REGISTRY[key] = []
+    HUD_HIT_REGISTRY[key].append((start, end, label))
+
+
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateless stepper. Finds the next range after current_dom_pos.
+    Updates the LEFT-SIDE HUD Status bar.
+    """
+    el = document.getElementById("text-input")
+    if not el: return
+    t = el.value
+    
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
+    # 1. Define Human-Readable Labels
+    labels = {
+        "integrity_agg": "Integrity Issues",
+        "threat_agg": "Threat Signals",
+        "ws_nonstd": "Non-Std Whitespace",
+        "punc_exotic": "Exotic Delimiters",
+        "sym_exotic": "Exotic Symbols",
+        "emoji_hybrid": "Hybrid Emoji",
+        "emoji_irregular": "Irregular Emoji"
+    }
+    category_label = labels.get(metric_key, "Forensic Metric")
+
+    # 2. Resolve targets
+    targets = []
+    if metric_key == "integrity_agg":
+        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                   HUD_HIT_REGISTRY.get("int_fracture", []) +
+                   HUD_HIT_REGISTRY.get("int_risk", []) +
+                   HUD_HIT_REGISTRY.get("int_decay", []))
+    elif metric_key == "threat_agg":
+        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    else:
+        targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    if not targets: return
+
+    # 3. Sort & Find Next
+    targets.sort(key=lambda x: x[0])
+    next_hit = targets[0]
+    hit_index = 1
+    
+    for i, hit in enumerate(targets):
+        if hit[0] >= current_logical:
+            next_hit = hit
+            hit_index = i + 1
+            break
+
+    # 4. Execute Highlight
+    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    
+    # 5. Define Icon LOCALLY (Safety Fix)
+    # We use triple quotes to avoid syntax errors with inner quotes
+    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+
+    # 6. Format Message (Fix Spacing & Alignment)
+    # We put the Icon AT THE END (Right side)
+    # We use a standard space ' ' after </strong>
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
+    
+    # 7. Update UI
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex"
+        # Text First, Icon Second
+        hud_status.innerHTML = f"{status_msg}{icon_loc}"
+    
+    # 8. Update Inspector
+    inspect_character(None)
+
+@create_proxy
+def render_forensic_hud(t, stats):
+    """
+    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
+    """
+    container = document.getElementById("forensic-hud")
+    if not container: return 
+    if t is None: t = ""
+    
+    emoji_counts = stats.get("emoji_counts", {})
+
+    # --- INTERACTION HELPER ---
+    def get_interaction(val, key, severity="warn"):
+        """Checks registry and returns CSS class and onclick attribute."""
+        try:
+            if float(val) <= 0: return "", ""
+        except: return "", ""
+        
+        has_hits = False
+        target_key = key
+        
+        if key == "integrity":
+            # Aggregator check
+            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "integrity_agg"
+                has_hits = True
+        elif key == "threat":
+            # Aggregator check
+            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "threat_agg"
+                has_hits = True
+        else:
+            # Direct check
+            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
+                has_hits = True
+                
+        if has_hits:
+            cls = " hud-interactive"
+            if severity == "crit": cls += " hud-interactive-crit"
+            elif severity == "warn": cls += " hud-interactive-risk"
+            
+            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
+            return cls, attr
+            
+        return "", ""
+
+    # --- HELPER: Cell Builder ---
+    def render_cell(sci_title, 
+                    label_1, val_1, class_1,
+                    label_2, val_2, class_2,
+                    d1="", m1="", r1="",
+                    d2="", m2="", r2="",
+                    reg_key_2=None, risk_2="warn"): # New Args
+        
+        def esc(s): return s.replace('"', '&quot;')
+        
+        # Check for interaction on Value 2 (Secondary Metric)
+        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
+
+        return f"""
+        <div class="hud-col" 
+             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
+             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
+             
+            <div class="hud-row-sci">{sci_title}</div>
+            
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_1}</div>
+                <div class="hud-val {class_1}">{val_1}</div>
+            </div>
+            
+            <div class="hud-metric-divider"></div>
+
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_2}</div>
+                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
+            </div>
+
+        </div>
+        """
+
+    # --- COLOR LOGIC ---
+    def color_neutral(val):
+        try: return "txt-muted" if float(val) == 0 else "txt-normal"
+        except: return "txt-normal"
+
+    def color_clean(val):
+        try: return "txt-clean" if float(val) == 0 else "txt-warn"
+        except: return "txt-normal"
+
+    def color_risk(val):
+        try: return "txt-good" if float(val) == 0 else "txt-warn"
+        except: return "txt-normal"
+
+    # --- 0. PRE-CALC ---
+    uax_word = 0
+    uax_sent = 0
+    try:
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
+    except: pass
+
+    # --- 1. COLUMNS ---
+
+    # C0: ALPHANUMERIC
+    alpha_chars = sum(1 for c in t if c.isalnum())
+    alpha_runs = 0
+    in_run = False
+    for c in t:
+        if c.isalnum():
+            if not in_run:
+                alpha_runs += 1
+                in_run = True
+        else:
+            in_run = False
+
+    c0 = render_cell(
+        "ALPHANUMERIC", 
+        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
+        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
+        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
+        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
+    )
+
+    # C1: LEXICAL MASS
+    L = stats.get('major_stats', {}).get("L (Letter)", 0)
+    N = stats.get('major_stats', {}).get("N (Number)", 0)
+    vu = (L + N) / 5.0
+    c1 = render_cell(
+        "LEXICAL MASS", 
+        "UNITS", f"{vu:.1f}", color_neutral(vu),
+        "WORDS", str(uax_word), color_neutral(uax_word),
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
+        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
+
+    # C2: SEGMENTATION
+    seg_est = vu / 20.0
+    c2 = render_cell(
+        "SEGMENTATION", 
+        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
+        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
+        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
+
+    # C3: WHITESPACE (Interactive)
+    std_set = {0x20, 0x09, 0x0A, 0x0D}
+    std_inv = sum(1 for c in t if ord(c) in std_set)
+    flags = stats.get('forensic_flags', {})
+    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    
+    c3 = render_cell(
+        "WHITESPACE", 
+        "ASCII WS", str(std_inv), color_neutral(std_inv),
+        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
+        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
+        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+        reg_key_2="ws_nonstd" # LINK
+    )
+
+    # C4: DELIMITERS (Interactive)
+    cnt_p_ascii = 0
+    cnt_p_comfort = 0
+    cnt_p_exotic = 0
+    
+    for c in t:
+        if unicodedata.category(c).startswith('P'):
+            cp = ord(c)
+            if cp <= 0x7F:
+                cnt_p_ascii += 1
+            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F):
+                cnt_p_comfort += 1
+            else:
+                cnt_p_exotic += 1
+
+    if cnt_p_comfort > 0:
+        c4_label = "TYPOGRAPHIC"
+        c4_val = cnt_p_ascii + cnt_p_comfort
+        c4_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
+        c4_ref = "Scope: ASCII+Common"
+    else:
+        c4_label = "ASCII"
+        c4_val = cnt_p_ascii
+        c4_desc = "Standard ASCII punctuation characters."
+        c4_ref = "Scope: ASCII"
+
+    c4 = render_cell(
+        "DELIMITERS", 
+        c4_label, str(c4_val), color_neutral(c4_val),
+        "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
+        d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
+        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+        reg_key_2="punc_exotic" # LINK
+    )
+
+    # C5: SYMBOLS (Interactive)
+    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
+    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
+    
+    c5_label = "EXTENDED"
+    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
+    if cnt_s_ext == 0 and cnt_s_exotic == 0:
+        c5_label = "KEYBOARD"
+        c5_desc = "Standard ASCII keyboard symbols."
+
+    c5 = render_cell(
+        "SYMBOLS", 
+        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
+        "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
+        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
+        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+        reg_key_2="sym_exotic" # LINK
+    )
+
+    # C6: HYBRIDS (Interactive)
+    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
+    
+    c6 = render_cell(
+        "HYBRIDS", 
+        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
+        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
+        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
+        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+        reg_key_2="emoji_hybrid" # LINK
+    )
+
+    # C7: EMOJI (Interactive)
+    rgi_total = emoji_counts.get("rgi_total", 0)
+    abnormal = emoji_counts.get("emoji_irregular", 0)
+    
+    c7 = render_cell(
+        "EMOJI", 
+        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
+        "IRREGULAR", str(abnormal), color_clean(abnormal),
+        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
+        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+        reg_key_2="emoji_irregular" # LINK
+    )
+
+    # C8: INTEGRITY (Interactive Aggregator)
+    int_res = stats.get('integrity', {})
+    int_v = int_res.get('verdict', 'INTACT')
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    int_issues = (
+        len(HUD_HIT_REGISTRY.get("int_fatal", [])) +
+        len(HUD_HIT_REGISTRY.get("int_fracture", [])) +
+        len(HUD_HIT_REGISTRY.get("int_risk", [])) +
+        len(HUD_HIT_REGISTRY.get("int_decay", []))
+    )
+    
+    if int_issues == 0: int_v = "INTACT"
+    
+    v_cls = "txt-safe"
+    if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
+    elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
+    
+    # Determine risk color for the count button
+    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
+
+    c8 = render_cell(
+        "INTEGRITY", 
+        "STATUS", int_v, v_cls,
+        "ISSUES", str(int_issues), color_risk(int_issues),
+        d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
+        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Registry Hits)", r2="Data Health",
+        reg_key_2="integrity", risk_2=risk_level # LINK
+    )
+
+    # C9: THREAT (Interactive Aggregator)
+    thr_res = stats.get('threat', {})
+    thr_v = thr_res.get('verdict', 'CLEAR')
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    thr_sigs = (
+        len(HUD_HIT_REGISTRY.get("thr_execution", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_spoofing", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_obfuscation", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    )
+    
+    if thr_sigs == 0: thr_v = "CLEAR"
+
+    t_cls = "txt-safe"
+    risk_level_thr = "warn"
+    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: 
+        t_cls = "txt-crit"
+        risk_level_thr = "crit"
+    elif "SUSPICIOUS" in thr_v: 
+        t_cls = "txt-warn"
+
+    c9 = render_cell(
+        "THREAT", 
+        "STATUS", thr_v, t_cls,
+        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
+        d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
+        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Registry Hits)", r2="Attack Vectors",
+        reg_key_2="threat", risk_2=risk_level_thr # LINK
+    )
+
+    # --- ASSEMBLY ---
+    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
 # ---
@@ -2115,11 +2526,11 @@ async def load_unicode_data():
         # --- Add Manual Security Overrides ---
         _add_manual_data_overrides()    
         
-        # --- Build Forensic Bitmask Table ---
+        # --- NEW: Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
         build_invis_table()
         
-        # --- Run Paranoid Self-Tests ---
+        # --- NEW: Run Paranoid Self-Tests ---
         run_self_tests()
         
         LOADING_STATE = "READY"
@@ -6205,12 +6616,10 @@ def render_encoding_footprint(t: str):
         """
 
 # ---
-# 6 (six). MAIN ORCHESTRATOR
+# 6. MAIN ORCHESTRATOR
 # ---
 
-# --- FORENSIC HUD REGISTRY (Stepper Engine) ---
-# Stores lists of (dom_start, dom_end, label) tuples.
-# Keys match the specific metric buckets.
+# Ensure registry exists at module level
 if 'HUD_HIT_REGISTRY' not in globals():
     HUD_HIT_REGISTRY = {}
 
@@ -6218,302 +6627,54 @@ def _register_hit(key: str, start: int, end: int, label: str):
     """Helper to append a hit to the global registry."""
     if key not in HUD_HIT_REGISTRY:
         HUD_HIT_REGISTRY[key] = []
-    
-    # Safety Clamp: Ensure range has at least width 1 for visibility
-    s = int(start)
-    e = int(end)
-    if e <= s: e = s + 1
-    
-    HUD_HIT_REGISTRY[key].append((s, e, label))
+    HUD_HIT_REGISTRY[key].append((start, end, label))
 
-def populate_hud_registry(t: str):
+def _dom_to_logical(t: str, dom_idx: int) -> int:
     """
-    Populates simple metric buckets for the HUD Stepper.
-    Rewritten to use the 'Reveal2' Linear Accumulator for zero drift.
-    STORES EXACT DOM COORDINATES (UTF-16 UNITS).
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
     """
-    # 1. DOM Accumulator (Tracks UTF-16 units exactly like the browser)
-    acc = 0 
+    if not t: return 0
+    
+    logical_idx = 0
+    utf16_acc = 0
     
     for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+def populate_hud_registry(t: str):
+    """Populates simple metric buckets for the HUD Stepper."""
+    js_array = window.Array.from_(t)
+    
+    for i, char in enumerate(js_array):
         cp = ord(char)
-        
-        # 2. Calculate DOM Width (1 for BMP, 2 for High/Low Surrogates)
-        char_len = 2 if cp > 0xFFFF else 1
-        
-        dom_start = acc
-        dom_end = acc + char_len
-        
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
-        # --- CHECK 1: Whitespace / Non-Std (C3) ---
+        # 1. Whitespace / Non-Std (C3)
         if mask & INVIS_ANY_MASK:
              label = "Non-Std"
              if mask & INVIS_NON_ASCII_SPACE: label = "Deceptive Space"
              elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
              elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
              elif mask & INVIS_TAG: label = "Tag"
-             elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): label = "Variation Selector"
              
-             # Register using the exact DOM range we just calculated
-             _register_hit("ws_nonstd", dom_start, dom_end, f"{label} (U+{cp:04X})")
+             _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
 
-        # --- CHECK 2: Delimiters (C4) ---
+        # 2. Delimiters (C4)
         cat = unicodedata.category(char)
         if cat.startswith('P'):
-            # Logic: Flag if NOT ASCII and NOT in standard ranges
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
-                _register_hit("punc_exotic", dom_start, dom_end, f"Exotic Punct (U+{cp:04X})")
+                _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
 
-        # --- CHECK 3: Symbols (C5) ---
+        # 3. Symbols (C5)
         if cat.startswith('S'):
-             # Logic: Flag if NOT ASCII and NOT in standard ranges
              if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 _register_hit("sym_exotic", dom_start, dom_end, f"Exotic Symbol (U+{cp:04X})")
-                 
-        # 3. Advance Accumulator for the next character
-        acc += char_len
+                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
 
-@create_proxy
-def cycle_hud_metric(metric_key, current_dom_pos):
-    """
-    Stateful stepper (Fixed V30 - Direct DOM Execution).
-    Simply retrieves the pre-calculated DOM coordinates from the Registry.
-    NO SCANNING. NO CONVERSION. JUST JUMP.
-    """
-    el = document.getElementById("text-input")
-    if not el: return
-    
-    # 1. Define Human-Readable Labels
-    labels = {
-        "integrity_agg": "Integrity Issues",
-        "threat_agg": "Threat Signals",
-        "ws_nonstd": "Non-Std Whitespace",
-        "punc_exotic": "Exotic Delimiters",
-        "sym_exotic": "Exotic Symbols",
-        "emoji_hybrid": "Hybrid Emoji",
-        "emoji_irregular": "Irregular Emoji"
-    }
-    category_label = labels.get(metric_key, "Forensic Metric")
-
-    # 2. Resolve targets from Registry
-    targets = []
-    if metric_key == "integrity_agg":
-        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
-                   HUD_HIT_REGISTRY.get("int_fracture", []) +
-                   HUD_HIT_REGISTRY.get("int_risk", []) +
-                   HUD_HIT_REGISTRY.get("int_decay", []))
-    elif metric_key == "threat_agg":
-        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
-                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
-                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
-                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
-    else:
-        targets = HUD_HIT_REGISTRY.get(metric_key, [])
-
-    if not targets: return
-
-    # 3. Sort by Position
-    targets.sort(key=lambda x: (x[0], x[1]))
-    
-    # 4. Determine Next Target (Cyclical)
-    state_attr = f"data-hud-idx-{metric_key}"
-    last_idx = -1
-    try:
-        val = el.getAttribute(state_attr)
-        if val is not None: last_idx = int(val)
-    except: pass
-    
-    next_idx = (last_idx + 1) % len(targets)
-    next_hit = targets[next_idx]
-    
-    # Save state for next click
-    el.setAttribute(state_attr, str(next_idx))
-
-    # 5. Execute Highlight (Trust the Registry)
-    dom_s = int(next_hit[0])
-    dom_e = int(next_hit[1])
-    
-    window.TEXTTICS_HIGHLIGHT_RANGE(dom_s, dom_e)
-    
-    # 6. Update UI Feedback
-    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-    
-    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{next_idx + 1} of {len(targets)}"
-    
-    hud_status = document.getElementById("hud-stepper-status")
-    if hud_status:
-        hud_status.className = "status-details status-hud-active"
-        hud_status.style.display = "inline-flex"
-        hud_status.innerHTML = f"{status_msg}{icon_loc}"
-    
-    # 7. Sync Inspector
-    inspect_character(None)
-
-@create_proxy
-def render_forensic_hud(t, stats):
-    """
-    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
-    """
-    container = document.getElementById("forensic-hud")
-    if not container: return 
-    if t is None: t = ""
-    
-    emoji_counts = stats.get("emoji_counts", {})
-
-    # --- INTERACTION HELPER ---
-    def get_interaction(val, key, severity="warn"):
-        """Checks registry and returns CSS class and onclick attribute."""
-        try:
-            if float(val) <= 0: return "", ""
-        except: return "", ""
-        
-        has_hits = False
-        target_key = key
-        
-        # Check Aggregators vs Direct Keys
-        if key == "integrity":
-            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "integrity_agg"; has_hits = True
-        elif key == "threat":
-            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "threat_agg"; has_hits = True
-        else:
-            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
-                has_hits = True
-                
-        if has_hits:
-            cls = " hud-interactive"
-            if severity == "crit": cls += " hud-interactive-crit"
-            elif severity == "warn": cls += " hud-interactive-risk"
-            
-            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
-            return cls, attr
-            
-        return "", ""
-
-    # --- HELPER: Cell Builder ---
-    def render_cell(sci_title, 
-                    label_1, val_1, class_1,
-                    label_2, val_2, class_2,
-                    d1="", m1="", r1="",
-                    d2="", m2="", r2="",
-                    reg_key_2=None, risk_2="warn"): 
-        
-        def esc(s): return s.replace('"', '&quot;')
-        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
-
-        return f"""
-        <div class="hud-col" 
-             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
-             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
-            <div class="hud-row-sci">{sci_title}</div>
-            <div class="hud-metric-group">
-                <div class="hud-label">{label_1}</div>
-                <div class="hud-val {class_1}">{val_1}</div>
-            </div>
-            <div class="hud-metric-divider"></div>
-            <div class="hud-metric-group">
-                <div class="hud-label">{label_2}</div>
-                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
-            </div>
-        </div>
-        """
-
-    # --- COLOR LOGIC ---
-    def color_neutral(val):
-        try: return "txt-muted" if float(val) == 0 else "txt-normal"
-        except: return "txt-normal"
-    def color_clean(val):
-        try: return "txt-clean" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
-    def color_risk(val):
-        try: return "txt-good" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
-
-    # --- 0. PRE-CALC ---
-    uax_word = 0
-    uax_sent = 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
-
-    # --- 1. METRICS ---
-    alpha_chars = sum(1 for c in t if c.isalnum())
-    alpha_runs = 0
-    in_run = False
-    for c in t:
-        if c.isalnum():
-            if not in_run: alpha_runs += 1; in_run = True
-        else: in_run = False
-
-    L = stats.get('major_stats', {}).get("L (Letter)", 0)
-    N = stats.get('major_stats', {}).get("N (Number)", 0)
-    vu = (L + N) / 5.0
-    seg_est = vu / 20.0
-
-    std_set = {0x20, 0x09, 0x0A, 0x0D}
-    std_inv = sum(1 for c in t if ord(c) in std_set)
-    
-    # [FIX] Count from Registry for accuracy
-    non_std_inv = len(HUD_HIT_REGISTRY.get("ws_nonstd", []))
-
-    cnt_p_ascii, cnt_p_comfort, cnt_p_exotic = 0, 0, 0
-    for c in t:
-        if unicodedata.category(c).startswith('P'):
-            cp = ord(c)
-            if cp <= 0x7F: cnt_p_ascii += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F): cnt_p_comfort += 1
-            else: cnt_p_exotic += 1
-
-    if cnt_p_comfort > 0:
-        c4_label, c4_val = "TYPOGRAPHIC", cnt_p_ascii + cnt_p_comfort
-    else:
-        c4_label, c4_val = "ASCII", cnt_p_ascii
-
-    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
-    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
-    c5_label = "EXTENDED"
-    if cnt_s_ext == 0 and cnt_s_exotic == 0: c5_label = "KEYBOARD"
-
-    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
-    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
-    rgi_total = emoji_counts.get("rgi_total", 0)
-    abnormal = emoji_counts.get("emoji_irregular", 0)
-
-    # --- RENDER CELLS ---
-    c0 = render_cell("ALPHANUMERIC", "LITERALS", str(alpha_chars), color_neutral(alpha_chars), "RUNS", str(alpha_runs), color_neutral(alpha_runs), d1="Count of Alphanumeric chars.", m1="Count(Alnum)", d2="Contiguous runs.", m2="Count(Runs)")
-    c1 = render_cell("LEXICAL MASS", "UNITS", f"{vu:.1f}", color_neutral(vu), "WORDS", str(uax_word), color_neutral(uax_word), d1="Volumetric Units.", m1="(L+N)/5", d2="UAX #29 Words.", m2="Intl.Segmenter")
-    c2 = render_cell("SEGMENTATION", "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est), "SENTENCES", str(uax_sent), color_neutral(uax_sent), d1="Structural Blocks.", m1="VU/20", d2="UAX #29 Sentences.", m2="Intl.Segmenter")
-    c3 = render_cell("WHITESPACE", "ASCII WS", str(std_inv), color_neutral(std_inv), "NON-STD", str(non_std_inv), color_clean(non_std_inv), d1="Standard Layout.", m1="Space/Tab/CR/LF", d2="Invisible/Ignorable.", m2="ZWSP/Tags/Bidi", reg_key_2="ws_nonstd")
-    c4 = render_cell("DELIMITERS", c4_label, str(c4_val), color_neutral(c4_val), "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic), d1="Standard Punctuation.", m1="ASCII/Comfort", d2="Rare Punctuation.", m2="Exotic", reg_key_2="punc_exotic")
-    c5 = render_cell("SYMBOLS", c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext), "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic), d1="Text Symbols.", m1="Math/Currency", d2="Rare Symbols.", m2="Dingbats/Unclassified", reg_key_2="sym_exotic")
-    c6 = render_cell("HYBRIDS", "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict), "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig), d1="Atomic Emoji Characters.", m1="Base=Symbol", d2="Text-Default Presentation.", m2="Shapeshifters", reg_key_2="emoji_hybrid")
-    c7 = render_cell("EMOJI", "RGI SEQS", str(rgi_total), color_neutral(rgi_total), "IRREGULAR", str(abnormal), color_clean(abnormal), d1="Valid UTS #51 Sequences.", m1="Standard", d2="Broken/Unqualified.", m2="Non-RGI", reg_key_2="emoji_irregular")
-
-    # Aggregators
-    int_res = stats.get('integrity', {})
-    int_v = int_res.get('verdict', 'INTACT')
-    int_issues = sum(len(HUD_HIT_REGISTRY.get(k, [])) for k in ["int_fatal", "int_fracture", "int_risk", "int_decay"])
-    if int_issues == 0: int_v = "INTACT"
-    
-    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
-    v_cls = "txt-crit" if risk_level == "crit" else ("txt-warn" if int_v != "INTACT" else "txt-safe")
-    
-    c8 = render_cell("INTEGRITY", "STATUS", int_v, v_cls, "ISSUES", str(int_issues), color_risk(int_issues), d1="Structural Health.", m1="Audit", d2="Total Findings.", m2="Count(Hits)", reg_key_2="integrity", risk_2=risk_level)
-
-    thr_res = stats.get('threat', {})
-    thr_v = thr_res.get('verdict', 'CLEAR')
-    thr_sigs = sum(len(HUD_HIT_REGISTRY.get(k, [])) for k in ["thr_execution", "thr_spoofing", "thr_obfuscation", "thr_suspicious"])
-    if thr_sigs == 0: thr_v = "CLEAR"
-    
-    risk_level_thr = "crit" if "WEAPONIZED" in thr_v or "HIGH" in thr_v else ("warn" if thr_v != "CLEAR" else "ok")
-    t_cls = "txt-crit" if risk_level_thr == "crit" else ("txt-warn" if risk_level_thr == "warn" else "txt-safe")
-
-    c9 = render_cell("THREAT", "STATUS", thr_v, t_cls, "SIGNALS", str(thr_sigs), color_risk(thr_sigs), d1="Exploit Risk.", m1="Threat Score", d2="Attack Vectors.", m2="Count(Hits)", reg_key_2="threat", risk_2=risk_level_thr)
-
-    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
 
 @create_proxy
 def update_all(event=None):
@@ -6538,6 +6699,8 @@ def update_all(event=None):
     if not t_input: return
     t = t_input.value
     
+    # --- [NEW] Populate Simple HUD Metrics ---
+    populate_hud_registry(t)
 
     # --- 1.5 PASSIVE INVISIBLE SCAN (Right Side) ---
     details_line = document.getElementById("reveal-details")
@@ -6811,7 +6974,7 @@ def update_all(event=None):
     # Update HUD (Remove emoji_consumed)
     render_forensic_hud(t, hud_stats)
 
-    # --- Render Encoding Strip ---
+    # --- NEW: Render Encoding Strip ---
     render_encoding_footprint(t)
     
     # Stage 2 Bridge
@@ -6965,7 +7128,7 @@ def reveal2_invisibles(event=None):
     el.focus()
     el.setSelectionRange(target_range[0], target_range[1])
     
-    # --- WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
+    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
     # We manually call the inspector logic to update the bottom panel immediately.
     # We pass None because the function doesn't actually use the event argument.
     inspect_character(None)
@@ -7002,19 +7165,19 @@ window.cycle_hud_metric = cycle_hud_metric
 async def main():
     """Main entry point: Loads data, then hooks the input."""
     
-    # --- Get element first ---
+    # --- FIX 1: Get element first ---
     text_input_element = document.getElementById("text-input")
     
     # Start loading the external data and wait for it to finish.
     await load_unicode_data()
     
-    # --- Bind listener *after* await ---
+    # --- FIX 2: Bind listener *after* await ---
     text_input_element.addEventListener("input", update_all)
     
-    # --- Hook the Inspector Panel ---
+    # --- NEW: Hook the Inspector Panel ---
     document.addEventListener("selectionchange", create_proxy(inspect_character))
 
-    # --- Hook the Reveal Buttons ---
+    # --- NEW: Hook the Reveal Buttons ---
     reveal_btn = document.getElementById("btn-reveal")
     if reveal_btn:
         # Ensure we bind to the correct function name 'reveal_invisibles'
@@ -7026,7 +7189,7 @@ async def main():
         # Ensure we bind to the correct function name 'reveal2_invisibles'
         reveal2_btn.addEventListener("click", reveal2_invisibles)
     
-    # Un-gate the UI ---
+    # --- FIX 3: Un-gate the UI ---
     text_input_element.disabled = False
     text_input_element.placeholder = "Paste or type here..."
     print("Text...tics is ready.")
