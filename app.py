@@ -9,6 +9,47 @@ import re
 
 LOADING_LOCK = False
 
+def _debug_threat_bridge(t: str, hit: tuple):
+    """
+    Non-invasive auditor for the Python->DOM selection bridge.
+    Checks if logical indices (from Registry) map validly to DOM UTF-16 offsets.
+    Logs failures to console but DOES NOT modify state.
+    """
+    log_start, log_end = hit[0], hit[1]
+    log_len = len(t)
+    
+    # 1. Check Logical Bounds
+    if log_start < 0 or log_end > log_len:
+        print(f"[ThreatBridge-AUDIT] FAIL: Logical Hit {log_start}-{log_end} out of bounds (len={log_len})")
+        return
+
+    # 2. Simulate Mapping
+    dom_start = -1
+    dom_end = -1
+    acc = 0
+    
+    # Iterate full string to validate mapping
+    for i, char in enumerate(t):
+        if i == log_start: dom_start = acc
+        if i == log_end: dom_end = acc
+        acc += (2 if ord(char) > 0xFFFF else 1)
+    
+    # Handle end-of-string edge case
+    if dom_end == -1 and log_end == log_len:
+        dom_end = acc
+        
+    dom_len = acc
+
+    # 3. Report Findings
+    if dom_start == -1 or dom_end == -1:
+        print(f"[ThreatBridge-AUDIT] FAIL: Mapping failed for {log_start}-{log_end}. DOM len={dom_len}.")
+    else:
+        # Valid mapping
+        snippet = t[log_start:min(log_start+5, log_len)]
+        # Optional: Print snippet hex to verify content identity
+        hex_snip = " ".join(f"{ord(c):04X}" for c in snippet)
+        print(f"[ThreatBridge-AUDIT] OK: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}. Snip: '{snippet}' ({hex_snip})")
+
 # Forensic Icon Set (Vector Paths for SVG)
 ICONS = {
     # --- HEADERS ---
@@ -766,6 +807,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 5. Execute Highlight
     if metric_key == "threat_agg":
+        # [DEBUG HOOK]
+        if TEXTTICS_DEBUG_THREAT_BRIDGE:
+            _debug_threat_bridge(t, next_hit)
         # PURE PYTHON DOM CALCULATION
         log_start = next_hit[0]
         log_end = next_hit[1]
