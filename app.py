@@ -738,44 +738,66 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
 
     # 4. Execute Highlight
+    # 4. Execute Highlight
     if metric_key == "threat_agg":
-        log_start, log_end = next_hit[0], next_hit[1]
+        # HYBRID BRIDGE: run UTF-16 math in JS, then apply selection in Python.
+        log_start = next_hit[0]
+        log_end = next_hit[1]
     
-        # Run UTF-16 index math fully inside JS and return a JSON string, not a raw array proxy.
         js_code = f"""
-        (() => {{
+        (function(s, e) {{
             const el = document.getElementById("text-input");
-            if (!el) return "[-1,-1]";
+            if (!el) return [-1, -1];
+    
             const t = el.value;
             const seq = Array.from(t);
-            let acc = 0, domStart = -1, domEnd = -1;
+    
+            let acc = 0;
+            let domStart = -1;
+            let domEnd = -1;
+    
             for (let i = 0; i < seq.length; i++) {{
-                if (i === {log_start}) domStart = acc;
-                if (i === {log_end}) {{ domEnd = acc; break; }}
+                if (i === s) domStart = acc;
+                if (i === e) {{ domEnd = acc; break; }}
+    
                 const code = seq[i].codePointAt(0);
                 acc += (code > 0xFFFF ? 2 : 1);
             }}
-            if (domEnd === -1 && {log_end} >= seq.length) domEnd = acc;
-            return JSON.stringify([domStart, domEnd]);
-        }})();
+    
+            // If target is exactly at the end of the sequence
+            if (domEnd === -1 && e >= seq.length) domEnd = acc;
+    
+            return [domStart, domEnd];
+        }})({log_start}, {log_end});
         """
     
         try:
-            # Convert JS JSON string → Python list
-            import json
-            dom_start, dom_end = json.loads(window.eval_js(js_code))
+            # Execute JS and convert result to a plain Python list
+            res = window.eval(js_code)
+            if hasattr(res, "to_py"):
+                res = res.to_py()
     
-            if dom_start == -1 or dom_end == -1:
-                print(f"[ThreatAgg] Highlight miss for {log_start}-{log_end}")
+            dom_start, dom_end = res
+            dom_start = int(dom_start)
+            dom_end = int(dom_end)
+    
+            # Safety guard: abort on miss
+            if dom_start < 0 or dom_end < 0:
+                print(f"[ThreatAgg] Highlight Sync Error: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}")
                 return
     
+            # Apply selection directly on the textarea
             el.focus()
             el.setSelectionRange(dom_start, dom_end)
+    
         except Exception as e:
-            print(f"[ThreatAgg] Bridge error: {e}")
+            print(f"[ThreatAgg] Bridge Failure: {e}")
             return
+    
     else:
+        # [LEGACY PATH] Keep existing logic for other metrics
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+
 
 
 
