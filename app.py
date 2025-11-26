@@ -850,7 +850,24 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
 
     # 4. Execute Highlight
-    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    if metric_key == "threat_agg":
+        # [FIX FOR THREATS ONLY]
+        # Threat detection runs on Logical Indices (Python).
+        # Browsers highlight on Physical Indices (UTF-16).
+        # Emojis cause these to drift apart. We must calculate the exact byte offset.
+        
+        # 1. Calculate UTF-16 Code Units up to the start
+        dom_start = len(t[:next_hit[0]].encode('utf-16-le')) // 2
+        
+        # 2. Calculate UTF-16 Code Units up to the end
+        dom_end = len(t[:next_hit[1]].encode('utf-16-le')) // 2
+        
+        window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
+        
+    else:
+        # [EXISTING LOGIC FOR EVERYONE ELSE]
+        # Whitespace, Integrity, and Symbols continue to use raw indices.
+        window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
     # 5. Define Icon LOCALLY (Safety Fix)
     # We use triple quotes to avoid syntax errors with inner quotes
