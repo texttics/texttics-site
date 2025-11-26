@@ -6425,15 +6425,49 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight (Strict)
+    # 5. Execute Highlight (Strict & ZWJ Bridge)
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # [STRICT] Removed all "Smart Expand" logic.
-    # We trust the forensic engine's coordinates implicitly.
+    # [NEW] The "ZWJ Bridge" Logic (V19)
+    # Problem: Selecting a zero-width char results in an invisible cursor.
+    # Solution: If the threat is a ZWJ, expand OUTWARDS until we hit non-ZWJ anchors.
+    # This creates a "Bridge" highlighting (Left + ZWJs + Right).
     
-    dom_s = _logical_to_dom(t, log_s)
-    dom_e = _logical_to_dom(t, log_e)
+    hit_text = t[log_s:log_e]
+    # Check if the target is purely ZWJ (U+200D)
+    is_zwj = len(hit_text) > 0 and all(c == '\u200d' for c in hit_text)
+
+    if is_zwj:
+        # 1. Expand Left
+        # Start looking at the character immediately before the hit
+        bridge_s = log_s
+        while bridge_s > 0:
+            char_left = t[bridge_s - 1]
+            if char_left == '\u200d':
+                bridge_s -= 1 # It's another ZWJ, keep walking left to include it
+            else:
+                bridge_s -= 1 # Found a solid anchor (non-ZWJ), include it and STOP
+                break
+        
+        # 2. Expand Right
+        # Start looking at the character immediately after the hit
+        bridge_e = log_e
+        while bridge_e < len(t):
+            char_right = t[bridge_e]
+            if char_right == '\u200d':
+                bridge_e += 1 # It's another ZWJ, keep walking right to include it
+            else:
+                bridge_e += 1 # Found a solid anchor (non-ZWJ), include it and STOP
+                break
+
+        # Convert the BRIDGE coordinates to DOM
+        dom_s = _logical_to_dom(t, bridge_s)
+        dom_e = _logical_to_dom(t, bridge_e)
+    else:
+        # Standard Strict Selection (for non-ZWJ threats like Cyrillic 'a')
+        dom_s = _logical_to_dom(t, log_s)
+        dom_e = _logical_to_dom(t, log_e)
     
     # Fallback safety
     if dom_e <= dom_s: dom_e = dom_s + 1
