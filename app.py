@@ -2664,6 +2664,11 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["text_symbols_extended"] += 1
             else:
                 counts["text_symbols_exotic"] += 1
+                
+                # --- NEW: Register the Hit Here (Smart Logic) ---
+                # This only runs if the engine decided it is NOT an emoji.
+                # It uses the cluster index and length, so it handles multi-char symbols correctly.
+                _register_hit("sym_exotic", idx, idx + cp_len, f"Exotic Symbol (U+{base_cp:04X})")
 
         # [HUD C6] Hybrids (Emoji-Atomic)
         if kind == "emoji-atomic" and base_cat.startswith("S") and not rgi_status:
@@ -6684,11 +6689,6 @@ def populate_hud_registry(t: str):
         if cat.startswith('P'):
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
                 _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
-
-        # 3. Symbols (C5)
-        if cat.startswith('S'):
-             if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
 
 
 @create_proxy
