@@ -2663,12 +2663,13 @@ def compute_emoji_analysis(text: str) -> dict:
             if base_cp <= 0xFF or (0x2000 <= base_cp <= 0x29FF):
                 counts["text_symbols_extended"] += 1
             else:
-                counts["text_symbols_exotic"] += 1
-                
-                # --- NEW: Register the Hit Here (Smart Logic) ---
-                # This only runs if the engine decided it is NOT an emoji.
-                # It uses the cluster index and length, so it handles multi-char symbols correctly.
-                _register_hit("sym_exotic", idx, idx + cp_len, f"Exotic Symbol (U+{base_cp:04X})")
+                # [FIX] Exclude U+FFFD (Replacement Char) from Exotic Symbols.
+                # It is already flagged as a FATAL error in the Integrity column.
+                if base_cp != 0xFFFD:
+                    counts["text_symbols_exotic"] += 1
+                    
+                    # Register the hit (Smart Logic)
+                    _register_hit("sym_exotic", idx, idx + cp_len, f"Exotic Symbol (U+{base_cp:04X})")
 
         # [HUD C6] Hybrids (Emoji-Atomic)
         if kind == "emoji-atomic" and base_cat.startswith("S") and not rgi_status:
