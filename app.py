@@ -9,6 +9,9 @@ import re
 
 LOADING_LOCK = False
 
+# --- DEBUG FLAGS ---
+TEXTTICS_DEBUG_THREAT_BRIDGE = True
+
 def _debug_threat_bridge(t: str, hit: tuple):
     """
     Non-invasive auditor for the Python->DOM selection bridge.
