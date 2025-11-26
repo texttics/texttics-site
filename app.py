@@ -820,48 +820,39 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 4. Execute Highlight
     if metric_key == "threat_agg":
-        # Threat Indices in Registry are Logical (Python).
-        # We must convert them to Physical (DOM) using the exact same math as reveal2.
+        # 1. Use the EXACT sequence source used to build the registry
+        # This prevents "Index Miss" errors where Python string len != JS Array len
+        js_sequence = window.Array.from_(t)
         
         log_start = next_hit[0]
         log_end = next_hit[1]
         
-        dom_start = 0
-        dom_end = 0
+        # Initialize to -1 to detect "Missed Target"
+        dom_start = -1
+        dom_end = -1
         
         acc = 0
-        # Iterate the LIVE string 't'
-        for i, char in enumerate(t):
-            # Check bounds BEFORE processing char to capture start/end exactly
+        for i, char in enumerate(js_sequence):
             if i == log_start: dom_start = acc
             if i == log_end: dom_end = acc; break 
             
-            # Robust Width Calc: Handle Astral chars correctly
+            # UTF-16 Math: Astral chars (>FFFF) are 2 units
             try:
-                cp = ord(char)
-                width = 2 if cp > 0xFFFF else 1
+                acc += (2 if ord(char) > 0xFFFF else 1)
             except:
-                width = 1 # Failsafe for weird proxy objects
-                
-            acc += width
+                acc += 1
             
-        # Catch-all if target is at end of string
-        if log_end >= len(t): dom_end = acc
+        # Catch-all: If indices were beyond the sequence length
+        if dom_start == -1: dom_start = acc
+        if dom_end == -1: dom_end = acc
         
-        # Safety Clamp (Prevent "Select All" / Invalid Range crashes)
-        total_utf16_len = acc if log_end >= len(t) else len(t.encode('utf-16-le'))//2
-        dom_start = min(dom_start, total_utf16_len)
-        dom_end = min(dom_end, total_utf16_len)
+        # Safety Clamp: Ensure start <= end
+        if dom_start > dom_end: dom_start = dom_end
         
-        # Prevent 0-length selection if possible (unless logic dictates)
-        if dom_start == dom_end and log_end > log_start:
-             # Fallback: Ensure we select at least 1 unit if logical range existed
-             dom_end = dom_start + 1
-
         window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
         
     else:
-        # Legacy path for others
+        # [LEGACY PATH] Everyone else uses raw indices (Status Quo maintained)
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
     # 5. Define Icon LOCALLY (Safety Fix)
