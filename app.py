@@ -740,64 +740,44 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 4. Execute Highlight
     
     if metric_key == "threat_agg":
-        # HYBRID BRIDGE: Run Index Math in JS to ensure perfect sync with Registry
-        # The Registry was built using JS 'Array.from', so we must step using JS 'Array.from'.
-        # Python iteration of proxies can desync on surrogates.
-        
-        log_start = next_hit[0]
-        log_end = next_hit[1]
+    log_start, log_end = next_hit[0], next_hit[1]
 
-        # We read the value directly from DOM inside JS to avoid passing huge strings across the bridge
-        js_code = f"""
-        (function(s, e) {{
-            const el = document.getElementById("text-input");
-            if (!el) return [-1, -1];
-            
-            const t = el.value;
-            const seq = Array.from(t);
-            
-            let acc = 0;
-            let domStart = -1;
-            let domEnd = -1;
-            
-            for (let i = 0; i < seq.length; i++) {{
-                if (i === s) domStart = acc;
-                if (i === e) {{ domEnd = acc; break; }}
-                
-                // UTF-16 Accumulation (1 unit for BMP, 2 for Astral)
-                const code = seq[i].codePointAt(0);
-                acc += (code > 0xFFFF ? 2 : 1);
-            }}
-            
-            // Edge Case: Target is exactly at the end of the string
-            if (domEnd === -1 && e >= seq.length) domEnd = acc;
-            
-            return [domStart, domEnd];
-        }})({log_start}, {log_end});
-        """
-        
+    # Run UTF-16 index math fully inside JS and return a JSON string, not a raw array proxy.
+    js_code = f"""
+    (() => {{
+        const el = document.getElementById("text-input");
+        if (!el) return "[-1,-1]";
+        const t = el.value;
+        const seq = Array.from(t);
+        let acc = 0, domStart = -1, domEnd = -1;
+        for (let i = 0; i < seq.length; i++) {{
+            if (i === {log_start}) domStart = acc;
+            if (i === {log_end}) {{ domEnd = acc; break; }}
+            const code = seq[i].codePointAt(0);
+            acc += (code > 0xFFFF ? 2 : 1);
+        }}
+        if (domEnd === -1 && {log_end} >= seq.length) domEnd = acc;
+        return JSON.stringify([domStart, domEnd]);
+    }})();
+    """
+
         try:
-            # Execute and unpack results
-            res = window.eval(js_code)
-            dom_start = res[0]
-            dom_end = res[1]
-            
-            # Safety Guard
+            # Convert JS JSON string → Python list
+            import json
+            dom_start, dom_end = json.loads(window.eval_js(js_code))
+    
             if dom_start == -1 or dom_end == -1:
-                print(f"[ThreatAgg] Highlight Sync Error: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}")
+                print(f"[ThreatAgg] Highlight miss for {log_start}-{log_end}")
                 return
-
-            # Apply Selection
+    
             el.focus()
             el.setSelectionRange(dom_start, dom_end)
-            
         except Exception as e:
-            print(f"[ThreatAgg] Bridge Failure: {e}")
+            print(f"[ThreatAgg] Bridge error: {e}")
             return
-
     else:
-        # [LEGACY PATH] Keep existing logic for other metrics
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+
 
     
     # 5. Define Icon LOCALLY (Safety Fix)
