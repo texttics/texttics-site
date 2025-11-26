@@ -6646,34 +6646,120 @@ def _dom_to_logical(t: str, dom_idx: int) -> int:
         
     return logical_idx
 
-def populate_hud_registry(t: str):
-    """Populates simple metric buckets for the HUD Stepper."""
-    js_array = window.Array.from_(t)
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateful stepper (Fixed V28 - The 'Reveal2' Clone).
+    Abandoning pre-calculated registry lookups.
+    Scanning text LIVE on click to find the next target relative to cursor.
+    """
+    el = document.getElementById("text-input")
+    if not el: return
     
-    for i, char in enumerate(js_array):
+    text = str(el.value)
+    ranges = []
+    current_utf16_idx = 0
+    
+    # --- 1. MAP TARGETS DYNAMICALLY (Mirroring Logic from Compute Functions) ---
+    # We scan the text ON CLICK to build the target list. No drifting registry.
+    
+    for i, char in enumerate(text):
         cp = ord(char)
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
         
-        # 1. Whitespace / Non-Std (C3)
-        if mask & INVIS_ANY_MASK:
-             label = "Non-Std"
-             if mask & INVIS_NON_ASCII_SPACE: label = "Deceptive Space"
-             elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
-             elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
-             elif mask & INVIS_TAG: label = "Tag"
-             
-             _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
-
-        # 2. Delimiters (C4)
+        is_target = False
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         cat = unicodedata.category(char)
-        if cat.startswith('P'):
-            if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
-                _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
 
-        # 3. Symbols (C5)
-        if cat.startswith('S'):
-             if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
+        # LOGIC MATCHING: ws_nonstd
+        if metric_key == "ws_nonstd":
+            if mask & INVIS_ANY_MASK: is_target = True
+            
+        # LOGIC MATCHING: punc_exotic
+        elif metric_key == "punc_exotic":
+            if cat.startswith('P') and not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
+                is_target = True
+                
+        # LOGIC MATCHING: sym_exotic
+        elif metric_key == "sym_exotic":
+            if cat.startswith('S') and not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
+                is_target = True
+
+        # LOGIC MATCHING: threat_agg (Simplified Scan for Speed)
+        elif metric_key == "threat_agg":
+            # Bidi
+            if mask & INVIS_BIDI_CONTROL: is_target = True
+            # Confusables (Homoglyphs)
+            elif cp > 0x7F:
+                # Quick check using the loaded map
+                confusables_map = DATA_STORES.get("Confusables", {})
+                if cp in confusables_map:
+                     # Filter Common/Inherited
+                     sc = _find_in_ranges(cp, "Scripts") or "Common"
+                     if sc not in ("Common", "Inherited"):
+                         is_target = True
+                         
+        # LOGIC MATCHING: integrity_agg
+        elif metric_key == "integrity_agg":
+            if cp == 0xFFFD or cp == 0x0000 or (0xD800 <= cp <= 0xDFFF): is_target = True
+            elif mask & (INVIS_TAG | INVIS_DO_NOT_EMIT): is_target = True
+            elif (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD): is_target = True
+
+        # LOGIC MATCHING: emoji_irregular / hybrid
+        # (Skipped for simplicity unless requested, complex grapheme logic required)
+
+        if is_target:
+            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
+            
+        current_utf16_idx += char_len
+
+    count = len(ranges)
+    if count == 0: return
+
+    # --- 2. FIND NEXT TARGET (Relative to Selection End) ---
+    current_end_pos = el.selectionEnd
+    
+    target_range = None
+    target_idx = 1
+    
+    # Scan for first range starting AFTER current cursor
+    for i, r in enumerate(ranges):
+        if r[0] >= current_end_pos:
+            target_range = r
+            target_idx = i + 1
+            break
+            
+    # --- 3. WRAP AROUND ---
+    if target_range is None:
+        target_range = ranges[0]
+        target_idx = 1
+            
+    # --- 4. EXECUTE SELECTION ---
+    el.blur()
+    el.focus()
+    el.setSelectionRange(target_range[0], target_range[1])
+    
+    # --- 5. UI FEEDBACK ---
+    # Use the passed key to look up a friendly label
+    labels = {
+        "ws_nonstd": "Non-Std Whitespace",
+        "punc_exotic": "Exotic Delimiters",
+        "sym_exotic": "Exotic Symbols",
+        "threat_agg": "Threat Signals",
+        "integrity_agg": "Integrity Issues"
+    }
+    lbl = labels.get(metric_key, "Forensic")
+    
+    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+    status_msg = f"<strong>{lbl} Highlighter:</strong>&nbsp;#{target_idx} of {count}"
+    
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex"
+        hud_status.innerHTML = f"{status_msg}{icon_loc}"
+    
+    inspect_character(None)
 
 
 @create_proxy
