@@ -843,14 +843,31 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     next_hit = targets[0]
     hit_index = 1
     
+    # Current Logical Position for comparison
+    # We need to know where we are LOGICALLY to find the next logical target
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
     for i, hit in enumerate(targets):
         if hit[0] >= current_logical:
             next_hit = hit
             hit_index = i + 1
             break
 
-    # 4. Execute Highlight
-    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    # --- [CRITICAL FIX] LOGICAL TO DOM CONVERSION ---
+    # We must inflate the Logical Index (Code Points) back to UTF-16 (DOM Units)
+    # logic: slice string up to target -> encode utf-16 -> count bytes -> divide by 2
+    
+    # 1. Start Position
+    start_logical = next_hit[0]
+    dom_start = len(t[:start_logical].encode('utf-16-le')) // 2
+    
+    # 2. End Position
+    end_logical = next_hit[1]
+    dom_end = len(t[:end_logical].encode('utf-16-le')) // 2
+    # ------------------------------------------------
+
+    # 4. Execute Highlight (Use Calculated DOM Indices)
+    window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
     
     # 5. Define Icon LOCALLY (Safety Fix)
     # We use triple quotes to avoid syntax errors with inner quotes
