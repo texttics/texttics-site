@@ -722,19 +722,34 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     category_label = labels.get(metric_key, "Forensic Metric")
 
     # 3. Resolve targets
-    targets = []
+    raw_targets = []
     if metric_key == "integrity_agg":
-        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
-                   HUD_HIT_REGISTRY.get("int_fracture", []) +
-                   HUD_HIT_REGISTRY.get("int_risk", []) +
-                   HUD_HIT_REGISTRY.get("int_decay", []))
+        raw_targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                       HUD_HIT_REGISTRY.get("int_fracture", []) +
+                       HUD_HIT_REGISTRY.get("int_risk", []) +
+                       HUD_HIT_REGISTRY.get("int_decay", []))
     elif metric_key == "threat_agg":
-        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
-                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
-                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
-                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
+        raw_targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                       HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                       HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                       HUD_HIT_REGISTRY.get("thr_suspicious", []))
     else:
-        targets = HUD_HIT_REGISTRY.get(metric_key, [])
+        raw_targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    # DEDUPLICATION LOGIC:
+    # Filter out duplicate start indices to prevent "double jumping" on the same character.
+    # We use a set to track seen start indices.
+    targets = []
+    seen_starts = set()
+    
+    # Sort first to ensure we process in order
+    raw_targets.sort(key=lambda x: x[0])
+    
+    for t in raw_targets:
+        start_idx = t[0]
+        if start_idx not in seen_starts:
+            targets.append(t)
+            seen_starts.add(start_idx)
 
     if not targets: return
 
