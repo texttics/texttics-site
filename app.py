@@ -693,10 +693,11 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     """
     el = document.getElementById("text-input")
     if not el: return
-    t = el.value
+    
+    # [CRITICAL FIX] Force conversion to Python string to ensure 'enumerate' yields chars, not ints.
+    t = str(el.value)
     
     # 1. Map DOM Position to Logical Index (Pure Python)
-    # We iterate the Python string to find which Logical Index corresponds to the Cursor's UTF-16 position.
     current_logical = 0
     if t:
         utf16_acc = 0
@@ -704,9 +705,10 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             if utf16_acc >= current_dom_pos:
                 current_logical = i
                 break
+            # Robust check: ensure char is a string before ord()
+            # (The str() cast above guarantees this, but this is the logic)
             utf16_acc += (2 if ord(char) > 0xFFFF else 1)
         else:
-            # Cursor is at the very end
             current_logical = len(t)
 
     # 2. Define Human-Readable Labels
@@ -721,7 +723,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 3. Resolve targets
+    # 3. Resolve targets (With Deduplication)
     raw_targets = []
     if metric_key == "integrity_agg":
         raw_targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -736,25 +738,23 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     else:
         raw_targets = HUD_HIT_REGISTRY.get(metric_key, [])
 
-    # DEDUPLICATION LOGIC:
+    if not raw_targets: return
+
+    # [DEDUPLICATION LOGIC]
     # Filter out duplicate start indices to prevent "double jumping" on the same character.
-    # We use a set to track seen start indices.
     targets = []
     seen_starts = set()
     
-    # Sort first to ensure we process in order
+    # Sort first to ensure consistent order
     raw_targets.sort(key=lambda x: x[0])
     
-    for t in raw_targets:
-        start_idx = t[0]
+    for hit in raw_targets:
+        start_idx = hit[0]
         if start_idx not in seen_starts:
-            targets.append(t)
+            targets.append(hit)
             seen_starts.add(start_idx)
 
-    if not targets: return
-
-    # 4. Sort & Find Next
-    targets.sort(key=lambda x: x[0])
+    # 4. Find Next
     next_hit = targets[0]
     hit_index = 1
     
@@ -767,9 +767,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 5. Execute Highlight
     if metric_key == "threat_agg":
         # PURE PYTHON DOM CALCULATION
-        # We calculate the UTF-16 offsets manually in Python.
-        # This bypasses the JS/Python length mismatch entirely.
-        
         log_start = next_hit[0]
         log_end = next_hit[1]
         
@@ -777,29 +774,22 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         dom_end = -1
         
         acc = 0
-        # Iterate Python string to match Registry indices perfectly
+        # Iterate the Python string (t is guaranteed str now)
         for i, char in enumerate(t):
             if i == log_start: dom_start = acc
             if i == log_end: dom_end = acc; break 
             
-            # UTF-16 Math: BMP=1, Astral=2
             acc += (2 if ord(char) > 0xFFFF else 1)
         
-        # Handle end-of-string edge case
-        if dom_end == -1:
-            # If log_end is at or past the end of string, use the final accumulated length
-            if log_end >= len(t): dom_end = acc
+        if dom_end == -1 and log_end >= len(t): 
+            dom_end = acc
         
-        # Safety: Abort if start index missing (e.g. Registry is stale compared to text)
-        if dom_start == -1:
-            print(f"[ThreatAgg] Registry Desync: Logical {log_start} not found in text (len {len(t)})")
-            return
-
-        el.focus()
-        el.setSelectionRange(dom_start, dom_end)
+        if dom_start != -1:
+            el.focus()
+            el.setSelectionRange(dom_start, dom_end)
         
     else:
-        # [LEGACY PATH] Keep existing logic for other metrics
+        # [LEGACY PATH]
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
 
     # 6. Feedback UI
