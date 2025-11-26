@@ -3794,11 +3794,13 @@ def compute_threat_analysis(t: str):
     
     threat_flags = {}
     threat_hashes = {}
-    confusable_indices = []
-    found_confusable = False
+    
+    # Visual Highlighting Sets (Indices) for HTML Report
+    vis_confusables = set()
+    vis_invisibles = set()
+    vis_bidi = set()
     
     bidi_danger_indices = []
-    syntax_vs_indices = []
     
     base_scripts_in_use = set() 
     ext_scripts_in_use = set()
@@ -3826,7 +3828,7 @@ def compute_threat_analysis(t: str):
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
-            # [NEW] DOM Accumulator
+            # [NEW] DOM Accumulator (The Gold Standard)
             acc = 0
             
             for i, char in enumerate(t):
@@ -3840,6 +3842,7 @@ def compute_threat_analysis(t: str):
                 # --- A. Bidi Check ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
+                    vis_bidi.add(i)
 
                 # --- A2/A3 Syntax Spoofing ---
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
@@ -3854,7 +3857,8 @@ def compute_threat_analysis(t: str):
                                                 _find_in_ranges(prev_cp, "Extended_Pictographic")
                                 is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
                                 if not (is_emoji_base and is_pres_selector):
-                                    syntax_vs_indices.append(i)
+                                    # Register exact DOM range
+                                    _register_hit("thr_execution", dom_s, dom_e, "Syntax Spoofing")
                         except: pass
 
                 # --- B. Mixed-Script ---
@@ -3872,13 +3876,13 @@ def compute_threat_analysis(t: str):
                 # --- C. Confusable Indexing (Drift-Proofed) ---
                 if cp > 0x7F and cp in confusables_map:
                     if window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
-                        found_confusable = True
-                        confusable_indices.append(i)
                         
                         # [CRITICAL FIX] Check Common/Inherited BEFORE registering hit
                         sc = _find_in_ranges(cp, "Scripts") or "Common"
                         if sc not in ("Common", "Inherited"):
+                            # Register using DOM coordinates
                             _register_hit("thr_spoofing", dom_s, dom_e, "Homoglyph")
+                            vis_confusables.add(i) # Keep index for HTML report
 
                 acc += char_len
 
@@ -3899,7 +3903,7 @@ def compute_threat_analysis(t: str):
                     'count': len(clean_base), 'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # [FIX] General hit for script mixing
+                # [FIX] General hit for script mixing (start of string)
                 _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
             if len(clean_ext) > 2:
@@ -3936,27 +3940,12 @@ def compute_threat_analysis(t: str):
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
         # --- HTML Report Visuals ---
-        vis_confusables = set()
-        if confusable_indices:
-            for idx in confusable_indices:
-                try:
-                    cp = ord(t[idx])
-                    sc = _find_in_ranges(cp, "Scripts") or "Common"
-                    if sc not in ("Common", "Inherited"):
-                        vis_confusables.add(idx)
-                except: pass
-        
+        # Generate invisibles visualization set
         vis_invisibles = set()
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
             for k in range(c["start"], c["end"] + 1):
                 vis_invisibles.add(k)
-                
-        vis_bidi = set()
-        if bidi_danger_indices:
-            for s in bidi_danger_indices:
-                try: vis_bidi.add(int(s.replace("#","")))
-                except: pass
 
         if vis_confusables or vis_invisibles or vis_bidi:
             final_html_report = _render_forensic_diff_stream(
@@ -3965,7 +3954,33 @@ def compute_threat_analysis(t: str):
         else:
             final_html_report = '<p class="placeholder-text">No active threat clusters detected.</p>'
         
-        # Note: We removed the old _register_hit logic here because it's now done inside the main loop above
+        # OBFUSCATION REGISTRATION
+        # Re-scan for invisible clusters to get DOM coords
+        if flags := clusters: # Reuse clusters from above
+             c_acc = 0
+             curr_clust_idx = 0
+             for i, char in enumerate(t):
+                 c_len = 2 if ord(char) > 0xFFFF else 1
+                 
+                 if curr_clust_idx < len(clusters):
+                     c = clusters[curr_clust_idx]
+                     # At start of cluster
+                     if i == c["start"]: 
+                         c["dom_start"] = c_acc
+                     # At end of cluster (inclusive)
+                     if i == c["end"]:
+                         c["dom_end"] = c_acc + c_len
+                         
+                         # Register Hit
+                         is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
+                         if not is_just_vs:
+                             lbl = "Invisible Cluster"
+                             if c.get("high_risk"): lbl += " [High Risk]"
+                             _register_hit("thr_obfuscation", c["dom_start"], c["dom_start"]+1, lbl)
+                         
+                         curr_clust_idx += 1
+                 
+                 c_acc += c_len
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
@@ -6157,8 +6172,8 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V25 - Direct DOM Mapping).
-    Uses pre-calculated DOM coordinates from the Registry, eliminating drift.
+    Stateful stepper (Fixed V26 - Direct DOM Mapping).
+    Relies purely on the Registry having correct DOM coordinates.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6191,7 +6206,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # Sort by position (DOM Start)
+    # Sort by DOM position
     targets.sort(key=lambda x: (x[0], x[1]))
     
     # 2. Determine Next Target
@@ -6207,14 +6222,14 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 3. EXECUTE SELECTION (Direct DOM Coordinates)
-    # The registry now stores exact (dom_start, dom_end)
+    # 3. EXECUTE SELECTION
+    # The registry now stores exact DOM indices. No conversion needed.
     dom_s = int(next_hit[0])
     dom_e = int(next_hit[1])
     
-    # Safety Clamp
+    # Safety Clamp to ensure visibility
     dom_s = max(0, dom_s)
-    dom_e = max(dom_s + 1, dom_e) # Ensure at least width 1
+    dom_e = max(dom_s + 1, dom_e) 
 
     window.TEXTTICS_HIGHLIGHT_RANGE(dom_s, dom_e)
     
@@ -6402,14 +6417,17 @@ def render_forensic_hud(t, stats):
     container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
 
 def populate_hud_registry(t: str):
-    """Populates simple metric buckets for the HUD Stepper using DOM Coordinates."""
+    """
+    Populates simple metric buckets for the HUD Stepper.
+    USES EXACT DOM OFFSET ACCUMULATOR (Gold Standard) to prevent drift.
+    """
+    acc = 0 # Tracks exact DOM position (UTF-16 units)
     
-    acc = 0 # DOM Accumulator (UTF-16 units)
-    
-    for i, char in enumerate(t):
+    for char in t:
         cp = ord(char)
-        # Calculate DOM width of this character (1 for BMP, 2 for Emoji/Supplementary)
-        char_len = 2 if cp > 0xFFFF else 1
+        
+        # CALCULATE WIDTH EXACTLY LIKE BROWSER (BMP=1, Emoji/Astral=2)
+        char_width = 2 if cp > 0xFFFF else 1
         
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
@@ -6422,22 +6440,22 @@ def populate_hud_registry(t: str):
              elif mask & INVIS_TAG: label = "Tag"
              elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): label = "Variation Selector"
              
-             # Register exact DOM range
-             _register_hit("ws_nonstd", acc, acc + char_len, f"{label} (U+{cp:04X})")
+             # Register using DOM coordinates (acc), not Logical Index (i)
+             _register_hit("ws_nonstd", acc, acc + char_width, f"{label} (U+{cp:04X})")
 
         # 2. Delimiters (C4)
         cat = unicodedata.category(char)
         if cat.startswith('P'):
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
-                _register_hit("punc_exotic", acc, acc + char_len, f"Exotic Punct (U+{cp:04X})")
+                _register_hit("punc_exotic", acc, acc + char_width, f"Exotic Punct (U+{cp:04X})")
 
         # 3. Symbols (C5)
         if cat.startswith('S'):
              if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 _register_hit("sym_exotic", acc, acc + char_len, f"Exotic Symbol (U+{cp:04X})")
-                 
-        # Advance Accumulator
-        acc += char_len
+                 _register_hit("sym_exotic", acc, acc + char_width, f"Exotic Symbol (U+{cp:04X})")
+        
+        # Advance accumulator for next loop
+        acc += char_width
 
 @create_proxy
 def update_all(event=None):
