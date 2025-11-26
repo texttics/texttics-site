@@ -5634,15 +5634,25 @@ def inspect_character(event):
             "line_break": lb_prop,
             "word_break": wb_prop,
             "grapheme_break": gb_prop,
-            "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
-            "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
-            "url": url_enc, "html": html_enc, "code": code_enc,
+            
+            # --- Forensic Encodings ---
+            "utf8": utf8_hex, 
+            "utf16": utf16_hex, 
+            "utf32": utf32_hex,
+            "ascii": ascii_val, 
+            "latin1": latin1_val, 
+            "cp1252": cp1252_val,
+            
+            # --- Exploit Vectors ---
+            "url": url_enc, 
+            "code": code_enc,
             "base64": b64_val,
             "shell": shell_val,
             "octal": octal_val,
             "html_dec": html_dec_val,
             "html_hex": html_hex_val,
             "es6": es6_val,
+            
             "confusable": confusable_msg,
             "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
@@ -6246,12 +6256,12 @@ def render_inspector_panel(data):
                 <div class="section-label" style="margin-bottom:4px; color:#b91c1c;">EXPLOIT VECTORS</div>
                 
                 <div class="byte-row"><span class="label">Base64:</span>{data['base64']}</div>
-                <div class="byte-row"><span class="label">URL:</span>{data['url']}</div>
-                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data['html_hex'])}</div>
-                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data['html_dec'])}</div>
                 <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data['shell'])}</div>
+                <div class="byte-row"><span class="label">Octal:</span>{_escape_html(data['octal'])}</div>
+                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data['html_dec'])}</div>
+                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data['html_hex'])}</div>
                 <div class="byte-row"><span class="label">ES6/CSS:</span>{_escape_html(data['es6'])}</div>
-                <div class="byte-row"><span class="label">Py Code:</span>{_escape_html(data['code'])}</div>
+                <div class="byte-row"><span class="label">Py/JSON:</span>{_escape_html(data['code'])}</div>
             </div>
         </div>
     </div>
