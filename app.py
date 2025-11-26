@@ -6365,24 +6365,24 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V17 - Minimalist Expansion).
+    Stateful stepper (Fixed V18 - Strict Forensic Selection).
     1. Handles Lone Surrogates gracefully via errors='replace'.
     2. Fixes EOF clamping logic.
-    3. [SIMPLIFIED] Smart Expand:
-       - ZWJ/ZWNJ: Expand RIGHT (+1). Selects [ZWJ + Next]. Prevents left-bleed.
-       - Marks/VS: Expand LEFT (-1). Selects [Base + Mark].
+    3. [STRICT] No Smart Expand. Selects ONLY the threat particle.
+       Prevents "neighbor bleed" (selecting innocent letters).
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
     # [CRITICAL] Calculate DOM Upper Bound (UTF-16 units)
+    # Use errors='replace' to prevent fallback on corrupt data (Select All Bug)
     try:
         max_dom_len = len(t.encode('utf-16-le', errors='replace')) // 2
     except:
         max_dom_len = len(t)
 
-    # 2. Define Labels & Targets (Standard)
+    # 2. Define Labels & Targets
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -6410,6 +6410,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
+    # Sort by position
     targets.sort(key=lambda x: (x[0], x[1]))
     
     state_attr = f"data-hud-idx-{metric_key}"
@@ -6424,30 +6425,12 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight
+    # 5. Execute Highlight (Strict)
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # --- [UX FIX V17] MINIMALIST EXPANSION ---
-    try:
-        if log_s >= 0 and log_s < len(t):
-            target_char = t[log_s]
-            cp = ord(target_char)
-            
-            # CASE A: Join Controls (ZWJ / ZWNJ)
-            # Expand RIGHT ONLY. Selects [ZWJ] + [NextChar].
-            # This avoids grabbing the 'd' in 'asdasd'.
-            if cp in (0x200C, 0x200D):
-                if log_e < len(t): log_e += 1 
-
-            # CASE B: Marks / VS / Format
-            # Expand LEFT ONLY. Selects [Base] + [Mark].
-            elif unicodedata.category(target_char) in ('Mn', 'Me', 'Cf'):
-                 if log_s > 0: log_s -= 1
-
-    except Exception:
-        pass
-    # --- END UX FIX ---
+    # [STRICT] Removed all "Smart Expand" logic.
+    # We trust the forensic engine's coordinates implicitly.
     
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
@@ -6475,6 +6458,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         hud_status.style.display = "inline-flex"
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
+    # Force Inspector to look at the new selection
     inspect_character(None)
 
 @create_proxy
