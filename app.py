@@ -851,9 +851,12 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 4. Execute Highlight
     if metric_key == "threat_agg":
-        # Threat signals drift due to Emoji "inflation" (1 char vs 2 units).
-        # We calculate exact DOM coordinates using a manual loop to avoid
-        # crashes on broken surrogates (which encode() would trigger).
+        # Threat signals were registered using window.Array.from_(t).
+        # To match indices perfectly, we must iterate the SAME structure.
+        # This prevents drift on Emojis AND prevents crashes on Corrupt Data.
+        
+        # 1. Get the JS-aligned sequence (The "Ruler")
+        js_sequence = window.Array.from_(t)
         
         log_start = next_hit[0]
         log_end = next_hit[1]
@@ -861,9 +864,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         dom_start = 0
         dom_end = 0
         
-        # Manual Accumulation Loop (Safe & Robust)
+        # 2. Manual Accumulation Loop (Safe & Aligned)
         acc = 0
-        for i, char in enumerate(t):
+        for i, char in enumerate(js_sequence):
             if i == log_start: dom_start = acc
             if i == log_end: dom_end = acc; break # Found end, stop early
             
@@ -871,7 +874,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             acc += (2 if ord(char) > 0xFFFF else 1)
             
         # Edge Case: If target ends at the very end of string
-        if log_end == len(t): dom_end = acc
+        if log_end == len(js_sequence): dom_end = acc
         
         window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
         
