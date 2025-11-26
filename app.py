@@ -6785,8 +6785,6 @@ def update_all(event=None):
     if not t_input: return
     t = t_input.value
     
-    # --- [NEW] Populate Simple HUD Metrics ---
-    populate_hud_registry(t)
 
     # --- 1.5 PASSIVE INVISIBLE SCAN (Right Side) ---
     details_line = document.getElementById("reveal-details")
