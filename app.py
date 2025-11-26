@@ -695,9 +695,10 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not el: return
     t = el.value
     
+    # 1. Map DOM Position to Logical Index
     current_logical = _dom_to_logical(t, current_dom_pos)
 
-    # 1. Define Human-Readable Labels
+    # 2. Define Human-Readable Labels
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -709,7 +710,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 2. Resolve targets
+    # 3. Resolve targets
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -726,7 +727,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 3. Sort & Find Next
+    # 4. Sort & Find Next
     targets.sort(key=lambda x: x[0])
     next_hit = targets[0]
     hit_index = 1
@@ -737,81 +738,83 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             hit_index = i + 1
             break
 
-    # 4. Execute Highlight
-    # 4. Execute Highlight
+    # 5. Execute Highlight
     if metric_key == "threat_agg":
-        # HYBRID BRIDGE: run UTF-16 math in JS, then apply selection in Python.
+        # HYBRID BRIDGE: Run Index Math in JS to ensure perfect sync with Registry
+        # The Registry was built using JS 'Array.from', so we must step using JS 'Array.from'.
+        
         log_start = next_hit[0]
         log_end = next_hit[1]
-    
+
+        # We read the value directly from DOM inside JS to avoid passing huge strings across the bridge
         js_code = f"""
         (function(s, e) {{
-          const el = document.getElementById("text-input");
-          if (!el) return JSON.stringify({{"len": -1, "slice": null}});
-          const t = el.value;
-          const seq = Array.from(t);
-          const slice = seq.slice(Math.max(0, s - 5), s + 5).map(c => c.codePointAt(0).toString(16));
-          return JSON.stringify({{"len": seq.length, "slice": slice, "text_snippet": t.slice(Math.max(0, s - 5), s + 5)}});
+            const el = document.getElementById("text-input");
+            if (!el) return [-1, -1];
+            
+            const t = el.value;
+            const seq = Array.from(t);
+            
+            let acc = 0;
+            let domStart = -1;
+            let domEnd = -1;
+            
+            for (let i = 0; i < seq.length; i++) {{
+                if (i === s) domStart = acc;
+                if (i === e) {{ domEnd = acc; break; }}
+                
+                // UTF-16 Accumulation (1 unit for BMP, 2 for Astral)
+                const code = seq[i].codePointAt(0);
+                acc += (code > 0xFFFF ? 2 : 1);
+            }}
+            
+            // Edge Case: Target is exactly at the end of the string
+            if (domEnd === -1 && e >= seq.length) domEnd = acc;
+            
+            return [domStart, domEnd];
         }})({log_start}, {log_end});
         """
-        res = window.eval(js_code)
-        import json
-        dbg = json.loads(res)
-        print("[ThreatAgg-DBG] seq.length:", dbg["len"])
-        print("[ThreatAgg-DBG] around logical index", log_start, "slice:", dbg["slice"], "text:", dbg["text_snippet"])
-        print("[ThreatAgg-DBG] raw Python slice:", repr(t_python[ max(0, log_start -5) : log_start +5 ]))
-
-        """
-    
+        
         try:
-            # Execute JS and convert result to a plain Python list
+            # Execute and unpack results
             res = window.eval(js_code)
             if hasattr(res, "to_py"):
                 res = res.to_py()
-    
-            dom_start, dom_end = res
-            dom_start = int(dom_start)
-            dom_end = int(dom_end)
-    
-            # Safety guard: abort on miss
-            if dom_start < 0 or dom_end < 0:
+            
+            dom_start = int(res[0])
+            dom_end = int(res[1])
+            
+            # Safety Guard
+            if dom_start == -1 or dom_end == -1:
                 print(f"[ThreatAgg] Highlight Sync Error: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}")
                 return
-    
-            # Apply selection directly on the textarea
+
+            # Apply Selection
             el.focus()
             el.setSelectionRange(dom_start, dom_end)
-    
+            
         except Exception as e:
             print(f"[ThreatAgg] Bridge Failure: {e}")
             return
-    
+
     else:
         # [LEGACY PATH] Keep existing logic for other metrics
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
 
-
-
-
-    
-    # 5. Define Icon LOCALLY (Safety Fix)
-    # We use triple quotes to avoid syntax errors with inner quotes
+    # 6. Define Icon LOCALLY
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
 
-    # 6. Format Message (Fix Spacing & Alignment)
-    # We put the Icon AT THE END (Right side)
-    # We use a standard space ' ' after </strong>
+    # 7. Format Message
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
     
-    # 7. Update UI
+    # 8. Update UI
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
         hud_status.className = "status-details status-hud-active"
         hud_status.style.display = "inline-flex"
-        # Text First, Icon Second
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
-    # 8. Update Inspector
+    # 9. Update Inspector
     inspect_character(None)
 
 @create_proxy
