@@ -6365,24 +6365,16 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V20 - Grapheme Anchor Logic).
-    1. Handles Lone Surrogates gracefully via errors='replace'.
-    2. [NEW] ZWJ Handling: Expands outwards to find "Solid Matter" (Non-ZWJ).
-       This effectively selects the entire Grapheme Cluster (Base + ZWJ + Component),
-       aligning with UAX #29 and browser selection specs.
+    Stateful stepper (Fixed V21 - Robust Linear Scan).
+    1. Replaces fragile conversion logic with a Linear UTF-16 Scanner (matches Reveal2).
+    2. Implements 'Smart ZWJ': Selects [Left + ZWJ + Right] to visualize the bond.
+    3. Eliminates Index Drift (selecting random letters).
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # [CRITICAL] Calculate DOM Upper Bound (UTF-16 units)
-    # Use errors='replace' to prevent fallback on corrupt data (Select All Bug)
-    try:
-        max_dom_len = len(t.encode('utf-16-le', errors='replace')) // 2
-    except:
-        max_dom_len = len(t)
-
-    # 2. Define Labels & Targets
+    # 1. Setup Targets
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -6413,6 +6405,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # Sort by position
     targets.sort(key=lambda x: (x[0], x[1]))
     
+    # 2. Determine Next Target
     state_attr = f"data-hud-idx-{metric_key}"
     last_idx = -1
     try:
@@ -6425,58 +6418,62 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     el.setAttribute(state_attr, str(next_idx))
             
-    # 5. Execute Highlight (Grapheme Anchor Logic)
+    # 3. LOGICAL EXPANSION (The "Smart Idea")
+    # We adjust the indices in the Python domain (Logical) first.
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
     hit_text = t[log_s:log_e]
-    # Check if the target is purely ZWJ (U+200D)
     is_zwj = len(hit_text) > 0 and all(c == '\u200d' for c in hit_text)
 
     if is_zwj:
-        # [V20 Logic] The "Solid Matter" Anchor
-        # If we hit a ZWJ (Glue), we must select the things being glued.
-        # We expand Left/Right until we find a character that is NOT a ZWJ.
-        
-        # 1. Expand Left (Find the Base)
-        bridge_s = log_s
-        while bridge_s > 0:
-            char_left = t[bridge_s - 1]
-            if char_left == '\u200d':
-                bridge_s -= 1 # Skip over adjacent ZWJs
+        # Expand LEFT to find nearest non-ZWJ neighbor
+        while log_s > 0:
+            if t[log_s - 1] == '\u200d':
+                log_s -= 1
             else:
-                bridge_s -= 1 # Found the Solid Anchor (Base), include it & STOP
+                log_s -= 1 # Include the neighbor
                 break
         
-        # 2. Expand Right (Find the Component)
-        bridge_e = log_e
-        while bridge_e < len(t):
-            char_right = t[bridge_e]
-            if char_right == '\u200d':
-                bridge_e += 1 # Skip over adjacent ZWJs
+        # Expand RIGHT to find nearest non-ZWJ neighbor
+        while log_e < len(t):
+            if t[log_e] == '\u200d':
+                log_e += 1
             else:
-                bridge_e += 1 # Found the Solid Anchor (Component), include it & STOP
+                log_e += 1 # Include the neighbor
                 break
 
-        # Convert the CLUSTER coordinates to DOM
-        dom_s = _logical_to_dom(t, bridge_s)
-        dom_e = _logical_to_dom(t, bridge_e)
-    else:
-        # Standard Selection (for non-glue threats like Cyrillic 'a')
-        dom_s = _logical_to_dom(t, log_s)
-        dom_e = _logical_to_dom(t, log_e)
+    # 4. ROBUST DOM CONVERSION (The "Reveal2" Method)
+    # Instead of slicing/encoding, we iterate and count UTF-16 units.
+    # This guarantees 100% alignment with the browser's selection engine.
     
-    # Fallback safety
+    dom_s = 0
+    dom_e = 0
+    current_dom_acc = 0
+    
+    for i, char in enumerate(t):
+        # Calculate DOM width of this character (1 or 2 units)
+        char_dom_len = 2 if ord(char) > 0xFFFF else 1
+        
+        # Capture Start
+        if i == log_s:
+            dom_s = current_dom_acc
+            
+        # Capture End
+        if i == log_e:
+            dom_e = current_dom_acc
+            
+        current_dom_acc += char_dom_len
+    
+    # Handle case where selection ends at the very end of string
+    if log_e == len(t):
+        dom_e = current_dom_acc
+
+    # Safety Clamp
     if dom_e <= dom_s: dom_e = dom_s + 1
 
-    # [CRITICAL] EOF Safety Logic
-    safe_s = min(dom_s, max_dom_len)
-    safe_e = min(dom_e, max_dom_len)
-    
-    if safe_e <= safe_s:
-        safe_s = max(0, safe_e - 1)
-        
-    window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
+    # 5. Execute Selection
+    window.TEXTTICS_HIGHLIGHT_RANGE(dom_s, dom_e)
     
     # 6. Update Status UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
