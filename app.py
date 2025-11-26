@@ -5829,6 +5829,16 @@ def analyze_signal_processor_state(data):
         icon = "shield_warn"
         footer_class = "footer-warn"
 
+    # HARD OVERRIDE FOR CORRUPTION
+    if is_corruption:
+        level = 4
+        label = "CRITICAL"
+        header_class = "header-critical"
+        icon = "octagon_crit"
+        footer_label = "FATAL"
+        footer_text = "Data Integrity Failure"
+        footer_class = "footer-crit"
+
     if reasons:
         footer_text = ", ".join(reasons)
     elif level == 0 and is_ascii_confusable:
