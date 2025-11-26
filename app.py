@@ -802,12 +802,13 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     """
     Stateless stepper. Finds the next range after current_dom_pos.
     Updates the LEFT-SIDE HUD Status bar.
-    USES MANUAL UTF-16 ACCUMULATION LOOP TO PREVENT DRIFT.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
     # 1. Define Human-Readable Labels
     labels = {
         "integrity_agg": "Integrity Issues",
@@ -837,68 +838,35 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 3. Sort targets by Logical Start Index
+    # 3. Sort & Find Next
     targets.sort(key=lambda x: x[0])
-
-    # 4. Find "Next" Target based on Current DOM Position
-    # We must map the DOM position back to a Logical Index to compare
-    
-    # A. Map Current DOM -> Logical (To find where we are in the list)
-    current_logical = 0
-    acc = 0
-    for i, char in enumerate(t):
-        step = 2 if ord(char) > 0xFFFF else 1
-        if acc >= current_dom_pos:
-            current_logical = i
-            break
-        acc += step
-    if acc < current_dom_pos: current_logical = len(t)
-
-    # B. Select the Next Target
     next_hit = targets[0]
     hit_index = 1
+    
     for i, hit in enumerate(targets):
         if hit[0] >= current_logical:
             next_hit = hit
             hit_index = i + 1
             break
 
-    # 5. Calculate DOM Coordinates for the Target (The "Inflator")
-    # We iterate from 0 up to the target's logical start/end to get precise UTF-16 offsets
+    # 4. Execute Highlight
+    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
-    target_log_start = next_hit[0]
-    target_log_end = next_hit[1]
-    
-    dom_start = 0
-    dom_end = 0
-    
-    curr_dom = 0
-    for i, char in enumerate(t):
-        step = 2 if ord(char) > 0xFFFF else 1
-        
-        if i == target_log_start:
-            dom_start = curr_dom
-        if i == target_log_end:
-            dom_end = curr_dom
-            break # Optimization
-            
-        curr_dom += step
-        
-    # Handle edge case where target is at the very end of string
-    if target_log_end == len(t):
-        dom_end = curr_dom
-
-    # 6. Execute Highlight
-    window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
-    
-    # 7. Update UI
+    # 5. Define Icon LOCALLY (Safety Fix)
+    # We use triple quotes to avoid syntax errors with inner quotes
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+
+    # 6. Format Message (Fix Spacing & Alignment)
+    # We put the Icon AT THE END (Right side)
+    # We use a standard space ' ' after </strong>
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
     
+    # 7. Update UI
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
         hud_status.className = "status-details status-hud-active"
         hud_status.style.display = "inline-flex"
+        # Text First, Icon Second
         hud_status.innerHTML = f"{status_msg}{icon_loc}"
     
     # 8. Update Inspector
