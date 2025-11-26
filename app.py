@@ -6272,6 +6272,168 @@ def render_inspector_panel(data):
     except Exception:
         pass
 
+def analyze_intel_profile(t, threat_flags, script_stats):
+    """
+    The Intel Engine (UTS #39 / UTS #55).
+    Determines Restriction Level and classifies Homoglyph Topology.
+    Returns a structured IntelReport dictionary.
+    """
+    if not t: return None
+
+    # --- 1. Restriction Level Engine (UTS #39) ---
+    # Extract scripts from the provenance stats
+    scripts_found = set()
+    for key in script_stats.keys():
+        if key.startswith("Script:"):
+            s = key.replace("Script: ", "").strip()
+            if s not in ("Common", "Inherited", "Unknown"):
+                scripts_found.add(s)
+
+    restriction_level = "UNRESTRICTED"
+    badge_class = "intel-badge-danger"
+    
+    count = len(scripts_found)
+    
+    if count == 0:
+        # Check if purely ASCII (Common/Inherited only)
+        if all(ord(c) < 128 for c in t):
+            restriction_level = "ASCII-ONLY"
+            badge_class = "intel-badge-safe"
+        else:
+            restriction_level = "SINGLE SCRIPT (COMMON)"
+            badge_class = "intel-badge-safe"
+            
+    elif count == 1:
+        restriction_level = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
+        badge_class = "intel-badge-safe"
+        
+    elif count == 2:
+        # Allow-list for Highly Restrictive (Simplified)
+        cjk = {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
+        if "Latin" in scripts_found and any(s in cjk for s in scripts_found):
+             restriction_level = "HIGHLY RESTRICTIVE"
+             badge_class = "intel-badge-safe"
+        # Allow-list for Moderately Restrictive
+        elif "Latin" in scripts_found and ("Greek" in scripts_found or "Cyrillic" in scripts_found):
+             restriction_level = "MINIMALLY RESTRICTIVE" # Latin+Cyrillic is risky
+             badge_class = "intel-badge-danger"
+        else:
+             restriction_level = "MINIMALLY RESTRICTIVE"
+             badge_class = "intel-badge-warn"
+             
+    else:
+        restriction_level = "UNRESTRICTED"
+        badge_class = "intel-badge-danger"
+
+    # --- 2. Topology Classifier ---
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
+    
+    # --- 3. Token Exploit Generator ---
+    import base64
+    
+    tokens = t.split()
+    targets = []
+    
+    for token in tokens:
+        if len(token) < 2: continue
+        
+        t_scripts = set()
+        t_invis = False
+        t_bidi = False
+        
+        for char in token:
+            cp = ord(char)
+            # Script
+            sc = _find_in_ranges(cp, "Scripts")
+            if sc and sc not in ("Common", "Inherited"): t_scripts.add(sc)
+            # Invis
+            if INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL): t_invis = True
+            # Bidi
+            if INVIS_TABLE[cp] & INVIS_BIDI_CONTROL: t_bidi = True
+            
+        # Classify Token Risk
+        risk_type = None
+        if len(t_scripts) > 1: 
+            risk_type = "SPOOFING (MIXED SCRIPT)"
+            topology["SPOOFING"] += 1
+        elif t_bidi:
+            risk_type = "SYNTAX (BIDI CONTROL)"
+            topology["SYNTAX"] += 1
+        elif t_invis:
+            risk_type = "HIDDEN (INVISIBLE)"
+            topology["HIDDEN"] += 1
+            
+        if risk_type:
+            # Generate Vectors
+            try:
+                b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
+            except: b64 = "Error"
+            
+            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
+            
+            targets.append({
+                "token": token,
+                "verdict": risk_type,
+                "b64": b64,
+                "hex": hex_v
+            })
+            
+            if len(targets) >= 10: break
+
+    return {
+        "restriction": restriction_level,
+        "badge_class": badge_class,
+        "topology": topology,
+        "targets": targets
+    }
+
+def render_intel_console(t, threat_flags, script_stats):
+    """Renders the Intel Report."""
+    container = document.getElementById("intel-console")
+    if not container: return
+    
+    report = analyze_intel_profile(t, threat_flags, script_stats)
+    if not report:
+        container.style.display = "none"
+        return
+        
+    container.style.display = "block"
+    
+    # 1. Render Seal
+    badge = document.getElementById("intel-badge")
+    badge.className = f"intel-badge {report['badge_class']}"
+    badge.innerText = report['restriction']
+    
+    # 2. Render Topology
+    topo = report['topology']
+    document.getElementById("intel-stat-ambiguity").innerText = str(topo['AMBIGUITY'])
+    document.getElementById("intel-stat-spoofing").innerText = str(topo['SPOOFING'])
+    document.getElementById("intel-stat-syntax").innerText = str(topo['SYNTAX'])
+    document.getElementById("intel-stat-hidden").innerText = str(topo['HIDDEN'])
+    
+    # 3. Render Targets
+    target_body = document.getElementById("intel-target-body")
+    targets = report['targets']
+    
+    if not targets:
+        target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No high-value targets identified.</div>'
+    else:
+        html_rows = []
+        for tgt in targets:
+            row = f"""
+            <div class="target-row">
+                <div class="t-head">
+                    <span class="t-token">{_escape_html(tgt['token'])}</span>
+                    <span class="t-verdict">{tgt['verdict']}</span>
+                </div>
+                <div class="t-vectors">
+                    <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
+                    <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
+                </div>
+            </div>
+            """
+            html_rows.append(row)
+        target_body.innerHTML = "".join(html_rows)
         
 def compute_threat_score(inputs):
     """
