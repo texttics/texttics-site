@@ -851,12 +851,8 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 4. Execute Highlight
     if metric_key == "threat_agg":
-        # Threat signals were registered using window.Array.from_(t).
-        # To match indices perfectly, we must iterate the SAME structure.
-        # This prevents drift on Emojis AND prevents crashes on Corrupt Data.
-        
-        # 1. Get the JS-aligned sequence (The "Ruler")
-        js_sequence = window.Array.from_(t)
+        # Threat Indices in Registry are Logical (Python).
+        # We must convert them to Physical (DOM) using the exact same math as reveal2.
         
         log_start = next_hit[0]
         log_end = next_hit[1]
@@ -864,22 +860,39 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         dom_start = 0
         dom_end = 0
         
-        # 2. Manual Accumulation Loop (Safe & Aligned)
         acc = 0
-        for i, char in enumerate(js_sequence):
+        # Iterate the LIVE string 't'
+        for i, char in enumerate(t):
+            # Check bounds BEFORE processing char to capture start/end exactly
             if i == log_start: dom_start = acc
-            if i == log_end: dom_end = acc; break # Found end, stop early
+            if i == log_end: dom_end = acc; break 
             
-            # UTF-16 Math: Astral chars (>FFFF) are 2 units, others 1
-            acc += (2 if ord(char) > 0xFFFF else 1)
+            # Robust Width Calc: Handle Astral chars correctly
+            try:
+                cp = ord(char)
+                width = 2 if cp > 0xFFFF else 1
+            except:
+                width = 1 # Failsafe for weird proxy objects
+                
+            acc += width
             
-        # Edge Case: If target ends at the very end of string
-        if log_end == len(js_sequence): dom_end = acc
+        # Catch-all if target is at end of string
+        if log_end >= len(t): dom_end = acc
         
+        # Safety Clamp (Prevent "Select All" / Invalid Range crashes)
+        total_utf16_len = acc if log_end >= len(t) else len(t.encode('utf-16-le'))//2
+        dom_start = min(dom_start, total_utf16_len)
+        dom_end = min(dom_end, total_utf16_len)
+        
+        # Prevent 0-length selection if possible (unless logic dictates)
+        if dom_start == dom_end and log_end > log_start:
+             # Fallback: Ensure we select at least 1 unit if logical range existed
+             dom_end = dom_start + 1
+
         window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
         
     else:
-        # [LEGACY PATH] Everyone else uses raw indices (Status Quo maintained)
+        # Legacy path for others
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
     # 5. Define Icon LOCALLY (Safety Fix)
