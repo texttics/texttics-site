@@ -740,44 +740,61 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 4. Execute Highlight
     
     if metric_key == "threat_agg":
-        # OPTIMIZED: Pure Python DOM Calculation (No JS Array Proxy overhead)
-        # 1. Get Logical indices from Registry
+        # HYBRID BRIDGE: Run Index Math in JS to ensure perfect sync with Registry
+        # The Registry was built using JS 'Array.from', so we must step using JS 'Array.from'.
+        # Python iteration of proxies can desync on surrogates.
+        
         log_start = next_hit[0]
         log_end = next_hit[1]
-        
-        dom_start = -1
-        dom_end = -1
-        
-        # Optimization: For pure ASCII, logical index == physical index
-        if t.isascii():
-            dom_start = log_start
-            dom_end = log_end
-        else:
-            # Complex Text: We must iterate to count UTF-16 units
-            acc = 0
-            # Enumerating a Python string gives us Code Points automatically
-            for i, char in enumerate(t):
-                if i == log_start: dom_start = acc
-                if i == log_end: dom_end = acc; break 
-                
-                # UTF-16 Math: 
-                # BMP characters (<= FFFF) are 1 unit.
-                # Astral characters (> FFFF) are 2 units (High + Low Surrogate).
-                acc += (2 if ord(char) > 0xFFFF else 1)
+
+        # We read the value directly from DOM inside JS to avoid passing huge strings across the bridge
+        js_code = f"""
+        (function(s, e) {{
+            const el = document.getElementById("text-input");
+            if (!el) return [-1, -1];
             
-            # Handle target at the very end of string
-            if dom_end == -1 and log_end >= len(t):
-                dom_end = acc
+            const t = el.value;
+            const seq = Array.from(t);
+            
+            let acc = 0;
+            let domStart = -1;
+            let domEnd = -1;
+            
+            for (let i = 0; i < seq.length; i++) {{
+                if (i === s) domStart = acc;
+                if (i === e) {{ domEnd = acc; break; }}
+                
+                // UTF-16 Accumulation (1 unit for BMP, 2 for Astral)
+                const code = seq[i].codePointAt(0);
+                acc += (code > 0xFFFF ? 2 : 1);
+            }}
+            
+            // Edge Case: Target is exactly at the end of the string
+            if (domEnd === -1 && e >= seq.length) domEnd = acc;
+            
+            return [domStart, domEnd];
+        }})({log_start}, {log_end});
+        """
         
-        # Safety: Abort if index missed (Prevent "Select All" or "Cursor Reset")
-        if dom_start == -1 or dom_end == -1:
-            print(f"Threat Highlight Miss: Logical {log_start}-{log_end} could not be mapped to DOM.")
+        try:
+            # Execute and unpack results
+            res = window.eval(js_code)
+            dom_start = res[0]
+            dom_end = res[1]
+            
+            # Safety Guard
+            if dom_start == -1 or dom_end == -1:
+                print(f"[ThreatAgg] Highlight Sync Error: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}")
+                return
+
+            # Apply Selection
+            el.focus()
+            el.setSelectionRange(dom_start, dom_end)
+            
+        except Exception as e:
+            print(f"[ThreatAgg] Bridge Failure: {e}")
             return
 
-        # 3. BYPASS GLUE: Set Selection Directly
-        el.focus()
-        el.setSelectionRange(dom_start, dom_end)
-        
     else:
         # [LEGACY PATH] Keep existing logic for other metrics
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
