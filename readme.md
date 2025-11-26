@@ -1107,3 +1107,115 @@ Copy as Python/JS: Escapes dangerous characters (quotes, backslashes, controls) 
 3. 💾 Evidence Engine (The "Chain of Custody")
 
 Download as JSON: Generates a forensic artifact containing the full analysis profile, timestamps, and a SHA-256 cryptographic hash of the input. This provides an immutable record of the analysis for incident response logs.
+
+
+🔧 Technical Deep Dive: The "Bridge Problem" (Python vs. JS Indexing)
+
+1. The Core Conflict: "Two Truths"
+
+To understand the complexity of building a forensic tool in a hybrid environment (PyScript), one must understand the fundamental disagreement between the backend (Python) and the frontend (JavaScript/DOM) regarding what constitutes a "character."
+
+Python (The Brain): Python 3 treats strings as sequences of Unicode Code Points.
+
+Example: The Zombie Emoji 🧟 (U+1F9DF) is considered Length 1.
+
+Indexing: text[5] returns the 6th code point, regardless of byte size.
+
+JavaScript (The DOM): JavaScript treats strings as sequences of UTF-16 Code Units.
+
+Example: The Zombie Emoji 🧟 is outside the Basic Multilingual Plane (BMP). It requires two code units (a High Surrogate and a Low Surrogate) to represent. JavaScript considers this Length 2.
+
+Indexing: text[5] returns the 6th code unit, which might be the second half of a surrogate pair.
+
+The Problem (The "Drift"):
+When the Python-based Threat Engine identifies a threat at Logical Index 5, it tells the browser to highlight index 5.
+
+If the text is ABCDE..., both languages agree. Index 5 is F.
+
+If the text is 🧟ABC...:
+
+Python sees 🧟 at Index 0, A at Index 1.
+
+JavaScript sees 🧟 at Indices 0-1, A at Index 2.
+
+If Python says "Highlight A at Index 1," the browser highlights the second half of the Zombie emoji.
+
+This error accumulates. After 50 emojis, the highlighter is highlighting empty space or wrong characters 50 positions away.
+
+2. The "Battles" (Architecture Iterations)
+
+We went through four distinct architectural attempts to solve this synchronization problem before arriving at the final solution.
+
+Round 1: The "Naive Python" Approach
+
+Strategy: We simply passed Python indices directly to the JavaScript setSelectionRange API.
+
+The Failure: "Highlight Drift."
+
+As soon as the user pasted emojis or astral symbols, the highlighting drifted. The visual selection was offset from the logical threat by exactly the number of surrogate pairs preceding it.
+
+Round 2: The "Proxy Iterator" Approach
+
+Strategy: We attempted to force Python to "think like JS" by creating a Pyodide Proxy object: js_sequence = window.Array.from_(t). We then iterated this proxy in Python to find indices.
+
+The Failure: "Select All" / "Sluggishness."
+
+Iterating over a JS Proxy object from within Python incurs a massive performance penalty (marshalling data across the WASM boundary for every character).
+
+The iterator behavior was brittle. In edge cases, the loop would miss the target index entirely, leaving the dom_start variable at its default -1. The fallback logic then selected the entire text ("Select All"), confusing the user.
+
+Round 3: The "Hybrid Bridge" (The Syntax Error)
+
+Strategy: We attempted to offload the index calculation entirely to JavaScript by injecting a dynamic script using window.eval(). The idea was to ensure perfect UTF-16 fidelity by running the math in the browser's native engine.
+
+The Failure: Syntax Error.
+
+Implementation error: A stray triple-quote (""") and debug block were accidentally left in the production code, commenting out the logic and crashing the application.
+
+Round 4: The "Desync" (Log 101 vs Len 96)
+
+Strategy: We fixed the syntax, but encountered a new crash: Logical 101 not found in text (len 96).
+
+The Failure: "Split Brain."
+
+The Registry (the map of threats) was being populated by the Emoji Engine. At that time, the Emoji Engine was using the browser's Intl.Segmenter (JavaScript) to count characters. It reported indices in UTF-16 Code Units.
+
+The Stepper was trying to walk the Python String (Code Points).
+
+Result: The Registry said: "Threat at Index 101!" (JS counting). Python looked at its string (Length 96) and crashed because logical index 101 did not exist. The system was fighting itself.
+
+3. The Final Victory: "The United Python Front"
+
+The Solution:
+We stopped trying to bridge the gap in the middle. We forced the entire application to speak Python (Logical Indices) until the very last millisecond before rendering.
+
+Architecture of the Fix:
+
+Registry Source: We rewrote populate_hud_registry and compute_emoji_analysis to iterate using enumerate(t) (Native Python).
+
+Result: The Registry now records threats using Logical Indices (e.g., "Index 5").
+
+Stepper Logic: We rewrote cycle_hud_metric to iterate using enumerate(t) (Native Python).
+
+Result: The Stepper looks for Index 5. Since it uses the same counting method as the Registry, it finds it perfectly.
+
+The Translation Layer (The Rosetta Stone):
+Only at the exact moment of calling the browser API do we translate Logical Index to DOM Index. We use a high-speed, pure Python loop that simulates UTF-16 encoding rules:
+
+# The Rosetta Stone Loop
+acc = 0 # DOM Index (Accumulator)
+for i, char in enumerate(t): # i is Logical Index
+    if i == target_logical_index: 
+        dom_index = acc # Found the match!
+        break
+    # Add 2 if it's an emoji/surrogate (Astral), else 1 (BMP)
+    acc += (2 if ord(char) > 0xFFFF else 1) 
+
+
+Why is this better?
+
+Deterministic Sync: The Registry and the Stepper are mathematically guaranteed to match because they use the exact same iteration method (Python enumerate).
+
+Precision: The cursor lands exactly on the target, even if it's buried behind 50 "Zombie Mosquitos," because we manually calculate the UTF-16 offset byte-by-byte in the language that owns the data.
+
+Stability: We removed window.eval (security risk) and JS Proxies (performance bottleneck). The solution runs at native WASM speed.
