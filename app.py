@@ -823,8 +823,15 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         # Threat Indices in Registry are Logical (code point indices).
         # Convert to DOM (UTF-16 units) using reveal2-style math.
         
+        # Use the EXACT sequence source used to build the registry
+        js_sequence = window.Array.from_(t)
+        
         log_start = next_hit[0]
         log_end = next_hit[1]
+        
+        # [FIX] Calculate total length safely for the clamp (No encode crash)
+        # This counts 2 units for Astral (>FFFF), 1 for everything else (including Surrogates)
+        total_utf16_len = sum(2 if ord(c) > 0xFFFF else 1 for c in t)
         
         dom_start = -1  # Sentinel for miss detection
         dom_end = -1
