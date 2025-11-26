@@ -6365,12 +6365,13 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V15 - ZWJ Nuclear Patch).
+    Stateful stepper (Fixed V16 - "The Bridge" Strategy).
     1. Handles Lone Surrogates gracefully via errors='replace'.
     2. Fixes EOF clamping logic.
     3. [UPDATED] Smart Expand: 
-       - Default: Expands Left for Marks/VS.
-       - ZWJ/ZWNJ: Expands Left AND Right (Nuclear option) to prevent browser panic.
+       - ZWJ/ZWNJ: The "Bridge" - Expands outward past ALL contiguous ZWJs 
+         until it finds visible neighbors on both sides.
+       - Other Invisibles: Expands Left.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6382,7 +6383,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     except:
         max_dom_len = len(t)
 
-    # 2. Define Human-Readable Labels
+    # 2. Define Labels & Targets (Standard)
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
@@ -6394,7 +6395,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 3. Resolve targets
     targets = []
     if metric_key == "integrity_agg":
         targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
@@ -6411,7 +6411,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 4. Sort & Stateful Index Resolution
     targets.sort(key=lambda x: (x[0], x[1]))
     
     state_attr = f"data-hud-idx-{metric_key}"
@@ -6430,26 +6429,42 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # --- [UX FIX] SMART EXPAND (Visibility & Stability Patch) ---
+    # --- [UX FIX V16] THE "BRIDGE" STRATEGY ---
     try:
         if log_s >= 0 and log_s < len(t):
             target_char = t[log_s]
-            cat = unicodedata.category(target_char)
             cp = ord(target_char)
             
-            # A. ZWJ / ZWNJ (The "Nuclear" Fix)
-            # These are structural glue. Selecting them alone confuses browsers.
-            # We expand LEFT (to Base) and RIGHT (to Next) to create a solid block.
+            # STRATEGY A: Join Controls (ZWJ U+200D / ZWNJ U+200C)
+            # "The Bridge": Walk outward past all ZWJs to find solid anchors.
             if cp in (0x200C, 0x200D):
-                if log_s > 0: log_s -= 1 # Grab Left
-                if log_e < len(t): log_e += 1 # Grab Right
                 
-            # B. Standard Marks/VS (The "Left" Fix)
-            # Just grab the base char to make it visible.
-            elif cat in ('Mn', 'Me', 'Cf'):
-                if log_s > 0: log_s -= 1
-    except:
-        pass 
+                # 1. Walk Left: Find first non-ZWJ/ZWNJ
+                l_ptr = log_s - 1
+                while l_ptr >= 0:
+                    if ord(t[l_ptr]) not in (0x200C, 0x200D):
+                        log_s = l_ptr # Found Left Anchor
+                        break
+                    l_ptr -= 1
+                # (If we hit start of string and it's all ZWJs, log_s stays at start)
+
+                # 2. Walk Right: Find first non-ZWJ/ZWNJ
+                # Start from end of current hit (usually log_s + 1)
+                r_ptr = log_e 
+                while r_ptr < len(t):
+                    if ord(t[r_ptr]) not in (0x200C, 0x200D):
+                        log_e = r_ptr + 1 # Found Right Anchor (Include it)
+                        break
+                    r_ptr += 1
+                # (If we hit end of string, log_e stays at end)
+
+            # STRATEGY B: Other Invisibles (Marks, VS, Format)
+            # Just grab the Left Base.
+            elif unicodedata.category(target_char) in ('Mn', 'Me', 'Cf'):
+                 if log_s > 0: log_s -= 1
+
+    except Exception:
+        pass
     # --- END UX FIX ---
     
     dom_s = _logical_to_dom(t, log_s)
