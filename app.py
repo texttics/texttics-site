@@ -415,12 +415,12 @@ def analyze_combining_structure(t: str, rows: list):
         # Thresholds
         if mark_count >= 4:
             zalgo_indices.append(f"#{current_logical_idx}")
-            # [FIX] Register Hit for HUD
+            # [FIX] Register Hit for HUD (Restores 'Obfuscation' signal)
             _register_hit("thr_obfuscation", current_logical_idx, current_logical_idx + cp_len, f"Zalgo Stack ({mark_count})")
             
         if mark_count > 0 and not is_valid_base and base_cat != "Co":
              invisible_mark_indices.append(f"#{current_logical_idx}")
-             # [FIX] Register Hit for HUD
+             # [FIX] Register Hit for HUD (Restores 'Suspicious' signal)
              _register_hit("thr_suspicious", current_logical_idx, current_logical_idx + cp_len, "Hidden Mark")
 
         current_logical_idx += cp_len
@@ -4033,7 +4033,7 @@ def compute_threat_analysis(t: str):
                     'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # [FIX] Register Generic Hit to alert the user
+                # [FIX] Register Generic Hit to alert the user (Restores 'Suspicious' signal)
                 _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
             # 2. Extension Mix
@@ -6365,10 +6365,9 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V12 - EOF Safety). 
-    1. Fixes OOB crashes by calculating true DOM length.
-    2. Fixes 'Select All' at End-Of-File by backing up the start index 
-       instead of collapsing the end index to zero-width.
+    Stateful stepper (Fixed V13 - Corrupt Data Safe). 
+    1. Handles Lone Surrogates gracefully via errors='replace'.
+    2. Fixes EOF clamping logic.
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6376,7 +6375,10 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     
     # [CRITICAL FIX] Calculate DOM Upper Bound (UTF-16 units)
     # Use errors='replace' to prevent fallback on corrupt data
-    max_dom_len = len(t.encode('utf-16-le', errors='replace')) // 2
+    try:
+        max_dom_len = len(t.encode('utf-16-le', errors='replace')) // 2
+    except:
+        max_dom_len = len(t)
 
     # 2. Define Human-Readable Labels
     labels = {
@@ -6433,15 +6435,11 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if dom_e <= dom_s: dom_e = dom_s + 1
 
     # [CRITICAL FIX] EOF Safety Logic
-    # If the selection goes past the end, clamp it.
     safe_s = min(dom_s, max_dom_len)
     safe_e = min(dom_e, max_dom_len)
     
-    # If clamping caused a collapse (safe_s == safe_e), 
-    # BACK UP safe_s to ensure we select the last character.
     if safe_e <= safe_s:
         safe_s = max(0, safe_e - 1)
-        # If still equal (empty string case), force 0,0 but that's fine
         
     window.TEXTTICS_HIGHLIGHT_RANGE(safe_s, safe_e)
     
