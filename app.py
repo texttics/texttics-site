@@ -2995,9 +2995,9 @@ def compute_integrity_score(inputs):
     }
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
-    """Hybrid Forensic Analysis (Drift-Proof)."""
+    """Hybrid Forensic Analysis (Drift-Proof & Fixed)."""
     
-    # ... [Init Trackers - same as before] ...
+    # ... [Init Trackers] ...
     legacy_indices = {k: [] for k in [
         "deceptive_ls", "deceptive_ps", "deceptive_nel", "bidi_bracket_open", 
         "bidi_bracket_close", "extender", "deprecated", "dash", "quote", 
@@ -3012,7 +3012,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     flags = {k: [] for k in ["default_ign", "join", "zw_space", "bidi", "tags", "vs_std", "vs_ideo", "shy", "non_ascii_space", "bad_nl", "any_invis", "high_risk"]}
     health_issues = {k: [] for k in ["fffd", "surrogate", "nonchar", "pua", "nul", "bom_mid", "donotemit"]}
     
-    # [NEW] DOM Hit Buckets (start, end, label)
+    # DOM Hit Buckets (start, end, label)
     dom_hits = {
         "fatal": [], "fracture": [], "risk": [], "decay": [], 
         "execution": [], "spoofing": [], "obfuscation": []
@@ -3028,8 +3028,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     }
 
     if LOADING_STATE == "READY":
-        # [FIX] Use Python Enumerate + DOM Accumulator
-        acc = 0
+        acc = 0 # DOM Accumulator
         
         for i, char in enumerate(t):
             try:
@@ -3084,7 +3083,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     legacy_indices["vs_all"].append(i)
                     is_valid_vs = False
                     if i > 0:
-                        prev_cp = ord(t[i-1]) # Access t directly
+                        prev_cp = ord(t[i-1])
                         if prev_cp in DATA_STORES["VariantBase"]: is_valid_vs = True
                     if not is_valid_vs: legacy_indices["invalid_vs"].append(i)
 
@@ -3168,13 +3167,11 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
                 
-                # Advance DOM Accumulator
                 acc += char_len
 
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
     
-    # ... [Row building remains same] ...
     rows = []
     def add_row(label, count, positions, severity="warn", badge=None, pct=None):
         if count > 0:
@@ -3183,7 +3180,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             rows.append(row)
 
     struct_rows = []
-    # Bidi Analyzer returns DOM ranges now
     bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
     analyze_combining_structure(t, struct_rows)
@@ -3195,10 +3191,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for s, e, l in dom_hits["decay"]: _register_hit("int_decay", s, e, l)
     for s, e, l in dom_hits["execution"]: _register_hit("thr_execution", s, e, l)
     
-    # Bidi Fracs from analyzer are already DOM
     for s, e, l in bidi_fracs: _register_hit("int_fracture", s, e, l)
     
-    # Bidi Dangers (Cluster & Register)
     if bidi_dangers:
         bidi_dangers.sort(key=lambda x: x[0])
         merged = []
@@ -3217,65 +3211,28 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         for s, e, l in merged:
             _register_hit("thr_execution", s, e, l)
 
-    # Spoofing: We still need to register these.
-    # Since confusable indices are sparse, we can't easily do it in the loop without lookups.
-    # We'll re-calculate DOM coords for them here.
-    # This is O(N) scan again, but only if confusables exist.
-    if confusable_indices:
-        conf_set = set(confusable_indices)
-        c_acc = 0
-        for i, char in enumerate(t):
-            c_len = 2 if ord(char) > 0xFFFF else 1
-            if i in conf_set:
-                # Filter Common/Inherited
-                cp = ord(char)
-                sc = _find_in_ranges(cp, "Scripts") or "Common"
-                if sc not in ("Common", "Inherited"):
-                    _register_hit("thr_spoofing", c_acc, c_acc+c_len, "Homoglyph")
-            c_acc += c_len
-
-    # Obfuscation: Invisible Clusters
-    # summarize_invisible_clusters calls analyze_invisible_clusters which returns logical indices.
-    # We need DOM indices.
-    # [PATCH] We can assume clusters map to DOM if we re-scan.
-    # Or better, compute clusters in DOM space?
-    # For now, let's just re-scan t linearly to map the cluster logical ranges to DOM ranges.
+    # Obfuscation: Invisible Clusters (Mapped to DOM)
     if flags["any_invis"]:
         clusters = analyze_invisible_clusters(t)
         if clusters:
             c_acc = 0
-            # Map Logical -> DOM
-            log_to_dom = {} 
-            # Building a full map is expensive.
-            # Just iterate and check ranges.
             curr_clust_idx = 0
             for i, char in enumerate(t):
                 c_len = 2 if ord(char) > 0xFFFF else 1
                 
                 if curr_clust_idx < len(clusters):
                     c = clusters[curr_clust_idx]
-                    # If we are at the start of a cluster
-                    if i == c["start"]:
-                        c["dom_start"] = c_acc
-                    # If we are at the end (inclusive)
+                    if i == c["start"]: c["dom_start"] = c_acc
                     if i == c["end"]:
                         c["dom_end"] = c_acc + c_len
-                        
-                        # Register Hit
                         is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
                         if not is_just_vs:
                             lbl = "Invisible Cluster"
                             if c.get("high_risk"): lbl += " [High Risk]"
                             _register_hit("thr_obfuscation", c["dom_start"], c["dom_start"]+1, lbl)
-                        
                         curr_clust_idx += 1
-                
                 c_acc += c_len
 
-    # ... [Rest of function (Auditor calls, Rows appending) remains same] ...
-    # (Truncated for brevity, insert standard auditor and rows logic here)
-    
-    # [INSERT AUDITOR LOGIC HERE - Same as original]
     auditor_inputs = {
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
@@ -3297,10 +3254,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     }
     audit_result = compute_integrity_score(auditor_inputs)
     
-    # [INSERT ROWS RENDERING HERE - Same as original]
-    # ... add_row calls ...
-    
-    # Add the auditor summary row
     rows.append({
         "label": "Integrity Level (Heuristic)",
         "count": audit_result["score"],
@@ -3310,9 +3263,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "positions": [] 
     })
     
-    # Add standard rows using legacy_indices (Logical) which allows the "View Details" links to work (they use logical)
     add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
-    # ... etc (rest of rows) ...
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
     add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "warn")
