@@ -1202,7 +1202,7 @@ Result: The Stepper looks for Index 5. Since it uses the same counting method as
 The Translation Layer (The Rosetta Stone):
 Only at the exact moment of calling the browser API do we translate Logical Index to DOM Index. We use a high-speed, pure Python loop that simulates UTF-16 encoding rules:
 
-# The Rosetta Stone Loop
+The Rosetta Stone Loop
 acc = 0 # DOM Index (Accumulator)
 for i, char in enumerate(t): # i is Logical Index
     if i == target_logical_index: 
