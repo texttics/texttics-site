@@ -6366,11 +6366,9 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not el: return
     t = el.value
     
-    # [CRITICAL] Calculate DOM Upper Bound (UTF-16 units)
-    try:
-        max_dom_len = len(t.encode('utf-16-le')) // 2
-    except:
-        max_dom_len = len(t)
+    # [CRITICAL FIX] Calculate DOM Upper Bound (UTF-16 units)
+    # Use errors='replace' to prevent fallback on corrupt data
+    max_dom_len = len(t.encode('utf-16-le', errors='replace')) // 2
 
     # 2. Define Human-Readable Labels
     labels = {
