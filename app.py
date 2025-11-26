@@ -2490,9 +2490,10 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3.2 - Python Index Sync).
-    Segments text into Grapheme Clusters and assigns a single primary classification.
-    NOW uses a manual Python index counter to align perfectly with the Registry.
+    Forensic Cluster Classifier (V3.3 - Fixed Accounting & Integrity).
+    1. ACCOUNTS for all emoji units (RGI and Non-RGI).
+    2. DETECTS broken Keycaps and Regional Indicators.
+    3. SYNCS indices using manual Python counter.
     """
     # --- 1. Data Access ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
@@ -2527,15 +2528,12 @@ def compute_emoji_analysis(text: str) -> dict:
     # --- 3. Cluster Segmentation Loop ---
     segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
-    # [SYNC FIX] Initialize Manual Python Index Counter
-    # We cannot use seg.index (JS UTF-16) because it drifts from Python Logical Indices.
+    # [SYNC FIX] Manual Python Index Counter
     current_python_idx = 0
     
     for seg in segments_iter:
         cluster = seg.segment
-        
-        # [SYNC FIX] Use our manual counter
-        idx = current_python_idx
+        idx = current_python_idx # Use manual counter
         
         # Calculate lengths
         cp_len = len(cluster) 
@@ -2552,7 +2550,7 @@ def compute_emoji_analysis(text: str) -> dict:
         is_component = _find_in_ranges(base_cp, "Emoji_Component")
         base_cat = unicodedata.category(base_char)
         
-        # --- B. Primary Classification (Disjoint Types) ---
+        # --- B. Primary Classification ---
         kind = "other"
         status = "none"
         rgi_status = False
@@ -2566,9 +2564,7 @@ def compute_emoji_analysis(text: str) -> dict:
         # 2. Non-RGI Emoji-Like
         elif is_emoji or is_ext_pict:
             rgi_status = False
-
-            if base_cp <= 0x7F:
-                pass 
+            if base_cp <= 0x7F: pass 
             elif is_component: 
                 kind = "emoji-component"
                 status = "component"
@@ -2605,8 +2601,7 @@ def compute_emoji_analysis(text: str) -> dict:
             if rgi_status:
                 counts["rgi_total"] += 1
                 counts["rgi_atomic"] += 1
-                if status != "fully-qualified":
-                    counts["emoji_irregular"] += 1
+                if status != "fully-qualified": counts["emoji_irregular"] += 1
             else:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
@@ -2614,19 +2609,15 @@ def compute_emoji_analysis(text: str) -> dict:
             if base_cat.startswith("S") and not rgi_status:
                 counts["hybrid_pictographs"] += 1
                 has_vs16 = "\uFE0F" in cluster
-                if not is_emoji_pres and not has_vs16:
-                    counts["hybrid_ambiguous"] += 1
+                if not is_emoji_pres and not has_vs16: counts["hybrid_ambiguous"] += 1
 
-        # [HUD C7] Sequences
-        if status in ("unqualified", "component") or (kind == "emoji-sequence" and not rgi_status):
-             pass
+        # [HUD C7] Sequences (FIXED: Count ALL sequences)
         elif kind == "emoji-sequence":
             counts["total_emoji_units"] += 1
             if rgi_status:
                 counts["rgi_total"] += 1
                 counts["rgi_sequence"] += 1
-                if status != "fully-qualified":
-                    counts["emoji_irregular"] += 1
+                if status != "fully-qualified": counts["emoji_irregular"] += 1
             else:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
@@ -2641,6 +2632,23 @@ def compute_emoji_analysis(text: str) -> dict:
 
         # --- D. Flag Generation ---
         
+        # 1. Broken Keycap Detection (Restored)
+        # Checks for U+20E3 (Combining Enclosing Keycap) on invalid bases (like 'Q')
+        if "\u20E3" in cluster:
+            if base_cp not in VALID_KEYCAP_BASES:
+                add_flag("Flag: Broken Keycap Sequence", idx)
+
+        # 2. Invalid Regional Indicator Detection (Restored)
+        # Flags orphaned indicators (U+1F1FA 'U') or invalid pairs
+        if 0x1F1E6 <= base_cp <= 0x1F1FF:
+             if cp_len == 1: 
+                 add_flag("Flag: Invalid Regional Indicator", idx)
+             elif cp_len == 2 and 0x1F1E6 <= ord(cluster[1]) <= 0x1F1FF:
+                 # Paired but not RGI (e.g. 'XX' flag)
+                 if not rgi_status:
+                     add_flag("Flag: Invalid Regional Indicator", idx)
+
+        # 3. Qualification Flags
         if status == "unqualified":
             if is_emoji_pres or cp_len > 1:
                 add_flag("Flag: Unqualified Emoji", idx)
@@ -2662,7 +2670,7 @@ def compute_emoji_analysis(text: str) -> dict:
                 "index": idx
             })
 
-        # [SYNC FIX] Advance the Python Index by the logical length of the cluster
+        # [SYNC FIX] Advance Python Index
         current_python_idx += cp_len
 
     return {
