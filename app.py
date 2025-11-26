@@ -2997,7 +2997,6 @@ def compute_integrity_score(inputs):
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
     """Hybrid Forensic Analysis (Drift-Proof & Fixed)."""
     
-    # ... [Init Trackers] ...
     legacy_indices = {k: [] for k in [
         "deceptive_ls", "deceptive_ps", "deceptive_nel", "bidi_bracket_open", 
         "bidi_bracket_close", "extender", "deprecated", "dash", "quote", 
@@ -3791,30 +3790,23 @@ def _generate_uts39_skeleton_metrics(t: str):
     return "".join(mapped_chars), metrics
 
 def compute_threat_analysis(t: str):
-    """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
+    """Module 3: Runs Threat-Hunting Analysis (DOM-Aware for HUD)."""
     
-    # --- 0. Initialize defaults ---
     threat_flags = {}
     threat_hashes = {}
     confusable_indices = []
     found_confusable = False
     
-    # --- Trackers ---
     bidi_danger_indices = []
-    syntax_vs_indices = []    # [FIX] Local tracker for Syntax Spoofing
+    syntax_vs_indices = []
     
     base_scripts_in_use = set() 
     ext_scripts_in_use = set()
     is_non_ascii_LNS = False 
 
-    # Initialize output variables
-    nf_string = ""
-    nf_casefold_string = ""
-    skeleton_string = ""
-    skel_metrics = {} 
+    nf_string = ""; nf_casefold_string = ""; skeleton_string = ""; skel_metrics = {} 
     final_html_report = ""
 
-    # --- 1. Early Exit ---
     if not t:
         return {
             'flags': {}, 'hashes': {}, 'html_report': "", 'bidi_danger': False,
@@ -3826,37 +3818,34 @@ def compute_threat_analysis(t: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
     try:
-        # --- 2. Generate Normalized States ---
         nf_string = normalize_extended(t)
         nf_casefold_string = nf_string.casefold()
-
-        # --- 5. Skeleton & Drift (Refined Logic) ---
-        
-        # A. The Skeleton String (Standard Identity)
         skeleton_string, _ = _generate_uts39_skeleton_metrics(nf_casefold_string)
-        
-        # B. The Forensic Drift Metrics (Forensic Insight)
-        # [DRIFT BLINDNESS FIX]
         _, skel_metrics = _generate_uts39_skeleton_metrics(t)
 
-        # --- 3. Run checks on RAW string ---
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
-            js_array_raw = window.Array.from_(t)
-
-            for i, char in enumerate(js_array_raw):
+            # [NEW] DOM Accumulator
+            acc = 0
+            
+            for i, char in enumerate(t):
                 cp = ord(char)
                 
-                # --- A. Bidi Check (Trojan Source) ---
+                # Calculate DOM Width
+                char_len = 2 if cp > 0xFFFF else 1
+                dom_s = acc
+                dom_e = acc + char_len
+                
+                # --- A. Bidi Check ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
 
-                # --- A2. Syntax Spoofing Check (Local Re-calc for Consumption) ---
+                # --- A2/A3 Syntax Spoofing ---
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
                 if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
                     if i > 0:
-                        prev_char = js_array_raw[i-1]
+                        prev_char = t[i-1]
                         prev_cp = ord(prev_char)
                         try:
                             prev_cat = unicodedata.category(prev_char)
@@ -3868,157 +3857,95 @@ def compute_threat_analysis(t: str):
                                     syntax_vs_indices.append(i)
                         except: pass
 
-                # --- A3. Syntax Spoofing Check (VS on Symbol) ---
-                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-                if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
-                    if i > 0:
-                        prev_char = js_array_raw[i-1]
-                        prev_cp = ord(prev_char)
-                        try:
-                            prev_cat = unicodedata.category(prev_char)
-                            if prev_cat.startswith(('P', 'S', 'Z')):
-                                is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
-                                                _find_in_ranges(prev_cp, "Extended_Pictographic")
-                                is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
-                                if not (is_emoji_base and is_pres_selector):
-                                    syntax_vs_indices.append(i)
-                        except: pass
-
-                # --- B. Mixed-Script Detection (Spec-Compliant) ---
+                # --- B. Mixed-Script ---
                 try:
                     category = unicodedata.category(char)[0] 
                     if category in ("L", "N", "S"):
                         if cp > 0x7F: is_non_ascii_LNS = True
-                        
                         script_val = _find_in_ranges(cp, "Scripts")
-                        if script_val:
-                            base_scripts_in_use.add(script_val)
-                        
+                        if script_val: base_scripts_in_use.add(script_val)
                         script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-                        if script_ext_val:
-                            ext_scripts_in_use.update(script_ext_val.split())
-                        elif script_val:
-                            ext_scripts_in_use.add(script_val)
-                except Exception:
-                    pass 
+                        if script_ext_val: ext_scripts_in_use.update(script_ext_val.split())
+                        elif script_val: ext_scripts_in_use.add(script_val)
+                except: pass 
                 
-                # --- C. Confusable Indexing (Threat Registry) ---
-                # LOGIC FIX: Only flag NON-ASCII characters as threats.
-                # ASCII chars (like '1' or 'a') are the "Victims" of spoofing, not the "Weapons".
+                # --- C. Confusable Indexing (Drift-Proofed) ---
                 if cp > 0x7F and cp in confusables_map:
-                    # Ensure it's visible content (Letter, Number, Punct, Symbol)
-                    # We filter out invisible format controls here because they have their own "Invisible" flag
                     if window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                         found_confusable = True
                         confusable_indices.append(i)
+                        
+                        # [CRITICAL FIX] Check Common/Inherited BEFORE registering hit
+                        sc = _find_in_ranges(cp, "Scripts") or "Common"
+                        if sc not in ("Common", "Inherited"):
+                            _register_hit("thr_spoofing", dom_s, dom_e, "Homoglyph")
 
-            # --- 4. Populate Threat Flags ---
-            
-            # Bidi
+                acc += char_len
+
+            # --- 4. Populate Flags ---
             if bidi_danger_indices:
                 threat_flags["DANGER: Malicious Bidi Control"] = {
-                    'count': len(bidi_danger_indices),
-                    'positions': bidi_danger_indices
+                    'count': len(bidi_danger_indices), 'positions': bidi_danger_indices
                 }
 
-            # --- Script Mix Logic (Ontology Applied) ---
             ignored = {"Common", "Inherited", "Zzzz", "Unknown"}
             clean_base = {s for s in base_scripts_in_use if s not in ignored}
             clean_ext = {s for s in ext_scripts_in_use if s not in ignored}
             script_mix_class = "" 
 
-            # 1. Base Script Mix
             if len(clean_base) > 1:
                 sorted_base = sorted(list(clean_base))
-                key = f"CRITICAL: Mixed Scripts (Base: {', '.join(sorted_base)})"
-                threat_flags[key] = {
-                    'count': len(clean_base),
-                    'positions': ["(See Provenance Profile for details)"]
+                threat_flags[f"CRITICAL: Mixed Scripts (Base: {', '.join(sorted_base)})"] = {
+                    'count': len(clean_base), 'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # [FIX] Register Generic Hit to alert the user (Restores 'Suspicious' signal)
+                # [FIX] General hit for script mixing
                 _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
-            # 2. Extension Mix
             if len(clean_ext) > 2:
                  sorted_ext = sorted(list(clean_ext))
-                 key = f"CRITICAL: Highly Mixed Scripts (Extensions: {', '.join(sorted_ext)})"
-                 threat_flags[key] = {
-                    'count': len(clean_ext),
-                    'positions': ["(See Provenance Profile for details)"]
+                 threat_flags[f"CRITICAL: Highly Mixed Scripts (Extensions: {', '.join(sorted_ext)})"] = {
+                    'count': len(clean_ext), 'positions': ["(See Provenance Profile for details)"]
                  }
-                 # Upgrade severity
                  script_mix_class = "Highly Mixed Scripts (Extensions)"
 
-                 # [FIX] Register Unclosed Bidi Hits
-            if threat_flags.get("Flag: Unclosed Bidi Sequence"):
-                # We don't have exact positions for unclosed bidi here (calculated in analyzer)
-                # But we should ensure the HUD knows about it.
-                # Actually, analyze_bidi_structure registers "int_fracture" which maps to Integrity.
-                # For Threat, we rely on "malicious_bidi".
-                pass
-            
-            # 3. Single Script / ASCII status
             if len(clean_base) == 0:
-                if is_non_ascii_LNS:
-                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': []}
-                else:
-                     threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': []}
+                if is_non_ascii_LNS: threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': []}
+                else: threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': []}
             elif len(clean_base) == 1:
                 s_name = list(clean_base)[0]
-                if s_name == "Latin" and is_non_ascii_LNS:
-                     threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': []}
-                elif not threat_flags: 
-                     threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
+                if s_name == "Latin" and is_non_ascii_LNS: threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': []}
+                elif not threat_flags: threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
-
-        # --- 5. Skeleton Drift (METRICS ENGINE) ---
+        # --- 5. Skeleton Drift ---
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
             details = []
-            
-            # 1. Dangerous
-            if skel_metrics['drift_cross_script'] > 0:
-                details.append(f"{skel_metrics['drift_cross_script']} cross-script")
-            
-            # 2. Noise (ASCII)
-            if skel_metrics['drift_ascii'] > 0:
-                details.append(f"{skel_metrics['drift_ascii']} ASCII")
-                
-            # 3. Neutral/Other (The missing bucket!)
-            if skel_metrics['drift_other'] > 0:
-                details.append(f"{skel_metrics['drift_other']} other")
-            
-            if details:
-                drift_desc += f" ({', '.join(details)})"
+            if skel_metrics['drift_cross_script'] > 0: details.append(f"{skel_metrics['drift_cross_script']} cross-script")
+            if skel_metrics['drift_ascii'] > 0: details.append(f"{skel_metrics['drift_ascii']} ASCII")
+            if skel_metrics['drift_other'] > 0: details.append(f"{skel_metrics['drift_other']} other")
+            if details: drift_desc += f" ({', '.join(details)})"
             
             threat_flags["Flag: Skeleton Drift"] = {
-                'count': skel_metrics["total_drift"],
-                'positions': [drift_desc]
+                'count': skel_metrics["total_drift"], 'positions': [drift_desc]
             }
 
-        # --- 6. Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        # --- 7. HTML Report (Forensic Diff Stream v3) ---
-        
-        # A. Collect indices for visuals
+        # --- HTML Report Visuals ---
         vis_confusables = set()
         if confusable_indices:
-            js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
                 try:
-                    char = js_array_raw[idx]
-                    cp = ord(char)
+                    cp = ord(t[idx])
                     sc = _find_in_ranges(cp, "Scripts") or "Common"
                     if sc not in ("Common", "Inherited"):
                         vis_confusables.add(idx)
                 except: pass
         
-        # B. Collect other vectors
         vis_invisibles = set()
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
@@ -4027,58 +3954,18 @@ def compute_threat_analysis(t: str):
                 
         vis_bidi = set()
         if bidi_danger_indices:
-            # bidi_danger_indices is a list of strings "#12", convert to int
             for s in bidi_danger_indices:
                 try: vis_bidi.add(int(s.replace("#","")))
                 except: pass
 
-        # C. Render if ANY threat exists
         if vis_confusables or vis_invisibles or vis_bidi:
-            # [FIX] Pass ALL 5 required arguments correctly
             final_html_report = _render_forensic_diff_stream(
-                t, 
-                vis_confusables, 
-                vis_invisibles, 
-                vis_bidi, 
-                confusables_map
+                t, vis_confusables, vis_invisibles, vis_bidi, confusables_map
             )
         else:
             final_html_report = '<p class="placeholder-text">No active threat clusters detected.</p>'
         
-        # SPOOFING (Logic Filter)
-        # [FIX] Do NOT register Common/Inherited drifts (like Em Dash) as "Spoofing" in HUD.
-        if confusable_indices and LOADING_STATE == "READY":
-            js_array_raw = window.Array.from_(t)
-            for idx in confusable_indices:
-                try:
-                    char = js_array_raw[idx]
-                    cp = ord(char)
-                    
-                    # [CRITICAL FIX] Default to "Common" if lookup returns None.
-                    # This prevents symbols (arrows, math) from being flagged as "Foreign Script" threats.
-                    sc = _find_in_ranges(cp, "Scripts") or "Common"
-                    
-                    # Only register if it's NOT Common/Inherited (Benign Drift)
-                    if sc not in ("Common", "Inherited"):
-                        _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
-                except: pass
-            
-        # OBFUSCATION (Clusters) - With VS Noise Filter
-        clusters = analyze_invisible_clusters(t)
-        for c in clusters:
-            # Check if this cluster is JUST a Variation Selector (VS1-VS16)
-            # If so, skip it here because it's covered by "Forced Presentation" or "Syntax Spoofing"
-            # This prevents double-counting.
-            is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
-            
-            if not is_just_vs:
-                label = "Invisible Cluster"
-                if c.get("high_risk"): label += " [High Risk]"
-                
-                # CRITICAL FIX: Register only the START (start, start+1).
-                # Prevents large invisible selections from overlapping with Bidi
-                # and breaking the stepper navigation.
-                _register_hit("thr_obfuscation", c["start"], c["start"]+1, label)
+        # Note: We removed the old _register_hit logic here because it's now done inside the main loop above
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
