@@ -851,22 +851,32 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 4. Execute Highlight
     if metric_key == "threat_agg":
-        # [FIX FOR THREATS ONLY]
-        # Threat detection runs on Logical Indices (Python).
-        # Browsers highlight on Physical Indices (UTF-16).
-        # Emojis cause these to drift apart. We must calculate the exact byte offset.
+        # Threat signals drift due to Emoji "inflation" (1 char vs 2 units).
+        # We calculate exact DOM coordinates using a manual loop to avoid
+        # crashes on broken surrogates (which encode() would trigger).
         
-        # 1. Calculate UTF-16 Code Units up to the start
-        dom_start = len(t[:next_hit[0]].encode('utf-16-le')) // 2
+        log_start = next_hit[0]
+        log_end = next_hit[1]
         
-        # 2. Calculate UTF-16 Code Units up to the end
-        dom_end = len(t[:next_hit[1]].encode('utf-16-le')) // 2
+        dom_start = 0
+        dom_end = 0
+        
+        # Manual Accumulation Loop (Safe & Robust)
+        acc = 0
+        for i, char in enumerate(t):
+            if i == log_start: dom_start = acc
+            if i == log_end: dom_end = acc; break # Found end, stop early
+            
+            # UTF-16 Math: Astral chars (>FFFF) are 2 units, others 1
+            acc += (2 if ord(char) > 0xFFFF else 1)
+            
+        # Edge Case: If target ends at the very end of string
+        if log_end == len(t): dom_end = acc
         
         window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
         
     else:
-        # [EXISTING LOGIC FOR EVERYONE ELSE]
-        # Whitespace, Integrity, and Symbols continue to use raw indices.
+        # [LEGACY PATH] Everyone else uses raw indices (Status Quo maintained)
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
     # 5. Define Icon LOCALLY (Safety Fix)
