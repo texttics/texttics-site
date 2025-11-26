@@ -764,38 +764,7 @@ def analyze_bidi_structure(t: str, rows: list):
     penalty_count = len(fracture_ranges)
                      
     return penalty_count, fracture_ranges, danger_ranges
-
-# --- FORENSIC HUD REGISTRY (Stepper Engine) ---
-# Stores lists of (start_cp, end_cp, label) tuples.
-# Keys match the specific metric buckets.
-HUD_HIT_REGISTRY = {}
-
-def _dom_to_logical(t: str, dom_idx: int) -> int:
-    """
-    Converts a DOM UTF-16 index to a Python Logical Code Point index.
-    Iterates the string to count code points until the UTF-16 accumulator matches.
-    """
-    if not t: return 0
     
-    logical_idx = 0
-    utf16_acc = 0
-    
-    for char in t:
-        if utf16_acc >= dom_idx:
-            return logical_idx
-        
-        # Add length of char in UTF-16 (1 or 2)
-        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
-        logical_idx += 1
-        
-    return logical_idx
-
-def _register_hit(key: str, start: int, end: int, label: str):
-    """Helper to append a hit to the global registry."""
-    if key not in HUD_HIT_REGISTRY:
-        HUD_HIT_REGISTRY[key] = []
-    HUD_HIT_REGISTRY[key].append((start, end, label))
-
 
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
