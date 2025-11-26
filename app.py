@@ -738,37 +738,40 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
 
     # 4. Execute Highlight
-     
+    
     if metric_key == "threat_agg":
-        # Use DIRECT DOM SELECTION to match 'reveal2' perfect accuracy.
+        # OPTIMIZED: Pure Python DOM Calculation (No JS Array Proxy overhead)
         # 1. Get Logical indices from Registry
         log_start = next_hit[0]
         log_end = next_hit[1]
         
-        # 2. Calculate Physical DOM indices (UTF-16 accumulation)
-        # Use Array.from to ensure we iterate exactly as the registry did
-        js_sequence = window.Array.from_(t)
-        
         dom_start = -1
         dom_end = -1
         
-        acc = 0
-        for i, char in enumerate(js_sequence):
-            if i == log_start: dom_start = acc
-            if i == log_end: dom_end = acc; break 
-            
-            # UTF-16 Math: Astral chars (>FFFF) are 2 units
-            try:
+        # Optimization: For pure ASCII, logical index == physical index
+        if t.isascii():
+            dom_start = log_start
+            dom_end = log_end
+        else:
+            # Complex Text: We must iterate to count UTF-16 units
+            acc = 0
+            # Enumerating a Python string gives us Code Points automatically
+            for i, char in enumerate(t):
+                if i == log_start: dom_start = acc
+                if i == log_end: dom_end = acc; break 
+                
+                # UTF-16 Math: 
+                # BMP characters (<= FFFF) are 1 unit.
+                # Astral characters (> FFFF) are 2 units (High + Low Surrogate).
                 acc += (2 if ord(char) > 0xFFFF else 1)
-            except:
-                acc += 1
             
-        # Handle target at end of string
-        if log_end >= len(js_sequence): dom_end = acc
+            # Handle target at the very end of string
+            if dom_end == -1 and log_end >= len(t):
+                dom_end = acc
         
-        # Safety: Abort if index missed (Prevent "Select All")
-        if dom_start == -1:
-            print(f"Threat Highlight Miss: Index {log_start} not found.")
+        # Safety: Abort if index missed (Prevent "Select All" or "Cursor Reset")
+        if dom_start == -1 or dom_end == -1:
+            print(f"Threat Highlight Miss: Logical {log_start}-{log_end} could not be mapped to DOM.")
             return
 
         # 3. BYPASS GLUE: Set Selection Directly
