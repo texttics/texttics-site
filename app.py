@@ -820,39 +820,49 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 4. Execute Highlight
     if metric_key == "threat_agg":
-        # 1. Use the EXACT sequence source used to build the registry
-        # This prevents "Index Miss" errors where Python string len != JS Array len
-        js_sequence = window.Array.from_(t)
+        # Threat Indices in Registry are Logical (code point indices).
+        # Convert to DOM (UTF-16 units) using reveal2-style math.
         
         log_start = next_hit[0]
         log_end = next_hit[1]
         
-        # Initialize to -1 to detect "Missed Target"
-        dom_start = -1
+        dom_start = -1  # Sentinel for miss detection
         dom_end = -1
         
         acc = 0
-        for i, char in enumerate(js_sequence):
+        # Iterate the LIVE string 't'
+        for i, char in enumerate(t):
+            # Set positions BEFORE adding width (start of char)
             if i == log_start: dom_start = acc
-            if i == log_end: dom_end = acc; break 
+            if i == log_end: 
+                dom_end = acc
+                break  # Early exit if end found
             
-            # UTF-16 Math: Astral chars (>FFFF) are 2 units
-            try:
-                acc += (2 if ord(char) > 0xFFFF else 1)
-            except:
-                acc += 1
+            # Width Calc: Consistent with utf16_length
+            cp = ord(char)
+            width = 1 if 0xD800 <= cp <= 0xDFFF else (2 if cp > 0xFFFF else 1)
+            acc += width
             
-        # Catch-all: If indices were beyond the sequence length
-        if dom_start == -1: dom_start = acc
+        # Catch-all if target is at end of string
         if dom_end == -1: dom_end = acc
         
-        # Safety Clamp: Ensure start <= end
-        if dom_start > dom_end: dom_start = dom_end
+        # Debug: Log misses for forensics
+        if dom_start == -1:
+            print(f"[Text...tics] Threat highlight miss: logical start {log_start} not found (text len={len(t)})")
+            return  # ABORT: Prevent any highlight
         
+        # Safety Clamp (Prevent invalid ranges)
+        dom_start = min(max(dom_start, 0), total_utf16_len)
+        dom_end = min(max(dom_end, dom_start), total_utf16_len)
+        
+        # Prevent zero-length (select at least 1 unit if range exists)
+        if dom_start == dom_end and log_end > log_start:
+            dom_end = min(dom_start + 1, total_utf16_len)
+
         window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
         
     else:
-        # [LEGACY PATH] Everyone else uses raw indices (Status Quo maintained)
+        # Legacy path for others
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
     
     # 5. Define Icon LOCALLY (Safety Fix)
