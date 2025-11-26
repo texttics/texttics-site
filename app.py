@@ -802,16 +802,12 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     """
     Stateless stepper. Finds the next range after current_dom_pos.
     Updates the LEFT-SIDE HUD Status bar.
+    USES MANUAL UTF-16 ACCUMULATION LOOP TO PREVENT DRIFT.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # [FIX] Use Manual Loop to map DOM -> Logical
-    # We cannot rely on _dom_to_logical's assumption if indices are drifting.
-    # But for finding the 'current' logical position, the existing function is usually fine.
-    current_logical = _dom_to_logical(t, current_dom_pos)
-
     # 1. Define Human-Readable Labels
     labels = {
         "integrity_agg": "Integrity Issues",
@@ -841,56 +837,64 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     if not targets: return
 
-    # 3. Sort & Find Next
+    # 3. Sort targets by Logical Start Index
     targets.sort(key=lambda x: x[0])
+
+    # 4. Find "Next" Target based on Current DOM Position
+    # We must map the DOM position back to a Logical Index to compare
+    
+    # A. Map Current DOM -> Logical (To find where we are in the list)
+    current_logical = 0
+    acc = 0
+    for i, char in enumerate(t):
+        step = 2 if ord(char) > 0xFFFF else 1
+        if acc >= current_dom_pos:
+            current_logical = i
+            break
+        acc += step
+    if acc < current_dom_pos: current_logical = len(t)
+
+    # B. Select the Next Target
     next_hit = targets[0]
     hit_index = 1
-    
     for i, hit in enumerate(targets):
         if hit[0] >= current_logical:
             next_hit = hit
             hit_index = i + 1
             break
 
-    # --- [CRITICAL FIX] MANUAL LOGICAL -> DOM CONVERSION ---
-    # We replace the 'encode' shortcut with a deterministic loop.
-    # This mirrors the 'reveal2' logic exactly.
+    # 5. Calculate DOM Coordinates for the Target (The "Inflator")
+    # We iterate from 0 up to the target's logical start/end to get precise UTF-16 offsets
     
-    start_logical = next_hit[0]
-    end_logical = next_hit[1]
+    target_log_start = next_hit[0]
+    target_log_end = next_hit[1]
     
     dom_start = 0
     dom_end = 0
     
-    # Single pass loop to find both start and end DOM indices
-    acc = 0
+    curr_dom = 0
     for i, char in enumerate(t):
-        if i == start_logical:
-            dom_start = acc
-        if i == end_logical:
-            dom_end = acc
-            # Optimization: We found our end, we can stop
-            break 
-        
-        # UTF-16 Calculation: 2 units for Astral (>FFFF), 1 for BMP
         step = 2 if ord(char) > 0xFFFF else 1
-        acc += step
         
-    # Edge case: if the hit is at the very end of the string
-    if end_logical == len(t):
-        dom_end = acc
-    # ------------------------------------------------
+        if i == target_log_start:
+            dom_start = curr_dom
+        if i == target_log_end:
+            dom_end = curr_dom
+            break # Optimization
+            
+        curr_dom += step
+        
+    # Handle edge case where target is at the very end of string
+    if target_log_end == len(t):
+        dom_end = curr_dom
 
-    # 4. Execute Highlight
+    # 6. Execute Highlight
     window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
     
-    # 5. Define Icon LOCALLY
+    # 7. Update UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-
-    # 6. Format Message
     status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
     
-    # 7. Update UI
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
         hud_status.className = "status-details status-hud-active"
