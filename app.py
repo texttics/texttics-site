@@ -6365,16 +6365,17 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V13 - Corrupt Data Safe). 
+    Stateful stepper (Fixed V14 - Visibility UX Patch). 
     1. Handles Lone Surrogates gracefully via errors='replace'.
     2. Fixes EOF clamping logic.
+    3. [NEW] Smart Expand: Expands zero-width selections leftward for visibility.
     """
     el = document.getElementById("text-input")
     if not el: return
     t = el.value
     
-    # [CRITICAL FIX] Calculate DOM Upper Bound (UTF-16 units)
-    # Use errors='replace' to prevent fallback on corrupt data
+    # [CRITICAL] Calculate DOM Upper Bound (UTF-16 units)
+    # Use errors='replace' to prevent fallback on corrupt data (Select All Bug)
     try:
         max_dom_len = len(t.encode('utf-16-le', errors='replace')) // 2
     except:
@@ -6428,13 +6429,33 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
+    # --- [UX FIX] SMART EXPAND (Visibility Patch) ---
+    # Problem: Highlighting a zero-width char (VS, ZWJ, Mark) is invisible.
+    # Solution: If target is non-spacing/format, grab the previous char too.
+    try:
+        # Ensure we have room to step back
+        if log_s > 0 and log_s < len(t):
+            target_char = t[log_s]
+            cat = unicodedata.category(target_char)
+            
+            # Mn = Nonspacing Mark (e.g., accents, Zalgo)
+            # Me = Enclosing Mark (e.g., Keycap circle)
+            # Cf = Format (e.g., Variation Selector, ZWJ, Tags)
+            if cat in ('Mn', 'Me', 'Cf'):
+                # Step start index back by 1 to include the 'Base' character.
+                # This makes the selection visible to the user.
+                log_s -= 1 
+    except:
+        pass 
+    # --- END UX FIX ---
+    
     dom_s = _logical_to_dom(t, log_s)
     dom_e = _logical_to_dom(t, log_e)
     
     # Fallback safety
     if dom_e <= dom_s: dom_e = dom_s + 1
 
-    # [CRITICAL FIX] EOF Safety Logic
+    # [CRITICAL] EOF Safety Logic (Prevents "Select All" at end of file)
     safe_s = min(dom_s, max_dom_len)
     safe_e = min(dom_e, max_dom_len)
     
