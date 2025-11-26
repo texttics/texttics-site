@@ -6451,10 +6451,8 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     dom_e = 0
     current_dom_acc = 0
     
+    # Scan loop (Guiding Star Logic)
     for i, char in enumerate(t):
-        # Calculate DOM width of this character (1 or 2 units)
-        char_dom_len = 2 if ord(char) > 0xFFFF else 1
-        
         # Capture Start
         if i == log_s:
             dom_s = current_dom_acc
@@ -6463,6 +6461,8 @@ def cycle_hud_metric(metric_key, current_dom_pos):
         if i == log_e:
             dom_e = current_dom_acc
             
+        # Advance accumulator by UTF-16 width (Emoji=2, ASCII=1)
+        char_dom_len = 2 if ord(char) > 0xFFFF else 1
         current_dom_acc += char_dom_len
     
     # Handle case where selection ends at the very end of string
