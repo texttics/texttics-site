@@ -2490,9 +2490,9 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3.4 - Final Accounting Fix).
-    1. UNIFIED ATOMIC LOGIC: Prevents 'Symbol Emojis' (like Skull) from falling into the logic trap.
-    2. DETECTS broken Keycaps and Regional Indicators.
+    Forensic Cluster Classifier (V3.5 - Interactive Registry Fix).
+    1. UNIFIED ATOMIC LOGIC: Captures all hybrids (e.g. Skull).
+    2. REGISTRY POPULATION: Explicitly logs hits for 'emoji_irregular' to enable the HUD Stepper.
     3. SYNCS indices using manual Python counter.
     """
     # --- 1. Data Access ---
@@ -2590,18 +2590,22 @@ def compute_emoji_analysis(text: str) -> dict:
                     counts["text_symbols_exotic"] += 1
                     _register_hit("sym_exotic", idx, idx + cp_len, f"Exotic Symbol (U+{base_cp:04X})")
 
-        # [HUD C6 & C7] Atomic Emoji (Unified Logic)
-        # [FIX]: Merged the "Hybrid Check" into the main block so we don't skip counting.
+        # [HUD C6 & C7] Atomic Emoji
         elif kind == "emoji-atomic":
             counts["total_emoji_units"] += 1
             
             if rgi_status:
                 counts["rgi_total"] += 1
                 counts["rgi_atomic"] += 1
-                if status != "fully-qualified": counts["emoji_irregular"] += 1
+                if status != "fully-qualified": 
+                    counts["emoji_irregular"] += 1
+                    # [INTERACTION FIX] Register Hit
+                    _register_hit("emoji_irregular", idx, idx + cp_len, f"Unqualified RGI")
             else:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
+                # [INTERACTION FIX] Register Hit
+                _register_hit("emoji_irregular", idx, idx + cp_len, f"Non-RGI Atom")
             
             # Sub-logic: Hybrids
             if base_cat.startswith("S") and not rgi_status:
@@ -2609,7 +2613,6 @@ def compute_emoji_analysis(text: str) -> dict:
                 has_vs16 = "\uFE0F" in cluster
                 if not is_emoji_pres and not has_vs16:
                     counts["hybrid_ambiguous"] += 1
-                    # Only register hit if it's truly ambiguous
                     _register_hit("emoji_hybrid", idx, idx + cp_len, "Ambiguous Hybrid")
 
         # [HUD C7] Sequences
@@ -2618,10 +2621,15 @@ def compute_emoji_analysis(text: str) -> dict:
             if rgi_status:
                 counts["rgi_total"] += 1
                 counts["rgi_sequence"] += 1
-                if status != "fully-qualified": counts["emoji_irregular"] += 1
+                if status != "fully-qualified": 
+                    counts["emoji_irregular"] += 1
+                    # [INTERACTION FIX] Register Hit
+                    _register_hit("emoji_irregular", idx, idx + cp_len, "Unqualified Sequence")
             else:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
+                # [INTERACTION FIX] Register Hit
+                _register_hit("emoji_irregular", idx, idx + cp_len, "Non-RGI Sequence")
 
         # [HUD C7 Irregular] Components
         elif kind == "emoji-component":
@@ -2629,16 +2637,17 @@ def compute_emoji_analysis(text: str) -> dict:
             counts["non_rgi_total"] += 1
             counts["components_leaked"] += 1
             counts["emoji_irregular"] += 1
+            # [INTERACTION FIX] Register Hit
+            _register_hit("emoji_irregular", idx, idx + cp_len, "Leaked Component")
+            
             add_flag("Flag: Standalone Emoji Component", idx)
 
         # --- D. Flag Generation ---
         
-        # 1. Broken Keycap Detection
         if "\u20E3" in cluster:
             if base_cp not in VALID_KEYCAP_BASES:
                 add_flag("Flag: Broken Keycap Sequence", idx)
 
-        # 2. Invalid Regional Indicator Detection
         if 0x1F1E6 <= base_cp <= 0x1F1FF:
              if cp_len == 1: 
                  add_flag("Flag: Invalid Regional Indicator", idx)
@@ -2646,7 +2655,6 @@ def compute_emoji_analysis(text: str) -> dict:
                  if not rgi_status:
                      add_flag("Flag: Invalid Regional Indicator", idx)
 
-        # 3. Qualification Flags
         if status == "unqualified":
             if is_emoji_pres or cp_len > 1:
                 add_flag("Flag: Unqualified Emoji", idx)
