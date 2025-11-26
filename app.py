@@ -6333,9 +6333,12 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     import base64
     import re
     
-    # Improved Tokenizer: alphanumeric + dots/dashes/at
-    token_pattern = re.compile(r'[\w\-\.@]+')
-    raw_tokens = token_pattern.findall(t)
+    # FIX: Revert to greedy whitespace splitting to capture Emojis/Symbols
+    # The previous regex ([\w\-\.@]+) blindly filtered out pure symbol tokens.
+    raw_tokens = t.split()
+    
+    # Optional: We can also scan for embedded domains if needed, 
+    # but for Stage 1, we must prioritize capturing the raw particles.
     
     targets = []
     processed_tokens = 0
