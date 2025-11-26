@@ -1,7 +1,6 @@
 import asyncio
 import json
 import unicodedata
-import hashlib
 from pyodide.ffi import create_proxy, to_js
 from pyodide.http import pyfetch
 from pyscript import document, window
@@ -376,54 +375,54 @@ def summarize_invisible_clusters(t: str, rows: list):
 def analyze_combining_structure(t: str, rows: list):
     """
     Scans for 'Zalgo' (excessive combining marks) and repeated marks.
-    Adds rows directly to the list AND registers HUD hits.
+    Adds rows directly to the list.
     """
     if LOADING_STATE != "READY": return
 
     zalgo_indices = []
     repeated_mark_indices = []
-    invisible_mark_indices = [] 
+    invisible_mark_indices = [] # Marks on non-base characters
 
     segments_iterable = GRAPHEME_SEGMENTER.segment(t)
-    # [PERFORMANCE] Use JS iterator to avoid massive array copy overhead
-    # But we need logical indices. 
-    current_logical_idx = 0
+    segments = window.Array.from_(segments_iterable)
 
-    for seg in segments_iterable:
+    for seg in segments:
         g_str = seg.segment
-        cp_len = len(g_str) # Python logical length
+        index = seg.index
         
         # Count combining marks (Category Mn, Me)
+        # We iterate manually to be fast and safe
         mark_count = 0
         last_cp = -1
         
-        # Check base char
+        # Check base char (first char)
         base_char = g_str[0]
         base_cat = unicodedata.category(base_char)
-        is_valid_base = base_cat[0] in ('L', 'N', 'S', 'P')
+        is_valid_base = base_cat[0] in ('L', 'N', 'S', 'P') # Letter, Number, Symbol, Punct
         
-        for char in g_str:
+        js_chars = window.Array.from_(g_str)
+        for i, char in enumerate(js_chars):
             cp = ord(char)
             cat = unicodedata.category(char)
+            
             if cat in ('Mn', 'Me'):
                 mark_count += 1
+                
+                # Check for repeated mark (Spoofing vector)
                 if cp == last_cp:
-                    if f"#{current_logical_idx}" not in repeated_mark_indices:
-                        repeated_mark_indices.append(f"#{current_logical_idx}")
+                    # We flag the start of the grapheme for context
+                    if f"#{index}" not in repeated_mark_indices:
+                        repeated_mark_indices.append(f"#{index}")
+            
             last_cp = cp
 
         # Thresholds
         if mark_count >= 4:
-            zalgo_indices.append(f"#{current_logical_idx}")
-            # [FIX] Register Hit for HUD (Restores 'Obfuscation' signal)
-            _register_hit("thr_obfuscation", current_logical_idx, current_logical_idx + cp_len, f"Zalgo Stack ({mark_count})")
+            zalgo_indices.append(f"#{index}")
             
-        if mark_count > 0 and not is_valid_base and base_cat != "Co":
-             invisible_mark_indices.append(f"#{current_logical_idx}")
-             # [FIX] Register Hit for HUD (Restores 'Suspicious' signal)
-             _register_hit("thr_suspicious", current_logical_idx, current_logical_idx + cp_len, "Hidden Mark")
-
-        current_logical_idx += cp_len
+        if mark_count > 0 and not is_valid_base and base_cat != "Co": # Ignore Private Use base
+             # Marks on control chars, format chars, etc.
+             invisible_mark_indices.append(f"#{index}")
 
     # Add Rows
     if zalgo_indices:
@@ -654,82 +653,514 @@ def compute_threat_score(t):
 
 def analyze_bidi_structure(t: str, rows: list):
     """
-    UAX #9 BIDI STACK MACHINE (DOM-Aware).
-    Returns DOM ranges for danger highlights to prevent drift.
+    UAX #9 COMPLIANT BIDI STACK MACHINE (Enhanced for Stepper)
+    Returns: (penalty_count, fracture_ranges, danger_ranges)
     """
     if LOADING_STATE != "READY": return 0, [], []
 
-    ISO_INIT = {0x2066, 0x2067, 0x2068}
-    EMB_INIT = {0x202A, 0x202B, 0x202D, 0x202E}
-    VAL_PDI = 0x2069; VAL_PDF = 0x202C
+    # Data Models
+    ISO_INIT = {0x2066, 0x2067, 0x2068} # LRI, RLI, FSI
+    EMB_INIT = {0x202A, 0x202B, 0x202D, 0x202E} # LRE, RLE, LRO, RLO
+    VAL_PDI = 0x2069
+    VAL_PDF = 0x202C
     
     main_stack = [] 
     bracket_stack = [] 
     mirror_map = DATA_STORES.get("BidiMirroring", {})
 
-    fracture_ranges = [] 
-    danger_ranges = []   
+    # Range Collectors (start, end, label)
+    fracture_ranges = [] # Structural breaks (Integrity)
+    danger_ranges = []   # Trojan Source patterns (Threat)
 
-    # Use Python iteration + DOM Accumulator
-    acc = 0
+    js_array = window.Array.from_(t)
     
-    for i, char in enumerate(t):
+    for i, char in enumerate(js_array):
         cp = ord(char)
-        char_len = 2 if cp > 0xFFFF else 1
-        dom_start = acc
-        dom_end = acc + char_len
         
-        # A. PUSH
+        # --- A. PUSH (Open Scope) ---
         if cp in ISO_INIT:
-            main_stack.append({'kind': 'isolate', 'is_isolate': True, 'pos': dom_start, 'cp': cp})
+            main_stack.append({'kind': 'isolate', 'is_isolate': True, 'pos': i, 'cp': cp})
         elif cp in EMB_INIT:
             kind = 'override' if cp in {0x202D, 0x202E} else 'embedding'
-            main_stack.append({'kind': kind, 'is_isolate': False, 'pos': dom_start, 'cp': cp})
+            main_stack.append({'kind': kind, 'is_isolate': False, 'pos': i, 'cp': cp})
+            
+            # THREAT: Track Embeddings/Overrides as potential Trojan Source
+            # We record the *opener* as the danger point.
             label = "Bidi Override" if kind == 'override' else "Bidi Embedding"
-            danger_ranges.append((dom_start, dom_end, label))
+            danger_ranges.append((i, i+1, label))
 
-        # B. POP PDF
+        # --- B. POP PDF (Close Embedding) ---
         elif cp == VAL_PDF:
-            if main_stack and not main_stack[-1]['is_isolate']: main_stack.pop()
-            else: pass 
+            if main_stack and not main_stack[-1]['is_isolate']:
+                main_stack.pop()
+            else:
+                # Unmatched PDF
+                # fracture_ranges.append((i, i+1, "Unmatched PDF")) # Optional: Low severity
+                pass
 
-        # C. POP PDI
+        # --- C. POP PDI (Close Isolate) ---
         elif cp == VAL_PDI:
             isolate_index = -1
             for idx in range(len(main_stack) - 1, -1, -1):
                 if main_stack[idx]['is_isolate']:
-                    isolate_index = idx; break
-            if isolate_index != -1:
+                    isolate_index = idx
+                    break
+            
+            if isolate_index == -1:
+                # Unmatched PDI
+                # fracture_ranges.append((i, i+1, "Unmatched PDI"))
+                pass
+            else:
                 if isolate_index != len(main_stack) - 1:
-                    fracture_ranges.append((dom_start, dom_end, "Implicit Closure (PDI)"))
+                    # Implicit Closure (Fracture)
+                    # Highlight from the implicit closer PDI
+                    fracture_ranges.append((i, i+1, "Implicit Closure (PDI)"))
                 del main_stack[isolate_index:]
 
-        # D. BRACKETS
+        # --- D. BRACKETS ---
         b_type = _find_in_ranges(cp, "BidiBracketType")
         if b_type == "o":
-            bracket_stack.append((dom_start, mirror_map.get(cp, cp)))
+            expected = mirror_map.get(cp, cp)
+            bracket_stack.append((i, expected))
         elif b_type == "c":
             if not bracket_stack:
-                fracture_ranges.append((dom_start, dom_end, "Stray Bracket"))
+                fracture_ranges.append((i, i+1, "Stray Bracket"))
             else:
                 top_idx, required = bracket_stack[-1]
-                if cp == required: bracket_stack.pop()
-                else: fracture_ranges.append((dom_start, dom_end, "Bracket Mismatch"))
-        
-        acc += char_len
+                if cp == required:
+                    bracket_stack.pop()
+                else:
+                    fracture_ranges.append((i, i+1, "Bracket Mismatch"))
 
-    # E. FINAL SWEEP (Spillover)
+    # --- E. FINAL SWEEP (Spillover) ---
     for frame in main_stack:
+        # Highlight the unclosed opener
         lbl = "Unclosed Isolate" if frame['is_isolate'] else "Unclosed Embedding"
-        # Highlight 1 char width at the start position
         fracture_ranges.append((frame['pos'], frame['pos']+1, lbl))
             
     for idx, _ in bracket_stack:
         fracture_ranges.append((idx, idx+1, "Unclosed Bracket"))
 
+    # Generate Rows (Legacy Support)
+    # (You can keep the existing row generation logic here or rely on the auditor)
+    # For brevity, we assume the rows are generated based on these lists in the caller or here.
+    
+    # Calculate simple penalty count
     penalty_count = len(fracture_ranges)
+                     
     return penalty_count, fracture_ranges, danger_ranges
 
+# --- FORENSIC HUD REGISTRY (Stepper Engine) ---
+# Stores lists of (start_cp, end_cp, label) tuples.
+# Keys match the specific metric buckets.
+HUD_HIT_REGISTRY = {}
+
+def _dom_to_logical(t: str, dom_idx: int) -> int:
+    """
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
+    Iterates the string to count code points until the UTF-16 accumulator matches.
+    """
+    if not t: return 0
+    
+    logical_idx = 0
+    utf16_acc = 0
+    
+    for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        
+        # Add length of char in UTF-16 (1 or 2)
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+def _register_hit(key: str, start: int, end: int, label: str):
+    """Helper to append a hit to the global registry."""
+    if key not in HUD_HIT_REGISTRY:
+        HUD_HIT_REGISTRY[key] = []
+    HUD_HIT_REGISTRY[key].append((start, end, label))
+
+
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateless stepper. Finds the next range after current_dom_pos.
+    Updates the LEFT-SIDE HUD Status bar.
+    """
+    el = document.getElementById("text-input")
+    if not el: return
+    t = el.value
+    
+    current_logical = _dom_to_logical(t, current_dom_pos)
+
+    # 1. Define Human-Readable Labels
+    labels = {
+        "integrity_agg": "Integrity Issues",
+        "threat_agg": "Threat Signals",
+        "ws_nonstd": "Non-Std Whitespace",
+        "punc_exotic": "Exotic Delimiters",
+        "sym_exotic": "Exotic Symbols",
+        "emoji_hybrid": "Hybrid Emoji",
+        "emoji_irregular": "Irregular Emoji"
+    }
+    category_label = labels.get(metric_key, "Forensic Metric")
+
+    # 2. Resolve targets
+    targets = []
+    if metric_key == "integrity_agg":
+        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                   HUD_HIT_REGISTRY.get("int_fracture", []) +
+                   HUD_HIT_REGISTRY.get("int_risk", []) +
+                   HUD_HIT_REGISTRY.get("int_decay", []))
+    elif metric_key == "threat_agg":
+        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    else:
+        targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    if not targets: return
+
+    # 3. Sort & Find Next
+    targets.sort(key=lambda x: x[0])
+    next_hit = targets[0]
+    hit_index = 1
+    
+    for i, hit in enumerate(targets):
+        if hit[0] >= current_logical:
+            next_hit = hit
+            hit_index = i + 1
+            break
+
+    # 4. Execute Highlight
+    window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+    
+    # 5. Define Icon LOCALLY (Safety Fix)
+    # We use triple quotes to avoid syntax errors with inner quotes
+    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+
+    # 6. Format Message (Fix Spacing & Alignment)
+    # We put the Icon AT THE END (Right side)
+    # We use a standard space ' ' after </strong>
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
+    
+    # 7. Update UI
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex"
+        # Text First, Icon Second
+        hud_status.innerHTML = f"{status_msg}{icon_loc}"
+    
+    # 8. Update Inspector
+    inspect_character(None)
+
+@create_proxy
+def render_forensic_hud(t, stats):
+    """
+    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
+    """
+    container = document.getElementById("forensic-hud")
+    if not container: return 
+    if t is None: t = ""
+    
+    emoji_counts = stats.get("emoji_counts", {})
+
+    # --- INTERACTION HELPER ---
+    def get_interaction(val, key, severity="warn"):
+        """Checks registry and returns CSS class and onclick attribute."""
+        try:
+            if float(val) <= 0: return "", ""
+        except: return "", ""
+        
+        has_hits = False
+        target_key = key
+        
+        if key == "integrity":
+            # Aggregator check
+            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "integrity_agg"
+                has_hits = True
+        elif key == "threat":
+            # Aggregator check
+            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "threat_agg"
+                has_hits = True
+        else:
+            # Direct check
+            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
+                has_hits = True
+                
+        if has_hits:
+            cls = " hud-interactive"
+            if severity == "crit": cls += " hud-interactive-crit"
+            elif severity == "warn": cls += " hud-interactive-risk"
+            
+            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
+            return cls, attr
+            
+        return "", ""
+
+    # --- HELPER: Cell Builder ---
+    def render_cell(sci_title, 
+                    label_1, val_1, class_1,
+                    label_2, val_2, class_2,
+                    d1="", m1="", r1="",
+                    d2="", m2="", r2="",
+                    reg_key_2=None, risk_2="warn"): # New Args
+        
+        def esc(s): return s.replace('"', '&quot;')
+        
+        # Check for interaction on Value 2 (Secondary Metric)
+        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
+
+        return f"""
+        <div class="hud-col" 
+             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
+             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
+             
+            <div class="hud-row-sci">{sci_title}</div>
+            
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_1}</div>
+                <div class="hud-val {class_1}">{val_1}</div>
+            </div>
+            
+            <div class="hud-metric-divider"></div>
+
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_2}</div>
+                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
+            </div>
+
+        </div>
+        """
+
+    # --- COLOR LOGIC ---
+    def color_neutral(val):
+        try: return "txt-muted" if float(val) == 0 else "txt-normal"
+        except: return "txt-normal"
+
+    def color_clean(val):
+        try: return "txt-clean" if float(val) == 0 else "txt-warn"
+        except: return "txt-normal"
+
+    def color_risk(val):
+        try: return "txt-good" if float(val) == 0 else "txt-warn"
+        except: return "txt-normal"
+
+    # --- 0. PRE-CALC ---
+    uax_word = 0
+    uax_sent = 0
+    try:
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
+    except: pass
+
+    # --- 1. COLUMNS ---
+
+    # C0: ALPHANUMERIC
+    alpha_chars = sum(1 for c in t if c.isalnum())
+    alpha_runs = 0
+    in_run = False
+    for c in t:
+        if c.isalnum():
+            if not in_run:
+                alpha_runs += 1
+                in_run = True
+        else:
+            in_run = False
+
+    c0 = render_cell(
+        "ALPHANUMERIC", 
+        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
+        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
+        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
+        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
+    )
+
+    # C1: LEXICAL MASS
+    L = stats.get('major_stats', {}).get("L (Letter)", 0)
+    N = stats.get('major_stats', {}).get("N (Number)", 0)
+    vu = (L + N) / 5.0
+    c1 = render_cell(
+        "LEXICAL MASS", 
+        "UNITS", f"{vu:.1f}", color_neutral(vu),
+        "WORDS", str(uax_word), color_neutral(uax_word),
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
+        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
+
+    # C2: SEGMENTATION
+    seg_est = vu / 20.0
+    c2 = render_cell(
+        "SEGMENTATION", 
+        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
+        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
+        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
+
+    # C3: WHITESPACE (Interactive)
+    std_set = {0x20, 0x09, 0x0A, 0x0D}
+    std_inv = sum(1 for c in t if ord(c) in std_set)
+    flags = stats.get('forensic_flags', {})
+    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    
+    c3 = render_cell(
+        "WHITESPACE", 
+        "ASCII WS", str(std_inv), color_neutral(std_inv),
+        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
+        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
+        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+        reg_key_2="ws_nonstd" # LINK
+    )
+
+    # C4: DELIMITERS (Interactive)
+    cnt_p_ascii = 0
+    cnt_p_comfort = 0
+    cnt_p_exotic = 0
+    
+    for c in t:
+        if unicodedata.category(c).startswith('P'):
+            cp = ord(c)
+            if cp <= 0x7F:
+                cnt_p_ascii += 1
+            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F):
+                cnt_p_comfort += 1
+            else:
+                cnt_p_exotic += 1
+
+    if cnt_p_comfort > 0:
+        c4_label = "TYPOGRAPHIC"
+        c4_val = cnt_p_ascii + cnt_p_comfort
+        c4_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
+        c4_ref = "Scope: ASCII+Common"
+    else:
+        c4_label = "ASCII"
+        c4_val = cnt_p_ascii
+        c4_desc = "Standard ASCII punctuation characters."
+        c4_ref = "Scope: ASCII"
+
+    c4 = render_cell(
+        "DELIMITERS", 
+        c4_label, str(c4_val), color_neutral(c4_val),
+        "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
+        d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
+        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+        reg_key_2="punc_exotic" # LINK
+    )
+
+    # C5: SYMBOLS (Interactive)
+    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
+    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
+    
+    c5_label = "EXTENDED"
+    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
+    if cnt_s_ext == 0 and cnt_s_exotic == 0:
+        c5_label = "KEYBOARD"
+        c5_desc = "Standard ASCII keyboard symbols."
+
+    c5 = render_cell(
+        "SYMBOLS", 
+        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
+        "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
+        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
+        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+        reg_key_2="sym_exotic" # LINK
+    )
+
+    # C6: HYBRIDS (Interactive)
+    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
+    
+    c6 = render_cell(
+        "HYBRIDS", 
+        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
+        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
+        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
+        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+        reg_key_2="emoji_hybrid" # LINK
+    )
+
+    # C7: EMOJI (Interactive)
+    rgi_total = emoji_counts.get("rgi_total", 0)
+    abnormal = emoji_counts.get("emoji_irregular", 0)
+    
+    c7 = render_cell(
+        "EMOJI", 
+        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
+        "IRREGULAR", str(abnormal), color_clean(abnormal),
+        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
+        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+        reg_key_2="emoji_irregular" # LINK
+    )
+
+    # C8: INTEGRITY (Interactive Aggregator)
+    int_res = stats.get('integrity', {})
+    int_v = int_res.get('verdict', 'INTACT')
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    int_issues = (
+        len(HUD_HIT_REGISTRY.get("int_fatal", [])) +
+        len(HUD_HIT_REGISTRY.get("int_fracture", [])) +
+        len(HUD_HIT_REGISTRY.get("int_risk", [])) +
+        len(HUD_HIT_REGISTRY.get("int_decay", []))
+    )
+    
+    if int_issues == 0: int_v = "INTACT"
+    
+    v_cls = "txt-safe"
+    if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
+    elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
+    
+    # Determine risk color for the count button
+    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
+
+    c8 = render_cell(
+        "INTEGRITY", 
+        "STATUS", int_v, v_cls,
+        "ISSUES", str(int_issues), color_risk(int_issues),
+        d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
+        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Registry Hits)", r2="Data Health",
+        reg_key_2="integrity", risk_2=risk_level # LINK
+    )
+
+    # C9: THREAT (Interactive Aggregator)
+    thr_res = stats.get('threat', {})
+    thr_v = thr_res.get('verdict', 'CLEAR')
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    thr_sigs = (
+        len(HUD_HIT_REGISTRY.get("thr_execution", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_spoofing", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_obfuscation", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    )
+    
+    if thr_sigs == 0: thr_v = "CLEAR"
+
+    t_cls = "txt-safe"
+    risk_level_thr = "warn"
+    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: 
+        t_cls = "txt-crit"
+        risk_level_thr = "crit"
+    elif "SUSPICIOUS" in thr_v: 
+        t_cls = "txt-warn"
+
+    c9 = render_cell(
+        "THREAT", 
+        "STATUS", thr_v, t_cls,
+        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
+        d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
+        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Registry Hits)", r2="Attack Vectors",
+        reg_key_2="threat", risk_2=risk_level_thr # LINK
+    )
+
+    # --- ASSEMBLY ---
+    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
 # ---
 # 1. CATEGORY & REGEX DEFINITIONS
 # ---
@@ -2095,11 +2526,11 @@ async def load_unicode_data():
         # --- Add Manual Security Overrides ---
         _add_manual_data_overrides()    
         
-        # --- NEW: Build Forensic Bitmask Table ---
+        # --- Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
         build_invis_table()
         
-        # --- NEW: Run Paranoid Self-Tests ---
+        # --- Run Paranoid Self-Tests ---
         run_self_tests()
         
         LOADING_STATE = "READY"
@@ -2115,19 +2546,34 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3.3 - Drift Fix).
-    Tracks both LOGICAL indices (for Arrays) and DOM indices (for Highlighter).
+    Forensic Cluster Classifier (V3.1).
+    Segments text into Grapheme Clusters and assigns a single primary classification.
+    Logic Patch: Suppresses 'Unqualified' flags for Text-Default symbols (Arrows, Math) to reduce noise.
     """
     # --- 1. Data Access ---
     rgi_set = DATA_STORES.get("RGISequenceSet", set())
     qual_map = DATA_STORES.get("EmojiQualificationMap", {})
     
-    # --- 2. Init Counters ---
+    # --- 2. Init Counters (The "Ledger") ---
     counts = {
-        "total_emoji_units": 0, "rgi_total": 0, "non_rgi_total": 0,
-        "text_symbols_extended": 0, "text_symbols_exotic": 0,
-        "hybrid_pictographs": 0, "hybrid_ambiguous": 0,
-        "rgi_atomic": 0, "rgi_sequence": 0, "emoji_irregular": 0, "components_leaked": 0
+        # Core Aggregates
+        "total_emoji_units": 0,
+        "rgi_total": 0,
+        "non_rgi_total": 0,
+        
+        # HUD: Symbols (C5)
+        "text_symbols_extended": 0,
+        "text_symbols_exotic": 0,
+        
+        # HUD: Hybrids (C6)
+        "hybrid_pictographs": 0, # Emoji-Atomic with Symbol Base
+        "hybrid_ambiguous": 0,   # Text-Default Presentation
+        
+        # HUD: Emoji (C7)
+        "rgi_atomic": 0,
+        "rgi_sequence": 0,
+        "emoji_irregular": 0,    # Non-RGI, Unqualified, or Components
+        "components_leaked": 0
     }
     
     emoji_details_list = []
@@ -2138,116 +2584,150 @@ def compute_emoji_analysis(text: str) -> dict:
         flags[key]['count'] += 1
         flags[key]['positions'].append(f"#{idx}")
 
-    if not text: return {"counts": counts, "flags": flags, "emoji_list": []}
+    if not text:
+        return {"counts": counts, "flags": flags, "emoji_list": []}
 
     # --- 3. Cluster Segmentation Loop ---
     segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
-    current_logical_idx = 0
-    current_dom_idx = 0 # [NEW] Track DOM offset
-    
     for seg in segments_iter:
         cluster = seg.segment
-        idx = current_logical_idx 
-        dom_start = current_dom_idx # Capture start for Highlighting
-        
+        idx = seg.index
         cp_len = len(cluster) 
-        
-        # Calculate DOM Width of this cluster (UTF-16 units)
-        dom_len = sum(2 if ord(c) > 0xFFFF else 1 for c in cluster)
-        dom_end = dom_start + dom_len
-        
         base_char = cluster[0]
         base_cp = ord(base_char)
         
         # --- A. Property Lookup ---
         is_rgi = cluster in rgi_set
+        
+        # Base Properties
         is_emoji = _find_in_ranges(base_cp, "Emoji")
         is_ext_pict = _find_in_ranges(base_cp, "Extended_Pictographic")
         is_emoji_pres = _find_in_ranges(base_cp, "Emoji_Presentation")
         is_component = _find_in_ranges(base_cp, "Emoji_Component")
         base_cat = unicodedata.category(base_char)
         
-        # --- B. Classification ---
+        # --- B. Primary Classification (Disjoint Types) ---
         kind = "other"
         status = "none"
         rgi_status = False
         
+        # 1. RGI Emoji (Highest Priority)
         if is_rgi:
             rgi_status = True
             status = qual_map.get(cluster, "fully-qualified")
             kind = "emoji-sequence" if cp_len > 1 else "emoji-atomic"
+            
+        # 2. Non-RGI Emoji-Like
         elif is_emoji or is_ext_pict:
             rgi_status = False
-            if base_cp <= 0x7F: pass 
+
+            # ASCII Exception (Digits 0-9, #, *)
+            if base_cp <= 0x7F:
+                pass 
+            
             elif is_component: 
-                kind = "emoji-component"; status = "component"
+                kind = "emoji-component"
+                status = "component"
             elif cp_len > 1:
-                kind = "emoji-sequence"; status = "unqualified" 
+                # Complex but not RGI
+                kind = "emoji-sequence"
+                status = "unqualified" 
             else:
-                kind = "emoji-atomic"; status = "unqualified"
+                kind = "emoji-atomic"
+                status = "unqualified"
+                
+        # 3. Text Symbols (Non-Emoji S*)
         elif base_cat.startswith("S"):
             kind = "text-symbol"
             
-        # --- C. Hit Registration (Drift-Free) ---
+        # --- C. Updates & Aggregation ---
         
-        # Symbols (Extended/Exotic are handled in populate_hud_registry, skipping here to avoid dupes)
+        # [HUD C5] Text Symbols
+        if kind == "text-symbol":
+            if base_cp <= 0xFF or (0x2000 <= base_cp <= 0x29FF):
+                counts["text_symbols_extended"] += 1
+            else:
+                counts["text_symbols_exotic"] += 1
 
-        # Hybrids (C6)
+        # [HUD C6] Hybrids (Emoji-Atomic)
         if kind == "emoji-atomic" and base_cat.startswith("S") and not rgi_status:
-             counts["hybrid_pictographs"] += 1
              has_vs16 = "\uFE0F" in cluster
              if not is_emoji_pres and not has_vs16:
-                 counts["hybrid_ambiguous"] += 1
-                 # Register using DOM Coords
-                 _register_hit("emoji_hybrid", dom_start, dom_end, "Ambiguous Hybrid")
-
+                 _register_hit("emoji_hybrid", idx, idx + cp_len, "Ambiguous Hybrid")
         elif kind == "emoji-atomic":
             counts["total_emoji_units"] += 1
+            
             if rgi_status:
-                counts["rgi_total"] += 1; counts["rgi_atomic"] += 1
-                if status != "fully-qualified": counts["emoji_irregular"] += 1
+                counts["rgi_total"] += 1
+                counts["rgi_atomic"] += 1
+                if status != "fully-qualified":
+                    counts["emoji_irregular"] += 1
             else:
-                counts["non_rgi_total"] += 1; counts["emoji_irregular"] += 1
+                counts["non_rgi_total"] += 1
+                counts["emoji_irregular"] += 1
+            
+            if base_cat.startswith("S") and not rgi_status:
+                counts["hybrid_pictographs"] += 1
+                has_vs16 = "\uFE0F" in cluster
+                if not is_emoji_pres and not has_vs16:
+                    counts["hybrid_ambiguous"] += 1
 
-        # Sequences (C7)
+        # [HUD C7] Sequences
+        if status in ("unqualified", "component") or (kind == "emoji-sequence" and not rgi_status):
+             # [FIX] Do not register hits for Text-Default atoms here (handled in flags below)
+             pass
         elif kind == "emoji-sequence":
             counts["total_emoji_units"] += 1
             if rgi_status:
-                counts["rgi_total"] += 1; counts["rgi_sequence"] += 1
-                if status != "fully-qualified": counts["emoji_irregular"] += 1
+                counts["rgi_total"] += 1
+                counts["rgi_sequence"] += 1
+                if status != "fully-qualified":
+                    counts["emoji_irregular"] += 1
             else:
-                counts["non_rgi_total"] += 1; counts["emoji_irregular"] += 1
-                # Register Non-RGI Sequence
-                _register_hit("emoji_irregular", dom_start, dom_end, "Non-RGI Sequence")
+                counts["non_rgi_total"] += 1
+                counts["emoji_irregular"] += 1
 
-        # Components (C7 Irregular)
+        # [HUD C7 Irregular] Components
         elif kind == "emoji-component":
-            counts["total_emoji_units"] += 1; counts["non_rgi_total"] += 1; 
-            counts["components_leaked"] += 1; counts["emoji_irregular"] += 1
+            counts["total_emoji_units"] += 1
+            counts["non_rgi_total"] += 1
+            counts["components_leaked"] += 1
+            counts["emoji_irregular"] += 1
             add_flag("Flag: Standalone Emoji Component", idx)
-            # Register Component
-            _register_hit("emoji_irregular", dom_start, dom_end, "Leaked Component")
 
-        # --- D. Flags & Lists ---
+        # --- D. Flag Generation (Noise Filter Applied) ---
+        
         if status == "unqualified":
-            if is_emoji_pres or cp_len > 1: add_flag("Flag: Unqualified Emoji", idx)
-        if status == "minimally-qualified": add_flag("Flag: Minimally-Qualified Emoji", idx)
+            # [LOGIC PATCH] Only flag if it SHOULD be an emoji but isn't.
+            # 1. It is 'Emoji_Presentation' (Smiley) but bare. -> FLAG.
+            # 2. It is a Sequence (Base + Mark) but invalid. -> FLAG.
+            # 3. It is 'Text Default' (Arrow) and bare. -> IGNORE (It's just text).
+            if is_emoji_pres or cp_len > 1:
+                add_flag("Flag: Unqualified Emoji", idx)
+        
+        if status == "minimally-qualified": 
+            add_flag("Flag: Minimally-Qualified Emoji", idx)
+        
         if cp_len == 2:
             if cluster[1] == "\uFE0E": add_flag("Flag: Forced Text Presentation", idx)
             elif cluster[1] == "\uFE0F" and not is_emoji_pres: add_flag("Flag: Forced Emoji Presentation", idx)
 
         if kind.startswith("emoji"):
             emoji_details_list.append({
-                "sequence": cluster, "kind": kind, "rgi": rgi_status,
-                "status": status, "base_cat": base_cat, "index": idx
+                "sequence": cluster,
+                "kind": kind,
+                "rgi": rgi_status,
+                "status": status,
+                "base_cat": base_cat, 
+                "index": idx
             })
-            
-        # Advance Indices
-        current_logical_idx += cp_len
-        current_dom_idx += dom_len
 
-    return {"counts": counts, "flags": flags, "emoji_list": emoji_details_list}
+    return {
+        "counts": counts,
+        "flags": flags,
+        "emoji_list": emoji_details_list
+    }
 
 def _parse_script_extensions(txt: str):
     """Custom parser for ScriptExtensions.txt (which uses ';')."""
@@ -2364,10 +2844,11 @@ def _find_matches_with_indices(regex_key: str, text: str):
         print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
         return [], 0
 
+# Note the new argument: emoji_counts
 def compute_code_point_stats(t: str, emoji_counts: dict):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
 
-    # 1. Get derived stats (from full string)
+# 1. Get derived stats (from full string)
     code_points_array = window.Array.from_(t)
     total_code_points = len(code_points_array)
     # This is robust and avoids all formatting/JS bridge errors.
@@ -2414,17 +2895,22 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
             "is_full": False # This badge doesn't make sense here
         }
     }
-    
-    # We get the count directly from the emoji engine's report
+   # We get the count directly from the emoji engine's report
     emoji_total_count = emoji_counts.get("RGI Emoji Sequences", 0)
     
-    # Calculate total whitespace count for the Card (safe to use JS count here)
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
 
-    # [FIX] REMOVED REDUNDANT REGISTRY LOGIC
-    # We do NOT populate 'ws_nonstd' here. 
-    # It is handled safely in 'populate_hud_registry' using a Python linear scan.
-    # Using JS regex indices here would cause Index Drift.
+    # [NEW] Populate HUD Registry for Non-Std Whitespace
+    # We need to scan specifically for Non-ASCII whitespace
+    ns_indices, _ = _find_matches_with_indices("Whitespace", t)
+    for idx in ns_indices:
+        # Check if it's 0x20 or control chars
+        # Since regex \p{White_Space} includes 0x20, we filter.
+        # Note: We need the char at idx to check value.
+        # matchAll gives indices.
+        # This is slightly expensive to re-check, but robust.
+        # Easier: Just scan string once for specific HUD buckets.
+        pass
     
     derived_stats = {
         "Total Code Points": total_code_points,
@@ -2433,12 +2919,15 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     }
 
     # 2. Get 29 minor categories (Honest Mode)
+    # --- THIS IS THE FIX ---
+    # We now use our proven-correct helper function for all 29 categories.
     minor_stats = {}
     sum_of_29_cats = 0
     for key in MINOR_CATEGORIES_29.keys():
         _, count = _find_matches_with_indices(key, t)
         minor_stats[key] = count
         sum_of_29_cats += count
+    # --- END OF FIX ---
 
     # 3. Calculate 'Cn' as the remainder
     minor_stats["Cn"] = total_code_points - sum_of_29_cats
@@ -2995,26 +3484,34 @@ def compute_integrity_score(inputs):
     }
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
-    """Hybrid Forensic Analysis (Drift-Proof & Fixed)."""
+    """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
     
-    legacy_indices = {k: [] for k in [
-        "deceptive_ls", "deceptive_ps", "deceptive_nel", "bidi_bracket_open", 
-        "bidi_bracket_close", "extender", "deprecated", "dash", "quote", 
-        "term_punct", "sent_term", "alpha", "norm_excl", "norm_fold", "ext_picto", 
-        "emoji_mod", "emoji_mod_base", "vs_all", "invalid_vs", "discouraged", 
-        "other_ctrl", "esc", "interlinear", "bidi_mirrored", "loe", "unassigned", 
-        "suspicious_syntax_vs"
-    ]}
+    # --- 1. Init Trackers ---
+    legacy_indices = {
+        "deceptive_ls": [], "deceptive_ps": [], "deceptive_nel": [],
+        "bidi_bracket_open": [], "bidi_bracket_close": [],
+        "extender": [], "deprecated": [], "dash": [], "quote": [], 
+        "term_punct": [], "sent_term": [], "alpha": [], 
+        "norm_excl": [], "norm_fold": [],
+        "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
+        "vs_all": [], "invalid_vs": [], "discouraged": [], 
+        "other_ctrl": [], "esc": [], "interlinear": [], 
+        "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": []
+    }
+    
     decomp_type_stats = {}
     bidi_mirroring_map = {}
     id_type_stats = {} 
-    flags = {k: [] for k in ["default_ign", "join", "zw_space", "bidi", "tags", "vs_std", "vs_ideo", "shy", "non_ascii_space", "bad_nl", "any_invis", "high_risk"]}
-    health_issues = {k: [] for k in ["fffd", "surrogate", "nonchar", "pua", "nul", "bom_mid", "donotemit"]}
     
-    # DOM Hit Buckets (start, end, label)
-    dom_hits = {
-        "fatal": [], "fracture": [], "risk": [], "decay": [], 
-        "execution": [], "spoofing": [], "obfuscation": []
+    flags = {
+        "default_ign": [], "join": [], "zw_space": [], "bidi": [],
+        "tags": [], "vs_std": [], "vs_ideo": [], "shy": [],
+        "non_ascii_space": [], "bad_nl": [], "any_invis": [], "high_risk": []
+    }
+    
+    health_issues = {
+        "fffd": [], "surrogate": [], "nonchar": [], 
+        "pua": [], "nul": [], "bom_mid": [], "donotemit": []
     }
 
     ID_TYPE_ALIASES = {
@@ -3027,50 +3524,29 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     }
 
     if LOADING_STATE == "READY":
-        acc = 0 # DOM Accumulator
-        
-        for i, char in enumerate(t):
+        js_array = window.Array.from_(t)
+        for i, char in enumerate(js_array):
             try:
                 cp = ord(char)
-                # Calculate DOM Width
-                char_len = 2 if cp > 0xFFFF else 1
-                dom_s = acc
-                dom_e = acc + char_len
-                
                 category = unicodedata.category(char)
                 mask = INVIS_TABLE[cp] if cp < 1114112 else 0
 
                 # --- Decode Health ---
-                if cp == 0xFFFD: 
-                    health_issues["fffd"].append(i)
-                    dom_hits["fatal"].append((dom_s, dom_e, "U+FFFD"))
-                if 0xD800 <= cp <= 0xDFFF: 
-                    health_issues["surrogate"].append(i)
-                    dom_hits["fatal"].append((dom_s, dom_e, "Surrogate"))
-                if cp == 0x0000: 
-                    health_issues["nul"].append(i)
-                    dom_hits["fatal"].append((dom_s, dom_e, "NUL Byte"))
-                if cp == 0xFEFF and i > 0: 
-                    health_issues["bom_mid"].append(i)
-                    dom_hits["decay"].append((dom_s, dom_e, "Internal BOM"))
+                if cp == 0xFFFD: health_issues["fffd"].append(i)
+                if 0xD800 <= cp <= 0xDFFF: health_issues["surrogate"].append(i)
+                if cp == 0x0000: health_issues["nul"].append(i)
+                if cp == 0xFEFF and i > 0: health_issues["bom_mid"].append(i)
                 if (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD):
                     health_issues["pua"].append(i)
-                    dom_hits["decay"].append((dom_s, dom_e, "PUA"))
                 if (0xFDD0 <= cp <= 0xFDEF) or ((cp & 0xFFFF) >= 0xFFFE):
                     health_issues["nonchar"].append(i)
-                    dom_hits["risk"].append((dom_s, dom_e, "Noncharacter"))
-                if mask & INVIS_DO_NOT_EMIT: 
-                    health_issues["donotemit"].append(i)
-                    dom_hits["risk"].append((dom_s, dom_e, "Do-Not-Emit"))
+                if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
 
                 # --- Specific Dangerous Controls ---
-                if cp == 0x001B: 
-                    legacy_indices["esc"].append(i)
-                    dom_hits["execution"].append((dom_s, dom_e, "Terminal Injection"))
+                if cp == 0x001B: legacy_indices["esc"].append(i)
                 if 0xFFF9 <= cp <= 0xFFFB: legacy_indices["interlinear"].append(i)
                 if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085 and cp != 0x001B:
                     legacy_indices["other_ctrl"].append(i)
-                    dom_hits["decay"].append((dom_s, dom_e, "Legacy Control"))
 
                 # --- Line Breaks ---
                 if cp == 0x2028: legacy_indices["deceptive_ls"].append(i)
@@ -3082,7 +3558,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     legacy_indices["vs_all"].append(i)
                     is_valid_vs = False
                     if i > 0:
-                        prev_cp = ord(t[i-1])
+                        prev_cp = ord(js_array[i-1])
                         if prev_cp in DATA_STORES["VariantBase"]: is_valid_vs = True
                     if not is_valid_vs: legacy_indices["invalid_vs"].append(i)
 
@@ -3124,9 +3600,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 if mask & INVIS_JOIN_CONTROL: flags["join"].append(i)
                 if mask & INVIS_ZERO_WIDTH_SPACING: flags["zw_space"].append(i)
                 if mask & INVIS_BIDI_CONTROL: flags["bidi"].append(i)
-                if mask & INVIS_TAG: 
-                    flags["tags"].append(i)
-                    dom_hits["risk"].append((dom_s, dom_e, "Tag"))
+                if mask & INVIS_TAG: flags["tags"].append(i)
                 if mask & INVIS_SOFT_HYPHEN: flags["shy"].append(i)
                 if mask & INVIS_NON_ASCII_SPACE: flags["non_ascii_space"].append(i)
                 if mask & INVIS_HIGH_RISK_MASK: flags["high_risk"].append(i)
@@ -3135,16 +3609,15 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 # --- 17.0 Syntax Spoofing ---
                 if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
                     if i > 0:
-                        prev_char = t[i-1]
+                        prev_char = js_array[i-1]
                         prev_cp = ord(prev_char)
                         prev_cat = unicodedata.category(prev_char)
-                        if prev_cat.startswith(('P', 'S', 'Z')):
+                        if prev_cat[0] in ('P', 'S', 'Z'):
                             is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
                                             _find_in_ranges(prev_cp, "Extended_Pictographic")
                             is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
                             if not (is_emoji_base and is_pres_selector):
                                 legacy_indices["suspicious_syntax_vs"].append(i)
-                                dom_hits["execution"].append((dom_s, dom_e, "Syntax Spoofing"))
 
                 # --- Identifiers ---
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
@@ -3165,8 +3638,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                     if key not in id_type_stats: id_type_stats[key] = {'count': 0, 'positions': []}
                     id_type_stats[key]['count'] += 1
                     id_type_stats[key]['positions'].append(f"#{i}")
-                
-                acc += char_len
 
             except Exception as e:
                 print(f"Error in forensic loop index {i}: {e}")
@@ -3178,43 +3649,47 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
+    # --- 1. STRUCTURAL FEEDBACK LOOP ---
     struct_rows = []
+    
+    # [FIXED] Call analyze_bidi_structure ONLY ONCE and unpack correctly
     bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
     analyze_combining_structure(t, struct_rows)
 
-    # --- REGISTER HITS (From Pre-calculated DOM Buckets) ---
-    for s, e, l in dom_hits["fatal"]: _register_hit("int_fatal", s, e, l)
-    for s, e, l in dom_hits["fracture"]: _register_hit("int_fracture", s, e, l)
-    for s, e, l in dom_hits["risk"]: _register_hit("int_risk", s, e, l)
-    for s, e, l in dom_hits["decay"]: _register_hit("int_decay", s, e, l)
-    for s, e, l in dom_hits["execution"]: _register_hit("thr_execution", s, e, l)
+    # --- [NEW] Populate Integrity Aggregator Buckets (Ranges) ---
+    for idx in health_issues["fffd"]: _register_hit("int_fatal", idx, idx+1, "U+FFFD")
+    for idx in health_issues["nul"]: _register_hit("int_fatal", idx, idx+1, "NUL Byte")
+    for idx in health_issues["surrogate"]: _register_hit("int_fatal", idx, idx+1, "Surrogate")
     
-    for s, e, l in bidi_fracs: _register_hit("int_fracture", s, e, l)
+    for s, e, lbl in bidi_fracs: _register_hit("int_fracture", s, e, lbl)
     
-    if bidi_dangers:
-        bidi_dangers.sort(key=lambda x: x[0])
-        merged = []
-        if bidi_dangers:
-            curr_s, curr_e, curr_lbl = bidi_dangers[0]
-            for i in range(1, len(bidi_dangers)):
-                next_s, next_e, next_lbl = bidi_dangers[i]
-                if next_s <= curr_e:
-                    curr_e = max(curr_e, next_e)
-                    if "Sequence" not in curr_lbl: curr_lbl = "Bidi Sequence"
-                else:
-                    merged.append((curr_s, curr_e, curr_lbl))
-                    curr_s, curr_e, curr_lbl = next_s, next_e, next_lbl
-            merged.append((curr_s, curr_e, curr_lbl))
-        
-        for s, e, l in merged:
-            _register_hit("thr_execution", s, e, l)
+    # Keycaps
+    for pos_str in emoji_flags.get("Flag: Broken Keycap Sequence", {}).get("positions", []):
+        try:
+            idx = int(pos_str.replace("#", ""))
+            _register_hit("int_fracture", idx, idx+1, "Broken Keycap")
+        except: pass
 
+    for idx in flags["tags"]: _register_hit("int_risk", idx, idx+1, "Tag")
+    for idx in health_issues["nonchar"]: _register_hit("int_risk", idx, idx+1, "Noncharacter")
+    for idx in health_issues["donotemit"]: _register_hit("int_risk", idx, idx+1, "Do-Not-Emit")
+    
+    for idx in health_issues["pua"]: _register_hit("int_decay", idx, idx+1, "PUA")
+    for idx in health_issues["bom_mid"]: _register_hit("int_decay", idx, idx+1, "Internal BOM")
+    for idx in legacy_indices["other_ctrl"]: _register_hit("int_decay", idx, idx+1, "Legacy Control")
+    
+    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
+    for s, e, lbl in bidi_dangers: _register_hit("thr_execution", s, e, lbl)
+    for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
+    for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
+
+    # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
         "nul": len(health_issues["nul"]),
-        "bidi_broken_count": bidi_pen,
+        "bidi_broken_count": bidi_pen, # CORRECT: Integer Count
         "broken_keycap": len(emoji_flags.get("Flag: Broken Keycap Sequence", {}).get("positions", [])), 
         "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
         "tags": len(flags["tags"]),
@@ -3229,8 +3704,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "not_nfc": not (t == unicodedata.normalize("NFC", t)),
         "bidi_present": len(flags["bidi"])
     }
+
     audit_result = compute_integrity_score(auditor_inputs)
-    
+
+    # --- Render Rows ---
     rows.append({
         "label": "Integrity Level (Heuristic)",
         "count": audit_result["score"],
@@ -3239,17 +3716,22 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "ledger": audit_result["ledger"],
         "positions": [] 
     })
-    
+
+    # FATAL
     add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
     add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "warn")
     add_row("Surrogates (Broken)", len(health_issues["surrogate"]), health_issues["surrogate"], "crit")
+    
+    # PROTOCOL
     add_row("Flag: Bidi Controls (UAX #9)", len(flags["bidi"]), flags["bidi"], "warn")
     add_row("Flag: Unicode Tags (Plane 14)", len(flags["tags"]), flags["tags"], "warn")
     add_row("Flag: High-Risk Invisible Controls", len(flags["high_risk"]), flags["high_risk"], "crit")
     add_row("Flag: Invalid Variation Selector", len(legacy_indices["invalid_vs"]), legacy_indices["invalid_vs"], "warn")
     add_row("Flag: Do-Not-Emit Characters", len(health_issues["donotemit"]), health_issues["donotemit"], "warn")
+
+    # INVISIBLES
     add_row("Flag: Default Ignorable Code Points (All)", len(flags["default_ign"]), flags["default_ign"], "warn")
     add_row("Flag: Zero-Width Join Controls (ZWJ/ZWNJ)", len(flags["join"]), flags["join"], "warn")
     add_row("Flag: Zero-Width Spacing (ZWSP / WJ / BOM)", len(flags["zw_space"]), flags["zw_space"], "warn")
@@ -3259,15 +3741,20 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     
     pua_pct = round((len(health_issues["pua"]) / (len(t) + 1e-9)) * 100, 2)
     add_row("Flag: Private Use Area (PUA)", len(health_issues["pua"]), health_issues["pua"], "warn", pct=pua_pct)
+    
     add_row("Flag: Internal BOM (U+FEFF)", len(health_issues["bom_mid"]), health_issues["bom_mid"], "warn")
     add_row("Flag: Other Control Chars (C0/C1)", len(legacy_indices["other_ctrl"]), legacy_indices["other_ctrl"], "warn")
     add_row("Flag: Interlinear Annotation Controls", len(legacy_indices["interlinear"]), legacy_indices["interlinear"], "warn")
+    
     if not (t == unicodedata.normalize("NFC", t)):
         add_row("Flag: Normalization (Not NFC)", 1, ["Status: Text is NOT NFC"], "warn")
+
     add_row("Flag: Deceptive Newline (LS)", len(legacy_indices["deceptive_ls"]), legacy_indices["deceptive_ls"], "warn")
     add_row("Flag: Deceptive Newline (PS)", len(legacy_indices["deceptive_ps"]), legacy_indices["deceptive_ps"], "warn")
     add_row("Flag: Deceptive Newline (NEL)", len(legacy_indices["deceptive_nel"]), legacy_indices["deceptive_nel"], "warn")
     add_row("Flag: Security Discouraged (Compatibility)", len(legacy_indices["discouraged"]), legacy_indices["discouraged"], "warn")
+
+    # INFORMATIONAL
     add_row("Flag: Bidi Paired Bracket (Open)", len(legacy_indices["bidi_bracket_open"]), legacy_indices["bidi_bracket_open"], "ok")
     add_row("Flag: Bidi Paired Bracket (Close)", len(legacy_indices["bidi_bracket_close"]), legacy_indices["bidi_bracket_close"], "ok")
     add_row("Prop: Extender", len(legacy_indices["extender"]), legacy_indices["extender"], "ok")
@@ -3281,16 +3768,20 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("Prop: Extended Pictographic", len(legacy_indices["ext_picto"]), legacy_indices["ext_picto"], "ok")
     add_row("Prop: Variation Selector", len(legacy_indices["vs_all"]), legacy_indices["vs_all"], "ok")
     add_row("Unassigned (Void)", len(legacy_indices["unassigned"]), legacy_indices["unassigned"], "crit")
+
     if bidi_mirroring_map:
         m_pos = [f"#{idx} ({m})" for idx, m in bidi_mirroring_map.items()]
         add_row("Flag: Bidi Mirrored Mapping", len(m_pos), m_pos, "ok")
+        
     add_row("Flag: Full Composition Exclusion", len(legacy_indices["norm_excl"]), legacy_indices["norm_excl"], "warn")
     add_row("Flag: Changes on NFKC Casefold", len(legacy_indices["norm_fold"]), legacy_indices["norm_fold"], "warn")
     add_row("SUSPICIOUS: Variation Selector on Syntax", len(legacy_indices["suspicious_syntax_vs"]), legacy_indices["suspicious_syntax_vs"], "crit")
+
     for k, v in decomp_type_stats.items(): add_row(k, v['count'], v['positions'], "ok")
     for k, v in id_type_stats.items(): add_row(k, v['count'], v['positions'], "warn")
 
     rows.extend(struct_rows)
+
     return rows, audit_result
 
 
@@ -3768,25 +4259,28 @@ def _generate_uts39_skeleton_metrics(t: str):
     return "".join(mapped_chars), metrics
 
 def compute_threat_analysis(t: str):
-    """Module 3: Runs Threat-Hunting Analysis (DOM-Aware for HUD)."""
+    """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
+    # --- 0. Initialize defaults ---
     threat_flags = {}
     threat_hashes = {}
+    confusable_indices = []
+    found_confusable = False
     
-    # Visual Highlighting Sets (Indices) for HTML Report
-    vis_confusables = set()
-    vis_invisibles = set()
-    vis_bidi = set()
-    
+    # --- Trackers ---
     bidi_danger_indices = []
-    
     base_scripts_in_use = set() 
     ext_scripts_in_use = set()
     is_non_ascii_LNS = False 
 
-    nf_string = ""; nf_casefold_string = ""; skeleton_string = ""; skel_metrics = {} 
+    # Initialize output variables
+    nf_string = ""
+    nf_casefold_string = ""
+    skeleton_string = ""
+    skel_metrics = {} 
     final_html_report = ""
 
+    # --- 1. Early Exit ---
     if not t:
         return {
             'flags': {}, 'hashes': {}, 'html_report': "", 'bidi_danger': False,
@@ -3798,167 +4292,209 @@ def compute_threat_analysis(t: str):
         return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
     try:
+        # --- 2. Generate Normalized States ---
         nf_string = normalize_extended(t)
         nf_casefold_string = nf_string.casefold()
+
+        # --- 5. Skeleton & Drift (Refined Logic) ---
+        
+        # A. The Skeleton String (Standard Identity)
         skeleton_string, _ = _generate_uts39_skeleton_metrics(nf_casefold_string)
+        
+        # B. The Forensic Drift Metrics (Forensic Insight)
+        # [DRIFT BLINDNESS FIX]
         _, skel_metrics = _generate_uts39_skeleton_metrics(t)
 
+        # --- 3. Run checks on RAW string ---
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
-            # [NEW] DOM Accumulator (The Gold Standard)
-            acc = 0
-            
-            for i, char in enumerate(t):
+            js_array_raw = window.Array.from_(t)
+
+            for i, char in enumerate(js_array_raw):
                 cp = ord(char)
                 
-                # Calculate DOM Width
-                char_len = 2 if cp > 0xFFFF else 1
-                dom_s = acc
-                dom_e = acc + char_len
-                
-                # --- A. Bidi Check ---
+                # --- A. Bidi Check (Trojan Source) ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
                     bidi_danger_indices.append(f"#{i}")
-                    vis_bidi.add(i)
 
-                # --- A2/A3 Syntax Spoofing ---
-                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-                if mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
-                    if i > 0:
-                        prev_char = t[i-1]
-                        prev_cp = ord(prev_char)
-                        try:
-                            prev_cat = unicodedata.category(prev_char)
-                            if prev_cat.startswith(('P', 'S', 'Z')):
-                                is_emoji_base = _find_in_ranges(prev_cp, "Emoji") or \
-                                                _find_in_ranges(prev_cp, "Extended_Pictographic")
-                                is_pres_selector = (cp == 0xFE0E or cp == 0xFE0F)
-                                if not (is_emoji_base and is_pres_selector):
-                                    # Register exact DOM range
-                                    _register_hit("thr_execution", dom_s, dom_e, "Syntax Spoofing")
-                        except: pass
-
-                # --- B. Mixed-Script ---
+                # --- B. Mixed-Script Detection (Spec-Compliant) ---
                 try:
                     category = unicodedata.category(char)[0] 
                     if category in ("L", "N", "S"):
                         if cp > 0x7F: is_non_ascii_LNS = True
-                        script_val = _find_in_ranges(cp, "Scripts")
-                        if script_val: base_scripts_in_use.add(script_val)
-                        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-                        if script_ext_val: ext_scripts_in_use.update(script_ext_val.split())
-                        elif script_val: ext_scripts_in_use.add(script_val)
-                except: pass 
-                
-                # --- C. Confusable Indexing (Drift-Proofed) ---
-                if cp > 0x7F and cp in confusables_map:
-                    if window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                         
-                        # [CRITICAL FIX] Check Common/Inherited BEFORE registering hit
-                        sc = _find_in_ranges(cp, "Scripts") or "Common"
-                        if sc not in ("Common", "Inherited"):
-                            # Register using DOM coordinates
-                            _register_hit("thr_spoofing", dom_s, dom_e, "Homoglyph")
-                            vis_confusables.add(i) # Keep index for HTML report
+                        script_val = _find_in_ranges(cp, "Scripts")
+                        if script_val:
+                            base_scripts_in_use.add(script_val)
+                        
+                        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+                        if script_ext_val:
+                            ext_scripts_in_use.update(script_ext_val.split())
+                        elif script_val:
+                            ext_scripts_in_use.add(script_val)
+                except Exception:
+                    pass 
+                
+                # --- C. Confusable Indexing (Threat Registry) ---
+                # LOGIC FIX: Only flag NON-ASCII characters as threats.
+                # ASCII chars (like '1' or 'a') are the "Victims" of spoofing, not the "Weapons".
+                if cp > 0x7F and cp in confusables_map:
+                    # Ensure it's visible content (Letter, Number, Punct, Symbol)
+                    # We filter out invisible format controls here because they have their own "Invisible" flag
+                    if window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
+                        found_confusable = True
+                        confusable_indices.append(i)
 
-                acc += char_len
-
-            # --- 4. Populate Flags ---
+            # --- 4. Populate Threat Flags ---
+            
+            # Bidi
             if bidi_danger_indices:
                 threat_flags["DANGER: Malicious Bidi Control"] = {
-                    'count': len(bidi_danger_indices), 'positions': bidi_danger_indices
+                    'count': len(bidi_danger_indices),
+                    'positions': bidi_danger_indices
                 }
 
+            # --- Script Mix Logic (Ontology Applied) ---
             ignored = {"Common", "Inherited", "Zzzz", "Unknown"}
             clean_base = {s for s in base_scripts_in_use if s not in ignored}
             clean_ext = {s for s in ext_scripts_in_use if s not in ignored}
             script_mix_class = "" 
 
+            # 1. Base Script Mix
             if len(clean_base) > 1:
                 sorted_base = sorted(list(clean_base))
-                threat_flags[f"CRITICAL: Mixed Scripts (Base: {', '.join(sorted_base)})"] = {
-                    'count': len(clean_base), 'positions': ["(See Provenance Profile for details)"]
+                key = f"CRITICAL: Mixed Scripts (Base: {', '.join(sorted_base)})"
+                threat_flags[key] = {
+                    'count': len(clean_base),
+                    'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # [FIX] General hit for script mixing (start of string)
+                # Registry: Suspicious
                 _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
+            # 2. Extension Mix
             if len(clean_ext) > 2:
                  sorted_ext = sorted(list(clean_ext))
-                 threat_flags[f"CRITICAL: Highly Mixed Scripts (Extensions: {', '.join(sorted_ext)})"] = {
-                    'count': len(clean_ext), 'positions': ["(See Provenance Profile for details)"]
+                 key = f"CRITICAL: Highly Mixed Scripts (Extensions: {', '.join(sorted_ext)})"
+                 threat_flags[key] = {
+                    'count': len(clean_ext),
+                    'positions': ["(See Provenance Profile for details)"]
                  }
+                 # Upgrade severity
                  script_mix_class = "Highly Mixed Scripts (Extensions)"
-
+            
+            # 3. Single Script / ASCII status
             if len(clean_base) == 0:
-                if is_non_ascii_LNS: threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': []}
-                else: threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': []}
+                if is_non_ascii_LNS:
+                     threat_flags["Script Profile: Safe (Common/Inherited)"] = {'count': 0, 'positions': []}
+                else:
+                     threat_flags["Script Profile: ASCII-Only"] = {'count': 0, 'positions': []}
             elif len(clean_base) == 1:
                 s_name = list(clean_base)[0]
-                if s_name == "Latin" and is_non_ascii_LNS: threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': []}
-                elif not threat_flags: threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
+                if s_name == "Latin" and is_non_ascii_LNS:
+                     threat_flags["Script Profile: Single Script (Latin Extended)"] = {'count': 0, 'positions': []}
+                elif not threat_flags: 
+                     threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
-        # --- 5. Skeleton Drift ---
+
+        # --- 5. Skeleton Drift (METRICS ENGINE) ---
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
             details = []
-            if skel_metrics['drift_cross_script'] > 0: details.append(f"{skel_metrics['drift_cross_script']} cross-script")
-            if skel_metrics['drift_ascii'] > 0: details.append(f"{skel_metrics['drift_ascii']} ASCII")
-            if skel_metrics['drift_other'] > 0: details.append(f"{skel_metrics['drift_other']} other")
-            if details: drift_desc += f" ({', '.join(details)})"
+            
+            # 1. Dangerous
+            if skel_metrics['drift_cross_script'] > 0:
+                details.append(f"{skel_metrics['drift_cross_script']} cross-script")
+            
+            # 2. Noise (ASCII)
+            if skel_metrics['drift_ascii'] > 0:
+                details.append(f"{skel_metrics['drift_ascii']} ASCII")
+                
+            # 3. Neutral/Other (The missing bucket!)
+            if skel_metrics['drift_other'] > 0:
+                details.append(f"{skel_metrics['drift_other']} other")
+            
+            if details:
+                drift_desc += f" ({', '.join(details)})"
             
             threat_flags["Flag: Skeleton Drift"] = {
-                'count': skel_metrics["total_drift"], 'positions': [drift_desc]
+                'count': skel_metrics["total_drift"],
+                'positions': [drift_desc]
             }
 
+        # --- 6. Hashes ---
         threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
         threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
         threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
         threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
 
-        # --- HTML Report Visuals ---
-        # Generate invisibles visualization set
+        # --- 7. HTML Report (Forensic Diff Stream v3) ---
+        
+        # A. Collect indices for visuals
+        vis_confusables = set()
+        if confusable_indices:
+            js_array_raw = window.Array.from_(t)
+            for idx in confusable_indices:
+                try:
+                    char = js_array_raw[idx]
+                    cp = ord(char)
+                    sc = _find_in_ranges(cp, "Scripts") or "Common"
+                    if sc not in ("Common", "Inherited"):
+                        vis_confusables.add(idx)
+                except: pass
+        
+        # B. Collect other vectors
         vis_invisibles = set()
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
             for k in range(c["start"], c["end"] + 1):
                 vis_invisibles.add(k)
+                
+        vis_bidi = set()
+        if bidi_danger_indices:
+            # bidi_danger_indices is a list of strings "#12", convert to int
+            for s in bidi_danger_indices:
+                try: vis_bidi.add(int(s.replace("#","")))
+                except: pass
 
+        # C. Render if ANY threat exists
         if vis_confusables or vis_invisibles or vis_bidi:
+            # [FIX] Pass ALL 5 required arguments correctly
             final_html_report = _render_forensic_diff_stream(
-                t, vis_confusables, vis_invisibles, vis_bidi, confusables_map
+                t, 
+                vis_confusables, 
+                vis_invisibles, 
+                vis_bidi, 
+                confusables_map
             )
         else:
             final_html_report = '<p class="placeholder-text">No active threat clusters detected.</p>'
         
-        # OBFUSCATION REGISTRATION
-        # Re-scan for invisible clusters to get DOM coords
-        if flags := clusters: # Reuse clusters from above
-             c_acc = 0
-             curr_clust_idx = 0
-             for i, char in enumerate(t):
-                 c_len = 2 if ord(char) > 0xFFFF else 1
-                 
-                 if curr_clust_idx < len(clusters):
-                     c = clusters[curr_clust_idx]
-                     # At start of cluster
-                     if i == c["start"]: 
-                         c["dom_start"] = c_acc
-                     # At end of cluster (inclusive)
-                     if i == c["end"]:
-                         c["dom_end"] = c_acc + c_len
-                         
-                         # Register Hit
-                         is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
-                         if not is_just_vs:
-                             lbl = "Invisible Cluster"
-                             if c.get("high_risk"): lbl += " [High Risk]"
-                             _register_hit("thr_obfuscation", c["dom_start"], c["dom_start"]+1, lbl)
-                         
-                         curr_clust_idx += 1
-                 
-                 c_acc += c_len
+        # SPOOFING (Logic Filter)
+        # [FIX] Do NOT register Common/Inherited drifts (like Em Dash) as "Spoofing" in HUD.
+        if confusable_indices and LOADING_STATE == "READY":
+            js_array_raw = window.Array.from_(t)
+            for idx in confusable_indices:
+                try:
+                    char = js_array_raw[idx]
+                    cp = ord(char)
+                    
+                    # [CRITICAL FIX] Default to "Common" if lookup returns None.
+                    # This prevents symbols (arrows, math) from being flagged as "Foreign Script" threats.
+                    sc = _find_in_ranges(cp, "Scripts") or "Common"
+                    
+                    # Only register if it's NOT Common/Inherited (Benign Drift)
+                    if sc not in ("Common", "Inherited"):
+                        _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
+                except: pass
+            
+        # OBFUSCATION (Clusters)
+        clusters = analyze_invisible_clusters(t)
+        for c in clusters:
+            label = "Invisible Cluster"
+            if c.get("high_risk"): label += " [High Risk]"
+            _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
@@ -6080,7 +6616,7 @@ def render_encoding_footprint(t: str):
         """
 
 # ---
-# 6 (SIX). MAIN ORCHESTRATOR
+# 6. MAIN ORCHESTRATOR
 # ---
 
 # Ensure registry exists at module level
@@ -6088,325 +6624,34 @@ if 'HUD_HIT_REGISTRY' not in globals():
     HUD_HIT_REGISTRY = {}
 
 def _register_hit(key: str, start: int, end: int, label: str):
-    """
-    Helper to append a hit to the global registry.
-    Enforces sane ranges and integer types to prevent highlighter crashes.
-    """
+    """Helper to append a hit to the global registry."""
     if key not in HUD_HIT_REGISTRY:
         HUD_HIT_REGISTRY[key] = []
-        
-    try:
-        s = int(start)
-        e = int(end)
-        
-        # [CRITICAL FIX] Enforce Atomic Visibility (Minimum Width = 1)
-        # A selection of (5, 5) is invisible. We force (5, 6) so the user sees the cursor.
-        if e <= s: 
-            e = s + 1
-            
-        HUD_HIT_REGISTRY[key].append((s, e, label))
-    except:
-        pass
+    HUD_HIT_REGISTRY[key].append((start, end, label))
 
 def _dom_to_logical(t: str, dom_idx: int) -> int:
     """
-    INPUT CONVERTER: Browser DOM Index (UTF-16) -> Python Logical Index.
-    Uses the 'Reveal2' Linear Accumulator logic to prevent drift.
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
     """
-    if not t or dom_idx < 0: return 0
+    if not t: return 0
     
-    acc = 0 # Tracks DOM Position (UTF-16 units)
-    
-    # Linear Scan: Matches browser's internal cursor logic exactly
-    for i, char in enumerate(t):
-        # If we've reached the target DOM position, return current Logical Index (i)
-        if acc >= dom_idx:
-            return i
-        
-        # Advance Accumulator: 2 units for High/Low Surrogates, 1 for BMP
-        acc += 2 if ord(char) > 0xFFFF else 1
-        
-    return len(t)
-
-def _logical_to_dom(t: str, logical_idx: int) -> int:
-    """
-    OUTPUT CONVERTER: Python Logical Index -> Browser DOM Index (UTF-16).
-    Uses the 'Reveal2' Linear Accumulator logic to prevent drift.
-    """
-    if not t or logical_idx < 0: return 0
-    
-    acc = 0 # Tracks DOM Position (UTF-16 units)
-    
-    # Linear Scan: Counts exactly how many UTF-16 units exist before the target
-    for i, char in enumerate(t):
-        if i == logical_idx:
-            return acc
-            
-        # Advance Accumulator: 2 units for High/Low Surrogates, 1 for BMP
-        acc += 2 if ord(char) > 0xFFFF else 1
-        
-    return acc
-
-@create_proxy
-def cycle_hud_metric(metric_key, current_dom_pos):
-    """
-    Stateful stepper (Fixed V26 - Direct DOM Mapping).
-    Relies purely on the Registry having correct DOM coordinates.
-    """
-    el = document.getElementById("text-input")
-    if not el: return
-    
-    # 1. Setup Targets
-    labels = {
-        "integrity_agg": "Integrity Issues",
-        "threat_agg": "Threat Signals",
-        "ws_nonstd": "Non-Std Whitespace",
-        "punc_exotic": "Exotic Delimiters",
-        "sym_exotic": "Exotic Symbols",
-        "emoji_hybrid": "Hybrid Emoji",
-        "emoji_irregular": "Irregular Emoji"
-    }
-    category_label = labels.get(metric_key, "Forensic Metric")
-
-    targets = []
-    if metric_key == "integrity_agg":
-        targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
-                   HUD_HIT_REGISTRY.get("int_fracture", []) +
-                   HUD_HIT_REGISTRY.get("int_risk", []) +
-                   HUD_HIT_REGISTRY.get("int_decay", []))
-    elif metric_key == "threat_agg":
-        targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
-                   HUD_HIT_REGISTRY.get("thr_spoofing", []) +
-                   HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
-                   HUD_HIT_REGISTRY.get("thr_suspicious", []))
-    else:
-        targets = HUD_HIT_REGISTRY.get(metric_key, [])
-
-    if not targets: return
-
-    # Sort by DOM position
-    targets.sort(key=lambda x: (x[0], x[1]))
-    
-    # 2. Determine Next Target
-    state_attr = f"data-hud-idx-{metric_key}"
-    last_idx = -1
-    try:
-        val = el.getAttribute(state_attr)
-        if val is not None: last_idx = int(val)
-    except: pass
-    
-    next_idx = (last_idx + 1) % len(targets)
-    next_hit = targets[next_idx]
-    
-    el.setAttribute(state_attr, str(next_idx))
-            
-    # 3. EXECUTE SELECTION
-    # The registry now stores exact DOM indices. No conversion needed.
-    dom_s = int(next_hit[0])
-    dom_e = int(next_hit[1])
-    
-    # Safety Clamp to ensure visibility
-    dom_s = max(0, dom_s)
-    dom_e = max(dom_s + 1, dom_e) 
-
-    window.TEXTTICS_HIGHLIGHT_RANGE(dom_s, dom_e)
-    
-    # 4. Update Status UI
-    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-    
-    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{next_idx + 1} of {len(targets)}"
-    
-    hud_status = document.getElementById("hud-stepper-status")
-    if hud_status:
-        hud_status.className = "status-details status-hud-active"
-        hud_status.style.display = "inline-flex"
-        hud_status.innerHTML = f"{status_msg}{icon_loc}"
-    
-    # Force Inspector to look at the new selection
-    inspect_character(None)
-
-@create_proxy
-def render_forensic_hud(t, stats):
-    """
-    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
-    Safe rendering that handles None types and empty stats gracefully.
-    """
-    container = document.getElementById("forensic-hud")
-    if not container: return 
-    if t is None: t = ""
-    
-    emoji_counts = stats.get("emoji_counts", {})
-
-    # --- INTERACTION HELPER ---
-    def get_interaction(val, key, severity="warn"):
-        """Checks registry and returns CSS class and onclick attribute."""
-        try:
-            if float(val) <= 0: return "", ""
-        except: return "", ""
-        
-        has_hits = False
-        target_key = key
-        
-        # Aggregate logic for top-level metrics
-        if key == "integrity":
-            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "integrity_agg"
-                has_hits = True
-        elif key == "threat":
-            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "threat_agg"
-                has_hits = True
-        else:
-            # Direct key lookup
-            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
-                has_hits = True
-                
-        if has_hits:
-            cls = " hud-interactive"
-            if severity == "crit": cls += " hud-interactive-crit"
-            elif severity == "warn": cls += " hud-interactive-risk"
-            
-            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
-            return cls, attr
-            
-        return "", ""
-
-    # --- HELPER: Cell Builder ---
-    def render_cell(sci_title, 
-                    label_1, val_1, class_1,
-                    label_2, val_2, class_2,
-                    d1="", m1="", r1="",
-                    d2="", m2="", r2="",
-                    reg_key_2=None, risk_2="warn"): 
-        
-        def esc(s): return str(s).replace('"', '&quot;')
-        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
-
-        return f"""
-        <div class="hud-col" 
-             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
-             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
-            <div class="hud-row-sci">{sci_title}</div>
-            <div class="hud-metric-group">
-                <div class="hud-label">{label_1}</div>
-                <div class="hud-val {class_1}">{val_1}</div>
-            </div>
-            <div class="hud-metric-divider"></div>
-            <div class="hud-metric-group">
-                <div class="hud-label">{label_2}</div>
-                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
-            </div>
-        </div>
-        """
-
-    # --- COLOR LOGIC ---
-    def color_neutral(val):
-        try: return "txt-muted" if float(val) == 0 else "txt-normal"
-        except: return "txt-normal"
-
-    def color_clean(val):
-        try: return "txt-clean" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
-
-    def color_risk(val):
-        try: return "txt-good" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
-
-    # --- 0. PRE-CALC ---
-    uax_word, uax_sent = 0, 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
-
-    # --- 1. METRICS ---
-    alpha_chars = sum(1 for c in t if c.isalnum())
-    alpha_runs = 0
-    in_run = False
-    for c in t:
-        if c.isalnum():
-            if not in_run: alpha_runs += 1; in_run = True
-        else: in_run = False
-
-    L = stats.get('major_stats', {}).get("L (Letter)", 0)
-    N = stats.get('major_stats', {}).get("N (Number)", 0)
-    vu = (L + N) / 5.0
-    seg_est = vu / 20.0
-
-    std_set = {0x20, 0x09, 0x0A, 0x0D}
-    std_inv = sum(1 for c in t if ord(c) in std_set)
-    flags = stats.get('forensic_flags', {})
-    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-
-    cnt_p_ascii, cnt_p_comfort, cnt_p_exotic = 0, 0, 0
-    for c in t:
-        if unicodedata.category(c).startswith('P'):
-            cp = ord(c)
-            if cp <= 0x7F: cnt_p_ascii += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F): cnt_p_comfort += 1
-            else: cnt_p_exotic += 1
-
-    if cnt_p_comfort > 0:
-        c4_label, c4_val = "TYPOGRAPHIC", cnt_p_ascii + cnt_p_comfort
-    else:
-        c4_label, c4_val = "ASCII", cnt_p_ascii
-
-    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
-    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
-    c5_label = "EXTENDED"
-    if cnt_s_ext == 0 and cnt_s_exotic == 0: c5_label = "KEYBOARD"
-
-    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
-    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
-    rgi_total = emoji_counts.get("rgi_total", 0)
-    abnormal = emoji_counts.get("emoji_irregular", 0)
-
-    # --- RENDER CELLS ---
-    c0 = render_cell("ALPHANUMERIC", "LITERALS", str(alpha_chars), color_neutral(alpha_chars), "RUNS", str(alpha_runs), color_neutral(alpha_runs), d1="Count of Alphanumeric chars.", m1="Count(L+N)", d2="Contiguous runs.", m2="Count(Runs)")
-    c1 = render_cell("LEXICAL MASS", "UNITS", f"{vu:.1f}", color_neutral(vu), "WORDS", str(uax_word), color_neutral(uax_word), d1="Volumetric Units.", m1="(L+N)/5", d2="UAX #29 Words.", m2="Intl.Segmenter")
-    c2 = render_cell("SEGMENTATION", "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est), "SENTENCES", str(uax_sent), color_neutral(uax_sent), d1="Structural Blocks.", m1="VU/20", d2="UAX #29 Sentences.", m2="Intl.Segmenter")
-    c3 = render_cell("WHITESPACE", "ASCII WS", str(std_inv), color_neutral(std_inv), "NON-STD", str(non_std_inv), color_clean(non_std_inv), d1="Standard Layout.", m1="Space/Tab/CR/LF", d2="Invisible/Ignorable.", m2="ZWSP/Tags/Bidi", reg_key_2="ws_nonstd")
-    c4 = render_cell("DELIMITERS", c4_label, str(c4_val), color_neutral(c4_val), "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic), d1="Standard Punctuation.", m1="ASCII/Comfort", d2="Rare Punctuation.", m2="Exotic", reg_key_2="punc_exotic")
-    c5 = render_cell("SYMBOLS", c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext), "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic), d1="Text Symbols.", m1="Math/Currency", d2="Rare Symbols.", m2="Dingbats/Unclassified", reg_key_2="sym_exotic")
-    c6 = render_cell("HYBRIDS", "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict), "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig), d1="Atomic Emoji Characters.", m1="Base=Symbol", d2="Text-Default Presentation.", m2="Shapeshifters", reg_key_2="emoji_hybrid")
-    c7 = render_cell("EMOJI", "RGI SEQS", str(rgi_total), color_neutral(rgi_total), "IRREGULAR", str(abnormal), color_clean(abnormal), d1="Valid UTS #51 Sequences.", m1="Standard", d2="Broken/Unqualified.", m2="Non-RGI", reg_key_2="emoji_irregular")
-
-    # Aggregators
-    int_res = stats.get('integrity', {})
-    int_v = int_res.get('verdict', 'INTACT')
-    int_issues = sum(len(HUD_HIT_REGISTRY.get(k, [])) for k in ["int_fatal", "int_fracture", "int_risk", "int_decay"])
-    if int_issues == 0: int_v = "INTACT"
-    
-    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
-    v_cls = "txt-crit" if risk_level == "crit" else ("txt-warn" if int_v != "INTACT" else "txt-safe")
-    
-    c8 = render_cell("INTEGRITY", "STATUS", int_v, v_cls, "ISSUES", str(int_issues), color_risk(int_issues), d1="Structural Health.", m1="Audit", d2="Total Findings.", m2="Count(Hits)", reg_key_2="integrity", risk_2=risk_level)
-
-    thr_res = stats.get('threat', {})
-    thr_v = thr_res.get('verdict', 'CLEAR')
-    thr_sigs = sum(len(HUD_HIT_REGISTRY.get(k, [])) for k in ["thr_execution", "thr_spoofing", "thr_obfuscation", "thr_suspicious"])
-    if thr_sigs == 0: thr_v = "CLEAR"
-    
-    risk_level_thr = "crit" if "WEAPONIZED" in thr_v or "HIGH" in thr_v else ("warn" if thr_v != "CLEAR" else "ok")
-    t_cls = "txt-crit" if risk_level_thr == "crit" else ("txt-warn" if risk_level_thr == "warn" else "txt-safe")
-
-    c9 = render_cell("THREAT", "STATUS", thr_v, t_cls, "SIGNALS", str(thr_sigs), color_risk(thr_sigs), d1="Exploit Risk.", m1="Threat Score", d2="Attack Vectors.", m2="Count(Hits)", reg_key_2="threat", risk_2=risk_level_thr)
-
-    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
-
-def populate_hud_registry(t: str):
-    """
-    Populates simple metric buckets for the HUD Stepper.
-    USES EXACT DOM OFFSET ACCUMULATOR (Gold Standard) to prevent drift.
-    """
-    acc = 0 # Tracks exact DOM position (UTF-16 units)
+    logical_idx = 0
+    utf16_acc = 0
     
     for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+def populate_hud_registry(t: str):
+    """Populates simple metric buckets for the HUD Stepper."""
+    js_array = window.Array.from_(t)
+    
+    for i, char in enumerate(js_array):
         cp = ord(char)
-        
-        # CALCULATE WIDTH EXACTLY LIKE BROWSER (BMP=1, Emoji/Astral=2)
-        char_width = 2 if cp > 0xFFFF else 1
-        
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
         # 1. Whitespace / Non-Std (C3)
@@ -6416,24 +6661,20 @@ def populate_hud_registry(t: str):
              elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
              elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
              elif mask & INVIS_TAG: label = "Tag"
-             elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): label = "Variation Selector"
              
-             # Register using DOM coordinates (acc), not Logical Index (i)
-             _register_hit("ws_nonstd", acc, acc + char_width, f"{label} (U+{cp:04X})")
+             _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
 
         # 2. Delimiters (C4)
         cat = unicodedata.category(char)
         if cat.startswith('P'):
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
-                _register_hit("punc_exotic", acc, acc + char_width, f"Exotic Punct (U+{cp:04X})")
+                _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
 
         # 3. Symbols (C5)
         if cat.startswith('S'):
              if not (cp <= 0xFF or (0x2000 <= cp <= 0x29FF)):
-                 _register_hit("sym_exotic", acc, acc + char_width, f"Exotic Symbol (U+{cp:04X})")
-        
-        # Advance accumulator for next loop
-        acc += char_width
+                 _register_hit("sym_exotic", i, i+1, f"Exotic Symbol (U+{cp:04X})")
+
 
 @create_proxy
 def update_all(event=None):
@@ -6663,6 +6904,22 @@ def update_all(event=None):
         if flag_data.get("count", 0) > 0:
             final_threat_flags[threat_label] = flag_data
 
+    # Unqualified
+    unq_pos = emoji_flags.get("Flag: Unqualified Emoji", {}).get("positions", [])
+    for pos_str in unq_pos:
+        try:
+            idx = int(pos_str.replace("#", ""))
+            _register_hit("thr_suspicious", idx, idx+1, "Unqualified Emoji")
+        except: pass
+
+    # Forced Presentation
+    forced_pos = emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("positions", []) + \
+                 emoji_flags.get("Flag: Forced Text Presentation", {}).get("positions", [])
+    for pos_str in forced_pos:
+        try:
+            idx = int(pos_str.replace("#", ""))
+            _register_hit("thr_suspicious", idx, idx+1, "Forced Presentation")
+        except: pass
 
     toc_counts = {
         'dual': sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + sum(1 for v in grapheme_cards.values() if v > 0) + sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0),
@@ -6717,7 +6974,7 @@ def update_all(event=None):
     # Update HUD (Remove emoji_consumed)
     render_forensic_hud(t, hud_stats)
 
-    # --- NEW: Render Encoding Strip ---
+    # --- Render Encoding Strip ---
     render_encoding_footprint(t)
     
     # Stage 2 Bridge
@@ -6871,7 +7128,7 @@ def reveal2_invisibles(event=None):
     el.focus()
     el.setSelectionRange(target_range[0], target_range[1])
     
-    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
+    # --- WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
     # We manually call the inspector logic to update the bottom panel immediately.
     # We pass None because the function doesn't actually use the event argument.
     inspect_character(None)
@@ -6908,19 +7165,19 @@ window.cycle_hud_metric = cycle_hud_metric
 async def main():
     """Main entry point: Loads data, then hooks the input."""
     
-    # --- FIX 1: Get element first ---
+    # --- Get element first ---
     text_input_element = document.getElementById("text-input")
     
     # Start loading the external data and wait for it to finish.
     await load_unicode_data()
     
-    # --- FIX 2: Bind listener *after* await ---
+    # --- Bind listener *after* await ---
     text_input_element.addEventListener("input", update_all)
     
-    # --- NEW: Hook the Inspector Panel ---
+    # --- Hook the Inspector Panel ---
     document.addEventListener("selectionchange", create_proxy(inspect_character))
 
-    # --- NEW: Hook the Reveal Buttons ---
+    # --- Hook the Reveal Buttons ---
     reveal_btn = document.getElementById("btn-reveal")
     if reveal_btn:
         # Ensure we bind to the correct function name 'reveal_invisibles'
@@ -6932,239 +7189,10 @@ async def main():
         # Ensure we bind to the correct function name 'reveal2_invisibles'
         reveal2_btn.addEventListener("click", reveal2_invisibles)
     
-    # --- FIX 3: Un-gate the UI ---
+    # Un-gate the UI ---
     text_input_element.disabled = False
     text_input_element.placeholder = "Paste or type here..."
     print("Text...tics is ready.")
 
 # Start the main asynchronous task
 asyncio.ensure_future(main())
-
-# ==========================================
-# 13. FORENSIC WORKBENCH MODULE (Remediation)
-# ==========================================
-
-def _is_safe_strict(cp, cat, mask):
-    """
-    STRICT POLICY:
-    - ALLOW: L (Letter), N (Number), P (Punctuation), S (Symbol).
-    - ALLOW: Standard ASCII Whitespace (0x20, 0x09, 0x0A, 0x0D).
-    - DENY: Everything else (Cf, Co, Cn, Cs, Bidi, Tags, ZWJ, VS).
-    """
-    # 1. Hard Allow: ASCII Standard Whitespace
-    if cp in (0x20, 0x09, 0x0A, 0x0D): return True
-    
-    # 2. Hard Deny: Bidi, Tags, Invisibles (Bitmask Check)
-    if mask & (INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DEFAULT_IGNORABLE | INVIS_ZERO_WIDTH_SPACING):
-        return False
-        
-    # 3. Hard Deny: Bad Categories
-    if cat in ('Cf', 'Co', 'Cn', 'Cs', 'Cc'): return False
-    
-    # 4. Allow Visible Content
-    if cat[0] in ('L', 'N', 'P', 'S'): return True
-    
-    # 5. Default Deny (Unforeseen marks/separators in Strict mode)
-    return False
-
-@create_proxy
-def py_sanitize_string(mode="STRICT"):
-    """
-    Workbench Action: Sanitize.
-    Returns a JSON string { "safe_text": str, "stats": dict } to JS.
-    """
-    input_el = document.getElementById("text-input")
-    
-    # [FIX] Return empty string on empty input so JS bridge exits cleanly
-    if not input_el or not input_el.value: return ""
-    
-    raw = input_el.value
-    stats = {
-        "removed_bidi": 0,
-        "removed_invisible": 0,
-        "normalized_spaces": 0,
-        "removed_count": 0
-    }
-    
-    buffer = []
-    
-    # --- MODE B: CONSERVATIVE (Grapheme-Aware) ---
-    if mode == "CONSERVATIVE":
-        # Logic: Preserve RGI Emoji sequences whole. Filter everything else.
-        rgi_set = DATA_STORES.get("RGISequenceSet", set())
-        segments = GRAPHEME_SEGMENTER.segment(raw)
-        
-        for seg in segments:
-            g_str = seg.segment
-            
-            # 1. Pass RGI sequences intact
-            if g_str in rgi_set:
-                buffer.append(g_str)
-                continue
-                
-            # 2. Otherwise, filter atoms inside the grapheme
-            for char in g_str:
-                cp = ord(char)
-                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-                
-                # Deny Bidi & Tags (Always dangerous)
-                if mask & (INVIS_BIDI_CONTROL | INVIS_TAG):
-                    stats["removed_bidi"] += 1
-                    stats["removed_count"] += 1 # [FIX] Update total
-                    continue
-                
-                # Deny High-Risk Invisibles 
-                if mask & (INVIS_DEFAULT_IGNORABLE):
-                    stats["removed_invisible"] += 1
-                    stats["removed_count"] += 1 # [FIX] Update total
-                    continue
-                    
-                buffer.append(char)
-
-    # --- MODE A: STRICT (Character-by-Character) ---
-    else:
-        for char in raw:
-            cp = ord(char)
-            cat = unicodedata.category(char)
-            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-            
-            # 1. Normalization: Convert Non-Std Spaces to 0x20
-            if cat == 'Zs' and cp != 0x20:
-                buffer.append(' ')
-                stats["normalized_spaces"] += 1
-                continue
-            
-            # 2. Strict Filtering
-            if _is_safe_strict(cp, cat, mask):
-                buffer.append(char)
-            else:
-                if mask & INVIS_BIDI_CONTROL: 
-                    stats["removed_bidi"] += 1
-                elif mask & INVIS_ANY_MASK: 
-                    stats["removed_invisible"] += 1
-                
-                stats["removed_count"] += 1
-
-    # --- Final Normalization (NFC) ---
-    # Collapses combining marks and fixes canonical ordering
-    clean_str = "".join(buffer)
-    final_str = unicodedata.normalize("NFC", clean_str)
-    
-    return json.dumps({
-        "safe_text": final_str,
-        "stats": stats
-    })
-
-@create_proxy
-def py_get_code_snippet(lang="python"):
-    """
-    Workbench Action: Copy as Code.
-    Generates a safe, escaped string literal for developers.
-    """
-    input_el = document.getElementById("text-input")
-    if not input_el or not input_el.value: return ""
-    
-    raw = input_el.value
-    out = []
-    
-    # Escaping Map for Controls (Must handle backslash first!)
-    CTRL_MAP = {
-        '\\': '\\\\', 
-        '"': '\\"', 
-        "'": "\\'",
-        '\n': '\\n', 
-        '\r': '\\r', 
-        '\t': '\\t'
-    }
-    
-    for char in raw:
-        cp = ord(char)
-        
-        # 1. Handle Syntax Chars (Backslashes, Quotes, Newlines)
-        if char in CTRL_MAP:
-            out.append(CTRL_MAP[char])
-            continue
-
-        # 2. Safe ASCII Printable (32-126)
-        if 32 <= cp <= 126:
-            out.append(char)
-            
-        # 3. Unicode Escaping
-        else:
-            if lang == "python":
-                if cp <= 0xFFFF:
-                    out.append(f"\\u{cp:04x}")
-                else:
-                    out.append(f"\\U{cp:08x}") # Python 8-digit
-            else: # javascript
-                if cp <= 0xFFFF:
-                    out.append(f"\\u{cp:04x}")
-                else:
-                    out.append(f"\\u{{{cp:x}}}") # ES6 syntax
-                    
-    # Wrap in quotes
-    safe_body = "".join(out)
-    if lang == "python":
-        return f'"{safe_body}"'
-    else:
-        return f'"{safe_body}"' # JS string
-
-@create_proxy
-def py_generate_evidence():
-    """
-    Workbench Action: Evidence.
-    Packages the current forensic state into a downloadable JSON artifact.
-    """
-    if not hasattr(window, "TEXTTICS_CORE_DATA"):
-        return
-        
-    # 1. Retrieve Data
-    # [FIX] Ensure we handle the proxy object correctly
-    try:
-        core_data = window.TEXTTICS_CORE_DATA.to_py()
-    except:
-        # Fallback if it's already a dict (rare, but safe)
-        core_data = window.TEXTTICS_CORE_DATA
-        
-    raw_text = core_data.get("raw_text", "")
-    
-    # 2. Generate Metadata
-    import datetime
-    # [FIX] Ensure we have a robust timestamp
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    
-    meta = {
-        "tool": "Text...tics Stage 1",
-        "version": "1.1.0",
-        "timestamp": now_iso,
-        "input_hash_sha256": hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
-        "input_length_codepoints": len(raw_text),
-        "sanitization_modes_available": ["STRICT", "CONSERVATIVE"]
-    }
-    
-    # 3. Create Artifact
-    artifact = {
-        "metadata": meta,
-        "forensic_profile": core_data
-    }
-    
-    # 4. Trigger Download via JS
-    json_str = json.dumps(artifact, indent=2, ensure_ascii=False)
-    
-    # Create a temporary blob/link in JS
-    js_blob = window.Blob.new([json_str], { "type": "application/json" })
-    js_url = window.URL.createObjectURL(js_blob)
-    
-    link = document.createElement("a")
-    link.href = js_url
-    fname = f"forensic_evidence_{now_iso[:19].replace(':','-')}.json"
-    link.setAttribute("download", fname)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(js_url)
-
-# Expose new functions
-window.py_sanitize_string = py_sanitize_string
-window.py_get_code_snippet = py_get_code_snippet
-window.py_generate_evidence = py_generate_evidence
