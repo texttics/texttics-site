@@ -5195,7 +5195,8 @@ def _classify_macro_type(cp, cat, id_status, mask):
 
     # 0. DATA ROT (Corruption / Integrity Failures)
     # Cn (Unassigned), Cs (Surrogate), Co (Private Use)
-    if cat in ('Cn', 'Cs', 'Co'): 
+    # Add FFFD and NUL to the definition of ROT
+    if cat in ('Cn', 'Cs', 'Co') or cp == 0xFFFD or cp == 0x0000: 
         return "ROT"
 
     # 1. TRUE THREATS (Active Attack Vectors)
