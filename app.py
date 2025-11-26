@@ -6274,13 +6274,14 @@ def render_inspector_panel(data):
 
 def analyze_intel_profile(t, threat_flags, script_stats):
     """
-    The Intel Engine (UTS #39 / UTS #55).
+    The Intel Engine (UTS #39 Inspired / UTS #55).
     Determines Restriction Level and classifies Homoglyph Topology.
-    Returns a structured IntelReport dictionary.
+    
+    Note: `threat_flags` is reserved for future integration.
     """
     if not t: return None
 
-    # --- 1. Restriction Level Engine (UTS #39) ---
+    # --- 1. Restriction Level Engine (UTS #39 Heuristic) ---
     # Extract scripts from the provenance stats
     scripts_found = set()
     for key in script_stats.keys():
@@ -6330,12 +6331,19 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     
     # --- 3. Token Exploit Generator ---
     import base64
+    import re
     
-    tokens = t.split()
+    # Improved Tokenizer: alphanumeric + dots/dashes/at
+    token_pattern = re.compile(r'[\w\-\.@]+')
+    raw_tokens = token_pattern.findall(t)
+    
     targets = []
+    processed_tokens = 0
     
-    for token in tokens:
+    for token in raw_tokens:
         if len(token) < 2: continue
+        processed_tokens += 1
+        if processed_tokens > 200: break # Safety Cap
         
         t_scripts = set()
         t_invis = False
@@ -6351,17 +6359,40 @@ def analyze_intel_profile(t, threat_flags, script_stats):
             # Bidi
             if INVIS_TABLE[cp] & INVIS_BIDI_CONTROL: t_bidi = True
             
+        # REUSED LOGIC: Canonical Skeleton
+        skeleton = _generate_uts39_skeleton(token)
+        if not skeleton: skeleton = token # Failsafe
+        
         # Classify Token Risk
         risk_type = None
-        if len(t_scripts) > 1: 
-            risk_type = "SPOOFING (MIXED SCRIPT)"
-            topology["SPOOFING"] += 1
-        elif t_bidi:
+        
+        # Priority 1: Syntax/Bidi (Execution Risk)
+        if t_bidi:
             risk_type = "SYNTAX (BIDI CONTROL)"
             topology["SYNTAX"] += 1
+            
+        # Priority 2: Hidden (Obfuscation)
         elif t_invis:
             risk_type = "HIDDEN (INVISIBLE)"
             topology["HIDDEN"] += 1
+            
+        # Priority 3: Spoofing (Visual)
+        elif len(t_scripts) > 1: 
+            risk_type = "SPOOFING (MIXED SCRIPT)"
+            topology["SPOOFING"] += 1
+            
+        elif skeleton != token:
+            # Check Intra vs Cross Script
+            is_token_ascii = all(ord(c) < 128 for c in token)
+            is_skel_ascii = all(ord(c) < 128 for c in skeleton)
+            
+            if not is_token_ascii and is_skel_ascii:
+                 risk_type = "SPOOFING (homoglyph)"
+                 topology["SPOOFING"] += 1
+            else:
+                 # Intra-script ambiguity (e.g. 1 vs l)
+                 topology["AMBIGUITY"] += 1
+                 continue # Count but don't list as high-value target
             
         if risk_type:
             # Generate Vectors
