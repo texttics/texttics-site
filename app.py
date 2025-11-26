@@ -6365,13 +6365,12 @@ def _logical_to_dom(t: str, logical_idx: int) -> int:
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
     """
-    Stateful stepper (Fixed V16 - "The Bridge" Strategy).
+    Stateful stepper (Fixed V17 - Minimalist Expansion).
     1. Handles Lone Surrogates gracefully via errors='replace'.
     2. Fixes EOF clamping logic.
-    3. [UPDATED] Smart Expand: 
-       - ZWJ/ZWNJ: The "Bridge" - Expands outward past ALL contiguous ZWJs 
-         until it finds visible neighbors on both sides.
-       - Other Invisibles: Expands Left.
+    3. [SIMPLIFIED] Smart Expand:
+       - ZWJ/ZWNJ: Expand RIGHT (+1). Selects [ZWJ + Next]. Prevents left-bleed.
+       - Marks/VS: Expand LEFT (-1). Selects [Base + Mark].
     """
     el = document.getElementById("text-input")
     if not el: return
@@ -6429,37 +6428,20 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     log_s = int(next_hit[0])
     log_e = int(next_hit[1])
     
-    # --- [UX FIX V16] THE "BRIDGE" STRATEGY ---
+    # --- [UX FIX V17] MINIMALIST EXPANSION ---
     try:
         if log_s >= 0 and log_s < len(t):
             target_char = t[log_s]
             cp = ord(target_char)
             
-            # STRATEGY A: Join Controls (ZWJ U+200D / ZWNJ U+200C)
-            # "The Bridge": Walk outward past all ZWJs to find solid anchors.
+            # CASE A: Join Controls (ZWJ / ZWNJ)
+            # Expand RIGHT ONLY. Selects [ZWJ] + [NextChar].
+            # This avoids grabbing the 'd' in 'asdasd'.
             if cp in (0x200C, 0x200D):
-                
-                # 1. Walk Left: Find first non-ZWJ/ZWNJ
-                l_ptr = log_s - 1
-                while l_ptr >= 0:
-                    if ord(t[l_ptr]) not in (0x200C, 0x200D):
-                        log_s = l_ptr # Found Left Anchor
-                        break
-                    l_ptr -= 1
-                # (If we hit start of string and it's all ZWJs, log_s stays at start)
+                if log_e < len(t): log_e += 1 
 
-                # 2. Walk Right: Find first non-ZWJ/ZWNJ
-                # Start from end of current hit (usually log_s + 1)
-                r_ptr = log_e 
-                while r_ptr < len(t):
-                    if ord(t[r_ptr]) not in (0x200C, 0x200D):
-                        log_e = r_ptr + 1 # Found Right Anchor (Include it)
-                        break
-                    r_ptr += 1
-                # (If we hit end of string, log_e stays at end)
-
-            # STRATEGY B: Other Invisibles (Marks, VS, Format)
-            # Just grab the Left Base.
+            # CASE B: Marks / VS / Format
+            # Expand LEFT ONLY. Selects [Base] + [Mark].
             elif unicodedata.category(target_char) in ('Mn', 'Me', 'Cf'):
                  if log_s > 0: log_s -= 1
 
