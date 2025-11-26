@@ -2490,8 +2490,8 @@ async def load_unicode_data():
 
 def compute_emoji_analysis(text: str) -> dict:
     """
-    Forensic Cluster Classifier (V3.3 - Fixed Accounting & Integrity).
-    1. ACCOUNTS for all emoji units (RGI and Non-RGI).
+    Forensic Cluster Classifier (V3.4 - Final Accounting Fix).
+    1. UNIFIED ATOMIC LOGIC: Prevents 'Symbol Emojis' (like Skull) from falling into the logic trap.
     2. DETECTS broken Keycaps and Regional Indicators.
     3. SYNCS indices using manual Python counter.
     """
@@ -2590,11 +2590,8 @@ def compute_emoji_analysis(text: str) -> dict:
                     counts["text_symbols_exotic"] += 1
                     _register_hit("sym_exotic", idx, idx + cp_len, f"Exotic Symbol (U+{base_cp:04X})")
 
-        # [HUD C6] Hybrids (Emoji-Atomic)
-        if kind == "emoji-atomic" and base_cat.startswith("S") and not rgi_status:
-             has_vs16 = "\uFE0F" in cluster
-             if not is_emoji_pres and not has_vs16:
-                 _register_hit("emoji_hybrid", idx, idx + cp_len, "Ambiguous Hybrid")
+        # [HUD C6 & C7] Atomic Emoji (Unified Logic)
+        # [FIX]: Merged the "Hybrid Check" into the main block so we don't skip counting.
         elif kind == "emoji-atomic":
             counts["total_emoji_units"] += 1
             
@@ -2606,12 +2603,16 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
             
+            # Sub-logic: Hybrids
             if base_cat.startswith("S") and not rgi_status:
                 counts["hybrid_pictographs"] += 1
                 has_vs16 = "\uFE0F" in cluster
-                if not is_emoji_pres and not has_vs16: counts["hybrid_ambiguous"] += 1
+                if not is_emoji_pres and not has_vs16:
+                    counts["hybrid_ambiguous"] += 1
+                    # Only register hit if it's truly ambiguous
+                    _register_hit("emoji_hybrid", idx, idx + cp_len, "Ambiguous Hybrid")
 
-        # [HUD C7] Sequences (FIXED: Count ALL sequences)
+        # [HUD C7] Sequences
         elif kind == "emoji-sequence":
             counts["total_emoji_units"] += 1
             if rgi_status:
@@ -2632,19 +2633,16 @@ def compute_emoji_analysis(text: str) -> dict:
 
         # --- D. Flag Generation ---
         
-        # 1. Broken Keycap Detection (Restored)
-        # Checks for U+20E3 (Combining Enclosing Keycap) on invalid bases (like 'Q')
+        # 1. Broken Keycap Detection
         if "\u20E3" in cluster:
             if base_cp not in VALID_KEYCAP_BASES:
                 add_flag("Flag: Broken Keycap Sequence", idx)
 
-        # 2. Invalid Regional Indicator Detection (Restored)
-        # Flags orphaned indicators (U+1F1FA 'U') or invalid pairs
+        # 2. Invalid Regional Indicator Detection
         if 0x1F1E6 <= base_cp <= 0x1F1FF:
              if cp_len == 1: 
                  add_flag("Flag: Invalid Regional Indicator", idx)
              elif cp_len == 2 and 0x1F1E6 <= ord(cluster[1]) <= 0x1F1FF:
-                 # Paired but not RGI (e.g. 'XX' flag)
                  if not rgi_status:
                      add_flag("Flag: Invalid Regional Indicator", idx)
 
