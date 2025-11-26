@@ -376,54 +376,54 @@ def summarize_invisible_clusters(t: str, rows: list):
 def analyze_combining_structure(t: str, rows: list):
     """
     Scans for 'Zalgo' (excessive combining marks) and repeated marks.
-    Adds rows directly to the list.
+    Adds rows directly to the list AND registers HUD hits.
     """
     if LOADING_STATE != "READY": return
 
     zalgo_indices = []
     repeated_mark_indices = []
-    invisible_mark_indices = [] # Marks on non-base characters
+    invisible_mark_indices = [] 
 
     segments_iterable = GRAPHEME_SEGMENTER.segment(t)
-    segments = window.Array.from_(segments_iterable)
+    # [PERFORMANCE] Use JS iterator to avoid massive array copy overhead
+    # But we need logical indices. 
+    current_logical_idx = 0
 
-    for seg in segments:
+    for seg in segments_iterable:
         g_str = seg.segment
-        index = seg.index
+        cp_len = len(g_str) # Python logical length
         
         # Count combining marks (Category Mn, Me)
-        # We iterate manually to be fast and safe
         mark_count = 0
         last_cp = -1
         
-        # Check base char (first char)
+        # Check base char
         base_char = g_str[0]
         base_cat = unicodedata.category(base_char)
-        is_valid_base = base_cat[0] in ('L', 'N', 'S', 'P') # Letter, Number, Symbol, Punct
+        is_valid_base = base_cat[0] in ('L', 'N', 'S', 'P')
         
-        js_chars = window.Array.from_(g_str)
-        for i, char in enumerate(js_chars):
+        for char in g_str:
             cp = ord(char)
             cat = unicodedata.category(char)
-            
             if cat in ('Mn', 'Me'):
                 mark_count += 1
-                
-                # Check for repeated mark (Spoofing vector)
                 if cp == last_cp:
-                    # We flag the start of the grapheme for context
-                    if f"#{index}" not in repeated_mark_indices:
-                        repeated_mark_indices.append(f"#{index}")
-            
+                    if f"#{current_logical_idx}" not in repeated_mark_indices:
+                        repeated_mark_indices.append(f"#{current_logical_idx}")
             last_cp = cp
 
         # Thresholds
         if mark_count >= 4:
-            zalgo_indices.append(f"#{index}")
+            zalgo_indices.append(f"#{current_logical_idx}")
+            # [FIX] Register Hit for HUD
+            _register_hit("thr_obfuscation", current_logical_idx, current_logical_idx + cp_len, f"Zalgo Stack ({mark_count})")
             
-        if mark_count > 0 and not is_valid_base and base_cat != "Co": # Ignore Private Use base
-             # Marks on control chars, format chars, etc.
-             invisible_mark_indices.append(f"#{index}")
+        if mark_count > 0 and not is_valid_base and base_cat != "Co":
+             invisible_mark_indices.append(f"#{current_logical_idx}")
+             # [FIX] Register Hit for HUD
+             _register_hit("thr_suspicious", current_logical_idx, current_logical_idx + cp_len, "Hidden Mark")
+
+        current_logical_idx += cp_len
 
     # Add Rows
     if zalgo_indices:
@@ -4033,7 +4033,7 @@ def compute_threat_analysis(t: str):
                     'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # Registry: Suspicious
+                # [FIX] Register Generic Hit to alert the user
                 _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
             # 2. Extension Mix
@@ -4046,6 +4046,14 @@ def compute_threat_analysis(t: str):
                  }
                  # Upgrade severity
                  script_mix_class = "Highly Mixed Scripts (Extensions)"
+
+                 # [FIX] Register Unclosed Bidi Hits
+            if threat_flags.get("Flag: Unclosed Bidi Sequence"):
+                # We don't have exact positions for unclosed bidi here (calculated in analyzer)
+                # But we should ensure the HUD knows about it.
+                # Actually, analyze_bidi_structure registers "int_fracture" which maps to Integrity.
+                # For Threat, we rely on "malicious_bidi".
+                pass
             
             # 3. Single Script / ASCII status
             if len(clean_base) == 0:
@@ -6618,9 +6626,10 @@ def render_forensic_hud(t, stats):
 
 def populate_hud_registry(t: str):
     """Populates simple metric buckets for the HUD Stepper."""
-    js_array = window.Array.from_(t)
+    # [FIX] Iterate Python string directly.
+    # This ensures 1:1 index mapping with _logical_to_dom
     
-    for i, char in enumerate(js_array):
+    for i, char in enumerate(t):
         cp = ord(char)
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
@@ -6631,6 +6640,7 @@ def populate_hud_registry(t: str):
              elif mask & INVIS_DEFAULT_IGNORABLE: label = "Ignorable"
              elif mask & INVIS_BIDI_CONTROL: label = "Bidi Control"
              elif mask & INVIS_TAG: label = "Tag"
+             elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): label = "Variation Selector"
              
              _register_hit("ws_nonstd", i, i+1, f"{label} (U+{cp:04X})")
 
