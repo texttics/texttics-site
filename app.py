@@ -5695,6 +5695,9 @@ def analyze_signal_processor_state(data):
     is_layout_control = cat in ('Format', 'Space Separator') and not is_bidi_control and not is_invisible and not is_ascii
 
     # --- 3. FACET STATE CALCULATOR ---
+
+    # Check for Hard Corruption
+    is_corruption = (cp == 0xFFFD or cp == 0x0000 or cat == 'Cs')
     
     current_score = 0.0
     reasons = []
@@ -5707,6 +5710,11 @@ def analyze_signal_processor_state(data):
              current_score += RISK_WEIGHTS["INVISIBLE"]
              vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
              reasons.append("Invisible Character")
+    elif is_corruption:
+        # Explicit Corruption Handling
+        current_score += 4.0 # Instant Critical
+        vis = {"state": "CORRUPT", "class": "risk-fail", "icon": "eye_off", "detail": "Data Loss"}
+        reasons.append("Data Corruption")
     elif not is_ascii:
         current_score += RISK_WEIGHTS["NON_ASCII"]
         vis = {"state": "EXTENDED", "class": "risk-info", "icon": "eye", "detail": "Unicode Range"}
