@@ -5850,6 +5850,7 @@ def render_inspector_panel(data):
     """
     Forensic Layout v10.0: Synchronized Visuals & Fluid Matrix.
     Fixes 'vis_state' error by correctly using unpacked data dictionaries.
+    Includes Exploit & Injection layer (Base64, Shellcode, Octal, ES6).
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -5980,7 +5981,7 @@ def render_inspector_panel(data):
                         else: active_threats.append("RISK")
     except Exception: pass
 
-    # 3. Extract Macro Type (CRITICAL FIX: Define 'mt' here)
+    # 3. Extract Macro Type
     mt = data['macro_type']
 
     # 4. Top Grid (Identity Specs)
@@ -6072,8 +6073,7 @@ def render_inspector_panel(data):
             
         grid_html = "".join(chips_buffer)
         
-        # [CRITICAL FIX] Inherit the color class from the Identity Risk Facet
-        # ident_data['class'] will be 'risk-info' (Blue), 'risk-warn' (Orange), etc.
+        # Inherit the color class from the Identity Risk Facet
         risk_css = ident_data['class'] 
         
         lookalike_html = f"""
@@ -6085,16 +6085,7 @@ def render_inspector_panel(data):
         </div>
         """
     else:
-        # Optional: Show "Unique" if you want it strictly constant
-        # For now, keeping it cleaner by hiding if none exist, 
-        # but if you want it strictly constant, uncomment below:
-        # lookalike_html = f"""
-        # <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px; border-color: #e5e7eb;">
-        #     <span class="ghost-key" style="color:#9ca3af">LOOKALIKES:</span>
-        #     <span class="lookalike-list" style="color:#9ca3af">None (Unique)</span>
-        # </div>
-        # """
-        pass
+        pass # Hide if unique
 
     
     # 6B. Normalization Ghosts (Always Show if Data Exists)
@@ -6221,9 +6212,17 @@ def render_inspector_panel(data):
                     <span class="label">Win-1252:</span>
                     <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
                 </div>
+                
+                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 6px 0; opacity: 0.6;">
+                <div class="section-label" style="margin-bottom:4px; color:#b91c1c;">EXPLOIT VECTORS</div>
+                
+                <div class="byte-row"><span class="label">Base64:</span>{data['base64']}</div>
                 <div class="byte-row"><span class="label">URL:</span>{data['url']}</div>
-                <div class="byte-row"><span class="label">HTML:</span>{_escape_html(data['html'])}</div>
-                <div class="byte-row"><span class="label">Code:</span>{_escape_html(data['code'])}</div>
+                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data['html_hex'])}</div>
+                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data['html_dec'])}</div>
+                <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data['shell'])}</div>
+                <div class="byte-row"><span class="label">ES6/CSS:</span>{_escape_html(data['es6'])}</div>
+                <div class="byte-row"><span class="label">Py Code:</span>{_escape_html(data['code'])}</div>
             </div>
         </div>
     </div>
@@ -6235,6 +6234,7 @@ def render_inspector_panel(data):
     except Exception:
         pass
 
+        
 def compute_threat_score(inputs):
     """
     The Threat Auditor.
