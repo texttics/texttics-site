@@ -3210,28 +3210,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         for s, e, l in merged:
             _register_hit("thr_execution", s, e, l)
 
-    # Obfuscation: Invisible Clusters (Mapped to DOM)
-    if flags["any_invis"]:
-        clusters = analyze_invisible_clusters(t)
-        if clusters:
-            c_acc = 0
-            curr_clust_idx = 0
-            for i, char in enumerate(t):
-                c_len = 2 if ord(char) > 0xFFFF else 1
-                
-                if curr_clust_idx < len(clusters):
-                    c = clusters[curr_clust_idx]
-                    if i == c["start"]: c["dom_start"] = c_acc
-                    if i == c["end"]:
-                        c["dom_end"] = c_acc + c_len
-                        is_just_vs = (c["length"] == 1 and c["mask_union"] & INVIS_VARIATION_STANDARD)
-                        if not is_just_vs:
-                            lbl = "Invisible Cluster"
-                            if c.get("high_risk"): lbl += " [High Risk]"
-                            _register_hit("thr_obfuscation", c["dom_start"], c["dom_start"]+1, lbl)
-                        curr_clust_idx += 1
-                c_acc += c_len
-
     auditor_inputs = {
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
