@@ -821,55 +821,43 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     # 4. Execute Highlight
      
     if metric_key == "threat_agg":
-        # 1. Use the EXACT sequence source used to build the registry
-        # This prevents "Index Miss" errors where Python string len != JS Array len
-        js_sequence = window.Array.from_(t)
-        
+        # Use DIRECT DOM SELECTION to match 'reveal2' perfect accuracy.
+        # 1. Get Logical indices from Registry
         log_start = next_hit[0]
         log_end = next_hit[1]
         
-        # [SAFETY] Calculate total length safely for the clamp (No encode crash)
-        # Counts 2 units for Astral (>FFFF), 1 for everything else (including Surrogates)
-        total_utf16_len = sum(2 if ord(c) > 0xFFFF else 1 for c in t)
+        # 2. Calculate Physical DOM indices (UTF-16 accumulation)
+        # Use Array.from to ensure we iterate exactly as the registry did
+        js_sequence = window.Array.from_(t)
         
-        # [SAFETY] Bounds Check: Detect stale registry (text changed after analysis)
-        len_seq = len(js_sequence)
-        if log_start >= len_seq:
-            print(f"[Text...tics] Stale threat index {log_start} (current len={len_seq}), skipping.")
-            return 
-
-        # Initialize to -1 to detect "Missed Target"
         dom_start = -1
         dom_end = -1
         
         acc = 0
-        # 2. Manual Accumulation Loop (Safe & Aligned to JS Sequence)
         for i, char in enumerate(js_sequence):
             if i == log_start: dom_start = acc
             if i == log_end: dom_end = acc; break 
             
-            # UTF-16 Math: Astral chars (>FFFF) are 2 units, others 1
+            # UTF-16 Math: Astral chars (>FFFF) are 2 units
             try:
                 acc += (2 if ord(char) > 0xFFFF else 1)
             except:
                 acc += 1
             
-        # Catch-all: If indices were beyond the sequence length
-        if dom_start == -1: dom_start = acc
-        if dom_end == -1: dom_end = acc
+        # Handle target at end of string
+        if log_end >= len(js_sequence): dom_end = acc
         
-        # 3. Safety Clamps
-        # Ensure we don't select past the end
-        dom_start = min(dom_start, total_utf16_len)
-        dom_end = min(dom_end, total_utf16_len)
-        
-        # Ensure start <= end
-        if dom_start > dom_end: dom_start = dom_end
-        
-        window.TEXTTICS_HIGHLIGHT_RANGE(dom_start, dom_end)
+        # Safety: Abort if index missed (Prevent "Select All")
+        if dom_start == -1:
+            print(f"Threat Highlight Miss: Index {log_start} not found.")
+            return
+
+        # 3. BYPASS GLUE: Set Selection Directly
+        el.focus()
+        el.setSelectionRange(dom_start, dom_end)
         
     else:
-        # [LEGACY PATH] Everyone else uses raw indices (Status Quo maintained)
+        # [LEGACY PATH] Keep existing logic for other metrics
         window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
 
     
