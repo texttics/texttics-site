@@ -3895,7 +3895,7 @@ details.profile-section > summary:hover::marker {
 /* 2. Target the Row (The Label) - Force Size */
 .card .metric-facts .fact-row {
     /* Use high specificity (.card .metric-facts .fact-row) to win */
-    font-size: 0.8rem !important; /* ~13px - Legible Label */
+    font-size: 1.5rem !important; /* ~13px - Legible Label */
     line-height: 1.2 !important;
     
     color: var(--color-text-muted);
@@ -3909,7 +3909,7 @@ details.profile-section > summary:hover::marker {
 /* 3. Target the Value (The Number) - Override .card strong */
 .card .metric-facts .fact-row strong {
     /* Override global .card strong which was forcing 0.9rem */
-    font-size: 1.1rem !important; /* ~17px - Big, clear Number */
+    font-size: 1.5rem !important; /* ~17px - Big, clear Number */
     font-weight: 700;
     color: var(--color-text);
     font-family: var(--font-mono);
