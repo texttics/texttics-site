@@ -3881,12 +3881,10 @@ details.profile-section > summary:hover::marker {
 }
 
 .fact-row {
-    font-size: 0.65rem;
+    font-size: 1rem;
     color: var(--color-text-muted);
     font-family: var(--font-sans);
     white-space: nowrap;
-    /* REMOVED background-color & padding to look like data, not buttons */
-    
     /* ADDED: Technical alignment */
     text-align: right;
     margin-bottom: 2px;
