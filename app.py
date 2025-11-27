@@ -7412,6 +7412,27 @@ def update_all(event=None):
         """
     
         # 4. Final Injection
+        # [FORENSIC LAYOUT ENGINE - ACTIVE STATE] ----------------------------------
+        # 1. Define Groups
+        quad_keys = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
+        
+        context_keys = [
+            "RGI Emoji Sequences", "Whitespace (Total)",
+            "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
+        ]
+    
+        # 2. Render HTML Strings (Detached)
+        html_quad = render_cards(meta_cards, element_id=None, key_order=quad_keys, return_html=True)
+        html_context = render_cards(meta_cards, element_id=None, key_order=context_keys, return_html=True)
+    
+        # 3. Inject Structure (The Wrapper Divs)
+        # .cards-2x2 -> Forces 2x2 Grid for top 4
+        # .cards     -> Standard Fluid Grid for the rest
+        full_html = f"""
+        <div class="cards-2x2">{html_quad}</div>
+        <div class="cards">{html_context}</div>
+        """
+    
         document.getElementById("meta-totals-cards").innerHTML = full_html
         # --------------------------------------------------------------------------
     
