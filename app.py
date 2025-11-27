@@ -7388,26 +7388,26 @@ def update_all(event=None):
             "BMP Coverage": None, "Supplementary Planes": None
         }
         # [FORENSIC LAYOUT ENGINE - ACTIVE STATE] ----------------------------------
-    # 1. Define Groups
-    quad_order = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
-    context_order = [
-        "RGI Emoji Sequences", "Whitespace (Total)",
-        "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
-    ]
-
-    # 2. Generate HTML chunks separately (using the detached renderer)
-    html_quad = render_cards(meta_cards, element_id=None, key_order=quad_order, return_html=True)
-    html_context = render_cards(meta_cards, element_id=None, key_order=context_order, return_html=True)
-
-    # 3. Assemble the Layout (Inject Wrappers)
-    full_layout_html = f"""
-    <div class="forensic-quad-grid">{html_quad}</div>
-    <div class="forensic-context-grid">{html_context}</div>
-    """
-
-    # 4. Inject
-    document.getElementById("meta-totals-cards").innerHTML = full_layout_html
-    # --------------------------------------------------------------------------
+        # 1. Define Groups
+        quad_order = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
+        context_order = [
+            "RGI Emoji Sequences", "Whitespace (Total)",
+            "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
+        ]
+    
+        # 2. Generate HTML chunks separately (using the detached renderer)
+        html_quad = render_cards(meta_cards, element_id=None, key_order=quad_order, return_html=True)
+        html_context = render_cards(meta_cards, element_id=None, key_order=context_order, return_html=True)
+    
+        # 3. Assemble the Layout (Inject Wrappers)
+        full_layout_html = f"""
+        <div class="forensic-quad-grid">{html_quad}</div>
+        <div class="forensic-context-grid">{html_context}</div>
+        """
+    
+        # 4. Inject
+        document.getElementById("meta-totals-cards").innerHTML = full_layout_html
+        # --------------------------------------------------------------------------
     
         render_cards({}, "grapheme-integrity-cards")
         render_matrix_table({}, "ccc-matrix-body")
