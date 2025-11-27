@@ -3748,11 +3748,11 @@ details.profile-section > summary:hover::marker {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: 0.7rem;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-text-muted); /* Or opacity: 0.7 */
+    color: #71797E; /* Or opacity: 0.7 */
     margin-bottom: 4px;
 }
 
@@ -3915,9 +3915,4 @@ details.profile-section > summary:hover::marker {
     font-family: var(--font-mono);
     display: inline !important; /* Ensure it flows with text */
     margin-left: 6px; /* Separation from label */
-}
-
-.card-header, .card-icon {
-    color: #71797E; /* Steel Gray */
-    font-size: 1.3rem !important;
 }
