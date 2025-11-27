@@ -4146,6 +4146,224 @@ def tokenize_forensic(text: str):
             
     return tokens
 
+def _get_broad_category(char):
+    """Helper: Maps char to broad Forensic Class (Letter, Number, Symbol, Punct)."""
+    cat = unicodedata.category(char)
+    if cat.startswith('L'): return 'L'
+    if cat.startswith('N'): return 'N'
+    if cat.startswith('P'): return 'P'
+    if cat.startswith('S'): return 'S'
+    if cat.startswith('M'): return 'M' # Mark
+    return 'O' # Other
+
+def analyze_class_consistency(token: str):
+    """
+    The 'Sore Thumb' Detector.
+    Scans for singleton anomalies (e.g. 'paypa1' -> LLLLLN).
+    Returns: (is_suspicious, description)
+    """
+    if len(token) < 2: return False, ""
+    
+    # 1. Run-Length Encoding of Categories
+    runs = []
+    current_cat = None
+    current_len = 0
+    
+    for char in token:
+        cat = _get_broad_category(char)
+        # Merge Marks into the preceding category (they inherit identity)
+        if cat == 'M' and current_cat:
+            continue 
+            
+        if cat != current_cat:
+            if current_cat:
+                runs.append({'cat': current_cat, 'len': current_len})
+            current_cat = cat
+            current_len = 1
+        else:
+            current_len += 1
+            
+    if current_cat:
+        runs.append({'cat': current_cat, 'len': current_len})
+        
+    # 2. Heuristic Analysis
+    # We look for a "Sore Thumb": A run of length 1 that interrupts a different dominant class.
+    # Pattern: [Letter, >2] -> [Number, 1] -> [Letter, >0]  (e.g., "g0ogle")
+    
+    # Calculate Dominant Class
+    counts = {}
+    for r in runs:
+        counts[r['cat']] = counts.get(r['cat'], 0) + r['len']
+        
+    if not counts: return False, ""
+    dominant_cat = max(counts, key=counts.get)
+    
+    # Check for anomalies
+    anomalies = []
+    for i, r in enumerate(runs):
+        # Sore Thumb Rule:
+        # 1. Length is exactly 1
+        # 2. It is NOT the dominant class
+        # 3. It is flanked by the dominant class OR at the end of a long dominant run
+        # 4. Exclude Punctuation (common separators) and Symbols (often legitimate)
+        if r['len'] == 1 and r['cat'] != dominant_cat and r['cat'] in ('L', 'N'):
+            # It's a single Letter or Number out of place.
+            # Check context:
+            if i > 0 and runs[i-1]['cat'] == dominant_cat and runs[i-1]['len'] >= 2:
+                # "word1" or "word1word"
+                anomalies.append(f"Suspicious {r['cat']} in {dominant_cat}-run")
+                
+    if anomalies:
+        return True, ", ".join(anomalies)
+        
+    return False, ""
+
+def analyze_restriction_level(token: str):
+    """
+    UTS #39 Restriction Level Classifier (Simplified).
+    Determines if a token mixes scripts in a dangerous way.
+    """
+    scripts = set()
+    for char in token:
+        cp = ord(char)
+        # Use cached script data
+        sc = _find_in_ranges(cp, "Scripts")
+        if sc and sc not in ("Common", "Inherited", "Unknown"):
+            scripts.add(sc)
+            
+    if not scripts:
+        # Check if it's all ASCII (Highly Restrictive)
+        if all(ord(c) < 128 for c in token):
+            return "Highly Restrictive (ASCII)", "safe"
+        return "Single Script (Common)", "safe"
+        
+    if len(scripts) == 1:
+        return f"Single Script ({list(scripts)[0]})", "safe"
+        
+    if len(scripts) > 1:
+        # Latin + (Han/Hiragana/Katakana) is often allowed (Japn/Chinese)
+        # Latin + Cyrillic/Greek is HIGH RISK (Spoofing)
+        s_list = sorted(list(scripts))
+        has_latin = "Latin" in scripts
+        has_cyr_greek = "Cyrillic" in scripts or "Greek" in scripts
+        
+        if has_latin and has_cyr_greek:
+            return f"Minimally Restrictive ({', '.join(s_list)})", "crit"
+            
+        return f"Mixed Scripts ({', '.join(s_list)})", "warn"
+        
+    return "Unrestricted", "crit"
+
+def detect_invisible_patterns(t: str):
+    """
+    Counter-Intelligence Scanner.
+    Detects repeating cycles of invisible characters (Steganography/Watermarking).
+    Logic: Extracts invisibles, checks for repeating n-grams.
+    """
+    if not t: return None
+    
+    # 1. Extract the "Invisible DNA"
+    invis_seq = []
+    for char in t:
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        if mask & INVIS_ANY_MASK:
+            # Map to a token type for pattern matching
+            if mask & INVIS_ZERO_WIDTH_SPACING: tag = "ZW"
+            elif mask & INVIS_JOIN_CONTROL: tag = "JN"
+            elif mask & INVIS_TAG: tag = "TG"
+            elif mask & INVIS_BIDI_CONTROL: tag = "BD"
+            elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): tag = "VS"
+            else: tag = "?? "
+            invis_seq.append(tag)
+            
+    if len(invis_seq) < 4: return None
+    
+    # 2. Check for Repetitive Cycles (e.g., ZW, JN, ZW, JN...)
+    # Heuristic: Check if the first half matches the second half of a window
+    # OR if adjacent pairs repeat.
+    
+    seq_str = "".join(invis_seq)
+    
+    # Simple repeat detection: "ZWJN" appearing multiple times
+    # We look for any substring of length 2+ that repeats >= 3 times
+    # This is a basic heuristic for "Artificial Structure"
+    
+    import collections
+    patterns = collections.Counter()
+    
+    # Scan 2-grams and 3-grams
+    n = len(invis_seq)
+    for k in [2, 3]:
+        for i in range(n - k + 1):
+            gram = tuple(invis_seq[i : i + k])
+            patterns[gram] += 1
+            
+    # Verdict
+    suspects = []
+    for gram, count in patterns.items():
+        # If a pattern constitutes more than 50% of the sequence structure
+        if count > 2 and (count * len(gram) > n * 0.4):
+            pat_str = "-".join(gram)
+            suspects.append(f"{pat_str} (x{count})")
+            
+    if suspects:
+        return {
+            "verdict": "Structured Invisible Pattern",
+            "detail": ", ".join(suspects),
+            "risk": "Steganography / Watermark"
+        }
+        
+    return None
+
+def compute_adversarial_metrics(t: str):
+    """
+    Orchestrator for the Adversarial Forensics module.
+    Runs per-token analysis and aggregates the "Paranoia Profile".
+    """
+    if not t: return {}
+    
+    tokens = tokenize_forensic(t)
+    findings = []
+    
+    # 1. Analyze Tokens
+    for tok in tokens:
+        # A. Restriction Level
+        rest_label, rest_risk = analyze_restriction_level(tok['token'])
+        if rest_risk != "safe":
+            findings.append({
+                'type': 'Restriction',
+                'desc': rest_label,
+                'token': tok['token'],
+                'severity': rest_risk
+            })
+            
+        # B. Class Consistency (Sore Thumb)
+        is_sore, sore_msg = analyze_class_consistency(tok['token'])
+        if is_sore:
+            findings.append({
+                'type': 'Class Consistency',
+                'desc': sore_msg,
+                'token': tok['token'],
+                'severity': 'crit' # Sore thumbs are high confidence
+            })
+            
+        # C. Normalization Hazard (Shapeshifting)
+        # (Already handled globally in Drift, but good to have token granularity later)
+        # For now, we skip per-token Norm checks to save perf, as global covers it.
+
+    # 2. Analyze Invisible Patterns (Global)
+    stego_report = detect_invisible_patterns(t)
+    if stego_report:
+        findings.append({
+            'type': 'Invisible Pattern',
+            'desc': f"{stego_report['detail']} - {stego_report['risk']}",
+            'token': 'GLOBAL',
+            'severity': 'warn'
+        })
+
+    return findings
+
 def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
     """
     The Skeleton Overlay (X-Ray).
@@ -5029,7 +5247,8 @@ def compute_threat_analysis(t: str):
             's2': state_2_nfkc,
             's3': state_3_casefold,
             's4': state_4_skeleton
-        }
+        },
+        'adversarial': adversarial_data
     }
     
 def render_threat_analysis(threat_results, text_context=None):
