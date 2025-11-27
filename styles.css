@@ -3783,34 +3783,50 @@ details.profile-section > summary:hover::marker {
     white-space: nowrap;
     opacity: 0.8;
 }
-/* --- Forensic Header Layout (Split Groups) --- */
 
-/* 1. The Main Container becomes a vertical stack */
+
+/* --- Forensic Header Layout (Dashboard Split) --- */
+
+/* 1. The Main Container: Side-by-Side Flex */
 #meta-totals-cards {
     display: flex !important; /* Override default grid */
-    flex-direction: column;
-    gap: 16px;
+    flex-direction: row;      /* Side-by-Side Layout */
+    flex-wrap: wrap;          /* Wrap on smaller screens */
+    gap: 20px;
+    align-items: stretch;     /* Make both panels equal height */
 }
 
-/* 2. The "Quad" Group (Top 4 Metrics) */
-/* 2x2 Grid that stretches to fill width */
+/* 2. The "Quad" (Left Panel): Strict 2x2 Grid */
 .forensic-quad-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr; /* 50% / 50% split */
+    grid-template-columns: 1fr 1fr; /* 2 Columns */
+    grid-template-rows: auto auto;  /* 2 Rows */
     gap: 12px;
+    
+    /* CONSTRAINT: Keep it tight. Don't let it stretch infinitely. */
+    flex: 0 0 460px; /* Fixed basis: ~220px per card */
+    width: 100%;     /* Fallback */
 }
 
-/* 3. The "Context" Group (The Rest) */
-/* Responsive flexible grid (Auto-fit) */
+/* 3. The "Context" (Right Panel): Fluid Masonry */
 .forensic-context-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    /* Auto-fit creates standard card sizes that flow naturally */
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
+    
+    /* Fill the remaining screen space */
+    flex: 1;
+    min-width: 300px; /* Prevent crushing */
 }
 
-/* Mobile Responsiveness for the Quad */
-@media (max-width: 600px) {
+/* Responsive: Stack vertically on tablets/phones */
+@media (max-width: 900px) {
+    #meta-totals-cards {
+        flex-direction: column;
+    }
     .forensic-quad-grid {
-        grid-template-columns: 1fr; /* Stack vertically on mobile */
+        flex: 1;
+        max-width: 100%;
     }
 }
