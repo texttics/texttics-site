@@ -5217,14 +5217,14 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             icon = METRIC_ICONS["eye"]
             
             # Micro-Facts
-            total_marks = stats_dict.get("Total Combining Marks", 0)
             avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
             rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
             
-            # Tooltip Content
+            # Structured Tooltip
             tooltip = (
                 "WHAT THIS MEASURES:\n"
-                "User-perceived characters (UAX #29).\n\n"
+                "User-perceived characters (UAX #29 Grapheme Clusters).\n"
+                "This approximates how 'long' the text looks on screen.\n\n"
                 "THIS SAMPLE:\n"
                 f"• Mark Density: {avg_marks} marks/grapheme\n"
                 f"• Emoji Content: {rgi_count} RGI sequences"
@@ -5250,17 +5250,20 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
         elif k == "Total Code Points":
             icon = METRIC_ICONS["hash"]
             
-            # Micro-Facts
-            invis_count = 0 # Placeholder if not passed directly, or calculate locally if possible
-            # In update_all, we calculate these but don't pass them all to meta_cards. 
-            # For now, we use what we have available in the stats_dict or estimate.
+            # [NEW] Forensic Composition Data
+            total_marks = stats_dict.get("Total Combining Marks", 0)
+            mark_pct = 0
+            if v > 0:
+                mark_pct = (total_marks / v) * 100
             
-            # Tooltip
+            # Structured Tooltip
             tooltip = (
                 "WHAT THIS MEASURES:\n"
-                "Unicode Scalar Values (Python len()).\n\n"
+                "Unicode Scalar Values (Python len()).\n"
+                "The logical foundation before rendering or encoding.\n\n"
                 "THIS SAMPLE:\n"
-                "• Logical foundation for all text processing."
+                f"• Combining Marks: {total_marks} ({mark_pct:.1f}%)\n"
+                "• High mark density suggests Zalgo or complex scripts."
             )
 
             html.append(
@@ -5272,8 +5275,8 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                         f'<div class="metric-sub">Unicode Scalars</div>'
                     f'</div>'
                     f'<div class="metric-facts">'
-                        f'<div class="fact-row">1 Logical Atom</div>'
-                        f'<div class="fact-row">= U+XXXX</div>'
+                        f'<div class="fact-row">Combining Marks: <strong>{total_marks}</strong></div>'
+                        f'<div class="fact-row">Density: <strong>{mark_pct:.1f}%</strong></div>'
                     f'</div>'
                 f'</div>'
                 f'</div>'
@@ -5287,18 +5290,18 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             
             # Micro-Facts
             overhead = v - cp_count
-            ratio = v / cp_count if cp_count > 0 else 0
             
             # Styles
             val_class = "metric-value-warn" if astral > 0 else "metric-value"
             
-            # Tooltip
+            # Structured Tooltip
             tooltip = (
                 "WHAT THIS MEASURES:\n"
-                "Runtime Length (JS/Java/C#). Counts 16-bit units.\n\n"
+                "Runtime Length (JS/Java/C#). Counts 16-bit code units.\n"
+                "Surrogate pairs (Astral chars) count as 2 units.\n\n"
                 "THIS SAMPLE:\n"
                 f"• Astral Chars: {astral}\n"
-                f"• Expansion: +{overhead} units vs Code Points"
+                f"• Overhead: +{overhead} units vs Code Points"
             )
             
             html.append(
@@ -5325,12 +5328,14 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             # Micro-Facts
             bpc = v / cp_count if cp_count > 0 else 0
             
-            # Tooltip
+            # Structured Tooltip
             tooltip = (
                 "WHAT THIS MEASURES:\n"
-                "Physical Storage Size (Disk/Network).\n\n"
+                "Physical Storage Size (Disk/Network).\n"
+                "Variable width: ASCII=1 byte, Others=2-4 bytes.\n\n"
                 "THIS SAMPLE:\n"
-                f"• Density: {bpc:.2f} bytes/char"
+                f"• Density: {bpc:.2f} bytes/char\n"
+                "• 1.0=ASCII, >3.0=Asian/Emoji/Complex"
             )
 
             html.append(
