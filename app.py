@@ -3587,7 +3587,7 @@ def compute_integrity_score(inputs):
         "ledger": ledger
     }
 
-def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict):
+def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict, grapheme_stats: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
     
     # --- 1. Init Trackers ---
