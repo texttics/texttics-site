@@ -7381,6 +7381,12 @@ def update_all(event=None):
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
+        meta_cards = {
+            "Total Graphemes": 0, "Total Code Points": 0, "UTF-16 Units": 0, "UTF-8 Bytes": 0,
+            "Astral Count": 0, "RGI Emoji Sequences": 0, "Whitespace (Total)": 0,
+            "ASCII-Compatible": None, "Latin-1-Compatible": None, # None triggers "No Data" or hidden state
+            "BMP Coverage": None, "Supplementary Planes": None
+        }
         # [FORENSIC LAYOUT ENGINE] -------------------------------------------------
         # Split the cards into two structural groups:
         # 1. The Quad (2x2 Matrix): Visual, Logical, Runtime, Physical
