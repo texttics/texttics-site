@@ -6275,14 +6275,37 @@ def inspect_character(event):
         cp1252_val = try_enc("cp1252")
         url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
         
+        # --- NEW: EXPLOIT & OBFUSCATION ENCODINGS ---
+        import base64
+        
+        # 1. Base64 (Standard Payload Wrapper)
+        try:
+            b64_val = base64.b64encode(target_cluster.encode("utf-8")).decode("ascii")
+        except:
+            b64_val = "Error"
+
+        # 2. Shellcode / Hex Escapes (\xHH)
+        shell_val = "".join(f"\\x{b:02X}" for b in target_cluster.encode("utf-8"))
+
+        # 3. Octal Escapes (\NNN)
+        octal_val = "".join(f"\\{b:03o}" for b in target_cluster.encode("utf-8"))
+
+        # 4. HTML Entity Variants (Decimal vs Hex)
         if target_cluster.isalnum():
-            html_enc = target_cluster
+            html_dec_val = target_cluster
+            html_hex_val = target_cluster
         else:
-            html_enc = "".join(f"&#x{ord(c):X};" for c in target_cluster)
-            
+            html_dec_val = "".join(f"&#{ord(c)};" for c in target_cluster)
+            html_hex_val = "".join(f"&#x{ord(c):X};" for c in target_cluster)
+
+        # 5. ES6 / CSS Unicode (\u{...})
+        es6_val = "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster)
+        
+        # 6. Python/Old JS
         code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
 
         confusable_msg = None
+        
         if ghosts:
              skel_val = ghosts['skeleton']
              if skel_val != base_char and skel_val != base_char.casefold():
@@ -6318,6 +6341,15 @@ def inspect_character(event):
             "grapheme_break": gb_prop,
             "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
             "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
+            # --- Exploit Vectors ---
+            "url": url_enc, 
+            "code": code_enc,
+            "base64": b64_val,
+            "shell": shell_val,
+            "octal": octal_val,
+            "html_dec": html_dec_val,
+            "html_hex": html_hex_val,
+            "es6": es6_val,
             "url": url_enc, "html": html_enc, "code": code_enc,
             "confusable": confusable_msg,
             "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
@@ -6926,9 +6958,16 @@ def render_inspector_panel(data):
                     <span class="label">Win-1252:</span>
                     <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
                 </div>
-                <div class="byte-row"><span class="label">URL:</span>{data['url']}</div>
-                <div class="byte-row"><span class="label">HTML:</span>{_escape_html(data['html'])}</div>
-                <div class="byte-row"><span class="label">Code:</span>{_escape_html(data['code'])}</div>
+                
+                <div class="section-label" style="margin-bottom:4px; color:#374151; margin-top: 8px;">EXPLOIT VECTORS</div>
+                
+                <div class="byte-row"><span class="label">Base64:</span>{data['base64']}</div>
+                <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data['shell'])}</div>
+                <div class="byte-row"><span class="label">Octal:</span>{_escape_html(data['octal'])}</div>
+                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data['html_dec'])}</div>
+                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data['html_hex'])}</div>
+                <div class="byte-row"><span class="label">ES6/CSS:</span>{_escape_html(data['es6'])}</div>
+                <div class="byte-row"><span class="label">Py/JSON:</span>{_escape_html(data['code'])}</div>
             </div>
         </div>
     </div>
