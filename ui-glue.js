@@ -1157,64 +1157,42 @@ window.TEXTTICS_COPY_SAFE = async (safeText, btnElement) => {
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    // --- A. Sanitization Handlers ---
-    const handleSanitize = (mode) => {
-        if (window.py_sanitize_string) {
-            // Call Python, which returns a JSON string report
-            const reportJson = window.py_sanitize_string(mode);
-            if (!reportJson) return;
-
-            try {
-                const report = JSON.parse(reportJson);
-                // 1. Copy to Clipboard
-                navigator.clipboard.writeText(report.safe_text).then(() => {
-                    // 2. Show Smart Toast
-                    const stats = report.stats;
-                    let msg = `Sanitized (${mode}): `;
-                    const details = [];
-                    if (stats.removed_bidi > 0) details.push(`${stats.removed_bidi} Bidi`);
-                    if (stats.removed_invisible > 0) details.push(`${stats.removed_invisible} Invis`);
-                    if (stats.normalized_spaces > 0) details.push(`${stats.normalized_spaces} Spaces`);
-                    
-                    if (details.length === 0 && stats.removed_count === 0) {
-                        msg += "Text was already clean.";
-                    } else {
-                        msg += "Removed " + (details.join(", ") || `${stats.removed_count} items`);
-                    }
-                    
-                    // Use existing button for feedback source
-                    const btnId = mode === 'STRICT' ? 'btn-sanitize-strict' : 'btn-sanitize-conservative';
-                    const btn = document.getElementById(btnId);
-                    const originalText = btn.innerText;
-                    btn.innerText = "Copied!";
-                    btn.classList.add('copied');
-                    setTimeout(() => {
-                        btn.innerText = originalText;
-                        btn.classList.remove('copied');
-                    }, 2000);
-                    
-                    console.log(`[Workbench] ${msg}`);
-                });
-            } catch (e) {
-                console.error("Sanitization Error:", e);
-            }
-        }
-    };
-
+    // --- A. Sanitization Handlers (Forensic Engine V2) ---
+    // Wired to window.TEXTTICS_SANITIZE in app.py
+    
     const btnStrict = document.getElementById('btn-sanitize-strict');
-    if (btnStrict) btnStrict.addEventListener('click', () => handleSanitize('STRICT'));
-
     const btnCons = document.getElementById('btn-sanitize-conservative');
-    if (btnCons) btnCons.addEventListener('click', () => handleSanitize('CONSERVATIVE'));
 
+    if (btnStrict) {
+        btnStrict.addEventListener('click', () => {
+            if (window.TEXTTICS_SANITIZE) {
+                window.TEXTTICS_SANITIZE("strict");
+            } else {
+                console.warn("Python bridge 'TEXTTICS_SANITIZE' not ready.");
+            }
+        });
+    }
+
+    if (btnCons) {
+        btnCons.addEventListener('click', () => {
+            if (window.TEXTTICS_SANITIZE) {
+                window.TEXTTICS_SANITIZE("smart");
+            } else {
+                console.warn("Python bridge 'TEXTTICS_SANITIZE' not ready.");
+            }
+        });
+    }
 
     // --- B. Encapsulation Handlers ---
+    // Expects window.py_get_code_snippet(lang) -> string
     const handleEscape = (lang) => {
         if (window.py_get_code_snippet) {
             const code = window.py_get_code_snippet(lang);
             if (code) {
                 copyToClipboard(code, lang === 'python' ? 'btn-copy-py' : 'btn-copy-js');
             }
+        } else {
+            console.warn("Python bridge 'py_get_code_snippet' missing.");
         }
     };
 
@@ -1226,11 +1204,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- C. Evidence Handler ---
+    // Expects window.py_generate_evidence() -> triggers download
     const btnJson = document.getElementById('btn-export-json');
     if (btnJson) {
         btnJson.addEventListener('click', () => {
             if (window.py_generate_evidence) {
-                window.py_generate_evidence(); // Triggers download from Python
+                window.py_generate_evidence(); 
+            } else {
+                console.warn("Python bridge 'py_generate_evidence' missing.");
             }
         });
     }
