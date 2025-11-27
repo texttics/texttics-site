@@ -3811,8 +3811,8 @@ details.profile-section > summary:hover::marker {
 /* 3. The "Context" (Right Panel): Fluid Masonry */
 .forensic-context-grid {
     display: grid;
-    /* Auto-fit creates standard card sizes that flow naturally */
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    /* CHANGED: Increased min-width from 150px to 210px to prevent overlap */
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: 12px;
     
     /* Fill the remaining screen space */
