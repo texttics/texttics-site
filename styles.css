@@ -4037,3 +4037,50 @@ details.profile-section > summary:hover::marker {
   color: var(--color-primary);
   background: #eff6ff;
 }
+
+/* --- Atlas Summary Bar --- */
+.atlas-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  
+  background-color: #f8fafc; /* Slate-50 */
+  border: 1px solid #e2e8f0; /* Slate-200 */
+  border-radius: 6px;
+  
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+}
+
+.atlas-sum-metric {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b; /* Slate-500 */
+  font-weight: 600;
+}
+
+/* The Number Value */
+.sum-val {
+  color: #0f172a; /* Slate-900 */
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+/* Total Label specific style */
+.sum-total-label {
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 800;
+}
+
+/* Vertical Separator between metrics */
+.atlas-sep {
+  width: 1px;
+  height: 16px;
+  background-color: #cbd5e1;
+}
