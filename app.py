@@ -7380,7 +7380,6 @@ def update_all(event=None):
                 if reveal2_btn: reveal2_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
-    # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
         # Define empty stats for the reset state
         meta_cards = {
@@ -7617,7 +7616,31 @@ def update_all(event=None):
         'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
     }
 
-    render_cards(meta_cards, "meta-totals-cards", key_order=meta_cards_order)
+    # [FORENSIC LAYOUT ENGINE - ACTIVE STATE] ----------------------------------
+    # 1. Define Groups
+    quad_keys = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
+    
+    context_keys = [
+        "RGI Emoji Sequences", "Whitespace (Total)",
+        "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
+    ]
+
+    # 2. Render HTML Strings (Detached)
+    # This generates the cards but does NOT inject them yet
+    html_quad = render_cards(meta_cards, element_id=None, key_order=quad_keys, return_html=True)
+    html_context = render_cards(meta_cards, element_id=None, key_order=context_keys, return_html=True)
+
+    # 3. Inject Structure (The Wrapper Divs)
+    # .cards-2x2 -> Forces 2x2 Grid for top 4
+    # .cards     -> Standard Fluid Grid for the rest
+    full_html = f"""
+    <div class="cards-2x2">{html_quad}</div>
+    <div class="cards">{html_context}</div>
+    """
+
+    # 4. Final Injection
+    document.getElementById("meta-totals-cards").innerHTML = full_html
+    # --------------------------------------------------------------------------
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
