@@ -4472,14 +4472,6 @@ def compute_threat_analysis(t: str):
         nf_string = normalize_extended(t)
         nf_casefold_string = nf_string.casefold()
 
-        # --- 5. Skeleton & Drift (Refined Logic) ---
-        
-        # A. The Skeleton String (Standard Identity)
-        skeleton_string, _ = _generate_uts39_skeleton_metrics(nf_casefold_string)
-        
-        # B. The Forensic Drift Metrics (Forensic Insight)
-        # [DRIFT BLINDNESS FIX]
-        _, skel_metrics = _generate_uts39_skeleton_metrics(t)
 
         # --- 3. Run checks on RAW string ---
         confusables_map = DATA_STORES.get("Confusables", {})
