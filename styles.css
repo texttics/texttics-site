@@ -3842,3 +3842,16 @@ details.profile-section > summary:hover::marker {
         grid-template-columns: 1fr;
     }
 }
+
+/* Top 4 Metrics: Strict 2x2 Grid */
+.cards-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* 50/50 Split */
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+}
+
+/* On mobile, collapse to stack */
+@media (max-width: 600px) {
+  .cards-2x2 { grid-template-columns: 1fr; }
+}
