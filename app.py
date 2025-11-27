@@ -4146,6 +4146,8 @@ def tokenize_forensic(text: str):
             
     return tokens
 
+# --- ADVERSARIAL METRICS ENGINE (DEEP FORENSICS) ---
+
 def _get_broad_category(char):
     """Helper: Maps char to broad Forensic Class (Letter, Number, Symbol, Punct)."""
     cat = unicodedata.category(char)
@@ -4158,132 +4160,106 @@ def _get_broad_category(char):
 
 def analyze_class_consistency(token: str):
     """
-    The 'Sore Thumb' Detector.
-    Scans for singleton anomalies (e.g. 'paypa1' -> LLLLLN).
-    Returns: (is_suspicious, description)
+    [SORE THUMB] Scans for singleton anomalies (e.g. 'paypa1' -> LLLLLN).
     """
-    if len(token) < 2: return False, ""
+    if len(token) < 2: return None
     
-    # 1. Run-Length Encoding of Categories
     runs = []
     current_cat = None
     current_len = 0
     
     for char in token:
         cat = _get_broad_category(char)
-        # Merge Marks into the preceding category (they inherit identity)
-        if cat == 'M' and current_cat:
-            continue 
-            
+        if cat == 'M' and current_cat: continue # Absorb marks
+        
         if cat != current_cat:
-            if current_cat:
-                runs.append({'cat': current_cat, 'len': current_len})
-            current_cat = cat
-            current_len = 1
+            if current_cat: runs.append({'cat': current_cat, 'len': current_len})
+            current_cat = cat; current_len = 1
         else:
             current_len += 1
-            
-    if current_cat:
-        runs.append({'cat': current_cat, 'len': current_len})
-        
-    # 2. Heuristic Analysis
-    # We look for a "Sore Thumb": A run of length 1 that interrupts a different dominant class.
-    # Pattern: [Letter, >2] -> [Number, 1] -> [Letter, >0]  (e.g., "g0ogle")
+    if current_cat: runs.append({'cat': current_cat, 'len': current_len})
     
-    # Calculate Dominant Class
     counts = {}
-    for r in runs:
-        counts[r['cat']] = counts.get(r['cat'], 0) + r['len']
-        
-    if not counts: return False, ""
+    for r in runs: counts[r['cat']] = counts.get(r['cat'], 0) + r['len']
+    if not counts: return None
     dominant_cat = max(counts, key=counts.get)
     
-    # Check for anomalies
     anomalies = []
     for i, r in enumerate(runs):
-        # Sore Thumb Rule:
-        # 1. Length is exactly 1
-        # 2. It is NOT the dominant class
-        # 3. It is flanked by the dominant class OR at the end of a long dominant run
-        # 4. Exclude Punctuation (common separators) and Symbols (often legitimate)
+        # Sore Thumb Rule: Length=1, Not Dominant, Flanked by Dominant
         if r['len'] == 1 and r['cat'] != dominant_cat and r['cat'] in ('L', 'N'):
-            # It's a single Letter or Number out of place.
-            # Check context:
             if i > 0 and runs[i-1]['cat'] == dominant_cat and runs[i-1]['len'] >= 2:
-                # "word1" or "word1word"
                 anomalies.append(f"Suspicious {r['cat']} in {dominant_cat}-run")
                 
     if anomalies:
-        return True, ", ".join(anomalies)
-        
-    return False, ""
+        return {"desc": ", ".join(anomalies), "risk": 50}
+    return None
 
 def analyze_restriction_level(token: str):
     """
-    UTS #39 Restriction Level Classifier (Simplified).
-    Determines if a token mixes scripts in a dangerous way.
+    [SCRIPT MIXING] UTS #39 Restriction Level Classifier.
     """
     scripts = set()
     for char in token:
         cp = ord(char)
-        # Use cached script data
         sc = _find_in_ranges(cp, "Scripts")
-        if sc and sc not in ("Common", "Inherited", "Unknown"):
-            scripts.add(sc)
+        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts.add(sc)
             
     if not scripts:
-        # Check if it's all ASCII (Highly Restrictive)
-        if all(ord(c) < 128 for c in token):
-            return "Highly Restrictive (ASCII)", "safe"
-        return "Single Script (Common)", "safe"
+        if all(ord(c) < 128 for c in token): return "Highly Restrictive (ASCII)", 0
+        return "Single Script (Common)", 0
+    if len(scripts) == 1: return f"Single Script ({list(scripts)[0]})", 0
         
-    if len(scripts) == 1:
-        return f"Single Script ({list(scripts)[0]})", "safe"
+    s_list = sorted(list(scripts))
+    has_latin = "Latin" in scripts
+    has_cyr_greek = "Cyrillic" in scripts or "Greek" in scripts
+    
+    if has_latin and has_cyr_greek:
+        return f"Minimally Restrictive ({', '.join(s_list)})", 90 # Critical
         
-    if len(scripts) > 1:
-        # Latin + (Han/Hiragana/Katakana) is often allowed (Japn/Chinese)
-        # Latin + Cyrillic/Greek is HIGH RISK (Spoofing)
-        s_list = sorted(list(scripts))
-        has_latin = "Latin" in scripts
-        has_cyr_greek = "Cyrillic" in scripts or "Greek" in scripts
-        
-        if has_latin and has_cyr_greek:
-            return f"Minimally Restrictive ({', '.join(s_list)})", "crit"
-            
-        return f"Mixed Scripts ({', '.join(s_list)})", "warn"
-        
-    return "Unrestricted", "crit"
+    return f"Mixed Scripts ({', '.join(s_list)})", 60 # Warning
 
-def analyze_normalization_hazard(token: str):
+def analyze_normalization_hazard_advanced(token: str):
     """
-    Normalization Hazard Detector.
-    Checks if token shapeshifts under NFC (Shapeshifting/Ghost Characters).
+    [SHAPESHIFTING] Checks NFC (Binary) and NFKC_Casefold (Visual).
     """
+    hazards = []
+    score = 0
+    
+    # 1. NFC Hazard (Binary Instability)
     try:
         nfc = unicodedata.normalize("NFC", token)
-    except:
-        return None
+        if token != nfc:
+            if len(token) != len(nfc):
+                hazards.append("NFC Length Change (Ghost/Hollow)")
+                score += 40
+            else:
+                hazards.append("NFC Binary Drift")
+                score += 20
+    except: pass
 
-    if token == nfc:
-        return None
+    # 2. NFKC_Casefold Hazard (Compatibility/Visual Instability)
+    # Using our custom normalize_extended if available, else standard
+    try:
+        # Simulate NFKC_CF: Normalize NFKC then Casefold
+        nfkc = normalize_extended(token)
+        nfkc_cf = nfkc.casefold()
+        
+        # Compare against normalized raw
+        raw_cf = token.casefold()
+        
+        if nfkc_cf != raw_cf:
+             hazards.append("NFKC-CF Visual Drift")
+             score += 30
+    except: pass
 
-    reasons = []
-    # 1. Length Change (Ghost Characters / Hollow Tokens)
-    if len(token) != len(nfc):
-        reasons.append("Length Instability")
-    
-    # 2. Binary Change (Precomposed vs Decomposed)
-    if token != nfc:
-        reasons.append("Binary Instability")
-
-    if reasons:
-        return f"Normalization Hazard ({', '.join(reasons)})"
+    if hazards:
+        return {"desc": ", ".join(hazards), "risk": score}
     return None
 
 def analyze_structural_perturbation(token: str):
     """
-    Structural Perturbation Score.
-    Detects broken words split by non-standard separators (Invisibles, Bidi).
+    [BROKEN WORD] Detects non-standard separators inside a token.
     """
     perturbations = 0
     types = set()
@@ -4291,7 +4267,6 @@ def analyze_structural_perturbation(token: str):
     for char in token:
         cp = ord(char)
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        
         if mask & INVIS_ANY_MASK:
             perturbations += 1
             if mask & INVIS_BIDI_CONTROL: types.add("Bidi")
@@ -4301,24 +4276,129 @@ def analyze_structural_perturbation(token: str):
             else: types.add("Invisible")
             
     if perturbations > 0:
-        return f"Structural Perturbation ({perturbations}x {', '.join(types)})"
+        score = 40 + (perturbations * 10)
+        return {"desc": f"Perturbation ({perturbations}x {', '.join(types)})", "risk": min(100, score)}
+    return None
+
+def analyze_trojan_context(token: str):
+    """
+    [TROJAN SOURCE] Checks for Bidi controls near code syntax.
+    """
+    has_bidi = False
+    for char in token:
+        cp = ord(char)
+        if cp < 1114112 and (INVIS_TABLE[cp] & INVIS_BIDI_CONTROL):
+            has_bidi = True
+            break
+            
+    if not has_bidi: return None
+    
+    # Check for code-like syntax chars
+    code_syntax = {'"', "'", ';', '{', '}', '/', '*', '#'}
+    is_code_adjacent = any(c in code_syntax for c in token)
+    
+    if is_code_adjacent:
+        return {"desc": "Bidi Control near Syntax (Trojan Risk)", "risk": 100}
+    return {"desc": "Bidi Control present", "risk": 60}
+
+def analyze_confusion_density(token: str, confusables_map: dict):
+    """
+    [CONFUSION DENSITY] Calculates per-token ambiguity using UTS #39 data.
+    """
+    if not token or not confusables_map: return None
+    
+    confusable_count = 0
+    effective_len = 0
+    
+    for char in token:
+        cp = ord(char)
+        # Filter out common punctuation to avoid noise
+        if not unicodedata.category(char).startswith('P'):
+            effective_len += 1
+            # Check map
+            if cp in confusables_map:
+                # Retrieve mapping
+                val = confusables_map[cp]
+                target = val[0] if isinstance(val, tuple) else val
+                
+                # If it maps to something DIFFERENT, it's ambiguous
+                if target != char:
+                    confusable_count += 1
+
+    if effective_len == 0: return None
+    
+    density = confusable_count / effective_len
+    
+    if density > 0.0:
+        risk = int(density * 100)
+        # Boost risk for high density
+        if density > 0.5: risk = min(100, risk + 20)
+        
+        return {
+            "desc": f"Confusion Density: {density:.0%}",
+            "density": density,
+            "risk": risk
+        }
+    return None
+
+def analyze_zalgo_load(token: str):
+    """
+    [ZALGO] Checks for Diacritic Overload / Mark Density.
+    """
+    mark_count = 0
+    base_count = 0
+    max_stack = 0
+    current_stack = 0
+    
+    for char in token:
+        if unicodedata.category(char).startswith('M'):
+            mark_count += 1
+            current_stack += 1
+        else:
+            base_count += 1
+            max_stack = max(max_stack, current_stack)
+            current_stack = 0
+    max_stack = max(max_stack, current_stack)
+    
+    ratio = mark_count / max(1, base_count)
+    
+    if max_stack >= 4 or ratio > 2.0:
+        return {"desc": f"Diacritic Overload (Max Stack: {max_stack})", "risk": 80}
+    elif max_stack >= 2 or ratio > 0.5:
+        return {"desc": "Heavy Diacritics", "risk": 40}
+        
+    return None
+
+def analyze_case_anomalies(token: str):
+    """
+    [CASE ANOMALY] Detects suspicious casing (PayPaI).
+    """
+    if len(token) < 3: return None
+    
+    # 1. Mixed Case at End (PayPaI)
+    if token[:-1].islower() and token[-1].isupper():
+        return {"desc": "Suspicious End-Capitalization", "risk": 40}
+        
+    # 2. Random Upper in Lower (payPa1)
+    # Heuristic: Mostly lower with 1 isolated upper in middle
+    uppers = sum(1 for c in token if c.isupper())
+    lowers = sum(1 for c in token if c.islower())
+    
+    if lowers > 2 and uppers == 1 and not token[0].isupper():
+        return {"desc": "Suspicious Mid-Capitalization", "risk": 40}
+        
     return None
 
 def detect_invisible_patterns(t: str):
     """
-    Counter-Intelligence Scanner.
-    Detects repeating cycles of invisible characters (Steganography/Watermarking).
-    Logic: Extracts invisibles, checks for repeating n-grams.
+    [STEGANOGRAPHY] Global scanner for repeating invisible sequences.
     """
     if not t: return None
-    
-    # 1. Extract the "Invisible DNA"
     invis_seq = []
     for char in t:
         cp = ord(char)
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         if mask & INVIS_ANY_MASK:
-            # Map to a token type for pattern matching
             if mask & INVIS_ZERO_WIDTH_SPACING: tag = "ZW"
             elif mask & INVIS_JOIN_CONTROL: tag = "JN"
             elif mask & INVIS_TAG: tag = "TG"
@@ -4329,30 +4409,16 @@ def detect_invisible_patterns(t: str):
             
     if len(invis_seq) < 4: return None
     
-    # 2. Check for Repetitive Cycles (e.g., ZW, JN, ZW, JN...)
-    # Heuristic: Check if the first half matches the second half of a window
-    # OR if adjacent pairs repeat.
-    
-    seq_str = "".join(invis_seq)
-    
-    # Simple repeat detection: "ZWJN" appearing multiple times
-    # We look for any substring of length 2+ that repeats >= 3 times
-    # This is a basic heuristic for "Artificial Structure"
-    
     import collections
     patterns = collections.Counter()
-    
-    # Scan 2-grams and 3-grams
     n = len(invis_seq)
     for k in [2, 3]:
         for i in range(n - k + 1):
             gram = tuple(invis_seq[i : i + k])
             patterns[gram] += 1
             
-    # Verdict
     suspects = []
     for gram, count in patterns.items():
-        # If a pattern constitutes more than 50% of the sequence structure
         if count > 2 and (count * len(gram) > n * 0.4):
             pat_str = "-".join(gram)
             suspects.append(f"{pat_str} (x{count})")
@@ -4361,58 +4427,125 @@ def detect_invisible_patterns(t: str):
         return {
             "verdict": "Structured Invisible Pattern",
             "detail": ", ".join(suspects),
-            "risk": "Steganography / Watermark"
+            "risk": "Steganography / Watermark",
+            "score": 75
         }
-        
     return None
 
 def compute_adversarial_metrics(t: str):
     """
-    Orchestrator for the Adversarial Forensics module.
-    Runs per-token analysis and aggregates the "Paranoia Profile".
+    Orchestrator: Per-Token Analysis + Global Pattern Detection.
+    Returns aggregated findings and top offenders.
     """
     if not t: return {}
     
     tokens = tokenize_forensic(t)
     findings = []
+    confusables_map = DATA_STORES.get("Confusables", {})
     
-    # 1. Analyze Tokens
-    for tok in tokens:
-        # A. Restriction Level
-        rest_label, rest_risk = analyze_restriction_level(tok['token'])
-        if rest_risk != "safe":
-            findings.append({
-                'type': 'Restriction',
-                'desc': rest_label,
-                'token': tok['token'],
-                'severity': rest_risk
-            })
-            
-        # B. Class Consistency (Sore Thumb)
-        is_sore, sore_msg = analyze_class_consistency(tok['token'])
-        if is_sore:
-            findings.append({
-                'type': 'Class Consistency',
-                'desc': sore_msg,
-                'token': tok['token'],
-                'severity': 'crit' # Sore thumbs are high confidence
-            })
-            
-        # C. Normalization Hazard (Shapeshifting)
-        # (Already handled globally in Drift, but good to have token granularity later)
-        # For now, we skip per-token Norm checks to save perf, as global covers it.
+    top_tokens = [] # List of {token, score, reasons}
 
-    # 2. Analyze Invisible Patterns (Global)
+    # 1. Per-Token Analysis
+    for tok in tokens:
+        t_str = tok['token']
+        token_score = 0
+        token_reasons = []
+        token_families = set()
+
+        # A. Restriction Level [SCRIPT]
+        rest_label, rest_risk = analyze_restriction_level(t_str)
+        if rest_risk > 0:
+            token_score += rest_risk
+            token_reasons.append(rest_label)
+            token_families.add("SCRIPT")
+            
+        # B. Confusion Density [HOMOGLYPH]
+        conf_data = analyze_confusion_density(t_str, confusables_map)
+        if conf_data:
+            token_score += conf_data['risk']
+            token_reasons.append(conf_data['desc'])
+            token_families.add("HOMOGLYPH")
+
+        # C. Class Consistency [SPOOFING]
+        sore = analyze_class_consistency(t_str)
+        if sore:
+            token_score += sore['risk']
+            token_reasons.append(sore['desc'])
+            token_families.add("SPOOFING")
+            
+        # D. Normalization [OBFUSCATION]
+        norm = analyze_normalization_hazard_advanced(t_str)
+        if norm:
+            token_score += norm['risk']
+            token_reasons.append(norm['desc'])
+            token_families.add("OBFUSCATION")
+            
+        # E. Perturbation [PERTURBATION]
+        pert = analyze_structural_perturbation(t_str)
+        if pert:
+            token_score += pert['risk']
+            token_reasons.append(pert['desc'])
+            token_families.add("PERTURBATION")
+            
+        # F. Trojan Context [TROJAN]
+        trojan = analyze_trojan_context(t_str)
+        if trojan:
+            token_score += trojan['risk']
+            token_reasons.append(trojan['desc'])
+            token_families.add("TROJAN")
+            
+        # G. Zalgo Load [OBFUSCATION]
+        zalgo = analyze_zalgo_load(t_str)
+        if zalgo:
+            token_score += zalgo['risk']
+            token_reasons.append(zalgo['desc'])
+            token_families.add("OBFUSCATION")
+            
+        # H. Case Anomaly [SPOOFING]
+        case_anom = analyze_case_anomalies(t_str)
+        if case_anom:
+            token_score += case_anom['risk']
+            token_reasons.append(case_anom['desc'])
+            token_families.add("SPOOFING")
+
+        # --- Aggregate Token Findings ---
+        if token_score > 0:
+            # Flatten families for display
+            fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
+            
+            # Add to main findings list (Linear view)
+            findings.append({
+                'family': fam_str,
+                'desc': f"{', '.join(token_reasons)}",
+                'token': t_str,
+                'severity': 'crit' if token_score >= 80 else ('warn' if token_score >= 40 else 'ok')
+            })
+            
+            # Add to Top Offenders list
+            top_tokens.append({
+                'token': t_str,
+                'score': min(100, token_score),
+                'reasons': token_reasons,
+                'families': list(token_families)
+            })
+
+    # 2. Global Invisible Patterns [STEGO]
     stego_report = detect_invisible_patterns(t)
     if stego_report:
         findings.append({
-            'type': 'Invisible Pattern',
-            'desc': f"{stego_report['detail']} - {stego_report['risk']}",
+            'family': '[STEGO]',
+            'desc': stego_report['detail'],
             'token': 'GLOBAL',
             'severity': 'warn'
         })
-
-    return findings
+        
+    # 3. Sort Top Offenders
+    top_tokens.sort(key=lambda x: x['score'], reverse=True)
+    
+    return {
+        "findings": findings,
+        "top_tokens": top_tokens[:5] # Return top 5 for the dashboard
+    }
 
 def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
     """
