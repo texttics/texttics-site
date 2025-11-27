@@ -3663,4 +3663,76 @@ details.profile-section > summary:hover::marker {
     border-top: 1px dashed #d1d5db;
 }
 
+/* --- DRIFT REPORT (FORENSIC STYLING) --- */
+.drift-details {
+    background: #fff;
+    border: 1px solid #e5e7eb; /* var(--color-border) fallback */
+    border-radius: 6px;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+/* The Header */
+.drift-summary {
+    padding: 12px 16px;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.2s;
+}
+.drift-summary::-webkit-details-marker { display: none; }
+
+/* Status Colors - CRITICAL for the 'Alert' look */
+.drift-clean { background: #f0fdf4; color: #166534; border-left: 4px solid #22c55e; }
+.drift-warn  { background: #fffbeb; color: #92400e; border-left: 4px solid #f59e0b; }
+.drift-alert { background: #fef2f2; color: #991b1b; border-left: 4px solid #ef4444; }
+
+.drift-content {
+    padding: 16px;
+    border-top: 1px solid #e5e7eb;
+}
+
+/* The Comparison Table (Grid Layout) */
+.drift-comparison-table {
+    display: grid;
+    grid-template-columns: 1fr 40px 1fr; /* The Side-by-Side Magic */
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.drift-col {
+    background: #f9fafb;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #e5e7eb;
+}
+
+.drift-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: #6b7280;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.drift-value {
+    font-family: monospace; /* var(--font-mono) fallback */
+    font-size: 0.95rem;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: #111827;
+}
+
+.drift-arrow {
+    text-align: center;
+    color: #9ca3af;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
 
