@@ -3813,6 +3813,10 @@ details.profile-section > summary:hover::marker {
     font-size: 1.4rem; /* Down from 1.8rem */
 }
 
+.metric-value {
+color: #71797E;
+}
+
 /* 3. The "Context" (Bottom Row): Responsive Grid */
 .forensic-context-grid {
     display: grid;
