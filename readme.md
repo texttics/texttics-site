@@ -1219,3 +1219,38 @@ Deterministic Sync: The Registry and the Stepper are mathematically guaranteed t
 Precision: The cursor lands exactly on the target, even if it's buried behind 50 "Zombie Mosquitos," because we manually calculate the UTF-16 offset byte-by-byte in the language that owns the data.
 
 Stability: We removed window.eval (security risk) and JS Proxies (performance bottleneck). The solution runs at native WASM speed.
+
+
+## 🛡️ Update: The "Deep Truth" Upgrade (Quad-State Forensics)
+
+**Session Goal:** To eliminate heuristic guessing in threat detection by implementing the **UTS #39 Security Mechanisms** as a rigorous, observable pipeline. We transitioned the tool from simply flagging "Suspicious" characters to mathematically proving **"Normalization Drift."**
+
+### 1. The Quad-State Forensic Pipeline
+We architected a "Lifecycle of Deception" model that analyzes text across four distinct forensic states simultaneously. This ensures no attack can hide behind compatibility layers or case folding.
+
+* **State 1: Forensic (Raw):** The chain-of-custody truth (Post-Clipboard). Used for invisible/integrity analysis.
+* **State 2: Compatibility (NFKC):** The "Format" state. Collapses stylistic obfuscation (e.g., Fullwidth `Ａ` $\to$ `A`, Ligatures `ﬁ` $\to$ `fi`).
+* **State 3: Identity (NFKC-Casefold):** The "Machine" state. Represents how a backend database or filesystem "sees" the string (collapsing Case and Compatibility).
+* **State 4: UTS #39 Skeleton (The "Deep Truth"):** The "Visual" state. Uses a custom **Forensic Transformation Pipeline** to map visual lookalikes to their prototypes (e.g., Cyrillic `а` $\to$ Latin `a`), stripping all "invisible glue" to reveal the bare visual bones of the text.
+
+### 2. The Metadata-Driven Drift Engine
+We replaced simple string equality checks (`if s1 != s2`) with a **Forensic Event System**. The engine now generates an audit log during normalization, allowing us to classify "Drift" with absolute precision:
+
+* **Visual Drift (CRITICAL):** Triggered *only* when the Skeleton Event Log records a **Confusable Mapping** event.
+    * *Verdict:* "Visual Drift (6 Homoglyphs Mapped)" — proves active spoofing.
+* **Structure Drift (HIGH):** Triggered when invisible characters (Bidi controls, ZWJ) are stripped during skeleton generation.
+    * *Verdict:* "Structure Drift (Hidden Chars Stripped)" — exposes Bidi attacks that rely on "Snap-Back" rendering.
+* **Identity/Format Drift (WARN):** Distinguishes benign case/width normalization from malicious obfuscation.
+
+### 3. The "Perception vs. Reality" Interface
+We upgraded the Group 3 UI from a static Hash List to an **Active Forensic Dashboard**.
+* **Side-by-Side Comparison:** Visually renders the `Raw` vs. `Skeleton` states. This creates a "Forensic X-Ray" effect where Bidi attacks "unravel" and Homoglyphs "shapeshift" before the user's eyes.
+* **Cryptographic Evidence:** SHA-256 hashes are now preserved in a collapsible evidence locker, keeping the UI focused on actionable intelligence.
+
+### 4. The "Intel Engine" & Greedy Tokenization
+We rebuilt the Token Analyzer to be robust against "Symbol-Only" payloads.
+* **Greedy Tokenizer:** Replaced the restrictive Regex (`\w+`) with a whitespace-based splitter. This ensures that pure-symbol attacks (e.g., isolated Bidi controls `‮`, Broken Emoji components `🏻`) are captured as High-Value Targets.
+* **Multi-Vector Hierarchy:** Implemented a **Strict Severity Sort** (`CRIT > HIGH > MED`). A token containing both a "Mixed Script" (Spoofing) and a "Bidi Override" (Syntax) is now correctly classified as a **SYNTAX (CRITICAL)** threat, prioritizing Execution Risk over Visual Risk.
+
+### 5. Data Engineering: Type-Aware Confusables
+We upgraded the `_io.js` loader to parse the **Forensic Type Tags** (`MA`, `ML`, `SA`, `SL`) from `confusables.txt`. This allows the engine to distinguish between "Weak Ambiguity" (Intra-script lookalikes like `1` vs `l`) and "Strong Spoofing" (Cross-script lookalikes), significantly reducing false positives in the Drift Engine.
