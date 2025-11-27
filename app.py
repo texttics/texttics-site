@@ -4613,8 +4613,8 @@ def compute_threat_analysis(t: str):
                     'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # Registry: Suspicious
-                _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
+                # [FIX] Do not flag Index 0. Let the specific foreign chars speak for themselves.
+                # _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
             # 2. Extension Mix
             if len(clean_ext) > 2:
