@@ -3856,3 +3856,41 @@ details.profile-section > summary:hover::marker {
 @media (max-width: 600px) {
   .cards-2x2 { grid-template-columns: 1fr; }
 }
+
+/* --- High Density Metric Card Layout --- */
+
+/* Split the card body into Main (Left) and Facts (Right) */
+.metric-body {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end; /* Align bottom */
+    width: 100%;
+}
+
+.metric-main {
+    display: flex;
+    flex-direction: column;
+}
+
+.metric-facts {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    margin-bottom: 4px; /* Align visually with baseline */
+}
+
+.fact-row {
+    font-size: 0.65rem;
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    white-space: nowrap;
+    background-color: #f3f4f6;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.fact-row strong {
+    color: var(--color-text);
+    font-weight: 700;
+}
