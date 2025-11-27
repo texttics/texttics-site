@@ -44,6 +44,13 @@
             <span class="jump-list-subtitle">Source &amp; Status</span>
           </a>
         </li>
+
+        <li>
+          <a href="#actions-panel-wrapper">
+            <span class="jump-list-title">Actions</span>
+            <span class="jump-list-subtitle">Controls</span>
+          </a>
+        </li>
         
         <li>
           <a href="#hud-panel-wrapper">
@@ -56,13 +63,6 @@
           <a href="#inspector-panel-wrapper">
             <span class="jump-list-title">Character Inspector</span>
             <span class="jump-list-subtitle">Interactive Tool</span>
-          </a>
-        </li>
-        
-        <li>
-          <a href="#actions-panel-wrapper">
-            <span class="jump-list-title">Actions</span>
-            <span class="jump-list-subtitle">Controls</span>
           </a>
         </li>
 
@@ -133,7 +133,65 @@
           </div>
             </div>
       </section>
-       
+
+      <details class="profile-section" id="actions-panel-wrapper">
+          <summary><h2 class="section-title">Actions</h2></summary>
+          
+          <div class="action-bar">
+            
+            <div class="action-row-top">
+              <button id="btn-toggle-profiles" class="tool-btn" title="Toggle all profile sections">
+                ↕ Expand All Profiles
+              </button>
+
+              <div class="action-spacer"></div>
+
+              <div class="copy-group">
+                <button id="btn-copy-hud" class="tool-btn" title="Copy only the Live Metrics table">
+                  Copy HUD Data
+                </button>
+                <button id="btn-copy-inspector" class="tool-btn" title="Copy only the current Inspector data">
+                  Copy Inspector Data
+                </button>
+                <button id="copy-report-btn" class="tool-btn report-btn" title="Copy the complete dataset (Input + All Profiles)">
+                  Copy Full Profile Data
+                </button>
+                <button id="btn-copy-all-everything" class="tool-btn" title="Copy HUD + Inspector + Full Profile into one clipboard">
+                  Copy All Data
+                </button>
+                
+              </div>
+            </div>
+            
+            <div class="workbench-row">
+                <div class="wb-group">
+                    <button id="btn-sanitize-strict" class="tool-btn wb-btn-strict" title="Strict Mode: Drops Bidi, Invisibles, Tags, Private Use, and non-std formats. Normalizes to NFC.">Sanitize Strictly</button>
+                    <button id="btn-sanitize-conservative" class="tool-btn wb-btn-cons" title="Conservative Mode: Keeps RGI Emoji & valid ZWJ sequences. Drops Bidi/Tags. Normalizes to NFC.">Sanitize Conservatively</button>
+                </div>
+
+                <div class="wb-group">
+                    <button id="btn-copy-py" class="tool-btn wb-btn-code" title="Copy as Safe Python String (Escaped)">Copy as Python</button>
+                    <button id="btn-copy-js" class="tool-btn wb-btn-code" title="Copy as Safe JavaScript String (ES6 Escaped)">Copy as JavaScript</button>
+                </div>
+
+                <div class="wb-group">
+                    <button id="btn-export-json" class="tool-btn wb-btn-evidence" title="Download Full Forensic Artifact (JSON)">Download as JSON</button>
+                </div>
+            </div>
+
+            <div class="action-row-bottom">
+              <button class="tool-btn macro-btn" onclick="openStage2()" data-tooltip="Generates a visual map of the text structure.&#xa;Reveals anomaly clusters and distribution patterns at a glance.">
+                  <span class="section-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+                      </svg>
+                  </span>
+                  Analyze Macrostructure
+              </button>
+            </div>
+          </div>
+      </details>
+      
      <details class="profile-section" id="hud-panel-wrapper">
           <summary><h2 class="section-title">Head-Up Display</h2></summary>
           
@@ -241,48 +299,6 @@
              </div>
           </div>
       </details>
-
-      <details class="profile-section" id="actions-panel-wrapper">
-          <summary><h2 class="section-title">Actions</h2></summary>
-          
-          <div class="action-bar">
-            
-            <div class="action-row-top">
-              <button id="btn-toggle-profiles" class="tool-btn" title="Toggle all profile sections">
-                ↕ Expand All Profiles
-              </button>
-
-              <div class="action-spacer"></div>
-
-              <div class="copy-group">
-                <button id="btn-copy-hud" class="tool-btn" title="Copy only the Live Metrics table">
-                  Copy HUD Data
-                </button>
-                <button id="btn-copy-inspector" class="tool-btn" title="Copy only the current Inspector data">
-                  Copy Inspector Data
-                </button>
-                <button id="copy-report-btn" class="tool-btn report-btn" title="Copy the complete dataset (Input + All Profiles)">
-                  Copy Full Profile Data
-                </button>
-                <button id="btn-copy-all-everything" class="tool-btn" title="Copy HUD + Inspector + Full Profile into one clipboard">
-                  Copy All Data
-                </button>
-                
-              </div>
-            </div>
-
-            <div class="action-row-bottom">
-              <button id="btn-run-stage2" class="tool-btn macro-btn" title="Run macro-analysis on this text">
-                ▥ Analyze Macrostructure
-              </button>
-            </div>
-
-            <p class="action-bar-desc">
-              Opens the "Structural MRI" (Stage 2) in a new tab to analyze the macro-shape and anomaly distribution.
-            </p>
-          </div>
-      </details>
-      
     
       <!-- GROUP 2: THE STRUCTURAL PROFILE -->
 
@@ -345,47 +361,6 @@
             <thead><tr><th scope="col">Metric</th><th scope="col">Count</th><th scope="col">Details / Positions</th></tr></thead>
             <tbody id="threat-report-body"></tbody>
         </table>
-        <h3 class="subsection-title">Security Classification (Script Mix Summary)</h3>
-        <div id="intel-console" class="intel-console-wrapper" style="display:none;">
-            <div class="intel-seal-row">
-                <div id="intel-badge" class="intel-badge">ANALYZING...</div>
-                <div class="intel-meta">
-                    <span class="meta-label">PROTOCOL:</span> <span class="meta-val">UTS-39 (INSPIRED)</span>
-                    <span class="meta-sep">|</span>
-                    <span class="meta-label">SCOPE:</span> <span class="meta-val">GLOBAL</span>
-                </div>
-            </div>
-
-            <div class="intel-grid-row">
-                <div class="intel-stat-card">
-                    <div class="stat-label">AMBIGUITY</div>
-                    <div id="intel-stat-ambiguity" class="stat-val">0</div>
-                    <div class="stat-desc">Intra-Script</div>
-                </div>
-                <div class="intel-stat-card">
-                    <div class="stat-label">SPOOFING</div>
-                    <div id="intel-stat-spoofing" class="stat-val">0</div>
-                    <div class="stat-desc">Cross-Script</div>
-                </div>
-                <div class="intel-stat-card">
-                    <div class="stat-label">SYNTAX</div>
-                    <div id="intel-stat-syntax" class="stat-val">0</div>
-                    <div class="stat-desc">Bidi / Control</div>
-                </div>
-                <div class="intel-stat-card">
-                    <div class="stat-label">HIDDEN</div>
-                    <div id="intel-stat-hidden" class="stat-val">0</div>
-                    <div class="stat-desc">Invisibles</div>
-                </div>
-            </div>
-
-            <div class="intel-target-list">
-                <div class="target-header">HIGH-VALUE TARGETS (TOKENS)</div>
-                <div id="intel-target-body" class="target-body">
-                    <div class="placeholder-text" style="padding:12px;">No suspicious tokens detected.</div>
-                </div>
-            </div>
-        </div>
         <h3 class="subsection-title">Normalization Hashes</h3>
         <table class="matrix" id="threat-hash-report">
             <caption>State Hashes (Forensic, NFKC, NFKC-Casefold, UTS #39 Skeleton)</caption>
