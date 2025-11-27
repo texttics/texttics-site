@@ -4472,7 +4472,39 @@ def compute_threat_analysis(t: str):
         nf_string = normalize_extended(t)
         nf_casefold_string = nf_string.casefold()
 
+        # --- 5. Skeleton & Drift (Restored & Upgraded) ---
+        # We generate the skeleton HERE so the metrics are available for the legacy flags below.
+        # This uses the NEW function, so it won't crash.
+        state_4_skeleton, skel_events = _generate_uts39_skeleton(t, return_events=True)
 
+        # Bridge: Translate new 'skel_events' into old 'skel_metrics' format
+        # This satisfies the "Flag: Skeleton Drift" logic further down.
+        skel_metrics = {
+            "total_drift": skel_events.get('confusables_mapped', 0),
+            "drift_ascii": 0,
+            "drift_cross_script": 0,
+            "drift_other": 0
+        }
+
+        # Populate buckets using the new Forensic Metadata
+        for m in skel_events.get('mappings', []):
+            tgt = m['map_to']
+            # m['type'] comes from the data loader (MA, ML, SA, SL)
+            tag = m.get('type', 'UNK') 
+            
+            # 1. ASCII Drift (e.g. 1 -> l)
+            if ord(m['char']) < 128 and all(ord(c) < 128 for c in tgt):
+                skel_metrics["drift_ascii"] += 1
+            # 2. Cross-Script (Mixed types MA/ML usually indicate cross-script)
+            elif tag.startswith('M'):
+                skel_metrics["drift_cross_script"] += 1
+            # 3. Other (Single Script SA/SL or unknown)
+            else:
+                skel_metrics["drift_other"] += 1
+        
+        # Update the variables expected by the return statement later
+        skeleton_string = state_4_skeleton
+        
         # --- 3. Run checks on RAW string ---
         confusables_map = DATA_STORES.get("Confusables", {})
 
