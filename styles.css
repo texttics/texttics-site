@@ -3735,3 +3735,51 @@ details.profile-section > summary:hover::marker {
     font-size: 1.5rem;
     font-weight: bold;
 }
+
+/* --- Forensic Metric Pack (Lab UI) --- */
+.metric-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 80px; /* Ensure visual consistency */
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted); /* Or opacity: 0.7 */
+    margin-bottom: 4px;
+}
+
+.card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+}
+
+.metric-value, 
+.metric-value-warn {
+    font-family: 'SF Mono', 'Segoe UI Mono', 'Roboto Mono', monospace;
+    font-size: 1.8rem;
+    font-weight: 400;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    color: var(--color-text-main);
+}
+
+.metric-value-warn {
+    color: #d97706; /* Amber-600 - Matches your existing warning palette */
+}
+
+.metric-sub {
+    font-size: 0.75rem;
+    margin-top: 6px;
+    white-space: nowrap;
+    opacity: 0.8;
+}
