@@ -1254,3 +1254,45 @@ We rebuilt the Token Analyzer to be robust against "Symbol-Only" payloads.
 
 ### 5. Data Engineering: Type-Aware Confusables
 We upgraded the `_io.js` loader to parse the **Forensic Type Tags** (`MA`, `ML`, `SA`, `SL`) from `confusables.txt`. This allows the engine to distinguish between "Weak Ambiguity" (Intra-script lookalikes like `1` vs `l`) and "Strong Spoofing" (Cross-script lookalikes), significantly reducing false positives in the Drift Engine.
+
+### ✅ Completed Enhancement: The "Forensic Quad" UI (High-Density Metrics)
+
+The **Core Metrics (Group 2.A)** have been radically re-architected. We moved away from a "dashboard" aesthetic (big numbers with empty space) to a **"Lab Instrument"** philosophy. Every pixel of the card is now used to provide immediate forensic context, allowing an analyst to assess the text's "physical properties" without clicking a single button.
+
+**1. The High-Density "Micro-Facts" System**
+Each of the four core cards now displays a primary metric (left) alongside dynamic **Micro-Facts** (right). These derived metrics allow for instantaneous "Triangulation of Anomaly":
+
+* **Total Graphemes (Visual Reality):**
+    * Now displays **Mark Density** (Marks/Grapheme). *Forensic Value:* Instantly flags Zalgo text or heavy diacritics (> 1.0) vs standard prose (~0.1).
+    * Now displays **RGI Emoji Count**.
+* **Total Code Points (Logical Reality):**
+    * **Major Logic Upgrade:** Replaced static definitions ("1 Logical Atom") with dynamic **Composition Data**.
+    * Now displays **Combining Mark Count & %**. *Forensic Value:* Explains the gap between Graphemes and Code Points. High mark density with low grapheme count signals invisible structural abuse.
+* **UTF-16 Units (Runtime Reality):**
+    * Now displays **Surrogate Overhead** (+N units). *Forensic Value:* Instantly quantifies "Astral Plane" content. A high overhead warns of potential buffer overflows in legacy JS/Java systems that count units, not points.
+* **UTF-8 Bytes (Physical Reality):**
+    * Now displays **Byte Density** (Bytes/Code Point). *Forensic Value:* A heuristic for language detection. `1.0` = ASCII, `~2.0` = Latin/Cyrillic, `>3.0` = CJK/Emoji.
+    * Now displays **ASCII Coverage %**. Replaced the tautological "Encoding: UTF-8" label with a distribution metric.
+
+**2. The "Forensic Datasheet" Tooltip Engine**
+We implemented a rigorous standard for data tooltips. They no longer just define the term; they act as a reference manual.
+* **Structure:**
+    * `[ DEFINITION ]`: Technical standard (e.g., UAX #29).
+    * `[ FORENSIC BENCHMARKS ]`: Expected ranges (e.g., "Normal: < 5% marks").
+    * `[ THIS SAMPLE ]`: The specific calculated values for the input.
+
+**3. Visual Semantics**
+* **"Steel Gray" Headers:** Standardized header hierarchy for a cleaner, instrument-like look.
+* **Data-First Typography:** Removed "pill/button" styling from facts to emphasize that they are immutable measurements, not UI controls.
+
+---
+
+### 🔮 Roadmap Update: The "Missing Pillars" Identified
+
+Following a critical audit of the original vision vs. current reality, we have identified that Stage 1 is a **Structural** powerhouse but lacks **Statistical** insight.
+
+**Next Priority: Group 2.F (Statistical & Lexical Profile)**
+To detect random noise, encrypted payloads, and flooding attacks, we will implement:
+1.  **Shannon Entropy:** To distinguish between machine noise (High Entropy) and human text (Medium Entropy).
+2.  **Lexical Profile:** To detect "Word" content (Vocabulary Richness, Top Tokens) without requiring an external dictionary.
+3.  **Vowel/Consonant Ratio:** A heuristic to detect Base64 strings masquerading as text.
