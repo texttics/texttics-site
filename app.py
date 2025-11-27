@@ -2360,7 +2360,35 @@ async def load_unicode_data():
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
         if intentional_txt: _parse_intentional(intentional_txt)
-        if confusables_txt: _parse_confusables(confusables_txt)
+        if confusables_txt:
+            # Parse Confusables with Type Preservation (Forensic Upgrade)
+            # Format: Code ; Target ; Type # Comment
+            # We strictly need the 'Type' (MA, ML, SA, SL) for the new Intel Engine.
+            temp_map = {}
+            lines = confusables_txt.split('\n')
+            for line in lines:
+                # 1. Strip comments first to ensure clean parsing
+                if '#' in line:
+                    line = line.split('#')[0]
+                
+                if line.strip():
+                    parts = line.split(';')
+                    if len(parts) >= 3:
+                        src = int(parts[0].strip(), 16)
+                        
+                        # Parse target sequence
+                        tgt_hex = parts[1].strip().split()
+                        tgt = "".join([chr(int(x, 16)) for x in tgt_hex])
+                        
+                        # Parse Type (MA, ML, SA, SL)
+                        tag = parts[2].strip()
+                        
+                        # Store as tuple: (target_string, tag_type)
+                        # This enables the "Smart Skeleton" logic
+                        temp_map[src] = (tgt, tag)
+                        
+            DATA_STORES["Confusables"] = temp_map
+            print(f"Loaded {len(temp_map)} Confusable mappings with Forensic Types.")
 
         # --- Load Forensic JSONs ---
         if inverse_json:
@@ -3866,35 +3894,96 @@ def compute_provenance_stats(t: str):
     return final_stats
 
 
-def _generate_uts39_skeleton(t: str):
-    """Generates the UTS #39 'skeleton' for a string."""
-    if LOADING_STATE != "READY":
-        return ""
-        
-    confusables_map = DATA_STORES.get("Confusables", {})
+def _generate_uts39_skeleton(t: str, return_events=False):
+    """
+    Generates the UTS #39 'Skeleton' following the full forensic pipeline.
     
+    Args:
+        t (str): Input string.
+        return_events (bool): If True, returns (skeleton, events_dict). 
+                              If False, returns just skeleton string (Backward Compat).
+    """
+    if LOADING_STATE != "READY" or not t:
+        return ("", {}) if return_events else ""
+        
+    events = {
+        "confusables_mapped": 0,
+        "ignorables_stripped": 0,
+        "mappings": []
+    }
+
+    # 1. NFKC (Compatibility)
+    # Collapses fullwidth (Ａ->A) and ligatures (ﬁ->fi)
     try:
-        # We will loop over the raw string 't'
-        mapped_chars = []
-        for char in t: # Loop over 't' directly
-            cp = ord(char)
+        s1 = unicodedata2.normalize("NFKC", t)
+    except:
+        s1 = unicodedata.normalize("NFKC", t)
+
+    # 2. Casefold (Identity)
+    # Collapses case distinctions (A->a)
+    s2 = s1.casefold()
+
+    # 3. Map Confusables (Visual) + Track Events
+    confusables_map = DATA_STORES.get("Confusables", {})
+    mapped_chars = []
+    
+    for char in s2:
+        cp = ord(char)
+        if cp in confusables_map:
+            # Found a mapping!
+            val = confusables_map[cp]
             
-            # --- THIS IS THE FIX ---
-            # We map *all* confusables. The 'intentional' logic was flawed.
-            skeleton_char_str = confusables_map.get(cp)
-            
-            if skeleton_char_str:
-                mapped_chars.append(skeleton_char_str)
+            # DEFENSIVE UNPACKING: Handles both old (str) and new (tuple) formats
+            if isinstance(val, tuple):
+                tgt, tag = val
             else:
-                mapped_chars.append(char)
-            # --- END FIX ---
+                tgt = val
+                tag = "UNK" # Fallback for legacy data
+            
+            mapped_chars.append(tgt)
+            
+            # Log the event
+            events["confusables_mapped"] += 1
+            events["mappings"].append({
+                "char": char,
+                "hex": f"{cp:04X}",
+                "map_to": tgt,
+                "type": tag # MA, ML, etc.
+            })
+        else:
+            mapped_chars.append(char)
         
-        final_skeleton = "".join(mapped_chars)
+    s3 = "".join(mapped_chars)
+
+    # 4. Strip Default Ignorables & Bidi (Structure) + Track Events
+    # UTS #39 requires stripping these to see the "Visual Bone Structure"
+    filtered_chars = []
+    for char in s3:
+        cp = ord(char)
+        is_ignorable = False
         
-        return final_skeleton
-    except Exception as e:
-        print(f"Error generating skeleton: {e}")
-        return "" # Return empty string on failure
+        # O(1) Bitmask Check
+        if cp < 0x110000:
+             if (INVIS_TABLE[cp] & INVIS_DEFAULT_IGNORABLE) or (INVIS_TABLE[cp] & INVIS_BIDI_CONTROL):
+                 is_ignorable = True
+        
+        if not is_ignorable:
+            filtered_chars.append(char)
+        else:
+            events["ignorables_stripped"] += 1
+            
+    s4 = "".join(filtered_chars)
+
+    # 5. NFD Normalization (Canonical Final Form)
+    try:
+        final_skel = unicodedata2.normalize("NFD", s4)
+    except:
+        final_skel = unicodedata.normalize("NFD", s4)
+        
+    if return_events:
+        return final_skel, events
+        
+    return final_skel
 
 def _escape_html(s: str):
     """Escapes basic HTML characters including quotes for attribute safety."""
@@ -4266,6 +4355,85 @@ def _generate_uts39_skeleton_metrics(t: str):
             
     return "".join(mapped_chars), metrics
 
+def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
+    """
+    Determines forensic drift using Metadata Proofs.
+    Robustly handles missing metadata for backward compatibility.
+    """
+    # 1. Calculate Standard Equality Deltas
+    changed_nfkc = (raw != nfkc)
+    changed_casefold = (nfkc != nfkc_cf)
+    string_diff_skeleton = (nfkc_cf != skeleton) # Fallback check
+    
+    # 2. Safe Event Unpacking (Back-Compat)
+    if skel_events is None:
+        skel_events = {'confusables_mapped': 0, 'ignorables_stripped': 0}
+        
+    # 3. Use Metadata for Advanced Deltas
+    has_visual_mappings = skel_events.get('confusables_mapped', 0) > 0
+    has_structure_strip = skel_events.get('ignorables_stripped', 0) > 0
+    
+    # Fallback: If string changed but no events recorded (Legacy Mode), assume Visual
+    if string_diff_skeleton and not has_visual_mappings and not has_structure_strip:
+        has_visual_mappings = True
+
+    drift_profile = {
+        "format": False,
+        "identity": False,
+        "visual": False,
+        "structure": False,
+        "verdict": "Stable (No Drift)",
+        "class": "drift-clean",
+        "score": 0,
+        "events": skel_events # Pass through for UI
+    }
+    
+    if not (changed_nfkc or changed_casefold or has_visual_mappings or has_structure_strip or string_diff_skeleton):
+        return drift_profile
+
+    # --- PRIORITY 1: Visual Drift (Homoglyphs) ---
+    if has_visual_mappings:
+        drift_profile["visual"] = True
+        drift_profile["format"] = changed_nfkc
+        drift_profile["identity"] = changed_casefold
+        
+        count = skel_events.get('confusables_mapped', 0)
+        count_str = f"{count} " if count > 0 else ""
+        drift_profile["verdict"] = f"Visual Drift ({count_str}Homoglyphs Mapped)"
+        drift_profile["class"] = "drift-alert"
+        drift_profile["score"] = 3
+        return drift_profile
+
+    # --- PRIORITY 2: Structure Drift (Invisible Stripping) ---
+    if has_structure_strip:
+        drift_profile["structure"] = True
+        drift_profile["format"] = changed_nfkc
+        
+        count = skel_events.get('ignorables_stripped', 0)
+        drift_profile["verdict"] = f"Structure Drift ({count} Hidden Chars Stripped)"
+        drift_profile["class"] = "drift-alert" # High risk because usually malicious
+        drift_profile["score"] = 2
+        return drift_profile
+
+    # --- PRIORITY 3: Identity Drift ---
+    if changed_casefold:
+        drift_profile["identity"] = True
+        drift_profile["format"] = changed_nfkc
+        drift_profile["verdict"] = "Identity Drift (Case Differences)"
+        drift_profile["class"] = "drift-warn"
+        drift_profile["score"] = 1
+        return drift_profile
+
+    # --- PRIORITY 4: Format Drift ---
+    if changed_nfkc:
+        drift_profile["format"] = True
+        drift_profile["verdict"] = "Format Drift (Compatibility / Width)"
+        drift_profile["class"] = "drift-warn"
+        drift_profile["score"] = 1
+        return drift_profile
+        
+    return drift_profile
+
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
@@ -4431,13 +4599,40 @@ def compute_threat_analysis(t: str):
                 'positions': [drift_desc]
             }
 
-        # --- 6. Hashes ---
-        threat_hashes["State 1: Forensic (Raw)"] = _get_hash(t)
-        threat_hashes["State 2: NFKC"] = _get_hash(nf_string)
-        threat_hashes["State 3: NFKC-Casefold"] = _get_hash(nf_casefold_string)
-        threat_hashes["State 4: UTS #39 Skeleton"] = _get_hash(skeleton_string)
+        # --- 6. QUAD-STATE FORENSIC PIPELINE (New Architecture) ---
+        
+        # State 1: Forensic (Raw)
+        state_1_raw = t
+        
+        # State 2: NFKC (Compatibility) - Already computed as nf_string
+        state_2_nfkc = nf_string
+        
+        # State 3: Identity (Casefold) - Already computed as nf_casefold_string
+        state_3_casefold = nf_casefold_string
+        
+        # State 4: Visual Truth (Ultimate Skeleton)
+        # CRITICAL: We call the NEW function with return_events=True to get forensic metadata
+        state_4_skeleton, skel_events = _generate_uts39_skeleton(t, return_events=True)
+        
+        # Cryptographic Proof (Hashes)
+        hashes = {
+            "State 1: Forensic (Raw)": _get_hash(state_1_raw),
+            "State 2: NFKC": _get_hash(state_2_nfkc),
+            "State 3: NFKC-Casefold": _get_hash(state_3_casefold),
+            "State 4: UTS #39 Skeleton": _get_hash(state_4_skeleton)
+        }
+        
+        # Forensic Drift Analysis (Using Event Metadata)
+        drift_info = compute_normalization_drift(
+            state_1_raw, 
+            state_2_nfkc, 
+            state_3_casefold, 
+            state_4_skeleton, 
+            skel_events
+        )
 
         # --- 7. HTML Report (Forensic Diff Stream v3) ---
+        # (Existing Logic Preserved - Generates the 'X-Ray' visualization)
         
         # A. Collect indices for visuals
         vis_confusables = set()
@@ -4461,14 +4656,12 @@ def compute_threat_analysis(t: str):
                 
         vis_bidi = set()
         if bidi_danger_indices:
-            # bidi_danger_indices is a list of strings "#12", convert to int
             for s in bidi_danger_indices:
                 try: vis_bidi.add(int(s.replace("#","")))
                 except: pass
 
         # C. Render if ANY threat exists
         if vis_confusables or vis_invisibles or vis_bidi:
-            # [FIX] Pass ALL 5 required arguments correctly
             final_html_report = _render_forensic_diff_stream(
                 t, 
                 vis_confusables, 
@@ -4477,28 +4670,22 @@ def compute_threat_analysis(t: str):
                 confusables_map
             )
         else:
-            final_html_report = '<p class="placeholder-text">No active threat clusters detected.</p>'
+            final_html_report = ""
         
-        # SPOOFING (Logic Filter)
-        # [FIX] Do NOT register Common/Inherited drifts (like Em Dash) as "Spoofing" in HUD.
+        # SPOOFING (HUD Registry Logic)
         if confusable_indices and LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
                 try:
                     char = js_array_raw[idx]
                     cp = ord(char)
-                    
-                    # [CRITICAL FIX] Default to "Common" if lookup returns None.
-                    # This prevents symbols (arrows, math) from being flagged as "Foreign Script" threats.
                     sc = _find_in_ranges(cp, "Scripts") or "Common"
-                    
-                    # Only register if it's NOT Common/Inherited (Benign Drift)
                     if sc not in ("Common", "Inherited"):
                         _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
-        # OBFUSCATION (Clusters)
-        clusters = analyze_invisible_clusters(t)
+        # OBFUSCATION (HUD Registry Logic)
+        # Re-using clusters computed above
         for c in clusters:
             label = "Invisible Cluster"
             if c.get("high_risk"): label += " [High Risk]"
@@ -4506,19 +4693,32 @@ def compute_threat_analysis(t: str):
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
+        # Fallback states
         if not nf_string: nf_string = t 
         if not nf_casefold_string: nf_casefold_string = t.casefold()
-        if not skeleton_string: skeleton_string = t
-        final_html_report = "<p class='placeholder-text'>Error generating confusable report.</p>"
+        # Fallback hashes/drift
+        hashes = {}
+        drift_info = {}
+        final_html_report = "<p class='placeholder-text'>Error generating forensic report.</p>"
+        # Ensure variables exist for return
+        state_1_raw = t
+        state_2_nfkc = t
+        state_3_casefold = t.casefold()
+        state_4_skeleton = t
 
     return {
         'flags': threat_flags,
-        'hashes': threat_hashes,
-        'html_report': final_html_report,
+        'hashes': hashes,
+        'html_report': final_html_report, # The X-Ray Visual
         'bidi_danger': bool(bidi_danger_indices),
         'script_mix_class': script_mix_class,
-        'skel_metrics': skel_metrics, 
-        'raw': t, 'nfkc': nf_string, 'nfkc_cf': nf_casefold_string, 'skeleton': skeleton_string
+        'drift_info': drift_info,         # The New Deep Topology
+        'states': {
+            's1': state_1_raw,
+            's2': state_2_nfkc,
+            's3': state_3_casefold,
+            's4': state_4_skeleton
+        }
     }
     
 def render_threat_analysis(threat_results, text_context=None):
