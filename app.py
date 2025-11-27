@@ -53,6 +53,15 @@ def _debug_threat_bridge(t: str, hit: tuple):
         hex_snip = " ".join(f"{ord(c):04X}" for c in snippet)
         print(f"[ThreatBridge-AUDIT] OK: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}. Snip: '{snippet}' ({hex_snip})")
 
+
+# Simple SVG paths for the Forensic Metric Pack
+METRIC_ICONS = {
+    "eye": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+    "hash": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>',
+    "code": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>',
+    "save": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>'
+}
+
 # Forensic Icon Set (Vector Paths for SVG)
 ICONS = {
     # --- HEADERS ---
@@ -5201,48 +5210,68 @@ def render_cards(stats_dict, element_id, key_order=None):
             if count > 0:
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
 
-        # --- RENDER PATH 2.5: Forensic Metric Pack (Custom Visuals) ---
-        elif k == "UTF-16 Units":
-            # Runtime Reality: Shows .length and Astral density
-            astral = stats_dict.get("Astral Count", 0)
-            
-            # Warn if visual/logical mismatch (Astral chars present)
-            style_class = "metric-value-warn" if astral > 0 else "metric-value"
-            sub_text = f"{astral:,} Astral Chars" if astral > 0 else "BMP Only"
-            
-            tooltip = "Runtime Length (JS/Java/C#). Counts 16-bit code units. Mismatches Code Points if Emoji/Astral chars are present."
-            
+        # --- RENDER PATH 2.5: Forensic Metric Pack (Lab Instrument UI) ---
+        
+        # 1. VISUAL REALITY (Graphemes)
+        elif k == "Total Graphemes":
+            icon = METRIC_ICONS["eye"]
             html.append(
-                f'<div class="card">'
-                f'<div class="{style_class}">{v:,}</div>'
-                f'<div class="metric-label" title="{tooltip}">{k}</div>'
-                f'<div class="metric-sub">{sub_text}</div>'
+                f'<div class="card metric-card">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="metric-value">{v:,}</div>'
+                f'<div class="metric-sub">Visual Units</div>'
                 f'</div>'
             )
 
-        elif k == "UTF-8 Bytes":
-            # Physical Reality: Storage size
-            tooltip = "Physical Size. The actual bytes required for storage or network transmission (UTF-8)."
+        # 2. LOGICAL REALITY (Code Points)
+        elif k == "Total Code Points":
+            icon = METRIC_ICONS["hash"]
             html.append(
-                f'<div class="card">'
+                f'<div class="card metric-card">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
                 f'<div class="metric-value">{v:,}</div>'
-                f'<div class="metric-label" title="{tooltip}">{k}</div>'
+                f'<div class="metric-sub">Unicode Scalars</div>'
+                f'</div>'
+            )
+
+        # 3. RUNTIME REALITY (UTF-16)
+        elif k == "UTF-16 Units":
+            icon = METRIC_ICONS["code"]
+            astral = stats_dict.get("Astral Count", 0)
+            
+            # Logic: Pop if weird (Astral present), Fade if boring (BMP only)
+            if astral > 0:
+                val_class = "metric-value-warn"
+                sub_text = f"⚠️ {astral:,} Astral Chars"
+                sub_style = "color: var(--color-threat-high); font-weight: bold;"
+            else:
+                val_class = "metric-value"
+                sub_text = "Standard (BMP)"
+                sub_style = "opacity: 0.6;"
+
+            tooltip = "Runtime Length (JS/Java/C#). Counts 16-bit code units."
+            
+            html.append(
+                f'<div class="card metric-card" title="{tooltip}">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="{val_class}">{v:,}</div>'
+                f'<div class="metric-sub" style="{sub_style}">{sub_text}</div>'
+                f'</div>'
+            )
+
+        # 4. PHYSICAL REALITY (UTF-8)
+        elif k == "UTF-8 Bytes":
+            icon = METRIC_ICONS["save"]
+            html.append(
+                f'<div class="card metric-card">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="metric-value">{v:,}</div>'
                 f'<div class="metric-sub">Storage Size</div>'
                 f'</div>'
             )
-            
-        elif k == "Total Code Points":
-            # Logical Reality: Explicitly label it
-            tooltip = "Logical Length (Python/Unicode). The count of unique scalar values."
-            html.append(
-                f'<div class="card">'
-                f'<div class="metric-value">{v:,}</div>'
-                f'<div class="metric-label" title="{tooltip}">{k}</div>'
-                f'</div>'
-            )
-            
+
+        # Skip Astral Count (it's consumed by UTF-16 card)
         elif k == "Astral Count":
-            # Skip explicit rendering, it's used as a subtitle for UTF-16
             continue
         
         # --- RENDER PATH 3: Simple Cards ---
