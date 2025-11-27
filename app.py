@@ -4254,6 +4254,56 @@ def analyze_restriction_level(token: str):
         
     return "Unrestricted", "crit"
 
+def analyze_normalization_hazard(token: str):
+    """
+    Normalization Hazard Detector.
+    Checks if token shapeshifts under NFC (Shapeshifting/Ghost Characters).
+    """
+    try:
+        nfc = unicodedata.normalize("NFC", token)
+    except:
+        return None
+
+    if token == nfc:
+        return None
+
+    reasons = []
+    # 1. Length Change (Ghost Characters / Hollow Tokens)
+    if len(token) != len(nfc):
+        reasons.append("Length Instability")
+    
+    # 2. Binary Change (Precomposed vs Decomposed)
+    if token != nfc:
+        reasons.append("Binary Instability")
+
+    if reasons:
+        return f"Normalization Hazard ({', '.join(reasons)})"
+    return None
+
+def analyze_structural_perturbation(token: str):
+    """
+    Structural Perturbation Score.
+    Detects broken words split by non-standard separators (Invisibles, Bidi).
+    """
+    perturbations = 0
+    types = set()
+    
+    for char in token:
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        
+        if mask & INVIS_ANY_MASK:
+            perturbations += 1
+            if mask & INVIS_BIDI_CONTROL: types.add("Bidi")
+            elif mask & INVIS_ZERO_WIDTH_SPACING: types.add("ZWSP")
+            elif mask & INVIS_JOIN_CONTROL: types.add("Joiner")
+            elif mask & INVIS_TAG: types.add("Tag")
+            else: types.add("Invisible")
+            
+    if perturbations > 0:
+        return f"Structural Perturbation ({perturbations}x {', '.join(types)})"
+    return None
+
 def detect_invisible_patterns(t: str):
     """
     Counter-Intelligence Scanner.
@@ -4872,6 +4922,8 @@ def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
         return drift_profile
         
     return drift_profile
+
+
 
 def compute_threat_analysis(t: str):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
