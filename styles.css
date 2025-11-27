@@ -3785,48 +3785,59 @@ details.profile-section > summary:hover::marker {
 }
 
 
-/* --- Forensic Header Layout (Dashboard Split) --- */
+/* --- Forensic Header Layout (Hierarchical Stack) --- */
 
-/* 1. The Main Container: Side-by-Side Flex */
+/* 1. Main Container: Stack Vertically */
 #meta-totals-cards {
-    display: flex !important; /* Override default grid */
-    flex-direction: row;      /* Side-by-Side Layout */
-    flex-wrap: wrap;          /* Wrap on smaller screens */
-    gap: 20px;
-    align-items: stretch;     /* Make both panels equal height */
+    display: flex !important;
+    flex-direction: column; /* Stack Quad on top of Context */
+    gap: 12px;
 }
 
-/* 2. The "Quad" (Left Panel): Strict 2x2 Grid */
+/* 2. The "Quad" (Top Row): 4 Columns, Tighter Visuals */
 .forensic-quad-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr; /* 2 Columns */
-    grid-template-rows: auto auto;  /* 2 Rows */
+    grid-template-columns: repeat(4, 1fr); /* 4 cards in one row */
     gap: 12px;
-    
-    /* CONSTRAINT: Keep it tight. Don't let it stretch infinitely. */
-    flex: 0 0 460px; /* Fixed basis: ~220px per card */
-    width: 100%;     /* Fallback */
+    width: 100%;
 }
 
-/* 3. The "Context" (Right Panel): Fluid Masonry */
+/* Reduce visual bulk for the Quad */
+.forensic-quad-grid .metric-card {
+    min-height: 70px; /* Shorter cards */
+}
+
+/* Override font size specifically for the Quad to stop them being "ridiculous" */
+.forensic-quad-grid .metric-value,
+.forensic-quad-grid .metric-value-warn {
+    font-size: 1.4rem; /* Down from 1.8rem */
+}
+
+/* 3. The "Context" (Bottom Row): 6 Columns */
 .forensic-context-grid {
     display: grid;
-    /* CHANGED: Increased min-width from 150px to 210px to prevent overlap */
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    /* Force 6 equal columns as requested */
+    grid-template-columns: repeat(6, 1fr); 
     gap: 12px;
-    
-    /* Fill the remaining screen space */
-    flex: 1;
-    min-width: 300px; /* Prevent crushing */
+    width: 100%;
 }
 
-/* Responsive: Stack vertically on tablets/phones */
-@media (max-width: 900px) {
-    #meta-totals-cards {
-        flex-direction: column;
-    }
+/* --- Responsive Safety Nets --- */
+
+/* Laptop/Tablet: Break 4->2x2 and 6->3x2 */
+@media (max-width: 1100px) {
     .forensic-quad-grid {
-        flex: 1;
-        max-width: 100%;
+        grid-template-columns: 1fr 1fr; /* 2x2 */
+    }
+    .forensic-context-grid {
+        grid-template-columns: repeat(3, 1fr); /* 3 in a row */
+    }
+}
+
+/* Mobile: Stack everything */
+@media (max-width: 600px) {
+    .forensic-quad-grid,
+    .forensic-context-grid {
+        grid-template-columns: 1fr;
     }
 }
