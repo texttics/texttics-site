@@ -5256,12 +5256,17 @@ def render_invisible_atlas(t: str):
     """
     Renders the 'Invisible Atlas' - a dynamic legend of all hidden characters found.
     Columns: Symbol | Code | Name | Count | Category
+    Includes a Summary Bar with aggregated category counts.
     """
-    element = document.getElementById("invisible-atlas-body")
-    if not element: return
+    body_element = document.getElementById("invisible-atlas-body")
+    summary_element = document.getElementById("invisible-atlas-summary")
     
+    if not body_element: return
+    
+    # Reset State
     if not t:
-        element.innerHTML = "<tr><td colspan='5' class='placeholder-text'>No invisible characters detected.</td></tr>"
+        body_element.innerHTML = "<tr><td colspan='6' class='placeholder-text'>No invisible characters detected.</td></tr>"
+        if summary_element: summary_element.style.display = "none"
         return
 
     # 1. Scan for Unique Invisibles
@@ -5278,22 +5283,27 @@ def render_invisible_atlas(t: str):
             unique_hits[cp] += 1
 
     if not unique_hits:
-        element.innerHTML = "<tr><td colspan='5' class='placeholder-text'>No invisible characters detected.</td></tr>"
+        body_element.innerHTML = "<tr><td colspan='6' class='placeholder-text'>No invisible characters detected.</td></tr>"
+        if summary_element: summary_element.style.display = "none"
         return
 
     # 2. Sort by Count (Desc), then Code Point
     sorted_cps = sorted(unique_hits.keys(), key=lambda x: (-unique_hits[x], x))
     
     html_rows = []
+    
+    # --- Aggregation Storage ---
+    cat_stats = {} # { "CategoryName": {count: 0, css: "class"} }
+    total_invisible_count = 0
+
     for cp in sorted_cps:
         count = unique_hits[cp]
         char = chr(cp)
+        total_invisible_count += count
         
         # --- Visual Logic (Dynamic) ---
-        # 1. Check explicit map first
         visual = INVISIBLE_MAPPING.get(cp)
         
-        # 2. If not in map, generate dynamic tags
         if not visual:
             if 0xFE00 <= cp <= 0xFE0F:
                 visual = f"[VS{cp - 0xFE00 + 1}]"
@@ -5302,7 +5312,7 @@ def render_invisible_atlas(t: str):
             elif 0xE0000 <= cp <= 0xE007F:
                 visual = f"[TAG:U+{cp:04X}]"
             else:
-                visual = "." # Fallback
+                visual = "." 
 
         # Styling
         if visual.startswith("[") and visual.endswith("]"):
@@ -5314,7 +5324,7 @@ def render_invisible_atlas(t: str):
             
         hex_code = f"U+{cp:04X}"
         
-        # --- Naming Logic (Robust) ---
+        # --- Naming Logic ---
         try:
             name = unicodedata.name(char)
         except:
@@ -5325,28 +5335,23 @@ def render_invisible_atlas(t: str):
             elif 0x80 <= cp <= 0x9F: name = f"CONTROL-0x{cp:02X}"
             else: name = "UNKNOWN CONTROL"
         
-        # --- Category Logic (Precedence Fixed) ---
+        # --- Category Logic ---
         mask = INVIS_TABLE[cp]
         cat_badge = "Unknown"
         cat_class = "atlas-badge-neutral"
         
-        # Critical / Security
         if mask & INVIS_BIDI_CONTROL: 
             cat_badge = "BIDI"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_TAG: 
             cat_badge = "TAG"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_CRITICAL_CONTROL: 
             cat_badge = "CONTROL"; cat_class = "atlas-badge-crit"
-        
-        # Warnings
         elif mask & INVIS_HIGH_RISK_MASK: 
             cat_badge = "RISK"; cat_class = "atlas-badge-warn"
         elif mask & INVIS_ZERO_WIDTH_SPACING: 
             cat_badge = "ZW-SPACE"; cat_class = "atlas-badge-warn"
         elif mask & INVIS_NONSTANDARD_NL:
             cat_badge = "NEWLINE"; cat_class = "atlas-badge-warn"
-            
-        # Informational (Precedence: Selector > Ignorable)
         elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
             cat_badge = "SELECTOR"; cat_class = "atlas-badge-neutral"
         elif mask & INVIS_DEFAULT_IGNORABLE: 
@@ -5354,6 +5359,11 @@ def render_invisible_atlas(t: str):
         elif mask & INVIS_NON_ASCII_SPACE:
             cat_badge = "NON-ASCII"; cat_class = "atlas-badge-info"
             
+        # --- Accumulate Stats ---
+        if cat_badge not in cat_stats:
+            cat_stats[cat_badge] = {'count': 0, 'css': cat_class}
+        cat_stats[cat_badge]['count'] += count
+
         # Action Button
         action_btn = f'<button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CHAR({cp})">Find</button>'
         
@@ -5369,7 +5379,31 @@ def render_invisible_atlas(t: str):
         )
         html_rows.append(row)
         
-    element.innerHTML = "".join(html_rows)
+    body_element.innerHTML = "".join(html_rows)
+
+    # --- Render Summary Bar ---
+    if summary_element:
+        summary_element.style.display = "flex"
+        
+        # 1. Total
+        summary_html = [
+            f'<div class="atlas-sum-metric"><span class="sum-total-label">TOTAL</span> <span class="sum-val">{total_invisible_count}</span></div>',
+            '<div class="atlas-sep"></div>'
+        ]
+        
+        # 2. Categories (Sorted Alphabetically for stability)
+        sorted_cats = sorted(cat_stats.keys())
+        
+        for cat in sorted_cats:
+            data = cat_stats[cat]
+            summary_html.append(
+                f'<div class="atlas-sum-metric">'
+                f'<span class="atlas-badge {data["css"]}">{cat}</span>'
+                f'<span class="sum-val">{data["count"]}</span>'
+                f'</div>'
+            )
+            
+        summary_element.innerHTML = "".join(summary_html)
 
 def render_emoji_summary(emoji_counts, emoji_list):
     """
