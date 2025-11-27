@@ -4678,113 +4678,91 @@ def compute_threat_analysis(t: str):
 def render_threat_analysis(results, text_context=None):
     """
     Renders the Group 3 Threat-Hunting results.
-    Combines the Threat Ledger (Heuristic) with the Forensic Drift Report.
+    1. Threat Ledger (Heuristic Score)
+    2. Forensic X-Ray (Visual Scan) - RESTORED
+    3. Normalization Drift (Deep Topology) - NEW
+    4. Hash Matrix (Evidence)
     """
     
-    # --- PART 1: THREAT FLAGS & LEDGER (PRESERVED) ---
+    # --- PART 1: THREAT FLAGS & LEDGER ---
     flags = results.get('flags', {})
     html_rows = []
     threat_level_key = "Threat Level (Heuristic)"
     
-    # 1. Handle the Special "Threat Level" Row (The Ledger)
     if threat_level_key in flags:
         data = flags[threat_level_key]
         badge = data.get("badge", "")
         severity = data.get("severity", "ok")
-        
-        # Data from the Threat Auditor
         ledger = data.get("ledger", [])
         noise = data.get("noise", [])
-        
         badge_class = f"integrity-badge integrity-badge-{severity}"
         
-        # --- LEDGER GENERATION (3-Column) ---
+        # Ledger HTML Generation
         ledger_html = ""
         if ledger:
             ledger_rows = ""
             for item in ledger:
-                # Map Category to Severity Class
                 cat = item['category'].upper()
                 sev_class = "ok"
-                if cat in ("EXECUTION", "SPOOFING"):
-                    sev_class = "crit"
-                elif cat in ("OBFUSCATION"):
-                    sev_class = "warn"
-                elif cat in ("SUSPICIOUS", "SYNTAX"):
-                    sev_class = "warn"
-                
+                if cat in ("EXECUTION", "SPOOFING"): sev_class = "crit"
+                elif cat in ("OBFUSCATION", "SUSPICIOUS", "SYNTAX"): sev_class = "warn"
                 p_val = f"+{item['points']}"
-                
-                ledger_rows += (
-                    f"<tr>"
-                    f"<td>{item['vector']}</td>"
-                    f"<td><span class='integrity-badge integrity-badge-{sev_class}' style='font-size:0.7em'>{cat}</span></td>"
-                    f"<td class='score-val'>{p_val}</td>"
-                    f"</tr>"
-                )
+                ledger_rows += f"<tr><td>{item['vector']}</td><td><span class='integrity-badge integrity-badge-{sev_class}' style='font-size:0.7em'>{cat}</span></td><td class='score-val'>{p_val}</td></tr>"
             
-            # Add Noise (Zero-score items)
             if noise:
                  for n in noise:
-                     ledger_rows += (
-                         f"<tr class='ledger-noise'>"
-                         f"<td>{n}</td>"
-                         f"<td><span class='integrity-badge integrity-badge-ok' style='font-size:0.7em'>NOISE</span></td>"
-                         f"<td class='score-val'>0</td>"
-                         f"</tr>"
-                     )
+                     ledger_rows += f"<tr class='ledger-noise'><td>{n}</td><td><span class='integrity-badge integrity-badge-ok' style='font-size:0.7em'>NOISE</span></td><td class='score-val'>0</td></tr>"
 
-            ledger_html = f"""
-            <details class="threat-ledger-details">
-                <summary>View Penalty Breakdown</summary>
-                <table class="threat-ledger-table">
-                    <thead><tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr></thead>
-                    <tbody>{ledger_rows}</tbody>
-                </table>
-            </details>
-            """
+            ledger_html = f"""<details class="threat-ledger-details"><summary>View Penalty Breakdown</summary><table class="threat-ledger-table"><thead><tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr></thead><tbody>{ledger_rows}</tbody></table></details>"""
         else:
             ledger_html = "No active threats detected."
 
-        row_html = (
-            f'<tr class="flag-row-{severity}" style="border-bottom: 2px solid var(--color-border);">'
-            f'<th scope="row" style="font-weight:700; font-size:1.05em;">{threat_level_key}</th>'
-            f'<td><span class="{badge_class}" style="font-size:0.9em;">{badge}</span></td>'
-            f'<td>{ledger_html}</td>'
-            f'</tr>'
-        )
+        row_html = f'<tr class="flag-row-{severity}" style="border-bottom: 2px solid var(--color-border);"><th scope="row" style="font-weight:700; font-size:1.05em;">{threat_level_key}</th><td><span class="{badge_class}" style="font-size:0.9em;">{badge}</span></td><td>{ledger_html}</td></tr>'
         html_rows.append(row_html)
         
-        # Remove Threat Level from flags dict so it isn't rendered twice
         flags_copy = flags.copy()
         del flags_copy[threat_level_key]
         flags = flags_copy
     
-    # 2. Render Remaining Flags (Standard Matrix)
-    # This calls your existing helper to render the rest of the list
     render_matrix_table(flags, "threat-report-body", has_positions=True, text_context=text_context)
     
-    # 3. Inject the Threat Level Row at the top
     if html_rows:
         existing_html = document.getElementById("threat-report-body").innerHTML
         document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
 
-    # --- PART 2: DRIFT REPORT (NEW ENHANCEMENT) ---
+    # --- PART 2: FORENSIC X-RAY (VISUAL SCAN) - RESTORED ---
+    # This renders the beautiful "Perceived vs Encoded" map you screenshotted
+    html_report = results.get('html_report', "")
+    report_el = document.getElementById("confusable-diff-report")
+    
+    if report_el:
+        if html_report:
+            report_el.innerHTML = html_report
+            # Ensure it is visible
+            report_el.style.display = "block"
+        else:
+            # Fallback message if X-Ray found nothing but Drift detected something
+            drift_flag = flags.get("Flag: Skeleton Drift")
+            drift_count = drift_flag.get("count", 0) if drift_flag else 0
+            
+            if drift_count > 0:
+                msg = "No specific High-Value clusters, but global normalization drift detected (see below)."
+            else:
+                msg = "No confusable runs detected."
+            report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
+
+    # --- PART 3: DRIFT REPORT (DEEP TOPOLOGY) ---
     drift_details = document.getElementById("drift-report-details")
     summary_header = document.getElementById("drift-summary-header")
     
     if drift_details and summary_header:
         drift = results.get('drift_info', {})
         if drift:
-            # Update Visual Text Blocks
             s1_el = document.getElementById("disp-state-1")
             s4_el = document.getElementById("disp-state-4")
-            
-            # Use textContent for safety/performance with large strings
             if s1_el: s1_el.textContent = results['states']['s1']
             if s4_el: s4_el.textContent = results['states']['s4']
             
-            # Set Status Icon & Verdict
             icon = "✅"
             if drift['class'] == "drift-alert": icon = "🚨"
             elif drift['class'] == "drift-warn": icon = "⚠️"
@@ -4792,44 +4770,23 @@ def render_threat_analysis(results, text_context=None):
             summary_header.innerHTML = f'<span class="drift-status-icon">{icon}</span> <span class="drift-status-text">{drift["verdict"]}</span>'
             summary_header.className = f"drift-summary {drift['class']}"
             
-            # Auto-Collapse if Safe, Expand if Threat
             if drift['class'] == "drift-clean":
                 drift_details.removeAttribute("open")
             else:
                 drift_details.setAttribute("open", "true")
 
-    # --- PART 3: CRYPTOGRAPHIC HASHES (ENHANCED TABLE) ---
+    # --- PART 4: CRYPTOGRAPHIC HASHES ---
     hash_tbody = document.getElementById("threat-hash-report-body")
     if hash_tbody:
         hash_rows = []
-        order = [
-            "State 1: Forensic (Raw)",
-            "State 2: NFKC",
-            "State 3: NFKC-Casefold",
-            "State 4: UTS #39 Skeleton"
-        ]
-        
+        order = ["State 1: Forensic (Raw)", "State 2: NFKC", "State 3: NFKC-Casefold", "State 4: UTS #39 Skeleton"]
         hashes = results.get('hashes', {})
-        
         for state_name in order:
             h_val = hashes.get(state_name, "N/A")
-            
-            # Highlight Logic: The Skeleton Hash gets special styling
-            row_class = ""
-            if "Skeleton" in state_name:
-                row_class = 'style="font-weight:700; background:#f9fafb;"'
-                
-            row = f"""
-            <tr {row_class}>
-                <td class="matrix-label">{state_name}</td>
-                <td class="matrix-val mono-s">{h_val}</td>
-            </tr>
-            """
-            hash_rows.append(row)
-            
+            row_class = 'style="font-weight:700; background:#f9fafb;"' if "Skeleton" in state_name else ""
+            hash_rows.append(f'<tr {row_class}><td class="matrix-label">{state_name}</td><td class="matrix-val mono-s">{h_val}</td></tr>')
         hash_tbody.innerHTML = "".join(hash_rows)
 
-    # Legacy Cleanup: Ensure the old banner is hidden if it exists
     banner_el = document.getElementById("threat-banner")
     if banner_el: banner_el.setAttribute("hidden", "true")
 
