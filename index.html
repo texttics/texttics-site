@@ -402,50 +402,15 @@
                 </div>
             </div>
         </div>
-       <!-- Group 3 Sub-Section: Perception vs Reality (Drift & Hashes) -->
-        <div class="threat-section">
-            <h3 class="subsection-title">Perception vs. Reality (Normalization Drift)</h3>
-            
-            <!-- 1. The Active Drift Report (Expandable) -->
-            <details id="drift-report-details" class="drift-details" open>
-                <summary class="drift-summary" id="drift-summary-header">
-                    <span class="drift-status-icon">⏳</span> 
-                    <span class="drift-status-text">Analyzing Normalization Topology...</span>
-                </summary>
-                
-                <div class="drift-content">
-                    <p class="drift-explainer">
-                        This comparison reveals <strong>Homoglyphs</strong> and <strong>Formatting Spoofs</strong>. 
-                        If "Raw" differs from "Skeleton," the text contains characters that look like others but are logically distinct.
-                    </p>
-                    
-                    <!-- Side-by-Side Comparison Table -->
-                    <div class="drift-comparison-table">
-                        <div class="drift-col">
-                            <div class="drift-label">State 1: What You See (Raw)</div>
-                            <div class="drift-value" id="disp-state-1">...</div>
-                        </div>
-                        <div class="drift-arrow">➜</div>
-                        <div class="drift-col">
-                            <div class="drift-label">State 4: The Reality (Skeleton)</div>
-                            <div class="drift-value" id="disp-state-4">...</div>
-                        </div>
-                    </div>
-                </div>
-            </details>
+       <h3 class="subsection-title">Normalization Hashes</h3>
+        <table class="matrix" id="threat-hash-report">
+            <caption>State Hashes (Forensic, NFKC, NFKC-Casefold, UTS #39 Skeleton)</caption>
+            <thead><tr><th scope="col">State</th><th scope="col">Hash (SHA-256)</th></tr></thead>
+            <tbody id="threat-hash-report-body"><tr><td colspan="2" class="placeholder-text">No data.</td></tr></tbody>
+        </table>
 
-            <!-- 2. The Cryptographic Proof (Expandable - Default Closed) -->
-            <details class="drift-details hashes-details">
-                <summary class="drift-summary">Cryptographic Evidence (SHA-256 Hashes)</summary>
-                <div class="drift-content">
-                     <table class="matrix" id="hash-report-table">
-                        <thead><tr><th scope="col">State</th><th scope="col">Hash (SHA-256)</th></tr></thead>
-                        <tbody id="threat-hash-report-body"></tbody>
-                    </table>
-                </div>
-            </details>
-        </div>
-      </details>
+        <h3 class="subsection-title">Perceived vs Encoded Character(s)</h3>
+        <pre id="confusable-diff-report" class="confusable-report"><p class="placeholder-text">No confusable runs detected.</p></pre>
 
       <details class="fingerprint-section profile-section" id="provenance-context" aria-labelledby="prov-title">
         <summary><h2 id="prov-title" class="section-title">Provenance &amp; Context Profile</h2></summary>
