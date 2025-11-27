@@ -7381,7 +7381,30 @@ def update_all(event=None):
             
     # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
-        render_cards({}, "meta-totals-cards")
+        # [FORENSIC LAYOUT ENGINE] -------------------------------------------------
+    # Split the cards into two structural groups:
+    # 1. The Quad (2x2 Matrix): Visual, Logical, Runtime, Physical
+    quad_order = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
+    
+    # 2. The Context (Flow): Emoji, Whitespace, Encoding Support
+    context_order = [
+        "RGI Emoji Sequences", "Whitespace (Total)",
+        "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
+    ]
+
+    # Generate HTML chunks separately
+    html_quad = render_cards(meta_cards, element_id=None, key_order=quad_order, return_html=True)
+    html_context = render_cards(meta_cards, element_id=None, key_order=context_order, return_html=True)
+
+    # Assemble the layout
+    full_layout_html = f"""
+    <div class="forensic-quad-grid">{html_quad}</div>
+    <div class="forensic-context-grid">{html_context}</div>
+    """
+
+    # Inject into the main container
+    document.getElementById("meta-totals-cards").innerHTML = full_layout_html
+    # --------------------------------------------------------------------------
         render_cards({}, "grapheme-integrity-cards")
         render_matrix_table({}, "ccc-matrix-body")
         render_parallel_table({}, {}, "major-parallel-body")
