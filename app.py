@@ -6276,13 +6276,11 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     """
     The Intel Engine (UTS #39 Inspired / UTS #55).
     Determines Restriction Level and classifies Homoglyph Topology.
-    
-    Note: `threat_flags` is reserved for future integration.
+    Implements Multi-Vector Threat Stacking for hierarchical reporting.
     """
     if not t: return None
 
     # --- 1. Restriction Level Engine (UTS #39 Heuristic) ---
-    # Extract scripts from the provenance stats
     scripts_found = set()
     for key in script_stats.keys():
         if key.startswith("Script:"):
@@ -6296,32 +6294,26 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     count = len(scripts_found)
     
     if count == 0:
-        # Check if purely ASCII (Common/Inherited only)
         if all(ord(c) < 128 for c in t):
             restriction_level = "ASCII-ONLY"
             badge_class = "intel-badge-safe"
         else:
             restriction_level = "SINGLE SCRIPT (COMMON)"
             badge_class = "intel-badge-safe"
-            
     elif count == 1:
         restriction_level = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
         badge_class = "intel-badge-safe"
-        
     elif count == 2:
-        # Allow-list for Highly Restrictive (Simplified)
         cjk = {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
         if "Latin" in scripts_found and any(s in cjk for s in scripts_found):
              restriction_level = "HIGHLY RESTRICTIVE"
              badge_class = "intel-badge-safe"
-        # Allow-list for Moderately Restrictive
         elif "Latin" in scripts_found and ("Greek" in scripts_found or "Cyrillic" in scripts_found):
-             restriction_level = "MINIMALLY RESTRICTIVE" # Latin+Cyrillic is risky
+             restriction_level = "MINIMALLY RESTRICTIVE"
              badge_class = "intel-badge-danger"
         else:
              restriction_level = "MINIMALLY RESTRICTIVE"
              badge_class = "intel-badge-warn"
-             
     else:
         restriction_level = "UNRESTRICTED"
         badge_class = "intel-badge-danger"
@@ -6333,12 +6325,8 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     import base64
     import re
     
-    # FIX: Revert to greedy whitespace splitting to capture Emojis/Symbols
-    # The previous regex ([\w\-\.@]+) blindly filtered out pure symbol tokens.
+    # GREEDY TOKENIZER (V3): Whitespace split to capture symbols/controls
     raw_tokens = t.split()
-    
-    # Optional: We can also scan for embedded domains if needed, 
-    # but for Stage 1, we must prioritize capturing the raw particles.
     
     targets = []
     processed_tokens = 0
@@ -6346,7 +6334,11 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     for token in raw_tokens:
         if len(token) < 2: continue
         processed_tokens += 1
-        if processed_tokens > 200: break # Safety Cap
+        if processed_tokens > 200: break 
+        
+        # --- Multi-Vector Analysis ---
+        # We collect ALL threats in a hierarchy stack
+        threat_stack = [] 
         
         t_scripts = set()
         t_invis = False
@@ -6362,57 +6354,78 @@ def analyze_intel_profile(t, threat_flags, script_stats):
             # Bidi
             if INVIS_TABLE[cp] & INVIS_BIDI_CONTROL: t_bidi = True
             
-        # REUSED LOGIC: Canonical Skeleton
         skeleton = _generate_uts39_skeleton(token)
-        if not skeleton: skeleton = token # Failsafe
+        if not skeleton: skeleton = token
         
-        # Classify Token Risk
-        risk_type = None
+        # --- Build The Hierarchy (Critical -> Low) ---
         
-        # Priority 1: Syntax/Bidi (Execution Risk)
+        # Level 1: Execution (Syntax)
         if t_bidi:
-            risk_type = "SYNTAX (BIDI CONTROL)"
+            threat_stack.append({
+                "lvl": "CRIT", 
+                "type": "SYNTAX", 
+                "desc": "Bidi Control / Execution Risk"
+            })
             topology["SYNTAX"] += 1
             
-        # Priority 2: Hidden (Obfuscation)
-        elif t_invis:
-            risk_type = "HIDDEN (INVISIBLE)"
+        # Level 2: Obfuscation (Hidden)
+        if t_invis:
+            threat_stack.append({
+                "lvl": "HIGH", 
+                "type": "HIDDEN", 
+                "desc": "Invisible / Format Control"
+            })
             topology["HIDDEN"] += 1
             
-        # Priority 3: Spoofing (Visual)
-        elif len(t_scripts) > 1: 
-            risk_type = "SPOOFING (MIXED SCRIPT)"
+        # Level 3: Spoofing (Structure)
+        if len(t_scripts) > 1:
+            # Check if likely exploit (Latin + Cyrillic/Greek)
+            is_risky_mix = "Latin" in t_scripts and ("Cyrillic" in t_scripts or "Greek" in t_scripts)
+            severity = "CRIT" if is_risky_mix else "HIGH"
+            threat_stack.append({
+                "lvl": severity, 
+                "type": "SPOOFING", 
+                "desc": f"Mixed Script ({', '.join(t_scripts)})"
+            })
             topology["SPOOFING"] += 1
-            
-        elif skeleton != token:
-            # Check Intra vs Cross Script
+
+        # Level 4: Spoofing (Visual/Homoglyph)
+        if skeleton != token:
             is_token_ascii = all(ord(c) < 128 for c in token)
             is_skel_ascii = all(ord(c) < 128 for c in skeleton)
             
             if not is_token_ascii and is_skel_ascii:
-                 risk_type = "SPOOFING (homoglyph)"
+                 threat_stack.append({
+                    "lvl": "MED", 
+                    "type": "SPOOFING", 
+                    "desc": "Cross-Script Homoglyph"
+                 })
                  topology["SPOOFING"] += 1
             else:
-                 # Intra-script ambiguity (e.g. 1 vs l)
                  topology["AMBIGUITY"] += 1
-                 continue # Count but don't list as high-value target
-            
-        if risk_type:
-            # Generate Vectors
+                 # Optional: Add Low risk note if strictly needed
+                 # threat_stack.append({"lvl": "LOW", "type": "AMBIGUITY", "desc": "Intra-Script Lookalike"})
+
+        # --- Decision: Is this a High Value Target? ---
+        if threat_stack:
             try:
                 b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
             except: b64 = "Error"
             
             hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
             
+            # The "Verdict" is simply the highest severity item (Top of stack)
+            primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
+            
             targets.append({
                 "token": token,
-                "verdict": risk_type,
+                "verdict": primary_verdict,
+                "stack": threat_stack, # Pass the full hierarchy
                 "b64": b64,
                 "hex": hex_v
             })
             
-            if len(targets) >= 10: break
+            if len(targets) >= 15: break
 
     return {
         "restriction": restriction_level,
@@ -6422,7 +6435,7 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     }
 
 def render_intel_console(t, threat_flags, script_stats):
-    """Renders the Intel Report."""
+    """Renders the Intel Report with Expandable Threat Hierarchy."""
     container = document.getElementById("intel-console")
     if not container: return
     
@@ -6454,16 +6467,39 @@ def render_intel_console(t, threat_flags, script_stats):
     else:
         html_rows = []
         for tgt in targets:
+            # Build the Hierarchy Stack HTML
+            stack_html = ""
+            for item in tgt['stack']:
+                # Color code the mini-badges
+                lvl_class = "th-low"
+                if item['lvl'] == "CRIT": lvl_class = "th-crit"
+                elif item['lvl'] == "HIGH": lvl_class = "th-high"
+                elif item['lvl'] == "MED": lvl_class = "th-med"
+                
+                stack_html += f"""
+                <div class="th-row">
+                    <span class="th-badge {lvl_class}">{item['lvl']}</span>
+                    <span class="th-desc">{item['desc']}</span>
+                </div>
+                """
+
             row = f"""
             <div class="target-row">
                 <div class="t-head">
                     <span class="t-token">{_escape_html(tgt['token'])}</span>
                     <span class="t-verdict">{tgt['verdict']}</span>
                 </div>
-                <div class="t-vectors">
-                    <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
-                    <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
-                </div>
+                
+                <details class="intel-details">
+                    <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
+                    <div class="intel-stack-body">
+                        {stack_html}
+                        <div class="t-vectors">
+                            <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
+                            <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
+                        </div>
+                    </div>
+                </details>
             </div>
             """
             html_rows.append(row)
