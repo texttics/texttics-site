@@ -3052,15 +3052,31 @@ def compute_grapheme_stats(t: str):
     multi_cp_count = 0
     total_mark_count = 0
     max_marks = 0
+    
+    # [NEW] NFC Stability Tracker
+    # We track graphemes that are physically different from their NFC form.
+    # This detects "Decomposed" characters (e.g. e + ´ instead of é).
+    non_nfc_indices = []
+
+    # [SYNC FIX] Manual Python Index for Reporting
+    current_python_idx = 0
 
     for segment in segments:
         grapheme_str = segment.segment
         if not grapheme_str:
             continue
+            
+        # --- [NEW] NFC Check ---
+        # If the grapheme changes when normalized to NFC, it is "Unstable"
+        if grapheme_str != unicodedata.normalize("NFC", grapheme_str):
+            non_nfc_indices.append(f"#{current_python_idx}")
         
         # --- Module 1.5 Logic (Forensics) ---
         cp_array = window.Array.from_(grapheme_str)
         cp_count = len(cp_array)
+        
+        # Advance index for next loop (Must happen after using current_python_idx but before next iteration)
+        # Note: We calculate cp_count first, then use it to increment AFTER the NFC check.
         
         if cp_count == 1:
             single_cp_count += 1
@@ -3087,6 +3103,9 @@ def compute_grapheme_stats(t: str):
             if window.RegExp.new(r"^\p{Cn}$", "u").test(first_char):
                  minor_stats["Cn"] += 1
 
+        # Advance index for the next grapheme
+        current_python_idx += cp_count
+
     # Aggregate Major Categories
     major_stats = {
         "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
@@ -3110,6 +3129,9 @@ def compute_grapheme_stats(t: str):
         "Max Marks in one Grapheme": max_marks,
         "Avg. Marks per Grapheme": round(avg_marks, 2)
     }
+    
+    # [NEW] Pass the NFC data out via the stats dictionary 
+    grapheme_forensic_stats["_non_nfc_indices"] = non_nfc_indices
 
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
@@ -3578,7 +3600,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "ext_picto": [], "emoji_mod": [], "emoji_mod_base": [],
         "vs_all": [], "invalid_vs": [], "discouraged": [], 
         "other_ctrl": [], "esc": [], "interlinear": [], 
-        "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": []
+        "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": [],
+        "zombie_ctrl": []
     }
     
     decomp_type_stats = {}
@@ -3627,6 +3650,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 # --- Specific Dangerous Controls ---
                 if cp == 0x001B: legacy_indices["esc"].append(i)
                 if 0xFFF9 <= cp <= 0xFFFB: legacy_indices["interlinear"].append(i)
+                
+                # [NEW] Zombie Controls (Deprecated Format)
+                # ISS (206A) -> NODS (206F)
+                if 0x206A <= cp <= 0x206F:
+                    legacy_indices["zombie_ctrl"].append(i)
+
                 if ((0x0001 <= cp <= 0x0008) or (0x000B <= cp <= 0x000C) or (0x000E <= cp <= 0x001F) or (0x0080 <= cp <= 0x009F)) and cp != 0x0085 and cp != 0x001B:
                     legacy_indices["other_ctrl"].append(i)
 
@@ -3850,6 +3879,14 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("Prop: Extended Pictographic", len(legacy_indices["ext_picto"]), legacy_indices["ext_picto"], "ok")
     add_row("Prop: Variation Selector", len(legacy_indices["vs_all"]), legacy_indices["vs_all"], "ok")
     add_row("Unassigned (Void)", len(legacy_indices["unassigned"]), legacy_indices["unassigned"], "crit")
+
+    # [NEW] Zombie Controls
+    add_row("CRITICAL: Deprecated Format Controls (Zombie)", len(legacy_indices["zombie_ctrl"]), legacy_indices["zombie_ctrl"], "crit")
+
+    # [NEW] NFC Stability Report (Granular)
+    non_nfc_list = grapheme_stats.get("_non_nfc_indices", [])
+    if non_nfc_list:
+        add_row("Flag: Normalization Instability (Not NFC)", len(non_nfc_list), non_nfc_list, "warn")
 
     if bidi_mirroring_map:
         m_pos = [f"#{idx} ({m})" for idx, m in bidi_mirroring_map.items()]
@@ -7759,7 +7796,8 @@ def update_all(event=None):
     vo_run_stats = compute_verticalorientation_analysis(t)
 
     # Integrity (Populates Registry)
-    forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags)
+    # [UPDATED] Passing grapheme_forensics for NFC data
+    forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
     forensic_map = {row['label']: row for row in forensic_rows}
 
     # Provenance
