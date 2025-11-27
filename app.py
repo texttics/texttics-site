@@ -8424,6 +8424,114 @@ def reveal2_invisibles(event=None):
 # The Bridge
 window.cycle_hud_metric = cycle_hud_metric
 
+# ==========================================
+# 7. FORENSIC WORKBENCH UTILITIES (Restored)
+# ==========================================
+
+@create_proxy
+def py_get_code_snippet(lang):
+    """
+    Generates a safe, escaped string literal of the current input 
+    for use in Python or JavaScript source code.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return ""
+    
+    t = el.value
+    output = ""
+    
+    # Forensic escaping: We want ASCII-safe output.
+    # Logic: Escape anything non-printable, non-ASCII, or quote-breaking.
+    
+    if lang == 'python':
+        escaped = ""
+        for char in t:
+            cp = ord(char)
+            # Escape non-ascii, controls, quotes, and backslashes
+            if cp < 32 or cp > 126 or cp == 0x5C or cp == 0x22 or cp == 0x27:
+                if cp <= 0xFFFF:
+                    escaped += f"\\u{cp:04x}"
+                else:
+                    escaped += f"\\U{cp:08x}"
+            else:
+                escaped += char
+        output = f's = "{escaped}"'
+        
+    elif lang == 'javascript':
+        escaped = ""
+        for char in t:
+            cp = ord(char)
+            if cp < 32 or cp > 126 or cp == 0x5C or cp == 0x22 or cp == 0x27:
+                if cp <= 0xFFFF:
+                    escaped += f"\\u{cp:04x}"
+                else:
+                    escaped += f"\\u{{{cp:x}}}" # ES6 format for astral planes
+            else:
+                escaped += char
+        output = f'const s = "{escaped}";'
+        
+    return output
+
+@create_proxy
+def py_generate_evidence():
+    """
+    Generates a full JSON forensic artifact and triggers a browser download.
+    Re-runs analysis to ensure the snapshot is authoritative.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    t = el.value
+    timestamp = window.Date.new().toISOString()
+    
+    # Re-run key analysis to get fresh data
+    emoji_report = compute_emoji_analysis(t)
+    threat_results = compute_threat_analysis(t)
+    
+    # Calculate SHA-256 for Chain of Custody
+    sha256 = hashlib.sha256(t.encode('utf-8')).hexdigest()
+    
+    evidence = {
+        "meta": {
+            "tool": "Text...tics Stage 1",
+            "timestamp": timestamp,
+            "version": "Forensic-v1.0"
+        },
+        "artifact": {
+            "length_codepoints": len(t),
+            "sha256": sha256,
+            "raw_text": t
+        },
+        "analysis_snapshot": {
+            "flags": list(threat_results.get('flags', {}).keys()),
+            "emoji_counts": emoji_report.get('counts', {}),
+            "hashes": threat_results.get('hashes', {}),
+            "normalization_states": {
+                "nfkc": threat_results.get('states', {}).get('s2', ''),
+                "skeleton": threat_results.get('states', {}).get('s4', '')
+            }
+        }
+    }
+    
+    # Convert to JSON
+    json_str = json.dumps(evidence, indent=2, ensure_ascii=False)
+    
+    # Trigger Download via JS Blob
+    blob = window.Blob.new([json_str], {type: "application/json"})
+    url = window.URL.createObjectURL(blob)
+    
+    a = document.createElement("a")
+    a.href = url
+    a.download = f"forensic_artifact_{sha256[:8]}.json"
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+
+# Expose to JS Bridge
+window.py_get_code_snippet = py_get_code_snippet
+window.py_generate_evidence = py_generate_evidence
+
 # ---
 # 6. INITIALIZATION
 # ---
