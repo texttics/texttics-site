@@ -4662,12 +4662,22 @@ def compute_threat_analysis(t: str):
 
         # C. Render if ANY threat exists
         if vis_confusables or vis_invisibles or vis_bidi:
+            # ADAPTER: The X-Ray renderer expects {cp: "target_string"}.
+            # Our new map is {cp: ("target_string", "type")}.
+            # We create a temporary legacy-compatible map to prevent crashes.
+            legacy_map = {}
+            for k, v in confusables_map.items():
+                if isinstance(v, tuple):
+                    legacy_map[k] = v[0] # Extract just the string
+                else:
+                    legacy_map[k] = v # Fallback for old data
+            
             final_html_report = _render_forensic_diff_stream(
                 t, 
                 vis_confusables, 
                 vis_invisibles, 
                 vis_bidi, 
-                confusables_map
+                legacy_map # Pass the safe adapter map
             )
         else:
             final_html_report = ""
