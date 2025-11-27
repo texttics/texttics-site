@@ -3885,12 +3885,17 @@ details.profile-section > summary:hover::marker {
     color: var(--color-text-muted);
     font-family: var(--font-sans);
     white-space: nowrap;
-    background-color: #f3f4f6;
-    padding: 1px 6px;
-    border-radius: 4px;
+    /* REMOVED background-color & padding to look like data, not buttons */
+    
+    /* ADDED: Technical alignment */
+    text-align: right;
+    margin-bottom: 2px;
+    letter-spacing: 0.02em;
 }
 
+/* Optional: Make the numbers pop */
 .fact-row strong {
-    color: var(--color-text);
+    color: var(--color-text); /* Darker black */
     font-weight: 700;
+    font-family: var(--font-mono); /* Use mono for numbers */
 }
