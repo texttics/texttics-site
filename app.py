@@ -4869,6 +4869,44 @@ def render_threat_analysis(threat_results, text_context=None):
         msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization." if drift_count > 0 else "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
         report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
     
+    # --- DRIFT REPORT LOGIC (Populates the "Analyzing..." section) ---
+    drift_details = document.getElementById("drift-report-details")
+    summary_header = document.getElementById("drift-summary-header")
+    
+    if drift_details and summary_header:
+        # Use 'threat_results', NOT 'results'
+        drift = threat_results.get('drift_info', {})
+        
+        # Safety: If analysis skipped/crashed, prevent UI freeze
+        if not drift:
+            drift = {'class': 'drift-alert', 'verdict': 'Data Missing'}
+            
+        states = threat_results.get('states', {})
+        s1_val = states.get('s1', 'N/A')
+        s4_val = states.get('s4', 'N/A')
+
+        # 1. Update the Side-by-Side Text
+        s1_el = document.getElementById("disp-state-1")
+        s4_el = document.getElementById("disp-state-4")
+        if s1_el: s1_el.textContent = s1_val
+        if s4_el: s4_el.textContent = s4_val
+        
+        # 2. Update Header Icon & Color
+        icon = "✅"
+        d_class = drift.get('class', 'drift-clean')
+        if d_class == "drift-alert": icon = "🚨"
+        elif d_class == "drift-warn": icon = "⚠️"
+        
+        verdict = drift.get("verdict", "Unknown")
+        summary_header.innerHTML = f'<span class="drift-status-icon">{icon}</span> <span class="drift-status-text">{verdict}</span>'
+        summary_header.className = f"drift-summary {d_class}"
+        
+        # 3. Auto-Expand if Threat
+        if d_class == "drift-clean":
+            drift_details.removeAttribute("open")
+        else:
+            drift_details.setAttribute("open", "true")
+    
     banner_el = document.getElementById("threat-banner")
     if banner_el: banner_el.setAttribute("hidden", "true")
 
