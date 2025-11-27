@@ -3896,7 +3896,6 @@ def _generate_uts39_skeleton(t: str):
         print(f"Error generating skeleton: {e}")
         return "" # Return empty string on failure
 
-
 def _escape_html(s: str):
     """Escapes basic HTML characters including quotes for attribute safety."""
     s = s.replace("&", "&amp;")
@@ -4406,7 +4405,7 @@ def compute_threat_analysis(t: str):
                 elif not threat_flags: 
                      threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
-        
+
         # --- 5. Skeleton Drift (METRICS ENGINE) ---
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
@@ -5571,37 +5570,14 @@ def inspect_character(event):
         cp1252_val = try_enc("cp1252")
         url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
         
-        # --- NEW: EXPLOIT & OBFUSCATION ENCODINGS ---
-        import base64
-        
-        # 1. Base64 (Standard Payload Wrapper)
-        try:
-            b64_val = base64.b64encode(target_cluster.encode("utf-8")).decode("ascii")
-        except:
-            b64_val = "Error"
-
-        # 2. Shellcode / Hex Escapes (\xHH)
-        shell_val = "".join(f"\\x{b:02X}" for b in target_cluster.encode("utf-8"))
-
-        # 3. Octal Escapes (\NNN)
-        octal_val = "".join(f"\\{b:03o}" for b in target_cluster.encode("utf-8"))
-
-        # 4. HTML Entity Variants (Decimal vs Hex)
         if target_cluster.isalnum():
-            html_dec_val = target_cluster
-            html_hex_val = target_cluster
+            html_enc = target_cluster
         else:
-            html_dec_val = "".join(f"&#{ord(c)};" for c in target_cluster)
-            html_hex_val = "".join(f"&#x{ord(c):X};" for c in target_cluster)
-
-        # 5. ES6 / CSS Unicode (\u{...})
-        es6_val = "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster)
-        
-        # 6. Python/Old JS
+            html_enc = "".join(f"&#x{ord(c):X};" for c in target_cluster)
+            
         code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
 
         confusable_msg = None
-        
         if ghosts:
              skel_val = ghosts['skeleton']
              if skel_val != base_char and skel_val != base_char.casefold():
@@ -5635,25 +5611,9 @@ def inspect_character(event):
             "line_break": lb_prop,
             "word_break": wb_prop,
             "grapheme_break": gb_prop,
-            
-            # --- Forensic Encodings ---
-            "utf8": utf8_hex, 
-            "utf16": utf16_hex, 
-            "utf32": utf32_hex,
-            "ascii": ascii_val, 
-            "latin1": latin1_val, 
-            "cp1252": cp1252_val,
-            
-            # --- Exploit Vectors ---
-            "url": url_enc, 
-            "code": code_enc,
-            "base64": b64_val,
-            "shell": shell_val,
-            "octal": octal_val,
-            "html_dec": html_dec_val,
-            "html_hex": html_hex_val,
-            "es6": es6_val,
-            
+            "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
+            "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
+            "url": url_enc, "html": html_enc, "code": code_enc,
             "confusable": confusable_msg,
             "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
@@ -5890,7 +5850,6 @@ def render_inspector_panel(data):
     """
     Forensic Layout v10.0: Synchronized Visuals & Fluid Matrix.
     Fixes 'vis_state' error by correctly using unpacked data dictionaries.
-    Includes Exploit & Injection layer (Base64, Shellcode, Octal, ES6).
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -6021,7 +5980,7 @@ def render_inspector_panel(data):
                         else: active_threats.append("RISK")
     except Exception: pass
 
-    # 3. Extract Macro Type
+    # 3. Extract Macro Type (CRITICAL FIX: Define 'mt' here)
     mt = data['macro_type']
 
     # 4. Top Grid (Identity Specs)
@@ -6113,7 +6072,8 @@ def render_inspector_panel(data):
             
         grid_html = "".join(chips_buffer)
         
-        # Inherit the color class from the Identity Risk Facet
+        # [CRITICAL FIX] Inherit the color class from the Identity Risk Facet
+        # ident_data['class'] will be 'risk-info' (Blue), 'risk-warn' (Orange), etc.
         risk_css = ident_data['class'] 
         
         lookalike_html = f"""
@@ -6125,7 +6085,16 @@ def render_inspector_panel(data):
         </div>
         """
     else:
-        pass # Hide if unique
+        # Optional: Show "Unique" if you want it strictly constant
+        # For now, keeping it cleaner by hiding if none exist, 
+        # but if you want it strictly constant, uncomment below:
+        # lookalike_html = f"""
+        # <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px; border-color: #e5e7eb;">
+        #     <span class="ghost-key" style="color:#9ca3af">LOOKALIKES:</span>
+        #     <span class="lookalike-list" style="color:#9ca3af">None (Unique)</span>
+        # </div>
+        # """
+        pass
 
     
     # 6B. Normalization Ghosts (Always Show if Data Exists)
@@ -6252,16 +6221,9 @@ def render_inspector_panel(data):
                     <span class="label">Win-1252:</span>
                     <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
                 </div>
-                
-                <div class="section-label" style="margin-bottom:4px; color:#374151; margin-top: 8px;">EXPLOIT VECTORS</div>
-                
-                <div class="byte-row"><span class="label">Base64:</span>{data['base64']}</div>
-                <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data['shell'])}</div>
-                <div class="byte-row"><span class="label">Octal:</span>{_escape_html(data['octal'])}</div>
-                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data['html_dec'])}</div>
-                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data['html_hex'])}</div>
-                <div class="byte-row"><span class="label">ES6/CSS:</span>{_escape_html(data['es6'])}</div>
-                <div class="byte-row"><span class="label">Py/JSON:</span>{_escape_html(data['code'])}</div>
+                <div class="byte-row"><span class="label">URL:</span>{data['url']}</div>
+                <div class="byte-row"><span class="label">HTML:</span>{_escape_html(data['html'])}</div>
+                <div class="byte-row"><span class="label">Code:</span>{_escape_html(data['code'])}</div>
             </div>
         </div>
     </div>
@@ -6273,247 +6235,6 @@ def render_inspector_panel(data):
     except Exception:
         pass
 
-def analyze_intel_profile(t, threat_flags, script_stats):
-    """
-    The Intel Engine (UTS #39 Inspired / UTS #55).
-    Determines Restriction Level and classifies Homoglyph Topology.
-    Implements Multi-Vector Threat Stacking with STRICT SEVERITY SORTING.
-    """
-    if not t: return None
-
-    # --- 1. Restriction Level Engine (UTS #39 Heuristic) ---
-    scripts_found = set()
-    for key in script_stats.keys():
-        if key.startswith("Script:"):
-            s = key.replace("Script: ", "").strip()
-            if s not in ("Common", "Inherited", "Unknown"):
-                scripts_found.add(s)
-
-    restriction_level = "UNRESTRICTED"
-    badge_class = "intel-badge-danger"
-    
-    count = len(scripts_found)
-    
-    if count == 0:
-        if all(ord(c) < 128 for c in t):
-            restriction_level = "ASCII-ONLY"
-            badge_class = "intel-badge-safe"
-        else:
-            restriction_level = "SINGLE SCRIPT (COMMON)"
-            badge_class = "intel-badge-safe"
-    elif count == 1:
-        restriction_level = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
-        badge_class = "intel-badge-safe"
-    elif count == 2:
-        cjk = {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
-        if "Latin" in scripts_found and any(s in cjk for s in scripts_found):
-             restriction_level = "HIGHLY RESTRICTIVE"
-             badge_class = "intel-badge-safe"
-        elif "Latin" in scripts_found and ("Greek" in scripts_found or "Cyrillic" in scripts_found):
-             restriction_level = "MINIMALLY RESTRICTIVE"
-             badge_class = "intel-badge-danger"
-        else:
-             restriction_level = "MINIMALLY RESTRICTIVE"
-             badge_class = "intel-badge-warn"
-    else:
-        restriction_level = "UNRESTRICTED"
-        badge_class = "intel-badge-danger"
-
-    # --- 2. Topology Classifier ---
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
-    
-    # --- 3. Token Exploit Generator ---
-    import base64
-    import re
-    
-    # GREEDY TOKENIZER (V3): Whitespace split to capture symbols/controls
-    raw_tokens = t.split()
-    
-    targets = []
-    processed_tokens = 0
-    
-    # Severity Weights for Sorting (Higher = Top of Stack)
-    SEVERITY_MAP = {
-        "CRIT": 3,
-        "HIGH": 2,
-        "MED": 1,
-        "LOW": 0
-    }
-    
-    for token in raw_tokens:
-        if len(token) < 2: continue
-        processed_tokens += 1
-        if processed_tokens > 200: break 
-        
-        # --- Multi-Vector Analysis ---
-        threat_stack = [] 
-        
-        t_scripts = set()
-        t_invis = False
-        t_bidi = False
-        
-        for char in token:
-            cp = ord(char)
-            # Script
-            sc = _find_in_ranges(cp, "Scripts")
-            if sc and sc not in ("Common", "Inherited"): t_scripts.add(sc)
-            # Invis
-            if INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL): t_invis = True
-            # Bidi
-            if INVIS_TABLE[cp] & INVIS_BIDI_CONTROL: t_bidi = True
-            
-        skeleton = _generate_uts39_skeleton(token)
-        if not skeleton: skeleton = token
-        
-        # --- Build The Hierarchy ---
-        
-        # Level 1: Execution (Syntax)
-        if t_bidi:
-            threat_stack.append({
-                "lvl": "CRIT", 
-                "type": "SYNTAX", 
-                "desc": "Bidi Control / Execution Risk"
-            })
-            topology["SYNTAX"] += 1
-            
-        # Level 2: Obfuscation (Hidden)
-        if t_invis:
-            threat_stack.append({
-                "lvl": "HIGH", 
-                "type": "HIDDEN", 
-                "desc": "Invisible / Format Control"
-            })
-            topology["HIDDEN"] += 1
-            
-        # Level 3: Spoofing (Structure)
-        if len(t_scripts) > 1:
-            is_risky_mix = "Latin" in t_scripts and ("Cyrillic" in t_scripts or "Greek" in t_scripts)
-            severity = "CRIT" if is_risky_mix else "HIGH"
-            threat_stack.append({
-                "lvl": severity, 
-                "type": "SPOOFING", 
-                "desc": f"Mixed Script ({', '.join(t_scripts)})"
-            })
-            topology["SPOOFING"] += 1
-
-        # Level 4: Spoofing (Visual/Homoglyph)
-        if skeleton != token:
-            is_token_ascii = all(ord(c) < 128 for c in token)
-            is_skel_ascii = all(ord(c) < 128 for c in skeleton)
-            
-            if not is_token_ascii and is_skel_ascii:
-                 threat_stack.append({
-                    "lvl": "MED", 
-                    "type": "SPOOFING", 
-                    "desc": "Cross-Script Homoglyph"
-                 })
-                 topology["SPOOFING"] += 1
-            else:
-                 topology["AMBIGUITY"] += 1
-
-        # --- Decision: Is this a High Value Target? ---
-        if threat_stack:
-            # FIX: STRICT SORT BY SEVERITY
-            # This ensures CRIT always appears before HIGH, regardless of detection order.
-            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
-            
-            try:
-                b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
-            except: b64 = "Error"
-            
-            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
-            
-            # Now index 0 is guaranteed to be the highest severity threat
-            primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
-            
-            targets.append({
-                "token": token,
-                "verdict": primary_verdict,
-                "stack": threat_stack,
-                "b64": b64,
-                "hex": hex_v
-            })
-            
-            if len(targets) >= 15: break
-
-    return {
-        "restriction": restriction_level,
-        "badge_class": badge_class,
-        "topology": topology,
-        "targets": targets
-    }
-
-def render_intel_console(t, threat_flags, script_stats):
-    """Renders the Intel Report with Expandable Threat Hierarchy."""
-    container = document.getElementById("intel-console")
-    if not container: return
-    
-    report = analyze_intel_profile(t, threat_flags, script_stats)
-    if not report:
-        container.style.display = "none"
-        return
-        
-    container.style.display = "block"
-    
-    # 1. Render Seal
-    badge = document.getElementById("intel-badge")
-    badge.className = f"intel-badge {report['badge_class']}"
-    badge.innerText = report['restriction']
-    
-    # 2. Render Topology
-    topo = report['topology']
-    document.getElementById("intel-stat-ambiguity").innerText = str(topo['AMBIGUITY'])
-    document.getElementById("intel-stat-spoofing").innerText = str(topo['SPOOFING'])
-    document.getElementById("intel-stat-syntax").innerText = str(topo['SYNTAX'])
-    document.getElementById("intel-stat-hidden").innerText = str(topo['HIDDEN'])
-    
-    # 3. Render Targets
-    target_body = document.getElementById("intel-target-body")
-    targets = report['targets']
-    
-    if not targets:
-        target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No high-value targets identified.</div>'
-    else:
-        html_rows = []
-        for tgt in targets:
-            # Build the Hierarchy Stack HTML
-            stack_html = ""
-            for item in tgt['stack']:
-                # Color code the mini-badges
-                lvl_class = "th-low"
-                if item['lvl'] == "CRIT": lvl_class = "th-crit"
-                elif item['lvl'] == "HIGH": lvl_class = "th-high"
-                elif item['lvl'] == "MED": lvl_class = "th-med"
-                
-                stack_html += f"""
-                <div class="th-row">
-                    <span class="th-badge {lvl_class}">{item['lvl']}</span>
-                    <span class="th-desc">{item['desc']}</span>
-                </div>
-                """
-
-            row = f"""
-            <div class="target-row">
-                <div class="t-head">
-                    <span class="t-token">{_escape_html(tgt['token'])}</span>
-                    <span class="t-verdict">{tgt['verdict']}</span>
-                </div>
-                
-                <details class="intel-details">
-                    <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
-                    <div class="intel-stack-body">
-                        {stack_html}
-                        <div class="t-vectors">
-                            <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
-                            <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
-                        </div>
-                    </div>
-                </details>
-            </div>
-            """
-            html_rows.append(row)
-        target_body.innerHTML = "".join(html_rows)
-        
 def compute_threat_score(inputs):
     """
     The Threat Auditor.
@@ -7254,7 +6975,6 @@ def update_all(event=None):
     render_emoji_summary(emoji_counts, emoji_list)
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
-    render_intel_console(t, final_threat_flags, provenance_stats)
     render_toc_counts(toc_counts)
 
     is_ascii_safe = True
