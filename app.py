@@ -5163,7 +5163,7 @@ def render_emoji_summary(emoji_counts, emoji_list):
     summary_el.innerText = text
 
 
-def render_cards(stats_dict, element_id, key_order=None):
+def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
     """Generates and injects HTML for standard stat cards."""
     html = []
     
@@ -5281,9 +5281,15 @@ def render_cards(stats_dict, element_id, key_order=None):
             if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
         
-    element = document.getElementById(element_id)
-    if element:
-        element.innerHTML = "".join(html) if html else "<p class='placeholder-text' style='grid-column: 1 / -1;'>No data.</p>"
+    final_html = "".join(html) if html else "<p class='placeholder-text'>No data.</p>"
+
+    if return_html:
+        return final_html
+
+    if element_id:
+        element = document.getElementById(element_id)
+        if element:
+            element.innerHTML = final_html
 
 def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
     """Renders the side-by-side Code Point vs. Grapheme table."""
