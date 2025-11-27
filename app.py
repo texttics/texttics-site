@@ -4535,13 +4535,27 @@ def compute_threat_analysis(t: str):
             # m['type'] comes from the data loader (MA, ML, SA, SL)
             tag = m.get('type', 'UNK') 
             
-            # 1. ASCII Drift (e.g. 1 -> l)
-            if ord(m['char']) < 128 and all(ord(c) < 128 for c in tgt):
+            # Retrieve Scripts for Source and Target
+            # (We use the cached ranges helper for speed)
+            src_script = _find_in_ranges(ord(src_char), "Scripts") or "Common"
+            
+            # Check target script (use first char of skeleton as proxy)
+            tgt_script = "Common"
+            if tgt:
+                tgt_script = _find_in_ranges(ord(tgt[0]), "Scripts") or "Common"
+
+            # 1. ASCII Drift (Safe-ish)
+            if ord(src_char) < 128 and all(ord(c) < 128 for c in tgt):
                 skel_metrics["drift_ascii"] += 1
-            # 2. Cross-Script (Mixed types MA/ML usually indicate cross-script)
-            elif tag.startswith('M'):
+                
+            # 2. Cross-Script Drift (DANGEROUS)
+            # Logic: Source and Target must be DIFFERENT scripts, and neither can be Common/Inherited.
+            elif src_script != tgt_script and \
+                 src_script not in ("Common", "Inherited") and \
+                 tgt_script not in ("Common", "Inherited"):
                 skel_metrics["drift_cross_script"] += 1
-            # 3. Other (Single Script SA/SL or unknown)
+                
+            # 3. Same-Script / Other Drift (Neutral)
             else:
                 skel_metrics["drift_other"] += 1
         
