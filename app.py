@@ -6339,8 +6339,14 @@ def inspect_character(event):
             "line_break": lb_prop,
             "word_break": wb_prop,
             "grapheme_break": gb_prop,
-            "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
-            "ascii": ascii_val, "latin1": latin1_val, "cp1252": cp1252_val,
+            
+            # --- Forensic Encodings ---
+            "utf8": utf8_hex, 
+            "utf16": utf16_hex, 
+            "utf32": utf32_hex,
+            "ascii": ascii_val, 
+            "latin1": latin1_val, 
+            "cp1252": cp1252_val,
             # --- Exploit Vectors ---
             "url": url_enc, 
             "code": code_enc,
@@ -6350,7 +6356,7 @@ def inspect_character(event):
             "html_dec": html_dec_val,
             "html_hex": html_hex_val,
             "es6": es6_val,
-            "url": url_enc, "html": html_enc, "code": code_enc,
+            
             "confusable": confusable_msg,
             "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
