@@ -4540,6 +4540,10 @@ def compute_threat_analysis(t: str):
     ext_scripts_in_use = set()
     is_non_ascii_LNS = False 
 
+    # [Phase 2] Heuristic Counters
+    count_visible_mass = 0
+    count_artifact_particles = 0 # Tracks ZWSP (200B), LRM (200E), RLM (200F)
+
     # Initialize output variables
     nf_string = ""
     nf_casefold_string = ""
@@ -4624,10 +4628,6 @@ def compute_threat_analysis(t: str):
 
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
-            
-            # [Phase 2] Heuristic Counters
-            count_visible_mass = 0
-            count_artifact_particles = 0 # Tracks ZWSP (200B), LRM (200E), RLM (200F)
 
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
@@ -8122,6 +8122,9 @@ def sanitize_text(profile_type):
         if status_line:
             status_line.innerText = f"Sanitized {removed_count} particle(s) using '{profile_type.upper()}' profile."
             status_line.className = "status-ready"
+
+# Expose the sanitizer to the UI
+window.TEXTTICS_SANITIZE = sanitize_text
 
 @create_proxy
 def reveal_invisibles(event=None):
