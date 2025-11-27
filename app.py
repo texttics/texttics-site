@@ -1384,6 +1384,26 @@ INVISIBLE_MAPPING = {
     0x2420: "[PIC:SP]",  0x2421: "[PIC:DEL]", 0x2422: "[PIC:BLANK]", 0x2423: "[PIC:OB]",
     0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
 
+    # --- Phase 1 Update: Control Picture Overrides (Cleaner Visuals) ---
+    # We map the actual critical controls to their Unicode Picture representations.
+    # This reduces visual length from [NUL] (5 chars) to ␀ (1 char).
+    0x0000: "\u2400",  # ␀ (Null)
+    0x001B: "\u241B",  # ␛ (Escape)
+    0x007F: "\u2421",  # ␡ (Delete)
+
+    # --- Phase 1 Update: Spacing Specifics ---
+    # These often look like spaces but have specific typographic widths/roles.
+    0x2000: "[NQSP]",  # En Quad
+    0x2001: "[MQSP]",  # Em Quad
+
+    # --- Phase 1 Update: Deprecated "Zombie" Controls ---
+    0x206A: "[ISS]",   # Inhibit Symmetric Swapping
+    0x206B: "[ASS]",   # Activate Symmetric Swapping
+    0x206C: "[IAFS]",  # Inhibit Arabic Form Shaping
+    0x206D: "[AAFS]",  # Activate Arabic Form Shaping
+    0x206E: "[NDS]",   # National Digit Shapes
+    0x206F: "[NODS]",  # Nominal Digit Shapes
+
     # --- Wave 4: Invisible Khmer Vowels ---
     0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
     0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
@@ -7895,7 +7915,13 @@ def reveal_invisibles(event=None):
         cp = ord(char)
         replacement = None
         
-        if cp in INVISIBLE_MAPPING:
+        # [Phase 1] Explicit Space Visualization
+        # We map standard ASCII Space (0x20) to a Middle Dot (·) 
+        # This reveals double-spaces and trailing whitespace deterministically.
+        if cp == 0x0020:
+            replacement = "\u00B7" # · (Middle Dot)
+            
+        elif cp in INVISIBLE_MAPPING:
             replacement = INVISIBLE_MAPPING[cp]
         elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
             vs_offset = 1 if cp <= 0xFE0F else 17
