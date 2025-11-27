@@ -7464,7 +7464,8 @@ def update_all(event=None):
         meta_cards = {
             "Total Graphemes": 0, "Total Code Points": 0, "UTF-16 Units": 0, "UTF-8 Bytes": 0,
             "Astral Count": 0, "RGI Emoji Sequences": 0, "Whitespace (Total)": 0,
-            "ASCII-Compatible": None, "Latin-1-Compatible": None, # None triggers "No Data" or hidden state
+            "Avg. Marks per Grapheme": 0, "Total Combining Marks": 0,  # <-- Hardcoded 0
+            "ASCII-Compatible": None, "Latin-1-Compatible": None,
             "BMP Coverage": None, "Supplementary Planes": None
         }
 
@@ -7564,6 +7565,8 @@ def update_all(event=None):
         "UTF-16 Units": cp_summary.get("UTF-16 Units", 0),       # Runtime (JS/Java)
         "UTF-8 Bytes": cp_summary.get("UTF-8 Bytes", 0),         # Physical (Storage)
         "Astral Count": cp_summary.get("Astral Count", 0),       # Context (Subtitle for UTF-16)
+        "Avg. Marks per Grapheme": grapheme_forensics.get("Avg. Marks per Grapheme", 0),
+        "Total Combining Marks": grapheme_forensics.get("Total Combining Marks", 0),
         
         # --- Contextual Metrics ---
         "RGI Emoji Sequences": emoji_counts.get("rgi_total", 0), 
