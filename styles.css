@@ -3916,3 +3916,17 @@ details.profile-section > summary:hover::marker {
     display: inline !important; /* Ensure it flows with text */
     margin-left: 6px; /* Separation from label */
 }
+
+/* --- FORCE HEADER COLOR OVERRIDE --- */
+/* We target the parent (.metric-card) AND the child (.card-header) 
+   to beat existing specificity scores. */
+
+.metric-card .card-header {
+    color: #71797E !important; /* Steel Gray */
+}
+
+/* Force the icon SVG to adopt the color explicitly */
+.metric-card .card-header svg {
+    stroke: #71797E !important;
+    color: #71797E !important;
+}
