@@ -5231,6 +5231,89 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     
     element.innerHTML = "".join(html) + legend_html
 
+def render_invisible_atlas(t: str):
+    """
+    Renders the 'Invisible Atlas' - a dynamic legend of all hidden characters found.
+    Columns: Symbol | Code | Name | Count | Category
+    """
+    element = document.getElementById("invisible-atlas-body")
+    if not element: return
+    
+    if not t:
+        element.innerHTML = "<tr><td colspan='5' class='placeholder-text'>No invisible characters detected.</td></tr>"
+        return
+
+    # 1. Scan for Unique Invisibles
+    unique_hits = {}
+    
+    for char in t:
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        
+        # Check against our Forensic Bitmask
+        if mask & INVIS_ANY_MASK:
+            if cp not in unique_hits:
+                unique_hits[cp] = 0
+            unique_hits[cp] += 1
+
+    if not unique_hits:
+        element.innerHTML = "<tr><td colspan='5' class='placeholder-text'>No invisible characters detected.</td></tr>"
+        return
+
+    # 2. Sort by Count (Desc), then Code Point
+    sorted_cps = sorted(unique_hits.keys(), key=lambda x: (-unique_hits[x], x))
+    
+    html_rows = []
+    for cp in sorted_cps:
+        count = unique_hits[cp]
+        char = chr(cp)
+        
+        # Visual Representation (Use Mappings or Default)
+        visual = INVISIBLE_MAPPING.get(cp, ".")
+        # If it's a bracketed tag like [ZWSP], make it small
+        if visual.startswith("[") and visual.endswith("]"):
+            visual_html = f"<span class='atlas-tag'>{visual}</span>"
+        else:
+            visual_html = f"<span class='atlas-glyph'>{visual}</span>"
+            
+        hex_code = f"U+{cp:04X}"
+        name = unicodedata.name(char, "UNKNOWN CONTROL")
+        
+        # Determine Category Badge
+        mask = INVIS_TABLE[cp]
+        cat_badge = "Unknown"
+        cat_class = "atlas-badge-neutral"
+        
+        if mask & INVIS_BIDI_CONTROL: 
+            cat_badge = "BIDI"; cat_class = "atlas-badge-crit"
+        elif mask & INVIS_TAG: 
+            cat_badge = "TAG"; cat_class = "atlas-badge-crit"
+        elif mask & INVIS_HIGH_RISK_MASK: 
+            cat_badge = "RISK"; cat_class = "atlas-badge-warn"
+        elif mask & INVIS_ZERO_WIDTH_SPACING: 
+            cat_badge = "ZW-SPACE"; cat_class = "atlas-badge-warn"
+        elif mask & INVIS_DEFAULT_IGNORABLE: 
+            cat_badge = "IGNORABLE"; cat_class = "atlas-badge-info"
+        elif mask & INVIS_NON_ASCII_SPACE:
+            cat_badge = "NON-ASCII"; cat_class = "atlas-badge-info"
+            
+        # Action Button (Find)
+        # We use a custom highlighter that targets specific Code Points
+        action_btn = f'<button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CHAR({cp})">Find</button>'
+        
+        row = (
+            f"<tr>"
+            f"<td style='text-align:center;'>{visual_html}</td>"
+            f"<td><code>{hex_code}</code></td>"
+            f"<td class='truncate-text' title='{name}'>{name}</td>"
+            f"<td style='text-align:center;'><strong>{count}</strong></td>"
+            f"<td><span class='atlas-badge {cat_class}'>{cat_badge}</span></td>"
+            f"</tr>"
+        )
+        html_rows.append(row)
+        
+    element.innerHTML = "".join(html_rows)
+
 def render_emoji_summary(emoji_counts, emoji_list):
     """
     Render a detailed summary line using the new granular counters from the Cluster Ledger.
