@@ -3867,140 +3867,35 @@ def compute_provenance_stats(t: str):
 
 
 def _generate_uts39_skeleton(t: str):
-    """
-    Generates the UTS #39 'Skeleton' for a string.
-    
-    The Ultimate Forensic Pipeline:
-    1. NFKC (Compatibility): Collapses fullwidth/ligatures (e.g., Ａ -> A).
-    2. Casefold (Identity): Collapses case distinctions (e.g., A -> a).
-    3. Map Confusables: Maps visual lookalikes to prototypes (e.g., Cyrillic а -> Latin a).
-    4. Strip Ignorables: Removes non-visible Bidi/Format characters.
-    5. NFD (Canonical): Explodes to base+marks for strict comparison.
-    """
-    if LOADING_STATE != "READY" or not t:
+    """Generates the UTS #39 'skeleton' for a string."""
+    if LOADING_STATE != "READY":
         return ""
         
-    # --- Step 1: NFKC Normalization (Compatibility) ---
-    # This ensures 'ﬁ' becomes 'fi' and '１' becomes '1' BEFORE mapping.
-    try:
-        s1 = unicodedata2.normalize("NFKC", t)
-    except:
-        s1 = unicodedata.normalize("NFKC", t)
-
-    # --- Step 2: Casefolding (Identity) ---
-    # This ensures 'A' and 'a' are treated as the same skeleton.
-    s2 = s1.casefold()
-
-    # --- Step 3: Map Confusables (Visual) ---
     confusables_map = DATA_STORES.get("Confusables", {})
-    mapped_chars = []
     
-    for char in s2:
-        cp = ord(char)
-        # If char is in map, use the prototype (string). Else keep original char.
-        # This handles 1-to-many mappings (e.g. ℡ -> tel)
-        mapped_chars.append(confusables_map.get(cp, char))
-        
-    s3 = "".join(mapped_chars)
-
-    # --- Step 4: Strip Default Ignorables & Bidi (Structure) ---
-    # A skeleton should represent the "Visual Bone Structure". 
-    # Invisible control characters (RLO, ZWSP, ZWJ) do not have a visual skeleton 
-    # and must be stripped to prevent "Invisible Drift".
-    filtered_chars = []
-    for char in s3:
-        cp = ord(char)
-        is_ignorable = False
-        
-        # Safe lookup in O(1) Bitmask Table
-        if cp < 0x110000:
-             if (INVIS_TABLE[cp] & INVIS_DEFAULT_IGNORABLE) or (INVIS_TABLE[cp] & INVIS_BIDI_CONTROL):
-                 is_ignorable = True
-        
-        if not is_ignorable:
-            filtered_chars.append(char)
-            
-    s4 = "".join(filtered_chars)
-
-    # --- Step 5: NFD Normalization (Final Canonical Form) ---
-    # Ensures deterministic comparison (e.g. 'e' + '´' vs 'é').
     try:
-        return unicodedata2.normalize("NFD", s4)
-    except:
-        return unicodedata.normalize("NFD", s4)
-
-def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton):
-    """
-    Determines the forensic nature of normalization drift.
-    
-    The Ultimate Forensic Pipeline:
-    1. Checks strict equality across the 4-state lifecycle.
-    2. Distinguishes between 'Format' (Visible Compatibility) and 'Structure' (Invisible).
-    3. Prioritizes Visual Spoofing (Homoglyphs) as the highest threat.
-    """
-    # 1. Calculate Deltas
-    changed_nfkc = (raw != nfkc)
-    changed_casefold = (nfkc != nfkc_cf)
-    changed_skeleton = (nfkc_cf != skeleton)
-    
-    drift_profile = {
-        "format": False,
-        "identity": False,
-        "visual": False,
-        "verdict": "Stable (No Drift)",
-        "class": "drift-clean",
-        "score": 0 # For threat weighting
-    }
-    
-    if not (changed_nfkc or changed_casefold or changed_skeleton):
-        return drift_profile
-
-    # 2. Logic Hierarchy (Severity Based)
-    
-    # --- PRIORITY 1: Visual Drift (Homoglyphs / Spoofing) ---
-    # The machine sees "paypal", but the skeleton reveals it looks like "payaal" or similar.
-    if changed_skeleton:
-        drift_profile["visual"] = True
-        drift_profile["format"] = changed_nfkc
-        drift_profile["identity"] = changed_casefold
-        
-        drift_profile["verdict"] = "Visual Drift (Homoglyphs Detected)"
-        drift_profile["class"] = "drift-alert" # RED
-        drift_profile["score"] = 3
-        return drift_profile
-
-    # --- PRIORITY 2: Identity Drift (Case Folding) ---
-    # The text relies on casing (Admin vs admin) to be distinct.
-    if changed_casefold:
-        drift_profile["identity"] = True
-        drift_profile["format"] = changed_nfkc
-        
-        drift_profile["verdict"] = "Identity Drift (Case Differences)"
-        drift_profile["class"] = "drift-warn" # AMBER
-        drift_profile["score"] = 1
-        return drift_profile
-
-    # --- PRIORITY 3: Format Drift (Compatibility vs. Hidden) ---
-    if changed_nfkc:
-        drift_profile["format"] = True
-        
-        # Forensic Sub-Check: Is this visible compatibility or invisible pruning?
-        # If lengths differ significantly, it might be invisible character stripping.
-        len_diff = abs(len(raw) - len(nfkc))
-        
-        if len_diff > 0 and len(nfkc) < len(raw):
-            # Text shrank. Likely invisible chars stripped or ligatures collapsed.
-            # We check if visible chars match roughly to decide verdict text.
-            drift_profile["verdict"] = "Structure Drift (Normalization/Invisibles)"
-        else:
-            # Text likely expanded or stayed same (Fullwidth -> Ascii)
-            drift_profile["verdict"] = "Format Drift (Compatibility / Width)"
+        # We will loop over the raw string 't'
+        mapped_chars = []
+        for char in t: # Loop over 't' directly
+            cp = ord(char)
             
-        drift_profile["class"] = "drift-warn" # AMBER
-        drift_profile["score"] = 1
-        return drift_profile
+            # --- THIS IS THE FIX ---
+            # We map *all* confusables. The 'intentional' logic was flawed.
+            skeleton_char_str = confusables_map.get(cp)
+            
+            if skeleton_char_str:
+                mapped_chars.append(skeleton_char_str)
+            else:
+                mapped_chars.append(char)
+            # --- END FIX ---
         
-    return drift_profile
+        final_skeleton = "".join(mapped_chars)
+        
+        return final_skeleton
+    except Exception as e:
+        print(f"Error generating skeleton: {e}")
+        return "" # Return empty string on failure
+
 
 def _escape_html(s: str):
     """Escapes basic HTML characters including quotes for attribute safety."""
@@ -4511,55 +4406,7 @@ def compute_threat_analysis(t: str):
                 elif not threat_flags: 
                      threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
-        # --- QUAD-STATE NORMALIZATION PIPELINE (FORENSIC CORE) ---
-        import hashlib
         
-        # State 1: Forensic (Raw) - The Chain of Custody
-        state_1_raw = t
-        
-        # State 2: NFKC (Compatibility)
-        # We prioritize unicodedata2 for strict standard compliance, fallback to built-in
-        try:
-            state_2_nfkc = unicodedata2.normalize("NFKC", t)
-        except:
-            state_2_nfkc = unicodedata.normalize("NFKC", t)
-            
-        # State 3: NFKC-Casefold (Identity)
-        state_3_casefold = state_2_nfkc.casefold()
-        
-        # State 4: UTS #39 Skeleton (Visual Truth)
-        # Uses the 'Ultimate' pipeline function we just defined
-        state_4_skeleton = _generate_uts39_skeleton(t) 
-        
-        # --- CRYPTOGRAPHIC PROOF ---
-        hashes = {
-            "State 1: Forensic (Raw)": hashlib.sha256(state_1_raw.encode('utf-8')).hexdigest(),
-            "State 2: NFKC": hashlib.sha256(state_2_nfkc.encode('utf-8')).hexdigest(),
-            "State 3: NFKC-Casefold": hashlib.sha256(state_3_casefold.encode('utf-8')).hexdigest(),
-            "State 4: UTS #39 Skeleton": hashlib.sha256(state_4_skeleton.encode('utf-8')).hexdigest()
-        }
-        
-        # --- DRIFT ANALYSIS ---
-        # Calculate the semantic distance between states
-        drift_info = compute_normalization_drift(state_1_raw, state_2_nfkc, state_3_casefold, state_4_skeleton)
-        
-        # Optional: Integrate Drift Score into Global Threat Score
-        # If the drift analysis found a visual spoof, we ensure the global score reflects it.
-        if drift_info.get('score', 0) >= 3:
-            # We manually verify if "Skeleton Drift" flag exists, if not, we ensure it's tracked
-            pass # The drift_info object carries the data for the UI
-    
-        return {
-            "hashes": hashes,
-            "states": {
-                "s1": state_1_raw,
-                "s2": state_2_nfkc,
-                "s3": state_3_casefold,
-                "s4": state_4_skeleton
-            },
-            "drift_info": drift_info, 
-            "flags": final_threat_flags 
-        }
         # --- 5. Skeleton Drift (METRICS ENGINE) ---
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
