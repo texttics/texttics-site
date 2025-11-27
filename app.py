@@ -6239,7 +6239,7 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     """
     The Intel Engine (UTS #39 Inspired / UTS #55).
     Determines Restriction Level and classifies Homoglyph Topology.
-    Implements Multi-Vector Threat Stacking for hierarchical reporting.
+    Implements Multi-Vector Threat Stacking with STRICT SEVERITY SORTING.
     """
     if not t: return None
 
@@ -6294,13 +6294,20 @@ def analyze_intel_profile(t, threat_flags, script_stats):
     targets = []
     processed_tokens = 0
     
+    # Severity Weights for Sorting (Higher = Top of Stack)
+    SEVERITY_MAP = {
+        "CRIT": 3,
+        "HIGH": 2,
+        "MED": 1,
+        "LOW": 0
+    }
+    
     for token in raw_tokens:
         if len(token) < 2: continue
         processed_tokens += 1
         if processed_tokens > 200: break 
         
         # --- Multi-Vector Analysis ---
-        # We collect ALL threats in a hierarchy stack
         threat_stack = [] 
         
         t_scripts = set()
@@ -6320,7 +6327,7 @@ def analyze_intel_profile(t, threat_flags, script_stats):
         skeleton = _generate_uts39_skeleton(token)
         if not skeleton: skeleton = token
         
-        # --- Build The Hierarchy (Critical -> Low) ---
+        # --- Build The Hierarchy ---
         
         # Level 1: Execution (Syntax)
         if t_bidi:
@@ -6342,7 +6349,6 @@ def analyze_intel_profile(t, threat_flags, script_stats):
             
         # Level 3: Spoofing (Structure)
         if len(t_scripts) > 1:
-            # Check if likely exploit (Latin + Cyrillic/Greek)
             is_risky_mix = "Latin" in t_scripts and ("Cyrillic" in t_scripts or "Greek" in t_scripts)
             severity = "CRIT" if is_risky_mix else "HIGH"
             threat_stack.append({
@@ -6366,24 +6372,26 @@ def analyze_intel_profile(t, threat_flags, script_stats):
                  topology["SPOOFING"] += 1
             else:
                  topology["AMBIGUITY"] += 1
-                 # Optional: Add Low risk note if strictly needed
-                 # threat_stack.append({"lvl": "LOW", "type": "AMBIGUITY", "desc": "Intra-Script Lookalike"})
 
         # --- Decision: Is this a High Value Target? ---
         if threat_stack:
+            # FIX: STRICT SORT BY SEVERITY
+            # This ensures CRIT always appears before HIGH, regardless of detection order.
+            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
+            
             try:
                 b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
             except: b64 = "Error"
             
             hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
             
-            # The "Verdict" is simply the highest severity item (Top of stack)
+            # Now index 0 is guaranteed to be the highest severity threat
             primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
             
             targets.append({
                 "token": token,
                 "verdict": primary_verdict,
-                "stack": threat_stack, # Pass the full hierarchy
+                "stack": threat_stack,
                 "b64": b64,
                 "hex": hex_v
             })
