@@ -7380,15 +7380,18 @@ def update_all(event=None):
                 if reveal2_btn: reveal2_btn.style.display = "none"
             
     # --- 1. Handle Empty Input (Reset UI) ---
+    # --- 1. Handle Empty Input (Reset UI) ---
     if not t:
+        # Define empty stats for the reset state
         meta_cards = {
             "Total Graphemes": 0, "Total Code Points": 0, "UTF-16 Units": 0, "UTF-8 Bytes": 0,
             "Astral Count": 0, "RGI Emoji Sequences": 0, "Whitespace (Total)": 0,
             "ASCII-Compatible": None, "Latin-1-Compatible": None, # None triggers "No Data" or hidden state
             "BMP Coverage": None, "Supplementary Planes": None
         }
+
         # [FORENSIC LAYOUT ENGINE: 2x2 + FLUID] ------------------------------------
-    
+        
         # 1. Define the Groups
         # Group A: The Quad (Top 4 Metrics)
         quad_keys = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
@@ -7398,44 +7401,24 @@ def update_all(event=None):
             "RGI Emoji Sequences", "Whitespace (Total)",
             "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
         ]
-    
+
         # 2. Render HTML Strings (Detached Mode)
         # We generate the card HTML but DO NOT inject it yet.
         html_quad = render_cards(meta_cards, element_id=None, key_order=quad_keys, return_html=True)
         html_context = render_cards(meta_cards, element_id=None, key_order=context_keys, return_html=True)
-    
+
         # 3. Inject Structure (The Wrapper Divs)
         # We wrap the top group in 'cards-2x2' and the bottom in standard 'cards'
         full_html = f"""
         <div class="cards-2x2">{html_quad}</div>
         <div class="cards">{html_context}</div>
         """
-    
+
         # 4. Final Injection
-        # [FORENSIC LAYOUT ENGINE - ACTIVE STATE] ----------------------------------
-        # 1. Define Groups
-        quad_keys = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
-        
-        context_keys = [
-            "RGI Emoji Sequences", "Whitespace (Total)",
-            "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
-        ]
-    
-        # 2. Render HTML Strings (Detached)
-        html_quad = render_cards(meta_cards, element_id=None, key_order=quad_keys, return_html=True)
-        html_context = render_cards(meta_cards, element_id=None, key_order=context_keys, return_html=True)
-    
-        # 3. Inject Structure (The Wrapper Divs)
-        # .cards-2x2 -> Forces 2x2 Grid for top 4
-        # .cards     -> Standard Fluid Grid for the rest
-        full_html = f"""
-        <div class="cards-2x2">{html_quad}</div>
-        <div class="cards">{html_context}</div>
-        """
-    
         document.getElementById("meta-totals-cards").innerHTML = full_html
         # --------------------------------------------------------------------------
-    
+
+        # Clear all other sections
         render_cards({}, "grapheme-integrity-cards")
         render_matrix_table({}, "ccc-matrix-body")
         render_parallel_table({}, {}, "major-parallel-body")
