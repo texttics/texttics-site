@@ -1296,3 +1296,56 @@ To detect random noise, encrypted payloads, and flooding attacks, we will implem
 1.  **Shannon Entropy:** To distinguish between machine noise (High Entropy) and human text (Medium Entropy).
 2.  **Lexical Profile:** To detect "Word" content (Vocabulary Richness, Top Tokens) without requiring an external dictionary.
 3.  **Vowel/Consonant Ratio:** A heuristic to detect Base64 strings masquerading as text.
+
+***
+
+## 🛡️ Update: The "Forensic Superiority" & Remediation Upgrade
+
+**Session Goal:** To transition the tool from a "Passive Analyzer" to an **"Active Hunter & Neutralizer."** This update introduces a dedicated Invisible Atlas, targeted sanitization profiles, and a suite of "Red Team" exploit generators, solidifying the tool's position as a security instrument.
+
+### 1. New Module: The Invisible Character Atlas
+We moved beyond simple flags to a **"Quantifiable Forensic Ledger."** This new panel provides a definitive, interactive legend of every invisible, control, and format character detected in the input.
+
+* **The "Atlas" Table:**
+    * Lists every unique invisible character found.
+    * **Dynamic Visualization:** Uses **Unicode Control Pictures** (e.g., `␀`, `␛`) and dynamic tags (e.g., `[VS16]`) to reduce visual noise while maintaining precision.
+    * **Interactive Locator:** A "Find" button for every row instantly highlights the specific character in the text input, bridging the gap between aggregate data and specific location.
+* **The Summary Bar:**
+    * A dashboard-style strip above the table that aggregates counts by category (e.g., `12 IGNORABLE`, `4 BIDI`, `2 ZW-SPACE`), allowing for immediate cross-verification with the HUD.
+
+### 2. New Engine: Forensic Remediation (Sanitization)
+We replaced generic "cleaning" with **"Targeted Neutralization Profiles."** The tool now allows the analyst to surgically remove threats based on intent.
+
+* **Profile A: Strict Mode ("Nuke")**
+    * **Logic:** Destroys *all* invisible characters, formatting codes, Bidi controls, and tags.
+    * **Use Case:** Sanitizing code snippets, logs, or raw data where *any* invisible character is a liability.
+* **Profile B: Smart Mode ("Artifact Hunter")**
+    * **Logic:** Removes "dangling" artifacts (ZWSP, LRM, isolated ZWJs) but **preserves** structural glue (ZWJ, VS16) *if and only if* they are part of a valid RGI Emoji sequence.
+    * **Use Case:** Cleaning user-generated content (chat logs, bios) without breaking valid emojis.
+
+### 3. New Intelligence: Heuristics & "Zombie" Detection
+We implemented specific detection engines for modern and legacy threats.
+
+* **"Blank ID" Heuristic:**
+    * Mathematically proves if a string has "Zero Visible Mass" despite containing data. Detects usernames composed entirely of invisible characters.
+* **"Artifact" Heuristic:**
+    * Detects non-structural invisibles (like `ZWSP`) in contexts where they don't belong (e.g., simple Latin text). Flags potential AI-generated hallucinations or copy-paste "rot."
+* **"Zombie Control" Hunter:**
+    * Elevated the deprecated Unicode Format range (`U+206A`–`U+206F`) to **CRITICAL** severity. These are legacy "ghosts" (Inhibit Symmetric Swapping, etc.) often used for obfuscation.
+* **NFC Stability Analyzer:**
+    * A new granular check that reports exactly *which* graphemes are "Unstable" (physically different from their NFC form), detecting "Frankenstein" text compositions.
+
+### 4. New Utility: Exploit Vector Generation
+To serve the "Red Team" / Penetration Testing persona, the Inspector panel now includes a **Forensic Encodings** tab.
+
+* **Purpose:** Answers the question, *"How does this invisible payload look in a shell or JSON context?"*
+* **Vectors Generated:**
+    * **Shellcode:** `\xE2\x93\xBC` (for C/Bash injection testing).
+    * **Octal:** `\342\223\274` (for legacy system exploits).
+    * **Base64:** `4pO8` (for payload encoding checks).
+    * **ES6/JSON:** `\u{24FC}` (for web application vectors).
+
+### 5. Architectural Polish
+* **Visual Truth:** Standard spaces (`U+0020`) are now explicitly rendered as Middle Dots (`·`) in "Reveal Mode," allowing for the detection of trailing whitespace and double-spacing errors.
+* **Crash Prevention:** Hardened the `app.py` counters to handle complex metadata (lists) without type errors.
+* **Gap Closure:** Added `U+FFF9`–`U+FFFB` (Interlinear Annotation) and `U+001B` (ESC) to the global forensic bitmasks to ensure no character escapes detection.
