@@ -5220,14 +5220,18 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
             rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
             
-            # Structured Tooltip
+            # Scientifically Rigorous Tooltip
             tooltip = (
-                "WHAT THIS MEASURES:\n"
-                "User-perceived characters (UAX #29 Grapheme Clusters).\n"
-                "This approximates how 'long' the text looks on screen.\n\n"
-                "THIS SAMPLE:\n"
-                f"• Mark Density: {avg_marks} marks/grapheme\n"
-                f"• Emoji Content: {rgi_count} RGI sequences"
+                "[ DEFINITION ]\n"
+                "User-perceived characters based on UAX #29 Extended Grapheme Clusters.\n"
+                "Represents the visual 'atomic' unit displayed to the user.\n\n"
+                "[ FORENSIC BENCHMARKS ]\n"
+                "• ~0.0 marks/graph: Standard Text (Latin/ASCII)\n"
+                "• >1.0 marks/graph: Heavy Diacritics or Zalgo\n"
+                "• >2.0 marks/graph: Rendering Stack Overflow Risk\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Mark Density: {avg_marks} marks per grapheme\n"
+                f"• RGI Emoji Sequences: {rgi_count}"
             )
 
             html.append(
@@ -5250,20 +5254,24 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
         elif k == "Total Code Points":
             icon = METRIC_ICONS["hash"]
             
-            # [NEW] Forensic Composition Data
+            # Forensic Composition Data
             total_marks = stats_dict.get("Total Combining Marks", 0)
             mark_pct = 0
             if v > 0:
                 mark_pct = (total_marks / v) * 100
             
-            # Structured Tooltip
+            # Scientifically Rigorous Tooltip
             tooltip = (
-                "WHAT THIS MEASURES:\n"
-                "Unicode Scalar Values (Python len()).\n"
-                "The logical foundation before rendering or encoding.\n\n"
-                "THIS SAMPLE:\n"
-                f"• Combining Marks: {total_marks} ({mark_pct:.1f}%)\n"
-                "• High mark density suggests Zalgo or complex scripts."
+                "[ DEFINITION ]\n"
+                "Total count of Unicode Scalar Values (0x0000-0x10FFFF).\n"
+                "The fundamental logical unit before encoding or rendering.\n\n"
+                "[ FORENSIC BENCHMARKS ]\n"
+                "• < 5% Marks: Standard Prose\n"
+                "• > 15% Marks: Heavy Modification / Complex Scripts\n"
+                "• High % with Low Graphemes: Invisible/Zalgo Attack\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Combining Marks: {total_marks} ({mark_pct:.1f}% of total cp)\n"
+                f"• Base Density: 1 Logical Atom = 1 Code Point"
             )
 
             html.append(
@@ -5294,14 +5302,18 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             # Styles
             val_class = "metric-value-warn" if astral > 0 else "metric-value"
             
-            # Structured Tooltip
+            # Scientifically Rigorous Tooltip
             tooltip = (
-                "WHAT THIS MEASURES:\n"
-                "Runtime Length (JS/Java/C#). Counts 16-bit code units.\n"
-                "Surrogate pairs (Astral chars) count as 2 units.\n\n"
-                "THIS SAMPLE:\n"
-                f"• Astral Chars: {astral}\n"
-                f"• Overhead: +{overhead} units vs Code Points"
+                "[ DEFINITION ]\n"
+                "16-bit Code Unit count (used by Java/JS/C# string.length).\n"
+                "Characters > U+FFFF require 2 units (Surrogate Pair).\n\n"
+                "[ FORENSIC BENCHMARKS ]\n"
+                "• +0 Overhead: BMP Only (Basic Multilingual Plane)\n"
+                "• >0 Overhead: Contains Astral Characters (Emoji/Historic)\n"
+                "• Risk: Buffer overflows if length calculated by CP vs Unit.\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Astral Code Points: {astral}\n"
+                f"• Surrogate Overhead: +{overhead} units vs cp count"
             )
             
             html.append(
@@ -5330,17 +5342,20 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             
             # [NEW] Get ASCII Stats for Context
             ascii_data = stats_dict.get("ASCII-Compatible", {})
-            # Handle case where ascii_data might be None or missing 'pct'
             ascii_pct = ascii_data.get("pct", 0) if ascii_data else 0
             
-            # Structured Tooltip
+            # Scientifically Rigorous Tooltip
             tooltip = (
-                "WHAT THIS MEASURES:\n"
-                "Physical Storage Size (Disk/Network).\n"
-                "Variable width: ASCII=1 byte, Others=2-4 bytes.\n\n"
-                "THIS SAMPLE:\n"
-                f"• Density: {bpc:.2f} bytes/char\n"
-                f"• ASCII Payload: {ascii_pct}% of characters"
+                "[ DEFINITION ]\n"
+                "Physical storage size in bytes (Network/Disk/DB).\n"
+                "Variable width encoding: 1 to 4 bytes per Code Point.\n\n"
+                "[ FORENSIC BENCHMARKS (Density) ]\n"
+                "• 1.0 b/cp: Pure ASCII (Legacy Safe)\n"
+                "• ~2.0 b/cp: Latin-1 / Greek / Cyrillic / Arabic\n"
+                "• >3.0 b/cp: CJK / Emoji / Mathematical Symbols\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Storage Density: {bpc:.2f} bytes per cp\n"
+                f"• ASCII Payload: {ascii_pct}% of total content"
             )
 
             html.append(
@@ -5353,7 +5368,6 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                     f'</div>'
                     f'<div class="metric-facts">'
                         f'<div class="fact-row">Density: <strong>{bpc:.1f}</strong> b/cp</div>'
-                        # REPLACED "Encoding: UTF-8" WITH:
                         f'<div class="fact-row">ASCII: <strong>{ascii_pct}%</strong></div>'
                     f'</div>'
                 f'</div>'
