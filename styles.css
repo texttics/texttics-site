@@ -3594,3 +3594,71 @@ details.profile-section > summary:hover::marker {
 .vec-item { display: flex; align-items: center; gap: 6px; }
 .v-lbl { font-weight: 600; color: #6b7280; font-size: 0.7rem; }
 .v-val { font-family: var(--font-mono); color: #4b5563; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; user-select: all; }
+
+/* --- INTEL HIERARCHY (EXPANDABLE) --- */
+.intel-details {
+    margin-top: 4px;
+    width: 100%;
+}
+.intel-summary {
+    font-size: 0.7rem;
+    color: #6b7280;
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+    list-style: none; /* Hide default triangle */
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.intel-summary::before {
+    content: "▶";
+    font-size: 0.6rem;
+    transition: transform 0.2s;
+}
+.intel-details[open] .intel-summary::before {
+    transform: rotate(90deg);
+}
+.intel-summary:hover { color: #374151; }
+
+.intel-stack-body {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #f9fafb;
+    border-radius: 4px;
+    border: 1px solid #e5e7eb;
+}
+
+.th-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+}
+.th-row:last-child { margin-bottom: 8px; }
+
+.th-badge {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 700;
+    min-width: 35px;
+    text-align: center;
+}
+.th-crit { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.th-high { background: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+.th-med  { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.th-low  { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+
+.th-desc {
+    font-size: 0.75rem;
+    color: #374151;
+}
+
+/* Adjust the existing vector styling to fit inside */
+.intel-stack-body .t-vectors {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #d1d5db;
+}
