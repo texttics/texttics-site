@@ -7963,6 +7963,9 @@ def update_all(event=None):
     render_intel_console(t, final_threat_flags, provenance_stats)
     render_toc_counts(toc_counts)
 
+    # [Phase 3] Render Invisible Atlas
+    render_invisible_atlas(t)
+
     is_ascii_safe = True
     if "ASCII-Compatible" in cp_summary:
         is_ascii_safe = cp_summary["ASCII-Compatible"].get("is_full", False)
@@ -8005,6 +8008,82 @@ def update_all(event=None):
         window.TEXTTICS_CORE_DATA = core_data_js
     except Exception as e:
         print(f"Error packaging data for Stage 2: {e}")
+
+@create_proxy
+def sanitize_text(profile_type):
+    """
+    Forensic Remediation Engine.
+    Profiles:
+      - 'strict': Nukes ALL characters matching INVIS_ANY_MASK.
+      - 'smart': Removes 'Artifacts' (ZWSP, LRM) but PRESERVES structural ZWJ/VS for Emojis.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    raw_text = el.value
+    new_chars = []
+    removed_count = 0
+    
+    # [Smart Profile Logic]
+    # We need to know which ZWJs are "load-bearing" (part of valid emojis).
+    # We re-run a quick analysis to find RGI sequences if in smart mode.
+    valid_emoji_indices = set()
+    if profile_type == 'smart':
+        # Reuse the centralized Emoji Engine logic
+        # We scan for RGI sequences and whitelist their internal indices
+        report = compute_emoji_analysis(raw_text)
+        emoji_list = report.get("emoji_list", [])
+        for item in emoji_list:
+            # If it's a sequence, mark its internal positions as protected
+            if item['kind'] == 'emoji-sequence' and item['rgi']:
+                start = item['index']
+                length = len(item['sequence'])
+                for k in range(start, start + length):
+                    valid_emoji_indices.add(k)
+
+    for i, char in enumerate(raw_text):
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        should_remove = False
+        
+        if mask & INVIS_ANY_MASK:
+            # 1. STRICT MODE: Destroy everything invisible
+            if profile_type == 'strict':
+                should_remove = True
+                
+            # 2. SMART MODE: Targeted remediation
+            elif profile_type == 'smart':
+                # ALWAYS remove High-Risk Artifacts (ZWSP, Bidi, Tags)
+                if cp in (0x200B, 0x200E, 0x200F, 0x202A, 0x202B, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069):
+                    should_remove = True
+                # Remove deprecated/zombie controls
+                elif 0x206A <= cp <= 0x206F:
+                    should_remove = True
+                # Remove Plane 14 Tags
+                elif mask & INVIS_TAG:
+                    should_remove = True
+                
+                # PROTECT Structural Glue (ZWJ/VS) only if inside a valid Emoji
+                # [FIXED] Now includes VS15 (0xFE0E) in protection list
+                elif cp in (0x200D, 0xFE0F, 0xFE0E):
+                    if i not in valid_emoji_indices:
+                        should_remove = True
+                        
+        if not should_remove:
+            new_chars.append(char)
+        else:
+            removed_count += 1
+            
+    if removed_count > 0:
+        el.value = "".join(new_chars)
+        # Trigger full re-analysis
+        update_all(None)
+        
+        # Feedback
+        status_line = document.getElementById("status-line")
+        if status_line:
+            status_line.innerText = f"Sanitized {removed_count} particle(s) using '{profile_type.upper()}' profile."
+            status_line.className = "status-ready"
 
 @create_proxy
 def reveal_invisibles(event=None):
@@ -8084,6 +8163,75 @@ def reveal_invisibles(event=None):
         details_line.className = "status-details success"
         icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
         details_line.innerHTML = f"Non-Standard Invisibles:&nbsp;{total_replaced}&nbsp;Deobfuscated&nbsp;{icon_eye}"
+
+@create_proxy
+def highlight_specific_char(target_cp_val):
+    """
+    Atlas Action: Finds and selects the next occurrence of a specific code point.
+    Args:
+        target_cp_val: Integer code point (passed from JS)
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    # Ensure input is int (JS passes numbers, but safety first)
+    try:
+        target_cp = int(target_cp_val)
+    except:
+        return
+
+    text = str(el.value)
+    
+    # 1. Map all occurrences of this specific char
+    ranges = []
+    current_utf16_idx = 0
+    
+    for char in text:
+        cp = ord(char)
+        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
+        
+        if cp == target_cp:
+            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
+            
+        current_utf16_idx += char_len
+
+    count = len(ranges)
+    if count == 0: return
+
+    # 2. Find NEXT relative to cursor
+    current_end_pos = el.selectionEnd
+    target_range = None
+    target_idx = 1
+    
+    for i, r in enumerate(ranges):
+        if r[0] >= current_end_pos:
+            target_range = r
+            target_idx = i + 1
+            break
+            
+    # Wrap-around
+    if target_range is None:
+        target_range = ranges[0]
+        target_idx = 1
+            
+    # 3. Select
+    el.blur()
+    el.focus()
+    el.setSelectionRange(target_range[0], target_range[1])
+    
+    # 4. Feedback (Reusing the NSI status line for consistency)
+    details_line = document.getElementById("reveal-details")
+    if details_line:
+        details_line.className = "status-details warn"
+        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+        hex_disp = f"U+{target_cp:04X}"
+        details_line.innerHTML = f"<strong>Atlas Finder ({hex_disp}):</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
+        
+    # 5. Trigger Inspector to show details for this char
+    inspect_character(None)
+
+# Expose to JS
+window.TEXTTICS_HIGHLIGHT_CHAR = highlight_specific_char
 
 @create_proxy
 def reveal2_invisibles(event=None):
