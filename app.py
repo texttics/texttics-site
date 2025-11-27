@@ -4587,9 +4587,27 @@ def compute_threat_analysis(t: str):
 
         if LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
+            
+            # [Phase 2] Heuristic Counters
+            count_visible_mass = 0
+            count_artifact_particles = 0 # Tracks ZWSP (200B), LRM (200E), RLM (200F)
 
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
+                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+                cat = unicodedata.category(char)
+                
+                # --- [Phase 2] Visual Mass Tracking ---
+                # A character is "Visible" if it's NOT invisible/format/control/separator.
+                # This determines if the string looks "Blank" to a human.
+                if not (mask & INVIS_ANY_MASK) and not cat.startswith(('Z', 'C')):
+                    count_visible_mass += 1
+                    
+                # --- [Phase 2] Artifact Tracking (AI/Watermark patterns) ---
+                # We specifically count non-structural invisibles often used by LLMs/Watermarkers.
+                # We EXCLUDE ZWJ (Emoji glue) and SHY (Hyphenation) to avoid false positives.
+                if cp in (0x200B, 0x200E, 0x200F):
+                    count_artifact_particles += 1
                 
                 # --- A. Bidi Check (Trojan Source) ---
                 if (0x202A <= cp <= 0x202E) or (0x2066 <= cp <= 0x2069):
@@ -4597,8 +4615,8 @@ def compute_threat_analysis(t: str):
 
                 # --- B. Mixed-Script Detection (Spec-Compliant) ---
                 try:
-                    category = unicodedata.category(char)[0] 
-                    if category in ("L", "N", "S"):
+                    # Use category from above
+                    if cat[0] in ("L", "N", "S"):
                         if cp > 0x7F: is_non_ascii_LNS = True
                         
                         script_val = _find_in_ranges(cp, "Scripts")
@@ -4615,13 +4633,42 @@ def compute_threat_analysis(t: str):
                 
                 # --- C. Confusable Indexing (Threat Registry) ---
                 # LOGIC FIX: Only flag NON-ASCII characters as threats.
-                # ASCII chars (like '1' or 'a') are the "Victims" of spoofing, not the "Weapons".
                 if cp > 0x7F and cp in confusables_map:
-                    # Ensure it's visible content (Letter, Number, Punct, Symbol)
-                    # We filter out invisible format controls here because they have their own "Invisible" flag
                     if window.RegExp.new(r"\p{L}|\p{N}|\p{P}|\p{S}", "u").test(char):
                         found_confusable = True
                         confusable_indices.append(i)
+
+            # --- 4. Populate Threat Flags ---
+            
+            # [Phase 2] Heuristic: Blank ID / Visual Spoofing
+            # Logic: Short string (< 50 chars) with ZERO visible mass.
+            if len(t) > 0 and len(t) < 50 and count_visible_mass == 0:
+                 threat_flags["CRITICAL: Visual Spoofing (Blank String)"] = {
+                    'count': 1,
+                    'positions': ["(Entire string is invisible)"],
+                    'severity': 'crit',
+                    'badge': 'SPOOF'
+                 }
+
+            # [Phase 2] Heuristic: Non-Structural Invisibles (AI Artifacts)
+            # Logic: Latin Text + Artifact Particles (ZWSP/LRM) + No Dangerous Bidi.
+            # This filters out legitimate uses in Complex Scripts (Arabic/Hebrew) or Emoji.
+            is_latin_only = (len(base_scripts_in_use) == 1 and "Latin" in base_scripts_in_use)
+            
+            if count_artifact_particles > 0 and is_latin_only and not bidi_danger_indices:
+                 threat_flags["ANOMALY: Non-Structural Invisibles (Latin Context)"] = {
+                    'count': count_artifact_particles,
+                    'positions': ["(Hidden formatting in plain text)"],
+                    'severity': 'warn',
+                    'badge': 'ARTIFACT'
+                 }
+            
+            # Bidi
+            if bidi_danger_indices:
+                threat_flags["DANGER: Malicious Bidi Control"] = {
+                    'count': len(bidi_danger_indices),
+                    'positions': bidi_danger_indices
+                }
 
             # --- 4. Populate Threat Flags ---
             
