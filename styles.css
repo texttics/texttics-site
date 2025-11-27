@@ -3813,11 +3813,12 @@ details.profile-section > summary:hover::marker {
     font-size: 1.4rem; /* Down from 1.8rem */
 }
 
-/* 3. The "Context" (Bottom Row): 6 Columns */
+/* 3. The "Context" (Bottom Row): Responsive Grid */
 .forensic-context-grid {
     display: grid;
-    /* Force 6 equal columns as requested */
-    grid-template-columns: repeat(6, 1fr); 
+    /* Match the 'Ideal' behavior of the Grapheme section */
+    /* 190px min-width ensures 6 fit on a standard 1200px+ screen */
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); 
     gap: 12px;
     width: 100%;
 }
