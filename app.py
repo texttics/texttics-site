@@ -5289,11 +5289,12 @@ def render_invisible_atlas(t: str):
         count = unique_hits[cp]
         char = chr(cp)
         
-        # --- [FIX 1] Dynamic Symbol Logic (Sync with Deobfuscator) ---
+        # --- Visual Logic (Dynamic) ---
+        # 1. Check explicit map first
         visual = INVISIBLE_MAPPING.get(cp)
         
+        # 2. If not in map, generate dynamic tags
         if not visual:
-            # Handle Variation Selectors Dynamically
             if 0xFE00 <= cp <= 0xFE0F:
                 visual = f"[VS{cp - 0xFE00 + 1}]"
             elif 0xE0100 <= cp <= 0xE01EF:
@@ -5303,10 +5304,9 @@ def render_invisible_atlas(t: str):
             else:
                 visual = "." # Fallback
 
-        # Styling the visual tag
+        # Styling
         if visual.startswith("[") and visual.endswith("]"):
             visual_html = f"<span class='atlas-tag'>{visual}</span>"
-        # Handle Control Pictures (single char width)
         elif len(visual) == 1 and ord(visual) > 0x2000: 
              visual_html = f"<span class='atlas-glyph'>{visual}</span>"
         else:
@@ -5314,11 +5314,10 @@ def render_invisible_atlas(t: str):
             
         hex_code = f"U+{cp:04X}"
         
-        # --- [FIX 2] Robust Naming for Controls ---
+        # --- Naming Logic (Robust) ---
         try:
             name = unicodedata.name(char)
         except:
-            # Fallback for C0/C1 Controls which throw errors or return empty
             if cp == 0x00: name = "NULL (NUL)"
             elif cp == 0x1B: name = "ESCAPE (ESC)"
             elif cp == 0x7F: name = "DELETE (DEL)"
@@ -5326,31 +5325,36 @@ def render_invisible_atlas(t: str):
             elif 0x80 <= cp <= 0x9F: name = f"CONTROL-0x{cp:02X}"
             else: name = "UNKNOWN CONTROL"
         
-        # --- [FIX 3] Complete Category Mapping ---
+        # --- Category Logic (Precedence Fixed) ---
         mask = INVIS_TABLE[cp]
         cat_badge = "Unknown"
         cat_class = "atlas-badge-neutral"
         
+        # Critical / Security
         if mask & INVIS_BIDI_CONTROL: 
             cat_badge = "BIDI"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_TAG: 
             cat_badge = "TAG"; cat_class = "atlas-badge-crit"
-        elif mask & INVIS_CRITICAL_CONTROL:  # [FIXED] Added Critical Controls
+        elif mask & INVIS_CRITICAL_CONTROL: 
             cat_badge = "CONTROL"; cat_class = "atlas-badge-crit"
+        
+        # Warnings
         elif mask & INVIS_HIGH_RISK_MASK: 
             cat_badge = "RISK"; cat_class = "atlas-badge-warn"
         elif mask & INVIS_ZERO_WIDTH_SPACING: 
             cat_badge = "ZW-SPACE"; cat_class = "atlas-badge-warn"
-        elif mask & INVIS_NONSTANDARD_NL:    # [FIXED] Added Line Breaks
+        elif mask & INVIS_NONSTANDARD_NL:
             cat_badge = "NEWLINE"; cat_class = "atlas-badge-warn"
+            
+        # Informational (Precedence: Selector > Ignorable)
+        elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG):
+            cat_badge = "SELECTOR"; cat_class = "atlas-badge-neutral"
         elif mask & INVIS_DEFAULT_IGNORABLE: 
             cat_badge = "IGNORABLE"; cat_class = "atlas-badge-info"
         elif mask & INVIS_NON_ASCII_SPACE:
             cat_badge = "NON-ASCII"; cat_class = "atlas-badge-info"
-        elif mask & INVIS_VARIATION_STANDARD or mask & INVIS_VARIATION_IDEOG:
-            cat_badge = "SELECTOR"; cat_class = "atlas-badge-neutral"
             
-        # Action Button (Find)
+        # Action Button
         action_btn = f'<button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CHAR({cp})">Find</button>'
         
         row = (
@@ -5360,7 +5364,7 @@ def render_invisible_atlas(t: str):
             f"<td class='truncate-text' title='{name}'>{name}</td>"
             f"<td style='text-align:center;'><strong>{count}</strong></td>"
             f"<td><span class='atlas-badge {cat_class}'>{cat_badge}</span></td>"
-            f"<td style='text-align:center;'>{action_btn}</td>" 
+            f"<td style='text-align:center;'>{action_btn}</td>"
             f"</tr>"
         )
         html_rows.append(row)
