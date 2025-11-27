@@ -7387,29 +7387,31 @@ def update_all(event=None):
             "ASCII-Compatible": None, "Latin-1-Compatible": None, # None triggers "No Data" or hidden state
             "BMP Coverage": None, "Supplementary Planes": None
         }
-        # [FORENSIC LAYOUT: 2x2 TOP + STANDARD BOTTOM] -----------------------------
+        # [FORENSIC LAYOUT ENGINE: 2x2 + FLUID] ------------------------------------
     
-        # 1. Separate the Keys
+        # 1. Define the Groups
+        # Group A: The Quad (Top 4 Metrics)
         quad_keys = ["Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes"]
         
-        # Context keys (Everything else)
+        # Group B: Context (Everything else)
         context_keys = [
             "RGI Emoji Sequences", "Whitespace (Total)",
             "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
         ]
     
-        # 2. Render HTML Strings (Detached)
+        # 2. Render HTML Strings (Detached Mode)
+        # We generate the card HTML but DO NOT inject it yet.
         html_quad = render_cards(meta_cards, element_id=None, key_order=quad_keys, return_html=True)
         html_context = render_cards(meta_cards, element_id=None, key_order=context_keys, return_html=True)
     
-        # 3. Inject with CSS Classes
-        # .cards-2x2 -> Forces the 2x2 layout for the top 4
-        # .cards     -> Reuses your EXISTING "ideal" grid for the bottom ones
+        # 3. Inject Structure (The Wrapper Divs)
+        # We wrap the top group in 'cards-2x2' and the bottom in standard 'cards'
         full_html = f"""
         <div class="cards-2x2">{html_quad}</div>
         <div class="cards">{html_context}</div>
         """
     
+        # 4. Final Injection
         document.getElementById("meta-totals-cards").innerHTML = full_html
         # --------------------------------------------------------------------------
     
