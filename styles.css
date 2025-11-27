@@ -3919,4 +3919,5 @@ details.profile-section > summary:hover::marker {
 
 .card-header, .card-icon {
     color: #71797E; /* Steel Gray */
+    font-size: 1.3rem !important;
 }
