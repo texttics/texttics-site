@@ -3783,3 +3783,34 @@ details.profile-section > summary:hover::marker {
     white-space: nowrap;
     opacity: 0.8;
 }
+/* --- Forensic Header Layout (Split Groups) --- */
+
+/* 1. The Main Container becomes a vertical stack */
+#meta-totals-cards {
+    display: flex !important; /* Override default grid */
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 2. The "Quad" Group (Top 4 Metrics) */
+/* 2x2 Grid that stretches to fill width */
+.forensic-quad-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 50% / 50% split */
+    gap: 12px;
+}
+
+/* 3. The "Context" Group (The Rest) */
+/* Responsive flexible grid (Auto-fit) */
+.forensic-context-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+/* Mobile Responsiveness for the Quad */
+@media (max-width: 600px) {
+    .forensic-quad-grid {
+        grid-template-columns: 1fr; /* Stack vertically on mobile */
+    }
+}
