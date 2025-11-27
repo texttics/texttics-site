@@ -4685,7 +4685,6 @@ def compute_threat_analysis(t: str):
                 except: pass
             
         # OBFUSCATION (HUD Registry Logic)
-        # Re-using clusters computed above
         for c in clusters:
             label = "Invisible Cluster"
             if c.get("high_risk"): label += " [High Risk]"
@@ -4700,11 +4699,17 @@ def compute_threat_analysis(t: str):
         hashes = {}
         drift_info = {}
         final_html_report = "<p class='placeholder-text'>Error generating forensic report.</p>"
+        
         # Ensure variables exist for return
         state_1_raw = t
         state_2_nfkc = t
         state_3_casefold = t.casefold()
         state_4_skeleton = t
+
+    # --- CRITICAL SAFETY FIX: Ensure locals exist ---
+    # If the try block failed before script_mix_class was defined, we define it here.
+    if 'script_mix_class' not in locals(): script_mix_class = ""
+    if 'skel_metrics' not in locals(): skel_metrics = {}
 
     return {
         'flags': threat_flags,
@@ -4712,6 +4717,7 @@ def compute_threat_analysis(t: str):
         'html_report': final_html_report, # The X-Ray Visual
         'bidi_danger': bool(bidi_danger_indices),
         'script_mix_class': script_mix_class,
+        'skel_metrics': skel_metrics,
         'drift_info': drift_info,         # The New Deep Topology
         'states': {
             's1': state_1_raw,
