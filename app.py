@@ -5328,6 +5328,11 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             # Micro-Facts
             bpc = v / cp_count if cp_count > 0 else 0
             
+            # [NEW] Get ASCII Stats for Context
+            ascii_data = stats_dict.get("ASCII-Compatible", {})
+            # Handle case where ascii_data might be None or missing 'pct'
+            ascii_pct = ascii_data.get("pct", 0) if ascii_data else 0
+            
             # Structured Tooltip
             tooltip = (
                 "WHAT THIS MEASURES:\n"
@@ -5335,7 +5340,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                 "Variable width: ASCII=1 byte, Others=2-4 bytes.\n\n"
                 "THIS SAMPLE:\n"
                 f"• Density: {bpc:.2f} bytes/char\n"
-                "• 1.0=ASCII, >3.0=Asian/Emoji/Complex"
+                f"• ASCII Payload: {ascii_pct}% of characters"
             )
 
             html.append(
@@ -5348,7 +5353,8 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                     f'</div>'
                     f'<div class="metric-facts">'
                         f'<div class="fact-row">Density: <strong>{bpc:.1f}</strong> b/cp</div>'
-                        f'<div class="fact-row">Encoding: UTF-8</div>'
+                        # REPLACED "Encoding: UTF-8" WITH:
+                        f'<div class="fact-row">ASCII: <strong>{ascii_pct}%</strong></div>'
                     f'</div>'
                 f'</div>'
                 f'</div>'
