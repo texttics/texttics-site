@@ -154,6 +154,9 @@ def build_invis_table():
             for cp in range(start, end + 1):
                 INVIS_TABLE[cp] |= mask
 
+    # Interlinear Annotation Controls
+    apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
+
     # 1. Default Ignorable
     ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
     apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
@@ -1246,10 +1249,6 @@ INVISIBLE_MAPPING = {
     0x200D: "[ZWJ]",           # Zero Width Joiner
     0x2060: "[WJ]",            # Word Joiner
     
-    # --- Invisible Math & Format ---
-    0x2061: "[FA]",            # Function Application
-    0x2062: "[IT]",            # Invisible Times
-    0x2063: "[IS]",            # Invisible Separator
     
     # --- Byte Order Mark ---
     0xFEFF: "[BOM]",           # Zero Width No-Break Space
@@ -1304,26 +1303,18 @@ INVISIBLE_MAPPING = {
     0x0099: "[CTL:0x99]", 0x009A: "[CTL:0x9A]", 0x009B: "[CTL:0x9B]", 0x009C: "[CTL:0x9C]",
     0x009D: "[CTL:0x9D]", 0x009E: "[CTL:0x9E]", 0x009F: "[CTL:0x9F]",
 
-    # 1. Invisible Khmer Vowels (Fillers)
+    # Invisible Khmer Vowels (Fillers)
     0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
     0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
     
-    # 2. Invisible Math Operators
+    # Invisible Math Operators
     0x2061: "[FA]",            # Function Application
     0x2062: "[IT]",            # Invisible Times
     0x2063: "[IS]",            # Invisible Separator
     # (U+2064 Invisible Plus was added in Wave 1)
 
-    # 3. The "Rich Text Ghost"
+    # The "Rich Text Ghost"
     0xFFFC: "[OBJ]",           # Object Replacement Character
-
-    # 4. The "Zombie Controls" (Deprecated Format Characters)
-    0x206A: "[ISS]",           # Inhibit Symmetric Swapping
-    0x206B: "[ASS]",           # Activate Symmetric Swapping
-    0x206C: "[IAFS]",          # Inhibit Arabic Form Shaping
-    0x206D: "[AAFS]",          # Activate Arabic Form Shaping
-    0x206E: "[NDS]",           # National Digit Shapes
-    0x206F: "[NODS]",          # Nominal Digit Shapes
     
     # Table 1: The "False Vacuums" (Hangul & Braille)
     # These characters are often rendered as invisible but possess width or distinct properties.
@@ -1396,23 +1387,11 @@ INVISIBLE_MAPPING = {
     0x2000: "[NQSP]",  # En Quad
     0x2001: "[MQSP]",  # Em Quad
 
-    # --- Phase 1 Update: Deprecated "Zombie" Controls ---
-    0x206A: "[ISS]",   # Inhibit Symmetric Swapping
-    0x206B: "[ASS]",   # Activate Symmetric Swapping
-    0x206C: "[IAFS]",  # Inhibit Arabic Form Shaping
-    0x206D: "[AAFS]",  # Activate Arabic Form Shaping
-    0x206E: "[NDS]",   # National Digit Shapes
-    0x206F: "[NODS]",  # Nominal Digit Shapes
+   
 
     # --- Wave 4: Invisible Khmer Vowels ---
     0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
     0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
-    
-    # --- Wave 4: Invisible Math (Remaining) ---
-    # (U+2064 is already present as [INV+])
-    0x2061: "[FA]",            # Function Application
-    0x2062: "[IT]",            # Invisible Times
-    0x2063: "[IS]",            # Invisible Separator
     
     # --- Wave 4: Rich Text Ghost ---
     0xFFFC: "[OBJ]",           # Object Replacement Character
@@ -1424,6 +1403,11 @@ INVISIBLE_MAPPING = {
     0x206D: "[AAFS]",          # Activate Arabic Form Shaping
     0x206E: "[NDS]",           # National Digit Shapes
     0x206F: "[NODS]",          # Nominal Digit Shapes
+
+    # --- Interlinear Annotation Controls ---
+    0xFFF9: "[IAA]",  # Interlinear Annotation Anchor
+    0xFFFA: "[IAS]",  # Interlinear Annotation Separator
+    0xFFFB: "[IAT]",  # Interlinear Annotation Terminator
 }
 
 # Programmatically inject the full range of ASCII-Mapped Tags (Plane 14)
@@ -5305,18 +5289,44 @@ def render_invisible_atlas(t: str):
         count = unique_hits[cp]
         char = chr(cp)
         
-        # Visual Representation (Use Mappings or Default)
-        visual = INVISIBLE_MAPPING.get(cp, ".")
-        # If it's a bracketed tag like [ZWSP], make it small
+        # --- [FIX 1] Dynamic Symbol Logic (Sync with Deobfuscator) ---
+        visual = INVISIBLE_MAPPING.get(cp)
+        
+        if not visual:
+            # Handle Variation Selectors Dynamically
+            if 0xFE00 <= cp <= 0xFE0F:
+                visual = f"[VS{cp - 0xFE00 + 1}]"
+            elif 0xE0100 <= cp <= 0xE01EF:
+                visual = f"[VS{cp - 0xE0100 + 17}]"
+            elif 0xE0000 <= cp <= 0xE007F:
+                visual = f"[TAG:U+{cp:04X}]"
+            else:
+                visual = "." # Fallback
+
+        # Styling the visual tag
         if visual.startswith("[") and visual.endswith("]"):
             visual_html = f"<span class='atlas-tag'>{visual}</span>"
+        # Handle Control Pictures (single char width)
+        elif len(visual) == 1 and ord(visual) > 0x2000: 
+             visual_html = f"<span class='atlas-glyph'>{visual}</span>"
         else:
             visual_html = f"<span class='atlas-glyph'>{visual}</span>"
             
         hex_code = f"U+{cp:04X}"
-        name = unicodedata.name(char, "UNKNOWN CONTROL")
         
-        # Determine Category Badge
+        # --- [FIX 2] Robust Naming for Controls ---
+        try:
+            name = unicodedata.name(char)
+        except:
+            # Fallback for C0/C1 Controls which throw errors or return empty
+            if cp == 0x00: name = "NULL (NUL)"
+            elif cp == 0x1B: name = "ESCAPE (ESC)"
+            elif cp == 0x7F: name = "DELETE (DEL)"
+            elif cp <= 0x1F: name = f"CONTROL-0x{cp:02X}"
+            elif 0x80 <= cp <= 0x9F: name = f"CONTROL-0x{cp:02X}"
+            else: name = "UNKNOWN CONTROL"
+        
+        # --- [FIX 3] Complete Category Mapping ---
         mask = INVIS_TABLE[cp]
         cat_badge = "Unknown"
         cat_class = "atlas-badge-neutral"
@@ -5325,17 +5335,22 @@ def render_invisible_atlas(t: str):
             cat_badge = "BIDI"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_TAG: 
             cat_badge = "TAG"; cat_class = "atlas-badge-crit"
+        elif mask & INVIS_CRITICAL_CONTROL:  # [FIXED] Added Critical Controls
+            cat_badge = "CONTROL"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_HIGH_RISK_MASK: 
             cat_badge = "RISK"; cat_class = "atlas-badge-warn"
         elif mask & INVIS_ZERO_WIDTH_SPACING: 
             cat_badge = "ZW-SPACE"; cat_class = "atlas-badge-warn"
+        elif mask & INVIS_NONSTANDARD_NL:    # [FIXED] Added Line Breaks
+            cat_badge = "NEWLINE"; cat_class = "atlas-badge-warn"
         elif mask & INVIS_DEFAULT_IGNORABLE: 
             cat_badge = "IGNORABLE"; cat_class = "atlas-badge-info"
         elif mask & INVIS_NON_ASCII_SPACE:
             cat_badge = "NON-ASCII"; cat_class = "atlas-badge-info"
+        elif mask & INVIS_VARIATION_STANDARD or mask & INVIS_VARIATION_IDEOG:
+            cat_badge = "SELECTOR"; cat_class = "atlas-badge-neutral"
             
         # Action Button (Find)
-        # We use a custom highlighter that targets specific Code Points
         action_btn = f'<button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CHAR({cp})">Find</button>'
         
         row = (
@@ -5345,6 +5360,7 @@ def render_invisible_atlas(t: str):
             f"<td class='truncate-text' title='{name}'>{name}</td>"
             f"<td style='text-align:center;'><strong>{count}</strong></td>"
             f"<td><span class='atlas-badge {cat_class}'>{cat_badge}</span></td>"
+            f"<td style='text-align:center;'>{action_btn}</td>" 
             f"</tr>"
         )
         html_rows.append(row)
