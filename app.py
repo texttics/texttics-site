@@ -4359,7 +4359,15 @@ def _generate_uts39_skeleton_metrics(t: str):
     
     for char in t:
         cp = ord(char)
-        skeleton_char_str = confusables_map.get(cp)
+        val = confusables_map.get(cp)
+        
+        # [FIX] Handle Tuples
+        skeleton_char_str = None
+        if val:
+            if isinstance(val, tuple):
+                skeleton_char_str = val[0]
+            else:
+                skeleton_char_str = val
         
         if skeleton_char_str:
             mapped_chars.append(skeleton_char_str)
@@ -5646,8 +5654,17 @@ def _get_single_char_skeleton(s: str) -> str:
     res = []
     for char in s:
         cp = ord(char)
-        # Direct mapping, matching _generate_uts39_skeleton logic
-        mapped = confusables_map.get(cp, char)
+        val = confusables_map.get(cp)
+        
+        if val:
+            # DEFENSIVE: Handle New Tuple Format (tgt, tag) vs Legacy String
+            if isinstance(val, tuple):
+                mapped = val[0] # Extract the skeleton string
+            else:
+                mapped = val    # Legacy fallback
+        else:
+            mapped = char       # No mapping exists
+            
         res.append(mapped)
     return "".join(res)
 
