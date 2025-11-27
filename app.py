@@ -4523,6 +4523,15 @@ def compute_threat_analysis(t: str):
         # Populate buckets using the new Forensic Metadata
         for m in skel_events.get('mappings', []):
             tgt = m['map_to']
+            src_char = m['char']
+            
+            # [SAFETY FIX] Ignore Identity Mappings (Noise reduction)
+            # This prevents flagging 'm' just because it exists in the database.
+            if src_char == tgt:
+                # Correct the total count since we are discarding this event
+                skel_metrics["total_drift"] = max(0, skel_metrics["total_drift"] - 1)
+                continue
+
             # m['type'] comes from the data loader (MA, ML, SA, SL)
             tag = m.get('type', 'UNK') 
             
