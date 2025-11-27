@@ -2880,6 +2880,17 @@ def _find_matches_with_indices(regex_key: str, text: str):
         print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
         return [], 0
 
+def _compute_storage_metrics(t: str, supplementary_count: int):
+    """
+    Helper to calculate the Physical and Runtime dimensions of the text.
+    Centralizes the 'encode' logic to ensure consistency.
+    """
+    return {
+        "UTF-16 Units": len(t.encode('utf-16-le')) // 2, # JS/Java .length
+        "UTF-8 Bytes": len(t.encode('utf-8')),           # Disk/Network size
+        "Astral Count": supplementary_count              # Re-use existing loop count
+    }
+
 # Note the new argument: emoji_counts
 def compute_code_point_stats(t: str, emoji_counts: dict):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
@@ -2931,6 +2942,11 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
             "is_full": False # This badge doesn't make sense here
         }
     }
+
+    # [Forensic Metric Pack]
+    # Calculate Storage & Runtime realities using the helper
+    storage_metrics = _compute_storage_metrics(t, supplementary_count)
+    
    # We get the count directly from the emoji engine's report
     emoji_total_count = emoji_counts.get("RGI Emoji Sequences", 0)
     
@@ -2951,7 +2967,8 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     derived_stats = {
         "Total Code Points": total_code_points,
         "RGI Emoji Sequences": emoji_total_count,
-        "Whitespace (Total)": whitespace_count
+        "Whitespace (Total)": whitespace_count,
+        **storage_metrics # Merge in UTF-16, UTF-8, Astral
     }
 
     # 2. Get 29 minor categories (Honest Mode)
@@ -5183,6 +5200,50 @@ def render_cards(stats_dict, element_id, key_order=None):
             count = v.get('count', 0)
             if count > 0:
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+
+        # --- RENDER PATH 2.5: Forensic Metric Pack (Custom Visuals) ---
+        elif k == "UTF-16 Units":
+            # Runtime Reality: Shows .length and Astral density
+            astral = stats_dict.get("Astral Count", 0)
+            
+            # Warn if visual/logical mismatch (Astral chars present)
+            style_class = "metric-value-warn" if astral > 0 else "metric-value"
+            sub_text = f"{astral:,} Astral Chars" if astral > 0 else "BMP Only"
+            
+            tooltip = "Runtime Length (JS/Java/C#). Counts 16-bit code units. Mismatches Code Points if Emoji/Astral chars are present."
+            
+            html.append(
+                f'<div class="card">'
+                f'<div class="{style_class}">{v:,}</div>'
+                f'<div class="metric-label" title="{tooltip}">{k}</div>'
+                f'<div class="metric-sub">{sub_text}</div>'
+                f'</div>'
+            )
+
+        elif k == "UTF-8 Bytes":
+            # Physical Reality: Storage size
+            tooltip = "Physical Size. The actual bytes required for storage or network transmission (UTF-8)."
+            html.append(
+                f'<div class="card">'
+                f'<div class="metric-value">{v:,}</div>'
+                f'<div class="metric-label" title="{tooltip}">{k}</div>'
+                f'<div class="metric-sub">Storage Size</div>'
+                f'</div>'
+            )
+            
+        elif k == "Total Code Points":
+            # Logical Reality: Explicitly label it
+            tooltip = "Logical Length (Python/Unicode). The count of unique scalar values."
+            html.append(
+                f'<div class="card">'
+                f'<div class="metric-value">{v:,}</div>'
+                f'<div class="metric-label" title="{tooltip}">{k}</div>'
+                f'</div>'
+            )
+            
+        elif k == "Astral Count":
+            # Skip explicit rendering, it's used as a subtitle for UTF-16
+            continue
         
         # --- RENDER PATH 3: Simple Cards ---
         elif isinstance(v, (int, float)):
@@ -7347,8 +7408,14 @@ def update_all(event=None):
     
     # 2.A Cards
     meta_cards = {
-        "Total Code Points": cp_summary.get("Total Code Points", 0),
-        "Total Graphemes": gr_summary.get("Total Graphemes", 0),
+        # --- The Forensic Quad-Metric Reality ---
+        "Total Graphemes": gr_summary.get("Total Graphemes", 0),   # Visual
+        "Total Code Points": cp_summary.get("Total Code Points", 0), # Logical
+        "UTF-16 Units": cp_summary.get("UTF-16 Units", 0),       # Runtime (JS/Java)
+        "UTF-8 Bytes": cp_summary.get("UTF-8 Bytes", 0),         # Physical (Storage)
+        "Astral Count": cp_summary.get("Astral Count", 0),       # Context (Subtitle for UTF-16)
+        
+        # --- Contextual Metrics ---
         "RGI Emoji Sequences": emoji_counts.get("rgi_total", 0), 
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
         "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
@@ -7356,8 +7423,15 @@ def update_all(event=None):
         "BMP Coverage": cp_summary.get("BMP Coverage"),
         "Supplementary Planes": cp_summary.get("Supplementary Planes"),
     }
+    
+    # STRICT FORENSIC ORDER: Visual -> Logical -> Runtime -> Physical -> [Context]
     meta_cards_order = [
-        "Total Code Points", "Total Graphemes", "RGI Emoji Sequences", "Whitespace (Total)",
+        "Total Graphemes", 
+        "Total Code Points", 
+        "UTF-16 Units", 
+        "UTF-8 Bytes",
+        "RGI Emoji Sequences", 
+        "Whitespace (Total)",
         "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
     ]
     grapheme_cards = grapheme_forensics
