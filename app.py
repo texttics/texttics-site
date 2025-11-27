@@ -5210,27 +5210,72 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             if count > 0:
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
 
-        # --- RENDER PATH 2.5: Forensic Metric Pack (Lab Instrument UI) ---
+        # --- RENDER PATH 2.5: High-Density Forensic Quad Cards ---
         
         # 1. VISUAL REALITY (Graphemes)
         elif k == "Total Graphemes":
             icon = METRIC_ICONS["eye"]
+            
+            # Micro-Facts
+            total_marks = stats_dict.get("Total Combining Marks", 0)
+            avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
+            rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
+            
+            # Tooltip Content
+            tooltip = (
+                "WHAT THIS MEASURES:\n"
+                "User-perceived characters (UAX #29).\n\n"
+                "THIS SAMPLE:\n"
+                f"• Mark Density: {avg_marks} marks/grapheme\n"
+                f"• Emoji Content: {rgi_count} RGI sequences"
+            )
+
             html.append(
-                f'<div class="card metric-card">'
+                f'<div class="card metric-card" title="{tooltip}">'
                 f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-value">{v:,}</div>'
-                f'<div class="metric-sub">Visual Units</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="metric-value">{v:,}</div>'
+                        f'<div class="metric-sub">Visual Units</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
+                        f'<div class="fact-row">Emoji: <strong>{rgi_count}</strong></div>'
+                    f'</div>'
+                f'</div>'
                 f'</div>'
             )
 
         # 2. LOGICAL REALITY (Code Points)
         elif k == "Total Code Points":
             icon = METRIC_ICONS["hash"]
+            
+            # Micro-Facts
+            invis_count = 0 # Placeholder if not passed directly, or calculate locally if possible
+            # In update_all, we calculate these but don't pass them all to meta_cards. 
+            # For now, we use what we have available in the stats_dict or estimate.
+            
+            # Tooltip
+            tooltip = (
+                "WHAT THIS MEASURES:\n"
+                "Unicode Scalar Values (Python len()).\n\n"
+                "THIS SAMPLE:\n"
+                "• Logical foundation for all text processing."
+            )
+
             html.append(
-                f'<div class="card metric-card">'
+                f'<div class="card metric-card" title="{tooltip}">'
                 f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-value">{v:,}</div>'
-                f'<div class="metric-sub">Unicode Scalars</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="metric-value">{v:,}</div>'
+                        f'<div class="metric-sub">Unicode Scalars</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">1 Logical Atom</div>'
+                        f'<div class="fact-row">= U+XXXX</div>'
+                    f'</div>'
+                f'</div>'
                 f'</div>'
             )
 
@@ -5238,35 +5283,69 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
         elif k == "UTF-16 Units":
             icon = METRIC_ICONS["code"]
             astral = stats_dict.get("Astral Count", 0)
+            cp_count = stats_dict.get("Total Code Points", 1)
             
-            # Logic: Pop if weird (Astral present), Fade if boring (BMP only)
-            if astral > 0:
-                val_class = "metric-value-warn"
-                sub_text = f"⚠️ {astral:,} Astral Chars"
-                sub_style = "color: var(--color-threat-high); font-weight: bold;"
-            else:
-                val_class = "metric-value"
-                sub_text = "Standard (BMP)"
-                sub_style = "opacity: 0.6;"
-
-            tooltip = "Runtime Length (JS/Java/C#). Counts 16-bit code units."
+            # Micro-Facts
+            overhead = v - cp_count
+            ratio = v / cp_count if cp_count > 0 else 0
+            
+            # Styles
+            val_class = "metric-value-warn" if astral > 0 else "metric-value"
+            
+            # Tooltip
+            tooltip = (
+                "WHAT THIS MEASURES:\n"
+                "Runtime Length (JS/Java/C#). Counts 16-bit units.\n\n"
+                "THIS SAMPLE:\n"
+                f"• Astral Chars: {astral}\n"
+                f"• Expansion: +{overhead} units vs Code Points"
+            )
             
             html.append(
                 f'<div class="card metric-card" title="{tooltip}">'
                 f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="{val_class}">{v:,}</div>'
-                f'<div class="metric-sub" style="{sub_style}">{sub_text}</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="{val_class}">{v:,}</div>'
+                        f'<div class="metric-sub">JS/Java Length</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Astral: <strong>{astral}</strong></div>'
+                        f'<div class="fact-row">Overhead: <strong>+{overhead}</strong></div>'
+                    f'</div>'
+                f'</div>'
                 f'</div>'
             )
 
         # 4. PHYSICAL REALITY (UTF-8)
         elif k == "UTF-8 Bytes":
             icon = METRIC_ICONS["save"]
+            cp_count = stats_dict.get("Total Code Points", 1)
+            
+            # Micro-Facts
+            bpc = v / cp_count if cp_count > 0 else 0
+            
+            # Tooltip
+            tooltip = (
+                "WHAT THIS MEASURES:\n"
+                "Physical Storage Size (Disk/Network).\n\n"
+                "THIS SAMPLE:\n"
+                f"• Density: {bpc:.2f} bytes/char"
+            )
+
             html.append(
-                f'<div class="card metric-card">'
+                f'<div class="card metric-card" title="{tooltip}">'
                 f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-value">{v:,}</div>'
-                f'<div class="metric-sub">Storage Size</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="metric-value">{v:,}</div>'
+                        f'<div class="metric-sub">Storage Size</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Density: <strong>{bpc:.1f}</strong> b/cp</div>'
+                        f'<div class="fact-row">Encoding: UTF-8</div>'
+                    f'</div>'
+                f'</div>'
                 f'</div>'
             )
 
