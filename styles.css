@@ -3843,12 +3843,12 @@ details.profile-section > summary:hover::marker {
     }
 }
 
-/* Top 4 Metrics: Strict 2x2 Grid */
+/* --- Forensic Layout: Top Quad --- */
 .cards-2x2 {
   display: grid;
-  grid-template-columns: 1fr 1fr; /* 50/50 Split */
+  grid-template-columns: 1fr 1fr; /* Strict 2 columns (2x2) */
   gap: var(--spacing-4);
-  margin-bottom: var(--spacing-4);
+  margin-bottom: var(--spacing-4); /* Space between Top and Bottom groups */
 }
 
 /* On mobile, collapse to stack */
