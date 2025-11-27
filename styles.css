@@ -3843,15 +3843,16 @@ details.profile-section > summary:hover::marker {
     }
 }
 
-/* --- Forensic Layout: Top Quad --- */
+/* FORCE 2x2 GRID for the Top 4 Metrics */
 .cards-2x2 {
   display: grid;
-  grid-template-columns: 1fr 1fr; /* Strict 2 columns (2x2) */
-  gap: var(--spacing-4);
-  margin-bottom: var(--spacing-4); /* Space between Top and Bottom groups */
+  grid-template-columns: 1fr 1fr; /* 50% split */
+  gap: 16px; /* Match your spacing variables */
+  margin-bottom: 16px;
+  width: 100%;
 }
 
-/* On mobile, collapse to stack */
+/* On mobile, stack them */
 @media (max-width: 600px) {
   .cards-2x2 { grid-template-columns: 1fr; }
 }
