@@ -4111,6 +4111,152 @@ def _escape_for_js(s: str) -> str:
     s = s.replace("</", "<\\/")
     return s
 
+def tokenize_forensic(text: str):
+    """
+    Forensic Tokenizer (Adversarial Hardened).
+    Splits on whitespace but treats Invisible/Format characters as PAYLOADS,
+    not delimiters. Preserves internal punctuation for domain analysis.
+    """
+    tokens = []
+    if not text: return tokens
+    
+    # Python's .split() breaks on whitespace (Zs, Cc whitespace)
+    # Crucially, it PRESERVES ZWSP, ZWNJ, etc. (Cf) inside the chunks.
+    # This is exactly what we want for detecting "Structural Perturbation".
+    raw_chunks = text.split()
+    
+    current_start = 0
+    for chunk in raw_chunks:
+        # Calculate real index (approximation for locating)
+        idx = text.find(chunk, current_start)
+        current_start = idx + len(chunk)
+        
+        # Strip outer "Open/Close" delimiters to isolate the Identifier
+        # We strip: () [] {} <> " '
+        # We KEEP: . - _ @ (Domain/Username connectors)
+        clean = chunk.strip("()[]{}<>\"'")
+        
+        if clean:
+            tokens.append({
+                'token': clean,
+                'raw_chunk': chunk,
+                'start': idx,
+                'end': idx + len(chunk)
+            })
+            
+    return tokens
+
+def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
+    """
+    The Skeleton Overlay (X-Ray).
+    Renders a vertical alignment of 'Raw' vs 'Skeleton' for suspicious clusters.
+    Replaces the linear stream with a comparative 'DNA alignment' view.
+    """
+    if not t or not threat_indices: return ""
+
+    js_array = window.Array.from_(t)
+    text_len = len(js_array)
+    
+    # --- 1. CLUSTERING (Sparse View Logic) ---
+    sorted_threats = sorted(list(threat_indices))
+    clusters = []
+    MERGE_DIST = 40 # Context window
+    
+    if sorted_threats:
+        current_cluster = [sorted_threats[0]]
+        for i in range(1, len(sorted_threats)):
+            if sorted_threats[i] - sorted_threats[i-1] <= MERGE_DIST:
+                current_cluster.append(sorted_threats[i])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [sorted_threats[i]]
+        clusters.append(current_cluster)
+
+    # --- 2. RENDER CLUSTERS ---
+    html_parts = []
+    
+    for idx, clust in enumerate(clusters):
+        start_idx = clust[0]
+        end_idx = clust[-1]
+        
+        # Context padding
+        ctx_start = max(0, start_idx - 8)
+        ctx_end = min(text_len, end_idx + 9)
+        
+        # Build the Alignment Strip
+        strip_html = []
+        
+        for i in range(ctx_start, ctx_end):
+            char = js_array[i]
+            cp = ord(char)
+            
+            # --- ADVERSARIAL ALIGNMENT LOGIC ---
+            # 1. Get Skeleton Target
+            # Handle the tuple format from data loader: (target, type)
+            val = confusables_map.get(cp)
+            if val:
+                skel_target = val[0] if isinstance(val, tuple) else val
+            else:
+                skel_target = char
+                
+            # 2. Check for "Drift" (Attack Signal)
+            # If Raw != Skeleton, it's a visual spoof point.
+            # EXCEPTION: Ignore Case Drift (A -> a) to reduce noise.
+            is_drift = (char != skel_target) and (char.lower() != skel_target)
+            
+            # 3. Check for Invisibles (Obfuscation Signal)
+            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+            is_invis = bool(mask & INVIS_ANY_MASK)
+            
+            # 4. Construct CSS Classes
+            col_class = "xray-col"
+            if is_invis:
+                col_class += " xray-void" # Collapsed or dimmed
+                skel_target = "∅"       # Explicitly show nullification
+            elif is_drift:
+                col_class += " xray-drift" # Red highlight
+            
+            # 5. Visual Safe-Guards
+            # Escape HTML to prevent injection from the text itself
+            vis_top = _escape_html(char)
+            vis_bot = _escape_html(skel_target)
+            
+            # Handle Control Pictures for unprintables
+            if cp in INVISIBLE_MAPPING:
+                vis_top = f"<span class='x-tag'>{INVISIBLE_MAPPING[cp]}</span>"
+            elif is_invis:
+                vis_top = "<span class='x-tag'>[HID]</span>"
+            
+            # 6. Render Column
+            strip_html.append(f"""
+            <div class="{col_class}" title="U+{cp:04X} &rarr; {vis_bot}">
+                <div class="x-raw">{vis_top}</div>
+                <div class="x-skel">{vis_bot}</div>
+            </div>
+            """)
+            
+        # Cluster Card Wrapper
+        html_parts.append(f"""
+        <div class="xray-cluster">
+            <div class="xray-meta">Context #{idx+1}</div>
+            <div class="xray-strip">
+                {"".join(strip_html)}
+            </div>
+        </div>
+        """)
+
+    if not html_parts: return ""
+    
+    return f"""
+    <div class="xray-container">
+        <div class="xray-legend-bar">
+            <span class="xl-item"><span class="xl-dot dot-red"></span> Visual Drift</span>
+            <span class="xl-item"><span class="xl-dot dot-gray"></span> Hidden/Stripped</span>
+        </div>
+        {"".join(html_parts)}
+    </div>
+    """
+
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
     Forensic X-Ray Engine v8.0 (Fact-Based & Priority Fixed).
@@ -4800,70 +4946,50 @@ def compute_threat_analysis(t: str):
             skel_events
         )
 
-        # --- 7. HTML Report (Forensic Diff Stream v3) ---
-        # (Existing Logic Preserved - Generates the 'X-Ray' visualization)
+        # --- 7. HTML Report (Adversarial X-Ray) ---
+        # Upgraded to use the Skeleton Overlay renderer
         
-        # A. Collect indices for visuals
-        vis_confusables = set()
+        # A. Collect all indices that trigger suspicion
+        threat_indices = set()
+        
+        # 1. Confusables
         if confusable_indices:
-            js_array_raw = window.Array.from_(t)
-            for idx in confusable_indices:
-                try:
-                    char = js_array_raw[idx]
-                    cp = ord(char)
-                    sc = _find_in_ranges(cp, "Scripts") or "Common"
-                    if sc not in ("Common", "Inherited"):
-                        vis_confusables.add(idx)
-                except: pass
-        
-        # B. Collect other vectors
-        vis_invisibles = set()
+            threat_indices.update(confusable_indices)
+            
+        # 2. Invisibles (Obfuscation)
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
             for k in range(c["start"], c["end"] + 1):
-                vis_invisibles.add(k)
+                threat_indices.add(k)
                 
-        vis_bidi = set()
+        # 3. Bidi (Execution)
         if bidi_danger_indices:
             for s in bidi_danger_indices:
-                try: vis_bidi.add(int(s.replace("#","")))
+                try: threat_indices.add(int(s.replace("#","")))
                 except: pass
 
-        # C. Render if ANY threat exists
-        if vis_confusables or vis_invisibles or vis_bidi:
-            # ADAPTER: The X-Ray renderer expects {cp: "target_string"}.
-            # Our new map is {cp: ("target_string", "type")}.
-            # We create a temporary legacy-compatible map to prevent crashes.
-            legacy_map = {}
-            for k, v in confusables_map.items():
-                if isinstance(v, tuple):
-                    legacy_map[k] = v[0] # Extract just the string
-                else:
-                    legacy_map[k] = v # Fallback for old data
-            
-            final_html_report = _render_forensic_diff_stream(
+        # B. Render X-Ray if threats exist
+        if threat_indices:
+            # We use the raw confusables map. The renderer handles the tuple/str logic.
+            final_html_report = render_adversarial_xray(
                 t, 
-                vis_confusables, 
-                vis_invisibles, 
-                vis_bidi, 
-                legacy_map # Pass the safe adapter map
+                threat_indices, 
+                confusables_map
             )
         else:
             final_html_report = ""
         
         # SPOOFING (HUD Registry Logic)
+        # (Preserved for Sidebar Counts)
         if confusable_indices and LOADING_STATE == "READY":
             js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
                 try:
-                    char = js_array_raw[idx]
-                    cp = ord(char)
-                    sc = _find_in_ranges(cp, "Scripts") or "Common"
-                    if sc not in ("Common", "Inherited"):
-                        _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
+                    _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
         # OBFUSCATION (HUD Registry Logic)
+        # (Preserved for Sidebar Counts)
         for c in clusters:
             label = "Invisible Cluster"
             if c.get("high_risk"): label += " [High Risk]"
