@@ -3813,10 +3813,6 @@ details.profile-section > summary:hover::marker {
     font-size: 1.4rem; /* Down from 1.8rem */
 }
 
-.metric-value {
-color: #71797E;
-}
-
 /* 3. The "Context" (Bottom Row): Responsive Grid */
 .forensic-context-grid {
     display: grid;
@@ -3869,7 +3865,6 @@ color: #71797E;
     justify-content: space-between;
     align-items: flex-end; /* Align bottom */
     width: 100%;
-    color: #71797E;
 }
 
 .metric-main {
@@ -3920,4 +3915,8 @@ color: #71797E;
     font-family: var(--font-mono);
     display: inline !important; /* Ensure it flows with text */
     margin-left: 6px; /* Separation from label */
+}
+
+.card-header, .card-icon {
+    color: #71797E; /* Steel Gray */
 }
