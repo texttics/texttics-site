@@ -7274,6 +7274,7 @@ def render_toc_counts(counts):
     update_id("toc-emoji-count", counts.get('emoji', 0))
     update_id("toc-threat-count", counts.get('threat', 0))
     update_id("toc-atlas-count", counts.get('atlas', 0))
+    update_id("toc-stat-count", counts.get('stat', 0))
 
 
 # --- INSPECTOR HELPERS (FORENSIC V3) ---
@@ -9511,8 +9512,9 @@ def update_all(event=None):
             sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0)
         ),
         'emoji': emoji_counts.get("total_emoji_units", 0),
-        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0)), # [FIXED COMMA]
-        'atlas': unique_invis_count
+        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0)),
+        'atlas': unique_invis_count,
+        'stat': stat_profile.get("total_tokens", 0)
     }
 
     # [FORENSIC LAYOUT ENGINE - ACTIVE STATE] ----------------------------------
