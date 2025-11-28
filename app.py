@@ -9722,6 +9722,7 @@ def update_all(event=None):
             "grapheme_list": grapheme_list,
             "grapheme_lengths_codepoints": [len(g) for g in grapheme_list],
             "forensic_flags": all_flags,
+            "statistical_profile": stat_profile,
             "nfkc_casefold_text": nfkc_cf_text,
             "timestamp": window.Date.new().toISOString()
         }
