@@ -9671,29 +9671,46 @@ window.py_generate_evidence = py_generate_evidence
 def update_verification(event):
     """
     Enhanced renderer for the Verification Bench.
-    Now supports SELECTION-BASED comparison (Scope Selection).
+    Now populates the 'Suspect Monitor' to confirm Scope Selection.
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
     text_input = document.getElementById("text-input")
     
+    # New Elements
+    suspect_display = document.getElementById("suspect-display")
+    scope_badge = document.getElementById("scope-badge")
+    
     if not trusted_input or not verdict_display or not text_input: return
 
     # 1. Scope Selection Logic
-    # If the user has selected text in the main input, use that as the suspect.
-    # Otherwise, use the full value.
     full_text = text_input.value
     selection_start = text_input.selectionStart
     selection_end = text_input.selectionEnd
     
     if selection_start != selection_end:
-        # User has highlighted a specific part (e.g. just the domain)
+        # User has highlighted a specific part
         suspect_text = full_text[selection_start:selection_end]
-        scope_label = "SELECTED TEXT"
+        scope_label = "SELECTION"
+        badge_class = "scope-badge-select"
     else:
         # Default to full text
         suspect_text = full_text
         scope_label = "FULL INPUT"
+        badge_class = "scope-badge-full"
+
+    # 2. Update Suspect Monitor (The Feedback Loop)
+    if suspect_display:
+        if not suspect_text:
+            suspect_display.textContent = "(Waiting for input...)"
+            suspect_display.style.opacity = "0.5"
+        else:
+            suspect_display.textContent = suspect_text
+            suspect_display.style.opacity = "1.0"
+            
+    if scope_badge:
+        scope_badge.textContent = scope_label
+        scope_badge.className = badge_class
 
     trusted_text = trusted_input.value
     
@@ -9703,17 +9720,16 @@ def update_verification(event):
 
     verdict_display.classList.remove("hidden")
     
-    # 2. Run Comparator
+    # 3. Run Comparator
     res = compute_verification_verdict(suspect_text, trusted_text)
     
     if res:
-        # 3. Update UI
-        # Add scope indicator to title
-        document.getElementById("verdict-title").innerHTML = f"{res['verdict']} <span style='font-size:0.6em; opacity:0.7; font-weight:400;'>({scope_label})</span>"
+        # 4. Update UI
+        document.getElementById("verdict-title").textContent = res["verdict"]
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # 4. Evidence Matrix
+        # 5. Evidence Matrix
         def set_metric(id_str, is_match):
             el = document.getElementById(id_str)
             if is_match:
@@ -9725,7 +9741,7 @@ def update_verification(event):
         set_metric("vm-nfkc", res["nfkc"])
         set_metric("vm-skel", res["skel"])
         
-        # 5. Styling
+        # 6. Styling
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
 
