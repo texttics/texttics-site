@@ -2347,74 +2347,76 @@ def tokenize_forensic(text: str) -> List[ForensicToken]:
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Active Zero-Trust Comparator (Enhanced V2).
-    Returns verdict PLUS granular forensic state booleans.
+    Active Zero-Trust Comparator (Gradual/Partial Mode).
+    Detects if the suspect is a VISUAL SUBSTRING of the trusted reference.
     """
     if not suspect_str or not trusted_str:
         return None
 
-    # 1. Generate States
+    # 1. Normalization Pipeline
     suspect_nfkc = normalize_extended(suspect_str)
     trusted_nfkc = normalize_extended(trusted_str)
-    
     suspect_skel = _generate_uts39_skeleton(suspect_nfkc.casefold())
     trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
 
-    # 2. Boolean Logic (The Evidence)
+    # 2. Exact Match Checks
     match_raw = (suspect_str == trusted_str)
     match_nfkc = (suspect_nfkc == trusted_nfkc)
     match_skel = (suspect_skel == trusted_skel)
-    match_case = (suspect_nfkc.casefold() == trusted_nfkc.casefold())
+    
+    # 3. Partial (Containment) Checks
+    def check_partial(a, b):
+        if not a or not b: return False
+        if a in b: return "SUBSET"
+        if b in a: return "SUPERSET"
+        return False
 
+    part_raw = check_partial(suspect_str, trusted_str)
+    part_nfkc = check_partial(suspect_nfkc, trusted_nfkc)
+    part_skel = check_partial(suspect_skel, trusted_skel)
+
+    # 4. Matrix Result (Strings instead of Booleans)
     result = {
-        "raw": match_raw,
-        "nfkc": match_nfkc,
-        "skel": match_skel,
+        "raw": "MATCH" if match_raw else (part_raw if part_raw else "DIFF"),
+        "nfkc": "MATCH" if match_nfkc else (part_nfkc if part_nfkc else "DIFF"),
+        "skel": "MATCH" if match_skel else (part_skel if part_skel else "DIFF"),
         "score": 0
     }
 
-    # 3. Verdict Decision Tree
+    # 5. Verdict Decision Tree (Prioritized)
+
+    # A. Identity (The Gold Standard)
     if match_raw:
-        result.update({
-            "verdict": "IDENTITY MATCH",
-            "desc": "Strings are bitwise identical. Cryptographically verifiable match.",
-            "css_class": "verdict-safe",
-            "icon": "🛡️",
-            "score": 0
-        })
-    elif match_nfkc:
-        result.update({
-            "verdict": "NORMALIZATION HAZARD",
-            "desc": "Strings differ visually or by width, but normalize to the same characters.",
-            "css_class": "verdict-warn",
-            "icon": "⚠️",
-            "score": 50
-        })
+        result.update({"verdict": "IDENTITY MATCH", "desc": "Strings are bitwise identical.", "css_class": "verdict-safe", "icon": "🛡️"})
+    
+    # B. Partial Identity (Safe)
+    elif part_raw:
+        relation = "substring" if part_raw == "SUBSET" else "superstring"
+        result.update({"verdict": "PARTIAL MATCH (SAFE)", "desc": f"Selection is a valid {relation} of the trusted reference.", "css_class": "verdict-safe", "icon": "🧩"})
+
+    # C. Exact Spoof / Hazard
     elif match_skel:
-        result.update({
-            "verdict": "SPOOF CONFIRMED",
-            "desc": "CRITICAL: Strings look identical (Homoglyphs) but are distinct characters.",
-            "css_class": "verdict-crit",
-            "icon": "🚨",
-            "score": 100
-        })
-    elif match_case:
-        result.update({
-            "verdict": "CASE MISMATCH",
-            "desc": "Strings differ only by capitalization.",
-            "css_class": "verdict-info",
-            "icon": "ℹ️",
-            "score": 20
-        })
+        if match_nfkc:
+             result.update({"verdict": "NORMALIZATION HAZARD", "desc": "Strings differ only by Compatibility.", "css_class": "verdict-warn", "icon": "⚠️", "score": 50})
+        else:
+             result.update({"verdict": "SPOOF CONFIRMED", "desc": "CRITICAL: Visually identical, structurally distinct.", "css_class": "verdict-crit", "icon": "🚨", "score": 100})
+
+    # D. Partial Spoof (The "Gradual" Case)
+    # This detects "pаypal" inside "paypal.com"
+    elif part_skel:
+        if part_nfkc:
+             result.update({"verdict": "PARTIAL HAZARD", "desc": "Substring matches via Compatibility normalization.", "css_class": "verdict-warn", "icon": "⚠️", "score": 40})
+        else:
+             result.update({"verdict": "PARTIAL SPOOF", "desc": "CRITICAL: Selection visually matches a part of the trusted string (Homoglyph Substring).", "css_class": "verdict-crit", "icon": "🚨", "score": 90})
+
+    # E. Case Mismatch
+    elif suspect_nfkc.casefold() == trusted_nfkc.casefold():
+        result.update({"verdict": "CASE MISMATCH", "desc": "Strings differ only by capitalization.", "css_class": "verdict-info", "icon": "ℹ️", "score": 20})
+
+    # F. Distinct
     else:
-        result.update({
-            "verdict": "DISTINCT",
-            "desc": "Strings are structurally and visually unrelated.",
-            "css_class": "verdict-neutral",
-            "icon": "≠",
-            "score": 0
-        })
-        
+        result.update({"verdict": "DISTINCT", "desc": "Strings are structurally and visually unrelated.", "css_class": "verdict-neutral", "icon": "≠", "score": 0})
+
     return result
 
 # ==========================================
@@ -9671,13 +9673,12 @@ window.py_generate_evidence = py_generate_evidence
 def update_verification(event):
     """
     Enhanced renderer for the Verification Bench.
-    Now populates the 'Suspect Monitor' to confirm Scope Selection.
+    Supports Scope Selection and Partial Match visualization.
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
     text_input = document.getElementById("text-input")
     
-    # New Elements
     suspect_display = document.getElementById("suspect-display")
     scope_badge = document.getElementById("scope-badge")
     
@@ -9689,17 +9690,15 @@ def update_verification(event):
     selection_end = text_input.selectionEnd
     
     if selection_start != selection_end:
-        # User has highlighted a specific part
         suspect_text = full_text[selection_start:selection_end]
         scope_label = "SELECTION"
         badge_class = "scope-badge-select"
     else:
-        # Default to full text
         suspect_text = full_text
         scope_label = "FULL INPUT"
         badge_class = "scope-badge-full"
 
-    # 2. Update Suspect Monitor (The Feedback Loop)
+    # 2. Update Monitor
     if suspect_display:
         if not suspect_text:
             suspect_display.textContent = "(Waiting for input...)"
@@ -9724,16 +9723,20 @@ def update_verification(event):
     res = compute_verification_verdict(suspect_text, trusted_text)
     
     if res:
-        # 4. Update UI
+        # 4. Update Header
         document.getElementById("verdict-title").textContent = res["verdict"]
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # 5. Evidence Matrix
-        def set_metric(id_str, is_match):
+        # 5. Evidence Matrix (Enhanced)
+        def set_metric(id_str, status):
             el = document.getElementById(id_str)
-            if is_match:
+            if status == "MATCH":
                 el.innerHTML = '<span style="color:#10b981;">MATCH</span>'
+            elif status == "SUBSET":
+                el.innerHTML = '<span style="color:#3b82f6; font-size:0.85em; font-weight:800;">SUBSET</span>'
+            elif status == "SUPERSET":
+                el.innerHTML = '<span style="color:#3b82f6; font-size:0.85em; font-weight:800;">SUPERSET</span>'
             else:
                 el.innerHTML = '<span style="color:#ef4444;">DIFF</span>'
 
