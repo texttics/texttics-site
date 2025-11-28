@@ -8276,12 +8276,12 @@ def render_adversarial_dashboard(adv_data: dict):
         else:
             peak_row.style.display = "none"
 
-    # 7. Render Findings List
+    # 7. Render Findings List (Enhanced with Domain Intel)
     target_body = document.getElementById("adv-target-body")
     if target_body:
         html_rows = []
         
-        # Global Stego Banner
+        # A. Global Stego Banner (Existing)
         if stego:
             html_rows.append(f"""
             <div class="target-row" style="background-color:#fffbeb;">
@@ -8294,15 +8294,22 @@ def render_adversarial_dashboard(adv_data: dict):
             </div>
             """)
 
+        # B. Token Findings
         for tgt in targets:
             # Build Stack HTML
             stack_html = ""
+            is_typosquatting = False
+            
             for item in tgt.get('stack', []):
                 lvl_class = "th-low"
                 lvl = item.get('lvl', 'LOW')
                 if lvl == "CRIT": lvl_class = "th-crit"
                 elif lvl == "HIGH": lvl_class = "th-high"
                 elif lvl == "MED": lvl_class = "th-med"
+                
+                # Check for Domain Heuristics
+                if "Double Extension" in item['desc'] or "Pseudo-Delimiters" in item['desc'] or "Bidi Arrears" in item['desc']:
+                    is_typosquatting = True
                 
                 stack_html += f"""
                 <div class="th-row">
@@ -8311,8 +8318,13 @@ def render_adversarial_dashboard(adv_data: dict):
                 </div>
                 """
 
+            # Special styling for Typosquatting
+            row_style = ""
+            if is_typosquatting:
+                row_style = "border-left: 4px solid #d97706; background-color: #fffaf0;"
+
             row = f"""
-            <div class="target-row">
+            <div class="target-row" style="{row_style}">
                 <div class="t-head">
                     <span class="th-badge th-crit" style="margin-right:8px; font-size:0.7em;">{tgt['score']}</span>
                     <span class="t-token">{_escape_html(tgt['token'])}</span>
@@ -9659,13 +9671,30 @@ window.py_generate_evidence = py_generate_evidence
 def update_verification(event):
     """
     Enhanced renderer for the Verification Bench.
+    Now supports SELECTION-BASED comparison (Scope Selection).
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
+    text_input = document.getElementById("text-input")
     
-    if not trusted_input or not verdict_display: return
+    if not trusted_input or not verdict_display or not text_input: return
 
-    suspect_text = document.getElementById("text-input").value
+    # 1. Scope Selection Logic
+    # If the user has selected text in the main input, use that as the suspect.
+    # Otherwise, use the full value.
+    full_text = text_input.value
+    selection_start = text_input.selectionStart
+    selection_end = text_input.selectionEnd
+    
+    if selection_start != selection_end:
+        # User has highlighted a specific part (e.g. just the domain)
+        suspect_text = full_text[selection_start:selection_end]
+        scope_label = "SELECTED TEXT"
+    else:
+        # Default to full text
+        suspect_text = full_text
+        scope_label = "FULL INPUT"
+
     trusted_text = trusted_input.value
     
     if not trusted_text:
@@ -9674,15 +9703,17 @@ def update_verification(event):
 
     verdict_display.classList.remove("hidden")
     
+    # 2. Run Comparator
     res = compute_verification_verdict(suspect_text, trusted_text)
     
     if res:
-        # 1. Main Verdict
-        document.getElementById("verdict-title").textContent = res["verdict"]
+        # 3. Update UI
+        # Add scope indicator to title
+        document.getElementById("verdict-title").innerHTML = f"{res['verdict']} <span style='font-size:0.6em; opacity:0.7; font-weight:400;'>({scope_label})</span>"
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # 2. Evidence Matrix
+        # 4. Evidence Matrix
         def set_metric(id_str, is_match):
             el = document.getElementById(id_str)
             if is_match:
@@ -9694,7 +9725,7 @@ def update_verification(event):
         set_metric("vm-nfkc", res["nfkc"])
         set_metric("vm-skel", res["skel"])
         
-        # 3. Styling
+        # 5. Styling
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
 
@@ -9716,6 +9747,9 @@ async def main():
     
     # --- NEW: Hook the Inspector Panel ---
     document.addEventListener("selectionchange", create_proxy(inspect_character))
+
+    # Update verification bench when selection changes (for Scope Selection)
+    document.addEventListener("selectionchange", update_verification)
 
     # --- NEW: Hook the Reveal Buttons ---
     reveal_btn = document.getElementById("btn-reveal")
