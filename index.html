@@ -141,6 +141,30 @@
             </div>
       </section>
 
+      <details class="profile-section" id="verification-bench">
+        <summary>
+            <h2 class="section-title">
+                <span class="section-icon">⚖️</span>
+                Verification Bench
+            </h2>
+        </summary>
+        
+        <div class="bench-container" style="padding: 1rem; border-top: 1px solid var(--color-border);">
+            <div class="bench-input-group" style="margin-bottom: 1rem;">
+                <label for="trusted-input" style="display:block; font-size:0.85rem; color:var(--color-text-muted); margin-bottom:0.5rem; font-family:var(--font-mono);">
+                    Trusted Reference (e.g., type known-good domain):
+                </label>
+                <input type="text" id="trusted-input" placeholder="Enter trusted string to compare..." 
+                       style="width:100%; padding:0.5rem; border:1px solid var(--color-border); background:var(--color-bg); color:var(--color-text); font-family:var(--font-mono); font-size:1rem;">
+            </div>
+            
+            <div id="verdict-display" class="verdict-box hidden">
+                <div id="verdict-title" style="font-weight:700; font-size:1.1rem; letter-spacing:0.05em; margin-bottom:0.25rem;">ANALYZING...</div>
+                <div id="verdict-desc" style="font-size:0.9rem;">Waiting for input...</div>
+            </div>
+        </div>
+      </details>
+      
       <details class="profile-section" id="actions-panel-wrapper">
           <summary><h2 class="section-title">Actions</h2></summary>
           
