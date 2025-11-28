@@ -417,19 +417,35 @@ function buildStructuredReport() {
     if (!container) return lines;
 
     container.querySelectorAll('.card').forEach(card => {
-      const label = card.querySelector('strong')?.textContent.trim() || 'Metric';
+      // Handle "Forensic Quad" Layout (Metric Cards)
+      if (card.classList.contains('metric-card')) {
+          const label = card.querySelector('.card-header')?.textContent.trim() || 'Metric';
+          const val = card.querySelector('.metric-value')?.textContent.trim() || '0';
+          
+          // Extract Micro-Facts
+          const facts = [];
+          card.querySelectorAll('.fact-row').forEach(row => {
+              facts.push(row.textContent.trim().replace(/\s+/g, ' '));
+          });
+          
+          const factStr = facts.length > 0 ? ` (${facts.join(', ')})` : "";
+          lines.push(`  ${label}: ${val}${factStr}`);
+          return; 
+      }
 
+      // Handle Standard/Repertoire Cards
+      const label = card.querySelector('strong')?.textContent.trim() || 'Metric';
       const mainValueEl = card.querySelector('.card-main-value');
+      
       if (mainValueEl) {
         const val = mainValueEl.textContent.trim();
         const badgeEl = card.querySelector('.card-percentage') || card.querySelector('.card-badge-full');
         const badge = badgeEl ? `(${badgeEl.textContent.trim()})` : '';
         lines.push(`  ${label}: ${val} ${badge}`);
       } else {
+        // Fallback for simple dict cards
         const divVal = card.querySelector('div')?.textContent.trim();
-        if (divVal) {
-           lines.push(`  ${label}: ${divVal}`);
-        }
+        if (divVal) lines.push(`  ${label}: ${divVal}`);
       }
     });
     return lines;
@@ -569,9 +585,17 @@ function buildStructuredReport() {
   // Dual-Atom
   report.push('\n[ Dual-Atom Profile ]');
   report.push(...parseCards('meta-totals-cards'));
+  report.push('\n[ Grapheme Integrity ]');
   report.push(...parseCards('grapheme-integrity-cards'));
+  
+  report.push('\n[ Combining Class Profile (Zalgo) ]');
   report.push(...parseTable('ccc-matrix-body', 'Combining Class: ')); 
+  
+  // [FIX] Add Parallel Table Headers
+  report.push('\n[ Major Category: Code Points (Logical) | Graphemes (Perceptual) ]');
   report.push(...parseTable('major-parallel-body', 'Major Category: '));
+  
+  report.push('\n[ Minor Category: Code Points (Logical) | Graphemes (Perceptual) ]');
   report.push(...parseTable('minor-parallel-body', 'Minor Category: '));
 
   // Shape
@@ -593,12 +617,48 @@ function buildStructuredReport() {
   // Provenance
   report.push(`\n[ ${getText('#prov-title')} ]`);
   report.push(...parseTable('provenance-matrix-body', ''));
+  
+  // [FIX] Add Header for Script Runs
+  report.push('\n[ Script Run-Length Analysis ]');
   report.push(...parseTable('script-run-matrix-body', ''));
 
-  // Emoji
+  // Emoji (Forensic 7-Column Parser)
   report.push('\n[ Emoji Qualification Profile ]');
   report.push(`  ${getText('#emoji-summary')}`);
-  report.push(...parseTable('emoji-qualification-body', '  Emoji: '));
+  
+  const emojiBody = document.getElementById('emoji-qualification-body');
+  if (emojiBody) {
+      const rows = emojiBody.querySelectorAll('tr');
+      if (rows.length > 0 && !rows[0].classList.contains('placeholder-text')) {
+          report.push(`  Format: Sequence | Kind | Base | RGI | Status | Count | Positions`);
+          rows.forEach(row => {
+              // Skip the Legend row
+              if (row.querySelector('div[style*="grid"]')) return;
+              
+              const cells = Array.from(row.querySelectorAll('td'));
+              if (cells.length >= 7) {
+                  const seq = cells[0].textContent.trim();
+                  const kind = cells[1].textContent.trim();
+                  const base = cells[2].textContent.trim();
+                  const rgi = cells[3].textContent.trim();
+                  const stat = cells[4].textContent.trim();
+                  const cnt = cells[5].textContent.trim();
+                  // For positions, handle the <details> wrapper if present
+                  let pos = cells[6].textContent.trim();
+                  const details = cells[6].querySelector('details');
+                  if (details) {
+                      const summary = details.querySelector('summary').textContent.trim();
+                      const hidden = details.querySelector('div').textContent.trim();
+                      pos = `${summary} ${hidden}`.replace(/\s+/g, ' ');
+                  }
+                  
+                  report.push(`  ${seq.padEnd(4)} | ${kind.padEnd(10)} | ${base} | ${rgi} | ${stat.padEnd(10)} | ${cnt} | ${pos}`);
+              }
+          });
+      } else {
+          report.push("  No emoji sequences found.");
+      }
+  }
 
   // Threat
   report.push(`\n[ ${getText('#threat-title')} ]`);
