@@ -4566,17 +4566,22 @@ def analyze_context_lure(token: str):
 def compute_adversarial_metrics(t: str):
     """
     Calculates deep forensic metrics per token.
-    Polished v2: Includes Lure Detection and Noise Reduction.
+    v3: Includes Typosquatting, Context Lures, and Noise Reduction.
     """
     if not t: return {}
     
+    # Use the new Forensic Tokenizer (Module 1)
     tokens = tokenize_forensic(t)
+    
     findings = []
     top_tokens = []
     confusables_map = DATA_STORES.get("Confusables", {})
     
-    for tok in tokens:
-        t_str = tok['token']
+    for tok_obj in tokens:
+        t_str = tok_obj['token']
+        # Skip pure whitespace tokens
+        if not t_str.strip(): continue
+        
         token_score = 0
         token_reasons = []
         token_families = set()
@@ -4600,9 +4605,7 @@ def compute_adversarial_metrics(t: str):
         # [SCRIPT]
         rest_label, rest_risk = analyze_restriction_level(t_str)
         if rest_risk > 0:
-            # Downgrade severity if it's just a Lure
-            if "CONTEXT" in token_families and rest_risk < 50:
-                pass 
+            if "CONTEXT" in token_families and rest_risk < 50: pass 
             else:
                 token_score += rest_risk
                 token_reasons.append(rest_label)
@@ -4615,23 +4618,26 @@ def compute_adversarial_metrics(t: str):
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
 
-        # [SPOOFING]
+        # [SPOOFING] (Class Consistency / Sore Thumb)
         sore = analyze_class_consistency(t_str)
         if sore:
             token_score += sore['risk']
             token_reasons.append(sore['desc'])
             token_families.add("SPOOFING")
             
-        # [OBFUSCATION]
+        # [OBFUSCATION] (Normalization Hazards)
         norm = analyze_normalization_hazard_advanced(t_str)
         if norm:
             token_score += norm['risk']
             token_reasons.append(norm['desc'])
             token_families.add("OBFUSCATION")
 
-        # [PERTURBATION]
+        # [PERTURBATION] (Broken Words)
         pert = analyze_structural_perturbation(t_str)
         if pert:
+            is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
+            p_type = "SYNTAX" if is_bidi else "HIDDEN"
+            
             token_score += pert['risk']
             token_reasons.append(pert['desc'])
             token_families.add("PERTURBATION")
@@ -4648,7 +4654,7 @@ def compute_adversarial_metrics(t: str):
         if zalgo:
             token_score += zalgo['risk']
             token_reasons.append(zalgo['desc'])
-            token_families.add("OBFUSCATION") # Fixed Category Name
+            token_families.add("OBFUSCATION")
 
         # [CASE]
         case_anom = analyze_case_anomalies(t_str)
@@ -4657,11 +4663,10 @@ def compute_adversarial_metrics(t: str):
             token_reasons.append(case_anom['desc'])
             token_families.add("SPOOFING")
 
-        # --- 2. Aggregation ---
+        # --- 2. Aggregation (Same as before) ---
         if token_score > 0:
             fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
             
-            # Update Score mapping for new CONTEXT family
             sev = 'ok'
             if token_score >= 80: sev = 'crit'
             elif token_score >= 40: sev = 'warn'
@@ -4673,16 +4678,13 @@ def compute_adversarial_metrics(t: str):
                 'severity': sev
             })
             
-            # Reconstruct the "Stack" for the UI (Simplified for brevity)
-            # In the full implementation, you'd map these reasons back to the stack dicts
-            # For now, we pass the raw reasons which the UI renderer can handle.
+            # Reconstruct the "Stack" for the UI
             top_tokens.append({
                 'token': t_str,
                 'score': min(100, token_score),
                 'reasons': token_reasons, 
-                'families': list(token_families)
-                # We need to construct the 'stack' structure the UI expects
-                'stack': [{'lvl': 'HIGH', 'type': 'RISK', 'desc': r} for r in token_reasons]
+                'families': list(token_families),
+                'stack': [{'lvl': 'HIGH', 'type': 'RISK', 'desc': r} for r in token_reasons] 
             })
 
     # Global Stego Check
