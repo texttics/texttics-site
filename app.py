@@ -9743,8 +9743,9 @@ window.py_generate_evidence = py_generate_evidence
 @create_proxy
 def update_verification(event):
     """
-    Forensic Renderer V6 (Strict).
-    Updates UI with corrected Lens and Text-based Skeleton Matrix.
+    Forensic Renderer V7 (Detailed).
+    - Left-aligned metrics with right-aligned details.
+    - Full text wrapping for Skeleton (No truncation).
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
@@ -9799,33 +9800,51 @@ def update_verification(event):
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # 6. Update Meter
-        overlap = res.get('overlap_pct', 0)
-        meter_class = "meter-fill"
-        if overlap >= 99.0: meter_class += " high-match" # Green/Red logic handled in CSS
-        
-        # Note: If you want the meter visualized, ensure the HTML structure is there. 
-        # (Assuming it persisted from previous step, otherwise we rely on the Lens visual).
-
-        # 7. Update Evidence Matrix
-        def set_metric(id_str, val, is_skel=False):
+        # 6. Update Evidence Matrix (Detailed)
+        def set_metric_detailed(id_str, val, type_label):
             el = document.getElementById(id_str)
-            if val == "MATCH":
-                el.innerHTML = '<span style="color:#10b981; font-weight:800;">MATCH</span>'
-            elif val == "DIFF":
-                el.innerHTML = '<span style="color:#ef4444; font-weight:800;">DIFF</span>'
-            else:
-                # Text Content (Skeleton)
-                if is_skel:
-                    # Truncate if too long
-                    disp = val if len(val) < 20 else val[:18] + ".."
-                    el.innerHTML = f'<code style="color:#3b82f6; font-weight:700; font-size:0.8em; background:#eff6ff; padding:2px 4px; border-radius:3px;">{disp}</code>'
+            
+            status_html = ""
+            detail_text = ""
+            
+            # Logic for Details
+            if type_label == "RAW":
+                if val == "MATCH":
+                    status_html = '<span style="color:#10b981;">MATCH</span>'
+                    detail_text = "Bitwise Identical"
                 else:
-                    el.innerHTML = f'<span style="color:#3b82f6; font-weight:800;">{val}</span>'
+                    status_html = '<span style="color:#ef4444;">DIFF</span>'
+                    detail_text = "Byte Mismatch"
+                    
+            elif type_label == "NFKC":
+                if val == "MATCH":
+                    status_html = '<span style="color:#10b981;">MATCH</span>'
+                    detail_text = "Form Stable"
+                else:
+                    status_html = '<span style="color:#ef4444;">DIFF</span>'
+                    detail_text = "Format / Width Drift"
+            
+            elif type_label == "SKEL":
+                # Special handling for Skeleton: The val IS the text
+                # We don't use the row layout here, we use the block layout
+                el.innerHTML = f'<code class="v-code-block">{val}</code>'
+                return
 
-        set_metric("vm-raw", res["raw"])
-        set_metric("vm-nfkc", res["nfkc"])
-        set_metric("vm-skel", res["skel_text"], is_skel=True)
+            # Render Split Layout (Left Status / Right Detail)
+            el.innerHTML = f"""
+            <div class="v-metric-row">
+                <div class="v-metric-val">{status_html}</div>
+                <div class="v-metric-detail">{detail_text}</div>
+            </div>
+            """
+
+        set_metric_detailed("vm-raw", res["raw"], "RAW")
+        set_metric_detailed("vm-nfkc", res["nfkc"], "NFKC")
+        
+        # For Skeleton, we pass the full text from the result
+        # Note: We need to pass the actual text, which we added to 'res' in V6
+        skel_text = res.get("skel_text", "NO DATA")
+        set_metric_detailed("vm-skel", skel_text, "SKEL")
         
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
