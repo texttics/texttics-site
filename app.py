@@ -6889,14 +6889,38 @@ def render_statistical_profile(stats):
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
     bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
     
+    hint = "Typical mixed structure."
+    if n_bytes >= 128:
+        if ent_norm < 0.4: hint = "Highly structured / repetitive."
+        elif ent_norm > 0.9 and ent > 6.5: hint = "High density (compressed/encrypted?)"
+
+    # Confidence Logic
+    if n_bytes < 128:
+        conf_txt = "(Low Sample)"; conf_col = "#f59e0b"
+    elif n_bytes > 1024:
+        conf_txt = "(Stable)"; conf_col = "#10b981"
+    else:
+        conf_txt = "(Moderate)"; conf_col = "#6b7280"
+
     vis_ent = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:6px; background:#f1f5f9; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0;">
             <div style="width:{ent_pct:.1f}%; height:100%; background:{bar_color};"></div>
         </div>
-        <div style="text-align:right; min-width:50px; font-family:var(--font-mono); font-weight:700; font-size:0.85rem; color:#1e293b;">{ent:.2f}</div>
+        <div style="text-align:right; min-width:85px; font-family:var(--font-mono); font-weight:700; font-size:0.85rem; color:#1e293b;">
+            {ent:.2f} <span style="font-size:0.65rem; color:#94a3b8; font-weight:400;">bits/byte</span>
+        </div>
     </div>"""
-    meta_ent = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.65rem; color:#6b7280;"><div>Size: {n_bytes} bytes</div><div>ASCII Density: <b>{ascii_dens}%</b></div></div>'
+    
+    meta_ent = f"""
+    <div style="margin-top:6px; font-size:0.7rem; color:#64748b; line-height:1.4;">
+        <div style="display:flex; justify-content:space-between;">
+            <span>{n_bytes} bytes <span style="color:{conf_col}">{conf_txt}</span> &bull; ASCII: <b>{ascii_dens}%</b></span>
+            <span title="Normalized Entropy (0.0-1.0)">norm: <b>{ent_norm:.2f}</b></span>
+        </div>
+        <div style="color:#475569; margin-top:2px; font-style:italic;">{_escape_html(hint)}</div>
+    </div>
+    """
     
     rows.append(make_row("Thermodynamics", vis_ent, meta_ent, ("ENTROPY (SHANNON)", "Measures randomness per byte. High (>6.5) = Compressed/Encrypted.", "H = -Σ p(x) log₂ p(x)", "0.0 (Null) to 8.0 (Random)")))
 
