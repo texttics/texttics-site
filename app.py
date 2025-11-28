@@ -9344,6 +9344,8 @@ def update_all(event=None):
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
 
+    stat_profile = compute_statistical_profile(t)
+
     # Threat (Populates Registry)
     threat_results = compute_threat_analysis(t, script_run_stats)
     window.latest_threat_data = threat_results
