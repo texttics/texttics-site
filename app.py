@@ -6932,6 +6932,55 @@ def render_statistical_profile(stats):
         rows.append(make_row("ASCII Phonotactics", cards_html + bar_html, "", ("VOWEL / CONSONANT", "Heuristic for Latin-script pronounceability.", "Vowels vs Consonants", "English ~40% Vowels.")))
 
     container.innerHTML = "".join(rows)
+    # --- APPEND CONSOLE & LEGEND (Outside Table) ---
+    # We find the parent details element to append this to the bottom
+    parent_details = container.closest("details")
+    if parent_details:
+        # Check if console already exists to prevent duplicate append on re-render
+        existing_console = parent_details.querySelector(".stat-console-strip")
+        if existing_console: existing_console.remove()
+        existing_legend = parent_details.querySelector(".stat-legend-details")
+        if existing_legend: existing_legend.remove()
+
+        console_html = """
+        <div id="stat-console-strip" class="stat-console-strip">
+            <div class="stat-console-left">
+                <span id="stat-console-label" class="sc-main-label">READY</span>
+                <span id="stat-console-desc">Hover metrics for forensic context.</span>
+            </div>
+            <div class="stat-console-right">
+                <div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div>
+                <div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div>
+            </div>
+        </div>
+        
+        <details class="stat-legend-details">
+            <summary class="stat-legend-summary">Metric Guide & Soft Hints</summary>
+            <div class="stat-legend-content">
+                <div class="sl-col">
+                    <strong>Thermodynamics</strong>
+                    <div class="sl-item"><b>High (>6.5):</b> Dense/Encrypted.</div>
+                    <div class="sl-item"><b>Low (<3.0):</b> Repetitive.</div>
+                </div>
+                <div class="sl-col">
+                    <strong>Lexical Density (TTR)</strong>
+                    <div class="sl-item"><b>Range:</b> 0.0 (Mono) to 1.0 (Unique).</div>
+                    <div class="sl-item"><b><0.4:</b> Repetitive/Bot-like.</div>
+                    <div class="sl-item"><b>>0.8:</b> High density lists/IDs.</div>
+                </div>
+                <div class="sl-col">
+                    <strong>Phonotactics</strong>
+                    <div class="sl-item"><b>Natural:</b> ~0.35 - 0.50 (Latin).</div>
+                    <div class="sl-item"><b>Machine:</b> <0.20 (Base64/Hex).</div>
+                </div>
+            </div>
+        </details>
+        """
+        
+        # Append HTML
+        div = document.createElement("div")
+        div.innerHTML = console_html
+        parent_details.appendChild(div)
 
 @create_proxy
 def py_get_stat_report_text():
