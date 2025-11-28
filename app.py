@@ -5419,6 +5419,9 @@ def compute_threat_analysis(t: str):
     if 'script_mix_class' not in locals(): script_mix_class = ""
     if 'skel_metrics' not in locals(): skel_metrics = {}
 
+    # --- Run Adversarial Metrics Engine ---
+    adversarial_data = compute_adversarial_metrics(t)
+
     return {
         'flags': threat_flags,
         'hashes': hashes,
