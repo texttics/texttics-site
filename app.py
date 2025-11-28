@@ -4432,163 +4432,188 @@ def detect_invisible_patterns(t: str):
         }
     return None
 
-def compute_adversarial_metrics(t: str):
+def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
     """
-    Orchestrator: Per-Token Analysis + Global Pattern Detection.
-    Features: Strict Severity Sorting, Multi-Vector Stacking, and Vector Generation.
+    The Canonical Adversarial Engine.
+    Unifies Script Restriction, Topology, and Per-Token Threat Stacking into one consistent model.
     """
-    if not t: return {}
-    
-    tokens = tokenize_forensic(t)
-    confusables_map = DATA_STORES.get("Confusables", {})
-    
-    # The final list of target objects
-    targets = [] 
-    
-    # Global Findings (for the scoreboard/flat list if needed)
-    findings = []
+    if not t: return None
 
+    # --- 1. Global Restriction Level (Header Badge) ---
+    # Re-using the robust logic from the old engine to determine the badge
+    scripts_found = set()
+    for key in script_stats.keys():
+        if key.startswith("Script:"):
+            s = key.replace("Script: ", "").strip()
+            if s not in ("Common", "Inherited", "Unknown"):
+                scripts_found.add(s)
+
+    restriction = "UNRESTRICTED"
+    badge_class = "intel-badge-danger"
+    count = len(scripts_found)
+    
+    if count == 0:
+        if all(ord(c) < 128 for c in t):
+            restriction = "ASCII-ONLY"
+            badge_class = "intel-badge-safe"
+        else:
+            restriction = "SINGLE SCRIPT (COMMON)"
+            badge_class = "intel-badge-safe"
+    elif count == 1:
+        restriction = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
+        badge_class = "intel-badge-safe"
+    elif count == 2:
+        cjk = {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
+        if "Latin" in scripts_found and any(s in cjk for s in scripts_found):
+             restriction = "HIGHLY RESTRICTIVE"
+             badge_class = "intel-badge-safe"
+        elif "Latin" in scripts_found and ("Greek" in scripts_found or "Cyrillic" in scripts_found):
+             restriction = "MINIMALLY RESTRICTIVE"
+             badge_class = "intel-badge-danger"
+        else:
+             restriction = "MINIMALLY RESTRICTIVE"
+             badge_class = "intel-badge-warn"
+    else:
+        restriction = "UNRESTRICTED"
+        badge_class = "intel-badge-danger"
+
+    # --- 2. Initialize Data Structures ---
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
+    targets = []
+    
     # Severity Weights for Sorting
-    SEVERITY_MAP = {
-        "CRIT": 3,
-        "HIGH": 2,
-        "MED": 1,
-        "LOW": 0
-    }
+    SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
+    
+    confusables_map = DATA_STORES.get("Confusables", {})
+    tokens = tokenize_forensic(t) # Uses the robust tokenizer
     
     import base64
 
-    # 1. Per-Token Analysis
-    for tok in tokens:
-        t_str = tok['token']
-        threat_stack = [] # Collect ALL threats for this token here
+    # --- 3. Token Loop (Deep Forensics) ---
+    for tok_obj in tokens:
+        token = tok_obj['token']
+        threat_stack = [] # The per-token evidence locker
 
-        # A. Restriction Level [SCRIPT]
-        rest_label, rest_risk = analyze_restriction_level(t_str)
+        # A. Restriction (Script / Spoofing)
+        rest_label, rest_risk = analyze_restriction_level(token)
         if rest_risk != "safe":
             lvl = "CRIT" if rest_risk == "crit" else "HIGH"
             threat_stack.append({
                 "lvl": lvl,
-                "type": "SCRIPT",
+                "type": "SPOOFING",
                 "desc": rest_label
             })
-            
-        # B. Confusion Density [HOMOGLYPH]
-        conf_data = analyze_confusion_density(t_str, confusables_map)
+            topology["SPOOFING"] += 1
+
+        # B. Class Consistency (Ambiguity / Sore Thumb)
+        sore = analyze_class_consistency(token)
+        if sore:
+            threat_stack.append({
+                "lvl": "CRIT",
+                "type": "AMBIGUITY",
+                "desc": sore['desc']
+            })
+            topology["AMBIGUITY"] += 1
+
+        # C. Confusion Density (Ambiguity)
+        conf_data = analyze_confusion_density(token, confusables_map)
         if conf_data:
             lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
             threat_stack.append({
                 "lvl": lvl,
-                "type": "HOMOGLYPH",
+                "type": "AMBIGUITY",
                 "desc": conf_data['desc']
             })
+            topology["AMBIGUITY"] += 1
 
-        # C. Class Consistency [SPOOFING]
-        sore = analyze_class_consistency(t_str)
-        if sore:
-            threat_stack.append({
-                "lvl": "CRIT",
-                "type": "SPOOFING",
-                "desc": sore['desc']
-            })
-            
-        # D. Normalization [OBFUSCATION]
-        norm = analyze_normalization_hazard_advanced(t_str)
+        # D. Normalization Hazard (Hidden / Obfuscation)
+        norm = analyze_normalization_hazard_advanced(token)
         if norm:
             threat_stack.append({
                 "lvl": "HIGH",
-                "type": "OBFUSCATION",
+                "type": "HIDDEN",
                 "desc": norm['desc']
             })
-            
-        # E. Perturbation [PERTURBATION]
-        pert = analyze_structural_perturbation(t_str)
+            topology["HIDDEN"] += 1
+
+        # E. Structural Perturbation (Syntax / Hidden)
+        pert = analyze_structural_perturbation(token)
         if pert:
+            # Check if Bidi is involved for category mapping
+            is_bidi = "Bidi" in pert['desc']
+            cat = "SYNTAX" if is_bidi else "HIDDEN"
+            
             threat_stack.append({
                 "lvl": "CRIT",
-                "type": "PERTURBATION",
+                "type": cat,
                 "desc": pert['desc']
             })
-            
-        # F. Trojan Context [TROJAN]
-        trojan = analyze_trojan_context(t_str)
+            topology[cat] += 1
+
+        # F. Trojan Context (Syntax)
+        trojan = analyze_trojan_context(token)
         if trojan:
             lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
             threat_stack.append({
                 "lvl": lvl,
-                "type": "SYNTAX", # Syntax/Trojan
+                "type": "SYNTAX",
                 "desc": trojan['desc']
             })
+            topology["SYNTAX"] += 1
             
-        # G. Zalgo Load [OBFUSCATION]
-        zalgo = analyze_zalgo_load(t_str)
+        # G. Zalgo (Hidden / Obfuscation)
+        zalgo = analyze_zalgo_load(token)
         if zalgo:
             lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
             threat_stack.append({
                 "lvl": lvl,
-                "type": "OBFUSCATION",
+                "type": "HIDDEN",
                 "desc": zalgo['desc']
             })
-            
-        # H. Case Anomaly [SPOOFING]
-        case_anom = analyze_case_anomalies(t_str)
-        if case_anom:
-            threat_stack.append({
-                "lvl": "MED",
-                "type": "SPOOFING",
-                "desc": case_anom['desc']
-            })
+            topology["HIDDEN"] += 1
 
-        # --- AGGREGATION & SORTING ---
+        # --- Aggregate Token ---
         if threat_stack:
-            # 1. Sort by Severity (CRIT > HIGH > MED > LOW)
+            # 1. Sort by Severity
             threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
             
-            # 2. Generate Vectors
+            # 2. Determine Primary Verdict
+            primary = threat_stack[0]
+            verdict = f"{primary['type']} ({primary['lvl']})"
+            
+            # 3. Calculate Risk Score (0-100)
+            score = sum(SEVERITY_MAP.get(x['lvl'], 0) * 25 for x in threat_stack)
+            
+            # 4. Generate Vectors
             try:
-                b64 = base64.b64encode(t_str.encode("utf-8")).decode("ascii")
+                b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
             except: b64 = "Error"
+            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
             
-            hex_v = "".join(f"\\x{b:02X}" for b in t_str.encode("utf-8"))
-            
-            # 3. Determine Primary Verdict (Top of sorted stack)
-            primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
-            
-            # 4. Add to Targets List
             targets.append({
-                'token': t_str,
-                'verdict': primary_verdict,
-                'stack': threat_stack, # The full sorted list
-                'b64': b64,
-                'hex': hex_v,
-                'score': sum(SEVERITY_MAP.get(x['lvl'], 0) * 25 for x in threat_stack) # Crude score for peak finding
+                "token": token,
+                "verdict": verdict,
+                "stack": threat_stack,
+                "b64": b64,
+                "hex": hex_v,
+                "score": min(100, score)
             })
-            
-            # Also populate flat findings for scoreboard stats
-            for item in threat_stack:
-                findings.append({
-                    'family': f"[{item['type']}]",
-                    'severity': item['lvl'].lower(),
-                    'token': t_str,
-                    'desc': item['desc']
-                })
 
-    # 2. Global Invisible Patterns [STEGO]
-    stego_report = detect_invisible_patterns(t)
-    if stego_report:
-        findings.append({
-            'family': '[STEGO]',
-            'desc': stego_report['detail'],
-            'token': 'GLOBAL',
-            'severity': 'warn'
-        })
-        
-    # 3. Sort Targets by Total Risk Score (to find the Peak)
+    # Sort Targets by Score (Peak Finding)
     targets.sort(key=lambda x: x['score'], reverse=True)
-    
+
+    # --- 4. Global Stego Check ---
+    stego = detect_invisible_patterns(t)
+    if stego:
+        # Optional: Increment Hidden topology if global stego found
+        topology["HIDDEN"] += 1
+
     return {
-        "findings": findings, # Used for Scoreboard counts
-        "targets": targets    # Used for the Detailed List & Peak
+        "restriction": restriction,
+        "badge_class": badge_class,
+        "topology": topology,
+        "targets": targets,
+        "stego": stego
     }
 
 def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
@@ -5019,7 +5044,7 @@ def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
 
 
 
-def compute_threat_analysis(t: str):
+def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
     # --- 0. Initialize defaults ---
@@ -5425,7 +5450,7 @@ def compute_threat_analysis(t: str):
 
     # --- [NEW] Run Adversarial Metrics Engine (Safety Wrapped) ---
     try:
-        adversarial_data = compute_adversarial_metrics(t)
+        adversarial_data = compute_adversarial_profile(t, script_stats or {})
     except Exception as e:
         print(f"CRITICAL ERROR in Adversarial Engine: {e}")
         # Return empty structure so UI doesn't break
@@ -7762,52 +7787,50 @@ def analyze_intel_profile(t, threat_flags, script_stats):
 
 def render_intel_console(t, threat_results):
     """
-    Renders the Suspicion Dashboard (Adversarial Forensics).
-    Populates Scoreboard, Peak, and Detailed Findings with Sorted Stacks.
+    Renders the Unified Suspicion Dashboard.
+    Consumes the canonical 'adversarial' object structure.
     """
     container = document.getElementById("intel-console")
     if not container: return
     
-    # 1. Unpack Data
+    # 1. Unpack Canonical Data
     adv = threat_results.get('adversarial', {})
-    findings = adv.get('findings', [])
-    targets = adv.get('targets', [])
-    
-    if not findings and not targets:
+    if not adv:
         container.style.display = "none"
         return
         
+    targets = adv.get('targets', [])
+    topology = adv.get('topology', {})
+    stego = adv.get('stego')
+    
+    # If truly empty (safe), hide or show "Clean" state
+    if not targets and not stego and topology.get("SPOOFING", 0) == 0:
+        container.style.display = "none"
+        return
+
     container.style.display = "block"
     
-    # 2. Render Scoreboard (Topology)
-    stats = {"HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0}
+    # 2. Render Seal (Restriction Level)
+    badge = document.getElementById("intel-badge")
+    badge.className = f"intel-badge {adv.get('badge_class', 'intel-badge-safe')}"
+    badge.innerText = adv.get('restriction', 'UNKNOWN')
     
-    for f in findings:
-        fam = f['family']
-        if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
-        if "SPOOFING" in fam: stats["SPOOFING"] += 1
-        if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
-        if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1
-        if "STEGO" in fam: stats["OBFUSCATION"] += 1
-        if "TROJAN" in fam: stats["INJECTION"] += 1
-        if "SYNTAX" in fam: stats["INJECTION"] += 1
-        if "SCRIPT" in fam: stats["INJECTION"] += 1
-
-    # Update DOM
-    document.getElementById("intel-stat-homoglyph").innerText = str(stats["HOMOGLYPH"])
-    document.getElementById("intel-stat-spoofing").innerText = str(stats["SPOOFING"])
-    document.getElementById("intel-stat-obfus").innerText = str(stats["OBFUSCATION"])
-    document.getElementById("intel-stat-injection").innerText = str(stats["INJECTION"])
+    # 3. Render Scoreboard (Topology)
+    # Using specific keys from the unified model
+    document.getElementById("intel-stat-homoglyph").innerText = str(topology.get("AMBIGUITY", 0)) # Ambiguity
+    document.getElementById("intel-stat-spoofing").innerText = str(topology.get("SPOOFING", 0))   # Spoofing
+    document.getElementById("intel-stat-obfus").innerText = str(topology.get("HIDDEN", 0))       # Hidden
+    document.getElementById("intel-stat-injection").innerText = str(topology.get("SYNTAX", 0))   # Syntax
     
-    # 3. Render Paranoia Peak (Top Offender)
+    # 4. Render Paranoia Peak (Top Offender)
     peak_row = document.getElementById("intel-peak-row")
     if targets:
         peak = targets[0]
         peak_row.style.display = "flex"
         document.getElementById("peak-token").innerText = peak['token']
-        document.getElementById("peak-score").innerText = peak['verdict'] # Use verdict (e.g. SCRIPT (CRIT))
+        document.getElementById("peak-score").innerText = f"Risk: {peak['score']}/100"
         
-        # Show top 3 reasons from the stack
+        # Extract reasons from stack for the summary line
         reasons = [x['desc'] for x in peak['stack'][:3]]
         reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in reasons])
         if len(peak['stack']) > 3: reasons_html += " ..."
@@ -7815,10 +7838,23 @@ def render_intel_console(t, threat_results):
     else:
         peak_row.style.display = "none"
 
-    # 4. Render Findings Table (Deep-Dive with Stacks)
+    # 5. Render Findings List (Deep Dive)
     target_body = document.getElementById("intel-target-body")
     html_rows = []
     
+    # Optional Global Stego Banner
+    if stego:
+        html_rows.append(f"""
+        <div class="target-row" style="background-color:#fffbeb;">
+            <div class="t-head">
+                <span class="th-badge th-med">STEGO</span>
+                <span class="t-token">GLOBAL PATTERN</span>
+                <span class="t-verdict">{stego['verdict']}</span>
+            </div>
+            <div style="font-size:0.75rem; color:#b45309; padding-top:4px; font-family:var(--font-mono);">{stego['detail']}</div>
+        </div>
+        """)
+
     for tgt in targets:
         # Build the Stack HTML
         stack_html = ""
@@ -8488,7 +8524,7 @@ def update_all(event=None):
     script_run_stats = compute_script_run_analysis(t)
 
     # Threat (Populates Registry)
-    threat_results = compute_threat_analysis(t)
+    threat_results = compute_threat_analysis(t, script_run_stats)
     window.latest_threat_data = threat_results
     
     # --- 3. Prepare Data for Renderers ---
@@ -9130,7 +9166,7 @@ def py_generate_evidence():
     
     # Re-run key analysis to get fresh data
     emoji_report = compute_emoji_analysis(t)
-    threat_results = compute_threat_analysis(t)
+    threat_results = compute_threat_analysis(t, script_run_stats)
     
     # Calculate SHA-256 for Chain of Custody
     sha256 = hashlib.sha256(t.encode('utf-8')).hexdigest()
