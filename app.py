@@ -4260,12 +4260,17 @@ def analyze_normalization_hazard_advanced(token: str):
 def analyze_structural_perturbation(token: str):
     """
     [BROKEN WORD] Detects non-standard separators inside a token.
+    FIX: Ignores VS16 (Emoji style selector) to reduce noise on valid Emoji.
     """
     perturbations = 0
     types = set()
     
     for char in token:
         cp = ord(char)
+        # FIX: Ignore VS16 (0xFE0F) and VS15 (0xFE0E) for perturbation check
+        if cp == 0xFE0F or cp == 0xFE0E:
+            continue
+            
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         if mask & INVIS_ANY_MASK:
             perturbations += 1
@@ -4279,6 +4284,150 @@ def analyze_structural_perturbation(token: str):
         score = 40 + (perturbations * 10)
         return {"desc": f"Perturbation ({perturbations}x {', '.join(types)})", "risk": min(100, score)}
     return None
+
+def analyze_context_lure(token: str):
+    """
+    [CONTEXT] Detects Phishing/Auth Keywords and Syntax Lures.
+    Reclassifies 'Login:' and '//' from SPOOFING to CONTEXT.
+    """
+    # 1. Syntax Lures (//, https://, www)
+    if token in ("//", "https://", "http://", "www", "ftp://"):
+        return {"desc": "High-Risk URL Syntax", "risk": 20, "type": "CONTEXT"}
+        
+    # 2. Auth Keywords (Case insensitive)
+    t_lower = token.lower().strip(":")
+    keywords = {"login", "signin", "password", "admin", "verify", "secure", "account", "update", "confirm"}
+    if t_lower in keywords:
+        return {"desc": "Authentication Keyword (Phishing Lure)", "risk": 30, "type": "CONTEXT"}
+        
+    return None
+
+def compute_adversarial_metrics(t: str):
+    """
+    Calculates deep forensic metrics per token.
+    Polished v2: Includes Lure Detection and Noise Reduction.
+    """
+    if not t: return {}
+    
+    tokens = tokenize_forensic(t)
+    findings = []
+    top_tokens = []
+    confusables_map = DATA_STORES.get("Confusables", {})
+    
+    for tok in tokens:
+        t_str = tok['token']
+        token_score = 0
+        token_reasons = []
+        token_families = set()
+        
+        # --- 1. Run Analysis ---
+        
+        # [CONTEXT] Check for Lures first (might override others)
+        lure = analyze_context_lure(t_str)
+        if lure:
+            token_score += lure['risk']
+            token_reasons.append(lure['desc'])
+            token_families.add("CONTEXT")
+
+        # [SCRIPT]
+        rest_label, rest_risk = analyze_restriction_level(t_str)
+        if rest_risk > 0:
+            # Downgrade severity if it's just a Lure
+            if "CONTEXT" in token_families and rest_risk < 50:
+                pass 
+            else:
+                token_score += rest_risk
+                token_reasons.append(rest_label)
+                token_families.add("SCRIPT")
+            
+        # [HOMOGLYPH]
+        conf_data = analyze_confusion_density(t_str, confusables_map)
+        if conf_data:
+            token_score += conf_data['risk']
+            token_reasons.append(conf_data['desc'])
+            token_families.add("HOMOGLYPH")
+
+        # [SPOOFING]
+        sore = analyze_class_consistency(t_str)
+        if sore:
+            token_score += sore['risk']
+            token_reasons.append(sore['desc'])
+            token_families.add("SPOOFING")
+            
+        # [OBFUSCATION]
+        norm = analyze_normalization_hazard_advanced(t_str)
+        if norm:
+            token_score += norm['risk']
+            token_reasons.append(norm['desc'])
+            token_families.add("OBFUSCATION")
+
+        # [PERTURBATION]
+        pert = analyze_structural_perturbation(t_str)
+        if pert:
+            token_score += pert['risk']
+            token_reasons.append(pert['desc'])
+            token_families.add("PERTURBATION")
+
+        # [TROJAN]
+        trojan = analyze_trojan_context(t_str)
+        if trojan:
+            token_score += trojan['risk']
+            token_reasons.append(trojan['desc'])
+            token_families.add("TROJAN")
+            
+        # [ZALGO]
+        zalgo = analyze_zalgo_load(t_str)
+        if zalgo:
+            token_score += zalgo['risk']
+            token_reasons.append(zalgo['desc'])
+            token_families.add("OBFUSCATION") # Fixed Category Name
+
+        # [CASE]
+        case_anom = analyze_case_anomalies(t_str)
+        if case_anom:
+            token_score += case_anom['risk']
+            token_reasons.append(case_anom['desc'])
+            token_families.add("SPOOFING")
+
+        # --- 2. Aggregation ---
+        if token_score > 0:
+            fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
+            
+            # Update Score mapping for new CONTEXT family
+            sev = 'ok'
+            if token_score >= 80: sev = 'crit'
+            elif token_score >= 40: sev = 'warn'
+            
+            findings.append({
+                'family': fam_str,
+                'desc': ", ".join(token_reasons),
+                'token': t_str,
+                'severity': sev
+            })
+            
+            top_tokens.append({
+                'token': t_str,
+                'score': min(100, token_score),
+                'reasons': token_reasons, 
+                'families': list(token_families)
+            })
+
+    # Global Stego Check
+    stego_report = detect_invisible_patterns(t)
+    if stego_report:
+        findings.append({
+            'family': '[STEGO]',
+            'desc': stego_report['detail'],
+            'token': 'GLOBAL',
+            'severity': 'warn'
+        })
+
+    top_tokens.sort(key=lambda x: x['score'], reverse=True)
+    
+    return {
+        "findings": findings,
+        "top_tokens": top_tokens[:3]
+    }
 
 def analyze_trojan_context(token: str):
     """
@@ -4343,7 +4492,8 @@ def analyze_confusion_density(token: str, confusables_map: dict):
 
 def analyze_zalgo_load(token: str):
     """
-    [ZALGO] Checks for Diacritic Overload / Mark Density.
+    [ZALGO] Checks for Diacritic Overload.
+    FIX: Ignores Variation Selectors (VS15/VS16) to avoid flagging Emoji as Zalgo.
     """
     mark_count = 0
     base_count = 0
@@ -4351,6 +4501,11 @@ def analyze_zalgo_load(token: str):
     current_stack = 0
     
     for char in token:
+        cp = ord(char)
+        # Exclude Variation Selectors from "Mark" count for Zalgo purposes
+        if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
+            continue
+            
         if unicodedata.category(char).startswith('M'):
             mark_count += 1
             current_stack += 1
@@ -7810,6 +7965,17 @@ def render_adversarial_dashboard(adv_data: dict):
         badge.className = f"intel-badge {badge_class}"
         badge.innerText = restriction
 
+    # 4.A Calculate Stats for the Cards
+    stats = { "HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0 }
+    
+    for f in findings:
+        fam = f.get('family', '')
+        if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
+        # CONTEXT items now contribute to SPOOFING counter to keep 4-card layout
+        if "SPOOFING" in fam or "SCRIPT" in fam or "CONTEXT" in fam: stats["SPOOFING"] += 1
+        if "OBFUSCATION" in fam or "STEGO" in fam: stats["OBFUSCATION"] += 1
+        if "TROJAN" in fam or "PERTURBATION" in fam: stats["INJECTION"] += 1
+    
     # 5. Render Scoreboard (Use calculated topology directly)
     def set_text(id_str, val):
         el = document.getElementById(id_str)
