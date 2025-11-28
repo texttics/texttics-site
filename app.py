@@ -2349,10 +2349,10 @@ import difflib
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Forensic Comparator V8 (Context-Aware Metrics).
-    - Eliminates false "DIFF" flags on unrelated text.
-    - Uses "N/A" for distinct strings and "PARTIAL" for incomplete selections.
-    - Only triggers Red "DIFF" when the target is fully captured but spoofed.
+    Forensic Comparator V9 (Residual Risk Aware).
+    - Identifies the matched "Hot Zone".
+    - SCANS the "Cold Zones" (unmatched parts) for active threats.
+    - Escalates verdict if Bidi/Hidden chars hide in the unmatched tail.
     """
     if not suspect_str or not trusted_str: return None
 
@@ -2371,7 +2371,7 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     matched_skel_len = match.size
     target_len = len(trusted_skel)
     
-    # Noise Filter (same as before)
+    # Noise Filter
     MIN_MATCH_LEN = 3
     if target_len < 3: MIN_MATCH_LEN = target_len
     
@@ -2386,7 +2386,47 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         match_start_idx = match.a
         match_end_idx = match.a + match.size
 
-    # 3. Verdict Synthesis & Metric State Logic
+    # --- 3. RESIDUAL RISK SCANNER (New) ---
+    # We check the parts of the suspect string that DID NOT match.
+    # If they contain Bidi or Hidden chars, we must flag them.
+    
+    residual_threats = []
+    curr_skel_idx = 0
+    
+    # We iterate again to map raw chars to the skeleton timeline
+    for char in suspect_str:
+        c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
+        c_len = len(c_skel)
+        
+        # Check if OUTSIDE the matched zone
+        is_outside = False
+        if overlap_pct > 0:
+            if c_len == 0:
+                # Invisibles outside logic
+                if not (match_start_idx <= curr_skel_idx < match_end_idx): is_outside = True
+            else:
+                char_end = curr_skel_idx + c_len
+                # If strictly before or strictly after the match block
+                if char_end <= match_start_idx or curr_skel_idx >= match_end_idx:
+                    is_outside = True
+        
+        if is_outside:
+            cp = ord(char)
+            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+            
+            if mask & INVIS_BIDI_CONTROL:
+                residual_threats.append("Bidi Injection")
+            elif mask & INVIS_TAG:
+                residual_threats.append("Tag Injection")
+            elif mask & INVIS_ZERO_WIDTH_SPACING:
+                residual_threats.append("Hidden Spacing")
+                
+        curr_skel_idx += c_len
+
+    # Deduplicate threats
+    residual_threats = list(set(residual_threats))
+
+    # 4. Verdict Synthesis
     match_raw = (suspect_str == trusted_str)
     
     # Defaults
@@ -2395,21 +2435,19 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     css = "verdict-neutral"
     icon = "≠"
     
-    # Metric States (The Fix)
-    # Default to N/A (Gray) for distinct strings
-    state_raw = "Unrelated"
-    state_nfkc = "Unrelated"
+    state_raw = "N/A"
+    state_nfkc = "N/A"
     
     if match_raw:
         verdict = "IDENTITY MATCH"
-        desc = "Bitwise Identical (Cryptographically Safe)."
+        desc = "Bitwise Identical."
         css = "verdict-safe"
         icon = "🛡️"
         state_raw = "MATCH"
         state_nfkc = "MATCH"
         
     elif overlap_pct >= 100.0:
-        # Full Capture: Now we check for Spoofs (Red DIFF)
+        # Full Capture Logic (Previous Logic)
         if len(suspect_skel) > len(trusted_skel):
             verdict = "TARGET CONTAINED (100%)"
             desc = "CRITICAL: The trusted string is hidden inside the selection (Superset)."
@@ -2421,33 +2459,37 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
             css = "verdict-crit"
             icon = "🚨"
             
-        # Logic: If 100% overlap, "DIFF" is a real forensic finding
         state_raw = "DIFF" 
-        
-        if suspect_nfkc == trusted_nfkc:
-             verdict = "NORMALIZATION HAZARD"
-             desc = "Strings differ only by Compatibility characters."
-             css = "verdict-warn"
-             icon = "⚠️"
-             state_nfkc = "MATCH"
-        else:
-             state_nfkc = "DIFF"
+        state_nfkc = "MATCH" if suspect_nfkc == trusted_nfkc else "DIFF"
+
+        # [NEW] Inject Residual Threat Warning
+        if residual_threats:
+            desc += f" ⚠️ Unmatched tail contains: {', '.join(residual_threats)}."
 
     elif overlap_pct > 0:
-        # Partial Capture: "DIFF" is misleading. Use "PARTIAL".
-        verdict = f"VISUAL OVERLAP ({overlap_pct:.1f}%)"
-        desc = f"Found {matched_skel_len} matching characters in contiguous sequence."
+        # Partial Capture Logic
+        
+        # [NEW] Escalation Logic
+        if residual_threats:
+            verdict = f"PARTIAL OVERLAP + THREATS"
+            desc = f"Matched {matched_skel_len} chars. UNMATCHED DATA CONTAINS: {', '.join(residual_threats)}."
+            css = "verdict-crit" # Force Critical
+            icon = "☣️" # Biohazard / Threat icon
+        else:
+            verdict = f"VISUAL OVERLAP ({overlap_pct:.1f}%)"
+            desc = f"Found {matched_skel_len} matching characters in contiguous sequence."
+            
+            if overlap_pct > 80:
+                css = "verdict-crit"
+                icon = "🔥"
+            else:
+                css = "verdict-warn"
+                icon = "🧩"
+        
         state_raw = "PARTIAL"
         state_nfkc = "PARTIAL"
-        
-        if overlap_pct > 80:
-            css = "verdict-crit"
-            icon = "🔥"
-        else:
-            css = "verdict-warn"
-            icon = "🧩"
 
-    # 4. Strict "Lens" Generation (Same as V7)
+    # 5. Lens Generation (Highlighting logic remains the same, visuals handled by CSS)
     html_parts = []
     curr_skel_idx = 0
     
@@ -2465,6 +2507,8 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
                     is_in_zone = True
         
         vis_char = _escape_html(char)
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
         if is_in_zone:
             if char in trusted_str:
@@ -2472,7 +2516,11 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
             else:
                 html_parts.append(f'<span class="f-payload" title="Spoof / Deviation">{vis_char}</span>')
         else:
-            html_parts.append(f'<span class="f-noise">{vis_char}</span>')
+            # [NEW] Highlight threats in the NOISE zone
+            if mask & (INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_ZERO_WIDTH_SPACING):
+                 html_parts.append(f'<span class="f-payload" style="background:#fee2e2; color:#dc2626;" title="Residual Threat">{vis_char}</span>')
+            else:
+                 html_parts.append(f'<span class="f-noise">{vis_char}</span>')
             
         curr_skel_idx += c_len
 
