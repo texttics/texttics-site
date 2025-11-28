@@ -5375,29 +5375,33 @@ def compute_threat_analysis(t: str):
         state_3_casefold = t.casefold()
         state_4_skeleton = t
 
-    # --- CRITICAL SAFETY FIX: Ensure locals exist ---
-    # If the try block failed before script_mix_class was defined, we define it here.
+    # --- CRITICAL: Define locals if they don't exist (Safety Fallback) ---
     if 'script_mix_class' not in locals(): script_mix_class = ""
     if 'skel_metrics' not in locals(): skel_metrics = {}
 
-    # --- Run Adversarial Metrics Engine ---
-    adversarial_data = compute_adversarial_metrics(t)
+    # --- [NEW] Run Adversarial Metrics Engine (Safety Wrapped) ---
+    try:
+        adversarial_data = compute_adversarial_metrics(t)
+    except Exception as e:
+        print(f"CRITICAL ERROR in Adversarial Engine: {e}")
+        # Return empty structure so UI doesn't break
+        adversarial_data = {"findings": [], "top_tokens": []}
 
     return {
         'flags': threat_flags,
         'hashes': hashes,
-        'html_report': final_html_report, # The X-Ray Visual
+        'html_report': final_html_report,
         'bidi_danger': bool(bidi_danger_indices),
         'script_mix_class': script_mix_class,
         'skel_metrics': skel_metrics,
-        'drift_info': drift_info,         # The New Deep Topology
+        'drift_info': drift_info,
         'states': {
             's1': state_1_raw,
             's2': state_2_nfkc,
             's3': state_3_casefold,
             's4': state_4_skeleton
         },
-        'adversarial': adversarial_data
+        'adversarial': adversarial_data 
     }
     
 def render_threat_analysis(threat_results, text_context=None):
