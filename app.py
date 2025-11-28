@@ -3843,107 +3843,283 @@ def compute_verticalorientation_analysis(t: str):
 
 def compute_statistical_profile(t: str):
     """
-    Stage 1 'Chemistry': Calculates local statistical properties.
-    Includes Entropy, TTR, Repetition, and Phonotactics.
+    Stage 1.5 'Chemistry': local statistical properties of the text.
+    - Entropy (UTF-8, with normalization + confidence band)
+    - Lexical diversity (TTR + segmented TTR proxy)
+    - Token flooding
+    - Character frequency fingerprint + class balance
+    - Line layout (min / max / avg / P90)
+    - ASCII phonotactics (gated, weak signal)
+
+    All metrics are SOFT HINTS, not verdicts.
     """
     stats = {
         "entropy": 0.0,
+        "entropy_n": 0,
+        "entropy_norm": 0.0,          # normalized 0–1 vs observed alphabet
+        "entropy_conf": "unknown",    # 'low' | 'medium' | 'high'
+
         "ttr": 0.0,
+        "ttr_segmented": None,        # MTLD-lite proxy (avg TTR over fixed segments)
         "total_tokens": 0,
         "unique_tokens": 0,
-        "top_tokens": [],
-        "top_chars": [],
-        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0},
-        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0}
+        "top_tokens": [],             # [{'token': str, 'count': int, 'share': float}]
+        "top_shares": {"top1": 0.0, "top3": 0.0},
+
+        "top_chars": [],              # [{'char': str, 'count': int, 'share': float, 'cat': str}]
+        "char_dist": {"letters": 0.0, "digits": 0.0, "ws": 0.0, "sym": 0.0},
+
+        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0},
+
+        "phonotactics": {
+            "vowel_ratio": 0.0,
+            "status": "N/A",
+            "count": 0,
+            "is_valid": False,
+        },
     }
-    
+
     if not t:
         return stats
 
-    # 1. Shannon Entropy (Thermodynamics) - Calculated on UTF-8 Bytes
-    # H = -sum(p(x) * log2(p(x)))
+    # ------------------------------------------------------------
+    # 1. Shannon Entropy (Thermodynamics) on UTF-8 bytes
+    # ------------------------------------------------------------
     try:
-        utf8_bytes = t.encode('utf-8')
+        utf8_bytes = t.encode("utf-8", errors="replace")
         total_bytes = len(utf8_bytes)
+        stats["entropy_n"] = total_bytes
+
         if total_bytes > 0:
             byte_counts = Counter(utf8_bytes)
-            entropy = 0
+            entropy = 0.0
             for count in byte_counts.values():
                 p = count / total_bytes
                 entropy -= p * math.log2(p)
+            entropy = max(0.0, min(8.0, entropy))
             stats["entropy"] = round(entropy, 2)
-    except Exception: pass
 
-    # 2. Tokenization (Lexical)
-    # Splits on whitespace and major punctuation to isolate tokens.
+            # Normalized entropy vs observed alphabet size (max = min(8, log2(k)))
+            k = max(1, len(byte_counts))
+            h_max = min(8.0, math.log2(k)) if k > 1 else 0.0
+            if h_max > 0:
+                stats["entropy_norm"] = round(entropy / h_max, 3)
+            else:
+                stats["entropy_norm"] = 0.0
+
+            # Confidence band from sample size
+            if total_bytes < 128:
+                stats["entropy_conf"] = "low"
+            elif total_bytes < 1024:
+                stats["entropy_conf"] = "medium"
+            else:
+                stats["entropy_conf"] = "high"
+
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------
+    # 2. Tokenization & Lexical diversity (TTR + segmented TTR)
+    # ------------------------------------------------------------
+    tokens = []
     try:
-        tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"]+', t) if tok]
+        # Simple regex tokenizer (can be swapped for Intl.Segmenter upstream if needed)
+        tokens = [
+            tok.lower()
+            for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t)
+            if tok
+        ]
         stats["total_tokens"] = len(tokens)
-        
+
         if stats["total_tokens"] > 0:
-            # TTR (Type-Token Ratio)
             unique_tokens = set(tokens)
             stats["unique_tokens"] = len(unique_tokens)
-            stats["ttr"] = round(len(unique_tokens) / len(tokens), 2)
-            
-            # Repetition (Flooding)
+            stats["ttr"] = round(len(unique_tokens) / stats["total_tokens"], 3)
+
+            # Repetition (Flooding) – Top 3 tokens and shares
             token_counts = Counter(tokens)
             top_3_tokens = token_counts.most_common(3)
-            formatted_tokens = []
-            for tok, count in top_3_tokens:
-                share = (count / stats["total_tokens"]) * 100
-                formatted_tokens.append(f"'{tok}' ({share:.1f}%)")
-            stats["top_tokens"] = formatted_tokens
-    except Exception: pass
 
-    # 3. Frequency Fingerprint (Character Physics)
+            if top_3_tokens:
+                stats["top_shares"]["top1"] = round(
+                    (top_3_tokens[0][1] / stats["total_tokens"]) * 100, 1
+                )
+                top3_sum = sum(c for _, c in top_3_tokens)
+                stats["top_shares"]["top3"] = round(
+                    (top3_sum / stats["total_tokens"]) * 100, 1
+                )
+
+                structured_tokens = []
+                for tok, count in top_3_tokens:
+                    share = (count / stats["total_tokens"]) * 100
+                    structured_tokens.append(
+                        {
+                            "token": tok,
+                            "count": count,
+                            "share": round(share, 1),
+                        }
+                    )
+                stats["top_tokens"] = structured_tokens
+
+            # Segmented TTR (MTLD-lite) – only if we have enough tokens
+            seg_size = 50
+            if stats["total_tokens"] >= seg_size * 2:
+                seg_ttrs = []
+                for i in range(0, len(tokens), seg_size):
+                    seg = tokens[i : i + seg_size]
+                    if len(seg) < seg_size // 2:
+                        continue # Skip tiny tail segment
+                    seg_unique = set(seg)
+                    seg_ttr = len(seg_unique) / len(seg)
+                    seg_ttrs.append(seg_ttr)
+
+                if seg_ttrs:
+                    stats["ttr_segmented"] = round(
+                        sum(seg_ttrs) / len(seg_ttrs), 3
+                    )
+
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------
+    # 3. Character Frequency & Class Balance
+    # ------------------------------------------------------------
     try:
-        char_counts = Counter(t)
-        # Filter out space/newlines/controls
-        filtered_chars = {k: v for k, v in char_counts.items() if not k.isspace() and ord(k) > 32}
-        if filtered_chars:
-            top_chars = sorted(filtered_chars.items(), key=lambda x: x[1], reverse=True)[:5]
-            total_filtered = sum(filtered_chars.values())
-            formatted_chars = []
-            for char, count in top_chars:
-                share = (count / max(1, total_filtered)) * 100
-                safe_char = _escape_html(char)
-                formatted_chars.append(f"<b>{safe_char}</b> {share:.1f}%")
-            stats["top_chars"] = formatted_chars
-    except Exception: pass
+        total_chars = len(t)
+        if total_chars > 0:
+            char_counts = Counter(t)
 
-    # 4. Line Structure (Layout Physics)
+            # fingerprint ignores whitespace/control-ish characters
+            filtered_chars = {
+                ch: cnt
+                for ch, cnt in char_counts.items()
+                if not ch.isspace() and ord(ch) > 0x20
+            }
+
+            if filtered_chars:
+                top_chars = sorted(
+                    filtered_chars.items(), key=lambda x: x[1], reverse=True
+                )[:5]
+                total_filtered = sum(filtered_chars.values()) or 1
+
+                structured_chars = []
+                for ch, count in top_chars:
+                    share = (count / total_filtered) * 100
+                    cat = "Other"
+                    if ch.isalpha():
+                        cat = "Let"
+                    elif ch.isdigit():
+                        cat = "Num"
+                    elif unicodedata.category(ch).startswith("P"):
+                        cat = "Punct"
+
+                    structured_chars.append(
+                        {
+                            "char": ch,
+                            "count": count,
+                            "share": round(share, 1),
+                            "cat": cat,
+                        }
+                    )
+                stats["top_chars"] = structured_chars
+
+            # Class balance (letters/digits/ws/symbols)
+            l_count = sum(1 for c in t if c.isalpha())
+            n_count = sum(1 for c in t if c.isdigit())
+            ws_count = sum(1 for c in t if c.isspace())
+            sym_count = total_chars - l_count - n_count - ws_count
+            sym_count = max(0, sym_count)
+
+            stats["char_dist"]["letters"] = round(
+                (l_count / total_chars) * 100, 1
+            )
+            stats["char_dist"]["digits"] = round(
+                (n_count / total_chars) * 100, 1
+            )
+            stats["char_dist"]["ws"] = round(
+                (ws_count / total_chars) * 100, 1
+            )
+            stats["char_dist"]["sym"] = round(
+                (sym_count / total_chars) * 100, 1
+            )
+
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------
+    # 4. Line structure (Layout Physics) with correct P90
+    # ------------------------------------------------------------
     try:
         lines = t.splitlines()
         stats["line_stats"]["count"] = len(lines)
+
         if lines:
             line_lens = [len(line) for line in lines]
             stats["line_stats"]["min"] = min(line_lens)
             stats["line_stats"]["max"] = max(line_lens)
-            stats["line_stats"]["avg"] = round(sum(line_lens) / len(lines), 1)
-    except Exception: pass
+            stats["line_stats"]["avg"] = round(
+                sum(line_lens) / len(lines), 1
+            )
 
-    # 5. Phonotactics (ASCII Vowel/Consonant Ratio) - Weak Signal
+            sorted_lens = sorted(line_lens)
+            n = len(sorted_lens)
+            if n == 1:
+                p90 = sorted_lens[0]
+            else:
+                pos = 0.9 * (n - 1)
+                lower = int(math.floor(pos))
+                upper = int(math.ceil(pos))
+                if lower == upper:
+                    p90 = sorted_lens[lower]
+                else:
+                    frac = pos - lower
+                    p90 = int(
+                        round(
+                            sorted_lens[lower] * (1 - frac)
+                            + sorted_lens[upper] * frac
+                        )
+                    )
+            stats["line_stats"]["p90"] = p90
+
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------
+    # 5. ASCII Phonotactics (weak, gated)
+    # ------------------------------------------------------------
     try:
-        ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
+        ascii_letters = [
+            c.lower()
+            for c in t
+            if "a" <= c.lower() <= "z"
+        ]
         letter_count = len(ascii_letters)
-        if letter_count > 0:
+        total_chars = len(t) or 1
+        letter_density = letter_count / total_chars
+
+        # hard gating: enough letters and they must be a significant portion
+        if letter_count > 10 and letter_density > 0.3:
             vowels = set("aeiou")
             vowel_count = sum(1 for c in ascii_letters if c in vowels)
             ratio = vowel_count / letter_count
+
             stats["phonotactics"]["vowel_ratio"] = round(ratio, 2)
             stats["phonotactics"]["count"] = letter_count
-            
-            # Heuristic Labels (Soft Chemistry)
+            stats["phonotactics"]["is_valid"] = True
+
             if 0.30 <= ratio <= 0.50:
-                 stats["phonotactics"]["status"] = "Balanced (Natural)"
+                stats["phonotactics"]["status"] = "Balanced (Natural?)"
             elif ratio < 0.20:
-                 stats["phonotactics"]["status"] = "Vowel-Poor (Code?)"
+                stats["phonotactics"]["status"] = "Vowel-Poor (Code/Rand)"
             elif ratio > 0.60:
-                 stats["phonotactics"]["status"] = "Vowel-Heavy"
+                stats["phonotactics"]["status"] = "Vowel-Heavy"
             else:
-                 stats["phonotactics"]["status"] = "Typical"
-    except Exception: pass
+                stats["phonotactics"]["status"] = "Typical"
+        else:
+            stats["phonotactics"]["is_valid"] = False
+
+    except Exception:
+        pass
 
     return stats
 
@@ -6658,138 +6834,267 @@ def render_emoji_summary(emoji_counts, emoji_list):
 
 def render_statistical_profile(stats):
     """
-    Renders the Group 2.F Statistical Matrix with Sparklines and Interaction.
+    Renders the Statistical & Lexical Profile (Group 2.F).
+    Hardened for:
+      - Security (escaping, fail-soft)
+      - Science (sample-aware badges, normalized entropy)
+      - Explainability (short natural-language hints)
     """
     container = document.getElementById("statistical-profile-body")
-    if not container: return
-    
-    if not stats or (stats["total_tokens"] == 0 and stats["line_stats"]["count"] == 0):
-        container.innerHTML = '<tr><td colspan="3" class="placeholder-text">Insufficient data for statistical profiling.</td></tr>'
+    if not container:
         return
 
-    # --- 1. Entropy Meter (Visual Physics) ---
-    ent = stats["entropy"]
-    # Scale 0-8 bits to 0-100% width
-    ent_pct = min(100, (ent / 8.0) * 100)
-    
-    # Dynamic Color
-    ent_color = "#10b981" # Green (Structured)
-    if ent > 6.5: ent_color = "#ef4444" # Red (Encrypted/Compressed)
-    elif ent < 3.0: ent_color = "#f59e0b" # Orange (Repetitive)
-    elif ent > 5.5: ent_color = "#8b5cf6" # Purple (Complex)
+    # Fail-soft: no data
+    if not stats or (
+        stats.get("total_tokens", 0) == 0
+        and stats.get("line_stats", {}).get("count", 0) == 0
+    ):
+        container.innerHTML = (
+            '<tr><td colspan="3" class="placeholder-text">'
+            "Insufficient data for statistical profiling."
+            "</td></tr>"
+        )
+        return
+
+    rows = []
+
+    # ------------------------------------------------------------
+    # 1. Entropy (Thermodynamics)
+    # ------------------------------------------------------------
+    ent = float(stats.get("entropy", 0.0) or 0.0)
+    ent_norm = float(stats.get("entropy_norm", 0.0) or 0.0)
+    n_bytes = int(stats.get("entropy_n", 0) or 0)
+    conf = stats.get("entropy_conf", "unknown")
+
+    ent_pct = min(100, max(0, (ent / 8.0) * 100))
+
+    # single gradient bar (0–8 bits/byte)
+    bar_color = (
+        "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
+    )
+
+    # micro-confidence badge
+    if conf == "low":
+        conf_badge = (
+            '<span class="detail-text" style="color:#f59e0b;">(Low Sample)</span>'
+        )
+    elif conf == "high":
+        conf_badge = (
+            '<span class="detail-text" style="color:#10b981;">(Stable)</span>'
+        )
+    else:
+        conf_badge = (
+            '<span class="detail-text" style="color:#6b7280;">(Moderate)</span>'
+        )
+
+    # qualitative hint based on normalized entropy – still soft
+    hint = ""
+    if n_bytes >= 128:
+        if ent_norm < 0.4:
+            hint = "Highly structured / repetitive segment."
+        elif ent_norm > 0.9 and ent > 6.5:
+            hint = "Very close to uniform – could be compressed or encrypted data."
+        else:
+            hint = "Typical mixed structure (text / code / markup)."
 
     entropy_visual = f"""
     <div style="display:flex; align-items:center; gap:8px;">
         <div style="flex:1; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden;">
-            <div style="width:{ent_pct}%; height:100%; background:{ent_color};"></div>
+            <div style="width:{ent_pct:.1f}%; height:100%; background:{bar_color};"></div>
         </div>
-        <span style="font-family:var(--font-mono); font-size:0.9em;">{ent}</span>
+        <div style="text-align:right;">
+            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:600;">
+                {ent:.2f} <span style="opacity:0.7;">bits/byte</span>
+            </div>
+            <div style="font-family:var(--font-mono); font-size:0.7rem; color:#6b7280; margin-top:1px;">
+                norm: {ent_norm:.2f}
+            </div>
+        </div>
+    </div>
+    <div style="font-size:0.7rem; color:#6b7280; margin-top:2px;">
+        {n_bytes} bytes {conf_badge}
+        <div style="margin-top:2px;">{_escape_html(hint)}</div>
     </div>
     """
 
-    # --- 2. Line Length Sparkline (Text Histogram) ---
-    line_vis = ""
-    lines = stats.get('line_stats', {}).get('raw_lengths', []) # We need to capture this in compute
-    # (Note: We need to update compute to pass 'raw_lengths' or recalculate simple buckets here)
-    # Since passing massive arrays is bad, let's assume we update compute_statistical_profile below
-    # to return a 'sparkline' string directly, or we generate a simple one here if count < 50.
-    # For now, let's stick to the stats we have:
-    l_stats = stats['line_stats']
-    
-    # --- 3. HTML Builder ---
-    rows = []
-    
-    # ROW: Thermodynamics
     rows.append(f"""
     <tr>
         <th scope="row">Thermodynamics (Entropy)</th>
         <td colspan="2">
-            <div style="display:grid; grid-template-columns: 1fr 100px; align-items:center; gap:12px;">
-                {entropy_visual}
-                <div style="text-align:right; font-size:0.8em; color:#6b7280;">Bits/Byte</div>
-            </div>
+            {entropy_visual}
         </td>
     </tr>
     """)
-    
-    # ROW: Lexical Density
-    ttr = stats["ttr"]
+
+    # ------------------------------------------------------------
+    # 2. Lexical Density (TTR + segmented TTR)
+    # ------------------------------------------------------------
+    ttr = float(stats.get("ttr", 0.0) or 0.0)
+    ttr_seg = stats.get("ttr_segmented", None)
+    tok_total = int(stats.get("total_tokens", 0) or 0)
+    uniq = int(stats.get("unique_tokens", 0) or 0)
+
     ttr_class = "integrity-badge integrity-badge-ok"
-    if ttr < 0.25 and stats["total_tokens"] > 10: ttr_class = "integrity-badge integrity-badge-warn"
-    
+    ttr_label = "Rich Variety"
+
+    if tok_total < 50:
+        ttr_class = "integrity-badge integrity-badge-warn"
+        ttr_label = "Unstable (Very Short Text)"
+    elif ttr < 0.2:
+        ttr_class = "integrity-badge integrity-badge-warn"
+        ttr_label = "Low Variety (Repetitive)"
+    elif ttr > 0.7:
+        # often short / bullet style / code identifiers
+        ttr_label = "Very High Variety (Fragments / IDs?)"
+
+    extra_line = ""
+    if ttr_seg is not None:
+        extra_line = (
+            f"<div style='font-size:0.65rem; color:#9ca3af; margin-top:4px;'>"
+            f"Segmented TTR (50-token windows): <b>{ttr_seg:.3f}</b> "
+            f"(less length-sensitive)</div>"
+        )
+
     rows.append(f"""
     <tr>
         <th scope="row">Lexical Density (TTR)</th>
-        <td><span class="{ttr_class}">{ttr}</span></td>
-        <td><span class="detail-text">({stats['unique_tokens']} unique / {stats['total_tokens']} total)</span></td>
-    </tr>
-    """)
-    
-    # ROW: Flooding (Interactive)
-    if stats['top_tokens']:
-        # Parse our pre-formatted strings "'token' (pct%)" back to raw for the linker
-        # Or better, just format them here.
-        # The compute function returns strings. Let's make them clickable.
-        # We need the raw token.
-        # Let's rely on the fact that the compute function output format is fixed: "'token' (pct%)"
-        
-        interactive_tokens = []
-        for item in stats['top_tokens']:
-            # Extract token: 'admin' (42%) -> admin
-            try:
-                raw_tok = item.split("'")[1]
-                link = f'<a href="#" onclick="window.TEXTTICS_FIND_SEQ(\'{_escape_for_js(raw_tok)}\'); return false;" class="stat-link">{item}</a>'
-                interactive_tokens.append(link)
-            except:
-                interactive_tokens.append(item)
-
-        rows.append(f"""
-        <tr>
-            <th scope="row">Top Tokens (Flooding)</th>
-            <td colspan="2"><code class="mini-code">{", ".join(interactive_tokens)}</code></td>
-        </tr>
-        """)
-
-    # ROW: Fingerprint (Interactive)
-    if stats['top_chars']:
-        # Extract char from "<b>x</b> 12%"
-        interactive_chars = []
-        for item in stats['top_chars']:
-            try:
-                # This is a bit hacky parsing HTML we just made, but efficient.
-                # item is "<b>char</b> pct"
-                # Let's regex it or simple split.
-                # Simpler: The user can just use the standard Finder or we leave characters static
-                # because clicking 'e' to find every 'e' is annoying.
-                # Let's keep characters static for now to avoid UI chaos.
-                interactive_chars.append(item)
-            except: pass
-            
-        rows.append(f"""
-        <tr>
-            <th scope="row">Freq. Fingerprint</th>
-            <td colspan="2" style="font-family:var(--font-mono); font-size:0.9em;">{' &nbsp; '.join(interactive_chars)}</td>
-        </tr>
-        """)
-
-    # ROW: Layout Physics
-    rows.append(f"""
-    <tr>
-        <th scope="row">Layout Physics</th>
-        <td>{l_stats['count']} Lines</td>
-        <td style="font-size:0.85em; color:#6b7280;">
-            Avg: {l_stats['avg']} &nbsp;|&nbsp; Max: {l_stats['max']}
+        <td><span class="{ttr_class}">{ttr:.3f}</span></td>
+        <td>
+            <span class="detail-text">({uniq} unique / {tok_total} total)</span>
+            <div style="font-size:0.65rem; color:#9ca3af; margin-top:2px;">{_escape_html(ttr_label)}</div>
+            {extra_line}
         </td>
     </tr>
     """)
 
-    # ROW: Phonotactics
-    if stats['phonotactics']['count'] > 5:
+    # ------------------------------------------------------------
+    # 3. Top Tokens (Flooding)
+    # ------------------------------------------------------------
+    top_tokens = stats.get("top_tokens", []) or []
+    if top_tokens:
+        interactive_tokens = []
+        for item in top_tokens:
+            tok = item.get("token", "")
+            share = item.get("share", 0.0)
+            safe_tok = _escape_html(tok)
+            js_tok = _escape_for_js(tok)
+            link = (
+                f'<a href="#" onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\'); '
+                f'return false;" class="stat-link" '
+                f'title="Click to highlight in text">{safe_tok}</a>'
+                f' <span style="opacity:0.6; font-size:0.8em;">({share:.1f}%)</span>'
+            )
+            interactive_tokens.append(link)
+
+        top1_share = stats.get("top_shares", {}).get("top1", 0.0) or 0.0
+        flood_badge = ""
+        if top1_share > 30 and tok_total > 50:
+            flood_badge = (
+                '<span class="integrity-badge integrity-badge-crit" '
+                'style="font-size:0.6rem; margin-left:8px;">FLOODING?</span>'
+            )
+
+        rows.append(f"""
+        <tr>
+            <th scope="row">Top Tokens (Flooding) {flood_badge}</th>
+            <td colspan="2">
+                <code class="mini-code">{", ".join(interactive_tokens)}</code>
+            </td>
+        </tr>
+        """)
+
+    # ------------------------------------------------------------
+    # 4. Frequency Fingerprint + Class Balance
+    # ------------------------------------------------------------
+    top_chars = stats.get("top_chars", []) or []
+    char_dist = stats.get("char_dist", {}) or {}
+
+    if top_chars:
+        interactive_chars = []
+        for item in top_chars:
+            ch = item.get("char", "")
+            share = item.get("share", 0.0)
+            safe_ch = _escape_html(ch)
+            if ch == " ":
+                safe_ch = "SPACE"
+            elif ch == "\t":
+                safe_ch = "\\t"
+            elif ch == "\n":
+                safe_ch = "\\n"
+
+            display = (
+                f"<b>{safe_ch}</b> "
+                f"<span style='opacity:0.7'>{share:.1f}%</span>"
+            )
+            interactive_chars.append(display)
+
+        balance_str = (
+            f"L:{char_dist.get('letters',0)}% · "
+            f"N:{char_dist.get('digits',0)}% · "
+            f"S:{char_dist.get('sym',0)}% · "
+            f"WS:{char_dist.get('ws',0)}%"
+        )
+
+        rows.append(f"""
+        <tr>
+            <th scope="row">Freq. Fingerprint</th>
+            <td colspan="2">
+                <div style="font-family:var(--font-mono); font-size:0.85em; margin-bottom:4px;">
+                    {' &nbsp; '.join(interactive_chars)}
+                </div>
+                <div style="font-size:0.65rem; color:#6b7280; border-top:1px dashed #e5e7eb; padding-top:2px;">
+                    Class Balance: {balance_str}
+                </div>
+            </td>
+        </tr>
+        """)
+
+    # ------------------------------------------------------------
+    # 5. Layout Physics
+    # ------------------------------------------------------------
+    l_stats = stats.get("line_stats", {}) or {}
+    line_count = int(l_stats.get("count", 0) or 0)
+    if line_count > 0:
+        avg = l_stats.get("avg", 0)
+        p90 = l_stats.get("p90", 0)
+        mx = l_stats.get("max", 0)
+
+        layout_note = ""
+        try:
+            if p90 and mx > (p90 * 3) and mx > 200:
+                layout_note = (
+                    '<span class="detail-text" style="color:#d97706;">'
+                    "(Extreme outlier line – minified / log blob?)"
+                    "</span>"
+                )
+        except Exception:
+            pass
+
+        rows.append(f"""
+        <tr>
+            <th scope="row">Layout Physics</th>
+            <td>{line_count} Lines</td>
+            <td style="font-size:0.85em; color:#6b7280;">
+                Avg: {avg} &nbsp;|&nbsp; P90: {p90} &nbsp;|&nbsp; Max: {mx} {layout_note}
+            </td>
+        </tr>
+        """)
+
+    # ------------------------------------------------------------
+    # 6. ASCII Phonotactics (gated, weak)
+    # ------------------------------------------------------------
+    phon = stats.get("phonotactics", {}) or {}
+    if phon.get("is_valid", False):
         rows.append(f"""
         <tr>
             <th scope="row">ASCII Phonotactics</th>
-            <td>V/C Ratio: {stats['phonotactics']['vowel_ratio']}</td>
-            <td><span class="detail-text">{stats['phonotactics']['status']}</span></td>
+            <td>V/C Ratio: {phon.get('vowel_ratio', 0.0)}</td>
+            <td>
+                <span class="detail-text">{_escape_html(phon.get('status', ''))}</span>
+                <span style="font-size:0.65rem; color:#9ca3af; display:block;">
+                    (Weak hint · Latin letters only · Not a classifier)
+                </span>
+            </td>
         </tr>
         """)
 
