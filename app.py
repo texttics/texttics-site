@@ -2349,14 +2349,14 @@ import difflib
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Forensic Comparator V7 (Noise Filtered).
-    - Ignores trivial overlaps (< 3 chars).
-    - Reports metrics relative to the HOT ZONE, not the global string.
-    - Prevents "L" in Login matching "l" in paypal prematurely.
+    Forensic Comparator V8 (Context-Aware Metrics).
+    - Eliminates false "DIFF" flags on unrelated text.
+    - Uses "N/A" for distinct strings and "PARTIAL" for incomplete selections.
+    - Only triggers Red "DIFF" when the target is fully captured but spoofed.
     """
     if not suspect_str or not trusted_str: return None
 
-    # 1. Normalization
+    # 1. Normalization Pipeline
     suspect_nfkc = normalize_extended(suspect_str)
     trusted_nfkc = normalize_extended(trusted_str)
     
@@ -2366,14 +2366,12 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     # 2. Sequence Analysis
     import difflib
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
-    
     match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
     
     matched_skel_len = match.size
     target_len = len(trusted_skel)
     
-    # [NOISE FILTER] Ignore matches shorter than 3 chars unless target is tiny
-    # This stops "L" from matching "paypal"
+    # Noise Filter (same as before)
     MIN_MATCH_LEN = 3
     if target_len < 3: MIN_MATCH_LEN = target_len
     
@@ -2388,7 +2386,7 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         match_start_idx = match.a
         match_end_idx = match.a + match.size
 
-    # 3. Verdict Synthesis
+    # 3. Verdict Synthesis & Metric State Logic
     match_raw = (suspect_str == trusted_str)
     
     # Defaults
@@ -2397,9 +2395,10 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     css = "verdict-neutral"
     icon = "≠"
     
-    # State flags for the Matrix
-    state_raw = "DIFF"
-    state_nfkc = "DIFF"
+    # Metric States (The Fix)
+    # Default to N/A (Gray) for distinct strings
+    state_raw = "Unrelated"
+    state_nfkc = "Unrelated"
     
     if match_raw:
         verdict = "IDENTITY MATCH"
@@ -2408,7 +2407,9 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         icon = "🛡️"
         state_raw = "MATCH"
         state_nfkc = "MATCH"
+        
     elif overlap_pct >= 100.0:
+        # Full Capture: Now we check for Spoofs (Red DIFF)
         if len(suspect_skel) > len(trusted_skel):
             verdict = "TARGET CONTAINED (100%)"
             desc = "CRITICAL: The trusted string is hidden inside the selection (Superset)."
@@ -2420,21 +2421,22 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
             css = "verdict-crit"
             icon = "🚨"
             
+        # Logic: If 100% overlap, "DIFF" is a real forensic finding
+        state_raw = "DIFF" 
+        
         if suspect_nfkc == trusted_nfkc:
              verdict = "NORMALIZATION HAZARD"
              desc = "Strings differ only by Compatibility characters."
              css = "verdict-warn"
              icon = "⚠️"
-             state_nfkc = "MATCH" # It matches canonically
+             state_nfkc = "MATCH"
+        else:
+             state_nfkc = "DIFF"
 
     elif overlap_pct > 0:
+        # Partial Capture: "DIFF" is misleading. Use "PARTIAL".
         verdict = f"VISUAL OVERLAP ({overlap_pct:.1f}%)"
         desc = f"Found {matched_skel_len} matching characters in contiguous sequence."
-        
-        # Matrix Logic for Partial Matches:
-        # If we have a partial match, we check if the RAW characters in that segment match.
-        # This is tricky because we only know Skeleton indices. 
-        # Heuristic: If overlap is > 0, we set RAW to "PARTIAL" to indicate we found *something*.
         state_raw = "PARTIAL"
         state_nfkc = "PARTIAL"
         
@@ -2445,7 +2447,7 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
             css = "verdict-warn"
             icon = "🧩"
 
-    # 4. Strict "Lens" Generation
+    # 4. Strict "Lens" Generation (Same as V7)
     html_parts = []
     curr_skel_idx = 0
     
@@ -2453,7 +2455,6 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
         c_len = len(c_skel)
         
-        # Check if inside hot zone
         is_in_zone = False
         if overlap_pct > 0:
             if c_len == 0:
@@ -9741,7 +9742,9 @@ window.py_generate_evidence = py_generate_evidence
 @create_proxy
 def update_verification(event):
     """
-    Forensic Renderer V8 (Noise Filtered).
+    Forensic Renderer V8 (Context Aware).
+    - Renders N/A for unrelated text.
+    - Renders PARTIAL for incomplete selections.
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
@@ -9790,25 +9793,58 @@ def update_verification(event):
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
         
-        def set_metric_detailed(id_str, val, is_skel=False):
+        # 5. Evidence Matrix (Detailed)
+        def set_metric_detailed(id_str, val, type_label):
             el = document.getElementById(id_str)
-            # Find the detail sibling (the right-aligned text)
-            # Structure: .v-metric -> .v-metric-row -> [.v-metric-val, .v-metric-detail]
-            # We target the val container first
             
-            # Simple innerHTML replacement for the Value
-            if is_skel:
+            status_html = ""
+            detail_text = ""
+            
+            # Logic for Details
+            if type_label == "RAW":
+                if val == "MATCH":
+                    status_html = '<span style="color:#10b981;">MATCH</span>'
+                    detail_text = "Bitwise Identical"
+                elif val == "DIFF":
+                    status_html = '<span style="color:#ef4444;">DIFF</span>'
+                    detail_text = "Byte Mismatch"
+                elif val == "PARTIAL":
+                    status_html = '<span style="color:#f59e0b;">PARTIAL</span>'
+                    detail_text = "Segment Match"
+                else: # N/A
+                    status_html = '<span style="color:#9ca3af;">N/A</span>'
+                    detail_text = "Uncorrelated"
+                    
+            elif type_label == "NFKC":
+                if val == "MATCH":
+                    status_html = '<span style="color:#10b981;">MATCH</span>'
+                    detail_text = "Form Stable"
+                elif val == "DIFF":
+                    status_html = '<span style="color:#ef4444;">DIFF</span>'
+                    detail_text = "Format Drift"
+                elif val == "PARTIAL":
+                    status_html = '<span style="color:#f59e0b;">PARTIAL</span>'
+                    detail_text = "Segment Stable"
+                else: # N/A
+                    status_html = '<span style="color:#9ca3af;">N/A</span>'
+                    detail_text = "Uncorrelated"
+            
+            elif type_label == "SKEL":
+                # Special handling for Skeleton
                 el.innerHTML = f'<code class="v-code-block">{val}</code>'
-            elif val == "MATCH":
-                el.innerHTML = '<span style="color:#10b981;">MATCH</span>'
-            elif val == "DIFF":
-                el.innerHTML = '<span style="color:#ef4444;">DIFF</span>'
-            elif val == "PARTIAL":
-                el.innerHTML = '<span style="color:#f59e0b;">PARTIAL</span>'
+                return
 
-        set_metric_detailed("vm-raw", res["raw"])
-        set_metric_detailed("vm-nfkc", res["nfkc"])
-        set_metric_detailed("vm-skel", res["skel_text"], is_skel=True)
+            # Render Split Layout
+            el.innerHTML = f"""
+            <div class="v-metric-row">
+                <div class="v-metric-val">{status_html}</div>
+                <div class="v-metric-detail">{detail_text}</div>
+            </div>
+            """
+
+        set_metric_detailed("vm-raw", res["raw"], "RAW")
+        set_metric_detailed("vm-nfkc", res["nfkc"], "NFKC")
+        set_metric_detailed("vm-skel", res["skel_text"], "SKEL")
         
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
