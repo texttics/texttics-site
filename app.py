@@ -4435,99 +4435,143 @@ def detect_invisible_patterns(t: str):
 def compute_adversarial_metrics(t: str):
     """
     Orchestrator: Per-Token Analysis + Global Pattern Detection.
-    Returns aggregated findings and top offenders.
+    Features: Strict Severity Sorting, Multi-Vector Stacking, and Vector Generation.
     """
     if not t: return {}
     
     tokens = tokenize_forensic(t)
-    findings = []
     confusables_map = DATA_STORES.get("Confusables", {})
     
-    top_tokens = [] # List of {token, score, reasons}
+    # The final list of target objects
+    targets = [] 
+    
+    # Global Findings (for the scoreboard/flat list if needed)
+    findings = []
+
+    # Severity Weights for Sorting
+    SEVERITY_MAP = {
+        "CRIT": 3,
+        "HIGH": 2,
+        "MED": 1,
+        "LOW": 0
+    }
+    
+    import base64
 
     # 1. Per-Token Analysis
     for tok in tokens:
         t_str = tok['token']
-        token_score = 0
-        token_reasons = []
-        token_families = set()
+        threat_stack = [] # Collect ALL threats for this token here
 
         # A. Restriction Level [SCRIPT]
         rest_label, rest_risk = analyze_restriction_level(t_str)
-        if rest_risk > 0:
-            token_score += rest_risk
-            token_reasons.append(rest_label)
-            token_families.add("SCRIPT")
+        if rest_risk != "safe":
+            lvl = "CRIT" if rest_risk == "crit" else "HIGH"
+            threat_stack.append({
+                "lvl": lvl,
+                "type": "SCRIPT",
+                "desc": rest_label
+            })
             
         # B. Confusion Density [HOMOGLYPH]
         conf_data = analyze_confusion_density(t_str, confusables_map)
         if conf_data:
-            token_score += conf_data['risk']
-            token_reasons.append(conf_data['desc'])
-            token_families.add("HOMOGLYPH")
+            lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
+            threat_stack.append({
+                "lvl": lvl,
+                "type": "HOMOGLYPH",
+                "desc": conf_data['desc']
+            })
 
         # C. Class Consistency [SPOOFING]
         sore = analyze_class_consistency(t_str)
         if sore:
-            token_score += sore['risk']
-            token_reasons.append(sore['desc'])
-            token_families.add("SPOOFING")
+            threat_stack.append({
+                "lvl": "CRIT",
+                "type": "SPOOFING",
+                "desc": sore['desc']
+            })
             
         # D. Normalization [OBFUSCATION]
         norm = analyze_normalization_hazard_advanced(t_str)
         if norm:
-            token_score += norm['risk']
-            token_reasons.append(norm['desc'])
-            token_families.add("OBFUSCATION")
+            threat_stack.append({
+                "lvl": "HIGH",
+                "type": "OBFUSCATION",
+                "desc": norm['desc']
+            })
             
         # E. Perturbation [PERTURBATION]
         pert = analyze_structural_perturbation(t_str)
         if pert:
-            token_score += pert['risk']
-            token_reasons.append(pert['desc'])
-            token_families.add("PERTURBATION")
+            threat_stack.append({
+                "lvl": "CRIT",
+                "type": "PERTURBATION",
+                "desc": pert['desc']
+            })
             
         # F. Trojan Context [TROJAN]
         trojan = analyze_trojan_context(t_str)
         if trojan:
-            token_score += trojan['risk']
-            token_reasons.append(trojan['desc'])
-            token_families.add("TROJAN")
+            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
+            threat_stack.append({
+                "lvl": lvl,
+                "type": "SYNTAX", # Syntax/Trojan
+                "desc": trojan['desc']
+            })
             
         # G. Zalgo Load [OBFUSCATION]
         zalgo = analyze_zalgo_load(t_str)
         if zalgo:
-            token_score += zalgo['risk']
-            token_reasons.append(zalgo['desc'])
-            token_families.add("OBFUSCATION")
+            lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
+            threat_stack.append({
+                "lvl": lvl,
+                "type": "OBFUSCATION",
+                "desc": zalgo['desc']
+            })
             
         # H. Case Anomaly [SPOOFING]
         case_anom = analyze_case_anomalies(t_str)
         if case_anom:
-            token_score += case_anom['risk']
-            token_reasons.append(case_anom['desc'])
-            token_families.add("SPOOFING")
+            threat_stack.append({
+                "lvl": "MED",
+                "type": "SPOOFING",
+                "desc": case_anom['desc']
+            })
 
-        # --- Aggregate Token Findings ---
-        if token_score > 0:
-            # Flatten families for display
-            fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
+        # --- AGGREGATION & SORTING ---
+        if threat_stack:
+            # 1. Sort by Severity (CRIT > HIGH > MED > LOW)
+            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
             
-            # Add to main findings list (Linear view)
-            findings.append({
-                'family': fam_str,
-                'desc': f"{', '.join(token_reasons)}",
+            # 2. Generate Vectors
+            try:
+                b64 = base64.b64encode(t_str.encode("utf-8")).decode("ascii")
+            except: b64 = "Error"
+            
+            hex_v = "".join(f"\\x{b:02X}" for b in t_str.encode("utf-8"))
+            
+            # 3. Determine Primary Verdict (Top of sorted stack)
+            primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
+            
+            # 4. Add to Targets List
+            targets.append({
                 'token': t_str,
-                'severity': 'crit' if token_score >= 80 else ('warn' if token_score >= 40 else 'ok')
+                'verdict': primary_verdict,
+                'stack': threat_stack, # The full sorted list
+                'b64': b64,
+                'hex': hex_v,
+                'score': sum(SEVERITY_MAP.get(x['lvl'], 0) * 25 for x in threat_stack) # Crude score for peak finding
             })
             
-            # Add to Top Offenders list
-            top_tokens.append({
-                'token': t_str,
-                'score': min(100, token_score),
-                'reasons': token_reasons,
-                'families': list(token_families)
-            })
+            # Also populate flat findings for scoreboard stats
+            for item in threat_stack:
+                findings.append({
+                    'family': f"[{item['type']}]",
+                    'severity': item['lvl'].lower(),
+                    'token': t_str,
+                    'desc': item['desc']
+                })
 
     # 2. Global Invisible Patterns [STEGO]
     stego_report = detect_invisible_patterns(t)
@@ -4539,12 +4583,12 @@ def compute_adversarial_metrics(t: str):
             'severity': 'warn'
         })
         
-    # 3. Sort Top Offenders
-    top_tokens.sort(key=lambda x: x['score'], reverse=True)
+    # 3. Sort Targets by Total Risk Score (to find the Peak)
+    targets.sort(key=lambda x: x['score'], reverse=True)
     
     return {
-        "findings": findings,
-        "top_tokens": top_tokens[:5] # Return top 5 for the dashboard
+        "findings": findings, # Used for Scoreboard counts
+        "targets": targets    # Used for the Detailed List & Peak
     }
 
 def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
@@ -7719,7 +7763,7 @@ def analyze_intel_profile(t, threat_flags, script_stats):
 def render_intel_console(t, threat_results):
     """
     Renders the Suspicion Dashboard (Adversarial Forensics).
-    Populates Scoreboard, Peak, and Detailed Findings with Vector Stacks.
+    Populates Scoreboard, Peak, and Detailed Findings with Sorted Stacks.
     """
     container = document.getElementById("intel-console")
     if not container: return
@@ -7727,10 +7771,9 @@ def render_intel_console(t, threat_results):
     # 1. Unpack Data
     adv = threat_results.get('adversarial', {})
     findings = adv.get('findings', [])
-    top_tokens = adv.get('top_tokens', [])
+    targets = adv.get('targets', [])
     
-    # If no adversarial data, hide the console
-    if not findings and not top_tokens:
+    if not findings and not targets:
         container.style.display = "none"
         return
         
@@ -7739,15 +7782,16 @@ def render_intel_console(t, threat_results):
     # 2. Render Scoreboard (Topology)
     stats = {"HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0}
     
-    # Re-calculate stats from top tokens to get a better "feel" for the dashboard
-    for tok in top_tokens:
-        for fam in tok['families']:
-            if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
-            if "SPOOFING" in fam: stats["SPOOFING"] += 1
-            if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
-            if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1
-            if "TROJAN" in fam: stats["INJECTION"] += 1
-            if "SCRIPT" in fam: stats["INJECTION"] += 1
+    for f in findings:
+        fam = f['family']
+        if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
+        if "SPOOFING" in fam: stats["SPOOFING"] += 1
+        if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
+        if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1
+        if "STEGO" in fam: stats["OBFUSCATION"] += 1
+        if "TROJAN" in fam: stats["INJECTION"] += 1
+        if "SYNTAX" in fam: stats["INJECTION"] += 1
+        if "SCRIPT" in fam: stats["INJECTION"] += 1
 
     # Update DOM
     document.getElementById("intel-stat-homoglyph").innerText = str(stats["HOMOGLYPH"])
@@ -7757,64 +7801,54 @@ def render_intel_console(t, threat_results):
     
     # 3. Render Paranoia Peak (Top Offender)
     peak_row = document.getElementById("intel-peak-row")
-    if top_tokens:
-        peak = top_tokens[0]
+    if targets:
+        peak = targets[0]
         peak_row.style.display = "flex"
         document.getElementById("peak-token").innerText = peak['token']
-        document.getElementById("peak-score").innerText = f"Risk: {peak['score']}/100"
+        document.getElementById("peak-score").innerText = peak['verdict'] # Use verdict (e.g. SCRIPT (CRIT))
         
-        reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in peak['reasons'][:3]])
-        if len(peak['reasons']) > 3: reasons_html += " ..."
+        # Show top 3 reasons from the stack
+        reasons = [x['desc'] for x in peak['stack'][:3]]
+        reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in reasons])
+        if len(peak['stack']) > 3: reasons_html += " ..."
         document.getElementById("peak-reasons").innerHTML = reasons_html
     else:
         peak_row.style.display = "none"
 
-    # 4. Render Findings Table (With Deep-Dive Details)
+    # 4. Render Findings Table (Deep-Dive with Stacks)
     target_body = document.getElementById("intel-target-body")
     html_rows = []
     
-    import base64 
-    
-    # Render the Top Tokens list as the detailed findings
-    for tok in top_tokens:
-        # Generate Vectors (Hex/B64) on the fly for the UI
-        token_str = tok['token']
-        try:
-            b64_val = base64.b64encode(token_str.encode("utf-8")).decode("ascii")
-        except: b64_val = "Error"
-        
-        hex_val = "".join(f"\\x{b:02X}" for b in token_str.encode("utf-8"))
-        
+    for tgt in targets:
         # Build the Stack HTML
         stack_html = ""
-        for reason in tok['reasons']:
-            # Guess severity based on string content (simple heuristic for UI)
+        for item in tgt['stack']:
             lvl_class = "th-low"
-            if "Critical" in reason or "Trojan" in reason or "Mixed" in reason: lvl_class = "th-crit"
-            elif "Suspicious" in reason or "Hazard" in reason: lvl_class = "th-high"
-            else: lvl_class = "th-med"
+            if item['lvl'] == "CRIT": lvl_class = "th-crit"
+            elif item['lvl'] == "HIGH": lvl_class = "th-high"
+            elif item['lvl'] == "MED": lvl_class = "th-med"
             
             stack_html += f"""
             <div class="th-row">
-                <span class="th-badge {lvl_class}">RISK</span>
-                <span class="th-desc">{reason}</span>
+                <span class="th-badge {lvl_class}">{item['lvl']}</span>
+                <span class="th-desc">{item['desc']}</span>
             </div>
             """
 
         row = f"""
         <div class="target-row">
             <div class="t-head">
-                <span class="th-badge th-crit" style="margin-right:8px; font-size:0.7em;">{tok['score']}</span>
-                <span class="t-token">{_escape_html(token_str)}</span>
+                <span class="t-token">{_escape_html(tgt['token'])}</span>
+                <span class="t-verdict">{tgt['verdict']}</span>
             </div>
             
             <details class="intel-details">
-                <summary class="intel-summary">View Threat Hierarchy ({len(tok['reasons'])})</summary>
+                <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
                 <div class="intel-stack-body">
                     {stack_html}
                     <div class="t-vectors">
-                        <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{b64_val}</code></div>
-                        <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{hex_val}</code></div>
+                        <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
+                        <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
                     </div>
                 </div>
             </details>
