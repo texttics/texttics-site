@@ -7900,67 +7900,6 @@ def render_adversarial_dashboard(adv_data: dict):
         else:
             target_body.innerHTML = "".join(html_rows)
 
-def render_legacy_security_panel(threat_results):
-    """
-    Re-animates the old 'Security Classification' panel (intel-* IDs)
-    by feeding it data from the new Adversarial Engine.
-    Keeps the old UI alive and synchronized with the new one.
-    """
-    # 1. Target the Old Container
-    container = document.getElementById("intel-console") # The top one
-    if not container: return
-
-    # 2. Get Data from New Engine
-    adv = threat_results.get('adversarial', {})
-    if not adv:
-        container.style.display = "none"
-        return
-    
-    topology = adv.get('topology', {})
-    restriction = adv.get('restriction', 'UNKNOWN')
-    badge_class = adv.get('badge_class', 'intel-badge-safe')
-    targets = adv.get('targets', [])
-
-    container.style.display = "block"
-
-    # 3. Update Old Badge
-    badge = document.getElementById("intel-badge")
-    if badge:
-        badge.className = f"intel-badge {badge_class}"
-        badge.innerText = restriction
-
-    # 4. Update Old Stat Cards
-    # We map the new engine's topology keys to the old IDs
-    def safe_set(id_str, val):
-        el = document.getElementById(id_str)
-        if el: el.innerText = str(val)
-
-    safe_set("intel-stat-ambiguity", topology.get("AMBIGUITY", 0))
-    safe_set("intel-stat-spoofing", topology.get("SPOOFING", 0))
-    safe_set("intel-stat-hidden", topology.get("HIDDEN", 0))
-    safe_set("intel-stat-syntax", topology.get("SYNTAX", 0))
-
-    # 5. Update Old Target List (Optional - keeps it consistent)
-    target_body = document.getElementById("intel-target-body")
-    if target_body:
-        html_rows = []
-        # We render a simplified list for the legacy view
-        for tgt in targets[:5]: # Limit to top 5
-            html_rows.append(f"""
-            <div class="target-row">
-                <div class="t-head">
-                    <span class="th-badge th-warn">{tgt['score']}</span>
-                    <span class="t-token">{_escape_html(tgt['token'])}</span>
-                    <span class="t-verdict" style="font-size:0.8em; color:#6b7280;">{tgt['verdict']}</span>
-                </div>
-            </div>
-            """)
-        
-        if not html_rows:
-            target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No suspicious tokens.</div>'
-        else:
-            target_body.innerHTML = "".join(html_rows)
-
 def compute_threat_score(inputs):
     """
     The Threat Auditor.
@@ -8804,10 +8743,7 @@ def update_all(event=None):
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
     
-    # [NEW] Render Legacy Panel (Top)
-    render_legacy_security_panel(threat_results)
-    
-    # [NEW] Render Adversarial Dashboard (Bottom)
+    # [NEW] Render Adversarial Dashboard 
     render_adversarial_dashboard(threat_results.get('adversarial', {}))
     
     render_toc_counts(toc_counts)
