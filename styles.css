@@ -4463,3 +4463,52 @@ details.profile-section > summary:hover::marker {
   margin-right: 6px;
   font-size: 0.75rem;
 }
+
+/* =========================================
+   VERIFICATION BENCH (Target Matcher)
+   ========================================= */
+
+/* The Result Container */
+.verdict-box {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-left: 4px solid;
+    background-color: #f8fafc; /* Slate-50 */
+    transition: all 0.2s ease;
+}
+
+/* Hidden State */
+.verdict-box.hidden {
+    display: none;
+}
+
+/* Verdict States (Applied by Python) */
+.verdict-safe {
+    border-color: #22c55e; /* Green-500 */
+    background-color: #f0fdf4; /* Green-50 */
+    color: #15803d; /* Green-700 */
+}
+
+.verdict-crit {
+    border-color: #ef4444; /* Red-500 */
+    background-color: #fef2f2; /* Red-50 */
+    color: #b91c1c; /* Red-700 */
+}
+
+.verdict-warn {
+    border-color: #f97316; /* Orange-500 */
+    background-color: #fff7ed; /* Orange-50 */
+    color: #c2410c; /* Orange-700 */
+}
+
+.verdict-info {
+    border-color: #3b82f6; /* Blue-500 */
+    background-color: #eff6ff; /* Blue-50 */
+    color: #1d4ed8; /* Blue-700 */
+}
+
+.verdict-neutral {
+    border-color: #94a3b8; /* Slate-400 */
+    background-color: #f8fafc; /* Slate-50 */
+    color: #64748b; /* Slate-500 */
+}
