@@ -6912,6 +6912,9 @@ def render_statistical_profile(stats):
 
     # 3. Lexical Density
     ttr = float(stats.get("ttr", 0.0))
+    ttr_seg = stats.get("ttr_segmented", None)
+    tok_total = int(stats.get("total_tokens", 0))
+    uniq = int(stats.get("unique_tokens", 0))
     ttr_pct = min(100, max(0, ttr * 100))
     ttr_grad = "linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%)"
     
@@ -6922,7 +6925,34 @@ def render_statistical_profile(stats):
         </div>
         <div style="text-align:right; min-width:50px; font-family:var(--font-mono); font-weight:700; font-size:0.85rem; color:#1e293b;">{ttr:.2f}</div>
     </div>"""
-    rows.append(make_row("Lexical Density", vis_ttr, "", ("TYPE-TOKEN RATIO (TTR)", "Vocabulary richness. Decreases as text length increases.", "Unique / Total", "< 0.4 suggests repetition.")))
+    
+    # Forensic TTR Scales (Calibrated for N > 50)
+    if tok_total < 50:
+        ttr_hint = "Unstable (Short Text - Ignore Metric)"
+    elif ttr < 0.20:
+        ttr_hint = "Critical Repetition (Machine / Flood)"
+    elif ttr < 0.40:
+        ttr_hint = "Low Variety (Simple / Bot-like)"
+    elif ttr < 0.60:
+        ttr_hint = "Standard Prose (Natural Language)"
+    elif ttr < 0.80:
+        ttr_hint = "Rich Vocabulary (Complex / Literary)"
+    elif ttr < 0.95:
+        ttr_hint = "High Density (Lists / Identifiers)"
+    else:
+        ttr_hint = "Unique Stream (Rainbow / UUIDs)"
+    
+    seg_html = f" <span title='Segmented TTR (Length-Adjusted)'>Seg: <b>{ttr_seg:.2f}</b></span>" if ttr_seg else ""
+    
+    # Detailed Metadata Line
+    meta_ttr = f"""
+    <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.65rem; color:#6b7280;">
+        <div>{uniq} unique / {tok_total} total tokens{seg_html}</div>
+        <div>{_escape_html(ttr_hint)}</div>
+    </div>
+    """
+
+    rows.append(make_row("Lexical Density", vis_ttr, meta_ttr, ("TYPE-TOKEN RATIO (TTR)", "Vocabulary richness. Length-sensitive.", "Unique / Total", "Decreases naturally as text length increases.")))
 
     # 4. Top Tokens
     top_tokens = stats.get("top_tokens", [])
