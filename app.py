@@ -7783,7 +7783,8 @@ def analyze_intel_profile(t, threat_flags, script_stats):
 def render_adversarial_dashboard(adv_data: dict):
     """
     Renders the 'Suspicion Dashboard' (Adversarial Forensics).
-    Uses standard document.getElementById to prevent NameError.
+    Correctly consumes the V6 Engine data ('targets', 'topology') 
+    and targets 'adv-*' IDs.
     """
     # 1. Safety Check
     container = document.getElementById("adv-console")
@@ -7796,84 +7797,108 @@ def render_adversarial_dashboard(adv_data: dict):
     # 2. Reveal Console
     container.style.display = "block"
     
-    # 3. Unpack Data
-    findings = adv_data.get("findings", [])
-    top_tokens = adv_data.get("top_tokens", [])
-    
-    # 4. Calculate Stats
-    stats = { "HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0 }
-    
-    for f in findings:
-        fam = f.get('family', '')
-        if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
-        if "SPOOFING" in fam or "SCRIPT" in fam: stats["SPOOFING"] += 1
-        if "OBFUSCATION" in fam or "STEGO" in fam: stats["OBFUSCATION"] += 1
-        if "TROJAN" in fam or "PERTURBATION" in fam: stats["INJECTION"] += 1
-    
-    # 5. Write to IDs (Safe Setter Helper)
+    # 3. Unpack Data (Using V6 Engine Keys)
+    targets = adv_data.get("targets", [])      # The list of threats
+    topology = adv_data.get("topology", {})    # The counters
+    stego = adv_data.get("stego")              # Global stego flag
+    restriction = adv_data.get("restriction", "UNKNOWN")
+    badge_class = adv_data.get("badge_class", "intel-badge-safe")
+
+    # 4. Render Seal
+    badge = document.getElementById("adv-badge")
+    if badge:
+        badge.className = f"intel-badge {badge_class}"
+        badge.innerText = restriction
+
+    # 5. Render Scoreboard (Use calculated topology directly)
     def set_text(id_str, val):
         el = document.getElementById(id_str)
         if el: el.innerText = str(val)
 
-    set_text("adv-stat-homoglyph", stats["HOMOGLYPH"])
-    set_text("adv-stat-spoofing", stats["SPOOFING"])
-    set_text("adv-stat-obfus", stats["OBFUSCATION"])
-    set_text("adv-stat-injection", stats["INJECTION"])
+    set_text("adv-stat-homoglyph", topology.get("AMBIGUITY", 0))
+    set_text("adv-stat-spoofing", topology.get("SPOOFING", 0))
+    set_text("adv-stat-obfus", topology.get("HIDDEN", 0))
+    set_text("adv-stat-injection", topology.get("SYNTAX", 0))
     
-    # 6. Render Peak Row
+    # 6. Render Peak Row (Top Offender)
     peak_row = document.getElementById("adv-peak-row")
     if peak_row:
-        if top_tokens:
-            peak = top_tokens[0]
+        if targets:
+            peak = targets[0]
             peak_row.style.display = "flex"
             set_text("adv-peak-token", peak['token'])
-            set_text("adv-peak-score", f"Risk: {peak['score']}")
+            set_text("adv-peak-score", f"Risk: {peak['score']}/100")
             
-            # Reasons (HTML)
-            reasons = peak.get('reasons', [])
-            reasons_html = "".join([f"<span class='peak-tag'>{r}</span>" for r in reasons[:2]])
+            # Render reasons from the stack
+            # Stack items are dicts: {'desc': '...', 'lvl': '...', 'type': '...'}
+            reasons = [item['desc'] for item in peak['stack'][:3]]
+            reasons_html = "".join([f"<span class='peak-tag'>{r}</span>" for r in reasons])
+            
             el_reasons = document.getElementById("adv-peak-reasons")
             if el_reasons: el_reasons.innerHTML = reasons_html
-            
-            # Badge
-            badge = document.getElementById("adv-badge")
-            if badge:
-                score = peak['score']
-                if score >= 80:
-                    badge.innerText = "CRITICAL THREAT"
-                    badge.className = "intel-badge badge-crit"
-                elif score >= 40:
-                    badge.innerText = "SUSPICIOUS"
-                    badge.className = "intel-badge badge-warn"
-                else:
-                    badge.innerText = "ELEVATED RISK"
-                    badge.className = "intel-badge badge-std"
         else:
             peak_row.style.display = "none"
-            badge = document.getElementById("adv-badge")
-            if badge:
-                badge.innerText = "NO ACTIVE THREATS"
-                badge.className = "intel-badge badge-std"
 
-    # 7. Render Target Body
+    # 7. Render Findings List
     target_body = document.getElementById("adv-target-body")
     if target_body:
-        if findings:
-            rows = []
-            for f in findings:
-                sev = f.get('severity', 'ok')
-                sev_class = "t-row-crit" if sev == 'crit' else ("t-row-warn" if sev == 'warn' else "")
-                
-                rows.append(f"""
-                <div class="target-row {sev_class}">
-                    <div class="t-cell-fam">{f['family']}</div>
-                    <div class="t-cell-token">"{_escape_html(f['token'])}"</div>
-                    <div class="t-cell-desc">{f['desc']}</div>
+        html_rows = []
+        
+        # Global Stego Banner
+        if stego:
+            html_rows.append(f"""
+            <div class="target-row" style="background-color:#fffbeb;">
+                <div class="t-head">
+                    <span class="th-badge th-med">STEGO</span>
+                    <span class="t-token">GLOBAL PATTERN</span>
+                    <span class="t-verdict">{stego.get('verdict', 'Pattern Detected')}</span>
                 </div>
-                """)
-            target_body.innerHTML = "".join(rows)
-        else:
+                <div style="font-size:0.75rem; color:#b45309; padding-top:4px; font-family:var(--font-mono);">{stego['detail']}</div>
+            </div>
+            """)
+
+        for tgt in targets:
+            # Build Stack HTML (The hierarchical breakdown)
+            stack_html = ""
+            for item in tgt['stack']:
+                lvl_class = "th-low"
+                if item['lvl'] == "CRIT": lvl_class = "th-crit"
+                elif item['lvl'] == "HIGH": lvl_class = "th-high"
+                elif item['lvl'] == "MED": lvl_class = "th-med"
+                
+                stack_html += f"""
+                <div class="th-row">
+                    <span class="th-badge {lvl_class}">{item['type']}</span>
+                    <span class="th-desc">{item['desc']}</span>
+                </div>
+                """
+
+            row = f"""
+            <div class="target-row">
+                <div class="t-head">
+                    <span class="th-badge th-crit" style="margin-right:8px; font-size:0.7em;">{tgt['score']}</span>
+                    <span class="t-token">{_escape_html(tgt['token'])}</span>
+                    <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{tgt['verdict']}</span>
+                </div>
+                
+                <details class="intel-details">
+                    <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
+                    <div class="intel-stack-body">
+                        {stack_html}
+                        <div class="t-vectors">
+                            <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
+                            <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+            """
+            html_rows.append(row)
+            
+        if not html_rows:
             target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No adversarial anomalies detected.</div>'
+        else:
+            target_body.innerHTML = "".join(html_rows)
 
 def render_legacy_security_panel(threat_results):
     """
