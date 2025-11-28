@@ -7780,80 +7780,83 @@ def analyze_intel_profile(t, threat_flags, script_stats):
         "targets": targets
     }
 
-def render_intel_console(t, threat_results):
+def render_adversarial_dashboard(t, threat_results):
     """
     Renders the Suspicion Dashboard (Adversarial Forensics).
-    Synced with 'compute_adversarial_profile' (v5 Engine).
+    Targets 'adv-*' IDs to match the updated HTML.
+    Consumes 'targets' and 'topology' from the v5 Engine.
     """
-    container = document.getElementById("intel-console")
+    # 1. Get Container (New ID)
+    container = document.getElementById("adv-console")
     if not container: return
     
-    # 1. Unpack Canonical Data
-    # The engine stores results in 'adversarial'
+    # 2. Unpack Data
     adv = threat_results.get('adversarial', {})
     if not adv:
         container.style.display = "none"
         return
         
-    # [FIX] Read the correct keys from the v5 Engine
-    targets = adv.get('targets', [])      # Was 'top_tokens'
+    targets = adv.get('targets', [])
     topology = adv.get('topology', {})
     stego = adv.get('stego')
     restriction = adv.get('restriction', 'UNKNOWN')
     badge_class = adv.get('badge_class', 'intel-badge-safe')
     
-    # Logic Gate: If mostly clean, hide dashboard (or keep it purely for Restriction badge)
-    # We show it if there are targets OR stego OR non-zero counters
+    # Logic Gate: Show if threats exist or non-zero counters
     has_threats = targets or stego or any(v > 0 for v in topology.values())
     
-    # OPTIONAL: If you want the dashboard ALWAYS visible (even for safe text), comment out this block:
     if not has_threats and restriction in ("ASCII-ONLY", "SINGLE SCRIPT (COMMON)"):
         container.style.display = "none"
         return
 
     container.style.display = "block"
     
-    # 2. Render Seal (Restriction Level)
-    badge = document.getElementById("intel-badge")
+    # 3. Render Seal (New ID: adv-badge)
+    badge = document.getElementById("adv-badge")
     if badge:
         badge.className = f"intel-badge {badge_class}"
         badge.innerText = restriction
     
-    # 3. Render Scoreboard (Topology)
-    # Using specific keys from the unified model
-    document.getElementById("intel-stat-homoglyph").innerText = str(topology.get("AMBIGUITY", 0))
-    document.getElementById("intel-stat-spoofing").innerText = str(topology.get("SPOOFING", 0))
-    document.getElementById("intel-stat-obfus").innerText = str(topology.get("HIDDEN", 0))
-    document.getElementById("intel-stat-injection").innerText = str(topology.get("SYNTAX", 0))
+    # 4. Render Scoreboard (New IDs: adv-stat-*)
+    # Safe setter helper to avoid crashes if an ID is missing
+    def safe_set(id_str, val):
+        el = document.getElementById(id_str)
+        if el: el.innerText = str(val)
+
+    safe_set("adv-stat-homoglyph", topology.get("AMBIGUITY", 0))
+    safe_set("adv-stat-spoofing", topology.get("SPOOFING", 0))
+    safe_set("adv-stat-obfus", topology.get("HIDDEN", 0))
+    safe_set("adv-stat-injection", topology.get("SYNTAX", 0))
     
-    # 4. Render Paranoia Peak (Top Offender)
-    peak_row = document.getElementById("intel-peak-row")
+    # 5. Render Paranoia Peak (New IDs: adv-peak-*)
+    peak_row = document.getElementById("adv-peak-row")
     if peak_row:
         if targets:
             peak = targets[0]
             peak_row.style.display = "flex"
-            document.getElementById("peak-token").innerText = peak['token']
             
-            # Show "Risk: 95/100"
-            score_el = document.getElementById("peak-score")
-            score_el.innerText = f"Risk: {peak['score']}/100"
+            el_tok = document.getElementById("adv-peak-token")
+            if el_tok: el_tok.innerText = peak['token']
             
-            # Extract top 3 descriptions from the stack
-            # Format: {'lvl': 'CRIT', 'type': 'SYNTAX', 'desc': '...'}
+            el_score = document.getElementById("adv-peak-score")
+            if el_score: el_score.innerText = f"Risk: {peak['score']}/100"
+            
+            # Reasons
             reasons = [item['desc'] for item in peak['stack'][:3]]
-            
             reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in reasons])
             if len(peak['stack']) > 3: reasons_html += " ..."
-            document.getElementById("peak-reasons").innerHTML = reasons_html
+            
+            el_reasons = document.getElementById("adv-peak-reasons")
+            if el_reasons: el_reasons.innerHTML = reasons_html
         else:
             peak_row.style.display = "none"
 
-    # 5. Render Findings List (Deep Dive)
-    target_body = document.getElementById("intel-target-body")
+    # 6. Render Findings List (New ID: adv-target-body)
+    target_body = document.getElementById("adv-target-body")
     if target_body:
         html_rows = []
         
-        # Optional Global Stego Banner
+        # Global Stego Banner
         if stego:
             html_rows.append(f"""
             <div class="target-row" style="background-color:#fffbeb;">
@@ -7866,10 +7869,8 @@ def render_intel_console(t, threat_results):
             </div>
             """)
 
-        import base64
-
         for tgt in targets:
-            # Build the Stack HTML
+            # Build Stack HTML
             stack_html = ""
             for item in tgt['stack']:
                 lvl_class = "th-low"
@@ -7877,7 +7878,6 @@ def render_intel_console(t, threat_results):
                 elif item['lvl'] == "HIGH": lvl_class = "th-high"
                 elif item['lvl'] == "MED": lvl_class = "th-med"
                 
-                # Show Type + Description
                 stack_html += f"""
                 <div class="th-row">
                     <span class="th-badge {lvl_class}">{item['type']}</span>
@@ -8755,8 +8755,8 @@ def update_all(event=None):
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
     
-    # [UPDATED CALL] Pass full threat_results to access 'adversarial' data
-    render_intel_console(t, threat_results)
+    # [UPDATED] Call the new renderer targeting 'adv-*' IDs
+    render_adversarial_dashboard(t, threat_results)
     
     render_toc_counts(toc_counts)
 
