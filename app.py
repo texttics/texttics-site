@@ -7783,26 +7783,24 @@ def analyze_intel_profile(t, threat_flags, script_stats):
 def render_adversarial_dashboard(adv_data: dict):
     """
     Renders the 'Suspicion Dashboard' (Adversarial Forensics).
-    Strictly targets 'adv-*' IDs to prevent collisions.
-    Handles missing data gracefully without crashing.
+    Uses standard document.getElementById to prevent NameError.
     """
-    # 1. Safety Check: If the container doesn't exist, stop.
-    container = Element("adv-console")
-    if not container or not container.element: return
+    # 1. Safety Check
+    container = document.getElementById("adv-console")
+    if not container: return
 
     if not adv_data:
-        container.element.style.display = "none"
+        container.style.display = "none"
         return
 
     # 2. Reveal Console
-    container.element.style.display = "block"
+    container.style.display = "block"
     
-    # 3. Unpack Data (Using the keys your Engine generates)
-    # Default to empty lists to prevent "NoneType" errors
+    # 3. Unpack Data
     findings = adv_data.get("findings", [])
     top_tokens = adv_data.get("top_tokens", [])
     
-    # 4. Calculate Stats for the Cards
+    # 4. Calculate Stats
     stats = { "HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0 }
     
     for f in findings:
@@ -7812,59 +7810,57 @@ def render_adversarial_dashboard(adv_data: dict):
         if "OBFUSCATION" in fam or "STEGO" in fam: stats["OBFUSCATION"] += 1
         if "TROJAN" in fam or "PERTURBATION" in fam: stats["INJECTION"] += 1
     
-    # 5. Write to the Unique 'adv-*' IDs
-    # (We wrap in try/except to prevent one missing ID from killing the whole render)
-    try: Element("adv-stat-homoglyph").write(str(stats["HOMOGLYPH"]))
-    except: pass
-    try: Element("adv-stat-spoofing").write(str(stats["SPOOFING"]))
-    except: pass
-    try: Element("adv-stat-obfus").write(str(stats["OBFUSCATION"]))
-    except: pass
+    # 5. Write to IDs (Safe Setter Helper)
+    def set_text(id_str, val):
+        el = document.getElementById(id_str)
+        if el: el.innerText = str(val)
+
+    set_text("adv-stat-homoglyph", stats["HOMOGLYPH"])
+    set_text("adv-stat-spoofing", stats["SPOOFING"])
+    set_text("adv-stat-obfus", stats["OBFUSCATION"])
+    set_text("adv-stat-injection", stats["INJECTION"])
     
-    # [FIXED] Added the missing except block here
-    try: Element("adv-stat-injection").write(str(stats["INJECTION"]))
-    except: pass
-    
-    # 6. Render Peak Row (Top Offender)
-    if top_tokens:
-        peak = top_tokens[0]
-        try:
-            Element("adv-peak-row").element.style.display = "flex"
-            Element("adv-peak-token").write(peak['token'])
-            Element("adv-peak-score").write(f"Risk: {peak['score']}")
+    # 6. Render Peak Row
+    peak_row = document.getElementById("adv-peak-row")
+    if peak_row:
+        if top_tokens:
+            peak = top_tokens[0]
+            peak_row.style.display = "flex"
+            set_text("adv-peak-token", peak['token'])
+            set_text("adv-peak-score", f"Risk: {peak['score']}")
             
-            # Render reasons as tags
+            # Reasons (HTML)
             reasons = peak.get('reasons', [])
             reasons_html = "".join([f"<span class='peak-tag'>{r}</span>" for r in reasons[:2]])
-            Element("adv-peak-reasons").element.innerHTML = reasons_html
+            el_reasons = document.getElementById("adv-peak-reasons")
+            if el_reasons: el_reasons.innerHTML = reasons_html
             
-            # Badge Logic
-            badge = Element("adv-badge")
-            score = peak['score']
-            if score >= 80:
-                badge.write("CRITICAL THREAT")
-                badge.element.className = "intel-badge badge-crit"
-            elif score >= 40:
-                badge.write("SUSPICIOUS")
-                badge.element.className = "intel-badge badge-warn"
-            else:
-                badge.write("ELEVATED RISK")
-                badge.element.className = "intel-badge badge-std"
-        except Exception as e:
-            print(f"Error rendering peak row: {e}")
-    else:
-        try:
-            Element("adv-peak-row").element.style.display = "none"
-            Element("adv-badge").write("NO ACTIVE THREATS")
-            Element("adv-badge").element.className = "intel-badge badge-std"
-        except: pass
+            # Badge
+            badge = document.getElementById("adv-badge")
+            if badge:
+                score = peak['score']
+                if score >= 80:
+                    badge.innerText = "CRITICAL THREAT"
+                    badge.className = "intel-badge badge-crit"
+                elif score >= 40:
+                    badge.innerText = "SUSPICIOUS"
+                    badge.className = "intel-badge badge-warn"
+                else:
+                    badge.innerText = "ELEVATED RISK"
+                    badge.className = "intel-badge badge-std"
+        else:
+            peak_row.style.display = "none"
+            badge = document.getElementById("adv-badge")
+            if badge:
+                badge.innerText = "NO ACTIVE THREATS"
+                badge.className = "intel-badge badge-std"
 
-    # 7. Render Target Body (The List)
-    try:
+    # 7. Render Target Body
+    target_body = document.getElementById("adv-target-body")
+    if target_body:
         if findings:
             rows = []
             for f in findings:
-                # Map severity to CSS classes
                 sev = f.get('severity', 'ok')
                 sev_class = "t-row-crit" if sev == 'crit' else ("t-row-warn" if sev == 'warn' else "")
                 
@@ -7875,11 +7871,9 @@ def render_adversarial_dashboard(adv_data: dict):
                     <div class="t-cell-desc">{f['desc']}</div>
                 </div>
                 """)
-            Element("adv-target-body").element.innerHTML = "".join(rows)
+            target_body.innerHTML = "".join(rows)
         else:
-            Element("adv-target-body").element.innerHTML = '<div class="placeholder-text" style="padding:12px;">No adversarial anomalies detected.</div>'
-    except Exception as e:
-        print(f"Error rendering findings: {e}")
+            target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No adversarial anomalies detected.</div>'
 
 def render_legacy_security_panel(threat_results):
     """
