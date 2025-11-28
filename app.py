@@ -2347,74 +2347,75 @@ def tokenize_forensic(text: str) -> List[ForensicToken]:
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Active Zero-Trust Comparator.
-    Compares a Suspect String (Input) against a Trusted Reference (Manual).
-    Returns a deterministic verdict based on the Quad-State Pipeline.
+    Active Zero-Trust Comparator (Enhanced V2).
+    Returns verdict PLUS granular forensic state booleans.
     """
     if not suspect_str or not trusted_str:
         return None
 
-    # 1. Identity Check (Bitwise)
-    if suspect_str == trusted_str:
-        return {
-            "verdict": "IDENTITY MATCH",
-            "desc": "Strings are bitwise identical. No threat.",
-            "css_class": "verdict-safe",
-            "score": 0
-        }
-
-    # 2. Generate Forensic States
-    # Note: Using existing 'normalize_extended' from global scope
+    # 1. Generate States
     suspect_nfkc = normalize_extended(suspect_str)
     trusted_nfkc = normalize_extended(trusted_str)
     
-    # Note: Using existing '_generate_uts39_skeleton' from global scope
     suspect_skel = _generate_uts39_skeleton(suspect_nfkc.casefold())
     trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
 
-    # 3. Forensic Comparison Logic (Ordered by Specificity)
+    # 2. Boolean Logic (The Evidence)
+    match_raw = (suspect_str == trusted_str)
+    match_nfkc = (suspect_nfkc == trusted_nfkc)
+    match_skel = (suspect_skel == trusted_skel)
+    match_case = (suspect_nfkc.casefold() == trusted_nfkc.casefold())
 
-    # A. Normalization Hazard (Compatibility / Width)
-    # The NFKC forms match, but Raw does not.
-    # Example: 'ﬁ' vs 'fi', or Fullwidth 'Ａ' vs 'A'.
-    # This is a warning, not necessarily malicious spoofing.
-    if suspect_nfkc == trusted_nfkc:
-        return {
-            "verdict": "NORMALIZATION HAZARD",
-            "desc": "WARNING: Strings differ only by Compatibility or Formatting characters.",
-            "css_class": "verdict-warn",
-            "score": 50
-        }
-
-    # B. Homoglyph Attack (SPOOF)
-    # The skeletons match, but the raw/NFKC text does not.
-    # This implies different characters that LOOK identical (e.g. Cyrillic 'a').
-    if suspect_skel == trusted_skel:
-        return {
-            "verdict": "SPOOF CONFIRMED",
-            "desc": "CRITICAL: Strings are visually identical (Same Skeleton) but physically distinct.",
-            "css_class": "verdict-crit",
-            "score": 100
-        }
-    
-    # C. Case Mismatch
-    # Skeletons match only if case-folded.
-    if suspect_nfkc.casefold() == trusted_nfkc.casefold():
-        return {
-            "verdict": "CASE MISMATCH",
-            "desc": "NOTE: Strings differ only by Casing.",
-            "css_class": "verdict-info",
-            "score": 20
-        }
-
-    # D. Distinct
-    # No structural relationship found.
-    return {
-        "verdict": "DISTINCT",
-        "desc": "Strings are structurally and visually unrelated.",
-        "css_class": "verdict-neutral",
+    result = {
+        "raw": match_raw,
+        "nfkc": match_nfkc,
+        "skel": match_skel,
         "score": 0
     }
+
+    # 3. Verdict Decision Tree
+    if match_raw:
+        result.update({
+            "verdict": "IDENTITY MATCH",
+            "desc": "Strings are bitwise identical. Cryptographically verifiable match.",
+            "css_class": "verdict-safe",
+            "icon": "🛡️",
+            "score": 0
+        })
+    elif match_nfkc:
+        result.update({
+            "verdict": "NORMALIZATION HAZARD",
+            "desc": "Strings differ visually or by width, but normalize to the same characters.",
+            "css_class": "verdict-warn",
+            "icon": "⚠️",
+            "score": 50
+        })
+    elif match_skel:
+        result.update({
+            "verdict": "SPOOF CONFIRMED",
+            "desc": "CRITICAL: Strings look identical (Homoglyphs) but are distinct characters.",
+            "css_class": "verdict-crit",
+            "icon": "🚨",
+            "score": 100
+        })
+    elif match_case:
+        result.update({
+            "verdict": "CASE MISMATCH",
+            "desc": "Strings differ only by capitalization.",
+            "css_class": "verdict-info",
+            "icon": "ℹ️",
+            "score": 20
+        })
+    else:
+        result.update({
+            "verdict": "DISTINCT",
+            "desc": "Strings are structurally and visually unrelated.",
+            "css_class": "verdict-neutral",
+            "icon": "≠",
+            "score": 0
+        })
+        
+    return result
 
 # ==========================================
 # [MODULE 3] DOMAIN & TYPOSQUATTING RADAR
@@ -9657,14 +9658,10 @@ window.py_generate_evidence = py_generate_evidence
 @create_proxy
 def update_verification(event):
     """
-    Triggered when the user types in the Trusted Reference input.
-    Compares the Main Input (Suspect) against this Trusted Input.
+    Enhanced renderer for the Verification Bench.
     """
-    # Dynamic fetching ensures we don't crash if elements are missing during init
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
-    verdict_title = document.getElementById("verdict-title")
-    verdict_desc = document.getElementById("verdict-desc")
     
     if not trusted_input or not verdict_display: return
 
@@ -9677,17 +9674,29 @@ def update_verification(event):
 
     verdict_display.classList.remove("hidden")
     
-    # Run the logic
-    result = compute_verification_verdict(suspect_text, trusted_text)
+    res = compute_verification_verdict(suspect_text, trusted_text)
     
-    if result:
-        # Update UI
-        verdict_title.textContent = result["verdict"]
-        verdict_desc.textContent = result["desc"]
+    if res:
+        # 1. Main Verdict
+        document.getElementById("verdict-title").textContent = res["verdict"]
+        document.getElementById("verdict-desc").textContent = res["desc"]
+        document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # Reset classes
-        verdict_display.className = "verdict-box" # clear old colors
-        verdict_display.classList.add(result["css_class"])
+        # 2. Evidence Matrix
+        def set_metric(id_str, is_match):
+            el = document.getElementById(id_str)
+            if is_match:
+                el.innerHTML = '<span style="color:#10b981;">MATCH</span>'
+            else:
+                el.innerHTML = '<span style="color:#ef4444;">DIFF</span>'
+
+        set_metric("vm-raw", res["raw"])
+        set_metric("vm-nfkc", res["nfkc"])
+        set_metric("vm-skel", res["skel"])
+        
+        # 3. Styling
+        verdict_display.className = "verdict-box" 
+        verdict_display.classList.add(res["css_class"])
 
 # ---
 # 6. INITIALIZATION
