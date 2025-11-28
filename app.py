@@ -8502,7 +8502,7 @@ def update_all(event=None):
         render_forensic_hud("", {})
         render_invisible_atlas("")
         render_encoding_footprint("")
-        render_intel_console("", {})
+        render_adversarial_dashboard("", {})
         return
 
     # --- 2. Run All Computations ---
