@@ -1127,13 +1127,23 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
         megaReport += hudText;
       }
 
-      // 2. Get Inspector Data (Reusing logic is ideal, but copying for safety/speed here)
+      // 2. Get Inspector Data
       const inspector = document.getElementById('inspector-panel-content');
       if (inspector) {
-        // Use the scraped text content for simplicity, or rebuild structure if needed
-        // Ideally, call a shared 'getInspectorText()' function. 
-        // For now, we append the raw text which is generally readable:
-        megaReport += separator + "[ Character Inspector Data ]\n" + inspector.innerText; 
+        megaReport += separator + "[ Character Inspector Data ]\n";
+        
+        // Check if the inspector is showing the default placeholder or an error
+        const isPlaceholder = inspector.querySelector('.inspector-placeholder');
+        const isError = inspector.querySelector('.status-error');
+        const hasContent = inspector.innerText.trim().length > 0;
+        
+        if (!isPlaceholder && !isError && hasContent) {
+            // Active: Dump the data
+            megaReport += inspector.innerText; 
+        } else {
+            // Inactive: Show standard placeholder
+            megaReport += "  (Inactive - Select a character to inspect)";
+        }
       }
 
       // 3. Get Full Profile Data
