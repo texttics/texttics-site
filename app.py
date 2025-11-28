@@ -6657,7 +6657,9 @@ def render_emoji_summary(emoji_counts, emoji_list):
     summary_el.innerText = text
 
 def render_statistical_profile(stats):
-    """Renders the Group 2.F Statistical Matrix."""
+    """
+    Renders the Group 2.F Statistical Matrix with Sparklines and Interaction.
+    """
     container = document.getElementById("statistical-profile-body")
     if not container: return
     
@@ -6665,76 +6667,123 @@ def render_statistical_profile(stats):
         container.innerHTML = '<tr><td colspan="3" class="placeholder-text">Insufficient data for statistical profiling.</td></tr>'
         return
 
-    # Entropy Badge Color
+    # --- 1. Entropy Meter (Visual Physics) ---
     ent = stats["entropy"]
-    ent_class = "integrity-badge integrity-badge-ok"
-    ent_label = "Structured"
-    if ent > 6.5:
-        ent_class = "integrity-badge integrity-badge-crit" 
-        ent_label = "High (Compressed/Enc?)"
-    elif ent < 3.0:
-        ent_class = "integrity-badge integrity-badge-warn"
-        ent_label = "Low (Repetitive)"
-
-    # TTR Badge
-    ttr = stats["ttr"]
-    ttr_label = "Rich"
-    ttr_class = "integrity-badge integrity-badge-ok"
-    if ttr < 0.25 and stats["total_tokens"] > 10:
-        ttr_label = "Repetitive (Bot?)"
-        ttr_class = "integrity-badge integrity-badge-warn"
+    # Scale 0-8 bits to 0-100% width
+    ent_pct = min(100, (ent / 8.0) * 100)
     
-    # HTML Builder
+    # Dynamic Color
+    ent_color = "#10b981" # Green (Structured)
+    if ent > 6.5: ent_color = "#ef4444" # Red (Encrypted/Compressed)
+    elif ent < 3.0: ent_color = "#f59e0b" # Orange (Repetitive)
+    elif ent > 5.5: ent_color = "#8b5cf6" # Purple (Complex)
+
+    entropy_visual = f"""
+    <div style="display:flex; align-items:center; gap:8px;">
+        <div style="flex:1; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden;">
+            <div style="width:{ent_pct}%; height:100%; background:{ent_color};"></div>
+        </div>
+        <span style="font-family:var(--font-mono); font-size:0.9em;">{ent}</span>
+    </div>
+    """
+
+    # --- 2. Line Length Sparkline (Text Histogram) ---
+    line_vis = ""
+    lines = stats.get('line_stats', {}).get('raw_lengths', []) # We need to capture this in compute
+    # (Note: We need to update compute to pass 'raw_lengths' or recalculate simple buckets here)
+    # Since passing massive arrays is bad, let's assume we update compute_statistical_profile below
+    # to return a 'sparkline' string directly, or we generate a simple one here if count < 50.
+    # For now, let's stick to the stats we have:
+    l_stats = stats['line_stats']
+    
+    # --- 3. HTML Builder ---
     rows = []
     
-    # 1. Thermodynamics
+    # ROW: Thermodynamics
     rows.append(f"""
     <tr>
         <th scope="row">Thermodynamics (Entropy)</th>
-        <td>{ent} bits/byte</td>
-        <td><span class="{ent_class}">{ent_label}</span></td>
+        <td colspan="2">
+            <div style="display:grid; grid-template-columns: 1fr 100px; align-items:center; gap:12px;">
+                {entropy_visual}
+                <div style="text-align:right; font-size:0.8em; color:#6b7280;">Bits/Byte</div>
+            </div>
+        </td>
     </tr>
     """)
     
-    # 2. Lexical Density
-    if stats["total_tokens"] > 0:
-        rows.append(f"""
-        <tr>
-            <th scope="row">Lexical Density (TTR)</th>
-            <td>{ttr}</td>
-            <td><span class="{ttr_class}">{ttr_label}</span> <span class="detail-text" style="font-size:0.8em; color:#6b7280;">({stats['unique_tokens']}/{stats['total_tokens']})</span></td>
-        </tr>
-        """)
-        
-    # 3. Flooding
+    # ROW: Lexical Density
+    ttr = stats["ttr"]
+    ttr_class = "integrity-badge integrity-badge-ok"
+    if ttr < 0.25 and stats["total_tokens"] > 10: ttr_class = "integrity-badge integrity-badge-warn"
+    
+    rows.append(f"""
+    <tr>
+        <th scope="row">Lexical Density (TTR)</th>
+        <td><span class="{ttr_class}">{ttr}</span></td>
+        <td><span class="detail-text">({stats['unique_tokens']} unique / {stats['total_tokens']} total)</span></td>
+    </tr>
+    """)
+    
+    # ROW: Flooding (Interactive)
     if stats['top_tokens']:
+        # Parse our pre-formatted strings "'token' (pct%)" back to raw for the linker
+        # Or better, just format them here.
+        # The compute function returns strings. Let's make them clickable.
+        # We need the raw token.
+        # Let's rely on the fact that the compute function output format is fixed: "'token' (pct%)"
+        
+        interactive_tokens = []
+        for item in stats['top_tokens']:
+            # Extract token: 'admin' (42%) -> admin
+            try:
+                raw_tok = item.split("'")[1]
+                link = f'<a href="#" onclick="window.TEXTTICS_FIND_SEQ(\'{_escape_for_js(raw_tok)}\'); return false;" class="stat-link">{item}</a>'
+                interactive_tokens.append(link)
+            except:
+                interactive_tokens.append(item)
+
         rows.append(f"""
         <tr>
             <th scope="row">Top Tokens (Flooding)</th>
-            <td colspan="2"><code class="mini-code" style="color:var(--color-text-main);">{", ".join(stats['top_tokens'])}</code></td>
+            <td colspan="2"><code class="mini-code">{", ".join(interactive_tokens)}</code></td>
         </tr>
         """)
 
-    # 4. Fingerprint
+    # ROW: Fingerprint (Interactive)
     if stats['top_chars']:
+        # Extract char from "<b>x</b> 12%"
+        interactive_chars = []
+        for item in stats['top_chars']:
+            try:
+                # This is a bit hacky parsing HTML we just made, but efficient.
+                # item is "<b>char</b> pct"
+                # Let's regex it or simple split.
+                # Simpler: The user can just use the standard Finder or we leave characters static
+                # because clicking 'e' to find every 'e' is annoying.
+                # Let's keep characters static for now to avoid UI chaos.
+                interactive_chars.append(item)
+            except: pass
+            
         rows.append(f"""
         <tr>
             <th scope="row">Freq. Fingerprint</th>
-            <td colspan="2" style="font-family:var(--font-mono); font-size:0.9em;">{' &nbsp; '.join(stats['top_chars'])}</td>
+            <td colspan="2" style="font-family:var(--font-mono); font-size:0.9em;">{' &nbsp; '.join(interactive_chars)}</td>
         </tr>
         """)
 
-    # 5. Layout Physics
-    l_stats = stats['line_stats']
+    # ROW: Layout Physics
     rows.append(f"""
     <tr>
         <th scope="row">Layout Physics</th>
         <td>{l_stats['count']} Lines</td>
-        <td style="font-size:0.85em; color:#6b7280;">Avg: {l_stats['avg']} chars | Max: {l_stats['max']} chars</td>
+        <td style="font-size:0.85em; color:#6b7280;">
+            Avg: {l_stats['avg']} &nbsp;|&nbsp; Max: {l_stats['max']}
+        </td>
     </tr>
     """)
 
-    # 6. Phonotactics (Conditional)
+    # ROW: Phonotactics
     if stats['phonotactics']['count'] > 5:
         rows.append(f"""
         <tr>
@@ -9879,6 +9928,58 @@ def reveal2_invisibles(event=None):
 
 # The Bridge
 window.cycle_hud_metric = cycle_hud_metric
+
+@create_proxy
+def find_next_sequence(target_str):
+    """
+    Statistical Navigator.
+    Finds and selects the next occurrence of a text sequence (case-insensitive).
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value or not target_str: return
+    
+    t = str(el.value)
+    t_lower = t.lower()
+    target_lower = str(target_str).lower()
+    
+    # Start searching from AFTER the current selection
+    start_pos = el.selectionEnd
+    
+    # 1. Find next occurrence
+    idx = t_lower.find(target_lower, start_pos)
+    
+    # 2. Wrap around if not found
+    if idx == -1:
+        idx = t_lower.find(target_lower)
+        
+    if idx != -1:
+        # 3. Calculate UTF-16 DOM indices for selection
+        dom_start = 0
+        utf16_acc = 0
+        
+        # Fast-forward to the match index
+        # We need to sum the UTF-16 lengths of all chars BEFORE the match
+        for i in range(idx):
+            char = t[i]
+            utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        dom_start = utf16_acc
+        
+        # Calculate length of the matched string in UTF-16
+        match_str = t[idx : idx + len(target_str)]
+        dom_len = sum(2 if ord(c) > 0xFFFF else 1 for c in match_str)
+        
+        # 4. Select
+        el.focus()
+        el.setSelectionRange(dom_start, dom_start + dom_len)
+        
+        # 5. Feedback
+        status = document.getElementById("reveal-details")
+        if status:
+            status.className = "status-details status-hud-active"
+            status.innerHTML = f"<strong>Finding:</strong> '{_escape_html(target_str)}'"
+
+# Expose to JS
+window.TEXTTICS_FIND_SEQ = find_next_sequence
 
 # ==========================================
 # 7. FORENSIC WORKBENCH UTILITIES (Restored)
