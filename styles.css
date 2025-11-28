@@ -4873,3 +4873,106 @@ details.profile-section > summary:hover::marker {
     border-radius: 4px;
     background: #ffffff;
 }
+
+/* =========================================
+   STATISTICAL CONSOLE & LEGEND
+   ========================================= */
+
+/* The Dynamic Console Strip */
+.stat-console-strip {
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: #475569;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    min-height: 60px;
+    transition: background-color 0.2s ease;
+}
+
+.stat-console-strip.active {
+    background-color: #f1f5f9; /* Slightly darker on hover */
+    color: #1e293b;
+}
+
+.stat-console-left {
+    flex: 2;
+    padding-right: 20px;
+}
+
+.stat-console-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-left: 1px solid #cbd5e1;
+    padding-left: 16px;
+    min-width: 200px;
+}
+
+.sc-key {
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    margin-right: 6px;
+}
+
+.sc-main-label {
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #0f172a;
+    display: block;
+    margin-bottom: 4px;
+}
+
+/* The Expandable Legend */
+.stat-legend-details {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.stat-legend-summary {
+    padding: 10px 16px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    list-style: none; /* Hide default arrow */
+    display: flex;
+    justify-content: space-between;
+}
+
+.stat-legend-summary::-webkit-details-marker { display: none; }
+.stat-legend-summary::after { content: "▼"; font-size: 0.7em; }
+.stat-legend-details[open] .stat-legend-summary::after { content: "▲"; }
+
+.stat-legend-content {
+    padding: 0 16px 16px 16px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    font-size: 0.75rem;
+    color: #475569;
+}
+
+.sl-col strong {
+    display: block;
+    color: #1e293b;
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+}
+
+.sl-item {
+    margin-bottom: 4px;
+    padding-left: 8px;
+    border-left: 2px solid #e2e8f0;
+    line-height: 1.4;
+}
