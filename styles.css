@@ -4529,39 +4529,6 @@ details.profile-section > summary:hover::marker {
     background: #fafafa; /* Slight contrast for body */
 }
 
-/* The Matrix (Checklist) */
-.verdict-matrix {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px dashed var(--border-subtle);
-}
-
-.v-metric {
-    flex: 1;
-    background: #fff;
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    padding: 6px 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-}
-
-.v-metric-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    font-weight: 600;
-    margin-bottom: 4px;
-}
-
-.v-metric-val {
-    font-size: 0.85rem;
-    font-weight: 700;
-}
 
 /* STATUS COLORS (Theming) */
 
@@ -4713,4 +4680,79 @@ details.profile-section > summary:hover::marker {
     font-weight: 400;
     opacity: 0.6;
     font-size: 0.95em;
+}
+
+/* --- Metric Matrix (Forensic Detail) --- */
+.verdict-matrix {
+    display: flex;
+    gap: 12px; /* Little more breathing room */
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-subtle);
+}
+
+.v-metric {
+    flex: 1;
+    background: #fff;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 10px 12px; /* More padding */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0; /* Important for text wrapping in flex items */
+}
+
+/* Label: Top Left */
+.v-metric-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 700;
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+    display: block;
+    text-align: left; /* Align Left */
+}
+
+/* The Value Row: Holds Status (Left) and Detail (Right) */
+.v-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    width: 100%;
+}
+
+.v-metric-val {
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-align: left; /* Align Left */
+}
+
+/* The Nuance/Detail Text on the Right */
+.v-metric-detail {
+    font-size: 0.7rem;
+    color: #64748b; /* Slate-500 */
+    font-weight: 500;
+    text-align: right;
+    font-family: var(--font-sans);
+}
+
+/* Skeleton Code Styling (Wrapping Enabled) */
+.v-code-block {
+    color: #3b82f6; 
+    font-weight: 700; 
+    font-size: 0.85em; 
+    background: #eff6ff; 
+    padding: 4px 6px; 
+    border-radius: 4px;
+    border: 1px solid #dbeafe;
+    
+    /* WRAPPING MAGIC */
+    white-space: pre-wrap;      /* Wrap text naturally */
+    word-break: break-all;      /* Break long strings like URLs */
+    display: block;             /* Fill width */
+    font-family: var(--font-mono);
+    max-height: 150px;          /* Optional cap if it gets HUGE */
+    overflow-y: auto;           /* Scroll if it exceeds max height */
 }
