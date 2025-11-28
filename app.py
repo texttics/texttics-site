@@ -4660,10 +4660,8 @@ def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) 
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v8.0 (Fact-Based & Priority Fixed).
-    1. Header: Shows precise counts (e.g., "10 EXECUTION") instead of generic tags.
-    2. Logic Fix: Checks BIDI before INVISIBLE to prevent masking Execution threats.
-    3. Focus: Removed all brand/target guessing logic.
+    Forensic X-Ray Engine v8.5 (Grouped Bidi).
+    Now groups contiguous Bidi controls into stacks (x8 BIDI) instead of spamming them.
     """
     if not t: return ""
     
@@ -4691,7 +4689,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
     # --- 2. Render Clusters ---
     cluster_html_list = []
     
-    # Global Counters for Summary
+    # Global Counters
     total_exec = 0
     total_spoof = 0
     total_obfus = 0
@@ -4701,17 +4699,12 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
     for idx, clust in enumerate(clusters):
         cluster_id = f"cluster-{idx}"
         
-        # --- Cluster-Level Statistics (The New Dashboard) ---
-        # We calculate exact counts for *this specific cluster*
-        c_exec = 0
-        c_spoof = 0
-        c_obfus = 0
-        
+        # Cluster Stats
+        c_exec = 0; c_spoof = 0; c_obfus = 0
         for p in clust:
             if p in bidi_indices: 
                 c_exec += 1
                 total_exec += 1
-            # Note: An index can be both bidi and invisible, but we count types independently here for stats
             if p in confusable_indices: 
                 c_spoof += 1
                 total_spoof += 1
@@ -4719,24 +4712,17 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 c_obfus += 1
                 total_obfus += 1
 
-        # Generate The Fact-Based Badges
-        # We use the existing CSS classes: badge-bidi, badge-spoof, badge-invis
         cluster_badges = []
-        
-        if c_exec > 0:
-            cluster_badges.append(f'<span class="cluster-badge badge-bidi">{c_exec} EXECUTION</span>')
-        if c_spoof > 0:
-            cluster_badges.append(f'<span class="cluster-badge badge-spoof">{c_spoof} SPOOF</span>')
-        if c_obfus > 0:
-            cluster_badges.append(f'<span class="cluster-badge badge-invis">{c_obfus} OBFUSCATE</span>')
+        if c_exec > 0: cluster_badges.append(f'<span class="cluster-badge badge-bidi">{c_exec} EXECUTION</span>')
+        if c_spoof > 0: cluster_badges.append(f'<span class="cluster-badge badge-spoof">{c_spoof} SPOOF</span>')
+        if c_obfus > 0: cluster_badges.append(f'<span class="cluster-badge badge-invis">{c_obfus} OBFUSCATE</span>')
 
-        # --- Cluster Rendering Logic ---
         start_idx = clust[0]
         end_idx = clust[-1]
-        
         ctx_start = max(0, start_idx - 10)
         ctx_end = min(text_len, end_idx + 11)
         
+        # Spacer Logic
         if ctx_start > prev_end:
             gap = ctx_start - prev_end
             if gap > 0:
@@ -4750,44 +4736,59 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             char = js_array[i]
             cp = ord(char)
             
-            # Safe String Logic (Sanitization)
-            if i in invisible_indices: pass 
-            elif i in bidi_indices: pass
+            # Safe String Logic
+            if i in invisible_indices or i in bidi_indices: pass 
             elif i in confusable_indices:
                 skel = confusables_map.get(cp, char)
                 safe_string_parts.append(skel)
             else:
                 safe_string_parts.append(char)
 
-            # Visual Layer
             char_vis = _escape_html(char)
+            # Control Pictures
             if char == '\n': char_vis = '<span class="xray-control">↵</span>'
             elif char == '\r': char_vis = '<span class="xray-control">↵</span>'
             elif char == '\t': char_vis = '<span class="xray-control">⇥</span>'
-            elif char in ('\v', '\f'): char_vis = '<span class="xray-control">␉</span>'
             
             safe_wrapper = f'<span class="xray-safe">{char_vis}</span>'
 
-            # --- RENDER PRIORITY FIX (CRITICAL) ---
-            # 1. EXECUTION (Bidi) - Highest priority. 
-            # Must check first because Bidi chars are often also "Invisible".
+            # --- RENDER PRIORITY FIX ---
+            
+            # 1. EXECUTION (Bidi) - Now with Grouping Logic
             if i in bidi_indices:
+                run_len = 1
+                lookahead = i + 1
+                # Consume contiguous Bidi controls
+                while lookahead < ctx_end and lookahead in bidi_indices:
+                    run_len += 1
+                    lookahead += 1
+                
+                # Display Logic
+                if run_len > 1:
+                    label = f"&times;{run_len}" # x8
+                    title = f"{run_len} Bidi Controls (Execution Risk)"
+                else:
+                    label = "&harr;"
+                    title = "Bidi Control (Execution Risk)"
+
                 marker = (
                     f'<span class="xray-stack stack-bidi" tabindex="0" '
-                    f'title="Bidi Control (Execution Risk)" '
-                    f'aria-label="Bidi Control">'
-                    f'<span class="xray-top" style="color:#d97706;">&harr;</span>'
+                    f'title="{title}" aria-label="{title}">'
+                    f'<span class="xray-top" style="color:#d97706;">{label}</span>'
                     f'<span class="xray-bot">BIDI</span>'
                     f'</span>'
                 )
                 cluster_html_parts.append(marker)
+                
+                # Skip the consumed characters
+                i += run_len
+                continue
 
             # 2. OBFUSCATION (Invisible)
             elif i in invisible_indices:
                 run_len = 1
                 lookahead = i + 1
                 # Lookahead must consume contiguous invisibles that are NOT bidi
-                # If we hit a bidi char, we stop the run so it gets its own BIDI stack
                 while lookahead < ctx_end and lookahead in invisible_indices and lookahead not in bidi_indices:
                     run_len += 1
                     lookahead += 1
@@ -4795,8 +4796,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 if run_len > 1:
                     marker = (
                         f'<span class="xray-stack stack-invis" tabindex="0" '
-                        f'title="{run_len} hidden characters (Obfuscation)" '
-                        f'aria-label="{run_len} hidden characters">'
+                        f'title="{run_len} hidden characters" aria-label="{run_len} hidden characters">'
                         f'<span class="xray-top">×{run_len}</span>'
                         f'<span class="xray-bot">HID</span>'
                         f'</span>'
@@ -4807,13 +4807,14 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 else:
                     marker = (
                         f'<span class="xray-stack stack-invis" tabindex="0" '
-                        f'title="Hidden Character (Obfuscation)" '
-                        f'aria-label="Hidden character">'
+                        f'title="Hidden Character" aria-label="Hidden character">'
                         f'<span class="xray-top">&bull;</span>'
                         f'<span class="xray-bot">HID</span>'
                         f'</span>'
                     )
                     cluster_html_parts.append(marker)
+                    i += 1
+                    continue
 
             # 3. SPOOFING (Confusables)
             elif i in confusable_indices:
@@ -4821,89 +4822,65 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 disp_skel = skel[0] + (".." if len(skel)>1 else "") if skel else "?"
                 
                 script_tag = ""
-                src_sc = "Unknown"; dst_sc = "Unknown"
                 try:
                     src_sc = _find_in_ranges(cp, "Scripts") or "Com"
-                    skel_cp = ord(skel[0]) if skel else 0
-                    dst_sc = _find_in_ranges(skel_cp, "Scripts") or "Com"
-                    if src_sc != dst_sc and src_sc not in ("Common", "Inherited") and dst_sc not in ("Common", "Inherited"):
+                    dst_sc = _find_in_ranges(ord(skel[0]), "Scripts") or "Com" if skel else "Com"
+                    if src_sc != dst_sc and src_sc not in ("Common","Inherited") and dst_sc not in ("Common","Inherited"):
                         s_abbr = src_sc[:3]; d_abbr = dst_sc[:3]
                         script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
                 except: pass
 
-                safe_cp_display = f"U+{ord(skel[0]):04X}" if skel else "?"
-                title_safe = (
-                    f"Spoofing Risk&#10;"
-                    f"Raw: {_escape_html(char)} (U+{cp:04X}, {src_sc})&#10;"
-                    f"Safe: {_escape_html(skel)} ({safe_cp_display}, {dst_sc})"
-                )
-                
                 stack = (
                     f'<span class="xray-stack stack-spoof" tabindex="0" '
-                    f'title="{title_safe}" '
-                    f'aria-label="Spoofing Risk: Raw {_escape_html(char)} vs Safe {_escape_html(skel)}">'
+                    f'title="Spoofing Risk: {_escape_html(char)} -> {_escape_html(skel)}">'
                     f'<span class="xray-top">{_escape_html(char)}</span>'
                     f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
                     f'{script_tag}'
                     f'</span>'
                 )
                 cluster_html_parts.append(stack)
+                i += 1
 
             # 4. Safe Character
             else:
                 cluster_html_parts.append(safe_wrapper)
-            
-            i += 1
+                i += 1
 
+        # Card Footer (Actions)
         safe_str_js = _escape_for_js("".join(safe_string_parts))
         safe_str_attr = _escape_html(safe_str_js)
-        
-        copy_title = (
-            "Copies ONLY this local slice (ctx_start..ctx_end).\n"
-            "• Confusables replaced by safe skeletons (UTS #39)\n"
-            "• Invisibles/Bidi controls dropped entirely\n"
-            "• Skipped characters outside this slice are NOT included."
-        )
-        copy_title_attr = _escape_html(copy_title)
-        
-        cluster_count_tooltip = f"Cluster {idx + 1} of {len(clusters)}"
+        copy_title = "Copies ONLY this local slice, stripping threats."
         
         card = f"""
-        <div class="cluster-card" id="{cluster_id}" role="group" aria-labelledby="cluster-header-{idx}">
-            <div class="cluster-header" id="cluster-header-{idx}">
+        <div class="cluster-card" id="{cluster_id}">
+            <div class="cluster-header">
                 <div class="cluster-meta">
-                    <span class="cluster-id" title="{cluster_count_tooltip}">#{idx + 1}</span>
+                    <span class="cluster-id">#{idx + 1}</span>
                     {"".join(cluster_badges)}
                 </div>
-                <button class="safe-copy-btn" title="{copy_title_attr}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">
+                <button class="safe-copy-btn" title="{copy_title}" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">
                     Copy Safe Slice
                 </button>
             </div>
-            <div class="cluster-body">
-                {"".join(cluster_html_parts)}
-            </div>
+            <div class="cluster-body">{"".join(cluster_html_parts)}</div>
         </div>
         """
         cluster_html_list.append(card)
         prev_end = ctx_end
 
-    # --- 3. Construct Summary Scoreboard ---
+    # --- 3. Summary Scoreboard ---
     summary_parts = []
-    
-    def make_stat_badge(count, label, color_class):
+    def make_badge(count, label, color_class):
         if count == 0: return ""
         return f'<span class="{color_class}"><strong>{count}</strong> {label}</span>'
 
-    if total_exec > 0: 
-        summary_parts.append(make_stat_badge(total_exec, "Execution", "stat-exec"))
-    if total_spoof > 0: 
-        summary_parts.append(make_stat_badge(total_spoof, "Spoofing", "stat-spoof"))
-    if total_obfus > 0: 
-        summary_parts.append(make_stat_badge(total_obfus, "Obfuscation", "stat-obfus"))
+    if total_exec > 0: summary_parts.append(make_badge(total_exec, "Execution", "stat-exec"))
+    if total_spoof > 0: summary_parts.append(make_badge(total_spoof, "Spoofing", "stat-spoof"))
+    if total_obfus > 0: summary_parts.append(make_badge(total_obfus, "Obfuscation", "stat-obfus"))
     
     summary_text = ", ".join(summary_parts)
     
-    # --- 4. Construct Legend (Aligned) ---
+    # --- 4. Legend ---
     legend_html = (
         '<div class="xray-legend">'
         '<span class="xray-legend-item"><span class="xray-dot dot-bidi"></span><strong>EXECUTION:</strong> Bidi/Control (BIDI)</span>'
@@ -4912,19 +4889,16 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         '</div>'
     )
 
-    # Final Assembly
-    html_output = [
-        f'<div class="xray-summary-bar">'
-        f'<span class="xray-summary-title">Forensic Scan:</span>'
-        f'{summary_text} across <strong>{len(clusters)}</strong> active clusters.'
+    return "".join([
+        f'<div class="xray-summary-bar">',
+        f'<span class="xray-summary-title">Forensic Scan:</span>',
+        f'{summary_text} across <strong>{len(clusters)}</strong> active clusters.',
         f'</div>',
-        '<div class="xray-stream-wrapper">'
-    ]
-    html_output.extend(cluster_html_list)
-    html_output.append('</div>')
-    html_output.append(legend_html)
-    
-    return "".join(html_output)
+        '<div class="xray-stream-wrapper">',
+        "".join(cluster_html_list),
+        '</div>',
+        legend_html
+    ])
 
 
 def _generate_uts39_skeleton_metrics(t: str):
