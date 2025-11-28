@@ -6927,15 +6927,9 @@ def render_statistical_profile(stats):
     </div>
     """
     
-    # Console Description (Plain Text for Readability)
     console_desc = (
-        "Measures information randomness (0-8 bits).\n"
-        "• < 3.0: Repetitive/Sparse (Padding).\n"
-        "• 3.0-4.5: Natural Language (English).\n"
-        "• 4.5-6.0: Code, Base64, or Complex Scripts.\n"
-        "• > 6.0: Encrypted, Compressed, or Binary.\n"
-        "DENSITY (Norm): Ratio of actual entropy to max possible entropy for the characters used. "
-        "High density (>90%) implies characters are used with near-uniform frequency (e.g. Obfuscation)."
+        "Shannon Entropy (0-8 bits). Low (<3.0): Repetitive/Sparse. Mid (3.0-4.5): Natural Text. High (>6.5): Compressed/Encrypted.\n"
+        "DENSITY: Saturation of the character set. >90% implies uniform distribution (Obfuscation/Randomness)."
     )
     
     rows.append(make_row(
@@ -7135,35 +7129,52 @@ def render_statistical_profile(stats):
 
         console_html = """
         <div id="stat-console-strip" class="stat-console-strip">
-            <div class="stat-console-left">
-                <span id="stat-console-label" class="sc-main-label">READY</span>
-                <span id="stat-console-desc">Hover metrics for forensic context.</span>
-            </div>
-            <div class="stat-console-right">
-                <div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div>
-                <div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div>
-            </div>
+            <div class="stat-console-left"><span id="stat-console-label" class="sc-main-label">READY</span><span id="stat-console-desc">Hover metrics for forensic context.</span></div>
+            <div class="stat-console-right"><div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div><div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div></div>
         </div>
-        
         <details class="stat-legend-details">
-            <summary class="stat-legend-summary">Metric Guide & Soft Hints</summary>
-            <div class="stat-legend-content">
+            <summary class="stat-legend-summary">Forensic Metric Guide</summary>
+            <div class="stat-legend-content" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px;">
+                
                 <div class="sl-col">
-                    <strong>Thermodynamics</strong>
-                    <div class="sl-item"><b>High (>6.5):</b> Dense/Encrypted.</div>
-                    <div class="sl-item"><b>Low (<3.0):</b> Repetitive.</div>
+                    <strong>Thermodynamics (Entropy)</strong>
+                    <div class="sl-item"><b>Logic:</b> Measures unpredictability per byte.</div>
+                    <div class="sl-item"><b>High (>6.5):</b> Compressed, Encrypted, or Binary.</div>
+                    <div class="sl-item"><b>Mid (4.5-6.0):</b> Code, Base64, or Complex Scripts.</div>
                 </div>
+
                 <div class="sl-col">
                     <strong>Lexical Density (TTR)</strong>
-                    <div class="sl-item"><b>Range:</b> 0.0 (Mono) to 1.0 (Unique).</div>
-                    <div class="sl-item"><b><0.4:</b> Repetitive/Bot-like.</div>
-                    <div class="sl-item"><b>>0.8:</b> High density lists/IDs.</div>
+                    <div class="sl-item"><b>Logic:</b> Unique Tokens / Total Tokens.</div>
+                    <div class="sl-item"><b>Note:</b> Naturally drops as text gets longer.</div>
+                    <div class="sl-item"><b>&lt; 0.20:</b> Machine repetition or keyword flooding.</div>
                 </div>
+
                 <div class="sl-col">
-                    <strong>Phonotactics</strong>
-                    <div class="sl-item"><b>Natural:</b> ~0.35 - 0.50 (Latin).</div>
-                    <div class="sl-item"><b>Machine:</b> <0.20 (Base64/Hex).</div>
+                    <strong>Top Tokens (Flooding)</strong>
+                    <div class="sl-item"><b>Logic:</b> Zipf's Law Analysis.</div>
+                    <div class="sl-item"><b>Flooding:</b> A single token consuming >30% of the text is a strong anomaly (Log padding or SEO attacks).</div>
                 </div>
+
+                <div class="sl-col">
+                    <strong>Freq. Fingerprint</strong>
+                    <div class="sl-item"><b>Peaked:</b> Uneven distribution (e.g. 'e' is 12%) suggests Natural Language.</div>
+                    <div class="sl-item"><b>Flat:</b> Uniform distribution suggests Ciphertext or Random Generation.</div>
+                </div>
+
+                <div class="sl-col">
+                    <strong>Layout Physics</strong>
+                    <div class="sl-item"><b>P90 Width:</b> 90% of lines are shorter than this.</div>
+                    <div class="sl-item"><b>Outlier:</b> Max Width > 3x P90 indicates minified code, data URI injection, or abnormal formatting.</div>
+                </div>
+
+                <div class="sl-col">
+                    <strong>ASCII Phonotactics</strong>
+                    <div class="sl-item"><b>Scope:</b> Latin A-Z only. Ignored for other scripts.</div>
+                    <div class="sl-item"><b>Natural:</b> Ratio 0.35 - 0.50 (approx 40% vowels).</div>
+                    <div class="sl-item"><b>Machine:</b> Ratio < 0.20 (Base64, Hex, Keys).</div>
+                </div>
+
             </div>
         </details>
         """
