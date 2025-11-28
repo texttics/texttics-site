@@ -2349,59 +2349,67 @@ import difflib
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Forensic Comparator V6 (Strict Alignment).
-    - Fixes "Loose Highlighting" by enforcing contiguous SequenceMatcher boundaries.
-    - Returns actual Skeleton substring instead of redundant percentages.
+    Forensic Comparator V7 (Noise Filtered).
+    - Ignores trivial overlaps (< 3 chars).
+    - Reports metrics relative to the HOT ZONE, not the global string.
+    - Prevents "L" in Login matching "l" in paypal prematurely.
     """
     if not suspect_str or not trusted_str: return None
 
-    # 1. Normalization Pipeline
+    # 1. Normalization
     suspect_nfkc = normalize_extended(suspect_str)
     trusted_nfkc = normalize_extended(trusted_str)
     
     suspect_skel = _generate_uts39_skeleton(suspect_nfkc.casefold())
     trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
 
-    # 2. Sequence Analysis (The "Hot Zone")
+    # 2. Sequence Analysis
     import difflib
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
     
-    # Find the single longest contiguous match
     match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
     
     matched_skel_len = match.size
     target_len = len(trusted_skel)
     
-    if target_len == 0: overlap_pct = 0.0
+    # [NOISE FILTER] Ignore matches shorter than 3 chars unless target is tiny
+    # This stops "L" from matching "paypal"
+    MIN_MATCH_LEN = 3
+    if target_len < 3: MIN_MATCH_LEN = target_len
+    
+    if matched_skel_len < MIN_MATCH_LEN:
+        overlap_pct = 0.0
+        matched_skel_text = "NO SIGNIFICANT CORRELATION"
+        match_start_idx = -1
+        match_end_idx = -1
     else:
         overlap_pct = (matched_skel_len / target_len) * 100.0
-
-    # Extract the actual text of the matched skeleton for the Matrix
-    if matched_skel_len > 0:
-        # Get the slice of the skeleton that matched
         matched_skel_text = suspect_skel[match.a : match.a + match.size]
-    else:
-        matched_skel_text = "NO CORRELATION"
+        match_start_idx = match.a
+        match_end_idx = match.a + match.size
 
     # 3. Verdict Synthesis
     match_raw = (suspect_str == trusted_str)
     
-    # Determine State
-    is_superset = (overlap_pct >= 100.0 and len(suspect_skel) > len(trusted_skel))
-    
     # Defaults
     verdict = "DISTINCT"
-    desc = "No structural correlation detected."
+    desc = "No significant structural correlation detected."
     css = "verdict-neutral"
     icon = "≠"
+    
+    # State flags for the Matrix
+    state_raw = "DIFF"
+    state_nfkc = "DIFF"
     
     if match_raw:
         verdict = "IDENTITY MATCH"
         desc = "Bitwise Identical (Cryptographically Safe)."
         css = "verdict-safe"
         icon = "🛡️"
+        state_raw = "MATCH"
+        state_nfkc = "MATCH"
     elif overlap_pct >= 100.0:
-        if is_superset:
+        if len(suspect_skel) > len(trusted_skel):
             verdict = "TARGET CONTAINED (100%)"
             desc = "CRITICAL: The trusted string is hidden inside the selection (Superset)."
             css = "verdict-crit"
@@ -2417,10 +2425,19 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
              desc = "Strings differ only by Compatibility characters."
              css = "verdict-warn"
              icon = "⚠️"
+             state_nfkc = "MATCH" # It matches canonically
 
     elif overlap_pct > 0:
         verdict = f"VISUAL OVERLAP ({overlap_pct:.1f}%)"
         desc = f"Found {matched_skel_len} matching characters in contiguous sequence."
+        
+        # Matrix Logic for Partial Matches:
+        # If we have a partial match, we check if the RAW characters in that segment match.
+        # This is tricky because we only know Skeleton indices. 
+        # Heuristic: If overlap is > 0, we set RAW to "PARTIAL" to indicate we found *something*.
+        state_raw = "PARTIAL"
+        state_nfkc = "PARTIAL"
+        
         if overlap_pct > 80:
             css = "verdict-crit"
             icon = "🔥"
@@ -2429,47 +2446,31 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
             icon = "🧩"
 
     # 4. Strict "Lens" Generation
-    # Only highlight chars that map strictly to the [match.a : match.a+size] interval.
-    
     html_parts = []
-    
-    # Define the Hot Zone (Indices in Suspect Skeleton)
-    hot_start = match.a
-    hot_end = match.a + match.size
-    
     curr_skel_idx = 0
     
     for char in suspect_str:
         c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
         c_len = len(c_skel)
         
-        # STRICT CONTAINMENT CHECK
-        # Does this character's skeleton sit entirely inside the hot zone?
-        char_is_in_match = False
-        
-        if c_len == 0:
-            # Invisibles: If we are strictly inside the hot zone sequence, flag them.
-            if hot_start <= curr_skel_idx < hot_end:
-                char_is_in_match = True
-        else:
-            # Visible: The char's skeleton range [curr, curr+len] must overlap the hot zone
-            char_end = curr_skel_idx + c_len
-            # We require the character to be part of the matched sequence logic
-            if curr_skel_idx >= hot_start and char_end <= hot_end:
-                char_is_in_match = True
+        # Check if inside hot zone
+        is_in_zone = False
+        if overlap_pct > 0:
+            if c_len == 0:
+                if match_start_idx <= curr_skel_idx < match_end_idx: is_in_zone = True
+            else:
+                char_end = curr_skel_idx + c_len
+                if curr_skel_idx >= match_start_idx and char_end <= match_end_idx:
+                    is_in_zone = True
         
         vis_char = _escape_html(char)
         
-        if char_is_in_match:
-            # It is part of the contiguous match.
-            # Now we decide: Anchor (Black) or Payload (Red)?
-            # Heuristic: Is this exact char in the Trusted String?
+        if is_in_zone:
             if char in trusted_str:
                 html_parts.append(f'<span class="f-anchor">{vis_char}</span>')
             else:
                 html_parts.append(f'<span class="f-payload" title="Spoof / Deviation">{vis_char}</span>')
         else:
-            # NOISE (Gray) - Even if it matches a letter in target, if it's not in the sequence, it's noise.
             html_parts.append(f'<span class="f-noise">{vis_char}</span>')
             
         curr_skel_idx += c_len
@@ -2481,12 +2482,9 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         "desc": desc,
         "css_class": css,
         "icon": icon,
-        "raw": "MATCH" if match_raw else "DIFF",
-        "nfkc": "MATCH" if suspect_nfkc == trusted_nfkc else "DIFF",
-        
-        # [FIX] Return the actual text, or a label
+        "raw": state_raw,
+        "nfkc": state_nfkc,
         "skel_text": matched_skel_text,
-        
         "overlap_pct": overlap_pct,
         "lens_html": lens_html
     }
@@ -9743,9 +9741,7 @@ window.py_generate_evidence = py_generate_evidence
 @create_proxy
 def update_verification(event):
     """
-    Forensic Renderer V7 (Detailed).
-    - Left-aligned metrics with right-aligned details.
-    - Full text wrapping for Skeleton (No truncation).
+    Forensic Renderer V8 (Noise Filtered).
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
@@ -9756,7 +9752,6 @@ def update_verification(event):
     
     if not trusted_input or not verdict_display or not text_input: return
 
-    # 1. Scope
     full_text = text_input.value
     selection_start = text_input.selectionStart
     selection_end = text_input.selectionEnd
@@ -9776,7 +9771,6 @@ def update_verification(event):
 
     trusted_text = trusted_input.value
     
-    # 2. Reset
     if not trusted_text:
         verdict_display.classList.add("hidden")
         if suspect_display: 
@@ -9787,64 +9781,34 @@ def update_verification(event):
     verdict_display.classList.remove("hidden")
     if suspect_display: suspect_display.style.opacity = "1.0"
     
-    # 3. Run Engine
     res = compute_verification_verdict(suspect_text, trusted_text)
     
     if res:
-        # 4. Render Lens
-        if suspect_display:
-            suspect_display.innerHTML = res["lens_html"]
+        if suspect_display: suspect_display.innerHTML = res["lens_html"]
 
-        # 5. Update Verdict
         document.getElementById("verdict-title").textContent = res["verdict"]
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # 6. Update Evidence Matrix (Detailed)
-        def set_metric_detailed(id_str, val, type_label):
+        def set_metric_detailed(id_str, val, is_skel=False):
             el = document.getElementById(id_str)
+            # Find the detail sibling (the right-aligned text)
+            # Structure: .v-metric -> .v-metric-row -> [.v-metric-val, .v-metric-detail]
+            # We target the val container first
             
-            status_html = ""
-            detail_text = ""
-            
-            # Logic for Details
-            if type_label == "RAW":
-                if val == "MATCH":
-                    status_html = '<span style="color:#10b981;">MATCH</span>'
-                    detail_text = "Bitwise Identical"
-                else:
-                    status_html = '<span style="color:#ef4444;">DIFF</span>'
-                    detail_text = "Byte Mismatch"
-                    
-            elif type_label == "NFKC":
-                if val == "MATCH":
-                    status_html = '<span style="color:#10b981;">MATCH</span>'
-                    detail_text = "Form Stable"
-                else:
-                    status_html = '<span style="color:#ef4444;">DIFF</span>'
-                    detail_text = "Format / Width Drift"
-            
-            elif type_label == "SKEL":
-                # Special handling for Skeleton: The val IS the text
-                # We don't use the row layout here, we use the block layout
+            # Simple innerHTML replacement for the Value
+            if is_skel:
                 el.innerHTML = f'<code class="v-code-block">{val}</code>'
-                return
+            elif val == "MATCH":
+                el.innerHTML = '<span style="color:#10b981;">MATCH</span>'
+            elif val == "DIFF":
+                el.innerHTML = '<span style="color:#ef4444;">DIFF</span>'
+            elif val == "PARTIAL":
+                el.innerHTML = '<span style="color:#f59e0b;">PARTIAL</span>'
 
-            # Render Split Layout (Left Status / Right Detail)
-            el.innerHTML = f"""
-            <div class="v-metric-row">
-                <div class="v-metric-val">{status_html}</div>
-                <div class="v-metric-detail">{detail_text}</div>
-            </div>
-            """
-
-        set_metric_detailed("vm-raw", res["raw"], "RAW")
-        set_metric_detailed("vm-nfkc", res["nfkc"], "NFKC")
-        
-        # For Skeleton, we pass the full text from the result
-        # Note: We need to pass the actual text, which we added to 'res' in V6
-        skel_text = res.get("skel_text", "NO DATA")
-        set_metric_detailed("vm-skel", skel_text, "SKEL")
+        set_metric_detailed("vm-raw", res["raw"])
+        set_metric_detailed("vm-nfkc", res["nfkc"])
+        set_metric_detailed("vm-skel", res["skel_text"], is_skel=True)
         
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
