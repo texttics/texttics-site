@@ -4034,28 +4034,79 @@ def compute_statistical_profile(t: str):
     except Exception as e:
         print(f"Layout Calc Error: {e}")
 
-    # 5. Phonotactics
+    # 5. Phonotactics (8-Point Analysis)
     try:
+        # Filter for just the letters to analyze phonemes
         ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
         letter_count = len(ascii_letters)
+        
+        # Gate: Need enough data to be meaningful
         if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
             vowels = set("aeiou")
             v_count = sum(1 for c in ascii_letters if c in vowels)
             c_count = letter_count - v_count
             
+            # 1. Bits Per Phoneme (Letter Entropy)
+            # H = -Sum(p * log2(p)) for the letter stream
+            l_counts = Counter(ascii_letters)
+            l_ent = 0.0
+            for cnt in l_counts.values():
+                p = cnt / letter_count
+                l_ent -= p * math.log2(p)
+            
+            # 2. Heuristic Frequency Scoring (Simulated N-Grams)
+            # Top English frequencies (Approximate)
+            top_uni = set("etaoinshrdlu") # ~80% of English
+            top_bi = {"th", "he", "in", "er", "an", "re", "nd", "at", "on", "nt", "ha", "es", "st", "en", "ed", "to", "it", "ou", "ea", "hi"}
+            top_tri = {"the", "and", "ing", "ent", "ion", "her", "for", "tha", "nth", "int", "ere", "tio", "ter", "est", "ers", "ati", "hat", "ate", "all", "eth"}
+            
+            # Unigram Score: Density of High-Freq Letters
+            uni_hits = sum(1 for c in ascii_letters if c in top_uni)
+            uni_score = (uni_hits / letter_count) * 100
+            
+            # Bigram/Trigram Generation
+            letter_str = "".join(ascii_letters)
+            
+            # Bigram Score
+            bi_hits = 0
+            if letter_count >= 2:
+                total_bi = letter_count - 1
+                for i in range(total_bi):
+                    if letter_str[i:i+2] in top_bi: bi_hits += 1
+                bi_score = (bi_hits / total_bi) * 100
+            else:
+                bi_score = 0.0
+
+            # Trigram Score
+            tri_hits = 0
+            if letter_count >= 3:
+                total_tri = letter_count - 2
+                for i in range(total_tri):
+                    if letter_str[i:i+3] in top_tri: tri_hits += 1
+                tri_score = (tri_hits / total_tri) * 100
+            else:
+                tri_score = 0.0
+
             stats["phonotactics"].update({
                 "vowel_ratio": round(v_count / letter_count, 2),
                 "count": letter_count,
                 "is_valid": True,
                 "v_count": v_count,
-                "c_count": c_count
+                "c_count": c_count,
+                "bits_per_phoneme": round(l_ent, 2),
+                "uni_score": round(uni_score, 1),
+                "bi_score": round(bi_score, 1),
+                "tri_score": round(tri_score, 1)
             })
+            
             r = stats["phonotactics"]["vowel_ratio"]
             if 0.30 <= r <= 0.50: stats["phonotactics"]["status"] = "Balanced"
             elif r < 0.20: stats["phonotactics"]["status"] = "Vowel-Poor"
             elif r > 0.60: stats["phonotactics"]["status"] = "Vowel-Heavy"
             else: stats["phonotactics"]["status"] = "Typical"
-    except: pass
+    except Exception as e: 
+        print(f"Phono Error: {e}")
+        pass
 
     return stats
 
@@ -6942,28 +6993,39 @@ def render_statistical_profile(stats):
             
         rows.append(make_row("Layout Physics", cards_html + map_html, "", ("LAYOUT TOPOLOGY", "7-Point Statistical Summary of line lengths.", "Strict Newline Split", "Bar graph shows file density from start to end.")))
 
-    # 7. Phonotactics (4 Cards + Stacked Bar)
+    # 7. Phonotactics (8 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
     if ph.get("is_valid", False):
         ratio = ph.get('vowel_ratio', 0.0)
         v_cnt = ph.get('v_count', 0)
         c_cnt = ph.get('c_count', 0)
-        total_lets = v_cnt + c_cnt
         
-        # Calculate percentages for the bar
+        # N-Gram & Entropy Metrics
+        bits = ph.get('bits_per_phoneme', 0)
+        uni = ph.get('uni_score', 0)
+        bi = ph.get('bi_score', 0)
+        tri = ph.get('tri_score', 0)
+        
+        total_lets = v_cnt + c_cnt
         v_pct = (v_cnt / total_lets * 100) if total_lets else 0
         c_pct = 100 - v_pct
         
-        # Calculate Letter Density
+        # Letter Density
         total_chars = max(1, stats.get("entropy_n", 1))
         density_val = round((total_lets / total_chars) * 100, 1)
 
+        # 8-Card Grid (4x2 layout)
         cards_html = f"""
-        <div style="display:flex; gap:6px; width:100%; margin-bottom:8px;">
-            {micro_card("V/C Ratio", ratio)}
-            {micro_card("Vowels", v_cnt)}
-            {micro_card("Consonants", c_cnt)}
-            {micro_card("Letter Dens.", f"{density_val}%", "of file")}
+        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; width:100%; margin-bottom:8px;">
+            {micro_card("V/C Ratio", ratio, "Target: ~0.40")}
+            {micro_card("Vowels", v_cnt, "Count (A,E,I,O,U)")}
+            {micro_card("Consonants", c_cnt, "Count (B,C,D...)")}
+            {micro_card("Letter Dens.", f"{density_val}%", "of total file")}
+            
+            {micro_card("Bits/Phoneme", bits, "Letter Entropy")}
+            {micro_card("Unigram Score", f"{uni}%", "Common Letters")}
+            {micro_card("Bigram Score", f"{bi}%", "Common Pairs")}
+            {micro_card("Trigram Score", f"{tri}%", "Common Triples")}
         </div>
         """
         
