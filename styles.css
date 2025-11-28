@@ -4084,3 +4084,272 @@ details.profile-section > summary:hover::marker {
   height: 16px;
   background-color: #cbd5e1;
 }
+
+/* =========================================
+   SUSPICION DASHBOARD (Adversarial Forensics)
+   ========================================= */
+
+/* --- The Main Wrapper --- */
+.intel-console-wrapper {
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    margin-top: 1rem;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    font-family: var(--font-sans);
+}
+
+/* --- ZONE A: The Seal (Restriction Context) --- */
+.intel-seal-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f9fafb; /* Slate-50 */
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+/* The Status Badge (e.g. "ANALYZING...") */
+.intel-badge {
+    font-weight: 800;
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    
+    /* Default Neutral State */
+    background: #e5e7eb;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+/* Risk Variants for the Badge */
+.intel-badge-safe { 
+    background: #dcfce7; color: #166534; border-color: #86efac; 
+}
+.intel-badge-warn { 
+    background: #fef9c3; color: #854d0e; border-color: #fde047; 
+}
+.intel-badge-danger { 
+    background: #fee2e2; color: #991b1b; border-color: #fca5a5; 
+}
+
+/* Metadata (Protocol / Scope) */
+.intel-meta { 
+    font-size: 0.7rem; 
+    color: #6b7280; 
+    font-family: var(--font-mono); 
+    display: flex;
+    align-items: center;
+}
+.meta-label { font-weight: 600; opacity: 0.7; }
+.meta-val { font-weight: 700; color: #374151; margin-left: 4px; }
+.meta-sep { margin: 0 10px; opacity: 0.3; color: #9ca3af; }
+
+
+/* --- ZONE B: The Scoreboard (4-Card Grid) --- */
+.intel-grid-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.intel-stat-card {
+    padding: 16px;
+    text-align: center;
+    border-right: 1px solid var(--color-border-light);
+    transition: background-color 0.2s ease;
+}
+.intel-stat-card:last-child { border-right: none; }
+.intel-stat-card:hover { background-color: #f8fafc; }
+
+.stat-label { 
+    font-size: 0.65rem; 
+    font-weight: 800; 
+    color: #64748b; 
+    letter-spacing: 0.05em; 
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+.stat-val { 
+    font-family: var(--font-mono);
+    font-size: 1.6rem; 
+    font-weight: 700; 
+    color: #111827; 
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.stat-desc { 
+    font-size: 0.7rem; 
+    color: #9ca3af; 
+    font-weight: 500;
+}
+
+
+/* --- ZONE C: Paranoia Peak (Top Offender Highlight) --- */
+.intel-peak-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background-color: #fff1f2; /* Light Rose background */
+    border-bottom: 1px solid #ffe4e6;
+    color: #be123c; /* Rose-700 */
+}
+
+.peak-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9f1239;
+}
+
+.peak-val {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #ffffff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid #fecdd3; /* Rose-200 */
+}
+
+.peak-token {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: #111827;
+    font-size: 0.9rem;
+}
+
+.peak-score {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #e11d48; /* Rose-600 */
+    background: #ffe4e6;
+    padding: 1px 6px;
+    border-radius: 99px;
+}
+
+.peak-reasons {
+    font-size: 0.75rem;
+    color: #881337;
+    font-weight: 500;
+    margin-left: auto; /* Push to right */
+    display: flex;
+    gap: 6px;
+}
+
+.peak-tag {
+    background: rgba(255,255,255,0.6);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(190, 18, 60, 0.2);
+}
+
+
+/* --- ZONE D: Findings List (The Detail Table) --- */
+.intel-target-list { 
+    background: #ffffff; 
+}
+
+.target-header {
+    padding: 8px 16px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #6b7280;
+    background: #f9fafb;
+    border-bottom: 1px solid var(--color-border-light);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.target-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.target-row {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--color-border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: background-color 0.15s ease;
+}
+.target-row:last-child { border-bottom: none; }
+.target-row:hover { background-color: #fcfcfc; }
+
+/* The Row Header (Badge + Token + Verdict) */
+.t-head { 
+    display: flex; 
+    align-items: center; 
+    width: 100%;
+}
+
+.t-token { 
+    font-family: var(--font-mono); 
+    font-weight: 600; 
+    color: #1f2937; 
+    font-size: 0.85rem; 
+}
+
+.t-verdict { 
+    font-size: 0.75rem; 
+    font-weight: 500; 
+    color: #6b7280; 
+    margin-left: auto; /* Push to far right */
+    font-style: italic;
+}
+
+/* Findings Badges */
+.th-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+    min-width: 60px;
+    text-align: center;
+    margin-right: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Severity Colors */
+.th-crit { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; } /* Red */
+.th-high { background: #ffedd5; color: #9a3412; border: 1px solid #fdba74; } /* Orange */
+.th-med  { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; } /* Yellow */
+.th-low  { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; } /* Gray */
+
+
+/* --- X-Ray Wrapper (Perception vs Reality) --- */
+.xray-wrapper {
+    background-color: var(--color-white);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius);
+    padding: 0; /* Let internal clusters handle padding */
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    overflow-x: auto;
+}
+
+/* Mobile Responsive Tweaks for Dashboard */
+@media (max-width: 768px) {
+    .intel-grid-row {
+        grid-template-columns: 1fr 1fr; /* 2x2 grid */
+    }
+    .intel-stat-card:nth-child(2) { border-right: none; }
+    .intel-stat-card:nth-child(3) { border-bottom: none; } 
+    
+    .intel-peak-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .peak-reasons { margin-left: 0; }
+}
