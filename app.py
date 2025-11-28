@@ -7782,26 +7782,32 @@ def analyze_intel_profile(t, threat_flags, script_stats):
 
 def render_intel_console(t, threat_results):
     """
-    Renders the Suspicion Dashboard.
-    Visualizes the 4-Pillar Topology and Per-Token Threat Stacks.
+    Renders the Suspicion Dashboard (Adversarial Forensics).
+    Synced with 'compute_adversarial_profile' (v5 Engine).
     """
     container = document.getElementById("intel-console")
     if not container: return
     
-    # 1. Unpack Data
+    # 1. Unpack Canonical Data
+    # The engine stores results in 'adversarial'
     adv = threat_results.get('adversarial', {})
     if not adv:
         container.style.display = "none"
         return
         
-    targets = adv.get('targets', [])
+    # [FIX] Read the correct keys from the v5 Engine
+    targets = adv.get('targets', [])      # Was 'top_tokens'
     topology = adv.get('topology', {})
     stego = adv.get('stego')
+    restriction = adv.get('restriction', 'UNKNOWN')
+    badge_class = adv.get('badge_class', 'intel-badge-safe')
     
-    # Check for "Clean" state (no threats found)
+    # Logic Gate: If mostly clean, hide dashboard (or keep it purely for Restriction badge)
+    # We show it if there are targets OR stego OR non-zero counters
     has_threats = targets or stego or any(v > 0 for v in topology.values())
     
-    if not has_threats:
+    # OPTIONAL: If you want the dashboard ALWAYS visible (even for safe text), comment out this block:
+    if not has_threats and restriction in ("ASCII-ONLY", "SINGLE SCRIPT (COMMON)"):
         container.style.display = "none"
         return
 
@@ -7809,10 +7815,12 @@ def render_intel_console(t, threat_results):
     
     # 2. Render Seal (Restriction Level)
     badge = document.getElementById("intel-badge")
-    badge.className = f"intel-badge {adv.get('badge_class', 'intel-badge-safe')}"
-    badge.innerText = adv.get('restriction', 'UNKNOWN')
+    if badge:
+        badge.className = f"intel-badge {badge_class}"
+        badge.innerText = restriction
     
     # 3. Render Scoreboard (Topology)
+    # Using specific keys from the unified model
     document.getElementById("intel-stat-homoglyph").innerText = str(topology.get("AMBIGUITY", 0))
     document.getElementById("intel-stat-spoofing").innerText = str(topology.get("SPOOFING", 0))
     document.getElementById("intel-stat-obfus").innerText = str(topology.get("HIDDEN", 0))
@@ -7820,79 +7828,89 @@ def render_intel_console(t, threat_results):
     
     # 4. Render Paranoia Peak (Top Offender)
     peak_row = document.getElementById("intel-peak-row")
-    if targets:
-        peak = targets[0]
-        peak_row.style.display = "flex"
-        document.getElementById("peak-token").innerText = peak['token']
-        document.getElementById("peak-score").innerText = f"Risk: {peak['score']}/100"
-        
-        # Extract reasons from stack for the summary line
-        reasons = [x['desc'] for x in peak['stack'][:3]]
-        reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in reasons])
-        if len(peak['stack']) > 3: reasons_html += " ..."
-        document.getElementById("peak-reasons").innerHTML = reasons_html
-    else:
-        peak_row.style.display = "none"
+    if peak_row:
+        if targets:
+            peak = targets[0]
+            peak_row.style.display = "flex"
+            document.getElementById("peak-token").innerText = peak['token']
+            
+            # Show "Risk: 95/100"
+            score_el = document.getElementById("peak-score")
+            score_el.innerText = f"Risk: {peak['score']}/100"
+            
+            # Extract top 3 descriptions from the stack
+            # Format: {'lvl': 'CRIT', 'type': 'SYNTAX', 'desc': '...'}
+            reasons = [item['desc'] for item in peak['stack'][:3]]
+            
+            reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in reasons])
+            if len(peak['stack']) > 3: reasons_html += " ..."
+            document.getElementById("peak-reasons").innerHTML = reasons_html
+        else:
+            peak_row.style.display = "none"
 
     # 5. Render Findings List (Deep Dive)
     target_body = document.getElementById("intel-target-body")
-    html_rows = []
-    
-    # Global Stego Banner (if present)
-    if stego:
-        html_rows.append(f"""
-        <div class="target-row" style="background-color:#fffbeb;">
-            <div class="t-head">
-                <span class="th-badge th-med">STEGO</span>
-                <span class="t-token">GLOBAL PATTERN</span>
-                <span class="t-verdict">{stego.get('verdict', 'Pattern Detected')}</span>
+    if target_body:
+        html_rows = []
+        
+        # Optional Global Stego Banner
+        if stego:
+            html_rows.append(f"""
+            <div class="target-row" style="background-color:#fffbeb;">
+                <div class="t-head">
+                    <span class="th-badge th-med">STEGO</span>
+                    <span class="t-token">GLOBAL PATTERN</span>
+                    <span class="t-verdict">{stego.get('verdict', 'Pattern Detected')}</span>
+                </div>
+                <div style="font-size:0.75rem; color:#b45309; padding-top:4px; font-family:var(--font-mono);">{stego['detail']}</div>
             </div>
-            <div style="font-size:0.75rem; color:#b45309; padding-top:4px; font-family:var(--font-mono);">{stego['detail']}</div>
-        </div>
-        """)
+            """)
 
-    for tgt in targets:
-        # Build the Stack HTML
-        stack_html = ""
-        for item in tgt['stack']:
-            lvl_class = "th-low"
-            if item['lvl'] == "CRIT": lvl_class = "th-crit"
-            elif item['lvl'] == "HIGH": lvl_class = "th-high"
-            elif item['lvl'] == "MED": lvl_class = "th-med"
-            
-            stack_html += f"""
-            <div class="th-row">
-                <span class="th-badge {lvl_class}">{item['lvl']}</span>
-                <span class="th-desc">{item['desc']}</span>
+        import base64
+
+        for tgt in targets:
+            # Build the Stack HTML
+            stack_html = ""
+            for item in tgt['stack']:
+                lvl_class = "th-low"
+                if item['lvl'] == "CRIT": lvl_class = "th-crit"
+                elif item['lvl'] == "HIGH": lvl_class = "th-high"
+                elif item['lvl'] == "MED": lvl_class = "th-med"
+                
+                # Show Type + Description
+                stack_html += f"""
+                <div class="th-row">
+                    <span class="th-badge {lvl_class}">{item['type']}</span>
+                    <span class="th-desc">{item['desc']}</span>
+                </div>
+                """
+
+            row = f"""
+            <div class="target-row">
+                <div class="t-head">
+                    <span class="th-badge th-crit" style="margin-right:8px; font-size:0.7em;">{tgt['score']}</span>
+                    <span class="t-token">{_escape_html(tgt['token'])}</span>
+                    <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{tgt['verdict']}</span>
+                </div>
+                
+                <details class="intel-details">
+                    <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
+                    <div class="intel-stack-body">
+                        {stack_html}
+                        <div class="t-vectors">
+                            <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
+                            <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
+                        </div>
+                    </div>
+                </details>
             </div>
             """
-
-        row = f"""
-        <div class="target-row">
-            <div class="t-head">
-                <span class="th-badge th-crit" style="margin-right:8px; font-size:0.7em;">{tgt['score']}</span>
-                <span class="t-token">{_escape_html(tgt['token'])}</span>
-                <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{tgt['verdict']}</span>
-            </div>
+            html_rows.append(row)
             
-            <details class="intel-details">
-                <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
-                <div class="intel-stack-body">
-                    {stack_html}
-                    <div class="t-vectors">
-                        <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
-                        <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
-                    </div>
-                </div>
-            </details>
-        </div>
-        """
-        html_rows.append(row)
-        
-    if not html_rows:
-        target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No high-value targets identified.</div>'
-    else:
-        target_body.innerHTML = "".join(html_rows)
+        if not html_rows:
+            target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No high-value targets identified.</div>'
+        else:
+            target_body.innerHTML = "".join(html_rows)
 
 def compute_threat_score(inputs):
     """
