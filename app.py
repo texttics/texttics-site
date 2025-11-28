@@ -7820,7 +7820,10 @@ def render_adversarial_dashboard(adv_data: dict):
     except: pass
     try: Element("adv-stat-obfus").write(str(stats["OBFUSCATION"]))
     except: pass
+    
+    # [FIXED] Added the missing except block here
     try: Element("adv-stat-injection").write(str(stats["INJECTION"]))
+    except: pass
     
     # 6. Render Peak Row (Top Offender)
     if top_tokens:
