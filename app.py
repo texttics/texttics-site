@@ -6834,287 +6834,215 @@ def render_emoji_summary(emoji_counts, emoji_list):
 
 def render_statistical_profile(stats):
     """
-    Renders the Statistical & Lexical Profile (Group 2.F).
-    VISUAL UPGRADE: Adds Bars, Stacked Charts, and Gauges for all metrics.
+    Renders the Statistical & Lexical Profile with INTERACTIVE CONSOLE.
+    Hardened for: Security, Science, and Explainability.
     """
     container = document.getElementById("statistical-profile-body")
-    if not container:
-        return
+    if not container: return
 
     # Fail-soft
-    if not stats or (
-        stats.get("total_tokens", 0) == 0
-        and stats.get("line_stats", {}).get("count", 0) == 0
-    ):
-        container.innerHTML = (
-            '<tr><td colspan="3" class="placeholder-text">'
-            "Insufficient data for statistical profiling."
-            "</td></tr>"
-        )
+    if not stats or (stats.get("total_tokens", 0) == 0 and stats.get("line_stats", {}).get("count", 0) == 0):
+        container.innerHTML = '<tr><td colspan="3" class="placeholder-text">Insufficient data for statistical profiling.</td></tr>'
         return
+
+    # --- HELPER: Row Builder with Data Attributes ---
+    def make_row(label, visual, meta, data_def):
+        """
+        data_def = (Label, Description, Logic, Norms)
+        """
+        d_lbl, d_desc, d_logic, d_norm = data_def
+        # We perform HTML escaping on the attributes to be safe
+        attr_str = (
+            f'data-label="{_escape_html(d_lbl)}" '
+            f'data-desc="{_escape_html(d_desc)}" '
+            f'data-logic="{_escape_html(d_logic)}" '
+            f'data-norm="{_escape_html(d_norm)}"'
+        )
+        
+        return f"""
+        <tr {attr_str} onmouseenter="window.updateStatConsole(this)" onmouseleave="window.updateStatConsole(null)">
+            <th scope="row">{label}</th>
+            <td colspan="2" style="padding-top:16px; padding-bottom:16px;">
+                {visual}
+                {meta}
+            </td>
+        </tr>
+        """
 
     rows = []
 
-    # ------------------------------------------------------------
-    # 1. Thermodynamics (Entropy) - The Gradient Bar
-    # ------------------------------------------------------------
-    ent = float(stats.get("entropy", 0.0) or 0.0)
-    ent_norm = float(stats.get("entropy_norm", 0.0) or 0.0)
-    n_bytes = int(stats.get("entropy_n", 0) or 0)
-    conf = stats.get("entropy_conf", "unknown")
-
+    # 1. Thermodynamics
+    ent = float(stats.get("entropy", 0.0))
+    ent_norm = float(stats.get("entropy_norm", 0.0))
+    n_bytes = int(stats.get("entropy_n", 0))
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
+    
+    # Dynamic Gradient
     bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
-
-    conf_badge = ""
-    if conf == "low":
-        conf_badge = '<span class="detail-text" style="color:#f59e0b;">(Low Sample)</span>'
-    elif conf == "high":
-        conf_badge = '<span class="detail-text" style="color:#10b981;">(Stable)</span>'
-    else:
-        conf_badge = '<span class="detail-text" style="color:#6b7280;">(Moderate)</span>'
-
-    hint = ""
+    
+    hint = "Typical mixed structure."
     if n_bytes >= 128:
         if ent_norm < 0.4: hint = "Highly structured / repetitive."
         elif ent_norm > 0.9 and ent > 6.5: hint = "High density (compressed/encrypted?)"
-        else: hint = "Typical mixed structure."
 
-    entropy_visual = f"""
+    vis_ent = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
             <div style="width:{ent_pct:.1f}%; height:100%; background:{bar_color};"></div>
         </div>
-        <div style="text-align:right; min-width:60px;">
-            <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:#1e293b;">
-                {ent:.2f}
-            </div>
-        </div>
-    </div>
-    <div style="display:flex; justify-content:space-between; margin-top:4px;">
-        <div style="font-size:0.7rem; color:#6b7280;">{n_bytes} bytes {conf_badge}</div>
-        <div style="font-size:0.7rem; color:#64748b;">{_escape_html(hint)}</div>
-    </div>
-    """
+        <div style="text-align:right; min-width:60px; font-family:var(--font-mono); font-weight:700; color:#1e293b;">{ent:.2f}</div>
+    </div>"""
+    
+    meta_ent = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{n_bytes} bytes</div><div>{_escape_html(hint)}</div></div>'
+    
+    rows.append(make_row(
+        "Thermodynamics (Entropy)", vis_ent, meta_ent,
+        ("ENTROPY (SHANNON)", 
+         "Measures the unpredictability of information content (randomness) per byte.", 
+         "H = -Σ p(x) log₂ p(x)", 
+         "Range: 0.0 (Null) to 8.0 (Random/Encrypted)")
+    ))
 
-    rows.append(f"""
-    <tr>
-        <th scope="row">Thermodynamics (Entropy)</th>
-        <td colspan="2" style="padding-top:16px; padding-bottom:16px;">{entropy_visual}</td>
-    </tr>
-    """)
-
-    # ------------------------------------------------------------
-    # 2. Lexical Density (TTR) - The Richness Spectrum
-    # ------------------------------------------------------------
-    ttr = float(stats.get("ttr", 0.0) or 0.0)
-    ttr_seg = stats.get("ttr_segmented", None)
-    tok_total = int(stats.get("total_tokens", 0) or 0)
-    uniq = int(stats.get("unique_tokens", 0) or 0)
-
-    # Gradient: Red (Repetitive) -> Teal (Rich)
+    # 2. Lexical Density (TTR)
+    ttr = float(stats.get("ttr", 0.0))
     ttr_pct = min(100, max(0, ttr * 100))
     ttr_grad = "linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%)"
     
-    ttr_hint = "Rich Variety"
-    if tok_total < 50: ttr_hint = "Unstable (Short)"
-    elif ttr < 0.2: ttr_hint = "Repetitive / Machine-like"
-    elif ttr > 0.8: ttr_hint = "High Unique Density"
-
-    seg_info = ""
-    if ttr_seg is not None:
-        seg_info = f"<span title='Segmented TTR (length-adjusted)'>Seg: <b>{ttr_seg:.2f}</b></span>"
-
-    ttr_visual = f"""
+    vis_ttr = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
             <div style="width:{ttr_pct:.1f}%; height:100%; background:{ttr_grad};"></div>
         </div>
-        <div style="text-align:right; min-width:60px;">
-            <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:#1e293b;">
-                {ttr:.2f}
-            </div>
-        </div>
-    </div>
-    <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;">
-        <div>{uniq}/{tok_total} unique {seg_info}</div>
-        <div>{ttr_hint}</div>
-    </div>
-    """
+        <div style="text-align:right; min-width:60px; font-family:var(--font-mono); font-weight:700; color:#1e293b;">{ttr:.2f}</div>
+    </div>"""
+    
+    meta_ttr = f'<div style="margin-top:4px; font-size:0.7rem; color:#6b7280;">{stats.get("unique_tokens",0)} unique / {stats.get("total_tokens",0)} total</div>'
 
-    rows.append(f"""
-    <tr>
-        <th scope="row">Lexical Density (TTR)</th>
-        <td colspan="2" style="padding-top:16px; padding-bottom:16px;">{ttr_visual}</td>
-    </tr>
-    """)
+    rows.append(make_row(
+        "Lexical Density (TTR)", vis_ttr, meta_ttr,
+        ("TYPE-TOKEN RATIO (TTR)", 
+         "Ratio of unique words to total words. Indicates vocabulary richness.", 
+         "Unique / Total", 
+         "Length Sensitive: Decreases naturally as text gets longer.")
+    ))
 
-    # ------------------------------------------------------------
-    # 3. Top Tokens - Interactive Chips
-    # ------------------------------------------------------------
-    top_tokens = stats.get("top_tokens", []) or []
+    # 3. Flooding
+    top_tokens = stats.get("top_tokens", [])
+    chips = []
     if top_tokens:
-        token_chips = []
         for item in top_tokens:
-            tok = item.get("token", "")
-            share = item.get("share", 0.0)
-            count = item.get("count", 0)
-            safe_tok = _escape_html(tok)
-            js_tok = _escape_for_js(tok)
-            
-            # Smart Chip Style
-            chip = (
-                f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\');" '
-                f'style="appearance:none; border:1px solid #e2e8f0; background:#f8fafc; '
-                f'border-radius:4px; padding:2px 6px; font-family:var(--font-mono); '
-                f'font-size:0.8rem; color:#334155; cursor:pointer; margin-right:6px; '
-                f'display:inline-flex; align-items:center; gap:6px; transition:all 0.1s;">'
-                f'<span>{safe_tok}</span>'
-                f'<span style="background:#e2e8f0; padding:0 4px; border-radius:3px; font-size:0.7rem; color:#475569;">{share}%</span>'
-                f'</button>'
-            )
-            token_chips.append(chip)
+            js_tok = _escape_for_js(item['token'])
+            safe_tok = _escape_html(item['token'])
+            chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#f1f5f9; border:1px solid #cbd5e1; padding:1px 6px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-right:4px;">{safe_tok} <span style="opacity:0.6">{item["share"]}%</span></button>')
+    
+    rows.append(make_row(
+        "Top Tokens (Flooding)", "".join(chips), "",
+        ("REPETITION ANALYSIS", 
+         "Identifies the most frequent tokens to detect 'Keyword Stuffing' or Flooding attacks.", 
+         "Count(Token) / Total", 
+         "Benchmark: Top-1 > 30% indicates artificial repetition.")
+    ))
 
-        top1_share = stats.get("top_shares", {}).get("top1", 0.0) or 0.0
-        warn_badge = ""
-        if top1_share > 30 and tok_total > 50:
-            warn_badge = '<span class="integrity-badge integrity-badge-crit" style="font-size:0.6rem; margin-left:auto;">FLOODING?</span>'
-
-        rows.append(f"""
-        <tr>
-            <th scope="row">Top Tokens (Flooding)</th>
-            <td colspan="2">
-                <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
-                    {''.join(token_chips)}
-                    {warn_badge}
-                </div>
-            </td>
-        </tr>
-        """)
-
-    # ------------------------------------------------------------
-    # 4. Fingerprint - Stacked Composition Bar
-    # ------------------------------------------------------------
-    char_dist = stats.get("char_dist", {}) or {}
+    # 4. Fingerprint
+    char_dist = stats.get("char_dist", {})
     pct_l = char_dist.get('letters', 0)
     pct_n = char_dist.get('digits', 0)
     pct_s = char_dist.get('sym', 0)
     pct_w = char_dist.get('ws', 0)
-    
-    # Only show stack if we have data
-    if (pct_l + pct_n + pct_s + pct_w) > 0:
-        stacked_bar = f"""
-        <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0; width:100%;">
-            <div title="Letters: {pct_l}%" style="width:{pct_l}%; background:#60a5fa;"></div>
-            <div title="Digits: {pct_n}%" style="width:{pct_n}%; background:#f59e0b;"></div>
-            <div title="Symbols: {pct_s}%" style="width:{pct_s}%; background:#a855f7;"></div>
-            <div title="Whitespace: {pct_w}%" style="width:{pct_w}%; background:#e2e8f0;"></div>
-        </div>
-        <div style="display:flex; gap:12px; margin-top:4px; font-size:0.65rem; color:#64748b; font-family:var(--font-sans);">
-            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#60a5fa;"></span>Let {pct_l}%</div>
-            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b;"></span>Num {pct_n}%</div>
-            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#a855f7;"></span>Sym {pct_s}%</div>
-            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#e2e8f0;"></span>WS {pct_w}%</div>
-        </div>
-        """
-        
-        # Add Top Chars below the bar
-        top_chars = stats.get("top_chars", []) or []
-        top_char_html = []
-        for item in top_chars:
-            c = item.get('char', '')
-            if c == ' ': c = '␣'
-            top_char_html.append(f"<b>{_escape_html(c)}</b> <span style='opacity:0.6'>{item['share']}%</span>")
-        
-        fingerprint_text = f"<div style='font-family:var(--font-mono); font-size:0.8rem; margin-top:6px; color:#334155;'>{' &nbsp; '.join(top_char_html)}</div>"
 
-        rows.append(f"""
-        <tr>
-            <th scope="row">Freq. Fingerprint</th>
-            <td colspan="2">
-                {stacked_bar}
-                {fingerprint_text}
-            </td>
-        </tr>
-        """)
+    stacked = f"""
+    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; width:100%;">
+        <div style="width:{pct_l}%; background:#60a5fa;"></div>
+        <div style="width:{pct_n}%; background:#f59e0b;"></div>
+        <div style="width:{pct_s}%; background:#a855f7;"></div>
+        <div style="width:{pct_w}%; background:#e2e8f0;"></div>
+    </div>"""
+    meta_fing = f"<div style='font-size:0.65rem; color:#64748b; margin-top:4px;'>L:{pct_l}% N:{pct_n}% S:{pct_s}%</div>"
 
-    # ------------------------------------------------------------
-    # 5. Layout Physics - The Range Plot
-    # ------------------------------------------------------------
-    l_stats = stats.get("line_stats", {}) or {}
-    line_count = int(l_stats.get("count", 0) or 0)
-    
-    if line_count > 0:
-        avg = l_stats.get("avg", 0)
-        p90 = l_stats.get("p90", 0)
-        mx = l_stats.get("max", 0)
-        
-        if mx > 0:
-            # Positions %
-            pos_avg = (avg / mx) * 100
-            pos_p90 = (p90 / mx) * 100
-            
-            # CSS Plot
-            plot = f"""
-            <div style="position:relative; height:12px; margin-top:6px; width:100%;">
-                <div style="position:absolute; top:5px; left:0; right:0; height:2px; background:#e2e8f0;"></div>
-                
-                <div title="Average: {avg}" style="position:absolute; top:1px; left:{pos_avg}%; width:2px; height:10px; background:#3b82f6;"></div>
-                
-                <div title="P90: {p90}" style="position:absolute; top:1px; left:{pos_p90}%; width:2px; height:10px; background:#f59e0b;"></div>
-                
-                <div title="Max: {mx}" style="position:absolute; top:1px; right:0; width:2px; height:10px; background:#ef4444;"></div>
-            </div>
-            """
-            
-            detail_stats = f"Avg:{int(avg)} <span style='color:#cbd5e1'>|</span> P90:{int(p90)} <span style='color:#cbd5e1'>|</span> Max:{int(mx)}"
-            
-            rows.append(f"""
-            <tr>
-                <th scope="row">Layout Physics</th>
-                <td><span style="font-weight:600; color:#334155;">{line_count} Lines</span></td>
-                <td>
-                    <div style="font-family:var(--font-mono); font-size:0.75rem; color:#64748b; text-align:right;">{detail_stats}</div>
-                    {plot}
-                </td>
-            </tr>
-            """)
+    rows.append(make_row(
+        "Freq. Fingerprint", stacked, meta_fing,
+        ("CHARACTER DISTRIBUTION", 
+         "Ratio of Letters (L), Numbers (N), Symbols (S), and Whitespace.", 
+         "Category Frequency", 
+         "Flat distribution suggests ciphertext; Peaked suggests language.")
+    ))
 
-    # ------------------------------------------------------------
-    # 6. Phonotactics - The Sweet Spot Gauge
-    # ------------------------------------------------------------
-    phon = stats.get("phonotactics", {}) or {}
+    # 5. Layout
+    l_stats = stats.get("line_stats", {})
+    vis_layout = f"<div style='font-family:var(--font-mono); font-weight:700; color:#334155;'>{l_stats.get('count',0)} Lines</div>"
+    meta_layout = f"<div style='font-size:0.7rem; color:#6b7280; text-align:right;'>Avg: {l_stats.get('avg',0)} | P90: {l_stats.get('p90',0)} | Max: {l_stats.get('max',0)}</div>"
+
+    rows.append(make_row(
+        "Layout Physics", vis_layout, meta_layout,
+        ("LAYOUT TOPOLOGY", 
+         "Statistical shape of line lengths. Detects minified code or single-line payloads.", 
+         "P90 = 90th Percentile", 
+         "Max > 3x P90 indicates outlier anomalies.")
+    ))
+
+    # 6. Phonotactics
+    phon = stats.get("phonotactics", {})
     if phon.get("is_valid", False):
-        ratio = phon.get('vowel_ratio', 0.0)
-        # Display 0 to 0.8 scale usually covers it
-        pos = min(100, (ratio / 0.8) * 100)
-        
-        gauge = f"""
-        <div style="position:relative; height:6px; background:#f1f5f9; border-radius:3px; margin-top:6px; border:1px solid #e2e8f0;">
-            <div style="position:absolute; left:37%; width:25%; height:100%; background:#dcfce7;"></div>
-            <div style="position:absolute; left:{pos}%; top:-2px; width:4px; height:10px; background:#475569; border-radius:2px;"></div>
+        rows.append(make_row(
+            "ASCII Phonotactics", f"<span style='font-family:var(--font-mono); font-weight:700;'>{phon['vowel_ratio']}</span>", 
+            f"<div style='font-size:0.7rem; color:#6b7280;'>{phon['status']} (ASCII Only)</div>",
+            ("VOWEL / CONSONANT RATIO", 
+             "Rough heuristic for 'pronounceability' in Latin scripts.", 
+             "Vowels / Letters", 
+             "English ~ 0.40. Very low (<0.2) suggests machine code/Base64.")
+        ))
+
+    # --- INJECT ROWS ---
+    container.innerHTML = "".join(rows)
+
+    # --- APPEND CONSOLE & LEGEND (Outside Table) ---
+    # We find the parent details element to append this to the bottom
+    parent_details = container.closest("details")
+    if parent_details:
+        # Check if console already exists to prevent duplicate append on re-render
+        existing_console = parent_details.querySelector(".stat-console-strip")
+        if existing_console: existing_console.remove()
+        existing_legend = parent_details.querySelector(".stat-legend-details")
+        if existing_legend: existing_legend.remove()
+
+        console_html = """
+        <div id="stat-console-strip" class="stat-console-strip">
+            <div class="stat-console-left">
+                <span id="stat-console-label" class="sc-main-label">READY</span>
+                <span id="stat-console-desc">Hover over a metric above to see forensic definitions.</span>
+            </div>
+            <div class="stat-console-right">
+                <div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div>
+                <div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div>
+            </div>
         </div>
+        
+        <details class="stat-legend-details">
+            <summary class="stat-legend-summary">How to interpret "Soft Hints"</summary>
+            <div class="stat-legend-content">
+                <div class="sl-col">
+                    <strong>Thermodynamics</strong>
+                    <div class="sl-item"><b>High (>6.5):</b> High information density. Characteristic of compressed or encrypted data.</div>
+                    <div class="sl-item"><b>Low (<3.0):</b> Repetitive padding or sparse data.</div>
+                </div>
+                <div class="sl-col">
+                    <strong>Lexical Density</strong>
+                    <div class="sl-item"><b>Low TTR:</b> Bot-like repetition or keyword stuffing.</div>
+                    <div class="sl-item"><b>Note:</b> TTR naturally drops as text length increases. Use "Segmented" for long text.</div>
+                </div>
+                <div class="sl-col">
+                    <strong>Phonotactics</strong>
+                    <div class="sl-item"><b>Weak Signal:</b> Only applies to ASCII letters.</div>
+                    <div class="sl-item"><b>Vowel-Poor:</b> Random strings or Base64 often lack vowels compared to natural English.</div>
+                </div>
+            </div>
+        </details>
         """
         
-        rows.append(f"""
-        <tr>
-            <th scope="row">ASCII Phonotactics</th>
-            <td>
-                <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                    <span style="font-family:var(--font-mono); font-weight:600; color:#334155;">{ratio:.2f}</span>
-                    <span style="font-size:0.7rem; color:#64748b;">{phon.get('status','')}</span>
-                </div>
-                {gauge}
-            </td>
-            <td>
-                <span style="font-size:0.65rem; color:#9ca3af; display:block; text-align:right;">
-                    (Weak hint · Latin letters only)
-                </span>
-            </td>
-        </tr>
-        """)
-
-    container.innerHTML = "".join(rows)
+        # Append HTML
+        div = document.createElement("div")
+        div.innerHTML = console_html
+        parent_details.appendChild(div)
 
 def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
     """Generates and injects HTML for standard stat cards."""
