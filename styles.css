@@ -4286,3 +4286,158 @@ details.profile-section > summary:hover::marker {
     text-transform: uppercase;
     user-select: none;
 }
+
+/* =========================================
+   RESTORED: LEGACY STREAM STYLES (Fixes Top View)
+   ========================================= */
+
+/* The Wrapper */
+.xray-stream-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+/* The Card (Legacy) */
+.cluster-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background-color: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header (Legacy) */
+.cluster-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: #f8fafc; /* Slate-50 */
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.cluster-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cluster-id {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    margin-right: 4px;
+}
+
+/* The Horizontal Scroll Area (Legacy) */
+.cluster-body {
+    padding: 16px;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: #1f2937;
+    background-color: #ffffff;
+    display: block; 
+    white-space: pre; /* Crucial for horizontal layout */
+    overflow-x: auto;
+    overflow-y: hidden;
+    line-height: 1.8; 
+}
+
+.cluster-body::-webkit-scrollbar { height: 8px; }
+.cluster-body::-webkit-scrollbar-thumb { background-color: #e5e7eb; border-radius: 4px; }
+
+/* The Stacks (The "Chips" in the top view) */
+.xray-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin: 0 2px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    cursor: help;
+    min-width: 1.8em;
+    border: 1px solid transparent;
+    line-height: 1;
+    background-color: #f8fafc;
+}
+
+.xray-stack:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+    background-color: #ffffff;
+    z-index: 10;
+}
+
+/* Stack Colors */
+.stack-spoof { background-color: #fff1f2; border-color: #fecaca; }
+.stack-invis { background-color: #f5f3ff; border-color: #ddd6fe; }
+.stack-bidi  { background-color: #fffbeb; border-color: #fcd34d; }
+
+.xray-top {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #1f2937;
+    padding-bottom: 2px;
+}
+.stack-spoof .xray-top { color: #dc2626; }
+.stack-invis .xray-top { color: #7c3aed; }
+
+.xray-bot {
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    border-top: 1px dotted rgba(0,0,0,0.2);
+    width: 100%;
+    text-align: center;
+    padding-top: 2px;
+}
+
+/* Badges & Summary Bar */
+.xray-summary-bar {
+    background-color: #f0f9ff; 
+    border: 1px solid #bae6fd;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    color: #0369a1;
+    margin-bottom: 12px;
+}
+
+.xray-summary-title {
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-right: 6px;
+    font-size: 0.75rem;
+}
+
+.xray-legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 4px;
+    font-size: 0.7rem;
+    color: #64748b;
+    padding: 8px;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.xray-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Dots for Legend */
+.xray-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-spoof { background-color: #fca5a5; }
+.dot-invis { background-color: #c4b5fd; }
+.dot-bidi  { background-color: #fcd34d; }
