@@ -3843,53 +3843,33 @@ def compute_verticalorientation_analysis(t: str):
 
 def compute_statistical_profile(t: str):
     """
-    Stage 1.5 'Chemistry': local statistical properties of the text.
-    - Entropy (UTF-8, with normalization + confidence band)
-    - Lexical diversity (TTR + segmented TTR proxy)
-    - Token flooding
-    - Character frequency fingerprint + class balance
-    - Line layout (min / max / avg / P90)
-    - ASCII phonotactics (gated, weak signal)
-
-    All metrics are SOFT HINTS, not verdicts.
+    Stage 1.5 'Chemistry': local statistical properties.
+    REFINED V2: Strict Line Counting, Expanded Tokens, Detailed Layout/Phono Metrics.
     """
     stats = {
         "entropy": 0.0,
         "entropy_n": 0,
-        "entropy_norm": 0.0,          # normalized 0–1 vs observed alphabet
-        "entropy_conf": "unknown",    # 'low' | 'medium' | 'high'
-
+        "entropy_norm": 0.0,
+        "entropy_conf": "unknown",
         "ttr": 0.0,
-        "ttr_segmented": None,        # MTLD-lite proxy (avg TTR over fixed segments)
+        "ttr_segmented": None,
         "total_tokens": 0,
         "unique_tokens": 0,
-        "top_tokens": [],             # [{'token': str, 'count': int, 'share': float}]
+        "top_tokens": [],
         "top_shares": {"top1": 0.0, "top3": 0.0},
-
-        "top_chars": [],              # [{'char': str, 'count': int, 'share': float, 'cat': str}]
+        "top_chars": [],
         "char_dist": {"letters": 0.0, "digits": 0.0, "ws": 0.0, "sym": 0.0},
-
-        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0},
-
-        "phonotactics": {
-            "vowel_ratio": 0.0,
-            "status": "N/A",
-            "count": 0,
-            "is_valid": False,
-        },
+        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0, "median": 0, "empty": 0},
+        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0, "is_valid": False, "v_count": 0, "c_count": 0},
     }
+    
+    if not t: return stats
 
-    if not t:
-        return stats
-
-    # ------------------------------------------------------------
-    # 1. Shannon Entropy (Thermodynamics) on UTF-8 bytes
-    # ------------------------------------------------------------
+    # 1. Entropy
     try:
         utf8_bytes = t.encode("utf-8", errors="replace")
         total_bytes = len(utf8_bytes)
         stats["entropy_n"] = total_bytes
-
         if total_bytes > 0:
             byte_counts = Counter(utf8_bytes)
             entropy = 0.0
@@ -3898,228 +3878,142 @@ def compute_statistical_profile(t: str):
                 entropy -= p * math.log2(p)
             entropy = max(0.0, min(8.0, entropy))
             stats["entropy"] = round(entropy, 2)
-
-            # Normalized entropy vs observed alphabet size (max = min(8, log2(k)))
+            
             k = max(1, len(byte_counts))
             h_max = min(8.0, math.log2(k)) if k > 1 else 0.0
-            if h_max > 0:
-                stats["entropy_norm"] = round(entropy / h_max, 3)
-            else:
-                stats["entropy_norm"] = 0.0
+            stats["entropy_norm"] = round(entropy / h_max, 3) if h_max > 0 else 0.0
+            
+            if total_bytes < 128: stats["entropy_conf"] = "low"
+            elif total_bytes < 1024: stats["entropy_conf"] = "medium"
+            else: stats["entropy_conf"] = "high"
+    except: pass
 
-            # Confidence band from sample size
-            if total_bytes < 128:
-                stats["entropy_conf"] = "low"
-            elif total_bytes < 1024:
-                stats["entropy_conf"] = "medium"
-            else:
-                stats["entropy_conf"] = "high"
-
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------
-    # 2. Tokenization & Lexical diversity (TTR + segmented TTR)
-    # ------------------------------------------------------------
-    tokens = []
+    # 2. Tokens (Expanded to Top 12 for UI)
     try:
-        # Simple regex tokenizer (can be swapped for Intl.Segmenter upstream if needed)
-        tokens = [
-            tok.lower()
-            for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t)
-            if tok
-        ]
+        tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
         stats["total_tokens"] = len(tokens)
-
         if stats["total_tokens"] > 0:
             unique_tokens = set(tokens)
             stats["unique_tokens"] = len(unique_tokens)
             stats["ttr"] = round(len(unique_tokens) / stats["total_tokens"], 3)
 
-            # Repetition (Flooding) – Top 3 tokens and shares
             token_counts = Counter(tokens)
-            top_3_tokens = token_counts.most_common(3)
+            # FETCH MORE TOKENS (12) to fill the UI bar
+            top_n_tokens = token_counts.most_common(12) 
 
-            if top_3_tokens:
-                stats["top_shares"]["top1"] = round(
-                    (top_3_tokens[0][1] / stats["total_tokens"]) * 100, 1
-                )
-                top3_sum = sum(c for _, c in top_3_tokens)
-                stats["top_shares"]["top3"] = round(
-                    (top3_sum / stats["total_tokens"]) * 100, 1
-                )
+            if top_n_tokens:
+                # Calc shares based on Top 3 for consistency
+                stats["top_shares"]["top1"] = round((top_n_tokens[0][1] / stats["total_tokens"]) * 100, 1)
+                top3_sum = sum(c for _, c in top_n_tokens[:3])
+                stats["top_shares"]["top3"] = round((top3_sum / stats["total_tokens"]) * 100, 1)
 
                 structured_tokens = []
-                for tok, count in top_3_tokens:
+                for tok, count in top_n_tokens:
                     share = (count / stats["total_tokens"]) * 100
-                    structured_tokens.append(
-                        {
-                            "token": tok,
-                            "count": count,
-                            "share": round(share, 1),
-                        }
-                    )
+                    structured_tokens.append({"token": tok, "count": count, "share": round(share, 1)})
                 stats["top_tokens"] = structured_tokens
 
-            # Segmented TTR (MTLD-lite) – only if we have enough tokens
+            # Segmented TTR
             seg_size = 50
             if stats["total_tokens"] >= seg_size * 2:
                 seg_ttrs = []
                 for i in range(0, len(tokens), seg_size):
                     seg = tokens[i : i + seg_size]
-                    if len(seg) < seg_size // 2:
-                        continue # Skip tiny tail segment
-                    seg_unique = set(seg)
-                    seg_ttr = len(seg_unique) / len(seg)
-                    seg_ttrs.append(seg_ttr)
-
+                    if len(seg) < seg_size // 2: continue
+                    seg_ttrs.append(len(set(seg)) / len(seg))
                 if seg_ttrs:
-                    stats["ttr_segmented"] = round(
-                        sum(seg_ttrs) / len(seg_ttrs), 3
-                    )
+                    stats["ttr_segmented"] = round(sum(seg_ttrs) / len(seg_ttrs), 3)
+    except: pass
 
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------
-    # 3. Character Frequency & Class Balance
-    # ------------------------------------------------------------
+    # 3. Fingerprint
     try:
         total_chars = len(t)
         if total_chars > 0:
             char_counts = Counter(t)
-
-            # fingerprint ignores whitespace/control-ish characters
-            filtered_chars = {
-                ch: cnt
-                for ch, cnt in char_counts.items()
-                if not ch.isspace() and ord(ch) > 0x20
-            }
-
+            filtered_chars = {ch: cnt for ch, cnt in char_counts.items() if not ch.isspace() and ord(ch) > 0x20}
             if filtered_chars:
-                top_chars = sorted(
-                    filtered_chars.items(), key=lambda x: x[1], reverse=True
-                )[:5]
+                top_chars = sorted(filtered_chars.items(), key=lambda x: x[1], reverse=True)[:5]
                 total_filtered = sum(filtered_chars.values()) or 1
-
                 structured_chars = []
                 for ch, count in top_chars:
                     share = (count / total_filtered) * 100
-                    cat = "Other"
-                    if ch.isalpha():
-                        cat = "Let"
-                    elif ch.isdigit():
-                        cat = "Num"
-                    elif unicodedata.category(ch).startswith("P"):
-                        cat = "Punct"
-
-                    structured_chars.append(
-                        {
-                            "char": ch,
-                            "count": count,
-                            "share": round(share, 1),
-                            "cat": cat,
-                        }
-                    )
+                    cat = "Let" if ch.isalpha() else ("Num" if ch.isdigit() else "Sym")
+                    structured_chars.append({"char": ch, "count": count, "share": round(share, 1), "cat": cat})
                 stats["top_chars"] = structured_chars
 
-            # Class balance (letters/digits/ws/symbols)
             l_count = sum(1 for c in t if c.isalpha())
             n_count = sum(1 for c in t if c.isdigit())
             ws_count = sum(1 for c in t if c.isspace())
-            sym_count = total_chars - l_count - n_count - ws_count
-            sym_count = max(0, sym_count)
+            sym_count = max(0, total_chars - l_count - n_count - ws_count)
 
-            stats["char_dist"]["letters"] = round(
-                (l_count / total_chars) * 100, 1
-            )
-            stats["char_dist"]["digits"] = round(
-                (n_count / total_chars) * 100, 1
-            )
-            stats["char_dist"]["ws"] = round(
-                (ws_count / total_chars) * 100, 1
-            )
-            stats["char_dist"]["sym"] = round(
-                (sym_count / total_chars) * 100, 1
-            )
+            stats["char_dist"] = {
+                "letters": round((l_count / total_chars) * 100, 1),
+                "digits": round((n_count / total_chars) * 100, 1),
+                "ws": round((ws_count / total_chars) * 100, 1),
+                "sym": round((sym_count / total_chars) * 100, 1)
+            }
+    except: pass
 
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------
-    # 4. Line structure (Layout Physics) with correct P90
-    # ------------------------------------------------------------
+    # 4. Layout Physics (STRICT VISUAL COUNTING)
     try:
-        lines = t.splitlines()
+        # Strict Newline Split (Matches visual editors, ignores U+2028/U+2029)
+        # Normalize CRLF -> LF, CR -> LF, then split LF
+        normalized_t = t.replace('\r\n', '\n').replace('\r', '\n')
+        lines = normalized_t.split('\n')
+        
+        # Determine if last line is a "phantom" (trailing newline)
+        if len(lines) > 1 and lines[-1] == '':
+            lines.pop() # Remove trailing empty string from count
+            
         stats["line_stats"]["count"] = len(lines)
 
         if lines:
             line_lens = [len(line) for line in lines]
-            stats["line_stats"]["min"] = min(line_lens)
-            stats["line_stats"]["max"] = max(line_lens)
-            stats["line_stats"]["avg"] = round(
-                sum(line_lens) / len(lines), 1
-            )
-
             sorted_lens = sorted(line_lens)
             n = len(sorted_lens)
-            if n == 1:
-                p90 = sorted_lens[0]
+            
+            stats["line_stats"]["min"] = sorted_lens[0]
+            stats["line_stats"]["max"] = sorted_lens[-1]
+            stats["line_stats"]["avg"] = round(sum(line_lens) / n, 1)
+            stats["line_stats"]["empty"] = sum(1 for l in line_lens if l == 0)
+            
+            # Median
+            mid = n // 2
+            stats["line_stats"]["median"] = (sorted_lens[mid] + sorted_lens[~mid]) / 2
+            
+            # P90
+            if n == 1: p90 = sorted_lens[0]
             else:
                 pos = 0.9 * (n - 1)
                 lower = int(math.floor(pos))
                 upper = int(math.ceil(pos))
-                if lower == upper:
-                    p90 = sorted_lens[lower]
-                else:
-                    frac = pos - lower
-                    p90 = int(
-                        round(
-                            sorted_lens[lower] * (1 - frac)
-                            + sorted_lens[upper] * frac
-                        )
-                    )
+                p90 = sorted_lens[lower] if lower == upper else int(round(sorted_lens[lower] * (1 - (pos-lower)) + sorted_lens[upper] * (pos-lower)))
             stats["line_stats"]["p90"] = p90
+    except: pass
 
-    except Exception:
-        pass
-
-    # ------------------------------------------------------------
-    # 5. ASCII Phonotactics (weak, gated)
-    # ------------------------------------------------------------
+    # 5. Phonotactics
     try:
-        ascii_letters = [
-            c.lower()
-            for c in t
-            if "a" <= c.lower() <= "z"
-        ]
+        ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
         letter_count = len(ascii_letters)
-        total_chars = len(t) or 1
-        letter_density = letter_count / total_chars
-
-        # hard gating: enough letters and they must be a significant portion
-        if letter_count > 10 and letter_density > 0.3:
+        if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
             vowels = set("aeiou")
-            vowel_count = sum(1 for c in ascii_letters if c in vowels)
-            ratio = vowel_count / letter_count
-
-            stats["phonotactics"]["vowel_ratio"] = round(ratio, 2)
-            stats["phonotactics"]["count"] = letter_count
-            stats["phonotactics"]["is_valid"] = True
-
-            if 0.30 <= ratio <= 0.50:
-                stats["phonotactics"]["status"] = "Balanced (Natural?)"
-            elif ratio < 0.20:
-                stats["phonotactics"]["status"] = "Vowel-Poor (Code/Rand)"
-            elif ratio > 0.60:
-                stats["phonotactics"]["status"] = "Vowel-Heavy"
-            else:
-                stats["phonotactics"]["status"] = "Typical"
-        else:
-            stats["phonotactics"]["is_valid"] = False
-
-    except Exception:
-        pass
+            v_count = sum(1 for c in ascii_letters if c in vowels)
+            c_count = letter_count - v_count
+            
+            stats["phonotactics"].update({
+                "vowel_ratio": round(v_count / letter_count, 2),
+                "count": letter_count,
+                "is_valid": True,
+                "v_count": v_count,
+                "c_count": c_count
+            })
+            
+            r = stats["phonotactics"]["vowel_ratio"]
+            if 0.30 <= r <= 0.50: stats["phonotactics"]["status"] = "Balanced"
+            elif r < 0.20: stats["phonotactics"]["status"] = "Vowel-Poor"
+            elif r > 0.60: stats["phonotactics"]["status"] = "Vowel-Heavy"
+            else: stats["phonotactics"]["status"] = "Typical"
+    except: pass
 
     return stats
 
@@ -6834,40 +6728,24 @@ def render_emoji_summary(emoji_counts, emoji_list):
 
 def render_statistical_profile(stats):
     """
-    Renders the Statistical & Lexical Profile with INTERACTIVE CONSOLE.
-    Hardened for: Security, Science, and Explainability.
+    Renders the Statistical & Lexical Profile (Group 2.F).
+    VISUAL UPGRADE V3: Micro-Dashboards for Layout & Phonotactics.
     """
     container = document.getElementById("statistical-profile-body")
     if not container: return
 
-    # Fail-soft
     if not stats or (stats.get("total_tokens", 0) == 0 and stats.get("line_stats", {}).get("count", 0) == 0):
         container.innerHTML = '<tr><td colspan="3" class="placeholder-text">Insufficient data for statistical profiling.</td></tr>'
         return
 
-    # --- HELPER: Row Builder with Data Attributes ---
+    # --- HELPER: Row Builder ---
     def make_row(label, visual, meta, data_def):
-        """
-        data_def = (Label, Description, Logic, Norms)
-        """
         d_lbl, d_desc, d_logic, d_norm = data_def
-        # We perform HTML escaping on the attributes to be safe
         attr_str = (
-            f'data-label="{_escape_html(d_lbl)}" '
-            f'data-desc="{_escape_html(d_desc)}" '
-            f'data-logic="{_escape_html(d_logic)}" '
-            f'data-norm="{_escape_html(d_norm)}"'
+            f'data-label="{_escape_html(d_lbl)}" data-desc="{_escape_html(d_desc)}" '
+            f'data-logic="{_escape_html(d_logic)}" data-norm="{_escape_html(d_norm)}"'
         )
-        
-        return f"""
-        <tr {attr_str} onmouseenter="window.updateStatConsole(this)" onmouseleave="window.updateStatConsole(null)">
-            <th scope="row">{label}</th>
-            <td colspan="2" style="padding-top:16px; padding-bottom:16px;">
-                {visual}
-                {meta}
-            </td>
-        </tr>
-        """
+        return f'<tr {attr_str} onmouseenter="window.updateStatConsole(this)" onmouseleave="window.updateStatConsole(null)"><th scope="row">{label}</th><td colspan="2" style="padding-top:16px; padding-bottom:16px;">{visual}{meta}</td></tr>'
 
     rows = []
 
@@ -6877,9 +6755,6 @@ def render_statistical_profile(stats):
     n_bytes = int(stats.get("entropy_n", 0))
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
     
-    # Dynamic Gradient
-    bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
-    
     hint = "Typical mixed structure."
     if n_bytes >= 128:
         if ent_norm < 0.4: hint = "Highly structured / repetitive."
@@ -6888,161 +6763,148 @@ def render_statistical_profile(stats):
     vis_ent = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
-            <div style="width:{ent_pct:.1f}%; height:100%; background:{bar_color};"></div>
+            <div style="width:{ent_pct:.1f}%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%);"></div>
         </div>
         <div style="text-align:right; min-width:60px; font-family:var(--font-mono); font-weight:700; color:#1e293b;">{ent:.2f}</div>
     </div>"""
     
-    meta_ent = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{n_bytes} bytes</div><div>{_escape_html(hint)}</div></div>'
+    conf_col = "#f59e0b" if n_bytes < 128 else ("#10b981" if n_bytes > 1024 else "#6b7280")
+    conf_txt = "(Low Sample)" if n_bytes < 128 else ("(Stable)" if n_bytes > 1024 else "(Moderate)")
+    meta_ent = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{n_bytes} bytes <span style="color:{conf_col}">{conf_txt}</span></div><div>{_escape_html(hint)}</div></div>'
     
-    rows.append(make_row(
-        "Thermodynamics (Entropy)", vis_ent, meta_ent,
-        ("ENTROPY (SHANNON)", 
-         "Measures the unpredictability of information content (randomness) per byte.", 
-         "H = -Σ p(x) log₂ p(x)", 
-         "Range: 0.0 (Null) to 8.0 (Random/Encrypted)")
-    ))
+    rows.append(make_row("Thermodynamics (Entropy)", vis_ent, meta_ent, ("ENTROPY (SHANNON)", "Measures unpredictability (randomness) per byte.", "H = -Σ p(x) log₂ p(x)", "0.0 (Null) to 8.0 (Random/Encrypted)")))
 
-    # 2. Lexical Density (TTR)
+    # 2. Lexical Density
     ttr = float(stats.get("ttr", 0.0))
+    ttr_seg = stats.get("ttr_segmented", None)
+    tok_total = int(stats.get("total_tokens", 0))
     ttr_pct = min(100, max(0, ttr * 100))
-    ttr_grad = "linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%)"
     
+    ttr_hint = "Rich Variety"
+    if tok_total < 50: ttr_hint = "Unstable (Short)"
+    elif ttr < 0.2: ttr_hint = "Repetitive / Machine-like"
+    
+    seg_html = f" <span title='Segmented TTR'>Seg: <b>{ttr_seg:.2f}</b></span>" if ttr_seg else ""
+
     vis_ttr = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
-            <div style="width:{ttr_pct:.1f}%; height:100%; background:{ttr_grad};"></div>
+            <div style="width:{ttr_pct:.1f}%; height:100%; background:linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%);"></div>
         </div>
         <div style="text-align:right; min-width:60px; font-family:var(--font-mono); font-weight:700; color:#1e293b;">{ttr:.2f}</div>
     </div>"""
-    
-    meta_ttr = f'<div style="margin-top:4px; font-size:0.7rem; color:#6b7280;">{stats.get("unique_tokens",0)} unique / {stats.get("total_tokens",0)} total</div>'
+    meta_ttr = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{stats.get("unique_tokens",0)}/{tok_total} unique{seg_html}</div><div>{ttr_hint}</div></div>'
 
-    rows.append(make_row(
-        "Lexical Density (TTR)", vis_ttr, meta_ttr,
-        ("TYPE-TOKEN RATIO (TTR)", 
-         "Ratio of unique words to total words. Indicates vocabulary richness.", 
-         "Unique / Total", 
-         "Length Sensitive: Decreases naturally as text gets longer.")
-    ))
+    rows.append(make_row("Lexical Density (TTR)", vis_ttr, meta_ttr, ("TYPE-TOKEN RATIO", "Vocabulary richness. Length-sensitive.", "Unique / Total", "Decreases as text length increases.")))
 
-    # 3. Flooding
+    # 3. Top Tokens (Expanded & Flexed)
     top_tokens = stats.get("top_tokens", [])
     chips = []
     if top_tokens:
         for item in top_tokens:
             js_tok = _escape_for_js(item['token'])
             safe_tok = _escape_html(item['token'])
-            chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#f1f5f9; border:1px solid #cbd5e1; padding:1px 6px; border-radius:4px; cursor:pointer; font-size:0.75rem; margin-right:4px;">{safe_tok} <span style="opacity:0.6">{item["share"]}%</span></button>')
+            chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.75rem; color:#334155; margin:0 4px 4px 0; display:inline-flex; align-items:center; gap:4px;">{safe_tok} <span style="background:#e2e8f0; padding:0 3px; border-radius:2px; font-size:0.65rem; color:#64748b;">{item["share"]}%</span></button>')
     
-    rows.append(make_row(
-        "Top Tokens (Flooding)", "".join(chips), "",
-        ("REPETITION ANALYSIS", 
-         "Identifies the most frequent tokens to detect 'Keyword Stuffing' or Flooding attacks.", 
-         "Count(Token) / Total", 
-         "Benchmark: Top-1 > 30% indicates artificial repetition.")
-    ))
+    rows.append(make_row("Top Tokens (Flooding)", f'<div style="display:flex; flex-wrap:wrap; align-items:center; width:100%; margin-bottom:-4px;">{"".join(chips)}</div>', "", ("REPETITION ANALYSIS", "Most frequent tokens.", "Count / Total", "Top-1 > 30% suggests flooding.")))
 
-    # 4. Fingerprint
-    char_dist = stats.get("char_dist", {})
-    pct_l = char_dist.get('letters', 0)
-    pct_n = char_dist.get('digits', 0)
-    pct_s = char_dist.get('sym', 0)
-    pct_w = char_dist.get('ws', 0)
-
+    # 4. Fingerprint (Enhanced Legend)
+    cd = stats.get("char_dist", {})
+    l, n, s, w = cd.get('letters',0), cd.get('digits',0), cd.get('sym',0), cd.get('ws',0)
+    
     stacked = f"""
-    <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; width:100%;">
-        <div style="width:{pct_l}%; background:#60a5fa;"></div>
-        <div style="width:{pct_n}%; background:#f59e0b;"></div>
-        <div style="width:{pct_s}%; background:#a855f7;"></div>
-        <div style="width:{pct_w}%; background:#e2e8f0;"></div>
+    <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0; width:100%;">
+        <div style="width:{l}%; background:#60a5fa;"></div><div style="width:{n}%; background:#f59e0b;"></div>
+        <div style="width:{s}%; background:#a855f7;"></div><div style="width:{w}%; background:#cbd5e1;"></div>
     </div>"""
-    meta_fing = f"<div style='font-size:0.65rem; color:#64748b; margin-top:4px;'>L:{pct_l}% N:{pct_n}% S:{pct_s}%</div>"
+    
+    # Color-coded legend dots
+    legend_items = [
+        f'<span style="color:#60a5fa;">●</span> Let {l}%',
+        f'<span style="color:#f59e0b;">●</span> Num {n}%',
+        f'<span style="color:#a855f7;">●</span> Sym {s}%',
+        f'<span style="color:#94a3b8;">●</span> WS {w}%'
+    ]
+    meta_fing = f"<div style='display:flex; gap:12px; font-size:0.7rem; color:#64748b; margin-top:6px; font-family:var(--font-sans);'>{' '.join(legend_items)}</div>"
 
-    rows.append(make_row(
-        "Freq. Fingerprint", stacked, meta_fing,
-        ("CHARACTER DISTRIBUTION", 
-         "Ratio of Letters (L), Numbers (N), Symbols (S), and Whitespace.", 
-         "Category Frequency", 
-         "Flat distribution suggests ciphertext; Peaked suggests language.")
-    ))
+    rows.append(make_row("Freq. Fingerprint", stacked, meta_fing, ("CHARACTER DISTRIBUTION", "Ratio of Letters, Numbers, Symbols, Whitespace.", "Category Frequency", "Flat=Cipher/Rand, Peaked=Lang.")))
 
-    # 5. Layout
-    l_stats = stats.get("line_stats", {})
-    vis_layout = f"<div style='font-family:var(--font-mono); font-weight:700; color:#334155;'>{l_stats.get('count',0)} Lines</div>"
-    meta_layout = f"<div style='font-size:0.7rem; color:#6b7280; text-align:right;'>Avg: {l_stats.get('avg',0)} | P90: {l_stats.get('p90',0)} | Max: {l_stats.get('max',0)}</div>"
+    # 5. Layout Physics (Micro-Cards)
+    ls = stats.get("line_stats", {})
+    cnt, avg, p90, mx, emp = ls.get('count',0), ls.get('avg',0), ls.get('p90',0), ls.get('max',0), ls.get('empty',0)
+    
+    if cnt > 0:
+        # Card Styler
+        def m_card(lbl, val, sub=""):
+            return f'<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px; flex:1; min-width:80px;"><div style="font-size:0.65rem; color:#64748b; font-weight:700; text-transform:uppercase;">{lbl}</div><div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:#0f172a;">{val}</div><div style="font-size:0.65rem; color:#94a3b8;">{sub}</div></div>'
 
-    rows.append(make_row(
-        "Layout Physics", vis_layout, meta_layout,
-        ("LAYOUT TOPOLOGY", 
-         "Statistical shape of line lengths. Detects minified code or single-line payloads.", 
-         "P90 = 90th Percentile", 
-         "Max > 3x P90 indicates outlier anomalies.")
-    ))
+        cards_html = f"""
+        <div style="display:flex; gap:8px; width:100%;">
+            {m_card("Total Lines", cnt, f"{emp} Empty")}
+            {m_card("Average Len", int(avg), "Chars/Line")}
+            {m_card("P90 Width", int(p90), "90% are shorter")}
+            {m_card("Max Width", int(mx), "Longest Line")}
+        </div>
+        """
+        rows.append(make_row("Layout Physics", cards_html, "", ("LAYOUT TOPOLOGY", "Statistical shape of line lengths.", "Strict \\n Splitting", "Detects minified code vs prose.")))
 
-    # 6. Phonotactics
-    phon = stats.get("phonotactics", {})
-    if phon.get("is_valid", False):
-        rows.append(make_row(
-            "ASCII Phonotactics", f"<span style='font-family:var(--font-mono); font-weight:700;'>{phon['vowel_ratio']}</span>", 
-            f"<div style='font-size:0.7rem; color:#6b7280;'>{phon['status']} (ASCII Only)</div>",
-            ("VOWEL / CONSONANT RATIO", 
-             "Rough heuristic for 'pronounceability' in Latin scripts.", 
-             "Vowels / Letters", 
-             "English ~ 0.40. Very low (<0.2) suggests machine code/Base64.")
-        ))
+    # 6. Phonotactics (Micro-Cards + Gauge)
+    ph = stats.get("phonotactics", {})
+    if ph.get("is_valid", False):
+        ratio = ph.get('vowel_ratio', 0.0)
+        pos = min(100, (ratio / 0.8) * 100)
+        
+        gauge = f"""
+        <div style="position:relative; height:6px; background:#e2e8f0; border-radius:3px; margin-top:8px; overflow:hidden;">
+            <div style="position:absolute; left:37%; width:25%; height:100%; background:#86efac; opacity:0.6;"></div>
+            <div style="position:absolute; left:{pos}%; top:0; width:4px; height:100%; background:#1e293b; border-radius:2px;"></div>
+        </div>"""
+        
+        def p_card(lbl, val):
+            return f'<div style="background:#fff; border:1px solid #e2e8f0; border-radius:4px; padding:4px 8px; flex:1; text-align:center;"><div style="font-size:0.6rem; color:#64748b; font-weight:700;">{lbl}</div><div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700; color:#334155;">{val}</div></div>'
 
-    # --- INJECT ROWS ---
+        ph_vis = f"""
+        <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; gap:8px;">
+                {p_card("RATIO", ratio)}
+                {p_card("VOWELS", ph.get('v_count',0))}
+                {p_card("CONSONANTS", ph.get('c_count',0))}
+                <div style="flex:2; display:flex; align-items:center; padding-left:8px; font-size:0.75rem; color:#64748b;">
+                    {ph.get('status','')} <span style="opacity:0.5; margin-left:4px;">(ASCII Only)</span>
+                </div>
+            </div>
+            {gauge}
+        </div>
+        """
+        rows.append(make_row("ASCII Phonotactics", ph_vis, "", ("VOWEL / CONSONANT", "Heuristic for Latin-script pronounceability.", "Vowels / Letters", "English ~0.40. Code/Base64 often < 0.2.")))
+
     container.innerHTML = "".join(rows)
 
-    # --- APPEND CONSOLE & LEGEND (Outside Table) ---
-    # We find the parent details element to append this to the bottom
-    parent_details = container.closest("details")
-    if parent_details:
-        # Check if console already exists to prevent duplicate append on re-render
-        existing_console = parent_details.querySelector(".stat-console-strip")
-        if existing_console: existing_console.remove()
-        existing_legend = parent_details.querySelector(".stat-legend-details")
-        if existing_legend: existing_legend.remove()
+    # --- CONSOLE & LEGEND ---
+    parent = container.closest("details")
+    if parent:
+        old_c = parent.querySelector(".stat-console-strip"); 
+        if old_c: old_c.remove()
+        old_l = parent.querySelector(".stat-legend-details"); 
+        if old_l: old_l.remove()
 
         console_html = """
         <div id="stat-console-strip" class="stat-console-strip">
-            <div class="stat-console-left">
-                <span id="stat-console-label" class="sc-main-label">READY</span>
-                <span id="stat-console-desc">Hover over a metric above to see forensic definitions.</span>
-            </div>
-            <div class="stat-console-right">
-                <div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div>
-                <div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div>
-            </div>
+            <div class="stat-console-left"><span id="stat-console-label" class="sc-main-label">READY</span><span id="stat-console-desc">Hover metrics for forensic context.</span></div>
+            <div class="stat-console-right"><div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div><div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div></div>
         </div>
-        
         <details class="stat-legend-details">
-            <summary class="stat-legend-summary">How to interpret "Soft Hints"</summary>
+            <summary class="stat-legend-summary">Metric Guide & Soft Hints</summary>
             <div class="stat-legend-content">
-                <div class="sl-col">
-                    <strong>Thermodynamics</strong>
-                    <div class="sl-item"><b>High (>6.5):</b> High information density. Characteristic of compressed or encrypted data.</div>
-                    <div class="sl-item"><b>Low (<3.0):</b> Repetitive padding or sparse data.</div>
-                </div>
-                <div class="sl-col">
-                    <strong>Lexical Density</strong>
-                    <div class="sl-item"><b>Low TTR:</b> Bot-like repetition or keyword stuffing.</div>
-                    <div class="sl-item"><b>Note:</b> TTR naturally drops as text length increases. Use "Segmented" for long text.</div>
-                </div>
-                <div class="sl-col">
-                    <strong>Phonotactics</strong>
-                    <div class="sl-item"><b>Weak Signal:</b> Only applies to ASCII letters.</div>
-                    <div class="sl-item"><b>Vowel-Poor:</b> Random strings or Base64 often lack vowels compared to natural English.</div>
-                </div>
+                <div class="sl-col"><strong>Thermodynamics</strong><div class="sl-item"><b>High (>6.5):</b> Dense/Encrypted.</div><div class="sl-item"><b>Low (<3.0):</b> Repetitive.</div></div>
+                <div class="sl-col"><strong>Lexical Density (TTR)</strong><div class="sl-item"><b>Range:</b> 0.0 (Mono) to 1.0 (Unique).</div><div class="sl-item"><b><0.4:</b> Repetitive/Bot-like.<br><b>>0.8:</b> High density lists/IDs.</div></div>
+                <div class="sl-col"><strong>Phonotactics</strong><div class="sl-item"><b>Natural:</b> ~0.35 - 0.50 (Latin).</div><div class="sl-item"><b>Machine:</b> <0.20 (Base64/Hex).</div></div>
             </div>
         </details>
         """
-        
-        # Append HTML
         div = document.createElement("div")
         div.innerHTML = console_html
-        parent_details.appendChild(div)
+        parent.appendChild(div)
 
 def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
     """Generates and injects HTML for standard stat cards."""
