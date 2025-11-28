@@ -4465,50 +4465,130 @@ details.profile-section > summary:hover::marker {
 }
 
 /* =========================================
-   VERIFICATION BENCH (Target Matcher)
+   VERIFICATION BENCH (PRO GRADE)
    ========================================= */
 
-/* The Result Container */
 .verdict-box {
     margin-top: 1rem;
-    padding: 1rem;
-    border-left: 4px solid;
-    background-color: #f8fafc; /* Slate-50 */
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     transition: all 0.2s ease;
 }
 
-/* Hidden State */
 .verdict-box.hidden {
     display: none;
 }
 
-/* Verdict States (Applied by Python) */
+/* Header: The Big Verdict */
+.verdict-header {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.verdict-icon-box {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    background: rgba(255,255,255,0.5);
+}
+
+.verdict-title-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.verdict-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    opacity: 0.7;
+}
+
+.verdict-value {
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+/* Body: The Evidence */
+.verdict-body {
+    padding: 16px;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    background: #fafafa; /* Slight contrast for body */
+}
+
+/* The Matrix (Checklist) */
+.verdict-matrix {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-subtle);
+}
+
+.v-metric {
+    flex: 1;
+    background: #fff;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.v-metric-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.v-metric-val {
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+/* STATUS COLORS (Theming) */
+
+/* SAFE (Identity Match) */
 .verdict-safe {
-    border-color: #22c55e; /* Green-500 */
-    background-color: #f0fdf4; /* Green-50 */
-    color: #15803d; /* Green-700 */
+    border-left: 4px solid #10b981; /* Green-500 */
 }
+.verdict-safe .verdict-header { background-color: #ecfdf5; color: #065f46; }
+.verdict-safe .verdict-icon-box { background-color: #d1fae5; color: #059669; }
 
+/* CRITICAL (Spoof) */
 .verdict-crit {
-    border-color: #ef4444; /* Red-500 */
-    background-color: #fef2f2; /* Red-50 */
-    color: #b91c1c; /* Red-700 */
+    border-left: 4px solid #ef4444; /* Red-500 */
 }
+.verdict-crit .verdict-header { background-color: #fef2f2; color: #991b1b; }
+.verdict-crit .verdict-icon-box { background-color: #fee2e2; color: #dc2626; }
 
+/* WARNING (Normalization/Case) */
 .verdict-warn {
-    border-color: #f97316; /* Orange-500 */
-    background-color: #fff7ed; /* Orange-50 */
-    color: #c2410c; /* Orange-700 */
+    border-left: 4px solid #f59e0b; /* Amber-500 */
 }
+.verdict-warn .verdict-header { background-color: #fffbeb; color: #92400e; }
+.verdict-warn .verdict-icon-box { background-color: #fef3c7; color: #d97706; }
 
-.verdict-info {
-    border-color: #3b82f6; /* Blue-500 */
-    background-color: #eff6ff; /* Blue-50 */
-    color: #1d4ed8; /* Blue-700 */
-}
-
+/* NEUTRAL (Distinct) */
 .verdict-neutral {
-    border-color: #94a3b8; /* Slate-400 */
-    background-color: #f8fafc; /* Slate-50 */
-    color: #64748b; /* Slate-500 */
+    border-left: 4px solid #94a3b8; /* Slate-400 */
 }
+.verdict-neutral .verdict-header { background-color: #f8fafc; color: #475569; }
+.verdict-neutral .verdict-icon-box { background-color: #e2e8f0; color: #64748b; }
