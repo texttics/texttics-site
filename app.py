@@ -6889,19 +6889,24 @@ def render_statistical_profile(stats):
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
     bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
     
-    hint = "Typical mixed structure."
-    if n_bytes >= 128:
-        if ent_norm < 0.4: hint = "Highly structured / repetitive."
-        elif ent_norm > 0.9 and ent > 6.5: hint = "High density (compressed/encrypted?)"
-
-    # Confidence Logic
-    if n_bytes < 128:
-        conf_txt = "(Low Sample)"; conf_col = "#f59e0b"
-    elif n_bytes > 1024:
-        conf_txt = "(Stable)"; conf_col = "#10b981"
+    # Dynamic Forensic Status
+    status_txt = "Unknown structure"
+    if n_bytes < 64:
+        status_txt = "Insufficient Data (Unstable)"
+    elif ent > 6.5:
+        status_txt = "High Density (Compressed / Encrypted)"
+    elif ent > 5.5:
+        status_txt = "Complex Structure (Code / Binary / Markup)"
+    elif ent > 3.2:
+        status_txt = "Natural Language (Standard Text)"
     else:
-        conf_txt = "(Moderate)"; conf_col = "#6b7280"
+        status_txt = "Low Entropy (Repetitive / Sparse)"
 
+    # Normalized Entropy (Density)
+    # Explanation: How "full" is the information content for the characters used?
+    norm_val = int(ent_norm * 100)
+    norm_desc = f"{norm_val}% Saturation"
+    
     vis_ent = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:6px; background:#f1f5f9; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0;">
@@ -6913,28 +6918,32 @@ def render_statistical_profile(stats):
     </div>"""
     
     meta_ent = f"""
-    <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.7rem; color:#64748b;">
-        <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            {n_bytes} bytes <span style="color:{conf_col}">{conf_txt}</span> 
-            &nbsp;&bull;&nbsp; ASCII: <b>{ascii_dens}%</b>
-            &nbsp;&bull;&nbsp; <span style="color:#475569; font-style:italic;">{_escape_html(hint)}</span>
+    <div style="margin-top:6px; font-size:0.7rem; color:#64748b; line-height:1.4;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+            <span>Length: <b>{n_bytes}</b> bytes &bull; ASCII: <b>{ascii_dens}%</b></span>
+            <span title="Information Density (Normalized Entropy)">Density: <b>{norm_desc}</b></span>
         </div>
-        <div title="Normalized Entropy (0.0-1.0)" style="white-space:nowrap; margin-left:8px;">
-            norm: <b>{ent_norm:.2f}</b>
-        </div>
+        <div style="color:#475569; font-style:italic;">{_escape_html(status_txt)}</div>
     </div>
     """
+    
+    # Console Description (Plain Text for Readability)
+    console_desc = (
+        "Measures information randomness (0-8 bits).\n"
+        "• < 3.0: Repetitive/Sparse (Padding).\n"
+        "• 3.0-4.5: Natural Language (English).\n"
+        "• 4.5-6.0: Code, Base64, or Complex Scripts.\n"
+        "• > 6.0: Encrypted, Compressed, or Binary.\n"
+        "DENSITY (Norm): Ratio of actual entropy to max possible entropy for the characters used. "
+        "High density (>90%) implies characters are used with near-uniform frequency (e.g. Obfuscation)."
+    )
     
     rows.append(make_row(
         "Thermodynamics", vis_ent, meta_ent,
         ("ENTROPY (SHANNON)", 
-         "Measures information density (randomness) per byte. 0-8 scale.<br>"
-         "• <b>&lt; 3.0:</b> Repetitive padding, sparse data.<br>"
-         "• <b>3.0 - 4.5:</b> Natural Language (English/Latin text).<br>"
-         "• <b>4.5 - 6.0:</b> Code, Markup, or Complex Scripts.<br>"
-         "• <b>&gt; 6.5:</b> High Density (Compressed, Encrypted, or Binary).", 
+         console_desc, 
          "H = -Σ p(x) log₂ p(x)", 
-         "Range: 0.0 (Null) to 8.0 (Total Randomness)")
+         "Range: 0.0 (Null) to 8.0 (Random)")
     ))
 
     # 2. Encoded Payloads
