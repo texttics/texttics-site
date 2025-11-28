@@ -6811,7 +6811,7 @@ def render_statistical_profile(stats):
         """
 
     # --- HELPER: Micro-Card Builder ---
-    def micro_card(label, val, sub_text="", alert=False):
+    def micro_card(label, val, sub_text="&nbsp;", alert=False):
         border_col = "#e2e8f0"
         bg_col = "#f8fafc"
         val_col = "#0f172a"
@@ -6821,10 +6821,10 @@ def render_statistical_profile(stats):
             val_col = "#9a3412"
             
         return f"""
-        <div style="flex:1; background:{bg_col}; border:1px solid {border_col}; border-radius:4px; padding:4px 8px; min-width:0;">
-            <div style="font-size:0.6rem; color:#64748b; font-weight:700; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{label}</div>
-            <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:{val_col}; margin-top:1px;">{val}</div>
-            <div style="font-size:0.6rem; color:#94a3b8; margin-top:1px;">{sub_text}</div>
+        <div style="flex:1; background:{bg_col}; border:1px solid {border_col}; border-radius:4px; padding:6px 4px; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+            <div style="font-size:0.55rem; color:#64748b; font-weight:700; text-transform:uppercase; margin-bottom:2px;">{label}</div>
+            <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:{val_col}; margin-bottom:2px;">{val}</div>
+            <div style="font-size:0.6rem; color:#94a3b8; line-height:1.1;">{sub_text}</div>
         </div>
         """
 
@@ -6913,13 +6913,13 @@ def render_statistical_profile(stats):
         
         cards_html = f"""
         <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; width:100%; margin-bottom:8px;">
-            {micro_card("Total", cnt, f"{emp} Empty")}
-            {micro_card("Min", mn)}
-            {micro_card("P25", p25)}
-            {micro_card("P50 (Med)", p50)}
-            {micro_card("Avg", avg)}
-            {micro_card("P75", p75)}
-            {micro_card("Max", mx, "Extreme" if is_outlier else "", is_outlier)}
+            {micro_card("Total", cnt, f"{emp} Empty Lines")}
+            {micro_card("Min", int(mn), "Minimum Width")}
+            {micro_card("P25", int(p25), "Lower Quartile")}
+            {micro_card("Median", int(p50), "Median Width")}
+            {micro_card("Mean", int(avg), "Average Width")}
+            {micro_card("P75", int(p75), "Upper Quartile")}
+            {micro_card("Max", int(mx), "Maximum Width", is_outlier)}
         </div>
         """
         
