@@ -67,6 +67,13 @@
         </li>
 
         <li>
+          <a href="#verification-bench">
+            <span class="jump-list-title">Verification Bench</span>
+            <span class="jump-list-subtitle">Zero-Trust Comparator</span>
+          </a>
+        </li>
+
+        <li>
           <a href="#dual-atom">
             <span class="jump-list-title">Dual-Atom</span>
             <span class="jump-list-subtitle">Profile <span id="toc-dual-count" class="count">(0)</span></span>
@@ -140,61 +147,6 @@
           </div>
             </div>
       </section>
-
-      <details class="profile-section" id="verification-bench">
-        <summary>
-            <h2 class="section-title">Verification Bench</h2>
-        </summary>
-        
-        <div class="bench-container" style="padding: 1rem; border-top: 1px solid var(--color-border);">
-          <div class="bench-input-group" style="margin-bottom: 1rem;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.5rem;">
-                    <label style="font-size:0.85rem; color:var(--color-text-muted); font-family:var(--font-mono);">
-                        Suspect Scope <span id="scope-badge" class="scope-badge-full">FULL TEXT</span>:
-                    </label>
-                </div>
-                <div id="suspect-display" class="suspect-box">
-                    (Waiting for input...)
-                </div>
-            </div>
-            <div class="bench-input-group" style="margin-bottom: 1rem;">
-                <label for="trusted-input" style="display:block; font-size:0.85rem; color:var(--color-text-muted); margin-bottom:0.5rem; font-family:var(--font-mono);">
-                    Trusted Reference (e.g., type known-good domain):
-                </label>
-                <input type="text" id="trusted-input" placeholder="Enter trusted string to compare..." 
-                       style="width:100%; padding:0.5rem; border:1px solid var(--color-border); background:var(--color-bg); color:var(--color-text); font-family:var(--font-mono); font-size:1rem;">
-            </div>
-            
-            <div id="verdict-display" class="verdict-box hidden">
-                <div class="verdict-header">
-                    <div class="verdict-icon-box" id="verdict-icon">⚖️</div>
-                    <div class="verdict-title-group">
-                        <span class="verdict-label">COMPARISON RESULT</span>
-                        <span class="verdict-value" id="verdict-title">ANALYZING...</span>
-                    </div>
-                </div>
-                
-                <div class="verdict-body">
-                    <div id="verdict-desc" style="margin-bottom: 4px;">Waiting for input...</div>
-                    
-                    <div class="verdict-matrix" id="verdict-matrix">
-                        <div class="v-metric">
-                            <span class="v-metric-label">RAW BYTES</span>
-                            <span class="v-metric-val" id="vm-raw">--</span>
-                        </div>
-                        <div class="v-metric">
-                            <span class="v-metric-label">COMPATIBILITY (NFKC)</span>
-                            <span class="v-metric-val" id="vm-nfkc">--</span>
-                        </div>
-                        <div class="v-metric">
-                            <span class="v-metric-label">SKELETON (VISUAL)</span>
-                            <span class="v-metric-val" id="vm-skel">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-      </details>
       
       <details class="profile-section" id="actions-panel-wrapper">
           <summary><h2 class="section-title">Actions</h2></summary>
@@ -360,6 +312,61 @@
                  Click within the text input. Properties will be shown for the character immediately to the right of the cursor.
              </div>
           </div>
+</details>
+
+  <details class="profile-section" id="verification-bench">
+        <summary>
+            <h2 class="section-title">Verification Bench</h2>
+        </summary>
+        
+        <div class="bench-container" style="padding: 1rem; border-top: 1px solid var(--color-border);">
+          <div class="bench-input-group" style="margin-bottom: 1rem;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.5rem;">
+                    <label style="font-size:0.85rem; color:var(--color-text-muted); font-family:var(--font-mono);">
+                        Suspect Scope <span id="scope-badge" class="scope-badge-full">FULL TEXT</span>:
+                    </label>
+                </div>
+                <div id="suspect-display" class="suspect-box">
+                    (Waiting for input...)
+                </div>
+            </div>
+            <div class="bench-input-group" style="margin-bottom: 1rem;">
+                <label for="trusted-input" style="display:block; font-size:0.85rem; color:var(--color-text-muted); margin-bottom:0.5rem; font-family:var(--font-mono);">
+                    Trusted Reference (e.g., type known-good domain):
+                </label>
+                <input type="text" id="trusted-input" placeholder="Enter trusted string to compare..." 
+                       style="width:100%; padding:0.5rem; border:1px solid var(--color-border); background:var(--color-bg); color:var(--color-text); font-family:var(--font-mono); font-size:1rem;">
+            </div>
+            
+            <div id="verdict-display" class="verdict-box hidden">
+                <div class="verdict-header">
+                    <div class="verdict-icon-box" id="verdict-icon">⚖️</div>
+                    <div class="verdict-title-group">
+                        <span class="verdict-label">COMPARISON RESULT</span>
+                        <span class="verdict-value" id="verdict-title">ANALYZING...</span>
+                    </div>
+                </div>
+                
+                <div class="verdict-body">
+                    <div id="verdict-desc" style="margin-bottom: 4px;">Waiting for input...</div>
+                    
+                    <div class="verdict-matrix" id="verdict-matrix">
+                        <div class="v-metric">
+                            <span class="v-metric-label">RAW BYTES</span>
+                            <span class="v-metric-val" id="vm-raw">--</span>
+                        </div>
+                        <div class="v-metric">
+                            <span class="v-metric-label">COMPATIBILITY (NFKC)</span>
+                            <span class="v-metric-val" id="vm-nfkc">--</span>
+                        </div>
+                        <div class="v-metric">
+                            <span class="v-metric-label">SKELETON (VISUAL)</span>
+                            <span class="v-metric-val" id="vm-skel">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
       </details>
     
       <!-- GROUP 2: THE STRUCTURAL PROFILE -->
