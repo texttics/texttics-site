@@ -7094,7 +7094,11 @@ def render_statistical_profile(stats):
         </div>
         """
         
-        rows.append(make_row("ASCII Phonotactics", cards_html + bar_html, "", ("VOWEL / CONSONANT", "Heuristic for Latin-script pronounceability.", "Vowels vs Consonants", "English ~40% Vowels.")))
+        rows.append(make_row("ASCII Phonotactics", cards_html + bar_html, "", 
+            ("PHONOTACTIC BALANCE", 
+             "Measures the Vowel/Consonant rhythm of Latin letters. Natural English stabilizes ~40% vowels. Low ratio (<20%) indicates consonant-heavy machine code, Base64, or random keys. High ratio (>60%) indicates vowel-heavy padding or non-English structure.", 
+             "Vowels / Total Letters", 
+             "Natural: 0.35-0.50 | Machine: <0.20 | High: >0.60 | NOTE: ASCII Only. Not a language classifier.")))
 
     container.innerHTML = "".join(rows)
     # --- APPEND CONSOLE & LEGEND (Outside Table) ---
