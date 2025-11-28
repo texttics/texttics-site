@@ -768,6 +768,43 @@ function buildStructuredReport() {
       report.push(revealed);
   }
 
+// Statistical & Lexical Profile (Group 2.F)
+  // We use the Python helper because the data is rich and structured
+  if (window.py_get_stat_report_text) {
+      try {
+          // This function is synchronous in PyScript/Pyodide when called from JS 
+          // (if using the standard bridge), but if it returns a promise, we handle it.
+          // Since buildStructuredReport is sync, we might need to handle this carefully.
+          // However, for simplicity in this architecture:
+          
+          // Ideally, we'd call the Python helper. But since we are inside a sync function,
+          // we can also SCRAPE the DOM which we just rendered. This is safer/faster for sync logic.
+          
+          report.push('\n[ Statistical & Lexical Profile ]');
+          const statBody = document.getElementById('statistical-profile-body');
+          if (statBody) {
+              statBody.querySelectorAll('tr').forEach(row => {
+                  const th = row.querySelector('th')?.textContent.trim();
+                  // For the value, we want the text content but cleaned up
+                  const td = row.querySelector('td');
+                  if (th && td) {
+                      // Remove the "Visuals" (graphs) by cloning and stripping divs
+                      let clone = td.cloneNode(true);
+                      // Remove buttons to get just the text
+                      clone.querySelectorAll('button').forEach(b => {
+                          b.replaceWith(b.textContent + " "); 
+                      });
+                      
+                      let text = clone.textContent.replace(/\s+/g, ' ').trim();
+                      report.push(`  ${th}: ${text}`);
+                  }
+              });
+          }
+      } catch (e) {
+          console.warn("Stat Profile scrape failed:", e);
+      }
+  }
+
   return report.join('\n');
 }
 // End of big function
