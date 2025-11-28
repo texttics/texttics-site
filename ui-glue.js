@@ -1363,3 +1363,31 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+/* =========================================
+   STATISTICAL PROFILE CONSOLE BRIDGE
+   ========================================= */
+window.updateStatConsole = function(row) {
+    const consoleLabel = document.getElementById('stat-console-label');
+    const consoleDesc = document.getElementById('stat-console-desc');
+    const consoleLogic = document.getElementById('stat-console-logic');
+    const consoleNorm = document.getElementById('stat-console-norm');
+
+    if (!consoleLabel) return;
+
+    if (row) {
+        // Active Hover State
+        consoleLabel.textContent = row.getAttribute('data-label') || "METRIC";
+        consoleDesc.textContent = row.getAttribute('data-desc') || "";
+        consoleLogic.textContent = row.getAttribute('data-logic') || "";
+        consoleNorm.textContent = row.getAttribute('data-norm') || "";
+        document.getElementById('stat-console-strip').classList.add('active');
+    } else {
+        // Reset / Idle State
+        consoleLabel.textContent = "READY";
+        consoleDesc.textContent = "Hover over a metric above to see forensic definitions.";
+        consoleLogic.textContent = "--";
+        consoleNorm.textContent = "--";
+        document.getElementById('stat-console-strip').classList.remove('active');
+    }
+};
