@@ -759,10 +759,6 @@ function buildStructuredReport() {
   return report.join('\n');
 }
 
-    
-
-  return report.join('\n');
-}
 
 // ---
 // 3. STAGE 2 BUTTON
