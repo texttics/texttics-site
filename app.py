@@ -6922,7 +6922,17 @@ def render_statistical_profile(stats):
     </div>
     """
     
-    rows.append(make_row("Thermodynamics", vis_ent, meta_ent, ("ENTROPY (SHANNON)", "Measures randomness per byte. High (>6.5) = Compressed/Encrypted.", "H = -Σ p(x) log₂ p(x)", "0.0 (Null) to 8.0 (Random)")))
+    rows.append(make_row(
+        "Thermodynamics", vis_ent, meta_ent,
+        ("ENTROPY (SHANNON)", 
+         "Measures information density (randomness) per byte. 0-8 scale.<br>"
+         "• <b>&lt; 3.0:</b> Repetitive padding, sparse data.<br>"
+         "• <b>3.0 - 4.5:</b> Natural Language (English/Latin text).<br>"
+         "• <b>4.5 - 6.0:</b> Code, Markup, or Complex Scripts.<br>"
+         "• <b>&gt; 6.5:</b> High Density (Compressed, Encrypted, or Binary).", 
+         "H = -Σ p(x) log₂ p(x)", 
+         "Range: 0.0 (Null) to 8.0 (Total Randomness)")
+    ))
 
     # 2. Encoded Payloads
     payloads = stats.get("payloads", [])
