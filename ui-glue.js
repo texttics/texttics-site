@@ -722,11 +722,21 @@ function buildStructuredReport() {
   // Perception (X-Ray)
   report.push('\n[ Perception vs. Reality (Forensic States) ]');
   if (window.latest_threat_data) {
-    const t = window.latest_threat_data;
-    report.push(`  1. Forensic (Raw):    ${t.get('raw')}`);
-    report.push(`  2. NFKC:              ${t.get('nfkc')}`);
-    report.push(`  3. NFKC-Casefold:     ${t.get('nfkc_cf')}`);
-    report.push(`  4. UTS #39 Skeleton:  ${t.get('skeleton')}`);
+    try {
+        // 1. Access the nested 'states' dictionary
+        const states = window.latest_threat_data.get('states');
+        
+        // 2. Access the specific keys (s1, s2, s3, s4) defined in app.py
+        if (states) {
+            report.push(`  1. Forensic (Raw):    ${states.get('s1')}`);
+            report.push(`  2. NFKC:              ${states.get('s2')}`);
+            report.push(`  3. NFKC-Casefold:     ${states.get('s3')}`);
+            report.push(`  4. UTS #39 Skeleton:  ${states.get('s4')}`);
+        }
+    } catch (e) {
+        // Failsafe if PyProxy access is stale
+        report.push("  (Forensic state data unavailable)");
+    }
   }
 
   const xrayContainer = document.querySelector('.xray-container');
