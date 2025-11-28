@@ -5349,54 +5349,98 @@ def compute_threat_analysis(t: str):
             skel_events
         )
 
-        # --- 7. HTML Report (Adversarial X-Ray) ---
-        # Upgraded to use the Skeleton Overlay renderer
+        # --- 7. HTML Report: The Dual-View Forensic Engine ---
+        # Strategy: Stack the "Classic Stream" (Context/Buttons) above the "Adversarial X-Ray" (Alignment)
         
-        # A. Collect all indices that trigger suspicion
-        threat_indices = set()
-        
-        # 1. Confusables
+        # A. Collect Sets for Legacy Renderer (Classic Stream)
+        vis_confusables = set()
         if confusable_indices:
-            threat_indices.update(confusable_indices)
-            
-        # 2. Invisibles (Obfuscation)
+            js_array_raw = window.Array.from_(t)
+            for idx in confusable_indices:
+                try:
+                    # Filter for non-common script risks (Legacy logic)
+                    char = js_array_raw[idx]
+                    cp = ord(char)
+                    sc = _find_in_ranges(cp, "Scripts") or "Common"
+                    if sc not in ("Common", "Inherited"):
+                        vis_confusables.add(idx)
+                except: pass
+        
+        vis_invisibles = set()
         clusters = analyze_invisible_clusters(t)
         for c in clusters:
             for k in range(c["start"], c["end"] + 1):
-                threat_indices.add(k)
+                vis_invisibles.add(k)
                 
-        # 3. Bidi (Execution)
+        vis_bidi = set()
+        if bidi_danger_indices:
+            for s in bidi_danger_indices:
+                try: vis_bidi.add(int(s.replace("#","")))
+                except: pass
+
+        # B. Collect Sets for Modern Renderer (Adversarial X-Ray)
+        threat_indices = set()
+        if confusable_indices: threat_indices.update(confusable_indices)
+        for c in clusters:
+            for k in range(c["start"], c["end"] + 1):
+                threat_indices.add(k)
         if bidi_danger_indices:
             for s in bidi_danger_indices:
                 try: threat_indices.add(int(s.replace("#","")))
                 except: pass
 
-        # B. Render X-Ray if threats exist
+        # C. Generate Both Views
+        html_legacy = ""
+        html_xray = ""
+        
         if threat_indices:
-            # We use the raw confusables map. The renderer handles the tuple/str logic.
-            final_html_report = render_adversarial_xray(
+            # 1. Render Classic Stream (Context & Actions)
+            legacy_map = {}
+            for k, v in confusables_map.items():
+                legacy_map[k] = v[0] if isinstance(v, tuple) else v
+            
+            # This generates the "Card" view with badges and buttons
+            html_legacy = _render_forensic_diff_stream(
+                t, 
+                vis_confusables, 
+                vis_invisibles, 
+                vis_bidi, 
+                legacy_map 
+            )
+            
+            # 2. Render Adversarial X-Ray (Vertical Alignment)
+            # This generates the "DNA Strip" view
+            html_xray = render_adversarial_xray(
                 t, 
                 threat_indices, 
                 confusables_map
             )
+
+        # D. Stack Them
+        if html_legacy or html_xray:
+            final_html_report = f"""
+            <div class="forensic-stack">
+                <div class="stack-layer legacy-layer">{html_legacy}</div>
+                <div class="stack-separator" title="Deep Alignment Analysis">⬇ X-RAY ALIGNMENT ⬇</div>
+                <div class="stack-layer xray-layer">{html_xray}</div>
+            </div>
+            """
         else:
             final_html_report = ""
         
         # SPOOFING (HUD Registry Logic)
-        # (Preserved for Sidebar Counts)
         if confusable_indices and LOADING_STATE == "READY":
-            js_array_raw = window.Array.from_(t)
             for idx in confusable_indices:
                 try:
                     _register_hit("thr_spoofing", idx, idx+1, "Homoglyph")
                 except: pass
             
         # OBFUSCATION (HUD Registry Logic)
-        # (Preserved for Sidebar Counts)
         for c in clusters:
             label = "Invisible Cluster"
             if c.get("high_risk"): label += " [High Risk]"
             _register_hit("thr_obfuscation", c["start"], c["end"]+1, label)
+
 
     except Exception as e:
         print(f"Error in compute_threat_analysis: {e}")
