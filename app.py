@@ -6762,19 +6762,26 @@ def render_emoji_summary(emoji_counts, emoji_list):
 def render_statistical_profile(stats):
     """
     Renders the Statistical & Lexical Profile (Group 2.F).
-    VISUAL UPGRADE: Adds Sparklines, ASCII Density, Payload Heuristics, and Honest Fingerprinting.
+    ULTIMATE VERSION: Sparklines, Payload Alerts, Honest Fingerprint, 
+    ASCII Density, and Detailed Phonotactics.
     """
     container = document.getElementById("statistical-profile-body")
     if not container: return
 
+    # Fail-soft
     if not stats or (stats.get("total_tokens", 0) == 0 and stats.get("line_stats", {}).get("count", 0) == 0):
         container.innerHTML = '<tr><td colspan="3" class="placeholder-text">Insufficient data for statistical profiling.</td></tr>'
         return
 
-    # --- HELPER ---
+    # --- HELPER: Row Builder with Data Attributes ---
     def make_row(label, visual, meta, data_def):
         d_lbl, d_desc, d_logic, d_norm = data_def
-        attr_str = f'data-label="{_escape_html(d_lbl)}" data-desc="{_escape_html(d_desc)}" data-logic="{_escape_html(d_logic)}" data-norm="{_escape_html(d_norm)}"'
+        attr_str = (
+            f'data-label="{_escape_html(d_lbl)}" '
+            f'data-desc="{_escape_html(d_desc)}" '
+            f'data-logic="{_escape_html(d_logic)}" '
+            f'data-norm="{_escape_html(d_norm)}"'
+        )
         return f'<tr {attr_str} onmouseenter="window.updateStatConsole(this)" onmouseleave="window.updateStatConsole(null)"><th scope="row">{label}</th><td colspan="2" style="padding-top:16px; padding-bottom:16px;">{visual}{meta}</td></tr>'
 
     rows = []
@@ -6786,24 +6793,33 @@ def render_statistical_profile(stats):
     ascii_dens = float(stats.get("ascii_density", 0.0))
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
     
-    ent_hint = "Typical mixed structure."
+    # Dynamic Gradient
+    bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
+    
+    hint = "Typical mixed structure."
     if n_bytes >= 128:
-        if ent_norm < 0.4: ent_hint = "Highly structured / repetitive."
-        elif ent_norm > 0.9 and ent > 6.5: ent_hint = "High density (compressed/encrypted?)"
+        if ent_norm < 0.4: hint = "Highly structured / repetitive."
+        elif ent_norm > 0.9 and ent > 6.5: hint = "High density (compressed/encrypted?)"
 
     vis_ent = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
-            <div style="width:{ent_pct:.1f}%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%);"></div>
+            <div style="width:{ent_pct:.1f}%; height:100%; background:{bar_color};"></div>
         </div>
         <div style="text-align:right; min-width:60px; font-family:var(--font-mono); font-weight:700; color:#1e293b;">{ent:.2f}</div>
     </div>"""
     
-    meta_ent = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{n_bytes} bytes | ASCII: <b>{ascii_dens}%</b></div><div>{_escape_html(ent_hint)}</div></div>'
+    meta_ent = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{n_bytes} bytes | ASCII: <b>{ascii_dens}%</b></div><div>{_escape_html(hint)}</div></div>'
     
-    rows.append(make_row("Thermodynamics", vis_ent, meta_ent, ("ENTROPY (SHANNON)", "Measures randomness per byte. High values indicate compression or encryption.", "H = -Σ p(x) log₂ p(x)", "0.0 (Null) to 8.0 (Random)")))
+    rows.append(make_row(
+        "Thermodynamics", vis_ent, meta_ent,
+        ("ENTROPY (SHANNON)", 
+         "Measures randomness per byte. High values (>6.5) indicate compression/encryption.", 
+         "H = -Σ p(x) log₂ p(x)", 
+         "Range: 0.0 (Null) to 8.0 (Random)")
+    ))
 
-    # 2. Encoded Payloads (Heuristic) - NEW
+    # 2. Encoded Payloads (Heuristic Alert)
     payloads = stats.get("payloads", [])
     if payloads:
         p_chips = []
@@ -6812,37 +6828,57 @@ def render_statistical_profile(stats):
             safe_lbl = _escape_html(f"{p['type']} (len={p['len']})")
             p_chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#fff7ed; border:1px solid #fed7aa; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:0.75rem; color:#9a3412; margin-right:6px; display:inline-flex; align-items:center;">⚠️ {safe_lbl}</button>')
         
-        rows.append(make_row("Encoded Payloads", "".join(p_chips), "", ("PAYLOAD DETECTION", "Heuristic scan for Base64/Hex patterns.", "Regex Match > 16 chars", "Potential embedded data.")))
+        rows.append(make_row(
+            "Encoded Payloads", "".join(p_chips), "",
+            ("PAYLOAD DETECTION", 
+             "Heuristic scan for Base64/Hex patterns > 16 chars.", 
+             "Regex Match", 
+             "Potential embedded data.")
+        ))
 
-    # 3. Lexical Density
+    # 3. Lexical Density (TTR)
     ttr = float(stats.get("ttr", 0.0))
     ttr_seg = stats.get("ttr_segmented", None)
     tok_total = int(stats.get("total_tokens", 0))
+    uniq = int(stats.get("unique_tokens", 0))
     ttr_pct = min(100, max(0, ttr * 100))
+    ttr_grad = "linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%)"
     
     vis_ttr = f"""
     <div style="display:flex; align-items:center; gap:12px;">
         <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
-            <div style="width:{ttr_pct:.1f}%; height:100%; background:linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%);"></div>
+            <div style="width:{ttr_pct:.1f}%; height:100%; background:{ttr_grad};"></div>
         </div>
         <div style="text-align:right; min-width:60px; font-family:var(--font-mono); font-weight:700; color:#1e293b;">{ttr:.2f}</div>
     </div>"""
     
     seg_html = f" <span title='Segmented TTR'>Seg: <b>{ttr_seg:.2f}</b></span>" if ttr_seg else ""
-    meta_ttr = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{stats.get("unique_tokens",0)}/{tok_total} unique{seg_html}</div></div>'
+    meta_ttr = f'<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;"><div>{uniq}/{tok_total} unique{seg_html}</div></div>'
 
-    rows.append(make_row("Lexical Density", vis_ttr, meta_ttr, ("TYPE-TOKEN RATIO", "Vocabulary richness. Length-sensitive.", "Unique / Total", "Decreases as text length increases.")))
+    rows.append(make_row(
+        "Lexical Density", vis_ttr, meta_ttr,
+        ("TYPE-TOKEN RATIO (TTR)", 
+         "Vocabulary richness. Length-sensitive.", 
+         "Unique / Total", 
+         "Decreases naturally as text length increases.")
+    ))
 
-    # 4. Top Tokens
+    # 4. Top Tokens (Expanded)
     top_tokens = stats.get("top_tokens", [])
     chips = []
     if top_tokens:
         for item in top_tokens:
             js_tok = _escape_for_js(item['token'])
             safe_tok = _escape_html(item['token'])
-            chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.75rem; color:#334155; margin:0 4px 4px 0;">{safe_tok} <span style="opacity:0.6">{item["share"]}%</span></button>')
+            chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.75rem; color:#334155; margin:0 4px 4px 0; display:inline-flex; align-items:center; gap:4px;">{safe_tok} <span style="background:#e2e8f0; padding:0 3px; border-radius:2px; font-size:0.65rem; color:#64748b;">{item["share"]}%</span></button>')
     
-    rows.append(make_row("Top Tokens", f'<div style="display:flex; flex-wrap:wrap; width:100%;">{"".join(chips)}</div>', "", ("REPETITION ANALYSIS", "Most frequent tokens.", "Count / Total", "Top-1 > 30% suggests flooding.")))
+    rows.append(make_row(
+        "Top Tokens", f'<div style="display:flex; flex-wrap:wrap; width:100%;">{"".join(chips)}</div>', "",
+        ("REPETITION ANALYSIS", 
+         "Most frequent tokens. Detects keyword stuffing.", 
+         "Count / Total", 
+         "Top-1 > 30% suggests flooding.")
+    ))
 
     # 5. Fingerprint (Honest & Visual)
     cd = stats.get("char_dist", {})
@@ -6859,26 +6895,45 @@ def render_statistical_profile(stats):
     for item in top_chars:
         ch = item.get('char', '')
         # VISUAL FIX for Whitespace
-        if ch == ' ': vis_ch = "<span style='border:1px solid #e2e8f0; border-radius:3px; padding:0 2px; font-size:0.6rem; vertical-align:middle;'>SP</span>"
-        elif ch == '\t': vis_ch = "<span style='border:1px solid #e2e8f0; border-radius:3px; padding:0 2px; font-size:0.6rem; vertical-align:middle;'>TAB</span>"
-        elif ch == '\n': vis_ch = "<span style='border:1px solid #e2e8f0; border-radius:3px; padding:0 2px; font-size:0.6rem; vertical-align:middle;'>LF</span>"
+        if ch == ' ': vis_ch = "<span style='border:1px solid #e2e8f0; border-radius:3px; padding:0 2px; font-size:0.6rem; vertical-align:middle; background:#fff;'>SP</span>"
+        elif ch == '\t': vis_ch = "<span style='border:1px solid #e2e8f0; border-radius:3px; padding:0 2px; font-size:0.6rem; vertical-align:middle; background:#fff;'>TAB</span>"
+        elif ch == '\n': vis_ch = "<span style='border:1px solid #e2e8f0; border-radius:3px; padding:0 2px; font-size:0.6rem; vertical-align:middle; background:#fff;'>LF</span>"
         else: vis_ch = f"<b>{_escape_html(ch)}</b>"
         
         top_char_html.append(f"{vis_ch} <span style='opacity:0.6'>{item['share']}%</span>")
     
-    meta_fing = f"<div style='display:flex; justify-content:space-between; align-items:center; margin-top:6px;'><div style='font-family:var(--font-mono); font-size:0.8rem; color:#334155;'>{' &nbsp; '.join(top_char_html)}</div><div style='font-size:0.65rem; color:#64748b;'>L:{l}% N:{n}% S:{s}% WS:{w}%</div></div>"
+    legend_items = [
+        f'<span style="color:#60a5fa;">●</span> L:{l}%',
+        f'<span style="color:#f59e0b;">●</span> N:{n}%',
+        f'<span style="color:#a855f7;">●</span> S:{s}%',
+        f'<span style="color:#94a3b8;">●</span> WS:{w}%'
+    ]
+    meta_fing = f"<div style='display:flex; justify-content:space-between; align-items:center; margin-top:6px;'><div style='font-family:var(--font-mono); font-size:0.8rem; color:#334155;'>{' &nbsp; '.join(top_char_html)}</div><div style='font-size:0.65rem; color:#64748b; font-family:var(--font-sans);'>{' '.join(legend_items)}</div></div>"
 
-    rows.append(make_row("Freq. Fingerprint", stacked, meta_fing, ("CHARACTER DISTRIBUTION", "Ratio of types (Letter, Number, Symbol, WS).", "Category Frequency", "Includes all characters (Honest Mode).")))
+    rows.append(make_row(
+        "Freq. Fingerprint", stacked, meta_fing,
+        ("CHARACTER DISTRIBUTION", 
+         "Ratio of types (Letter, Number, Symbol, WS).", 
+         "Category Frequency", 
+         "Includes all characters (Honest Mode).")
+    ))
 
     # 6. Layout Physics (Sparkline)
     l_stats = stats.get("line_stats", {})
     cnt, avg, p90, mx, spark = l_stats.get('count',0), l_stats.get('avg',0), l_stats.get('p90',0), l_stats.get('max',0), l_stats.get('sparkline',"")
     
     if cnt > 0:
-        spark_html = f"<span style='font-family:var(--font-mono); color:#3b82f6; letter-spacing:2px; margin-left:8px;'>{spark}</span>" if spark else ""
-        vis_layout = f"<div style='display:flex; align-items:center;'><span style='font-weight:700; color:#334155;'>{cnt} Lines</span>{spark_html}</div>"
+        spark_html = f"<span style='font-family:var(--font-mono); color:#3b82f6; letter-spacing:2px; margin-left:8px; font-size:0.8rem;'>{spark}</span>" if spark else ""
+        vis_layout = f"<div style='display:flex; align-items:center;'><span style='font-weight:700; color:#334155; font-family:var(--font-mono);'>{cnt} Lines</span>{spark_html}</div>"
         meta_layout = f"<div style='font-size:0.7rem; color:#6b7280; text-align:right;'>Avg: {avg} | P90: {p90} | Max: {mx}</div>"
-        rows.append(make_row("Layout Physics", vis_layout, meta_layout, ("LAYOUT TOPOLOGY", "Statistical shape of line lengths with visual sparkline.", "Strict \\n Splitting", "Detects minified code vs prose.")))
+        
+        rows.append(make_row(
+            "Layout Physics", vis_layout, meta_layout,
+            ("LAYOUT TOPOLOGY", 
+             "Statistical shape of line lengths with visual sparkline.", 
+             "Strict Newline Splitting", 
+             "Detects minified code vs prose.")
+        ))
 
     # 7. Phonotactics
     ph = stats.get("phonotactics", {})
@@ -6890,9 +6945,45 @@ def render_statistical_profile(stats):
             <div style="position:absolute; left:37%; width:25%; height:100%; background:#86efac; opacity:0.6;"></div>
             <div style="position:absolute; left:{pos}%; top:0; width:4px; height:100%; background:#1e293b; border-radius:2px;"></div>
         </div>"""
-        rows.append(make_row("ASCII Phonotactics", gauge, f"<div style='display:flex; justify-content:space-between; font-size:0.7rem; color:#64748b; margin-top:2px;'><span>Ratio: <b>{ratio:.2f}</b></span><span>{ph.get('status','')} (ASCII)</span></div>", ("VOWEL / CONSONANT", "Heuristic for Latin-script pronounceability.", "Vowels / Letters", "English ~0.40.")))
+        
+        rows.append(make_row(
+            "ASCII Phonotactics", gauge,
+            f"<div style='display:flex; justify-content:space-between; font-size:0.7rem; color:#64748b; margin-top:2px;'><span>Ratio: <b>{ratio:.2f}</b></span><span>{ph.get('status','')} (ASCII)</span></div>",
+            ("VOWEL / CONSONANT RATIO", 
+             "Heuristic for Latin-script pronounceability.", 
+             "Vowels / Letters", 
+             "English ~0.40. Code/Base64 often < 0.2.")
+        ))
 
+    # --- INJECT ROWS ---
     container.innerHTML = "".join(rows)
+
+    # --- APPEND CONSOLE & LEGEND (Outside Table) ---
+    parent_details = container.closest("details")
+    if parent_details:
+        existing_console = parent_details.querySelector(".stat-console-strip"); 
+        if existing_console: existing_console.remove()
+        existing_legend = parent_details.querySelector(".stat-legend-details"); 
+        if existing_legend: existing_legend.remove()
+
+        console_html = """
+        <div id="stat-console-strip" class="stat-console-strip">
+            <div class="stat-console-left"><span id="stat-console-label" class="sc-main-label">READY</span><span id="stat-console-desc">Hover metrics for forensic context.</span></div>
+            <div class="stat-console-right"><div><span class="sc-key">LOGIC:</span> <span id="stat-console-logic">--</span></div><div><span class="sc-key">NORM:</span> <span id="stat-console-norm">--</span></div></div>
+        </div>
+        <details class="stat-legend-details">
+            <summary class="stat-legend-summary">Metric Guide & Soft Hints</summary>
+            <div class="stat-legend-content">
+                <div class="sl-col"><strong>Thermodynamics</strong><div class="sl-item"><b>High (>6.5):</b> Dense/Encrypted.</div><div class="sl-item"><b>Low (<3.0):</b> Repetitive.</div></div>
+                <div class="sl-col"><strong>Lexical Density (TTR)</strong><div class="sl-item"><b>Range:</b> 0.0 (Mono) to 1.0 (Unique).</div><div class="sl-item"><b><0.4:</b> Repetitive/Bot-like.<br><b>>0.8:</b> High density lists/IDs.</div></div>
+                <div class="sl-col"><strong>Phonotactics</strong><div class="sl-item"><b>Natural:</b> ~0.35 - 0.50 (Latin).</div><div class="sl-item"><b>Machine:</b> <0.20 (Base64/Hex).</div></div>
+            </div>
+        </details>
+        """
+        
+        div = document.createElement("div")
+        div.innerHTML = console_html
+        parent_details.appendChild(div)
 
 @create_proxy
 def py_get_stat_report_text():
