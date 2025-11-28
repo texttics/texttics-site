@@ -1349,3 +1349,47 @@ To serve the "Red Team" / Penetration Testing persona, the Inspector panel now i
 * **Visual Truth:** Standard spaces (`U+0020`) are now explicitly rendered as Middle Dots (`·`) in "Reveal Mode," allowing for the detection of trailing whitespace and double-spacing errors.
 * **Crash Prevention:** Hardened the `app.py` counters to handle complex metadata (lists) without type errors.
 * **Gap Closure:** Added `U+FFF9`–`U+FFFB` (Interlinear Annotation) and `U+001B` (ESC) to the global forensic bitmasks to ensure no character escapes detection.
+
+This output confirms the system is working as designed. The **Suspicion Dashboard** is robust, detailed, and prioritized correctly.
+
+### What We Achieved (The Delta)
+1.  **Semantic Precision:** The dashboard now correctly identifies `SYNTAX (CRIT)` for Trojan Source attacks, where previously it might have been lost in "Spoofing."
+2.  **Visual Hierarchy:** The X-Ray is visually aligned (horizontal strip) and informative (script tags, drift highlights).
+3.  **Noise Reduction:** The Emoji `🅰️` is no longer flagged as "Heavy Diacritics" (Zalgo), but rather as "Perturbation (1x Invisible)" due to the variation selector, which is forensically accurate.
+4.  **Context Awareness:** Tokens like `Login:` and `//` are flagged as "SPOOFING (HIGH)" due to the `analyze_context_lure` logic, correctly identifying them as Phishing/Lure components rather than just "Latin text."
+
+
+### 🛡️ Addendum: The "Adversarial Intelligence" Upgrade
+
+**Session Goal:** To evolve Text...tics from a passive structural profiler into an active **Counter-Intelligence Instrument**. We implemented a deterministic "Adversarial Engine" capable of deconstructing complex deception vectors (Trojan Source, Homographs, Steganography) without relying on probabilistic AI or external APIs.
+
+#### 1. The "Forensic Tokenizer" (Atomic Intent)
+Standard whitespace splitting fails against adversarial text (e.g., `user[ZWSP]name`). We implemented a **Forensic Tokenizer** that isolates "Atomic Units of Intent" (identifiers, domains, filenames) while preserving internal punctuation and invisible perturbation payloads for analysis.
+
+#### 2. The "Suspicion Dashboard" (Deep Forensics)
+We introduced a high-level intelligence panel that aggregates risk across four distinct pillars of deception:
+* **HOMOGLYPH (Ambiguity):** Measures visual confusion density using UTS #39 skeletons (e.g., Cyrillic `a` vs Latin `a`, `1` vs `l`).
+* **SPOOFING (Structure):** Detects "Sore Thumb" anomalies (e.g., `paypa1` - single digit in letter run) and Script Mixing.
+* **OBFUSCATION (Hidden):** Detects Zalgo (diacritic overload), invisible characters, and normalization hazards (shapeshifting tokens).
+* **INJECTION (Syntax):** Detects Trojan Source (Bidi controls) and unauthorized tag characters.
+
+**Features:**
+* **Paranoia Peak:** Instantly isolates the single highest-risk token in the text (e.g., Risk: 98/100) for immediate triage.
+* **Multi-Vector Stacking:** Tokens are no longer flagged with a single error; they carry a sorted "Threat Stack" (e.g., `[CRIT] Trojan Source` + `[HIGH] Mixed Script` + `[MED] Homoglyph`).
+* **Context Lures:** Specific heuristics to flag authentication keywords (`Login:`, `Password`) and URL syntax (`//`) when they appear in suspicious contexts.
+
+#### 3. The "Adversarial X-Ray" (Visual Evidence)
+We replaced the linear "Perceived vs. Reality" list with a horizontal **"DNA Alignment Strip."**
+* **Mechanism:** Vertically aligns the **Raw Text** (Reality) against the **UTS #39 Skeleton** (Perception).
+* **Visual Drift:** Automatically highlights specific characters in **Red** where the visual appearance diverges from the underlying code point (e.g., `⓼` $\to$ `8`).
+* **Cluster Grouping:** Intelligently groups contiguous threats (e.g., `x8 BIDI`) to prevent visual noise while maintaining forensic completeness.
+
+#### 4. Steganography & Pattern Detection
+We implemented a **Global Pattern Scanner** that analyzes the sequence of invisible characters.
+* **Detection:** It identifies repeating cycles of non-printing characters (e.g., `ZWSP` $\to$ `ZWNJ` $\to$ `ZWSP` $\to$ `ZWNJ`).
+* **Verdict:** Flags these patterns as **"Structured Invisible Patterns,"** a strong indicator of watermarking or covert channel data exfiltration.
+
+#### 5. Zero-Inflation Logic (Mathematical Integrity)
+We engineered a **"Unique Pillar Counting"** system to prevent stat inflation.
+* **The Problem:** A single token with multiple flaws (e.g., `paypa1`) could previously inflate global counters by +3.
+* **The Fix:** The engine now ensures that each token contributes exactly **once** to each relevant topology pillar, ensuring the "Scoreboard" reflects the *breadth* of the attack surface, not just the volume of errors.
