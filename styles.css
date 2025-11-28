@@ -4684,32 +4684,33 @@ details.profile-section > summary:hover::marker {
 .meter-fill.high-match { background: #ef4444; /* Red for high spoof match */ }
 .meter-fill.perfect { background: #10b981; /* Green for safe match */ }
 
-/* --- Forensic Lens (Suspect Monitor Highlighting) --- */
 
-/* 1. The Anchor (Matched, Safe) */
-/* Black, Bold, slightly larger - shows what aligns with the trusted ref */
+/* Forensic Lens V5 Styles */
+
+/* 1. ANCHOR: The Target (Matched Skeleton) */
+/* This is the part of the input that matches the Trusted string */
 .f-anchor {
     color: #000000;
-    font-weight: 800;
+    font-weight: 800; /* Extra bold */
     font-size: 1.1em;
 }
 
-/* 2. The Payload (Spoof, Mismatch) */
-/* Red, Bold - shows the active threat characters */
+/* 2. PAYLOAD: The Spoof (Matched Skeleton, Raw Mismatch) */
+/* This is the 'a' in pаypal */
 .f-payload {
-    color: #dc2626; /* Red-600 */
-    font-weight: 800;
-    font-size: 1.1em;
-    text-decoration: underline;
-    text-decoration-color: #fca5a5;
-    text-decoration-thickness: 2px;
-    background-color: rgba(254, 226, 226, 0.5); /* Red-50 */
+    color: #dc2626; /* Bright Red */
+    font-weight: 900;
+    background-color: #fecaca; /* Red highlight background */
+    border-bottom: 2px solid #ef4444;
+    padding: 0 1px;
+    border-radius: 2px;
 }
 
-/* 3. The Noise (Unmatched Context) */
-/* Dimmed - shows text that is irrelevant to the trusted string */
+/* 3. NOISE: The Context */
+/* This is "Login: ", "Host: ", etc. */
 .f-noise {
-    color: #9ca3af; /* Gray-400 */
+    color: #94a3b8; /* Slate-400 */
     font-weight: 400;
-    opacity: 0.7;
+    opacity: 0.6;
+    font-size: 0.95em;
 }
