@@ -6428,14 +6428,22 @@ def render_ccc_table(stats_dict, element_id):
     element.innerHTML = "".join(html)
 
 def render_toc_counts(counts):
-    """Updates the counts in the sticky Table of Contents."""
-    document.getElementById("toc-dual-count").innerText = f"({counts.get('dual', 0)})"
-    document.getElementById("toc-shape-count").innerText = f"({counts.get('shape', 0)})"
-    document.getElementById("toc-integrity-count").innerText = f"({counts.get('integrity', 0)})"
-    document.getElementById("toc-prov-count").innerText = f"({counts.get('prov', 0)})"
-    document.getElementById("toc-emoji-count").innerText = f"({counts.get('emoji', 0)})"
-    document.getElementById("toc-threat-count").innerText = f"({counts.get('threat', 0)})"
-    document.getElementById("toc-atlas-count").innerText = f"({counts.get('atlas', 0)})"
+    """
+    Updates the counts in the sticky Table of Contents.
+    Hardened to prevent crashes if an HTML element is missing.
+    """
+    def update_id(el_id, val):
+        el = document.getElementById(el_id)
+        if el: 
+            el.innerText = f"({val})"
+
+    update_id("toc-dual-count", counts.get('dual', 0))
+    update_id("toc-shape-count", counts.get('shape', 0))
+    update_id("toc-integrity-count", counts.get('integrity', 0))
+    update_id("toc-prov-count", counts.get('prov', 0))
+    update_id("toc-emoji-count", counts.get('emoji', 0))
+    update_id("toc-threat-count", counts.get('threat', 0))
+    update_id("toc-atlas-count", counts.get('atlas', 0))
 
 
 # --- INSPECTOR HELPERS (FORENSIC V3) ---
@@ -7765,63 +7773,65 @@ def render_intel_console(t, threat_results):
     
     for f in findings:
         fam = f['family']
-        # Map sub-families to the 4 main cards
         if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
         if "SPOOFING" in fam: stats["SPOOFING"] += 1
-        
         if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
-        if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1 # Structural is Obfuscation
+        if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1
         if "STEGO" in fam: stats["OBFUSCATION"] += 1
-        
         if "TROJAN" in fam: stats["INJECTION"] += 1
-        if "SCRIPT" in fam: stats["INJECTION"] += 1 # Restriction violations are Injection-adjacent (Script Injection)
+        if "SCRIPT" in fam: stats["INJECTION"] += 1
         if "CONTROL" in fam: stats["INJECTION"] += 1
 
     # Update DOM
-    document.getElementById("intel-stat-homoglyph").innerText = str(stats["HOMOGLYPH"])
-    document.getElementById("intel-stat-spoofing").innerText = str(stats["SPOOFING"])
-    document.getElementById("intel-stat-obfus").innerText = str(stats["OBFUSCATION"])
-    document.getElementById("intel-stat-injection").innerText = str(stats["INJECTION"])
+    el_homo = document.getElementById("intel-stat-homoglyph")
+    if el_homo: el_homo.innerText = str(stats["HOMOGLYPH"])
+    
+    el_spoof = document.getElementById("intel-stat-spoofing")
+    if el_spoof: el_spoof.innerText = str(stats["SPOOFING"])
+    
+    el_obfus = document.getElementById("intel-stat-obfus")
+    if el_obfus: el_obfus.innerText = str(stats["OBFUSCATION"])
+    
+    el_inject = document.getElementById("intel-stat-injection")
+    if el_inject: el_inject.innerText = str(stats["INJECTION"])
     
     # 3. Render Paranoia Peak (Top Offender)
     peak_row = document.getElementById("intel-peak-row")
-    if top_tokens:
+    if top_tokens and peak_row:
         peak = top_tokens[0]
         peak_row.style.display = "flex"
         document.getElementById("peak-token").innerText = peak['token']
         document.getElementById("peak-score").innerText = f"Risk: {peak['score']}/100"
         
-        # Format reasons neatly
         reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in peak['reasons'][:3]])
         if len(peak['reasons']) > 3: reasons_html += " ..."
         document.getElementById("peak-reasons").innerHTML = reasons_html
-    else:
+    elif peak_row:
         peak_row.style.display = "none"
 
     # 4. Render Findings Table
     target_body = document.getElementById("intel-target-body")
-    html_rows = []
-    
-    for f in findings:
-        sev_class = "th-low"
-        if f['severity'] == "crit": sev_class = "th-crit"
-        elif f['severity'] == "warn": sev_class = "th-high"
-        
-        # Family Badge
-        fam_clean = f['family'].replace("[", "").replace("]", "")
-        
-        row = f"""
-        <div class="target-row">
-            <div class="t-head">
-                <span class="th-badge {sev_class}" style="margin-right:8px; font-size:0.7em;">{fam_clean}</span>
-                <span class="t-token">{_escape_html(f['token'])}</span>
-                <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{f['desc']}</span>
+    if target_body:
+        html_rows = []
+        for f in findings:
+            sev_class = "th-low"
+            if f['severity'] == "crit": sev_class = "th-crit"
+            elif f['severity'] == "warn": sev_class = "th-high"
+            
+            fam_clean = f['family'].replace("[", "").replace("]", "")
+            
+            row = f"""
+            <div class="target-row">
+                <div class="t-head">
+                    <span class="th-badge {sev_class}" style="margin-right:8px; font-size:0.7em;">{fam_clean}</span>
+                    <span class="t-token">{_escape_html(f['token'])}</span>
+                    <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{f['desc']}</span>
+                </div>
             </div>
-        </div>
-        """
-        html_rows.append(row)
-        
-    target_body.innerHTML = "".join(html_rows)
+            """
+            html_rows.append(row)
+            
+        target_body.innerHTML = "".join(html_rows)
 
 def compute_threat_score(inputs):
     """
@@ -8411,6 +8421,9 @@ def update_all(event=None):
         render_threat_analysis({}) 
         render_toc_counts({})
         render_forensic_hud("", {})
+        render_invisible_atlas("")
+        render_encoding_footprint("")
+        render_intel_console("", {})
         return
 
     # --- 2. Run All Computations ---
