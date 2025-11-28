@@ -2416,7 +2416,79 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         "score": 0
     }
 
+# ==========================================
+# [MODULE 3] DOMAIN & TYPOSQUATTING RADAR
+# ==========================================
 
+def analyze_domain_heuristics(token: str):
+    """
+    [TYPOSQUATTING] Detects structural lures in Domain/Filename tokens.
+    Checks for: Pseudo-delimiters, Double Extensions, and RTLO injection.
+    """
+    # 1. Scope: Only analyze tokens that look like paths/domains
+    # (Must contain a dot, slash, or look like a file)
+    if "." not in token and "/" not in token and "\\" not in token:
+        return None
+
+    risks = []
+    score = 0
+    
+    # --- A. PSEUDO-DELIMITERS (The "Fake Dot" Attack) ---
+    # Characters that look like '.' but aren't U+002E
+    FAKE_DOTS = {
+        0x2024: "One Dot Leader",
+        0x2025: "Two Dot Leader", 
+        0x2026: "Ellipsis",
+        0x3002: "Ideographic Full Stop",
+        0xFF0E: "Fullwidth Full Stop",
+        0x0589: "Armenian Full Stop",
+        0x06D4: "Arabic Full Stop"
+    }
+    
+    fake_dot_found = []
+    for char in token:
+        cp = ord(char)
+        if cp in FAKE_DOTS:
+            fake_dot_found.append(FAKE_DOTS[cp])
+            
+    if fake_dot_found:
+        risks.append(f"Pseudo-Delimiters ({', '.join(set(fake_dot_found))})")
+        score += 80 # Critical: This is almost always malicious in a domain context
+
+    # --- B. DOUBLE EXTENSIONS (The "PDF.EXE" Attack) ---
+    # Logic: Look for [suspicious_ext] + . + [executable_ext]
+    # Simple regex-free heuristic
+    lower_tok = token.lower()
+    
+    # Common safe-looking decoys
+    decoys = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".txt", ".mp4"}
+    # Dangerous payloads
+    payloads = {".exe", ".vbs", ".bat", ".cmd", ".sh", ".js", ".jar", ".scr", ".com"}
+    
+    # Iterate to find patterns like 'document.pdf.exe'
+    for payload in payloads:
+        if lower_tok.endswith(payload):
+            # Check what comes BEFORE the payload
+            prefix = lower_tok[: -len(payload)]
+            for decoy in decoys:
+                if prefix.endswith(decoy):
+                    risks.append(f"Double Extension Lure ({decoy}{payload})")
+                    score += 90 # Critical
+                    break
+    
+    # --- C. RTLO INJECTION (Filename Spoofing) ---
+    # Check for Bidi overrides specifically near extension dots
+    # (e.g. "cod\u202Efdp.exe" -> "codexe.pdf")
+    if "\u202E" in token or "\u202D" in token: # RLO or LRO
+        # If Bidi exists and we have a dot, it's highly suspect
+        if "." in token:
+            risks.append("Bidi Arrears (Extension Spoofing Risk)")
+            score += 100 # Critical
+
+    if risks:
+        return {"desc": ", ".join(risks), "risk": score}
+    
+    return None
 
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
@@ -4518,6 +4590,13 @@ def compute_adversarial_metrics(t: str):
             token_reasons.append(lure['desc'])
             token_families.add("CONTEXT")
 
+        # --- [NEW] [TYPOSQUATTING] (Module 3) ---
+        domain_risk = analyze_domain_heuristics(t_str)
+        if domain_risk:
+            token_score += domain_risk['risk']
+            token_reasons.append(domain_risk['desc'])
+            token_families.add("SPOOFING") # Typosquatting is a subset of Spoofing
+
         # [SCRIPT]
         rest_label, rest_risk = analyze_restriction_level(t_str)
         if rest_risk > 0:
@@ -4594,11 +4673,16 @@ def compute_adversarial_metrics(t: str):
                 'severity': sev
             })
             
+            # Reconstruct the "Stack" for the UI (Simplified for brevity)
+            # In the full implementation, you'd map these reasons back to the stack dicts
+            # For now, we pass the raw reasons which the UI renderer can handle.
             top_tokens.append({
                 'token': t_str,
                 'score': min(100, token_score),
                 'reasons': token_reasons, 
                 'families': list(token_families)
+                # We need to construct the 'stack' structure the UI expects
+                'stack': [{'lvl': 'HIGH', 'type': 'RISK', 'desc': r} for r in token_reasons]
             })
 
     # Global Stego Check
