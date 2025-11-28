@@ -3844,7 +3844,8 @@ def compute_verticalorientation_analysis(t: str):
 def compute_statistical_profile(t: str):
     """
     Stage 1.5 'Chemistry': local statistical properties.
-    UPGRADE: Includes 'Honest' Fingerprint (WS), Sparklines, ASCII Density, and Payload Heuristics.
+    ULTIMATE VERSION: Combines Sparklines, Detailed Layout Cards, Expanded Tokens,
+    Honest Fingerprint, and ASCII/Payload metrics.
     """
     stats = {
         "entropy": 0.0, "entropy_n": 0, "entropy_norm": 0.0, "entropy_conf": "unknown",
@@ -3852,8 +3853,8 @@ def compute_statistical_profile(t: str):
         "total_tokens": 0, "unique_tokens": 0, "top_tokens": [], "top_shares": {"top1": 0.0, "top3": 0.0},
         "top_chars": [],
         "char_dist": {"letters": 0.0, "digits": 0.0, "ws": 0.0, "sym": 0.0},
-        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0, "sparkline": ""},
-        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0, "is_valid": False},
+        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0, "median": 0, "empty": 0, "sparkline": ""},
+        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0, "is_valid": False, "v_count": 0, "c_count": 0},
         "ascii_density": 0.0,
         "payloads": []
     }
@@ -3866,7 +3867,6 @@ def compute_statistical_profile(t: str):
         total_bytes = len(utf8_bytes)
         stats["entropy_n"] = total_bytes
         if total_bytes > 0:
-            # Entropy
             byte_counts = Counter(utf8_bytes)
             entropy = 0.0
             for count in byte_counts.values():
@@ -3882,33 +3882,27 @@ def compute_statistical_profile(t: str):
             elif total_bytes < 1024: stats["entropy_conf"] = "medium"
             else: stats["entropy_conf"] = "high"
 
-            # ASCII Density (Bytes)
             ascii_bytes = sum(1 for b in utf8_bytes if b <= 0x7F)
             stats["ascii_density"] = round((ascii_bytes / total_bytes) * 100, 1)
     except: pass
 
-    # 2. Tokens & Payloads
+    # 2. Tokens & Payloads (Expanded to Top 12)
     try:
-        # Use simple split to preserve "raw" tokens for payload detection
         raw_tokens = t.split()
         
-        # Payload Heuristics (Base64 / Hex) - Stage 1 Pattern Matching
+        # Payload Heuristics
         payload_candidates = []
         b64_pattern = re.compile(r'^[A-Za-z0-9+/]{16,}={0,2}$')
         hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
-        
         for tok in raw_tokens:
             if len(tok) > 16:
                 if b64_pattern.match(tok):
                     payload_candidates.append({"type": "Base64-like", "token": tok[:32] + "..." if len(tok)>32 else tok, "len": len(tok)})
                 elif hex_pattern.match(tok) and len(tok) % 2 == 0:
                     payload_candidates.append({"type": "Hex-like", "token": tok[:32] + "..." if len(tok)>32 else tok, "len": len(tok)})
-        
-        # Dedupe and limit
-        if payload_candidates:
-            stats["payloads"] = payload_candidates[:3]
+        if payload_candidates: stats["payloads"] = payload_candidates[:3]
 
-        # Normalized Tokens for Stats
+        # Normalized Tokens
         tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
         stats["total_tokens"] = len(tokens)
         if stats["total_tokens"] > 0:
@@ -3917,6 +3911,7 @@ def compute_statistical_profile(t: str):
             stats["ttr"] = round(len(unique_tokens) / stats["total_tokens"], 3)
 
             token_counts = Counter(tokens)
+            # FETCH 12 TOKENS FOR UI
             top_n_tokens = token_counts.most_common(12) 
 
             if top_n_tokens:
@@ -3930,7 +3925,6 @@ def compute_statistical_profile(t: str):
                     structured_tokens.append({"token": tok, "count": count, "share": round(share, 1)})
                 stats["top_tokens"] = structured_tokens
 
-            # Segmented TTR
             seg_size = 50
             if stats["total_tokens"] >= seg_size * 2:
                 seg_ttrs = []
@@ -3942,12 +3936,11 @@ def compute_statistical_profile(t: str):
                     stats["ttr_segmented"] = round(sum(seg_ttrs) / len(seg_ttrs), 3)
     except: pass
 
-    # 3. Honest Fingerprint & Class Balance
+    # 3. Honest Fingerprint
     try:
         total_chars = len(t)
         if total_chars > 0:
             char_counts = Counter(t)
-            # HONEST: Allow Space (0x20), Tab (0x09), Newline (0x0A)
             valid_chars = {}
             for ch, cnt in char_counts.items():
                 cp = ord(ch)
@@ -3979,9 +3972,8 @@ def compute_statistical_profile(t: str):
             }
     except: pass
 
-    # 4. Layout Physics (Sparkline)
+    # 4. Layout Physics (STRICT VISUAL SPLIT + SPARKLINE)
     try:
-        # Strict Newline Split
         normalized_t = t.replace('\r\n', '\n').replace('\r', '\n')
         lines = normalized_t.split('\n')
         if len(lines) > 1 and lines[-1] == '': lines.pop()
@@ -3991,9 +3983,15 @@ def compute_statistical_profile(t: str):
             line_lens = [len(line) for line in lines]
             sorted_lens = sorted(line_lens)
             n = len(sorted_lens)
+            
             stats["line_stats"]["min"] = sorted_lens[0]
             stats["line_stats"]["max"] = sorted_lens[-1]
             stats["line_stats"]["avg"] = round(sum(line_lens) / n, 1)
+            stats["line_stats"]["empty"] = sum(1 for l in line_lens if l == 0)
+            
+            # Median
+            mid = n // 2
+            stats["line_stats"]["median"] = (sorted_lens[mid] + sorted_lens[~mid]) / 2
             
             # P90
             pos = 0.9 * (n - 1)
@@ -4002,11 +4000,10 @@ def compute_statistical_profile(t: str):
             p90 = sorted_lens[lower] if lower == upper else int(round(sorted_lens[lower] * (1 - (pos-lower)) + sorted_lens[upper] * (pos-lower)))
             stats["line_stats"]["p90"] = p90
             
-            # Unicode Sparkline
+            # Sparkline
             if n >= 3:
                 num_buckets = 12
-                if n < num_buckets:
-                    buckets = line_lens
+                if n < num_buckets: buckets = line_lens
                 else:
                     chunk_size = n / num_buckets
                     buckets = []
@@ -4014,7 +4011,7 @@ def compute_statistical_profile(t: str):
                         start = int(i * chunk_size)
                         end = int((i + 1) * chunk_size)
                         chunk = line_lens[start:end]
-                        buckets.append(max(chunk) if chunk else 0) # Max of chunk to show peaks
+                        buckets.append(max(chunk) if chunk else 0)
                 
                 spark_chars = " ▂▃▄▅▆▇█"
                 max_val = max(buckets) if buckets else 0
@@ -4035,8 +4032,14 @@ def compute_statistical_profile(t: str):
         if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
             vowels = set("aeiou")
             v_count = sum(1 for c in ascii_letters if c in vowels)
+            c_count = letter_count - v_count
+            
             stats["phonotactics"].update({
-                "vowel_ratio": round(v_count / letter_count, 2), "count": letter_count, "is_valid": True
+                "vowel_ratio": round(v_count / letter_count, 2),
+                "count": letter_count,
+                "is_valid": True,
+                "v_count": v_count,
+                "c_count": c_count
             })
             r = stats["phonotactics"]["vowel_ratio"]
             if 0.30 <= r <= 0.50: stats["phonotactics"]["status"] = "Balanced"
