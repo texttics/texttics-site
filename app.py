@@ -7740,76 +7740,88 @@ def analyze_intel_profile(t, threat_flags, script_stats):
         "targets": targets
     }
 
-def render_intel_console(t, threat_flags, script_stats):
-    """Renders the Intel Report with Expandable Threat Hierarchy."""
+def render_intel_console(t, threat_results):
+    """
+    Renders the Suspicion Dashboard (Adversarial Forensics).
+    Populates the Scoreboard, Paranoia Peak, and Findings List.
+    """
     container = document.getElementById("intel-console")
     if not container: return
     
-    report = analyze_intel_profile(t, threat_flags, script_stats)
-    if not report:
+    # 1. Unpack Data
+    adv = threat_results.get('adversarial', {})
+    findings = adv.get('findings', [])
+    top_tokens = adv.get('top_tokens', [])
+    
+    # If no adversarial data, hide the console
+    if not findings and not top_tokens:
         container.style.display = "none"
         return
         
     container.style.display = "block"
     
-    # 1. Render Seal
-    badge = document.getElementById("intel-badge")
-    badge.className = f"intel-badge {report['badge_class']}"
-    badge.innerText = report['restriction']
+    # 2. Render Scoreboard (Topology)
+    stats = {"HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0}
     
-    # 2. Render Topology
-    topo = report['topology']
-    document.getElementById("intel-stat-ambiguity").innerText = str(topo['AMBIGUITY'])
-    document.getElementById("intel-stat-spoofing").innerText = str(topo['SPOOFING'])
-    document.getElementById("intel-stat-syntax").innerText = str(topo['SYNTAX'])
-    document.getElementById("intel-stat-hidden").innerText = str(topo['HIDDEN'])
-    
-    # 3. Render Targets
-    target_body = document.getElementById("intel-target-body")
-    targets = report['targets']
-    
-    if not targets:
-        target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No high-value targets identified.</div>'
-    else:
-        html_rows = []
-        for tgt in targets:
-            # Build the Hierarchy Stack HTML
-            stack_html = ""
-            for item in tgt['stack']:
-                # Color code the mini-badges
-                lvl_class = "th-low"
-                if item['lvl'] == "CRIT": lvl_class = "th-crit"
-                elif item['lvl'] == "HIGH": lvl_class = "th-high"
-                elif item['lvl'] == "MED": lvl_class = "th-med"
-                
-                stack_html += f"""
-                <div class="th-row">
-                    <span class="th-badge {lvl_class}">{item['lvl']}</span>
-                    <span class="th-desc">{item['desc']}</span>
-                </div>
-                """
+    for f in findings:
+        fam = f['family']
+        # Map sub-families to the 4 main cards
+        if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
+        if "SPOOFING" in fam: stats["SPOOFING"] += 1
+        
+        if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
+        if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1 # Structural is Obfuscation
+        if "STEGO" in fam: stats["OBFUSCATION"] += 1
+        
+        if "TROJAN" in fam: stats["INJECTION"] += 1
+        if "SCRIPT" in fam: stats["INJECTION"] += 1 # Restriction violations are Injection-adjacent (Script Injection)
+        if "CONTROL" in fam: stats["INJECTION"] += 1
 
-            row = f"""
-            <div class="target-row">
-                <div class="t-head">
-                    <span class="t-token">{_escape_html(tgt['token'])}</span>
-                    <span class="t-verdict">{tgt['verdict']}</span>
-                </div>
-                
-                <details class="intel-details">
-                    <summary class="intel-summary">View Threat Hierarchy ({len(tgt['stack'])})</summary>
-                    <div class="intel-stack-body">
-                        {stack_html}
-                        <div class="t-vectors">
-                            <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{tgt['b64']}</code></div>
-                            <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{tgt['hex']}</code></div>
-                        </div>
-                    </div>
-                </details>
+    # Update DOM
+    document.getElementById("intel-stat-homoglyph").innerText = str(stats["HOMOGLYPH"])
+    document.getElementById("intel-stat-spoofing").innerText = str(stats["SPOOFING"])
+    document.getElementById("intel-stat-obfus").innerText = str(stats["OBFUSCATION"])
+    document.getElementById("intel-stat-injection").innerText = str(stats["INJECTION"])
+    
+    # 3. Render Paranoia Peak (Top Offender)
+    peak_row = document.getElementById("intel-peak-row")
+    if top_tokens:
+        peak = top_tokens[0]
+        peak_row.style.display = "flex"
+        document.getElementById("peak-token").innerText = peak['token']
+        document.getElementById("peak-score").innerText = f"Risk: {peak['score']}/100"
+        
+        # Format reasons neatly
+        reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in peak['reasons'][:3]])
+        if len(peak['reasons']) > 3: reasons_html += " ..."
+        document.getElementById("peak-reasons").innerHTML = reasons_html
+    else:
+        peak_row.style.display = "none"
+
+    # 4. Render Findings Table
+    target_body = document.getElementById("intel-target-body")
+    html_rows = []
+    
+    for f in findings:
+        sev_class = "th-low"
+        if f['severity'] == "crit": sev_class = "th-crit"
+        elif f['severity'] == "warn": sev_class = "th-high"
+        
+        # Family Badge
+        fam_clean = f['family'].replace("[", "").replace("]", "")
+        
+        row = f"""
+        <div class="target-row">
+            <div class="t-head">
+                <span class="th-badge {sev_class}" style="margin-right:8px; font-size:0.7em;">{fam_clean}</span>
+                <span class="t-token">{_escape_html(f['token'])}</span>
+                <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{f['desc']}</span>
             </div>
-            """
-            html_rows.append(row)
-        target_body.innerHTML = "".join(html_rows)
+        </div>
+        """
+        html_rows.append(row)
+        
+    target_body.innerHTML = "".join(html_rows)
 
 def compute_threat_score(inputs):
     """
@@ -8572,10 +8584,16 @@ def update_all(event=None):
             _register_hit("thr_suspicious", idx, idx+1, "Forced Presentation")
         except: pass
 
+    # [FIX] Calculate Unique Invisible Count for Atlas TOC
+    unique_invis_set = set()
+    for char in t:
+        if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
+            unique_invis_set.add(ord(char))
+    unique_invis_count = len(unique_invis_set)
+
     toc_counts = {
         'dual': (
             sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + 
-            # [FIX] Check type before comparison to avoid list>int error
             sum(1 for v in grapheme_cards.values() if isinstance(v, (int, float)) and v > 0) + 
             sum(1 for k in set(cp_major.keys()) | set(gr_major.keys()) if cp_major.get(k, 0) > 0 or gr_major.get(k, 0) > 0)
         ),
@@ -8596,7 +8614,7 @@ def update_all(event=None):
             sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0)
         ),
         'emoji': emoji_counts.get("total_emoji_units", 0),
-        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0))
+        'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0)), # [FIXED COMMA]
         'atlas': unique_invis_count
     }
 
@@ -8610,21 +8628,17 @@ def update_all(event=None):
     ]
 
     # 2. Render HTML Strings (Detached)
-    # This generates the cards but does NOT inject them yet
     html_quad = render_cards(meta_cards, element_id=None, key_order=quad_keys, return_html=True)
     html_context = render_cards(meta_cards, element_id=None, key_order=context_keys, return_html=True)
 
-    # 3. Inject Structure (The Wrapper Divs)
-    # .cards-2x2 -> Forces 2x2 Grid for top 4
-    # .cards     -> Standard Fluid Grid for the rest
+    # 3. Inject Structure
     full_html = f"""
     <div class="cards-2x2">{html_quad}</div>
     <div class="cards">{html_context}</div>
     """
-
-    # 4. Final Injection
     document.getElementById("meta-totals-cards").innerHTML = full_html
     # --------------------------------------------------------------------------
+
     render_cards(grapheme_cards, "grapheme-integrity-cards")
     render_ccc_table(ccc_stats, "ccc-matrix-body")
     render_parallel_table(cp_major, gr_major, "major-parallel-body")
@@ -8645,9 +8659,13 @@ def update_all(event=None):
     render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True, text_context=t)
     render_emoji_qualification_table(emoji_list, text_context=t)
     render_emoji_summary(emoji_counts, emoji_list)
+    
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
-    render_intel_console(t, final_threat_flags, provenance_stats)
+    
+    # [UPDATED CALL] Pass full threat_results to access 'adversarial' data
+    render_intel_console(t, threat_results)
+    
     render_toc_counts(toc_counts)
 
     # [Phase 3] Render Invisible Atlas
@@ -8660,7 +8678,7 @@ def update_all(event=None):
     hud_stats = {
         "major_stats": cp_major,
         "forensic_flags": forensic_map,
-        "emoji_counts": emoji_counts, # Pass the full ledger
+        "emoji_counts": emoji_counts,
         "integrity": audit_result,
         "threat": final_score,
         "script_mix": script_mix_class,
@@ -8669,7 +8687,6 @@ def update_all(event=None):
         "drift": skel_metrics.get("total_drift", 0)
     }
     
-    # Update HUD (Remove emoji_consumed)
     render_forensic_hud(t, hud_stats)
 
     # --- NEW: Render Encoding Strip ---
