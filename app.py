@@ -2229,6 +2229,195 @@ def _add_manual_data_overrides():
     
     print(f"Loaded {len(ranges_list)} manual 'Discouraged' ranges.")
 
+# ==========================================
+# [MODULE 1] FORENSIC TOKENIZER (Option A - Revised)
+# ==========================================
+from dataclasses import dataclass, field
+from typing import List, Literal
+
+@dataclass
+class ForensicToken:
+    text: str
+    start: int
+    end: int
+    kind: Literal["WORD", "DELIMITER", "WHITESPACE", "SYMBOL"]
+    
+    # Placeholder for Phase 2 Metrics
+    risk_score: float = 0.0
+    flags: List[str] = field(default_factory=list)
+
+def tokenize_forensic(text: str) -> List[ForensicToken]:
+    """
+    Forensic Tokenizer (Option A - Hardened).
+    Splits text into atomic units of intent while preserving invisible payloads.
+    
+    Rules:
+    1. WORD: Alphanumeric + Internal Connectors ('_', '-')
+    2. DELIMITER: Structural chars ('.', '@', '/', ':', '?', '=', '&', '#')
+    3. WHITESPACE: Separators
+    4. INVISIBLES: Transparent (inherit current state, never split)
+    """
+    tokens = []
+    if not text:
+        return tokens
+
+    # Definition of Structural Delimiters for URL/Code contexts
+    STRUCTURAL_DELIMS = {'.', '@', '/', ':', '?', '=', '&', '#', '%', '$', '+', ','}
+    
+    # Internal Connectors (Glue if inside words)
+    CONNECTORS = {'_', '-'}
+
+    current_chars = []
+    current_start = 0
+    state = None  # "WORD", "DELIMITER", "WHITESPACE", "SYMBOL"
+
+    for i, char in enumerate(text):
+        cp = ord(char)
+        
+        # --- 1. Determine Character Flavor ---
+        
+        # A. Invisibles (Transparent)
+        # REVISION: Use the O(1) INVIS_TABLE for strict consistency
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        is_invisible = bool(mask & INVIS_ANY_MASK)
+        
+        # Also treat strict Mn/Mc/Me (Combining Marks) as glue, 
+        # but NOT as "Invisible" in the forensic sense. 
+        # They naturally attach to words via category logic below.
+        
+        if is_invisible:
+            # Invisibles are parasitic; they attach to whatever is currently happening.
+            current_chars.append(char)
+            # If state is None (start of string), we wait.
+            continue
+
+        cat = unicodedata.category(char)
+
+        # B. Determine Candidate State
+        if cat.startswith('Z') or char in ('\t', '\n', '\r'):
+            char_state = "WHITESPACE"
+        elif char in STRUCTURAL_DELIMS:
+            char_state = "DELIMITER"
+        elif cat.startswith('L') or cat.startswith('N') or char in CONNECTORS or cat.startswith('M'):
+            # Letters, Numbers, Connectors, and Marks form WORDS
+            char_state = "WORD"
+        else:
+            # Emojis, Symbols, etc.
+            char_state = "SYMBOL"
+
+        # --- 2. State Machine Transition ---
+        if state is None:
+            # Initialization
+            state = char_state
+            current_chars.append(char)
+            current_start = i
+        
+        elif state == char_state:
+            # Continuation (Same State)
+            
+            # REVISION: Always split Delimiters atomically.
+            # ".." -> ".", "." and "//" -> "/", "/"
+            # This allows precise detection of ".." (Directory Traversal) vs "."
+            if state == "DELIMITER":
+                 tokens.append(ForensicToken("".join(current_chars), current_start, i, state))
+                 current_chars = [char]
+                 current_start = i
+                 state = char_state
+            else:
+                current_chars.append(char)
+        
+        else:
+            # Transition (State Change)
+            tokens.append(ForensicToken("".join(current_chars), current_start, i, state))
+            current_chars = [char]
+            current_start = i
+            state = char_state
+
+    # Flush final buffer
+    if current_chars:
+        # If text was 100% invisible, state might still be None. Default to SYMBOL/NOISE.
+        final_state = state if state else "SYMBOL"
+        tokens.append(ForensicToken("".join(current_chars), current_start, len(text), final_state))
+
+    return tokens
+
+# ==========================================
+# [MODULE 2] VERIFICATION BENCH (Target Matcher)
+# ==========================================
+
+def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
+    """
+    Active Zero-Trust Comparator.
+    Compares a Suspect String (Input) against a Trusted Reference (Manual).
+    Returns a deterministic verdict based on the Quad-State Pipeline.
+    """
+    if not suspect_str or not trusted_str:
+        return None
+
+    # 1. Identity Check (Bitwise)
+    if suspect_str == trusted_str:
+        return {
+            "verdict": "IDENTITY MATCH",
+            "desc": "Strings are bitwise identical. No threat.",
+            "css_class": "verdict-safe",
+            "score": 0
+        }
+
+    # 2. Generate Forensic States
+    # Note: Using existing 'normalize_extended' from global scope
+    suspect_nfkc = normalize_extended(suspect_str)
+    trusted_nfkc = normalize_extended(trusted_str)
+    
+    # Note: Using existing '_generate_uts39_skeleton' from global scope
+    suspect_skel = _generate_uts39_skeleton(suspect_nfkc.casefold())
+    trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
+
+    # 3. Forensic Comparison Logic (Ordered by Specificity)
+
+    # A. Normalization Hazard (Compatibility / Width)
+    # The NFKC forms match, but Raw does not.
+    # Example: 'ﬁ' vs 'fi', or Fullwidth 'Ａ' vs 'A'.
+    # This is a warning, not necessarily malicious spoofing.
+    if suspect_nfkc == trusted_nfkc:
+        return {
+            "verdict": "NORMALIZATION HAZARD",
+            "desc": "WARNING: Strings differ only by Compatibility or Formatting characters.",
+            "css_class": "verdict-warn",
+            "score": 50
+        }
+
+    # B. Homoglyph Attack (SPOOF)
+    # The skeletons match, but the raw/NFKC text does not.
+    # This implies different characters that LOOK identical (e.g. Cyrillic 'a').
+    if suspect_skel == trusted_skel:
+        return {
+            "verdict": "SPOOF CONFIRMED",
+            "desc": "CRITICAL: Strings are visually identical (Same Skeleton) but physically distinct.",
+            "css_class": "verdict-crit",
+            "score": 100
+        }
+    
+    # C. Case Mismatch
+    # Skeletons match only if case-folded.
+    if suspect_nfkc.casefold() == trusted_nfkc.casefold():
+        return {
+            "verdict": "CASE MISMATCH",
+            "desc": "NOTE: Strings differ only by Casing.",
+            "css_class": "verdict-info",
+            "score": 20
+        }
+
+    # D. Distinct
+    # No structural relationship found.
+    return {
+        "verdict": "DISTINCT",
+        "desc": "Strings are structurally and visually unrelated.",
+        "css_class": "verdict-neutral",
+        "score": 0
+    }
+
+
+
 def _find_in_ranges(cp: int, store_key: str):
     """Generic range finder using bisect."""
     import bisect
@@ -9377,6 +9566,43 @@ def py_generate_evidence():
 window.py_get_code_snippet = py_get_code_snippet
 window.py_generate_evidence = py_generate_evidence
 
+# --- [NEW] Verification Bench Event Logic ---
+
+@create_proxy
+def update_verification(event):
+    """
+    Triggered when the user types in the Trusted Reference input.
+    Compares the Main Input (Suspect) against this Trusted Input.
+    """
+    # Dynamic fetching ensures we don't crash if elements are missing during init
+    trusted_input = document.getElementById("trusted-input")
+    verdict_display = document.getElementById("verdict-display")
+    verdict_title = document.getElementById("verdict-title")
+    verdict_desc = document.getElementById("verdict-desc")
+    
+    if not trusted_input or not verdict_display: return
+
+    suspect_text = document.getElementById("text-input").value
+    trusted_text = trusted_input.value
+    
+    if not trusted_text:
+        verdict_display.classList.add("hidden")
+        return
+
+    verdict_display.classList.remove("hidden")
+    
+    # Run the logic
+    result = compute_verification_verdict(suspect_text, trusted_text)
+    
+    if result:
+        # Update UI
+        verdict_title.textContent = result["verdict"]
+        verdict_desc.textContent = result["desc"]
+        
+        # Reset classes
+        verdict_display.className = "verdict-box" # clear old colors
+        verdict_display.classList.add(result["css_class"])
+
 # ---
 # 6. INITIALIZATION
 # ---
@@ -9407,6 +9633,13 @@ async def main():
     if reveal2_btn:
         # Ensure we bind to the correct function name 'reveal2_invisibles'
         reveal2_btn.addEventListener("click", reveal2_invisibles)
+
+    # --- [NEW] Hook the Verification Bench ---
+    trusted_input = document.getElementById("trusted-input")
+    if trusted_input:
+        trusted_input.addEventListener("input", update_verification)
+        # Also re-run verification if main input changes (to keep verdict in sync)
+        text_input_element.addEventListener("input", update_verification)
     
     # --- FIX 3: Un-gate the UI ---
     text_input_element.disabled = False
