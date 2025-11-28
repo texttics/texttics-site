@@ -6801,6 +6801,24 @@ def render_statistical_profile(stats):
         </div>
         """
 
+    # --- HELPER: Micro-Card Builder ---
+    def micro_card(label, val, sub_text="", alert=False):
+        border_col = "#e2e8f0"
+        bg_col = "#f8fafc"
+        val_col = "#0f172a"
+        if alert:
+            border_col = "#fed7aa"
+            bg_col = "#fff7ed"
+            val_col = "#9a3412"
+            
+        return f"""
+        <div style="flex:1; background:{bg_col}; border:1px solid {border_col}; border-radius:4px; padding:4px 8px; min-width:0;">
+            <div style="font-size:0.6rem; color:#64748b; font-weight:700; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{label}</div>
+            <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:{val_col}; margin-top:1px;">{val}</div>
+            <div style="font-size:0.6rem; color:#94a3b8; margin-top:1px;">{sub_text}</div>
+        </div>
+        """
+
     rows = []
 
     # 1. Thermodynamics
@@ -6868,30 +6886,45 @@ def render_statistical_profile(stats):
     meta_fing = f"<div style='display:flex; gap:12px; font-size:0.65rem; color:#64748b; margin-top:4px;'>{' '.join(legend_items)}</div>"
     rows.append(make_row("Freq. Fingerprint", stacked, meta_fing, ("CHARACTER DISTRIBUTION", "Ratio of types (Letter, Number, Symbol, WS).", "Category Freq", "Includes all characters (Honest Mode).")))
 
-    # 6. Layout Physics (4 Cards + Sparkline)
+    # 6. Layout Physics (7 Cards + Mass Map)
     l_stats = stats.get("line_stats", {})
-    cnt, avg, p90, mx, spark = l_stats.get('count',0), l_stats.get('avg',0), l_stats.get('p90',0), l_stats.get('max',0), l_stats.get('sparkline',"")
+    cnt = l_stats.get('count',0)
     
     if cnt > 0:
-        is_outlier = (mx > p90 * 3) and (mx > 200)
+        mn, p25, p50, avg = l_stats.get('min',0), l_stats.get('p25',0), l_stats.get('p50',0), l_stats.get('avg',0)
+        p75, mx, emp = l_stats.get('p75',0), l_stats.get('max',0), l_stats.get('empty',0)
+        layout_map = l_stats.get('layout_map', [])
+        
+        is_outlier = (mx > p75 * 3) and (mx > 200)
         
         cards_html = f"""
-        <div style="display:flex; gap:6px; width:100%; margin-bottom:8px;">
-            {micro_card("Total Lines", cnt)}
-            {micro_card("Average Len", int(avg))}
-            {micro_card("P90 Width", int(p90))}
-            {micro_card("Max Width", int(mx), "Extreme" if is_outlier else "", is_outlier)}
+        <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; width:100%; margin-bottom:8px;">
+            {micro_card("Total", cnt, f"{emp} Empty")}
+            {micro_card("Min", int(mn))}
+            {micro_card("P25", int(p25))}
+            {micro_card("P50 (Med)", int(p50))}
+            {micro_card("Avg", int(avg))}
+            {micro_card("P75", int(p75))}
+            {micro_card("Max", int(mx), "Extreme" if is_outlier else "", is_outlier)}
         </div>
         """
         
-        spark_html = ""
-        if spark:
-            spark_html = f"""
-            <div style="font-family:var(--font-mono); color:#3b82f6; letter-spacing:2px; font-size:0.85rem; overflow:hidden; white-space:nowrap;">{spark}</div>
-            <div style="font-size:0.6rem; color:#9ca3af;">Distribution shape (File Start &rarr; End)</div>
-            """
+        # Stacked Mass Map (Visualizing the File Structure)
+        map_segments = []
+        for seg in layout_map:
+            width_style = f"width:{seg['w']}%;"
+            map_segments.append(f'<div style="{width_style} background:{seg["c"]};" title="Line Mass Segment"></div>')
             
-        rows.append(make_row("Layout Physics", cards_html + spark_html, "", ("LAYOUT TOPOLOGY", "Statistical shape of line lengths.", "Strict Newline Split", "Sparkline shows length density from start to end.")))
+        map_html = f"""
+        <div style="display:flex; height:8px; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0; width:100%;">
+            {''.join(map_segments)}
+        </div>
+        <div style="font-size:0.6rem; color:#9ca3af; margin-top:2px; display:flex; justify-content:space-between;">
+            <span>File Start</span> <span>Visual Mass Distribution (Line Lengths)</span> <span>File End</span>
+        </div>
+        """
+            
+        rows.append(make_row("Layout Physics", cards_html + map_html, "", ("LAYOUT TOPOLOGY", "7-Point Statistical Summary of line lengths.", "Strict Newline Split", "Bar graph shows file density from start to end.")))
 
     # 7. Phonotactics (4 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
