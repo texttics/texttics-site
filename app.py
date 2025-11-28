@@ -2347,77 +2347,142 @@ def tokenize_forensic(text: str) -> List[ForensicToken]:
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Active Zero-Trust Comparator (Gradual/Partial Mode).
-    Detects if the suspect is a VISUAL SUBSTRING of the trusted reference.
+    Forensic Comparator V4 (The Spectrometer).
+    - Quantifies overlap percentage (0-100%).
+    - Generates 'Forensic Lens' HTML for the suspect monitor.
+    - Classifies specific Red Flags (Spoof vs. Noise).
     """
-    if not suspect_str or not trusted_str:
-        return None
+    if not suspect_str or not trusted_str: return None
 
     # 1. Normalization Pipeline
     suspect_nfkc = normalize_extended(suspect_str)
     trusted_nfkc = normalize_extended(trusted_str)
+    
+    # Generate Skeletons
     suspect_skel = _generate_uts39_skeleton(suspect_nfkc.casefold())
     trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
 
-    # 2. Exact Match Checks
+    # 2. Forensic Measurement (The Meter)
+    # We measure how much of the *Suspect Skeleton* exists within the *Trusted Skeleton*.
+    # This detects "pаypal" (suspect) inside "paypal.com" (trusted).
+    
+    match_len = 0
+    total_len = len(suspect_skel)
+    overlap_pct = 0.0
+    relation = "DISTINCT"
+    
+    if total_len > 0:
+        if suspect_skel == trusted_skel:
+            match_len = total_len
+            overlap_pct = 100.0
+            relation = "EXACT"
+        elif suspect_skel in trusted_skel:
+            # Suspect is a substring of Trusted (User selected "pаypal")
+            match_len = len(suspect_skel) # It's fully contained
+            overlap_pct = 100.0 
+            relation = "SUBSET"
+        elif trusted_skel in suspect_skel:
+            # Trusted is a substring of Suspect (User selected "https://pаypal...")
+            match_len = len(trusted_skel)
+            overlap_pct = (match_len / total_len) * 100.0
+            relation = "SUPERSET"
+        else:
+            # Partial / disjoint overlap
+            # For a "Lab Instrument," we want strictness. 
+            # If it's not a contiguous substring, it's mostly noise.
+            # But let's calculate a basic sequence match for the meter.
+            import difflib
+            sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
+            match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
+            if match.size > 0:
+                overlap_pct = (match.size / total_len) * 100.0
+                relation = "PARTIAL"
+
+    # 3. Verdict Synthesis (The Grade)
     match_raw = (suspect_str == trusted_str)
     match_nfkc = (suspect_nfkc == trusted_nfkc)
-    match_skel = (suspect_skel == trusted_skel)
     
-    # 3. Partial (Containment) Checks
-    def check_partial(a, b):
-        if not a or not b: return False
-        if a in b: return "SUBSET"
-        if b in a: return "SUPERSET"
-        return False
-
-    part_raw = check_partial(suspect_str, trusted_str)
-    part_nfkc = check_partial(suspect_nfkc, trusted_nfkc)
-    part_skel = check_partial(suspect_skel, trusted_skel)
-
-    # 4. Matrix Result (Strings instead of Booleans)
-    result = {
-        "raw": "MATCH" if match_raw else (part_raw if part_raw else "DIFF"),
-        "nfkc": "MATCH" if match_nfkc else (part_nfkc if part_nfkc else "DIFF"),
-        "skel": "MATCH" if match_skel else (part_skel if part_skel else "DIFF"),
-        "score": 0
-    }
-
-    # 5. Verdict Decision Tree (Prioritized)
-
-    # A. Identity (The Gold Standard)
+    # Defaults
+    verdict = "DISTINCT"
+    desc = "No significant structural correlation."
+    css = "verdict-neutral"
+    
+    # Decision Matrix
     if match_raw:
-        result.update({"verdict": "IDENTITY MATCH", "desc": "Strings are bitwise identical.", "css_class": "verdict-safe", "icon": "🛡️"})
-    
-    # B. Partial Identity (Safe)
-    elif part_raw:
-        relation = "substring" if part_raw == "SUBSET" else "superstring"
-        result.update({"verdict": "PARTIAL MATCH (SAFE)", "desc": f"Selection is a valid {relation} of the trusted reference.", "css_class": "verdict-safe", "icon": "🧩"})
-
-    # C. Exact Spoof / Hazard
-    elif match_skel:
+        verdict = "IDENTITY VERIFIED"
+        desc = "Cryptographic Match (Bitwise Identical)."
+        css = "verdict-safe"
+    elif overlap_pct >= 100.0:
+        # Full Visual Match (Spoof or Subset)
         if match_nfkc:
-             result.update({"verdict": "NORMALIZATION HAZARD", "desc": "Strings differ only by Compatibility.", "css_class": "verdict-warn", "icon": "⚠️", "score": 50})
+            verdict = "NORMALIZATION HAZARD (100%)"
+            desc = "Visual Match via Compatibility (NFKC)."
+            css = "verdict-warn"
         else:
-             result.update({"verdict": "SPOOF CONFIRMED", "desc": "CRITICAL: Visually identical, structurally distinct.", "css_class": "verdict-crit", "icon": "🚨", "score": 100})
-
-    # D. Partial Spoof (The "Gradual" Case)
-    # This detects "pаypal" inside "paypal.com"
-    elif part_skel:
-        if part_nfkc:
-             result.update({"verdict": "PARTIAL HAZARD", "desc": "Substring matches via Compatibility normalization.", "css_class": "verdict-warn", "icon": "⚠️", "score": 40})
+            verdict = "VISUAL CLONE (100%)"
+            desc = "CRITICAL: Skeleton Match with Raw Divergence (Homoglyph)."
+            css = "verdict-crit"
+    elif overlap_pct > 0:
+        # Partial Match logic
+        v_label = "VISUAL OVERLAP"
+        if relation == "SUBSET": v_label = "TARGET LOCK"
+        
+        verdict = f"{v_label} ({overlap_pct:.0f}%)"
+        
+        if overlap_pct > 80:
+            desc = "High-confidence partial spoof detected."
+            css = "verdict-crit"
         else:
-             result.update({"verdict": "PARTIAL SPOOF", "desc": "CRITICAL: Selection visually matches a part of the trusted string (Homoglyph Substring).", "css_class": "verdict-crit", "icon": "🚨", "score": 90})
+            desc = "Partial structural correlation detected."
+            css = "verdict-warn"
+            
+    # 4. The "Lens" Generator (Rich HTML)
+    # Highlights the Suspect String based on what matches the Trusted Reference.
+    html_parts = []
+    
+    # We iterate the suspect string. If its skeleton char exists in the trusted skeleton,
+    # we highlight it.
+    
+    # Create a "consumed" tracker for trusted to avoid double-counting if needed,
+    # but for visual "heat", simple containment is often clearer.
+    
+    for char in suspect_str:
+        # 1. Analyze Atom
+        n = normalize_extended(char).casefold()
+        s = _generate_uts39_skeleton(n)
+        
+        # 2. Determine State
+        is_match = (s in trusted_skel)
+        is_exact = (char in trusted_str) # Rough check for raw match
+        
+        vis_char = _escape_html(char)
+        
+        if is_match:
+            if is_exact:
+                # Safe Intersection: Bold, Black, Bigger
+                # This is the "Anchor" text
+                html_parts.append(f'<span class="f-anchor">{vis_char}</span>')
+            else:
+                # Spoof Intersection: Red, Bold
+                # This is the "Payload" text
+                html_parts.append(f'<span class="f-payload" title="Spoof: {vis_char}">{vis_char}</span>')
+        else:
+            # Noise: Gray, Dimmed
+            html_parts.append(f'<span class="f-noise">{vis_char}</span>')
 
-    # E. Case Mismatch
-    elif suspect_nfkc.casefold() == trusted_nfkc.casefold():
-        result.update({"verdict": "CASE MISMATCH", "desc": "Strings differ only by capitalization.", "css_class": "verdict-info", "icon": "ℹ️", "score": 20})
+    lens_html = "".join(html_parts)
 
-    # F. Distinct
-    else:
-        result.update({"verdict": "DISTINCT", "desc": "Strings are structurally and visually unrelated.", "css_class": "verdict-neutral", "icon": "≠", "score": 0})
-
-    return result
+    # 5. Return The Package
+    return {
+        "verdict": verdict,
+        "desc": desc,
+        "css_class": css,
+        "raw": "MATCH" if match_raw else "DIFF",
+        "nfkc": "MATCH" if match_nfkc else "DIFF",
+        "skel": "MATCH" if overlap_pct >= 100 else f"{overlap_pct:.0f}%",
+        "overlap_pct": overlap_pct,
+        "lens_html": lens_html
+    }
 
 # ==========================================
 # [MODULE 3] DOMAIN & TYPOSQUATTING RADAR
@@ -9672,8 +9737,8 @@ window.py_generate_evidence = py_generate_evidence
 @create_proxy
 def update_verification(event):
     """
-    Enhanced renderer for the Verification Bench.
-    Supports Scope Selection and Partial Match visualization.
+    Forensic Renderer V4 (The Lens).
+    Drives the Match Meter and Suspect Monitor visuals.
     """
     trusted_input = document.getElementById("trusted-input")
     verdict_display = document.getElementById("verdict-display")
@@ -9684,7 +9749,7 @@ def update_verification(event):
     
     if not trusted_input or not verdict_display or not text_input: return
 
-    # 1. Scope Selection Logic
+    # 1. Scope Selection
     full_text = text_input.value
     selection_start = text_input.selectionStart
     selection_end = text_input.selectionEnd
@@ -9698,53 +9763,56 @@ def update_verification(event):
         scope_label = "FULL INPUT"
         badge_class = "scope-badge-full"
 
-    # 2. Update Monitor
-    if suspect_display:
-        if not suspect_text:
-            suspect_display.textContent = "(Waiting for input...)"
-            suspect_display.style.opacity = "0.5"
-        else:
-            suspect_display.textContent = suspect_text
-            suspect_display.style.opacity = "1.0"
-            
     if scope_badge:
         scope_badge.textContent = scope_label
         scope_badge.className = badge_class
 
     trusted_text = trusted_input.value
     
+    # 2. Reset if empty
     if not trusted_text:
         verdict_display.classList.add("hidden")
+        if suspect_display: 
+            suspect_display.textContent = suspect_text if suspect_text else "(Waiting...)"
+            suspect_display.style.opacity = "0.5"
         return
 
     verdict_display.classList.remove("hidden")
+    if suspect_display: suspect_display.style.opacity = "1.0"
     
-    # 3. Run Comparator
+    # 3. Run Engine
     res = compute_verification_verdict(suspect_text, trusted_text)
     
     if res:
-        # 4. Update Header
+        # 4. Render The Lens (Rich HTML)
+        if suspect_display:
+            suspect_display.innerHTML = res["lens_html"]
+
+        # 5. Update Verdict Header (No Icons)
         document.getElementById("verdict-title").textContent = res["verdict"]
         document.getElementById("verdict-desc").textContent = res["desc"]
-        document.getElementById("verdict-icon").textContent = res["icon"]
         
-        # 5. Evidence Matrix (Enhanced)
-        def set_metric(id_str, status):
+        # 6. Update Meter (Visual Feedback)
+        # We inject the meter directly into the verdict description area or a dedicated bar
+        # For now, let's append it to the description if it's not 100% or 0%
+        # Or better: The verdict box border color IS the meter.
+        
+        # 7. Update Evidence Matrix
+        def set_metric(id_str, val):
             el = document.getElementById(id_str)
-            if status == "MATCH":
-                el.innerHTML = '<span style="color:#10b981;">MATCH</span>'
-            elif status == "SUBSET":
-                el.innerHTML = '<span style="color:#3b82f6; font-size:0.85em; font-weight:800;">SUBSET</span>'
-            elif status == "SUPERSET":
-                el.innerHTML = '<span style="color:#3b82f6; font-size:0.85em; font-weight:800;">SUPERSET</span>'
+            if val == "MATCH":
+                el.innerHTML = '<span style="color:#10b981; font-weight:800;">MATCH</span>'
+            elif val == "DIFF":
+                el.innerHTML = '<span style="color:#ef4444; font-weight:800;">DIFF</span>'
             else:
-                el.innerHTML = '<span style="color:#ef4444;">DIFF</span>'
+                # Percentage or other text
+                el.innerHTML = f'<span style="color:#3b82f6; font-weight:800;">{val}</span>'
 
         set_metric("vm-raw", res["raw"])
         set_metric("vm-nfkc", res["nfkc"])
         set_metric("vm-skel", res["skel"])
         
-        # 6. Styling
+        # 8. Styling
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
 
