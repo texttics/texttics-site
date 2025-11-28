@@ -4255,3 +4255,34 @@ details.profile-section > summary:hover::marker {
 .badge-spoof { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
 .badge-invis { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
 .badge-bidi  { background: #fffbeb; color: #d97706; border-color: #fcd34d; }
+
+/* =========================================
+   FORENSIC STACK (Layering Logic)
+   ========================================= */
+
+.forensic-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+}
+
+.stack-layer {
+    width: 100%;
+}
+
+/* The divider between the Card View and the X-Ray View */
+.stack-separator {
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: #94a3b8; /* Slate-400 */
+    background-color: #f8fafc;
+    border-top: 1px dashed #e2e8f0;
+    border-bottom: 1px dashed #e2e8f0;
+    padding: 4px 0;
+    margin: 12px 0;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    user-select: none;
+}
