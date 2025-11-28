@@ -4756,3 +4756,120 @@ details.profile-section > summary:hover::marker {
     max-height: 150px;          /* Optional cap if it gets HUGE */
     overflow-y: auto;           /* Scroll if it exceeds max height */
 }
+
+/* =========================================
+   STATISTICAL & LEXICAL PROFILE (Group 2.F)
+   ========================================= */
+
+/* 1. The Container Table */
+#statistical-profile-table td {
+    vertical-align: middle;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+#statistical-profile-table th {
+    color: #475569; /* Slate-600 */
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
+
+/* 2. Interactive Token Links (The Bridge) */
+/* Styling for the clickable tokens in the Flooding row */
+.stat-link {
+    color: #0f172a; /* Slate-900 */
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px dotted #94a3b8; /* Slate-400 */
+    transition: all 0.15s ease-in-out;
+    cursor: pointer;
+    background-color: rgba(255, 255, 255, 0.5);
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.stat-link:hover {
+    color: #2563eb; /* Blue-600 */
+    border-bottom: 1px solid #2563eb;
+    background-color: #eff6ff; /* Blue-50 */
+}
+
+/* 3. Mini Code Block (Container for Tokens) */
+.mini-code {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    background-color: #f8fafc; /* Slate-50 */
+    border: 1px solid #e2e8f0; /* Slate-200 */
+    border-radius: 4px;
+    padding: 6px 10px;
+    display: inline-block;
+    color: #334155;
+    line-height: 1.6;
+    max-width: 100%;
+    word-break: break-word;
+}
+
+/* 4. Context Details (e.g. "(Unique/Total)") */
+.detail-text {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: #94a3b8; /* Slate-400 */
+    font-weight: 500;
+    margin-left: 8px;
+    letter-spacing: 0.01em;
+}
+
+/* 5. Matrix Labels (Metric Names) */
+.matrix-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    display: inline-block;
+}
+
+/* 6. Feature Tags (Right Column Badges) */
+/* Used for "Structured", "Rich", "Repetitive" labels */
+.feature-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: 1px solid transparent;
+}
+
+/* Status Colors for Feature Tags */
+.feature-tag.flag-row-ok {
+    background-color: #ecfdf5; /* Green-50 */
+    color: #059669; /* Green-600 */
+    border-color: #a7f3d0;
+}
+
+.feature-tag.flag-row-warn {
+    background-color: #fffbeb; /* Amber-50 */
+    color: #d97706; /* Amber-600 */
+    border-color: #fde68a;
+}
+
+.feature-tag.flag-row-crit {
+    background-color: #fef2f2; /* Red-50 */
+    color: #dc2626; /* Red-600 */
+    border-color: #fecaca;
+}
+
+/* 7. Entropy Bar Container Context */
+/* Ensure the bar aligns perfectly with the text value */
+#statistical-profile-body div[style*="grid-template-columns"] {
+    border: 1px solid #f1f5f9;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: #ffffff;
+}
