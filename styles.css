@@ -4441,3 +4441,26 @@ details.profile-section > summary:hover::marker {
 .dot-spoof { background-color: #fca5a5; }
 .dot-invis { background-color: #c4b5fd; }
 .dot-bidi  { background-color: #fcd34d; }
+
+/* --- Forensic Summary Bar (Neutral Gray) --- */
+.xray-summary-bar {
+  background-color: #f3f4f6; /* Slate-100 */
+  border: 1px solid #d1d5db; /* Slate-300 */
+  color: #1f2937;            /* Slate-900 */
+  
+  /* Structure Preserved */
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+  font-family: var(--font-sans);
+}
+
+.xray-summary-title {
+  color: #4b5563; /* Slate-600 */
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+  font-size: 0.75rem;
+}
