@@ -417,10 +417,13 @@ function buildStructuredReport() {
     if (!container) return lines;
 
     container.querySelectorAll('.card').forEach(card => {
-      // Handle "Forensic Quad" Layout (Metric Cards)
+      // [FIX 1] Handle "Forensic Quad" Layout (Metric Cards)
       if (card.classList.contains('metric-card')) {
           const label = card.querySelector('.card-header')?.textContent.trim() || 'Metric';
-          const val = card.querySelector('.metric-value')?.textContent.trim() || '0';
+          
+          // [FIX 2] Robust Selector: Grab .metric-value OR .metric-value-warn (for UTF-16/Astral)
+          const valEl = card.querySelector('.metric-value, .metric-value-warn');
+          const val = valEl ? valEl.textContent.trim() : '0';
           
           // Extract Micro-Facts
           const facts = [];
@@ -433,7 +436,7 @@ function buildStructuredReport() {
           return; 
       }
 
-      // Handle Standard/Repertoire Cards
+      // [LEGACY] Handle Standard/Repertoire Cards
       const label = card.querySelector('strong')?.textContent.trim() || 'Metric';
       const mainValueEl = card.querySelector('.card-main-value');
       
