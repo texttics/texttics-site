@@ -6913,12 +6913,15 @@ def render_statistical_profile(stats):
     </div>"""
     
     meta_ent = f"""
-    <div style="margin-top:6px; font-size:0.7rem; color:#64748b; line-height:1.4;">
-        <div style="display:flex; justify-content:space-between;">
-            <span>{n_bytes} bytes <span style="color:{conf_col}">{conf_txt}</span> &bull; ASCII: <b>{ascii_dens}%</b></span>
-            <span title="Normalized Entropy (0.0-1.0)">norm: <b>{ent_norm:.2f}</b></span>
+    <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.7rem; color:#64748b;">
+        <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            {n_bytes} bytes <span style="color:{conf_col}">{conf_txt}</span> 
+            &nbsp;&bull;&nbsp; ASCII: <b>{ascii_dens}%</b>
+            &nbsp;&bull;&nbsp; <span style="color:#475569; font-style:italic;">{_escape_html(hint)}</span>
         </div>
-        <div style="color:#475569; margin-top:2px; font-style:italic;">{_escape_html(hint)}</div>
+        <div title="Normalized Entropy (0.0-1.0)" style="white-space:nowrap; margin-left:8px;">
+            norm: <b>{ent_norm:.2f}</b>
+        </div>
     </div>
     """
     
