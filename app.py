@@ -6835,16 +6835,13 @@ def render_emoji_summary(emoji_counts, emoji_list):
 def render_statistical_profile(stats):
     """
     Renders the Statistical & Lexical Profile (Group 2.F).
-    Hardened for:
-      - Security (escaping, fail-soft)
-      - Science (sample-aware badges, normalized entropy)
-      - Explainability (short natural-language hints)
+    VISUAL UPGRADE: Adds Bars, Stacked Charts, and Gauges for all metrics.
     """
     container = document.getElementById("statistical-profile-body")
     if not container:
         return
 
-    # Fail-soft: no data
+    # Fail-soft
     if not stats or (
         stats.get("total_tokens", 0) == 0
         and stats.get("line_stats", {}).get("count", 0) == 0
@@ -6859,7 +6856,7 @@ def render_statistical_profile(stats):
     rows = []
 
     # ------------------------------------------------------------
-    # 1. Entropy (Thermodynamics)
+    # 1. Thermodynamics (Entropy) - The Gradient Bar
     # ------------------------------------------------------------
     ent = float(stats.get("entropy", 0.0) or 0.0)
     ent_norm = float(stats.get("entropy_norm", 0.0) or 0.0)
@@ -6867,232 +6864,251 @@ def render_statistical_profile(stats):
     conf = stats.get("entropy_conf", "unknown")
 
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
+    bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
 
-    # single gradient bar (0–8 bits/byte)
-    bar_color = (
-        "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
-    )
-
-    # micro-confidence badge
+    conf_badge = ""
     if conf == "low":
-        conf_badge = (
-            '<span class="detail-text" style="color:#f59e0b;">(Low Sample)</span>'
-        )
+        conf_badge = '<span class="detail-text" style="color:#f59e0b;">(Low Sample)</span>'
     elif conf == "high":
-        conf_badge = (
-            '<span class="detail-text" style="color:#10b981;">(Stable)</span>'
-        )
+        conf_badge = '<span class="detail-text" style="color:#10b981;">(Stable)</span>'
     else:
-        conf_badge = (
-            '<span class="detail-text" style="color:#6b7280;">(Moderate)</span>'
-        )
+        conf_badge = '<span class="detail-text" style="color:#6b7280;">(Moderate)</span>'
 
-    # qualitative hint based on normalized entropy – still soft
     hint = ""
     if n_bytes >= 128:
-        if ent_norm < 0.4:
-            hint = "Highly structured / repetitive segment."
-        elif ent_norm > 0.9 and ent > 6.5:
-            hint = "Very close to uniform – could be compressed or encrypted data."
-        else:
-            hint = "Typical mixed structure (text / code / markup)."
+        if ent_norm < 0.4: hint = "Highly structured / repetitive."
+        elif ent_norm > 0.9 and ent > 6.5: hint = "High density (compressed/encrypted?)"
+        else: hint = "Typical mixed structure."
 
     entropy_visual = f"""
-    <div style="display:flex; align-items:center; gap:8px;">
-        <div style="flex:1; height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
             <div style="width:{ent_pct:.1f}%; height:100%; background:{bar_color};"></div>
         </div>
-        <div style="text-align:right;">
-            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:600;">
-                {ent:.2f} <span style="opacity:0.7;">bits/byte</span>
-            </div>
-            <div style="font-family:var(--font-mono); font-size:0.7rem; color:#6b7280; margin-top:1px;">
-                norm: {ent_norm:.2f}
+        <div style="text-align:right; min-width:60px;">
+            <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:#1e293b;">
+                {ent:.2f}
             </div>
         </div>
     </div>
-    <div style="font-size:0.7rem; color:#6b7280; margin-top:2px;">
-        {n_bytes} bytes {conf_badge}
-        <div style="margin-top:2px;">{_escape_html(hint)}</div>
+    <div style="display:flex; justify-content:space-between; margin-top:4px;">
+        <div style="font-size:0.7rem; color:#6b7280;">{n_bytes} bytes {conf_badge}</div>
+        <div style="font-size:0.7rem; color:#64748b;">{_escape_html(hint)}</div>
     </div>
     """
 
     rows.append(f"""
     <tr>
         <th scope="row">Thermodynamics (Entropy)</th>
-        <td colspan="2">
-            {entropy_visual}
-        </td>
+        <td colspan="2" style="padding-top:16px; padding-bottom:16px;">{entropy_visual}</td>
     </tr>
     """)
 
     # ------------------------------------------------------------
-    # 2. Lexical Density (TTR + segmented TTR)
+    # 2. Lexical Density (TTR) - The Richness Spectrum
     # ------------------------------------------------------------
     ttr = float(stats.get("ttr", 0.0) or 0.0)
     ttr_seg = stats.get("ttr_segmented", None)
     tok_total = int(stats.get("total_tokens", 0) or 0)
     uniq = int(stats.get("unique_tokens", 0) or 0)
 
-    ttr_class = "integrity-badge integrity-badge-ok"
-    ttr_label = "Rich Variety"
+    # Gradient: Red (Repetitive) -> Teal (Rich)
+    ttr_pct = min(100, max(0, ttr * 100))
+    ttr_grad = "linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%)"
+    
+    ttr_hint = "Rich Variety"
+    if tok_total < 50: ttr_hint = "Unstable (Short)"
+    elif ttr < 0.2: ttr_hint = "Repetitive / Machine-like"
+    elif ttr > 0.8: ttr_hint = "High Unique Density"
 
-    if tok_total < 50:
-        ttr_class = "integrity-badge integrity-badge-warn"
-        ttr_label = "Unstable (Very Short Text)"
-    elif ttr < 0.2:
-        ttr_class = "integrity-badge integrity-badge-warn"
-        ttr_label = "Low Variety (Repetitive)"
-    elif ttr > 0.7:
-        # often short / bullet style / code identifiers
-        ttr_label = "Very High Variety (Fragments / IDs?)"
-
-    extra_line = ""
+    seg_info = ""
     if ttr_seg is not None:
-        extra_line = (
-            f"<div style='font-size:0.65rem; color:#9ca3af; margin-top:4px;'>"
-            f"Segmented TTR (50-token windows): <b>{ttr_seg:.3f}</b> "
-            f"(less length-sensitive)</div>"
-        )
+        seg_info = f"<span title='Segmented TTR (length-adjusted)'>Seg: <b>{ttr_seg:.2f}</b></span>"
+
+    ttr_visual = f"""
+    <div style="display:flex; align-items:center; gap:12px;">
+        <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
+            <div style="width:{ttr_pct:.1f}%; height:100%; background:{ttr_grad};"></div>
+        </div>
+        <div style="text-align:right; min-width:60px;">
+            <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:#1e293b;">
+                {ttr:.2f}
+            </div>
+        </div>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:#6b7280;">
+        <div>{uniq}/{tok_total} unique {seg_info}</div>
+        <div>{ttr_hint}</div>
+    </div>
+    """
 
     rows.append(f"""
     <tr>
         <th scope="row">Lexical Density (TTR)</th>
-        <td><span class="{ttr_class}">{ttr:.3f}</span></td>
-        <td>
-            <span class="detail-text">({uniq} unique / {tok_total} total)</span>
-            <div style="font-size:0.65rem; color:#9ca3af; margin-top:2px;">{_escape_html(ttr_label)}</div>
-            {extra_line}
-        </td>
+        <td colspan="2" style="padding-top:16px; padding-bottom:16px;">{ttr_visual}</td>
     </tr>
     """)
 
     # ------------------------------------------------------------
-    # 3. Top Tokens (Flooding)
+    # 3. Top Tokens - Interactive Chips
     # ------------------------------------------------------------
     top_tokens = stats.get("top_tokens", []) or []
     if top_tokens:
-        interactive_tokens = []
+        token_chips = []
         for item in top_tokens:
             tok = item.get("token", "")
             share = item.get("share", 0.0)
+            count = item.get("count", 0)
             safe_tok = _escape_html(tok)
             js_tok = _escape_for_js(tok)
-            link = (
-                f'<a href="#" onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\'); '
-                f'return false;" class="stat-link" '
-                f'title="Click to highlight in text">{safe_tok}</a>'
-                f' <span style="opacity:0.6; font-size:0.8em;">({share:.1f}%)</span>'
+            
+            # Smart Chip Style
+            chip = (
+                f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\');" '
+                f'style="appearance:none; border:1px solid #e2e8f0; background:#f8fafc; '
+                f'border-radius:4px; padding:2px 6px; font-family:var(--font-mono); '
+                f'font-size:0.8rem; color:#334155; cursor:pointer; margin-right:6px; '
+                f'display:inline-flex; align-items:center; gap:6px; transition:all 0.1s;">'
+                f'<span>{safe_tok}</span>'
+                f'<span style="background:#e2e8f0; padding:0 4px; border-radius:3px; font-size:0.7rem; color:#475569;">{share}%</span>'
+                f'</button>'
             )
-            interactive_tokens.append(link)
+            token_chips.append(chip)
 
         top1_share = stats.get("top_shares", {}).get("top1", 0.0) or 0.0
-        flood_badge = ""
+        warn_badge = ""
         if top1_share > 30 and tok_total > 50:
-            flood_badge = (
-                '<span class="integrity-badge integrity-badge-crit" '
-                'style="font-size:0.6rem; margin-left:8px;">FLOODING?</span>'
-            )
+            warn_badge = '<span class="integrity-badge integrity-badge-crit" style="font-size:0.6rem; margin-left:auto;">FLOODING?</span>'
 
         rows.append(f"""
         <tr>
-            <th scope="row">Top Tokens (Flooding) {flood_badge}</th>
+            <th scope="row">Top Tokens (Flooding)</th>
             <td colspan="2">
-                <code class="mini-code">{", ".join(interactive_tokens)}</code>
+                <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
+                    {''.join(token_chips)}
+                    {warn_badge}
+                </div>
             </td>
         </tr>
         """)
 
     # ------------------------------------------------------------
-    # 4. Frequency Fingerprint + Class Balance
+    # 4. Fingerprint - Stacked Composition Bar
     # ------------------------------------------------------------
-    top_chars = stats.get("top_chars", []) or []
     char_dist = stats.get("char_dist", {}) or {}
-
-    if top_chars:
-        interactive_chars = []
+    pct_l = char_dist.get('letters', 0)
+    pct_n = char_dist.get('digits', 0)
+    pct_s = char_dist.get('sym', 0)
+    pct_w = char_dist.get('ws', 0)
+    
+    # Only show stack if we have data
+    if (pct_l + pct_n + pct_s + pct_w) > 0:
+        stacked_bar = f"""
+        <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0; width:100%;">
+            <div title="Letters: {pct_l}%" style="width:{pct_l}%; background:#60a5fa;"></div>
+            <div title="Digits: {pct_n}%" style="width:{pct_n}%; background:#f59e0b;"></div>
+            <div title="Symbols: {pct_s}%" style="width:{pct_s}%; background:#a855f7;"></div>
+            <div title="Whitespace: {pct_w}%" style="width:{pct_w}%; background:#e2e8f0;"></div>
+        </div>
+        <div style="display:flex; gap:12px; margin-top:4px; font-size:0.65rem; color:#64748b; font-family:var(--font-sans);">
+            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#60a5fa;"></span>Let {pct_l}%</div>
+            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#f59e0b;"></span>Num {pct_n}%</div>
+            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#a855f7;"></span>Sym {pct_s}%</div>
+            <div style="display:flex; align-items:center; gap:3px;"><span style="width:6px; height:6px; border-radius:50%; background:#e2e8f0;"></span>WS {pct_w}%</div>
+        </div>
+        """
+        
+        # Add Top Chars below the bar
+        top_chars = stats.get("top_chars", []) or []
+        top_char_html = []
         for item in top_chars:
-            ch = item.get("char", "")
-            share = item.get("share", 0.0)
-            safe_ch = _escape_html(ch)
-            if ch == " ":
-                safe_ch = "SPACE"
-            elif ch == "\t":
-                safe_ch = "\\t"
-            elif ch == "\n":
-                safe_ch = "\\n"
-
-            display = (
-                f"<b>{safe_ch}</b> "
-                f"<span style='opacity:0.7'>{share:.1f}%</span>"
-            )
-            interactive_chars.append(display)
-
-        balance_str = (
-            f"L:{char_dist.get('letters',0)}% · "
-            f"N:{char_dist.get('digits',0)}% · "
-            f"S:{char_dist.get('sym',0)}% · "
-            f"WS:{char_dist.get('ws',0)}%"
-        )
+            c = item.get('char', '')
+            if c == ' ': c = '␣'
+            top_char_html.append(f"<b>{_escape_html(c)}</b> <span style='opacity:0.6'>{item['share']}%</span>")
+        
+        fingerprint_text = f"<div style='font-family:var(--font-mono); font-size:0.8rem; margin-top:6px; color:#334155;'>{' &nbsp; '.join(top_char_html)}</div>"
 
         rows.append(f"""
         <tr>
             <th scope="row">Freq. Fingerprint</th>
             <td colspan="2">
-                <div style="font-family:var(--font-mono); font-size:0.85em; margin-bottom:4px;">
-                    {' &nbsp; '.join(interactive_chars)}
-                </div>
-                <div style="font-size:0.65rem; color:#6b7280; border-top:1px dashed #e5e7eb; padding-top:2px;">
-                    Class Balance: {balance_str}
-                </div>
+                {stacked_bar}
+                {fingerprint_text}
             </td>
         </tr>
         """)
 
     # ------------------------------------------------------------
-    # 5. Layout Physics
+    # 5. Layout Physics - The Range Plot
     # ------------------------------------------------------------
     l_stats = stats.get("line_stats", {}) or {}
     line_count = int(l_stats.get("count", 0) or 0)
+    
     if line_count > 0:
         avg = l_stats.get("avg", 0)
         p90 = l_stats.get("p90", 0)
         mx = l_stats.get("max", 0)
-
-        layout_note = ""
-        try:
-            if p90 and mx > (p90 * 3) and mx > 200:
-                layout_note = (
-                    '<span class="detail-text" style="color:#d97706;">'
-                    "(Extreme outlier line – minified / log blob?)"
-                    "</span>"
-                )
-        except Exception:
-            pass
-
-        rows.append(f"""
-        <tr>
-            <th scope="row">Layout Physics</th>
-            <td>{line_count} Lines</td>
-            <td style="font-size:0.85em; color:#6b7280;">
-                Avg: {avg} &nbsp;|&nbsp; P90: {p90} &nbsp;|&nbsp; Max: {mx} {layout_note}
-            </td>
-        </tr>
-        """)
+        
+        if mx > 0:
+            # Positions %
+            pos_avg = (avg / mx) * 100
+            pos_p90 = (p90 / mx) * 100
+            
+            # CSS Plot
+            plot = f"""
+            <div style="position:relative; height:12px; margin-top:6px; width:100%;">
+                <div style="position:absolute; top:5px; left:0; right:0; height:2px; background:#e2e8f0;"></div>
+                
+                <div title="Average: {avg}" style="position:absolute; top:1px; left:{pos_avg}%; width:2px; height:10px; background:#3b82f6;"></div>
+                
+                <div title="P90: {p90}" style="position:absolute; top:1px; left:{pos_p90}%; width:2px; height:10px; background:#f59e0b;"></div>
+                
+                <div title="Max: {mx}" style="position:absolute; top:1px; right:0; width:2px; height:10px; background:#ef4444;"></div>
+            </div>
+            """
+            
+            detail_stats = f"Avg:{int(avg)} <span style='color:#cbd5e1'>|</span> P90:{int(p90)} <span style='color:#cbd5e1'>|</span> Max:{int(mx)}"
+            
+            rows.append(f"""
+            <tr>
+                <th scope="row">Layout Physics</th>
+                <td><span style="font-weight:600; color:#334155;">{line_count} Lines</span></td>
+                <td>
+                    <div style="font-family:var(--font-mono); font-size:0.75rem; color:#64748b; text-align:right;">{detail_stats}</div>
+                    {plot}
+                </td>
+            </tr>
+            """)
 
     # ------------------------------------------------------------
-    # 6. ASCII Phonotactics (gated, weak)
+    # 6. Phonotactics - The Sweet Spot Gauge
     # ------------------------------------------------------------
     phon = stats.get("phonotactics", {}) or {}
     if phon.get("is_valid", False):
+        ratio = phon.get('vowel_ratio', 0.0)
+        # Display 0 to 0.8 scale usually covers it
+        pos = min(100, (ratio / 0.8) * 100)
+        
+        gauge = f"""
+        <div style="position:relative; height:6px; background:#f1f5f9; border-radius:3px; margin-top:6px; border:1px solid #e2e8f0;">
+            <div style="position:absolute; left:37%; width:25%; height:100%; background:#dcfce7;"></div>
+            <div style="position:absolute; left:{pos}%; top:-2px; width:4px; height:10px; background:#475569; border-radius:2px;"></div>
+        </div>
+        """
+        
         rows.append(f"""
         <tr>
             <th scope="row">ASCII Phonotactics</th>
-            <td>V/C Ratio: {phon.get('vowel_ratio', 0.0)}</td>
             <td>
-                <span class="detail-text">{_escape_html(phon.get('status', ''))}</span>
-                <span style="font-size:0.65rem; color:#9ca3af; display:block;">
-                    (Weak hint · Latin letters only · Not a classifier)
+                <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                    <span style="font-family:var(--font-mono); font-weight:600; color:#334155;">{ratio:.2f}</span>
+                    <span style="font-size:0.7rem; color:#64748b;">{phon.get('status','')}</span>
+                </div>
+                {gauge}
+            </td>
+            <td>
+                <span style="font-size:0.65rem; color:#9ca3af; display:block; text-align:right;">
+                    (Weak hint · Latin letters only)
                 </span>
             </td>
         </tr>
