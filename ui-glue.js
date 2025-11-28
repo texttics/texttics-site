@@ -576,8 +576,8 @@ function buildStructuredReport() {
   report.push('\n[ Minor Category: Code Points (Logical) | Graphemes (Perceptual) ]');
   report.push(...parseTable('minor-parallel-body', 'Minor Category: '));
 
-  // Shape (Explicit Header & Sub-sections)
-  report.push(`\n[ Structural Shape Profile ]`);
+  // Shape (Explicit Scraper for 2-Column Tables)
+  report.push(`\n[ ${getText('#shape-title') || 'Structural Shape Profile'} ]`);
   const shapeSections = [
       { id: 'shape-matrix-body', title: 'Major Run Analysis' },
       { id: 'minor-shape-matrix-body', title: 'Minor Run Analysis' },
@@ -591,10 +591,25 @@ function buildStructuredReport() {
   ];
   
   shapeSections.forEach(sec => {
-      const rows = parseTable(sec.id, '');
-      if (rows.length > 0) {
-          report.push(`  -- ${sec.title} --`);
-          report.push(...rows);
+      const tbody = document.getElementById(sec.id);
+      if (tbody && tbody.querySelectorAll('tr').length > 0) {
+          const sectionRows = [];
+          tbody.querySelectorAll('tr').forEach(row => {
+              if (row.querySelector('.placeholder-text')) return;
+              
+              // Direct Scrape: Label (th) and Value (td)
+              const label = row.querySelector('th')?.textContent.trim();
+              const val = row.querySelector('td')?.textContent.trim();
+              
+              if (label && val) {
+                  sectionRows.push(`  ${label}: ${val}`);
+              }
+          });
+          
+          if (sectionRows.length > 0) {
+              report.push(`  -- ${sec.title} --`);
+              report.push(...sectionRows);
+          }
       }
   });
 
