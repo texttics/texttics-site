@@ -4592,3 +4592,42 @@ details.profile-section > summary:hover::marker {
 }
 .verdict-neutral .verdict-header { background-color: #f8fafc; color: #475569; }
 .verdict-neutral .verdict-icon-box { background-color: #e2e8f0; color: #64748b; }
+
+/* Suspect Monitor (Active Feedback) */
+.suspect-box {
+    width: 100%;
+    padding: 0.5rem;
+    background-color: #f3f4f6; /* Gray-100 */
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    min-height: 38px;
+    white-space: pre-wrap; /* Preserve formatting */
+    word-break: break-all;
+    overflow-y: auto;
+    max-height: 80px;
+}
+
+.scope-badge-full {
+    background: #e5e7eb;
+    color: #4b5563;
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.scope-badge-select {
+    background: #dbeafe; /* Blue-100 */
+    color: #1e40af;      /* Blue-800 */
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    font-weight: 700;
+}
