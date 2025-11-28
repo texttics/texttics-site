@@ -159,8 +159,32 @@
             </div>
             
             <div id="verdict-display" class="verdict-box hidden">
-                <div id="verdict-title" style="font-weight:700; font-size:1.1rem; letter-spacing:0.05em; margin-bottom:0.25rem;">ANALYZING...</div>
-                <div id="verdict-desc" style="font-size:0.9rem;">Waiting for input...</div>
+                <div class="verdict-header">
+                    <div class="verdict-icon-box" id="verdict-icon">⚖️</div>
+                    <div class="verdict-title-group">
+                        <span class="verdict-label">COMPARISON RESULT</span>
+                        <span class="verdict-value" id="verdict-title">ANALYZING...</span>
+                    </div>
+                </div>
+                
+                <div class="verdict-body">
+                    <div id="verdict-desc" style="margin-bottom: 4px;">Waiting for input...</div>
+                    
+                    <div class="verdict-matrix" id="verdict-matrix">
+                        <div class="v-metric">
+                            <span class="v-metric-label">RAW BYTES</span>
+                            <span class="v-metric-val" id="vm-raw">--</span>
+                        </div>
+                        <div class="v-metric">
+                            <span class="v-metric-label">COMPATIBILITY (NFKC)</span>
+                            <span class="v-metric-val" id="vm-nfkc">--</span>
+                        </div>
+                        <div class="v-metric">
+                            <span class="v-metric-label">SKELETON (VISUAL)</span>
+                            <span class="v-metric-val" id="vm-skel">--</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
       </details>
