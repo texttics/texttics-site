@@ -4631,3 +4631,55 @@ details.profile-section > summary:hover::marker {
     text-transform: uppercase;
     font-weight: 700;
 }
+
+/* --- Forensic Suspect Monitor (The Lens) --- */
+.suspect-highlight-box {
+    font-family: var(--font-mono);
+    line-height: 1.5;
+    color: #6b7280; /* Default: Dark Gray (Context) */
+}
+
+/* The Intersection (Matched Skeleton) */
+.f-match {
+    color: #111827; /* Black */
+    font-weight: 700;
+    font-size: 1.05em; /* Slightly bigger */
+}
+
+/* The Deviation (Spoof/Diff) */
+.f-diff {
+    color: #dc2626; /* Red */
+    font-weight: 800;
+    background-color: #fef2f2;
+    border-radius: 2px;
+    padding: 0 2px;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+/* The Match Meter */
+.match-meter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    font-family: var(--font-sans);
+}
+
+.meter-track {
+    flex: 1;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.meter-fill {
+    height: 100%;
+    background: #3b82f6; /* Blue */
+    transition: width 0.2s ease;
+}
+
+.meter-fill.high-match { background: #ef4444; /* Red for high spoof match */ }
+.meter-fill.perfect { background: #10b981; /* Green for safe match */ }
