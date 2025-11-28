@@ -4705,8 +4705,9 @@ def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) 
 
 def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
     """
-    Forensic X-Ray Engine v8.6 (Restored & Grouped).
-    Renders the Classic Stream with 'x8 BIDI' grouping.
+    Forensic X-Ray Engine v9.0 (The Ultimate Restoration).
+    - Features: Bidi Grouping (x8), Rich Script Tags (Cyr->Lat), Detailed Tooltips.
+    - Style: Classic Stream (Cards/Stacks).
     """
     if not t: return ""
     
@@ -4736,7 +4737,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
     for idx, clust in enumerate(clusters):
         cluster_id = f"cluster-{idx}"
         
-        # Cluster Stats
+        # Stats
         c_exec = 0; c_spoof = 0; c_obfus = 0
         for p in clust:
             if p in bidi_indices: c_exec += 1; total_exec += 1
@@ -4765,7 +4766,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             char = js_array[i]
             cp = ord(char)
             
-            # Safe String Generation
+            # Safe String
             if i in invisible_indices or i in bidi_indices: pass 
             elif i in confusable_indices:
                 skel = confusables_map.get(cp, char)
@@ -4780,7 +4781,7 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
             
             safe_wrapper = f'<span class="xray-safe">{char_vis}</span>'
 
-            # --- LOGIC: Bidi Grouping (The Requested Fix) ---
+            # 1. BIDI Grouping
             if i in bidi_indices:
                 run_len = 1
                 lookahead = i + 1
@@ -4790,19 +4791,17 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                 
                 label = f"&times;{run_len}" if run_len > 1 else "&harr;"
                 title = f"{run_len} Bidi Controls (Execution Risk)"
-                bot_label = "BIDI"
-
+                
                 marker = (
                     f'<span class="xray-stack stack-bidi" tabindex="0" title="{title}">'
                     f'<span class="xray-top" style="color:#d97706;">{label}</span>'
-                    f'<span class="xray-bot">{bot_label}</span>'
-                    f'</span>'
+                    f'<span class="xray-bot">BIDI</span></span>'
                 )
                 cluster_html_parts.append(marker)
                 i += run_len
                 continue
 
-            # --- LOGIC: Invisible Grouping ---
+            # 2. INVISIBLE Grouping
             elif i in invisible_indices:
                 run_len = 1
                 lookahead = i + 1
@@ -4810,36 +4809,47 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
                     run_len += 1
                     lookahead += 1
                 
-                if run_len > 1:
-                    marker = (
-                        f'<span class="xray-stack stack-invis" tabindex="0" title="{run_len} hidden chars">'
-                        f'<span class="xray-top">×{run_len}</span>'
-                        f'<span class="xray-bot">HID</span></span>'
-                    )
-                    cluster_html_parts.append(marker)
-                    i += run_len
-                    continue
-                else:
-                    marker = (
-                        f'<span class="xray-stack stack-invis" tabindex="0" title="Hidden">'
-                        f'<span class="xray-top">&bull;</span>'
-                        f'<span class="xray-bot">HID</span></span>'
-                    )
-                    cluster_html_parts.append(marker)
-                    i += 1
-                    continue
+                label = f"×{run_len}" if run_len > 1 else "&bull;"
+                title = f"{run_len} Hidden Characters" if run_len > 1 else "Hidden Character"
+                
+                marker = (
+                    f'<span class="xray-stack stack-invis" tabindex="0" title="{title}">'
+                    f'<span class="xray-top">{label}</span>'
+                    f'<span class="xray-bot">HID</span></span>'
+                )
+                cluster_html_parts.append(marker)
+                i += run_len
+                continue
 
-            # --- LOGIC: Spoofing ---
+            # 3. SPOOFING (Rich Restoration)
             elif i in confusable_indices:
                 skel = confusables_map.get(cp, "?")
                 disp_skel = skel[0] if skel else "?"
-                script_tag = "" 
-                # (Simplified script tag logic for brevity, you can keep the full version if preferred)
+                
+                # Script Tag Logic
+                script_tag = ""
+                src_sc = "Unknown"; dst_sc = "Unknown"
+                try:
+                    src_sc = _find_in_ranges(cp, "Scripts") or "Com"
+                    dst_sc = _find_in_ranges(ord(skel[0]), "Scripts") or "Com" if skel else "Com"
+                    if src_sc != dst_sc and src_sc not in ("Common", "Inherited") and dst_sc not in ("Common", "Inherited"):
+                        s_abbr = src_sc[:3]; d_abbr = dst_sc[:3]
+                        script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
+                except: pass
+
+                # Rich Tooltip
+                safe_cp_display = f"U+{ord(skel[0]):04X}" if skel else "?"
+                title_safe = (
+                    f"Spoofing Risk&#10;"
+                    f"Raw: {_escape_html(char)} (U+{cp:04X}, {src_sc})&#10;"
+                    f"Safe: {_escape_html(skel)} ({safe_cp_display}, {dst_sc})"
+                )
                 
                 stack = (
-                    f'<span class="xray-stack stack-spoof" tabindex="0" title="Spoofing Risk">'
+                    f'<span class="xray-stack stack-spoof" tabindex="0" title="{title_safe}">'
                     f'<span class="xray-top">{_escape_html(char)}</span>'
                     f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
+                    f'{script_tag}'
                     f'</span>'
                 )
                 cluster_html_parts.append(stack)
@@ -4878,6 +4888,14 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
     
     summary_text = ", ".join(summary_parts)
     
+    legend_html = (
+        '<div class="xray-legend">'
+        '<span class="xray-legend-item"><span class="xray-dot dot-bidi"></span><strong>EXECUTION:</strong> Bidi/Control (BIDI)</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-spoof"></span><strong>SPOOFING:</strong> Homoglyphs (SPOOF)</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-invis"></span><strong>OBFUSCATION:</strong> Hidden/Zero-Width (HID)</span>'
+        '</div>'
+    )
+
     return "".join([
         f'<div class="xray-summary-bar">',
         f'<span class="xray-summary-title">Forensic Scan:</span>',
@@ -4885,7 +4903,8 @@ def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indi
         f'</div>',
         '<div class="xray-stream-wrapper">',
         "".join(cluster_html_list),
-        '</div>'
+        '</div>',
+        legend_html
     ])
 
 
