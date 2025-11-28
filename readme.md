@@ -1393,3 +1393,54 @@ We implemented a **Global Pattern Scanner** that analyzes the sequence of invisi
 We engineered a **"Unique Pillar Counting"** system to prevent stat inflation.
 * **The Problem:** A single token with multiple flaws (e.g., `paypa1`) could previously inflate global counters by +3.
 * **The Fix:** The engine now ensures that each token contributes exactly **once** to each relevant topology pillar, ensuring the "Scoreboard" reflects the *breadth* of the attack surface, not just the volume of errors.
+
+---
+
+## 🛡️ Update: The "Zero-Trust" & Adversarial Intelligence Upgrade
+
+**Session Goal:** To transition **Text...tics** from a "Passive Microscope" (profiling what is there) to an **"Active Comparator"** (verifying identity against a trusted baseline). We have introduced a **Forensic Tokenization Layer** and a **Verification Bench**, allowing for deterministic detection of targeted spoofing attacks (e.g., Homoglyphs, Typosquatting) with surgical precision.
+
+### 1. New Module: The Verification Bench ("Zero-Trust Comparator")
+We implemented a dedicated workspace for **Reference-Based Forensics**. Unlike standard diff tools that check for byte equality, this instrument performs a **Quad-State Containment Analysis** to determine if a suspect string is a visual clone of a trusted reference.
+
+* **Scope-Aware Analysis (The "Surgical" Update):**
+    * **The Logic:** The engine now respects the user's DOM selection range (`selectionStart` / `selectionEnd`).
+    * **Behavior:** Users can highlight a specific domain within a larger payload (e.g., just `pаypal.com` inside a phishing email body). The bench automatically switches scope from **FULL INPUT** to **SELECTION**, creating a "Suspect Monitor" readout that confirms exactly what data is being analyzed.
+    * **Value:** Eliminates false negatives caused by surrounding noise (headers, protocols) and allows for precision targeting of suspicious artifacts.
+
+* **The Forensic Lens (Visualizer):**
+    * **Mechanism:** Instead of a simple "Diff," we implemented a **Contiguous Skeleton Matcher**. It identifies the "Hot Zone"—the longest sequence where the Suspect visually matches the Reference.
+    * **Anchors vs. Payloads:**
+        * **Anchor (Bold Black):** Characters that match the reference structurally and bitwise.
+        * **Payload (Bold Red):** Characters that match the reference *visually* (Skeleton) but differ *physically* (Raw Bytes). This highlights the spoof (e.g., Cyrillic 'a') while keeping the context readable.
+        * **Noise (Dimmed):** Characters outside the matched sequence are visually suppressed.
+
+* **Fluid Intersection Meter:**
+    * **Algorithm:** Replaced binary "Match/No-Match" logic with a floating-point **Containment Metric** (0.0% to 100.0%) based on `difflib.SequenceMatcher`.
+    * **Context-Aware Metrics:**
+        * **0% (Distinct):** Metrics explicitly state **N/A** (Uncorrelated) to prevent false "Diff" alarms on unrelated text.
+        * **1–99% (Partial):** Metrics state **PARTIAL**, guiding the user to expand their selection.
+        * **100% (Containment):** Triggers **TARGET LOCK**. Only at this stage does the engine issue a definitive **SPOOF CONFIRMED** or **IDENTITY MATCH** verdict.
+
+### 2. Core Engine: The Forensic Tokenizer (Option A+)
+To enable "Typosquatting" and "Sore Thumb" detection, we moved beyond whitespace splitting to a **Forensic Tokenization Strategy**.
+
+* **The "Transparent" Logic:**
+    * **Invisibles:** Characters like `ZWSP`, `Bidi Controls`, and `Tags` are treated as **Transparent Payloads**. They do *not* break a token. This ensures that `User[ZWSP]Name` is analyzed as a single unit, preserving the attack context for the "Invisible Density" scanner.
+    * **Glue:** Alphanumerics and internal connectors (`_`, `-`) bind together to form semantic "Words."
+    * **Fracture:** Structural delimiters (`.`, `/`, `@`, `:`) force atomic splits. This granular slicing allows the engine to analyze specific URL components (e.g., isolating a TLD or a subdomain).
+
+### 3. New Intelligence: The Typosquatting Radar
+Built on top of the Forensic Tokenizer, this module scans for structural lures specifically designed to deceive URL parsers and human eyes.
+
+* **Pseudo-Delimiter Detection:**
+    * Flags the use of **Confusable Separators** in domain contexts, such as the One Dot Leader (`․`, `U+2024`) masquerading as a Full Stop (`.`).
+* **Double Extension Heuristics:**
+    * Detects the classic malware masking pattern `[Safe_Ext].[Exec_Ext]` (e.g., `document.pdf.exe`).
+* **Bidi Arrears (RTLO):**
+    * Flags Right-to-Left Overrides specifically when they appear near file extensions (e.g., reversing `exe` to `fdp`), marking them as **CRITICAL (Syntax)** threats.
+
+### 4. Integration & UI/UX Polish
+* **Visual Hierarchy:** The **Verification Bench** was physically relocated below the **Character Inspector**, establishing a logical workflow: *Input → Macro Metrics → Micro Inspection → Target Verification*.
+* **Adversarial Dashboard:** The "Suspicion Dashboard" was rewired to consume the new Tokenizer's output, populating the "Findings" list with specific **Typosquatting** and **Spoofing** alerts (e.g., "Mixed Script Label", "Pseudo-Delimiter").
+* **Active Feedback:** Added a dynamic **Suspect Monitor** row that mirrors the user's selection in real-time, providing immediate visual confirmation of the analysis scope.
