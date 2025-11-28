@@ -7719,7 +7719,7 @@ def analyze_intel_profile(t, threat_flags, script_stats):
 def render_intel_console(t, threat_results):
     """
     Renders the Suspicion Dashboard (Adversarial Forensics).
-    Populates the Scoreboard, Paranoia Peak, and Findings List.
+    Populates Scoreboard, Peak, and Detailed Findings with Vector Stacks.
     """
     container = document.getElementById("intel-console")
     if not container: return
@@ -7739,33 +7739,25 @@ def render_intel_console(t, threat_results):
     # 2. Render Scoreboard (Topology)
     stats = {"HOMOGLYPH": 0, "SPOOFING": 0, "OBFUSCATION": 0, "INJECTION": 0}
     
-    for f in findings:
-        fam = f['family']
-        if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
-        if "SPOOFING" in fam: stats["SPOOFING"] += 1
-        if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
-        if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1
-        if "STEGO" in fam: stats["OBFUSCATION"] += 1
-        if "TROJAN" in fam: stats["INJECTION"] += 1
-        if "SCRIPT" in fam: stats["INJECTION"] += 1
-        if "CONTROL" in fam: stats["INJECTION"] += 1
+    # Re-calculate stats from top tokens to get a better "feel" for the dashboard
+    for tok in top_tokens:
+        for fam in tok['families']:
+            if "HOMOGLYPH" in fam: stats["HOMOGLYPH"] += 1
+            if "SPOOFING" in fam: stats["SPOOFING"] += 1
+            if "OBFUSCATION" in fam: stats["OBFUSCATION"] += 1
+            if "PERTURBATION" in fam: stats["OBFUSCATION"] += 1
+            if "TROJAN" in fam: stats["INJECTION"] += 1
+            if "SCRIPT" in fam: stats["INJECTION"] += 1
 
     # Update DOM
-    el_homo = document.getElementById("intel-stat-homoglyph")
-    if el_homo: el_homo.innerText = str(stats["HOMOGLYPH"])
-    
-    el_spoof = document.getElementById("intel-stat-spoofing")
-    if el_spoof: el_spoof.innerText = str(stats["SPOOFING"])
-    
-    el_obfus = document.getElementById("intel-stat-obfus")
-    if el_obfus: el_obfus.innerText = str(stats["OBFUSCATION"])
-    
-    el_inject = document.getElementById("intel-stat-injection")
-    if el_inject: el_inject.innerText = str(stats["INJECTION"])
+    document.getElementById("intel-stat-homoglyph").innerText = str(stats["HOMOGLYPH"])
+    document.getElementById("intel-stat-spoofing").innerText = str(stats["SPOOFING"])
+    document.getElementById("intel-stat-obfus").innerText = str(stats["OBFUSCATION"])
+    document.getElementById("intel-stat-injection").innerText = str(stats["INJECTION"])
     
     # 3. Render Paranoia Peak (Top Offender)
     peak_row = document.getElementById("intel-peak-row")
-    if top_tokens and peak_row:
+    if top_tokens:
         peak = top_tokens[0]
         peak_row.style.display = "flex"
         document.getElementById("peak-token").innerText = peak['token']
@@ -7774,31 +7766,65 @@ def render_intel_console(t, threat_results):
         reasons_html = ", ".join([f"<span class='peak-tag'>{r}</span>" for r in peak['reasons'][:3]])
         if len(peak['reasons']) > 3: reasons_html += " ..."
         document.getElementById("peak-reasons").innerHTML = reasons_html
-    elif peak_row:
+    else:
         peak_row.style.display = "none"
 
-    # 4. Render Findings Table
+    # 4. Render Findings Table (With Deep-Dive Details)
     target_body = document.getElementById("intel-target-body")
-    if target_body:
-        html_rows = []
-        for f in findings:
-            sev_class = "th-low"
-            if f['severity'] == "crit": sev_class = "th-crit"
-            elif f['severity'] == "warn": sev_class = "th-high"
+    html_rows = []
+    
+    import base64 
+    
+    # Render the Top Tokens list as the detailed findings
+    for tok in top_tokens:
+        # Generate Vectors (Hex/B64) on the fly for the UI
+        token_str = tok['token']
+        try:
+            b64_val = base64.b64encode(token_str.encode("utf-8")).decode("ascii")
+        except: b64_val = "Error"
+        
+        hex_val = "".join(f"\\x{b:02X}" for b in token_str.encode("utf-8"))
+        
+        # Build the Stack HTML
+        stack_html = ""
+        for reason in tok['reasons']:
+            # Guess severity based on string content (simple heuristic for UI)
+            lvl_class = "th-low"
+            if "Critical" in reason or "Trojan" in reason or "Mixed" in reason: lvl_class = "th-crit"
+            elif "Suspicious" in reason or "Hazard" in reason: lvl_class = "th-high"
+            else: lvl_class = "th-med"
             
-            fam_clean = f['family'].replace("[", "").replace("]", "")
-            
-            row = f"""
-            <div class="target-row">
-                <div class="t-head">
-                    <span class="th-badge {sev_class}" style="margin-right:8px; font-size:0.7em;">{fam_clean}</span>
-                    <span class="t-token">{_escape_html(f['token'])}</span>
-                    <span class="t-verdict" style="margin-left:auto; color:#6b7280; font-size:0.85em;">{f['desc']}</span>
-                </div>
+            stack_html += f"""
+            <div class="th-row">
+                <span class="th-badge {lvl_class}">RISK</span>
+                <span class="th-desc">{reason}</span>
             </div>
             """
-            html_rows.append(row)
+
+        row = f"""
+        <div class="target-row">
+            <div class="t-head">
+                <span class="th-badge th-crit" style="margin-right:8px; font-size:0.7em;">{tok['score']}</span>
+                <span class="t-token">{_escape_html(token_str)}</span>
+            </div>
             
+            <details class="intel-details">
+                <summary class="intel-summary">View Threat Hierarchy ({len(tok['reasons'])})</summary>
+                <div class="intel-stack-body">
+                    {stack_html}
+                    <div class="t-vectors">
+                        <div class="vec-item"><span class="v-lbl">B64:</span> <code class="v-val">{b64_val}</code></div>
+                        <div class="vec-item"><span class="v-lbl">HEX:</span> <code class="v-val">{hex_val}</code></div>
+                    </div>
+                </div>
+            </details>
+        </div>
+        """
+        html_rows.append(row)
+        
+    if not html_rows:
+        target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No high-value targets identified.</div>'
+    else:
         target_body.innerHTML = "".join(html_rows)
 
 def compute_threat_score(inputs):
