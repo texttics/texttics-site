@@ -3978,52 +3978,61 @@ def compute_statistical_profile(t: str):
         lines = normalized_t.split('\n')
         if len(lines) > 1 and lines[-1] == '': lines.pop()
         
-        stats["line_stats"]["count"] = len(lines)
-        if lines:
+        n = len(lines)
+        stats["line_stats"]["count"] = n
+        
+        if n > 0:
             line_lens = [len(line) for line in lines]
             sorted_lens = sorted(line_lens)
-            n = len(sorted_lens)
             
             stats["line_stats"]["min"] = sorted_lens[0]
             stats["line_stats"]["max"] = sorted_lens[-1]
             stats["line_stats"]["avg"] = round(sum(line_lens) / n, 1)
             stats["line_stats"]["empty"] = sum(1 for l in line_lens if l == 0)
             
-            # Median
-            mid = n // 2
-            stats["line_stats"]["median"] = (sorted_lens[mid] + sorted_lens[~mid]) / 2
+            # Helper for percentiles (Pure Python, no deps)
+            def get_perc(p, d):
+                pos = p * (len(d) - 1)
+                lower = int(pos)
+                upper = lower + 1
+                if upper >= len(d): return d[-1]
+                weight = pos - lower
+                return int(round(d[lower] * (1 - weight) + d[upper] * weight))
+
+            stats["line_stats"]["p25"] = get_perc(0.25, sorted_lens)
+            stats["line_stats"]["median"] = get_perc(0.50, sorted_lens)
+            stats["line_stats"]["p50"] = stats["line_stats"]["median"] # Alias
+            stats["line_stats"]["p75"] = get_perc(0.75, sorted_lens)
+            stats["line_stats"]["p90"] = get_perc(0.90, sorted_lens)
             
-            # P90
-            pos = 0.9 * (n - 1)
-            lower = int(math.floor(pos))
-            upper = int(math.ceil(pos))
-            p90 = sorted_lens[lower] if lower == upper else int(round(sorted_lens[lower] * (1 - (pos-lower)) + sorted_lens[upper] * (pos-lower)))
-            stats["line_stats"]["p90"] = p90
+            # --- MASS DISTRIBUTION MAP (Stacked Bar Data) ---
+            total_mass = sum(line_lens)
+            if total_mass == 0: total_mass = 1
             
-            # Sparkline
-            if n >= 3:
-                num_buckets = 12
-                if n < num_buckets: buckets = line_lens
-                else:
-                    chunk_size = n / num_buckets
-                    buckets = []
-                    for i in range(num_buckets):
-                        start = int(i * chunk_size)
-                        end = int((i + 1) * chunk_size)
-                        chunk = line_lens[start:end]
-                        buckets.append(max(chunk) if chunk else 0)
-                
-                spark_chars = " ▂▃▄▅▆▇█"
-                max_val = max(buckets) if buckets else 0
-                spark_str = ""
-                for b in buckets:
-                    if max_val == 0: idx = 0
-                    else:
-                        idx = int((b / max_val) * 7)
-                        idx = max(0, min(7, idx))
-                    spark_str += spark_chars[idx]
-                stats["line_stats"]["sparkline"] = spark_str
-    except: pass
+            layout_map = []
+            target_segments = 60 
+            
+            if n <= target_segments:
+                for i, length in enumerate(line_lens):
+                    pct = (length / total_mass) * 100
+                    col = "#3b82f6" if i % 2 == 0 else "#93c5fd" 
+                    if length == 0: col = "#e2e8f0" 
+                    layout_map.append({"w": pct, "c": col})
+            else:
+                chunk_size = n / target_segments
+                for i in range(target_segments):
+                    s = int(i * chunk_size)
+                    e = int((i + 1) * chunk_size)
+                    chunk = line_lens[s:e]
+                    mass = sum(chunk)
+                    pct = (mass / total_mass) * 100
+                    col = "#3b82f6" if i % 2 == 0 else "#93c5fd"
+                    if mass == 0: col = "#e2e8f0"
+                    layout_map.append({"w": pct, "c": col})
+            
+            stats["line_stats"]["layout_map"] = layout_map
+    except Exception as e:
+        print(f"Layout Calc Error: {e}")
 
     # 5. Phonotactics
     try:
@@ -6891,8 +6900,13 @@ def render_statistical_profile(stats):
     cnt = l_stats.get('count',0)
     
     if cnt > 0:
-        mn, p25, p50, avg = l_stats.get('min',0), l_stats.get('p25',0), l_stats.get('p50',0), l_stats.get('avg',0)
-        p75, mx, emp = l_stats.get('p75',0), l_stats.get('max',0), l_stats.get('empty',0)
+        mn = int(l_stats.get('min',0))
+        p25 = int(l_stats.get('p25',0))
+        p50 = int(l_stats.get('median',0))
+        avg = int(l_stats.get('avg',0))
+        p75 = int(l_stats.get('p75',0))
+        mx = int(l_stats.get('max',0))
+        emp = l_stats.get('empty',0)
         layout_map = l_stats.get('layout_map', [])
         
         is_outlier = (mx > p75 * 3) and (mx > 200)
@@ -6900,23 +6914,25 @@ def render_statistical_profile(stats):
         cards_html = f"""
         <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; width:100%; margin-bottom:8px;">
             {micro_card("Total", cnt, f"{emp} Empty")}
-            {micro_card("Min", int(mn))}
-            {micro_card("P25", int(p25))}
-            {micro_card("P50 (Med)", int(p50))}
-            {micro_card("Avg", int(avg))}
-            {micro_card("P75", int(p75))}
-            {micro_card("Max", int(mx), "Extreme" if is_outlier else "", is_outlier)}
+            {micro_card("Min", mn)}
+            {micro_card("P25", p25)}
+            {micro_card("P50 (Med)", p50)}
+            {micro_card("Avg", avg)}
+            {micro_card("P75", p75)}
+            {micro_card("Max", mx, "Extreme" if is_outlier else "", is_outlier)}
         </div>
         """
         
-        # Stacked Mass Map (Visualizing the File Structure)
+        # Stacked Mass Map
         map_segments = []
         for seg in layout_map:
             width_style = f"width:{seg['w']}%;"
-            map_segments.append(f'<div style="{width_style} background:{seg["c"]};" title="Line Mass Segment"></div>')
+            # Fix invisible segments by ensuring min-width if percent is tiny but not zero
+            if seg['w'] > 0 and seg['w'] < 1: width_style = "width:1%; flex-grow:1;"
+            map_segments.append(f'<div style="{width_style} background:{seg["c"]}; height:100%;" title="Line Mass Segment"></div>')
             
         map_html = f"""
-        <div style="display:flex; height:8px; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0; width:100%;">
+        <div style="display:flex; height:8px; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0; width:100%; background:#f8fafc;">
             {''.join(map_segments)}
         </div>
         <div style="font-size:0.6rem; color:#9ca3af; margin-top:2px; display:flex; justify-content:space-between;">
