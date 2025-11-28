@@ -6,6 +6,8 @@ from pyodide.http import pyfetch
 from pyscript import document, window
 import hashlib
 import re
+import math
+from collections import Counter
 
 LOADING_LOCK = False
 
@@ -3839,6 +3841,112 @@ def compute_verticalorientation_analysis(t: str):
             
     return counters
 
+def compute_statistical_profile(t: str):
+    """
+    Stage 1 'Chemistry': Calculates local statistical properties.
+    Includes Entropy, TTR, Repetition, and Phonotactics.
+    """
+    stats = {
+        "entropy": 0.0,
+        "ttr": 0.0,
+        "total_tokens": 0,
+        "unique_tokens": 0,
+        "top_tokens": [],
+        "top_chars": [],
+        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0},
+        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0}
+    }
+    
+    if not t:
+        return stats
+
+    # 1. Shannon Entropy (Thermodynamics) - Calculated on UTF-8 Bytes
+    # H = -sum(p(x) * log2(p(x)))
+    try:
+        utf8_bytes = t.encode('utf-8')
+        total_bytes = len(utf8_bytes)
+        if total_bytes > 0:
+            byte_counts = Counter(utf8_bytes)
+            entropy = 0
+            for count in byte_counts.values():
+                p = count / total_bytes
+                entropy -= p * math.log2(p)
+            stats["entropy"] = round(entropy, 2)
+    except Exception: pass
+
+    # 2. Tokenization (Lexical)
+    # Splits on whitespace and major punctuation to isolate tokens.
+    try:
+        tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"]+', t) if tok]
+        stats["total_tokens"] = len(tokens)
+        
+        if stats["total_tokens"] > 0:
+            # TTR (Type-Token Ratio)
+            unique_tokens = set(tokens)
+            stats["unique_tokens"] = len(unique_tokens)
+            stats["ttr"] = round(len(unique_tokens) / len(tokens), 2)
+            
+            # Repetition (Flooding)
+            token_counts = Counter(tokens)
+            top_3_tokens = token_counts.most_common(3)
+            formatted_tokens = []
+            for tok, count in top_3_tokens:
+                share = (count / stats["total_tokens"]) * 100
+                formatted_tokens.append(f"'{tok}' ({share:.1f}%)")
+            stats["top_tokens"] = formatted_tokens
+    except Exception: pass
+
+    # 3. Frequency Fingerprint (Character Physics)
+    try:
+        char_counts = Counter(t)
+        # Filter out space/newlines/controls
+        filtered_chars = {k: v for k, v in char_counts.items() if not k.isspace() and ord(k) > 32}
+        if filtered_chars:
+            top_chars = sorted(filtered_chars.items(), key=lambda x: x[1], reverse=True)[:5]
+            total_filtered = sum(filtered_chars.values())
+            formatted_chars = []
+            for char, count in top_chars:
+                share = (count / max(1, total_filtered)) * 100
+                safe_char = _escape_html(char)
+                formatted_chars.append(f"<b>{safe_char}</b> {share:.1f}%")
+            stats["top_chars"] = formatted_chars
+    except Exception: pass
+
+    # 4. Line Structure (Layout Physics)
+    try:
+        lines = t.splitlines()
+        stats["line_stats"]["count"] = len(lines)
+        if lines:
+            line_lens = [len(line) for line in lines]
+            stats["line_stats"]["min"] = min(line_lens)
+            stats["line_stats"]["max"] = max(line_lens)
+            stats["line_stats"]["avg"] = round(sum(line_lens) / len(lines), 1)
+    except Exception: pass
+
+    # 5. Phonotactics (ASCII Vowel/Consonant Ratio) - Weak Signal
+    try:
+        ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
+        letter_count = len(ascii_letters)
+        if letter_count > 0:
+            vowels = set("aeiou")
+            vowel_count = sum(1 for c in ascii_letters if c in vowels)
+            ratio = vowel_count / letter_count
+            stats["phonotactics"]["vowel_ratio"] = round(ratio, 2)
+            stats["phonotactics"]["count"] = letter_count
+            
+            # Heuristic Labels (Soft Chemistry)
+            if 0.30 <= ratio <= 0.50:
+                 stats["phonotactics"]["status"] = "Balanced (Natural)"
+            elif ratio < 0.20:
+                 stats["phonotactics"]["status"] = "Vowel-Poor (Code?)"
+            elif ratio > 0.60:
+                 stats["phonotactics"]["status"] = "Vowel-Heavy"
+            else:
+                 stats["phonotactics"]["status"] = "Typical"
+    except Exception: pass
+
+    return stats
+
 def _get_codepoint_properties(t: str):
     """
     A fast, single-pass helper to get the UAX properties needed for Stage 2.
@@ -6548,6 +6656,95 @@ def render_emoji_summary(emoji_counts, emoji_list):
     
     summary_el.innerText = text
 
+def render_statistical_profile(stats):
+    """Renders the Group 2.F Statistical Matrix."""
+    container = document.getElementById("statistical-profile-body")
+    if not container: return
+    
+    if not stats or (stats["total_tokens"] == 0 and stats["line_stats"]["count"] == 0):
+        container.innerHTML = '<tr><td colspan="3" class="placeholder-text">Insufficient data for statistical profiling.</td></tr>'
+        return
+
+    # Entropy Badge Color
+    ent = stats["entropy"]
+    ent_class = "integrity-badge integrity-badge-ok"
+    ent_label = "Structured"
+    if ent > 6.5:
+        ent_class = "integrity-badge integrity-badge-crit" 
+        ent_label = "High (Compressed/Enc?)"
+    elif ent < 3.0:
+        ent_class = "integrity-badge integrity-badge-warn"
+        ent_label = "Low (Repetitive)"
+
+    # TTR Badge
+    ttr = stats["ttr"]
+    ttr_label = "Rich"
+    ttr_class = "integrity-badge integrity-badge-ok"
+    if ttr < 0.25 and stats["total_tokens"] > 10:
+        ttr_label = "Repetitive (Bot?)"
+        ttr_class = "integrity-badge integrity-badge-warn"
+    
+    # HTML Builder
+    rows = []
+    
+    # 1. Thermodynamics
+    rows.append(f"""
+    <tr>
+        <th scope="row">Thermodynamics (Entropy)</th>
+        <td>{ent} bits/byte</td>
+        <td><span class="{ent_class}">{ent_label}</span></td>
+    </tr>
+    """)
+    
+    # 2. Lexical Density
+    if stats["total_tokens"] > 0:
+        rows.append(f"""
+        <tr>
+            <th scope="row">Lexical Density (TTR)</th>
+            <td>{ttr}</td>
+            <td><span class="{ttr_class}">{ttr_label}</span> <span class="detail-text" style="font-size:0.8em; color:#6b7280;">({stats['unique_tokens']}/{stats['total_tokens']})</span></td>
+        </tr>
+        """)
+        
+    # 3. Flooding
+    if stats['top_tokens']:
+        rows.append(f"""
+        <tr>
+            <th scope="row">Top Tokens (Flooding)</th>
+            <td colspan="2"><code class="mini-code" style="color:var(--color-text-main);">{", ".join(stats['top_tokens'])}</code></td>
+        </tr>
+        """)
+
+    # 4. Fingerprint
+    if stats['top_chars']:
+        rows.append(f"""
+        <tr>
+            <th scope="row">Freq. Fingerprint</th>
+            <td colspan="2" style="font-family:var(--font-mono); font-size:0.9em;">{' &nbsp; '.join(stats['top_chars'])}</td>
+        </tr>
+        """)
+
+    # 5. Layout Physics
+    l_stats = stats['line_stats']
+    rows.append(f"""
+    <tr>
+        <th scope="row">Layout Physics</th>
+        <td>{l_stats['count']} Lines</td>
+        <td style="font-size:0.85em; color:#6b7280;">Avg: {l_stats['avg']} chars | Max: {l_stats['max']} chars</td>
+    </tr>
+    """)
+
+    # 6. Phonotactics (Conditional)
+    if stats['phonotactics']['count'] > 5:
+        rows.append(f"""
+        <tr>
+            <th scope="row">ASCII Phonotactics</th>
+            <td>V/C Ratio: {stats['phonotactics']['vowel_ratio']}</td>
+            <td><span class="detail-text">{stats['phonotactics']['status']}</span></td>
+        </tr>
+        """)
+
+    container.innerHTML = "".join(rows)
 
 def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
     """Generates and injects HTML for standard stat cards."""
@@ -9308,6 +9505,11 @@ def update_all(event=None):
     render_integrity_matrix(forensic_rows, text_context=t)
     render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True, text_context=t)
     render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True, text_context=t)
+
+    # [NEW] Statistical Profile (Group 2.F)
+    stat_profile = compute_statistical_profile(t)
+    render_statistical_profile(stat_profile)
+    
     render_emoji_qualification_table(emoji_list, text_context=t)
     render_emoji_summary(emoji_counts, emoji_list)
     
