@@ -6992,7 +6992,11 @@ def render_statistical_profile(stats):
     </div>
     """
 
-    rows.append(make_row("Lexical Density", vis_ttr, meta_ttr, ("TYPE-TOKEN RATIO (TTR)", "Vocabulary richness. Length-sensitive.", "Unique / Total", "Decreases naturally as text length increases.")))
+    rows.append(make_row("Lexical Density", vis_ttr, "", 
+        ("TYPE-TOKEN RATIO (TTR)", 
+         "Measures vocabulary uniqueness. Low (<0.4): Repetitive logs/bots. Mid (0.4-0.7): Natural prose. High (>0.8): Dense lists, UUIDs, or short text.", 
+         "Unique / Total", 
+         "Length Sensitive: Decreases naturally as text gets longer.")))
 
     # 4. Top Tokens
     top_tokens = stats.get("top_tokens", [])
@@ -7002,7 +7006,12 @@ def render_statistical_profile(stats):
             js_tok = _escape_for_js(item['token'])
             safe_tok = _escape_html(item['token'])
             chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#f1f5f9; border:1px solid #e2e8f0; padding:1px 6px; border-radius:4px; cursor:pointer; font-size:0.7rem; color:#334155; margin:0 4px 4px 0;">{safe_tok} <span style="opacity:0.6">{item["share"]}%</span></button>')
-    rows.append(make_row("Top Tokens", f'<div style="display:flex; flex-wrap:wrap; width:100%;">{"".join(chips)}</div>', "", ("REPETITION ANALYSIS", "Most frequent tokens.", "Count / Total", "Top-1 > 30% suggests flooding.")))
+    
+    rows.append(make_row("Top Tokens", f'<div style="display:flex; flex-wrap:wrap; width:100%;">{"".join(chips)}</div>', "", 
+        ("REPETITION ANALYSIS", 
+         "Analyzes token frequency (Zipf's Law). Top-1 > 30%: Indication of keyword stuffing, log padding, or DoS attempts. Natural text has smooth decay.", 
+         "Count / Total", 
+         "Top-1 > 30% suggests flooding.")))
 
     # 5. Fingerprint
     cd = stats.get("char_dist", {})
@@ -7014,7 +7023,12 @@ def render_statistical_profile(stats):
     </div>"""
     legend_items = [f'<span style="color:#60a5fa;">●</span> L:{l}%', f'<span style="color:#f59e0b;">●</span> N:{n}%', f'<span style="color:#a855f7;">●</span> S:{s}%', f'<span style="color:#94a3b8;">●</span> WS:{w}%']
     meta_fing = f"<div style='display:flex; gap:12px; font-size:0.65rem; color:#64748b; margin-top:4px;'>{' '.join(legend_items)}</div>"
-    rows.append(make_row("Freq. Fingerprint", stacked, meta_fing, ("CHARACTER DISTRIBUTION", "Ratio of types (Letter, Number, Symbol, WS).", "Category Freq", "Includes all characters (Honest Mode).")))
+    
+    rows.append(make_row("Freq. Fingerprint", stacked, meta_fing, 
+        ("CHARACTER DISTRIBUTION", 
+         "Distribution of character categories. Peaked (High L): Natural Language. Mixed: Code/Logs. Flat (Uniform): Encrypted, Compressed, or Random data.", 
+         "Category Freq", 
+         "Includes all characters (Honest Mode).")))
 
     # 6. Layout Physics (7 Cards + Mass Map)
     l_stats = stats.get("line_stats", {})
@@ -7061,7 +7075,11 @@ def render_statistical_profile(stats):
         </div>
         """
             
-        rows.append(make_row("Layout Physics", cards_html + map_html, "", ("LAYOUT TOPOLOGY", "7-Point Statistical Summary of line lengths.", "Strict Newline Split", "Bar graph shows file density from start to end.")))
+        rows.append(make_row("Layout Physics", cards_html + map_html, "", 
+            ("LAYOUT TOPOLOGY", 
+             "Statistical shape of line lengths. Varied: Standard Prose/Code. Uniform: Fixed-width data. Extreme Outliers (>3x P90): Minified JS, Base64 blobs, or Attacks.", 
+             "Strict Newline Split", 
+             "Map shows length density from start to end.")))
 
     # 7. Phonotactics (8 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
