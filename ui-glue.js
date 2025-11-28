@@ -395,6 +395,8 @@ async function handleCopyReport() {
   }
 }
 
+// Big Report Function
+
 function buildStructuredReport() {
   const report = [];
 
@@ -410,22 +412,18 @@ function buildStructuredReport() {
     return el ? el.value : '';
   };
 
-  // --- Helper: Smart Card Scraper ---
+  // --- Helper: Smart Card Scraper (Quad-Aware) ---
   const parseCards = (containerId) => {
     const lines = [];
     const container = document.getElementById(containerId);
     if (!container) return lines;
 
     container.querySelectorAll('.card').forEach(card => {
-      // [FIX 1] Handle "Forensic Quad" Layout (Metric Cards)
       if (card.classList.contains('metric-card')) {
           const label = card.querySelector('.card-header')?.textContent.trim() || 'Metric';
-          
-          // [FIX 2] Robust Selector: Grab .metric-value OR .metric-value-warn (for UTF-16/Astral)
           const valEl = card.querySelector('.metric-value, .metric-value-warn');
           const val = valEl ? valEl.textContent.trim() : '0';
           
-          // Extract Micro-Facts
           const facts = [];
           card.querySelectorAll('.fact-row').forEach(row => {
               facts.push(row.textContent.trim().replace(/\s+/g, ' '));
@@ -433,28 +431,24 @@ function buildStructuredReport() {
           
           const factStr = facts.length > 0 ? ` (${facts.join(', ')})` : "";
           lines.push(`  ${label}: ${val}${factStr}`);
-          return; 
-      }
-
-      // [LEGACY] Handle Standard/Repertoire Cards
-      const label = card.querySelector('strong')?.textContent.trim() || 'Metric';
-      const mainValueEl = card.querySelector('.card-main-value');
-      
-      if (mainValueEl) {
-        const val = mainValueEl.textContent.trim();
-        const badgeEl = card.querySelector('.card-percentage') || card.querySelector('.card-badge-full');
-        const badge = badgeEl ? `(${badgeEl.textContent.trim()})` : '';
-        lines.push(`  ${label}: ${val} ${badge}`);
       } else {
-        // Fallback for simple dict cards
-        const divVal = card.querySelector('div')?.textContent.trim();
-        if (divVal) lines.push(`  ${label}: ${divVal}`);
+          const label = card.querySelector('strong')?.textContent.trim() || 'Metric';
+          const mainValueEl = card.querySelector('.card-main-value');
+          if (mainValueEl) {
+            const val = mainValueEl.textContent.trim();
+            const badgeEl = card.querySelector('.card-percentage') || card.querySelector('.card-badge-full');
+            const badge = badgeEl ? `(${badgeEl.textContent.trim()})` : '';
+            lines.push(`  ${label}: ${val} ${badge}`);
+          } else {
+            const divVal = card.querySelector('div')?.textContent.trim();
+            if (divVal) lines.push(`  ${label}: ${divVal}`);
+          }
       }
     });
     return lines;
   };
 
-  // --- Helper: Universal Table Scraper (With Ledger Support) ---
+  // --- Helper: Universal Table Scraper ---
   const parseTable = (tbodyId, prefix = '') => {
     const lines = [];
     const tbody = document.getElementById(tbodyId);
@@ -462,128 +456,110 @@ function buildStructuredReport() {
 
     tbody.querySelectorAll('tr').forEach(row => {
       if (row.querySelector('.placeholder-text')) return;
-      if (row.classList.contains('ledger-noise')) return; // Skip noise rows in main output
+      if (row.classList.contains('ledger-noise')) return;
 
-      // 1. Get Label
       const th = row.querySelector('th');
       const label = th ? th.textContent.trim() : '';
 
-      // 2. Get Main Value (Badge or Count)
       const tdCount = row.querySelector('td:nth-child(2)');
       let value = '';
       if (tdCount) {
-        // Prefer the badge text if it exists (e.g., "CRITICAL (Score: 114)")
         const badge = tdCount.querySelector('.integrity-badge');
         value = badge ? badge.textContent.trim() : tdCount.textContent.trim();
       }
 
-      // 3. Get Details OR Ledger
       const tdDetails = row.querySelector('td:nth-child(3)');
-      
-      // CHECK FOR LEDGER (Nested Table)
       const nestedTable = tdDetails ? tdDetails.querySelector('table') : null;
       
       if (nestedTable) {
-        // -- Header Line --
         lines.push(`  ${prefix}${label}: ${value}`);
-        
-        // -- Iterate Ledger Rows --
         nestedTable.querySelectorAll('tbody tr').forEach(subRow => {
           const cols = Array.from(subRow.querySelectorAll('td'));
-          
-          // Handle 3-column (Vector | Severity | Penalty)
           if (cols.length >= 3) {
              const vec = cols[0].textContent.trim();
              const sev = cols[1].textContent.trim();
              const pts = cols[2].textContent.trim();
-             // Format: "    - Trojan Source [EXECUTION]: +40"
              lines.push(`      - ${vec} [${sev}]: ${pts}`);
-          }
-          // Handle 2-column Legacy (Vector | Penalty)
-          else if (cols.length >= 2) {
+          } else if (cols.length >= 2) {
             const vec = cols[0].textContent.trim();
             const pts = cols[cols.length - 1].textContent.trim();
             lines.push(`      - ${vec}: ${pts}`);
           }
         });
-      } 
-      else if (tdDetails) {
-        // -- Standard Row --
+      } else if (tdDetails) {
         let detailsText = "";
-        
-        // [FIX] Check for <details> element to format summary/content cleanly
         const detailsEl = tdDetails.querySelector('details');
         if (detailsEl) {
             const summary = detailsEl.querySelector('summary') ? detailsEl.querySelector('summary').textContent.trim() : "";
             const hidden = detailsEl.querySelector('div') ? detailsEl.querySelector('div').textContent.trim() : "";
-            // Insert a space between summary and hidden content
             detailsText = `${summary} ${hidden}`;
         } else {
             detailsText = tdDetails.textContent;
         }
-
-        // Clean up newlines and multiple spaces
-        const cleanDetails = detailsText
-          .replace(/[\n\r]+/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-          
+        const cleanDetails = detailsText.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
         lines.push(`  ${prefix}${label}: ${value}, ${cleanDetails}`);
       }
     });
     return lines;
   };
 
-// --- Helper: Scrape Encoding Dashboard (v6.0 Split) ---
+  // --- Helper: Scrape Encoding Dashboard ---
   const parseEncodingStrip = () => {
     const lines = [];
-    
-    // 1. Scrape Integrity Panel
     const integrityContainer = document.getElementById('encoding-integrity');
-    // 2. Scrape Provenance Strip
     const provenanceContainer = document.getElementById('encoding-provenance');
-    
     if (!integrityContainer && !provenanceContainer) return lines;
 
     lines.push('\n[ Encoding Compatibility Footprint ]');
-    
-    // Combine cells from both containers
     const allCells = [
         ...(integrityContainer ? integrityContainer.querySelectorAll('.enc-cell') : []),
         ...(provenanceContainer ? provenanceContainer.querySelectorAll('.enc-cell') : [])
     ];
-
     if (allCells.length === 0) return lines;
     
     allCells.forEach(cell => {
-        const label = cell.querySelector('.enc-label')?.textContent.trim();
-        
-        // Get primary value
+        let label = cell.querySelector('.enc-label')?.textContent.trim() || "UNK";
         const valPrim = cell.querySelector('.enc-val-primary')?.textContent.trim();
-        
-        // Get secondary signal (if exists)
         const valSec = cell.querySelector('.enc-val-secondary')?.textContent.trim();
-        
-        // Reconstruct value string: "100% (S:100%)"
         let valueStr = valPrim;
         if (valSec) valueStr += ` (${valSec})`;
-
-        // Check for Unique Marker
-        let statusMarker = "";
-        if (label.includes('◈')) statusMarker = " [UNIQUE]";
-
+        let statusMarker = label.includes('◈') ? " [UNIQUE]" : "";
         lines.push(`  ${label.replace('◈', '').trim()}: ${valueStr}${statusMarker}`);
     });
-    
     return lines;
   };
     
-  // --- Build Report Sections ---
+  // --- START REPORT ASSEMBLY ---
   report.push('--- Text...tics Structural Profile ---');
   report.push(`Timestamp: ${new Date().toISOString()}`);
   
   report.push('\n[ Analysis Configuration ]');
   report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
+  
+  // --- VERIFICATION BENCH (Conditional) ---
+  const verdictBox = document.getElementById('verdict-display');
+  const isBenchActive = verdictBox && !verdictBox.classList.contains('hidden');
+  
+  report.push('\n[ Verification Bench ]');
+  if (isBenchActive) {
+      report.push(`  Verdict: ${getText('#verdict-title')}`);
+      report.push(`  Detail:  ${getText('#verdict-desc')}`);
+      
+      // Scrape Metrics
+      const scrapeMetric = (id) => {
+          const el = document.getElementById(id);
+          if (!el) return "N/A";
+          const val = el.querySelector('.v-metric-val')?.textContent.trim();
+          const det = el.querySelector('.v-metric-detail')?.textContent.trim();
+          return val ? `${val} (${det})` : el.textContent.trim();
+      };
+      
+      report.push(`  RAW:     ${scrapeMetric('vm-raw')}`);
+      report.push(`  NFKC:    ${scrapeMetric('vm-nfkc')}`);
+      report.push(`  SKEL:    ${getText('#vm-skel')}`);
+  } else {
+      report.push('  (Inactive - Select text to compare)');
+  }
 
   // Dual-Atom
   report.push('\n[ Dual-Atom Profile ]');
@@ -594,38 +570,70 @@ function buildStructuredReport() {
   report.push('\n[ Combining Class Profile (Zalgo) ]');
   report.push(...parseTable('ccc-matrix-body', 'Combining Class: ')); 
   
-  // [FIX] Add Parallel Table Headers
   report.push('\n[ Major Category: Code Points (Logical) | Graphemes (Perceptual) ]');
   report.push(...parseTable('major-parallel-body', 'Major Category: '));
   
   report.push('\n[ Minor Category: Code Points (Logical) | Graphemes (Perceptual) ]');
   report.push(...parseTable('minor-parallel-body', 'Minor Category: '));
 
-  // Shape
-  report.push(`\n[ ${getText('#shape-title')} ]`);
-  report.push(...parseTable('shape-matrix-body', 'Major Run: '));
-  report.push(...parseTable('minor-shape-matrix-body', 'Minor Run: '));
-  report.push(...parseTable('linebreak-run-matrix-body', 'LineBreak: '));
-  report.push(...parseTable('bidi-run-matrix-body', 'Bidi Class: '));
-  report.push(...parseTable('wordbreak-run-matrix-body', 'WordBreak: '));
-  report.push(...parseTable('sentencebreak-run-matrix-body', 'SentenceBreak: '));
-  report.push(...parseTable('graphemebreak-run-matrix-body', 'GraphemeBreak: '));
-  report.push(...parseTable('eawidth-run-matrix-body', 'EA Width: '));
-  report.push(...parseTable('vo-run-matrix-body', 'Vertical Orientation: '));
+  // Shape (Explicit Header & Sub-sections)
+  report.push(`\n[ Structural Shape Profile ]`);
+  const shapeSections = [
+      { id: 'shape-matrix-body', title: 'Major Run Analysis' },
+      { id: 'minor-shape-matrix-body', title: 'Minor Run Analysis' },
+      { id: 'linebreak-run-matrix-body', title: 'Line Break (UAX #14)' },
+      { id: 'bidi-run-matrix-body', title: 'Bidi Class (UAX #9)' },
+      { id: 'wordbreak-run-matrix-body', title: 'Word Break (UAX #29)' },
+      { id: 'sentencebreak-run-matrix-body', title: 'Sentence Break (UAX #29)' },
+      { id: 'graphemebreak-run-matrix-body', title: 'Grapheme Break (UAX #29)' },
+      { id: 'eawidth-run-matrix-body', title: 'East Asian Width' },
+      { id: 'vo-run-matrix-body', title: 'Vertical Orientation' }
+  ];
+  
+  shapeSections.forEach(sec => {
+      const rows = parseTable(sec.id, '');
+      if (rows.length > 0) {
+          report.push(`  -- ${sec.title} --`);
+          report.push(...rows);
+      }
+  });
 
   // Integrity
-  report.push(`\n[ ${getText('#integrity-title')} ]`);
+  report.push(`\n[ ${getText('#integrity-title') || 'Structural Integrity Profile'} ]`);
   report.push(...parseTable('integrity-matrix-body', ''));
+  
+  // Invisible Atlas (New)
+  report.push('\n[ Invisible Character Atlas ]');
+  const atlasBody = document.getElementById('invisible-atlas-body');
+  if (atlasBody) {
+      const rows = atlasBody.querySelectorAll('tr');
+      if (rows.length > 0 && !rows[0].classList.contains('placeholder-text')) {
+          report.push('  Symbol | Code | Count | Category | Name');
+          rows.forEach(row => {
+             const cells = row.querySelectorAll('td');
+             if (cells.length >= 5) {
+                 // 0:Visual, 1:Code, 2:Name, 3:Count, 4:Badge
+                 const vis = cells[0].textContent.trim();
+                 const code = cells[1].textContent.trim();
+                 const name = cells[2].textContent.trim();
+                 const count = cells[3].textContent.trim();
+                 const cat = cells[4].textContent.trim();
+                 report.push(`  ${vis.padEnd(8)} | ${code.padEnd(8)} | ${count.padEnd(4)} | ${cat.padEnd(10)} | ${name}`);
+             }
+          });
+      } else {
+          report.push('  No invisible characters detected.');
+      }
+  }
 
   // Provenance
-  report.push(`\n[ ${getText('#prov-title')} ]`);
+  report.push(`\n[ ${getText('#prov-title') || 'Provenance & Context Profile'} ]`);
   report.push(...parseTable('provenance-matrix-body', ''));
   
-  // [FIX] Add Header for Script Runs
   report.push('\n[ Script Run-Length Analysis ]');
   report.push(...parseTable('script-run-matrix-body', ''));
 
-  // Emoji (Forensic 7-Column Parser)
+  // Emoji
   report.push('\n[ Emoji Qualification Profile ]');
   report.push(`  ${getText('#emoji-summary')}`);
   
@@ -635,9 +643,7 @@ function buildStructuredReport() {
       if (rows.length > 0 && !rows[0].classList.contains('placeholder-text')) {
           report.push(`  Format: Sequence | Kind | Base | RGI | Status | Count | Positions`);
           rows.forEach(row => {
-              // Skip the Legend row
-              if (row.querySelector('div[style*="grid"]')) return;
-              
+              if (row.querySelector('div[style*="grid"]')) return; // Skip legend
               const cells = Array.from(row.querySelectorAll('td'));
               if (cells.length >= 7) {
                   const seq = cells[0].textContent.trim();
@@ -646,7 +652,6 @@ function buildStructuredReport() {
                   const rgi = cells[3].textContent.trim();
                   const stat = cells[4].textContent.trim();
                   const cnt = cells[5].textContent.trim();
-                  // For positions, handle the <details> wrapper if present
                   let pos = cells[6].textContent.trim();
                   const details = cells[6].querySelector('details');
                   if (details) {
@@ -654,7 +659,6 @@ function buildStructuredReport() {
                       const hidden = details.querySelector('div').textContent.trim();
                       pos = `${summary} ${hidden}`.replace(/\s+/g, ' ');
                   }
-                  
                   report.push(`  ${seq.padEnd(4)} | ${kind.padEnd(10)} | ${base} | ${rgi} | ${stat.padEnd(10)} | ${cnt} | ${pos}`);
               }
           });
@@ -664,53 +668,44 @@ function buildStructuredReport() {
   }
 
   // Threat
-  report.push(`\n[ ${getText('#threat-title')} ]`);
+  report.push(`\n[ ${getText('#threat-title') || 'Threat-Hunting Profile'} ]`);
   const threats = parseTable('threat-report-body', '');
   if (threats.length > 0) report.push(...threats);
   
   const hashes = parseTable('threat-hash-report-body', 'Hash: ');
   if (hashes.length > 0) report.push(...hashes);
 
-  // --- ADVERSARIAL INTELLIGENCE (Suspicion Dashboard) ---
+  // Adversarial Dashboard
   const advBody = document.getElementById('adv-target-body');
-  if (advBody && advBody.offsetParent !== null) { // Check visibility
+  if (advBody && advBody.offsetParent !== null) {
       report.push('\n[ Suspicion Dashboard (Adversarial Forensics) ]');
-      
       const peakRow = document.getElementById('adv-peak-row');
       if (peakRow && peakRow.style.display !== 'none') {
           const pTok = getText('#adv-peak-token');
           const pScore = getText('#adv-peak-score');
           report.push(`  PARANOIA PEAK (Top Offender): ${pTok} [${pScore}]`);
       }
-      
       report.push(`  ADVERSARIAL FINDINGS:`);
-      
       const rows = advBody.querySelectorAll('.target-row');
       if (rows.length === 0) {
           report.push("  No anomalies detected.");
       } else {
           rows.forEach(row => {
-              // Extract Header Info
               const score = row.querySelector('.th-badge')?.textContent.trim() || "0";
               const token = row.querySelector('.t-token')?.textContent.trim() || "UNKNOWN";
               const verdict = row.querySelector('.t-verdict')?.textContent.trim() || "";
-              
               report.push(`  • [${score}] ${token.padEnd(20)} | ${verdict}`);
-              
-              // Extract Stack Details (Reasons)
               const descRows = row.querySelectorAll('.th-desc');
               descRows.forEach(d => {
                   report.push(`      - ${d.textContent.trim()}`);
               });
-              report.push(''); // Spacer
+              report.push('');
           });
       }
   }
 
-  // --- PERCEPTION VS REALITY (Forensic States) ---
+  // Perception (X-Ray)
   report.push('\n[ Perception vs. Reality (Forensic States) ]');
-  
-  // 1. Print the 4 States (Always useful)
   if (window.latest_threat_data) {
     const t = window.latest_threat_data;
     report.push(`  1. Forensic (Raw):    ${t.get('raw')}`);
@@ -719,46 +714,38 @@ function buildStructuredReport() {
     report.push(`  4. UTS #39 Skeleton:  ${t.get('skeleton')}`);
   }
 
-  // 2. Scrape X-Ray (Drift Analysis) - REPLACES THE BROKEN VERTICAL DUMP
   const xrayContainer = document.querySelector('.xray-container');
   if (xrayContainer) {
       report.push(`\n  [ X-Ray Alignment Analysis ]`);
-      
       const cols = xrayContainer.querySelectorAll('.xray-col');
       let driftCount = 0;
-      
       cols.forEach(col => {
           if (col.classList.contains('xray-drift')) {
               const rawChar = col.querySelector('.x-raw')?.textContent.trim();
               const skelChar = col.querySelector('.x-skel')?.textContent.trim();
               const title = col.getAttribute('title') || "";
-              // Format: "DRIFT: а -> a (U+0430 -> a)"
               report.push(`  ! DRIFT: ${rawChar} --> ${skelChar}  (${title})`);
               driftCount++;
           }
-          else if (col.classList.contains('xray-void')) {
-              // Optional: Report stripped characters if you want deep detail
-              // const rawChar = col.querySelector('.x-raw')?.textContent.trim();
-              // report.push(`    VOID:  ${rawChar} (Stripped)`);
-          }
       });
-      
       if (driftCount === 0) {
           report.push("  No visual drift detected (Clean alignment).");
       }
   }
 
-  // --- Encoding Strip ---
+  // Encoding
   report.push(...parseEncodingStrip());
     
   report.push('\n[ Forensic Deobfuscation (Revealed) ]');
   const rawInput = getVal('#text-input');
-  const revealed = getDeobfuscatedText(rawInput);
-  report.push(revealed);
-  
+  if (typeof getDeobfuscatedText === 'function') {
+      const revealed = getDeobfuscatedText(rawInput);
+      report.push(revealed);
+  }
+
   return report.join('\n');
 }
-
+// End of big function
 
 // ---
 // 3. STAGE 2 BUTTON
