@@ -671,27 +671,93 @@ function buildStructuredReport() {
   const hashes = parseTable('threat-hash-report-body', 'Hash: ');
   if (hashes.length > 0) report.push(...hashes);
 
-  // Perception
-  report.push('\n[ Perception vs. Reality (Forensic States) ]');
-  const confusableText = getText('#confusable-diff-report');
-  if (confusableText) {
-    report.push(confusableText);
-  } else if (window.latest_threat_data) {
-    const t = window.latest_threat_data;
-    report.push(`1. Forensic (Raw):    ${t.get('raw')}`);
-    report.push(`2. NFKC:              ${t.get('nfkc')}`);
-    report.push(`3. NFKC-Casefold:     ${t.get('nfkc_cf')}`);
-    report.push(`4. UTS #39 Skeleton:  ${t.get('skeleton')}`);
+  // --- ADVERSARIAL INTELLIGENCE (Suspicion Dashboard) ---
+  const advBody = document.getElementById('adv-target-body');
+  if (advBody && advBody.offsetParent !== null) { // Check visibility
+      report.push('\n[ Suspicion Dashboard (Adversarial Forensics) ]');
+      
+      const peakRow = document.getElementById('adv-peak-row');
+      if (peakRow && peakRow.style.display !== 'none') {
+          const pTok = getText('#adv-peak-token');
+          const pScore = getText('#adv-peak-score');
+          report.push(`  PARANOIA PEAK (Top Offender): ${pTok} [${pScore}]`);
+      }
+      
+      report.push(`  ADVERSARIAL FINDINGS:`);
+      
+      const rows = advBody.querySelectorAll('.target-row');
+      if (rows.length === 0) {
+          report.push("  No anomalies detected.");
+      } else {
+          rows.forEach(row => {
+              // Extract Header Info
+              const score = row.querySelector('.th-badge')?.textContent.trim() || "0";
+              const token = row.querySelector('.t-token')?.textContent.trim() || "UNKNOWN";
+              const verdict = row.querySelector('.t-verdict')?.textContent.trim() || "";
+              
+              report.push(`  • [${score}] ${token.padEnd(20)} | ${verdict}`);
+              
+              // Extract Stack Details (Reasons)
+              const descRows = row.querySelectorAll('.th-desc');
+              descRows.forEach(d => {
+                  report.push(`      - ${d.textContent.trim()}`);
+              });
+              report.push(''); // Spacer
+          });
+      }
   }
 
-    // --- NEW: Add Encoding Strip ---
+  // --- PERCEPTION VS REALITY (Forensic States) ---
+  report.push('\n[ Perception vs. Reality (Forensic States) ]');
+  
+  // 1. Print the 4 States (Always useful)
+  if (window.latest_threat_data) {
+    const t = window.latest_threat_data;
+    report.push(`  1. Forensic (Raw):    ${t.get('raw')}`);
+    report.push(`  2. NFKC:              ${t.get('nfkc')}`);
+    report.push(`  3. NFKC-Casefold:     ${t.get('nfkc_cf')}`);
+    report.push(`  4. UTS #39 Skeleton:  ${t.get('skeleton')}`);
+  }
+
+  // 2. Scrape X-Ray (Drift Analysis) - REPLACES THE BROKEN VERTICAL DUMP
+  const xrayContainer = document.querySelector('.xray-container');
+  if (xrayContainer) {
+      report.push(`\n  [ X-Ray Alignment Analysis ]`);
+      
+      const cols = xrayContainer.querySelectorAll('.xray-col');
+      let driftCount = 0;
+      
+      cols.forEach(col => {
+          if (col.classList.contains('xray-drift')) {
+              const rawChar = col.querySelector('.x-raw')?.textContent.trim();
+              const skelChar = col.querySelector('.x-skel')?.textContent.trim();
+              const title = col.getAttribute('title') || "";
+              // Format: "DRIFT: а -> a (U+0430 -> a)"
+              report.push(`  ! DRIFT: ${rawChar} --> ${skelChar}  (${title})`);
+              driftCount++;
+          }
+          else if (col.classList.contains('xray-void')) {
+              // Optional: Report stripped characters if you want deep detail
+              // const rawChar = col.querySelector('.x-raw')?.textContent.trim();
+              // report.push(`    VOID:  ${rawChar} (Stripped)`);
+          }
+      });
+      
+      if (driftCount === 0) {
+          report.push("  No visual drift detected (Clean alignment).");
+      }
+  }
+
+  // --- Encoding Strip ---
   report.push(...parseEncodingStrip());
     
   report.push('\n[ Forensic Deobfuscation (Revealed) ]');
   const rawInput = getVal('#text-input');
   const revealed = getDeobfuscatedText(rawInput);
   report.push(revealed);
-  // ------------------------------
+  
+  return report.join('\n');
+}
 
     
 
