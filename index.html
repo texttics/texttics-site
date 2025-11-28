@@ -477,7 +477,72 @@
         </div>
         
         <h3 class="subsection-title">Perceived vs Encoded Character(s)</h3>
-        <pre id="confusable-diff-report" class="confusable-report"><p class="placeholder-text">No confusable runs detected.</p></pre>
+        <div id="confusable-diff-report" class="xray-wrapper">
+            <p class="placeholder-text">No suspicious clusters detected.</p>
+        </div>
+
+        <details class="drift-details hashes-details" style="margin-top: 1rem;">
+            <summary class="drift-summary">Cryptographic Evidence (SHA-256 Hashes)</summary>
+            <div class="drift-content">
+                    <table class="matrix" id="hash-report-table">
+                    <thead><tr><th scope="col">State</th><th scope="col">Hash (SHA-256)</th></tr></thead>
+                    <tbody id="threat-hash-report-body"></tbody>
+                </table>
+            </div>
+        </details>
+
+        <h3 class="subsection-title" style="margin-top: 2rem;">Suspicion Dashboard (Adversarial Forensics)</h3>
+        
+        <div id="intel-console" class="intel-console-wrapper" style="display:none;">
+            
+            <div class="intel-seal-row">
+                <div id="intel-badge" class="intel-badge">ANALYZING...</div>
+                <div class="intel-meta">
+                    <span class="meta-label">PROTOCOL:</span> <span class="meta-val">UTS-39 + HEURISTICS</span>
+                    <span class="meta-sep">|</span>
+                    <span class="meta-label">SCOPE:</span> <span class="meta-val">PER-TOKEN</span>
+                </div>
+            </div>
+
+            <div class="intel-grid-row">
+                <div class="intel-stat-card">
+                    <div class="stat-label">HOMOGLYPH</div>
+                    <div id="intel-stat-homoglyph" class="stat-val">0</div>
+                    <div class="stat-desc">Confusables</div>
+                </div>
+                <div class="intel-stat-card">
+                    <div class="stat-label">SPOOFING</div>
+                    <div id="intel-stat-spoofing" class="stat-val">0</div>
+                    <div class="stat-desc">Sore Thumbs</div>
+                </div>
+                <div class="intel-stat-card">
+                    <div class="stat-label">OBFUSCATION</div>
+                    <div id="intel-stat-obfus" class="stat-val">0</div>
+                    <div class="stat-desc">Hidden / Zalgo</div>
+                </div>
+                <div class="intel-stat-card">
+                    <div class="stat-label">INJECTION</div>
+                    <div id="intel-stat-injection" class="stat-val">0</div>
+                    <div class="stat-desc">Bidi / Trojan</div>
+                </div>
+            </div>
+
+            <div id="intel-peak-row" class="intel-peak-row" style="display:none;">
+                <div class="peak-label">PARANOIA PEAK (TOP OFFENDER):</div>
+                <div class="peak-val">
+                    <span id="peak-token" class="peak-token">...</span>
+                    <span id="peak-score" class="peak-score">Risk: 0</span>
+                </div>
+                <div id="peak-reasons" class="peak-reasons"></div>
+            </div>
+
+            <div class="intel-target-list">
+                <div class="target-header">ADVERSARIAL FINDINGS</div>
+                <div id="intel-target-body" class="target-body">
+                    <div class="placeholder-text" style="padding:12px;">No adversarial anomalies detected.</div>
+                </div>
+            </div>
+        </div>
       </details>
 
       <details class="fingerprint-section profile-section" id="provenance-context" aria-labelledby="prov-title">
