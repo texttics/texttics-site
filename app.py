@@ -6366,6 +6366,7 @@ def analyze_idna_label(label: str):
     Label-Centric Analyzer (Top-Tier).
     Handles Punycode decoding, IDNA2008 Categories, and UTS #46 Statuses.
     Refined V3: Explicitly whitelists ASCII A-Z to prevent noise.
+    Added V4: Forward Punycode Prediction (Wire Format).
     """
     findings = []
 
@@ -6375,11 +6376,12 @@ def analyze_idna_label(label: str):
         if cp == 0 or cp == 0xFFFD or (0xFDD0 <= cp <= 0xFDEF) or (cp & 0xFFFF) >= 0xFFFE:
             return []
     
-    # 1. PUNYCODE DECODING
+    # 1. PUNYCODE INTELLIGENCE
     analysis_target = label
     is_punycode = label.lower().startswith("xn--")
     
     if is_punycode:
+        # DECODING (Punycode -> Unicode)
         try:
             payload = label[4:] # Strip 'xn--'
             decoded = payload.encode('ascii').decode('punycode')
@@ -6393,6 +6395,19 @@ def analyze_idna_label(label: str):
                 "type": "CRITICAL", "lvl": "CRIT",
                 "desc": "Invalid Punycode Label (Decoding Failed)"
             }]
+    else:
+        # [NEW] ENCODING (Unicode -> Punycode / Wire Format)
+        # If the label contains non-ASCII, show how it looks on the wire.
+        if not label.isascii():
+            try:
+                # We use the 'idna' codec to simulate browser behavior
+                encoded_wire = label.encode('idna').decode('ascii')
+                if encoded_wire.startswith("xn--"):
+                    findings.append({
+                        "type": "WIRE", "lvl": "MED",
+                        "desc": f"Wire Format: '{encoded_wire}'"
+                    })
+            except: pass
 
     # 2. DUAL-LENS ANALYSIS (On the Decoded/Raw Unicode Label)
     idna46 = DATA_STORES.get("IdnaMap", {})
@@ -6699,6 +6714,28 @@ def analyze_anti_sanitization(t: str):
             "severity": "warn",
             "badge": "PROBE"
         }
+
+    # 5. [NEW] Structural Mutation (Overlay Attacks)
+    # U+0338 (Combining Long Solidus Overlay) on Syntax Chars
+    # Research Vector: '>' + U+0338 = '≯' (Masks the tag closer)
+    if "\u0338" in t:
+        syntax_targets = {'<', '>', '/', "'", '"', ';', '=', '-'}
+        mutation_hits = 0
+        
+        # Iterate to find U+0338 applied to syntax
+        for i, char in enumerate(t):
+            if char == "\u0338" and i > 0:
+                prev = t[i-1]
+                if prev in syntax_targets:
+                    mutation_hits += 1
+                    
+        if mutation_hits > 0:
+            flags["CRITICAL: Structural Mutation (Overlay Masking)"] = {
+                "count": mutation_hits,
+                "positions": ["Syntax characters masked by U+0338 (e.g. ≯)"],
+                "severity": "crit",
+                "badge": "MASKING"
+            }
 
     return flags
 
