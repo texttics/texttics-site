@@ -5095,3 +5095,59 @@ details.profile-section > summary:hover::marker {
     font-size: 0.75rem;
     color: #991b1b;
 }
+
+/* Predictive Normalizer Styles */
+.predictive-wrapper {
+    margin-top: 1.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: white;
+}
+.pred-header {
+    background: #f8fafc;
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #475569;
+    border-bottom: 1px solid var(--color-border);
+}
+.pred-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.pred-table th {
+    text-align: left;
+    padding: 6px 12px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-weight: 600;
+}
+.pred-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    font-family: var(--font-mono);
+}
+.pred-row.pred-changed td {
+    background: #fffbeb; /* Light yellow for change */
+}
+.pred-row.pred-danger td {
+    background: #fef2f2; /* Light red for danger */
+    color: #b91c1c;
+}
+.pred-len {
+    color: #94a3b8;
+    font-size: 0.75rem;
+}
+.pred-footer {
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    color: #64748b;
+    background: #f8fafc;
+    border-top: 1px solid var(--color-border);
+}
+.pred-danger-text {
+    color: #dc2626;
+    font-weight: 700;
+}
