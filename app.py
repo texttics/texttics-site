@@ -4546,7 +4546,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     }
     
     health_issues = {
-        "fffd": [], "surrogate": [], "nonchar": [], 
+        "fffd": [], "surrogate": [], "nonchar": [], "fdd0": [],
         "pua": [], "nul": [], "bom_mid": [], "donotemit": []
     }
 
