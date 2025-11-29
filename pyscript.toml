@@ -41,5 +41,7 @@ files = [
     #"confusablesWholeScript.txt"
     #"confusablesSummary.txt"
     "inverse_confusables.json",
-    "ascii_confusables.json"
+    "ascii_confusables.json",
+    "IdnaMappingTable.txt",
+    "Idna2008.txt"
 ]
