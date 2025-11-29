@@ -179,6 +179,15 @@ def build_invis_table():
     # 5. Tags
     apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
 
+    # Add 0x180F and 0x16FE4 to the manual mask list
+    apply_mask([
+        (0x180B, 0x180F),  # Updated range to include FVS4 (180F)
+        (0x2065, 0x2065), 
+        (0x1D159, 0x1D159), 
+        (0x133FC, 0x133FC),
+        (0x16FE4, 0x16FE4) # Khitan Filler
+    ], INVIS_DEFAULT_IGNORABLE)
+
     # 6. Manual Patch for New List Items (Ensure detection in Stats/Atlas)
     # These might not be in UCD "DefaultIgnorable" yet, but we want to flag them.
     # Includes: Mongolian FVS (180B-180D), Reserved (2065), Musical Null (1D159)
@@ -1261,6 +1270,11 @@ INVISIBLE_MAPPING = {
     0x200D: "[ZWJ]",           # Zero Width Joiner
     0x2060: "[WJ]",            # Word Joiner
     
+    # --- Missing Mongolian FVS4 ---
+    0x180F: "[FVS4]",          # Mongolian Free Variation Selector 4
+
+    # --- Missing Khitan Filler (Critical Spoofing Vector) ---
+    0x16FE4: "[KSSF]",         # Khitan Small Script Filler
     
     # --- Byte Order Mark ---
     0xFEFF: "[BOM]",           # Zero Width No-Break Space
