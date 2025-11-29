@@ -8,6 +8,10 @@ import hashlib
 import re
 import math
 from collections import Counter
+import html
+import urllib.parse
+import base64
+import binascii
 
 LOADING_LOCK = False
 
@@ -6447,6 +6451,163 @@ def analyze_idna_label(label: str):
             
     return findings
 
+# ==========================================
+# [MODULE 4] RECURSIVE DE-OBFUSCATION & WAF SIMULATOR
+# ==========================================
+
+def recursive_deobfuscate(text: str, depth=0, max_depth=5):
+    """
+    Recursively strips encoding layers (URL -> HTML -> Base64 -> Escapes).
+    Returns: (final_decoded_text, list_of_layers_found)
+    """
+    if depth >= max_depth or not text:
+        return text, []
+
+    layers = []
+    current = text
+    
+    # 1. URL Decoding (Look for %XX)
+    if "%" in current:
+        try:
+            decoded = urllib.parse.unquote(current)
+            if decoded != current:
+                current = decoded
+                layers.append("URL-Encoded")
+        except: pass
+
+    # 2. HTML Entity Decoding (Look for &...;)
+    if "&" in current and ";" in current:
+        try:
+            decoded = html.unescape(current)
+            if decoded != current:
+                current = decoded
+                layers.append("HTML-Entity")
+        except: pass
+
+    # 3. Unicode/Hex Escapes (\uXXXX, \xXX)
+    if "\\" in current:
+        try:
+            # We use unicode_escape to turn \u0041 into 'A'
+            # We must encode to latin-1 to avoid decoding actual UTF-8 chars as escapes
+            decoded = current.encode('utf-8').decode('unicode_escape')
+            if decoded != current:
+                current = decoded
+                layers.append("Escape-Sequence")
+        except: pass
+
+    # 4. Base64 Heuristic (The False Positive Hazard)
+    # Logic: Must be > 16 chars, valid B64 charsets, and decode to meaningful text (high entropy noise is ignored)
+    # We only try if we haven't found other layers yet, or if it looks very distinct.
+    if len(current) > 16 and re.match(r'^[A-Za-z0-9+/=]+$', current.strip()):
+        try:
+            # Add padding if missing
+            pad = len(current) % 4
+            if pad: current += "=" * (4 - pad)
+            
+            b_data = base64.b64decode(current, validate=True)
+            # Heuristic: Is the result readable text?
+            # If it's pure binary junk, we ignore it (likely random key or image data).
+            # We check if > 70% of bytes are printable ASCII or common UTF-8.
+            decoded_utf8 = b_data.decode('utf-8')
+            
+            # Simple entropy check to avoid binary blobs
+            printable = sum(1 for c in decoded_utf8 if c.isprintable())
+            if printable / len(decoded_utf8) > 0.7:
+                current = decoded_utf8
+                layers.append("Base64")
+        except: pass
+
+    # Recursion Step
+    if layers:
+        next_text, next_layers = recursive_deobfuscate(current, depth + 1, max_depth)
+        return next_text, layers + next_layers
+    
+    return current, []
+
+def analyze_waf_policy(text: str):
+    """
+    Simulates a hardened WAF (SiteMinder/Broadcom style).
+    Checks the 'Naked' (De-obfuscated) string for forbidden artifacts.
+    """
+    alerts = []
+    score = 0
+    
+    # 1. Critical Injection Vectors (SiteMinder BadCssChars)
+    # < > ' " ( ) ; +
+    xss_vectors = []
+    if "<" in text or ">" in text: xss_vectors.append("HTML Tag (< >)")
+    if "javascript:" in text.lower(): xss_vectors.append("JS Scheme")
+    if "onerror" in text.lower() or "onload" in text.lower(): xss_vectors.append("Event Handler")
+    
+    if xss_vectors:
+        alerts.append(f"XSS Injection ({', '.join(xss_vectors)})")
+        score += 40
+
+    # 2. Path Traversal (SiteMinder BadUrlChars)
+    # .. // \ %00
+    traversal = []
+    if "../" in text or "..\\" in text: traversal.append("Dir Traversal (..)")
+    if "//" in text and "http" not in text: traversal.append("Double Slash (//)")
+    if "\x00" in text: traversal.append("Null Byte Injection")
+    
+    if traversal:
+        alerts.append(f"Path Traversal ({', '.join(traversal)})")
+        score += 50
+
+    # 3. SQL Injection Heuristics (Broadcom BadQueryChars)
+    sqli_keywords = ["union select", "information_schema", "drop table", "1=1", "--"]
+    lower_t = text.lower()
+    for kw in sqli_keywords:
+        if kw in lower_t:
+            alerts.append(f"SQL Injection ({kw})")
+            score += 45
+            break # One is enough
+
+    return alerts, score
+
+def analyze_code_masquerade(text: str, script_stats: dict):
+    """
+    Detects 'Solders' style malware: Valid Code structure using Alien Scripts.
+    Heuristic: High-Density Non-Latin Identifiers + Code Syntax.
+    """
+    # 1. Check for Code Syntax ( { } ; function var const => )
+    code_syntax_chars = { '{', '}', ';', '(', ')', '[', ']', '=', '+', '>' }
+    syntax_hits = sum(1 for c in text if c in code_syntax_chars)
+    
+    # Needs a minimum syntax density to be considered "Code"
+    if len(text) < 50 or (syntax_hits / len(text)) < 0.05:
+        return None
+
+    # 2. Check Script Usage (from Module 2.D stats)
+    # If we have significant non-Latin/non-Common script usage
+    # but the text is structured like code, it's suspicious.
+    
+    suspicious_scripts = []
+    for key in script_stats:
+        if "Latin" not in key and "Common" not in key and "Inherited" not in key:
+            # Check if this script makes up a significant portion of the text
+            # (We approximate using the 'count' from stats)
+            count = script_stats[key].get('count', 0)
+            if count > 10: # Threshold for relevance
+                suspicious_scripts.append(key.replace("Script: ", ""))
+
+    # 3. Dynamic Execution Sinks (The 'eval' equivalent)
+    # Check for "constructor" access patterns or "eval"
+    has_sinks = False
+    if 'constructor' in text or 'eval(' in text or 'Function(' in text:
+        has_sinks = True
+
+    if suspicious_scripts and (has_sinks or syntax_hits > 20):
+        scripts_str = ", ".join(suspicious_scripts)
+        return {
+            "verdict": "Obfuscated Code",
+            "detail": f"Code Syntax + Alien Identifiers ({scripts_str})",
+            "risk": "High (Solders-style malware)",
+            "score": 85
+        }
+    
+    return None
+
 def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
@@ -6738,6 +6899,47 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             skel_events
         )
 
+        # --- [NEW] Recursive De-obfuscation & WAF Check ---
+        naked_text, layers_found = recursive_deobfuscate(t)
+        waf_alerts, waf_score = analyze_waf_policy(naked_text)
+        
+        # Add WAF alerts to threat flags if significant
+        if waf_score > 0:
+            key = f"CRITICAL: Payload Detected ({', '.join(layers_found) or 'Raw'})"
+            threat_flags[key] = {
+                'count': 1,
+                'positions': [f"triggers: {', '.join(waf_alerts)}"],
+                'severity': 'crit',
+                'badge': 'PAYLOAD'
+            }
+            # Inject into Adversarial Dashboard
+            adversarial_data['topology']['INJECTION'] = adversarial_data['topology'].get('INJECTION', 0) + 1
+            adversarial_data['targets'].insert(0, {
+                "token": naked_text[:50] + "..." if len(naked_text) > 50 else naked_text,
+                "verdict": f"DECODED PAYLOAD ({waf_score})",
+                "stack": [{"lvl": "CRIT", "type": "INJECTION", "desc": a} for a in waf_alerts],
+                "b64": "N/A", "hex": "N/A", "score": waf_score
+            })
+
+        # --- [NEW] Code Masquerade Check ---
+        masq = analyze_code_masquerade(t, script_stats or {})
+        if masq:
+            key = f"CRITICAL: {masq['verdict']}"
+            threat_flags[key] = {
+                'count': 1,
+                'positions': [masq['detail']],
+                'severity': 'crit',
+                'badge': 'MALWARE'
+            }
+            # Inject into Adversarial Dashboard
+            adversarial_data['topology']['OBFUSCATION'] = adversarial_data['topology'].get('OBFUSCATION', 0) + 1
+            adversarial_data['targets'].insert(0, {
+                "token": "Global Input",
+                "verdict": "MALWARE PATTERN",
+                "stack": [{"lvl": "CRIT", "type": "OBFUSCATION", "desc": masq['detail']}],
+                "b64": "N/A", "hex": "N/A", "score": masq['score']
+            })
+
         # --- 7. HTML Report: The Dual-View Forensic Engine ---
         # Strategy: Stack the "Classic Stream" (Context/Buttons) above the "Adversarial X-Ray" (Alignment)
         
@@ -6816,6 +7018,26 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             """
         else:
             final_html_report = ""
+        
+        # [NEW] Inject De-obfuscation Report if layers found
+        if layers_found:
+            layer_badges = "".join([f"<span class='layer-badge'>{l}</span>" for l in layers_found])
+            final_html_report = f"""
+            <div class="payload-alert">
+                <div class="pa-header">🚨 DEEP OBFUSCATION DETECTED</div>
+                <div class="pa-body">
+                    <div class="pa-layers">Layers Stripped: {layer_badges}</div>
+                    <div class="pa-content">
+                        <strong>Naked Payload:</strong>
+                        <code>{_escape_html(naked_text)}</code>
+                    </div>
+                    <div class="pa-waf">
+                        <strong>WAF Simulator:</strong> {', '.join(waf_alerts) if waf_alerts else 'No Standard Signatures Detected'}
+                    </div>
+                </div>
+            </div>
+            {final_html_report}
+            """
         
         # SPOOFING (HUD Registry Logic)
         if confusable_indices and LOADING_STATE == "READY":
