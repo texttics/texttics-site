@@ -159,6 +159,11 @@ def build_invis_table():
     # Interlinear Annotation Controls
     apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
 
+    # 7. Noncharacters (Process-Internal)
+    # We map 0xFFFE (Bad BOM) and 0xFFFF (Max Value) to CRITICAL_CONTROL
+    # This ensures they trigger "Red/Critical" flags in the Atlas, similar to NUL.
+    apply_mask([(0xFFFE, 0xFFFF)], INVIS_CRITICAL_CONTROL)
+
     # 6. Manual Patch for New List Items & Historic Controls
     # Ensures detection in Stats/Atlas/Threat Score
     apply_mask([
@@ -1285,6 +1290,10 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
+
+    # --- Unicode "Specials" (Process-Internal Noncharacters) ---
+    0xFFFE: "[BAD:BOM]",       # Reversed Byte Order Mark (Endian mismatch)
+    0xFFFF: "[NON:MAX]",       # Max Value (Process internal)
 
     # --- Missing Arabic & Syriac Format Controls ---
     0x0600: "[ARB:NUM]",       # Arabic Number Sign
