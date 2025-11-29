@@ -8341,7 +8341,7 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     
     element.innerHTML = "".join(html) + legend_html
 
-def render_invisible_atlas(invisible_counts, invisible_positions):
+def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     Renders the 'Invisible Atlas' - A forensic-grade legend of all hidden characters.
     Features: 4-Tier Legality, Smart Symbol Decoding, Risk-Based Sorting, and Aggregated Summary.
