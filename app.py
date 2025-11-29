@@ -5025,7 +5025,7 @@ def _generate_uts39_skeleton(t: str, return_events=False):
         
         # O(1) Bitmask Check
         if cp < 0x110000:
-             if (INVIS_TABLE[cp] & INVIS_DEFAULT_IGNORABLE) or (INVIS_TABLE[cp] & INVIS_BIDI_CONTROL):
+             if (INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_CRITICAL_CONTROL)):
                  is_ignorable = True
         
         if not is_ignorable:
@@ -7503,7 +7503,7 @@ def render_statistical_profile(stats):
     meta_ent = f"""
     <div style="margin-top:6px; font-size:0.7rem; color:#64748b; line-height:1.4;">
         <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-            <span>Length: <b>{n_bytes}</b> bytes &bull; ASCII: <b>{ascii_dens}%</b></span>
+            <span>Length: <b>{n_bytes}</b> bytes &bull; ASCII (Bytes): <b>{ascii_dens}%</b></span>
             <span title="Information Density (Normalized Entropy)">Density: <b>{norm_desc}</b></span>
         </div>
         <div style="color:#475569; font-style:italic;">{_escape_html(status_txt)}</div>
@@ -8068,7 +8068,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                 "• >3.0 b/cp: CJK / Emoji / Mathematical Symbols\n\n"
                 "[ THIS SAMPLE ]\n"
                 f"• Storage Density: {bpc:.2f} bytes per cp\n"
-                f"• ASCII Payload: {ascii_pct}% of total content"
+                f"• ASCII Payload: {ascii_pct}% of code points"
             )
 
             html.append(
