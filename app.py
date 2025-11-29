@@ -1344,6 +1344,36 @@ INVISIBLE_MAPPING = {
     0x1808: "[MNG:MC]",        # Mongolian Manchu Comma
     0x1809: "[MNG:MFS]",       # Mongolian Manchu Full Stop
 
+    # --- Missing Mongolian Free Variation Selectors ---
+    0x180B: "[FVS1]",          # Mongolian Free Variation Selector 1
+    0x180C: "[FVS2]",          # Mongolian Free Variation Selector 2
+    0x180D: "[FVS3]",          # Mongolian Free Variation Selector 3
+
+    # --- Missing Egyptian Hieroglyph Format Controls ---
+    0x13430: "[EGY:VJ]",       # Vertical Joiner
+    0x13431: "[EGY:HJ]",       # Horizontal Joiner
+    0x13432: "[EGY:TOP]",      # Top Joiner
+    0x13433: "[EGY:BOT]",      # Bottom Joiner
+    0x13434: "[EGY:OVR]",      # Overlay Middle
+    0x13435: "[EGY:START]",    # Segment Start
+    0x13436: "[EGY:END]",      # Segment End
+
+    # --- Missing Musical Symbol ---
+    0x1D159: "[MUS:NULL]",     # Musical Symbol Null Notehead
+
+    # --- Standard Whitespace & Structure (Explicit Tags) ---
+    0x0009: "[TAB]",           # Character Tabulation
+    0x000A: "[LF]",            # Line Feed
+    0x000B: "[VT]",            # Line Tabulation (Vertical Tab)
+    0x000C: "[FF]",            # Form Feed
+    0x000D: "[CR]",            # Carriage Return
+
+    # --- Missing Egyptian Exploits ---
+    0x133FC: "[EGY:Z015B]",    # Egyptian Hieroglyph Z015B (Font Exploit)
+
+    # --- Undefined / Reserved ---
+    0x2065: "[RSV:2065]",      # Unassigned (Reserved for future format)
+
     # Table 4: Invisible Operators & Scoping Containers
     0x2064: "[INV+]",          # Invisible Plus (Mathematical Ghost)
     0x13437: "[EGY:BS]",       # Egyptian Hieroglyph Begin Segment
