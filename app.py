@@ -185,9 +185,12 @@ def build_invis_table():
     ], INVIS_DEFAULT_IGNORABLE)
 
     # 7. Noncharacters (Process-Internal)
-    # We map 0xFFFE (Bad BOM) and 0xFFFF (Max Value) to CRITICAL_CONTROL
-    # This ensures they trigger "Red/Critical" flags in the Atlas, similar to NUL.
-    apply_mask([(0xFFFE, 0xFFFF)], INVIS_CRITICAL_CONTROL)
+    # Includes FFFE, FFFF, and the FDD0-FDEF block.
+    # These trigger "Red/Critical" flags in the Atlas.
+    apply_mask([
+        (0xFFFE, 0xFFFF),      # End-of-plane nonchars
+        (0xFDD0, 0xFDEF)       # Process-internal block
+    ], INVIS_CRITICAL_CONTROL)
 
     # 6. Manual Patch for New List Items & Historic Controls
     # Ensures detection in Stats/Atlas/Threat Score
@@ -2853,6 +2856,72 @@ def _parse_intentional(txt: str):
     # Convert to frozenset for immutability after loading
     DATA_STORES["IntentionalPairs"] = frozenset(store)
 
+# --- 1. IDNA2008 PARSER (Strict Categories) ---
+def _parse_idna2008(txt: str):
+    """
+    Parses Idna2008.txt (RFC 5892).
+    Stores: PVALID, CONTEXTJ, CONTEXTO, DISALLOWED, UNASSIGNED.
+    """
+    store = DATA_STORES["Idna2008"] = {}
+    
+    for line in txt.splitlines():
+        if '#' in line: line = line.split('#')[0]
+        if not line.strip(): continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        code_range = parts[0]
+        category = parts[1].strip()
+        
+        if '..' in code_range:
+            start, end = map(lambda x: int(x, 16), code_range.split('..'))
+        else:
+            start = end = int(code_range, 16)
+            
+        for cp in range(start, end + 1):
+            store[cp] = category
+
+# --- 2. UTS #46 PARSER (Mappings & Status) ---
+def _parse_idna_mapping(txt: str):
+    """
+    Parses IdnaMappingTable.txt.
+    Extracts Status, Mappings, and NV8/XV8 flags.
+    """
+    store = DATA_STORES["IdnaMap"] = {
+        "deviation": set(), "ignored": set(), "disallowed": set(), 
+        "mapped": set(), "nv8": set(), "xv8": set()
+    }
+    
+    for line in txt.splitlines():
+        # Preserve NV8/XV8 from the line BEFORE stripping comments if possible,
+        # but standard format puts them in column 4 (index 3).
+        # We process the split parts directly.
+        raw_line = line.split('#')[0]
+        if not raw_line.strip(): continue
+        
+        parts = [p.strip() for p in raw_line.split(';')]
+        if len(parts) < 2: continue
+        
+        code_range = parts[0]
+        status = parts[1].strip()
+        
+        # Check for NV8/XV8 in column 4 (if it exists)
+        is_nv8 = (len(parts) > 3 and "NV8" in parts[3])
+        is_xv8 = (len(parts) > 3 and "XV8" in parts[3])
+        
+        if '..' in code_range:
+            start, end = map(lambda x: int(x, 16), code_range.split('..'))
+        else:
+            start = end = int(code_range, 16)
+            
+        target_set = store.get(status)
+        if target_set is not None:
+            for cp in range(start, end + 1):
+                target_set.add(cp)
+                if is_nv8: store["nv8"].add(cp)
+                if is_xv8: store["xv8"].add(cp)
+
 async def load_unicode_data():
 
     # --- USE THE GLOBAL LOCK ---
@@ -2918,7 +2987,9 @@ async def load_unicode_data():
             "emoji-data.txt",
             "emoji-test.txt",
             "inverse_confusables.json",
-            "ascii_confusables.json"
+            "ascii_confusables.json".
+            "IdnaMappingTable.txt",
+            "Idna2008.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
     
@@ -2929,7 +3000,8 @@ async def load_unicode_data():
          sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
          decomp_type_txt, derived_binary_txt, num_type_txt, 
          ea_width_txt, vert_orient_txt, bidi_brackets_txt,
-         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt, inverse_json, ascii_json) = results
+         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt, 
+         inverse_json, ascii_json, idna_map_txt, idna_2008_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -4652,6 +4724,44 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
     audit_result = compute_integrity_score(auditor_inputs)
 
+    # --- DECODE HEALTH GRADE (Forensic Lens A) ---
+    # Synthesizes a high-level "Traffic Light" for Encoding Health.
+    dh_grade = "OK"
+    dh_sev = "ok"
+    dh_reasons = []
+    
+    # 1. Critical Failures (Data Corruption)
+    if auditor_inputs["fffd"] > 0: dh_reasons.append("Replacement Chars (Data Loss)")
+    if auditor_inputs["surrogate"] > 0: dh_reasons.append("Lone Surrogates (Broken Encoding)")
+    if auditor_inputs["nonchar"] > 0: dh_reasons.append("Noncharacters (Internal Leak)")
+    if auditor_inputs["nul"] > 0: dh_reasons.append("Null Bytes (Binary Injection)")
+    
+    if dh_reasons:
+        dh_grade = "CRITICAL"
+        dh_sev = "crit"
+    else:
+        # 2. Warnings (Suspicious Artifacts)
+        if auditor_inputs["bom"] > 0: dh_reasons.append("Internal BOM")
+        if auditor_inputs["legacy_ctrl"] > 0: dh_reasons.append("Legacy Control Chars")
+        if auditor_inputs["pua"] > 0: dh_reasons.append("Private Use Area")
+        if auditor_inputs["not_nfc"]: dh_reasons.append("Text is not NFC")
+        
+        if dh_reasons:
+            dh_grade = "WARNING"
+            dh_sev = "warn"
+            
+    dh_badge = f"{dh_grade}"
+    if dh_reasons: dh_badge += f" — {'; '.join(dh_reasons)}"
+
+    # Add the Dashboard Row as the VERY FIRST row
+    rows.insert(0, {
+        "label": "Decode Health Grade",
+        "count": 0, # Symbolic
+        "severity": dh_sev,
+        "badge": dh_badge,
+        "positions": [] 
+    })
+
     # --- Render Rows ---
     rows.append({
         "label": "Integrity Level (Heuristic)",
@@ -5557,6 +5667,18 @@ def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
         if case_anom:
             threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
 
+        # I. IDNA PROTOCOL LENS (Top-Tier Dual Source)
+        # Only analyze tokens that look like domains (dots/hyphens) to avoid noise
+        if '.' in token or 'xn--' in token:
+            idna_findings = analyze_domain_token(token)
+            if idna_findings:
+                for f in idna_findings:
+                    threat_stack.append({
+                        "lvl": f['lvl'],
+                        "type": "INJECTION" if f['type'] in ("GHOST", "AMBIGUITY") else "SPOOFING",
+                        "desc": f['desc']
+                    })
+
         # --- Aggregate Token ---
         if threat_stack:
             # 1. Unique Pillar Counting
@@ -6056,7 +6178,51 @@ def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
         
     return drift_profile
 
+def analyze_domain_token(token: str):
+    """
+    Lens B: Professional Protocol Analysis (IDNA).
+    Checks: Punycode Validity -> UTS #46 Ambiguity -> IDNA2008 Strictness.
+    """
+    findings = []
+    
+    # A. PUNYCODE CHECK (Structure)
+    if token.lower().startswith("xn--"):
+        try:
+            decoded = token.encode('ascii').decode('punycode')
+            findings.append({
+                "type": "INFO", "lvl": "LOW",
+                "desc": f"Punycode Decodes to: '{decoded}'"
+            })
+        except Exception:
+            # Structurally broken Punycode is a Critical Threat
+            return [{
+                "type": "CRITICAL", "lvl": "CRIT",
+                "desc": "Invalid Punycode (xn--) - Decoding Failed"
+            }]
 
+    # B. DUAL-SOURCE CHECK (UTS #46 + IDNA2008)
+    idna46 = DATA_STORES.get("IdnaMap", {})
+    idna2008 = DATA_STORES.get("Idna2008", {})
+    
+    for char in token:
+        cp = ord(char)
+        
+        # 1. UTS #46 Risks (The Mismatch / Schism)
+        if cp in idna46["deviation"]:
+             findings.append({"type": "AMBIGUITY", "lvl": "HIGH", "desc": f"UTS #46 Deviation: U+{cp:04X} (Protocol Mismatch)"})
+        elif cp in idna46["ignored"]:
+             findings.append({"type": "GHOST", "lvl": "HIGH", "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"})
+        elif cp in idna46["nv8"]:
+             findings.append({"type": "AMBIGUITY", "lvl": "MED", "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X}"})
+             
+        # 2. IDNA2008 Risks (The Strict Standard)
+        cat08 = idna2008.get(cp, "UNASSIGNED")
+        if cat08 == "DISALLOWED":
+            findings.append({"type": "INVALID", "lvl": "MED", "desc": f"IDNA2008 Disallowed: U+{cp:04X}"})
+        elif cat08 == "UNASSIGNED":
+            findings.append({"type": "INVALID", "lvl": "MED", "desc": f"IDNA2008 Unassigned: U+{cp:04X}"})
+            
+    return findings
 
 def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
@@ -10898,6 +11064,13 @@ def update_verification(event):
         
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
+
+# --- AUTOMATIC INJECTION: FDD0 Noncharacters ---
+# Range U+FDD0 to U+FDEF are process-internal noncharacters.
+# They indicate internal memory leaks or fuzzing attacks.
+# We map them programmatically to [NON:D0]..[NON:EF] for visibility.
+for i in range(0xFDD0, 0xFDF0):
+    INVISIBLE_MAPPING[i] = f"[NON:{i-0xFDD0:02X}]"
 
 # ---
 # 6. INITIALIZATION
