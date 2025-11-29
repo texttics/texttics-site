@@ -5427,62 +5427,242 @@ def analyze_math_spoofing(t: str):
             }
     return None
 
+
+
 def analyze_token_fragmentation(tokens: list):
     """
-    [PAPER 2: Charmer] Detects 'Word Fragmentation' attacks.
-    Refined V2: Checks for LOCAL adjacency of micro-tokens (e.g., 'c h a r m'),
-    not just global counts.
+    [PAPER 2: Charmer] Unified Fragmentation Detector.
+    Combines three layers of detection:
+    1. TARGETED: Re-assembly of high-value threat keywords (Risk 90-100).
+    2. LOCAL: Contiguous runs of micro-tokens (Risk 60+).
+    3. GLOBAL: Statistical density of micro-tokens (Risk 50).
     """
     if not tokens: return None
     
-    micro_runs = 0
+    # --- LAYER 1: Targeted Re-Assembly (Highest Fidelity) ---
+    reassembly_hits = check_reassembly(tokens)
+    if reassembly_hits:
+        # Calculate Risk based on category severity
+        desc_str = ", ".join(reassembly_hits)
+        risk = 90
+        if "[EXECUTION]" in desc_str or "[INJECTION]" in desc_str:
+            risk = 100
+            
+        return {
+            "type": "FRAGMENTATION",
+            "desc": f"Fragmented Threat Words: {desc_str}",
+            "risk": risk,
+            "verdict": "EVASION (TARGETED)"
+        }
+
+    # --- LAYER 2: Local Contiguity (Heuristic) ---
+    # Detects "s e c u r i t y" even if not in our dictionary
     max_micro_run = 0
     current_micro_run = 0
     
+    # --- LAYER 3: Global Statistics (Thermodynamic) ---
+    # Detects "l a z y s p a c i n g" across the whole file
+    micro_tokens_count = 0
     total_alnum = 0
     
-    # 1. Scan for contiguous runs of micro-tokens (len 1-3)
-    for tok_obj in tokens:
-        tk = tok_obj['token']
-        if tk.isalnum():
+    for tok in tokens:
+        t_str = tok['token']
+        if t_str.isalnum():
             total_alnum += 1
-            if len(tk) <= 3:
+            
+            # Check if it's a micro-token (len 1-2)
+            if len(t_str) <= 2:
                 current_micro_run += 1
+                micro_tokens_count += 1
             else:
-                if current_micro_run > 1:
-                    micro_runs += 1
-                if current_micro_run > max_micro_run:
-                    max_micro_run = current_micro_run
+                max_micro_run = max(max_micro_run, current_micro_run)
                 current_micro_run = 0
                 
     # Catch trailing run
-    if current_micro_run > 1:
-        micro_runs += 1
-        if current_micro_run > max_micro_run:
-            max_micro_run = current_micro_run
-            
-    # 2. Heuristic: "Charmer" Attack Pattern
-    # If we have runs of 3+ micro-tokens, it suggests active fragmentation (e.g. "s e c u r e")
-    if max_micro_run >= 3:
+    max_micro_run = max(max_micro_run, current_micro_run)
+    
+    # Evaluate Layer 2 (Local Run)
+    # A run of 4+ micro-tokens is statistically unlikely in prose (e.g., "a b c d")
+    if max_micro_run >= 4:
          return {
             "type": "OBFUSCATION",
-            "desc": f"Token Fragmentation (Max Run: {max_micro_run} short tokens)",
-            "risk": 60 + (max_micro_run * 2), # Scales with length
-            "verdict": "TOKENIZER ATTACK"
+            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
+            "risk": 50 + (max_micro_run * 5), # Scales up quickly with length
+            "verdict": "TOKENIZER CONFUSION"
         }
 
-    # 3. Fallback: Global Ratio (for massive scattering)
+    # Evaluate Layer 3 (Global Density)
+    # Only apply if we have enough tokens to be statistically significant
     if total_alnum > 10:
-        single_chars = sum(1 for t in tokens if t['token'].isalnum() and len(t['token'])==1)
-        ratio = single_chars / total_alnum
+        ratio = micro_tokens_count / total_alnum
         if ratio > 0.5:
             return {
-                "type": "OBFUSCATION",
-                "desc": f"High Micro-Token Density ({int(ratio*100)}%)",
-                "risk": 50,
-                "verdict": "TOKENIZER ATTACK"
+                "type": "ANOMALY",
+                "desc": f"High Micro-Token Density ({int(ratio*100)}% of text)",
+                "risk": 45,
+                "verdict": "GLOBAL FRAGMENTATION"
             }
             
+    return None
+
+def analyze_punctuation_skew(t: str):
+    """
+    Replacement Attack Detector.
+    Checks if 'Charged' symbols (e.g. ~ _ ^) significantly outnumber 
+    'Grammatical' punctuation (. , ;).
+    """
+    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-'}
+    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
+    
+    gram_count = sum(1 for c in t if c in grammatical)
+    charged_count = sum(1 for c in t if c in charged)
+    total = gram_count + charged_count
+    
+    if total > 5 and charged_count > 3:
+        ratio = charged_count / total
+        if ratio > 0.7:
+            return {
+                "type": "SKEW",
+                "desc": f"Punctuation Replacement ({int(ratio*100)}% Charged Symbols)",
+                "risk": 50,
+                "verdict": "SEMANTIC BIAS"
+            }
+    return None
+
+# --- FORENSIC THREAT VOCABULARY (Seed List) ---
+# Derived from SecLists, FuzzDB, and LLM Jailbreak research.
+# Used to detect re-assembled fragmentation attacks (e.g. "s h e l l").
+
+THREAT_VOCAB = {
+    "EXECUTION": {
+        "sh", "bash", "zsh", "ksh", "cmd", "powershell", "pwsh", "shell", "webshell",
+        "python", "python3", "php", "perl", "ruby", "node", "java", "javac", "dotnet",
+        "system", "exec", "execute", "spawn", "eval", "compile", "popen", "subprocess",
+        "runtime", "processbuilder", "nc", "netcat", "telnet", "ssh", "sftp", 
+        "curl", "wget", "invoke-webrequest", "iex", "iwr"
+    },
+    "AUTH": {
+        "admin", "administrator", "root", "sudo", "user", "username", "login", "logon",
+        "signin", "signup", "password", "passwd", "passphrase", "pin", "token", 
+        "access_token", "refresh_token", "apikey", "secret", "client_secret", 
+        "session", "sessionid", "cookie", "jwt", "bearer", "credential", "auth"
+    },
+    "INJECTION": {
+        "script", "javascript", "alert", "onerror", "onclick", "onload", "iframe", 
+        "document.cookie", "innerhtml", "select", "insert", "update", "delete", 
+        "drop", "truncate", "union", "load_file", "xp_cmdshell"
+    },
+    "JAILBREAK": {
+        "ignore", "previous", "instructions", "forget", "override", "bypass", 
+        "developer", "mode", "uncensored", "dan", "jailbreak", "guidelines",
+        "constraints", "ethical", "rules"
+    },
+    "SYSTEM": {
+        "bin", "sbin", "usr", "var", "tmp", "etc", "passwd", "shadow", "hosts",
+        "boot", "ini", "cfg", "config", "registry", "regedit"
+    }
+}
+
+# Flatten for O(1) lookup
+ALL_THREAT_TERMS = set().union(*THREAT_VOCAB.values())
+
+def check_reassembly(tokens: list):
+    """
+    [PAPER 2: Charmer - Deep Logic]
+    Attempts to 're-glue' fragmented micro-tokens to see if they form 
+    high-value threat words from the Forensic Vocabulary.
+    """
+    micro_run = []
+    findings = []
+    
+    for tok in tokens:
+        t_str = tok['token']
+        
+        # Collect micro-tokens (len 1-2) - e.g. "s" "h" "e" "ll"
+        if t_str.isalnum() and len(t_str) <= 2:
+            micro_run.append(t_str)
+        else:
+            # Process accumulated run
+            if len(micro_run) >= 3:
+                reassembled = "".join(micro_run).lower()
+                
+                # 1. Exact Match Check
+                if reassembled in ALL_THREAT_TERMS:
+                    # Identify Category
+                    cat = "UNKNOWN"
+                    for c, terms in THREAT_VOCAB.items():
+                        if reassembled in terms:
+                            cat = c
+                            break
+                    findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
+                    
+                # 2. Substring Heuristic (for longer re-assembled chunks)
+                # e.g. "c m d . e x e" -> "cmd.exe" contains "cmd"
+                else:
+                     for term in ALL_THREAT_TERMS:
+                         if len(term) > 3 and term in reassembled:
+                              findings.append(f"[SUSPICIOUS] ...{' '.join(micro_run)}... -> contains '{term}'")
+                              break
+
+            micro_run = []
+            
+    # Flush final run
+    if len(micro_run) >= 3:
+        reassembled = "".join(micro_run).lower()
+        if reassembled in ALL_THREAT_TERMS:
+            cat = "UNKNOWN"
+            for c, terms in THREAT_VOCAB.items():
+                if reassembled in terms:
+                    cat = c
+                    break
+            findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
+            
+    return findings
+
+def analyze_token_fragmentation_v2(tokens: list):
+    """
+    [PAPER 2: Charmer] Enhanced Fragmentation Detector.
+    1. Checks for re-assembly into forensic threat categories.
+    2. Checks for contiguous runs of micro-tokens (General Obfuscation).
+    """
+    if not tokens: return None
+    
+    # 1. Charmer Re-Assembly Check (High Fidelity)
+    reassembly_hits = check_reassembly(tokens)
+    if reassembly_hits:
+        # Calculate Risk based on category severity
+        risk = 90
+        desc_str = ", ".join(reassembly_hits)
+        
+        if "[EXECUTION]" in desc_str or "[INJECTION]" in desc_str:
+            risk = 100
+            
+        return {
+            "type": "FRAGMENTATION",
+            "desc": f"Fragmented Threat Words: {desc_str}",
+            "risk": risk,
+            "verdict": "TOKENIZER EVASION"
+        }
+
+    # 2. Contiguous Micro-Run Check (Heuristic fallback)
+    max_micro_run = 0
+    current_micro_run = 0
+    for tok in tokens:
+        if tok['token'].isalnum() and len(tok['token']) <= 2:
+            current_micro_run += 1
+        else:
+            max_micro_run = max(max_micro_run, current_micro_run)
+            current_micro_run = 0
+    max_micro_run = max(max_micro_run, current_micro_run)
+    
+    if max_micro_run >= 4:
+         return {
+            "type": "OBFUSCATION",
+            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
+            "risk": 60,
+            "verdict": "TOKENIZER CONFUSION"
+        }
+
     return None
 
 def analyze_invisible_fragmentation(t: str):
@@ -7193,14 +7373,18 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     def _get_hash(s: str):
         if not s: return ""
         return hashlib.sha256(s.encode('utf-8')).hexdigest()
-
-    # --- [NEW] Run Adversarial Metrics Engine (Safety Wrapped) ---
+   
     try:
-        adversarial_data = compute_adversarial_profile(t, script_stats or {})
+        # Use the new name compute_adversarial_metrics (v11)
+        adversarial_data = compute_adversarial_metrics(t)
     except Exception as e:
         print(f"CRITICAL ERROR in Adversarial Engine: {e}")
         # Return empty structure so UI doesn't break
-        adversarial_data = {"findings": [], "top_tokens": []}
+        adversarial_data = {
+            "findings": [], 
+            "top_tokens": [], 
+            "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0}
+        }
 
     try:
         # --- 2. Generate Normalized States ---
