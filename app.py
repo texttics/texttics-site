@@ -159,6 +159,24 @@ def build_invis_table():
     # Interlinear Annotation Controls
     apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
 
+    # 6. Manual Patch for New List Items & Historic Controls
+    # Ensures detection in Stats/Atlas/Threat Score
+    apply_mask([
+        (0x180B, 0x180F),  # Mongolian FVS 1-4
+        (0x2065, 0x2065),  # Reserved
+        (0x1D159, 0x1D159),# Musical Null
+        (0x133FC, 0x133FC),# Egyptian Z015B
+        (0x16FE4, 0x16FE4),# Khitan Filler
+        (0x13439, 0x1343B),# Egyptian Insertions
+        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
+        (0x11A47, 0x11A47),# Zanabazar Subjoiner
+        (0x11A99, 0x11A99),# Soyombo Subjoiner
+        (0x1107F, 0x1107F),# Brahmi Number Joiner
+        (0x110BD, 0x110BD),# Kaithi Number Sign
+        (0x110CD, 0x110CD),# Kaithi Number Sign Above
+        (0x11446, 0x11446) # Newa Sandhi Mark
+    ], INVIS_DEFAULT_IGNORABLE)
+
     # 1. Default Ignorable
     ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
     apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
@@ -1243,6 +1261,21 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
+
+    # --- Missing Egyptian Hieroglyph Extensions ---
+    0x13439: "[EGY:INS_S]",    # Insertion Joiner Start
+    0x1343A: "[EGY:INS_E]",    # Insertion Joiner End
+    0x1343B: "[EGY:MID]",      # Stack Middle
+
+    # --- Historic Script Fillers & Joiners (Format Controls) ---
+    0x11C40: "[BHAIK:GAP]",    # Bhaiksuki Gap Filler
+    0x11A47: "[ZAN:SUB]",      # Zanabazar Square Subjoiner (Invisible Glue)
+    0x11A99: "[SOY:SUB]",      # Soyombo Subjoiner (Invisible Glue)
+    0x1107F: "[BRAH:NJ]",      # Brahmi Number Joiner
+    0x110BD: "[KAI:NS]",       # Kaithi Number Sign
+    0x110CD: "[KAI:NSA]",      # Kaithi Number Sign Above
+    0x11446: "[NEWA:SAN]",     # Newa Sandhi Mark (Invisible Elision)
+    
     # --- System & Control Risks ---
     0x0000: "[NUL]",           # Null Byte (Critical)
     0x001B: "[ESC]",           # Escape (Terminal Injection)
