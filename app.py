@@ -6642,6 +6642,177 @@ def analyze_code_masquerade(text: str, script_stats: dict):
     
     return None
 
+# ==========================================
+# [MODULE 5] PREDICTIVE ATTACK SIMULATOR (Post-Clipboard)
+# ==========================================
+
+def analyze_anti_sanitization(t: str):
+    """
+    Detects specific characters known to bypass standard filters
+    before normalizing into dangerous payloads.
+    Source: AppCheck / OWASP / 7ASecurity Research.
+    """
+    flags = {}
+    
+    # 1. SQL Injection Vectors (Normalization Exploits)
+    # U+FF07 (Fullwidth Apostrophe) -> ' (0x27)
+    if "\uff07" in t:
+        flags["CRITICAL: SQL Injection Vector (U+FF07)"] = {
+            "count": t.count("\uff07"),
+            "positions": ["Becomes ' (Apostrophe) under NFKC/NFKD"],
+            "severity": "crit",
+            "badge": "SQLi"
+        }
+
+    # 2. XSS Vectors (Normalization Exploits)
+    # U+FE64 (Small Less-Than) -> < (0x3C)
+    # U+FF1C (Fullwidth Less-Than) -> < (0x3C)
+    # U+FF1E (Fullwidth Greater-Than) -> > (0x3E)
+    xss_norm_chars = {
+        "\ufe64": "Small <", "\uff1c": "Fullwidth <", "\uff1e": "Fullwidth >"
+    }
+    found_xss = [name for char, name in xss_norm_chars.items() if char in t]
+    if found_xss:
+        flags[f"CRITICAL: XSS Bypass Vector ({', '.join(found_xss)})"] = {
+            "count": sum(t.count(c) for c in xss_norm_chars if c in t),
+            "positions": ["Normalizes to HTML syntax (< >)"],
+            "severity": "crit",
+            "badge": "XSS"
+        }
+
+    # 3. Source Code Obfuscation
+    # U+00A0 (NBSP) often breaks parsers expecting 0x20
+    if "\u00a0" in t:
+        flags["RISK: Source Code Obfuscation (NBSP)"] = {
+            "count": t.count("\u00a0"),
+            "positions": ["Non-Breaking Space (Breaks Parsers)"],
+            "severity": "warn",
+            "badge": "SYNTAX"
+        }
+        
+    # 4. Polyglot Canaries (Probing Tools)
+    # U+0212A (Kelvin Sign) -> 'K'
+    if "\u212a" in t:
+        flags["SUSPICIOUS: Polyglot Canary (Kelvin Sign)"] = {
+            "count": t.count("\u212a"),
+            "positions": ["Used to probe normalization (Becomes 'K')"],
+            "severity": "warn",
+            "badge": "PROBE"
+        }
+
+    return flags
+
+def analyze_case_collisions(t: str):
+    """
+    Simulates Upper/Lower case transformations to detect
+    buffer overflows and logic bypasses (e.g. GitHub Dotless i).
+    """
+    flags = {}
+    
+    # 1. Length Expansion (Buffer Overflow Risk)
+    # Classic Example: 'ß' (len 1) -> 'SS' (len 2)
+    t_upper = t.upper()
+    if len(t) != len(t_upper):
+        diff = len(t_upper) - len(t)
+        flags["DANGER: Case Mapping Expansion"] = {
+            "count": 1,
+            "positions": [f"String grows by {diff} chars on Uppercase (Buffer Overflow Risk)"],
+            "severity": "crit",
+            "badge": "OVERFLOW"
+        }
+
+    # 2. WAF/Logic Bypass Vectors
+    # Long S (ſ) -> S
+    if "\u017f" in t:
+        flags["CRITICAL: WAF Bypass Vector (Long S)"] = {
+            "count": t.count("\u017f"),
+            "positions": ["Becomes 'S' on Uppercase (Shadows Keywords)"],
+            "severity": "crit",
+            "badge": "BYPASS"
+        }
+    
+    # Dotless i (ı) -> I (or I -> i depending on locale, but dotless i is the main vector)
+    if "\u0131" in t:
+        flags["CRITICAL: Logic Bypass Vector (Dotless i)"] = {
+            "count": t.count("\u0131"),
+            "positions": ["Becomes 'I' on Uppercase (GitHub-style exploit)"],
+            "severity": "crit",
+            "badge": "BYPASS"
+        }
+
+    return flags
+
+def render_predictive_normalizer(t: str):
+    """
+    Generates a Comparative Table showing the future state of the text
+    under all 4 Unicode Normalization Forms.
+    """
+    if not t: return ""
+    
+    # Limit processing for performance (first 100 chars sufficient for diagnostic)
+    sample = t[:100]
+    
+    forms = {
+        "NFC": unicodedata.normalize("NFC", sample),
+        "NFD": unicodedata.normalize("NFD", sample),
+        "NFKC": unicodedata.normalize("NFKC", sample),
+        "NFKD": unicodedata.normalize("NFKD", sample)
+    }
+    
+    # Check for changes
+    changes = {k: (v != sample) for k, v in forms.items()}
+    
+    if not any(changes.values()):
+        return "" # No visual report needed if stable
+
+    rows = []
+    for form, val in forms.items():
+        is_changed = changes[form]
+        
+        # Highlight dangerous changes
+        # (Simple heuristic: length change or ascii shift)
+        row_class = "pred-row"
+        if is_changed:
+            row_class += " pred-changed"
+            # Check for high-risk injections in the result
+            if any(c in val for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"]):
+                row_class += " pred-danger"
+        
+        val_display = _escape_html(val)
+        # Visualizing changes (simple diff style)
+        if is_changed:
+            val_display = f"<strong>{val_display}</strong>"
+            
+        rows.append(f"""
+        <tr class="{row_class}">
+            <td class="pred-form">{form}</td>
+            <td class="pred-val">{val_display}</td>
+            <td class="pred-len">{len(val)}</td>
+        </tr>
+        """)
+
+    return f"""
+    <div class="predictive-wrapper">
+        <div class="pred-header">🔮 Predictive Normalization (Future State)</div>
+        <table class="pred-table">
+            <thead>
+                <tr>
+                    <th>Form</th>
+                    <th>Result (Preview)</th>
+                    <th>Len</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        <div class="pred-footer">
+            <strong>Analysis:</strong> Text mutates under normalization. 
+            <span class="pred-danger-text">Red rows</span> indicate potential injection artifacts appearing after processing.
+        </div>
+    </div>
+    """
+
 def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
@@ -6974,6 +7145,40 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 "b64": "N/A", "hex": "N/A", "score": masq['score']
             })
 
+        # --- [NEW] Module 5: Predictive Attack Simulation ---
+        # 1. Anti-Sanitization Flags
+        sanit_flags = analyze_anti_sanitization(t)
+        threat_flags.update(sanit_flags)
+        
+        # 2. Case Collision Flags
+        case_flags = analyze_case_collisions(t)
+        threat_flags.update(case_flags)
+        
+        # 3. Generate Predictive HTML Table
+        predictive_html = render_predictive_normalizer(t)
+
+        # --- [NEW] Recursive De-obfuscation & WAF Check ---
+        naked_text, layers_found = recursive_deobfuscate(t)
+        waf_alerts, waf_score = analyze_waf_policy(naked_text)
+        
+        # Add WAF alerts to threat flags if significant
+        if waf_score > 0:
+            key = f"CRITICAL: Payload Detected ({', '.join(layers_found) or 'Raw'})"
+            threat_flags[key] = {
+                'count': 1,
+                'positions': [f"triggers: {', '.join(waf_alerts)}"],
+                'severity': 'crit',
+                'badge': 'PAYLOAD'
+            }
+            # Inject into Adversarial Dashboard
+            adversarial_data['topology']['INJECTION'] = adversarial_data['topology'].get('INJECTION', 0) + 1
+            adversarial_data['targets'].insert(0, {
+                "token": naked_text[:50] + "..." if len(naked_text) > 50 else naked_text,
+                "verdict": f"DECODED PAYLOAD ({waf_score})",
+                "stack": [{"lvl": "CRIT", "type": "INJECTION", "desc": a} for a in waf_alerts],
+                "b64": "N/A", "hex": "N/A", "score": waf_score
+            })
+
         # --- 7. HTML Report: The Dual-View Forensic Engine ---
         # Strategy: Stack the "Classic Stream" (Context/Buttons) above the "Adversarial X-Ray" (Alignment)
         
@@ -7072,6 +7277,10 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             </div>
             {final_html_report}
             """
+            
+        # [NEW] Inject Predictive Normalizer Table at the bottom
+        if predictive_html:
+            final_html_report += predictive_html
         
         # SPOOFING (HUD Registry Logic)
         if confusable_indices and LOADING_STATE == "READY":
