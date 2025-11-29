@@ -6457,7 +6457,7 @@ def analyze_idna_label(label: str):
 
 def recursive_deobfuscate(text: str, depth=0, max_depth=5):
     """
-    Recursively strips encoding layers (URL -> HTML -> Base64 -> Escapes).
+    Recursively strips encoding layers (URL -> HTML -> Base64 -> Escapes -> SQL CHAR).
     Returns: (final_decoded_text, list_of_layers_found)
     """
     if depth >= max_depth or not text:
@@ -6484,20 +6484,57 @@ def recursive_deobfuscate(text: str, depth=0, max_depth=5):
                 layers.append("HTML-Entity")
         except: pass
 
-    # 3. Unicode/Hex Escapes (\uXXXX, \xXX)
+    # 3. Unicode/Hex/Octal Escapes (\uXXXX, \xXX, \NNN)
     if "\\" in current:
         try:
-            # We use unicode_escape to turn \u0041 into 'A'
-            # We must encode to latin-1 to avoid decoding actual UTF-8 chars as escapes
+            # A. Try Standard Python Decode
+            # This handles \u0041, \x41, and some octal
             decoded = current.encode('utf-8').decode('unicode_escape')
             if decoded != current:
                 current = decoded
                 layers.append("Escape-Sequence")
+            
+            # B. Explicit Octal Pattern (e.g. \141\142) if Python missed it
+            # Matches \1 to \7 followed by two digits
+            octal_pattern = re.compile(r'\\([0-7]{1,3})')
+            if octal_pattern.search(current):
+                def oct_sub(match):
+                    try: return chr(int(match.group(1), 8))
+                    except: return match.group(0)
+                
+                decoded_oct = octal_pattern.sub(oct_sub, current)
+                if decoded_oct != current:
+                    current = decoded_oct
+                    if "Escape-Sequence" not in layers: layers.append("Octal-Escapes")
         except: pass
 
-    # 4. Base64 Heuristic (The False Positive Hazard)
-    # Logic: Must be > 16 chars, valid B64 charsets, and decode to meaningful text (high entropy noise is ignored)
-    # We only try if we haven't found other layers yet, or if it looks very distinct.
+    # 4. SQL CHAR() De-obfuscation (The "Concat" Pattern)
+    # Matches: CHAR(83) or CHAR(0x53), optionally joined by + or || or spaces
+    # Regex: CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)
+    sql_pattern = re.compile(r'CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)', re.IGNORECASE)
+    if "CHAR" in current.upper():
+        def sql_sub(match):
+            val = match.group(1)
+            try:
+                # Handle Hex (0x...) or Decimal
+                code = int(val, 16) if val.lower().startswith("0x") else int(val)
+                return chr(code)
+            except: return match.group(0)
+            
+        # We also need to strip the '+' concatenation if present between CHARs
+        # Simplified approach: Replace CHAR(...) -> X, then cleanup artifacts? 
+        # Better: decode in place.
+        decoded_sql = sql_pattern.sub(sql_sub, current)
+        
+        if decoded_sql != current:
+            # Cleanup SQL concatenation noise (e.g., 'S'+'E'+'L' -> 'SEL')
+            # This is a heuristic cleanup for '+' and '||' between decoded chars
+            # Ideally, the user sees "S+E+L+E+C+T", which is readable enough to flag.
+            current = decoded_sql
+            layers.append("SQL-CHAR")
+
+    # 5. Base64 Heuristic (The False Positive Hazard)
+    # Logic: Must be > 16 chars, valid B64 charsets, and decode to meaningful text
     if len(current) > 16 and re.match(r'^[A-Za-z0-9+/=]+$', current.strip()):
         try:
             # Add padding if missing
@@ -6505,12 +6542,9 @@ def recursive_deobfuscate(text: str, depth=0, max_depth=5):
             if pad: current += "=" * (4 - pad)
             
             b_data = base64.b64decode(current, validate=True)
-            # Heuristic: Is the result readable text?
-            # If it's pure binary junk, we ignore it (likely random key or image data).
-            # We check if > 70% of bytes are printable ASCII or common UTF-8.
             decoded_utf8 = b_data.decode('utf-8')
             
-            # Simple entropy check to avoid binary blobs
+            # Entropy check: > 70% printable
             printable = sum(1 for c in decoded_utf8 if c.isprintable())
             if printable / len(decoded_utf8) > 0.7:
                 current = decoded_utf8
