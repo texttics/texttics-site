@@ -1624,4 +1624,6 @@ We moved beyond analyzing what the text *is* to predicting what it *will become*
 * **Bidi Context:** Updated Bidi control messaging to explicitly warn of **"AI Prompt Injection"** alongside "Trojan Source."
 * **Punycode Forward-Prediction:** The "IDNA Lens" now shows the **Wire Format** (`xn--...`) for any Unicode domain, allowing the analyst to see the ASCII reality of a Homoglyph domain.
 
-**Status:** Stage 1 is now a fully realized **Forensic Science Instrument**, capable of detecting not just "Rot" (bad encoding) but "Malice" (active evasion, jailbreaking, and obfuscation) across the entire modern threat landscape.
+* **Overlay Confusable Engine:** Implemented a dedicated "Atomic Twin" scanner for combining overlays (`U+0334`–`U+0338`). It mathematically proves when a base character + overlay (e.g., `O` + `̸`) mimics a precomposed letter (`Ø`), exposing a high-value normalization bypass vector often missed by standard NFKC.
+* **4-Tier Forensic Legality:** The Invisible Atlas now categorizes hidden characters by **Security Utility** rather than just Unicode properties. It distinguishes **Benign Typographic** glue (Tier 0) from **Fatal Protocol Violations** (Tier 3: Tags, Nulls), providing immediate triage between "bad text" and "malware."
+* **Unicode 17.0 Readiness:** Hardened the "Syntax Spoofing" heuristics to align with the new **Sibe Quotation** standard. Variation Selectors attached to delimiters are rigorously flagged as **SUSPICIOUS**, countering the specific "Syntax-Masking" threats identified in the 17.0 spec.
