@@ -4976,3 +4976,71 @@ details.profile-section > summary:hover::marker {
     border-left: 2px solid #e2e8f0;
     line-height: 1.4;
 }
+
+/* --- [NEW] FORENSIC VITAL SIGNS (Decode Health) --- */
+/* High-visibility traffic light for the first row of Integrity Profile */
+
+.integrity-badge {
+  font-family: var(--font-mono); /* Use monospace for scientific feel */
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px; /* Sharper corners = more technical */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+/* OK: Healthy */
+.integrity-badge-ok {
+  color: #166534; 
+  background-color: #dcfce7;
+  border: 1px solid #bbf7d0;
+}
+
+/* WARN: Anomalous / Artifacts */
+.integrity-badge-warn {
+  color: #9a3412; 
+  background-color: #ffedd5;
+  border: 1px solid #fed7aa;
+}
+
+/* CRIT: Data Corruption / Fatal */
+.integrity-badge-crit {
+  color: #991b1b; 
+  background-color: #fee2e2;
+  border: 1px solid #fecaca;
+  box-shadow: 0 0 0 1px #ef4444; /* Double border pulse effect */
+}
+
+/* --- [NEW] PROTOCOL LENS TAGS (Adversarial Dashboard) --- */
+/* Extends existing .th-badge system with IDNA-specific states */
+
+/* Tier 3: Protocol Ambiguity (The Schism) */
+/* Violet: Represents "Dual Nature" or "Shapeshifting" */
+.th-med { 
+  background: #f3e8ff; 
+  color: #7e22ce; 
+  border: 1px solid #d8b4fe; 
+}
+
+/* Tier 4: Ghost / Ignored (The Void) */
+/* Gray: Represents disappearance or nullification */
+.th-ghost {
+  background: #f8fafc; 
+  color: #64748b; 
+  border: 1px solid #cbd5e1;
+  text-decoration: line-through; /* Visual cue for "Ignored" */
+  opacity: 0.8;
+}
+
+/* --- [NEW] INVISIBLE ATLAS DANGER --- */
+/* Distinguishes harmless Tabs from Process-Internal Nonchars */
+
+.atlas-badge-crit {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  font-weight: 800;
+}
