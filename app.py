@@ -4170,12 +4170,19 @@ def compute_statistical_profile(t: str):
         # Base64: A-Z, a-z, 0-9, +, / (and URL-safe - _)
         b64_pattern = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
         hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
+        # [NEW] Charcode: 5+ CSV integers (e.g. 65,66,67...)
+        char_pattern = re.compile(r'^(\d{2,3},){5,}\d{2,3}$')
+        # [NEW] Percent: 5+ encoded bytes (e.g. %20%41...)
+        perc_pattern = re.compile(r'^(%[0-9A-Fa-f]{2}){5,}$')
         
         for tok in raw_tokens:
-            if len(tok) > 16:
+            # Lowered threshold to 14 to catch short %XX runs (5*3=15 chars)
+            if len(tok) > 14:
                 p_type = None
                 if b64_pattern.match(tok): p_type = "Base64"
                 elif hex_pattern.match(tok) and len(tok) % 2 == 0: p_type = "Hex"
+                elif char_pattern.match(tok): p_type = "Charcode"
+                elif perc_pattern.match(tok): p_type = "URL-Enc"
                 
                 if p_type:
                     # Calculate Local Entropy for this specific token
