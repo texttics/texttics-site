@@ -7754,6 +7754,9 @@ def _evaluate_adversarial_risk(intermediate_data):
     # Risk Levels: LOW (Default) -> MED -> HIGH -> CRITICAL
     
     risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
+
+    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0}
+    targets = [] # List of high-risk tokens for the dashboard
     
     for token in tokens:
         # Defaults
