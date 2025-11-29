@@ -7,6 +7,7 @@ from pyscript import document, window
 import hashlib
 import re
 import math
+import collections
 from collections import Counter
 import html
 import urllib.parse
