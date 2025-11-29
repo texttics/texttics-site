@@ -274,10 +274,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const sStd   = document.getElementById('c-s-std');
 
   const defaults = {
-    pKey: "PRIMARY:",
-    pDef: "Hover over a metric for definition.",
-    sKey: "SECONDARY:",
-    sDef: "Secondary context will appear here."
+    pKey: "STATUS:",
+    pDef: "System Ready. Hover over metrics for forensic context.",
+    sKey: "",
+    sDef: ""
   };
 
   if (hudContainer && pDef) {
