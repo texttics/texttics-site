@@ -7533,6 +7533,321 @@ def render_predictive_normalizer(t: str):
     </div>
     """
 
+# -------------------------------------------------------------------------
+# [MODULE 4] ADVERSARIAL TOKEN INTELLIGENCE (Block 1: Tokenizer & Extractor)
+# -------------------------------------------------------------------------
+
+def _get_script_set(token: str) -> set:
+    """Returns the set of unique Scripts used in the token."""
+    scripts = set()
+    for char in token:
+        cp = ord(char)
+        # 1. Try ScriptExtensions first (Handles common/inherited chars that morph)
+        sc_ext = _find_in_ranges(cp, "ScriptExtensions")
+        if sc_ext:
+            # ScriptExtensions returns space-separated list e.g. "Latn Grek"
+            scripts.update(sc_ext.split())
+        else:
+            # 2. Fallback to base Script
+            sc = _find_in_ranges(cp, "Scripts")
+            if sc and sc not in ("Common", "Inherited"):
+                scripts.add(sc)
+            elif sc == "Common" and 0x30 <= cp <= 0x39:
+                # Digits are often Common but functionally behave as the surrounding script
+                # We don't add them to avoid polluting the set with "Common"
+                pass
+    return scripts
+
+def _get_identifier_profile(token: str) -> dict:
+    """
+    Checks UAX #31 Identifier Status and Type.
+    Returns: { 'status': 'Allowed'|'Restricted'|'Disallowed', 'types': {Set of types} }
+    """
+    # Defaults
+    profile = {
+        "status": "Allowed", 
+        "types": set(),
+        "banned_chars": [] 
+    }
+    
+    overall_status_priority = 0 # 0=Allowed, 1=Restricted, 2=Disallowed
+    
+    for char in token:
+        cp = ord(char)
+        
+        # Check Status
+        # Note: Data loader maps IdentifierStatus ranges. 
+        # Usually: "Allowed" is implicit if not Restricted? 
+        # Actually, UAX31 usually defines 'Allowed' ranges. 
+        # We assume if found in "Restricted" list it is restricted.
+        status_val = _find_in_ranges(cp, "IdentifierStatus")
+        
+        if status_val == "Restricted":
+            overall_status_priority = max(overall_status_priority, 1)
+            profile["banned_chars"].append(char)
+        
+        # Check Type (Technical, Recommended, Obsolete, etc.)
+        type_val = _find_in_ranges(cp, "IdentifierType")
+        if type_val:
+            profile["types"].add(type_val)
+            if type_val in ("Not_Recommended", "Deprecated", "Not_XID", "Obsolete"):
+                overall_status_priority = max(overall_status_priority, 1)
+
+    if overall_status_priority == 1: profile["status"] = "Restricted"
+    if overall_status_priority == 2: profile["status"] = "Disallowed"
+    
+    return profile
+
+def _classify_token_kind(token: str) -> str:
+    """
+    Heuristic classification of token type.
+    """
+    if "@" in token: return "email"
+    if "." in token and not token.startswith(".") and not token.endswith("."):
+        # Rudimentary domain check: looks like parts separated by dots
+        # Refine: check if TLD part is > 1 char
+        parts = token.split(".")
+        if all(len(p) > 0 for p in parts) and len(parts[-1]) >= 2:
+            return "domain"
+    
+    # Check if purely alphanumeric (plus _)
+    # We use a broad regex for "Identifier-like"
+    if re.match(r'^[\w]+$', token): 
+        return "identifier"
+        
+    return "word"
+
+def analyze_adversarial_tokens(t: str):
+    """
+    The Core Engine for Stage 1.1 "Adversarial Intelligence".
+    Tokenizes text and performs per-token forensic extraction.
+    """
+    if not t: return {"tokens": [], "collisions": [], "stats": {}}
+
+    # 1. Forensic Tokenization (Greedy)
+    # We split by characters that are NOT typically part of identifiers/domains.
+    # Allowed: Alphanumerics, marks, ., -, _, @
+    # Splitters: Spaces, brackets, quotes, slashes (unless we want to support paths?), symbols
+    # Regex: Capture sequences of "Identifier-like" characters
+    # Note: We include Non-Spacing Marks (\p{Mn}) via \w implies unicode word chars in Py3
+    # But we want explicit control.
+    
+    # Pattern: "Word chars" + "Connectors"
+    token_pattern = re.compile(r'[\w\-\.\@]+') 
+    
+    raw_tokens = []
+    for match in token_pattern.finditer(t):
+        raw_tokens.append({
+            "text": match.group(),
+            "start": match.start(),
+            "end": match.end()
+        })
+
+    enriched_tokens = []
+    skeleton_map = collections.defaultdict(list) # skeleton -> [token_indices]
+
+    # 2. Enrichment Loop
+    for idx, raw in enumerate(raw_tokens):
+        txt = raw["text"]
+        
+        # A. Classification
+        kind = _classify_token_kind(txt)
+        
+        # B. Scripts
+        scripts = _get_script_set(txt)
+        
+        # C. Identifier Profile
+        id_profile = _get_identifier_profile(txt)
+        
+        # D. Skeleton Generation (Reuse existing function)
+        # Note: _generate_uts39_skeleton handles the mapping
+        skel, skel_events = _generate_uts39_skeleton(txt, return_events=True)
+        
+        # E. Confusable Analysis (Local Density)
+        confusable_count = skel_events.get('confusables_mapped', 0)
+        confusable_density = 0
+        if len(txt) > 0:
+            confusable_density = round(confusable_count / len(txt), 2)
+            
+        # F. Invisible/Hidden Check (Local)
+        invis_count = 0
+        for char in txt:
+            if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
+                invis_count += 1
+                
+        # G. Mixed Script Check
+        # Filter out "safe" scripts for mixing (like Common/Inherited if they leaked in)
+        # Ideally we check for disjoint sets like {Latin, Cyrillic}
+        major_scripts = {s for s in scripts if s not in ("Common", "Inherited", "Unknown")}
+        is_mixed_script = len(major_scripts) > 1
+
+        # Build Feature Vector
+        token_data = {
+            "id": idx,
+            "text": txt,
+            "span": (raw["start"], raw["end"]),
+            "kind": kind,
+            "scripts": sorted(list(major_scripts)),
+            "is_mixed": is_mixed_script,
+            "skeleton": skel,
+            "id_status": id_profile["status"],
+            "id_types": sorted(list(id_profile["types"])),
+            "confusables": {
+                "count": confusable_count,
+                "density": confusable_density,
+                "mappings": skel_events.get('mappings', []) # Store specific mappings for tooltip
+            },
+            "invisibles": invis_count,
+            "risk": "LOW", # Placeholder for Block 2
+            "triggers": [] # Placeholder for Block 2
+        }
+        
+        enriched_tokens.append(token_data)
+        
+        # Map for collision detection
+        # Only map relevant tokens (length > 1) to avoid noise on single chars
+        if len(txt) > 1:
+            skeleton_map[skel].append(idx)
+
+    # Return intermediate data structure (Block 2 will process this)
+    return {
+        "tokens": enriched_tokens,
+        "skeleton_map": skeleton_map
+    }
+
+# -------------------------------------------------------------------------
+# [MODULE 4] ADVERSARIAL TOKEN INTELLIGENCE (Block 2: Risk Engine)
+# -------------------------------------------------------------------------
+
+def _evaluate_adversarial_risk(intermediate_data):
+    """
+    Block 2: The Risk Engine.
+    Applies deterministic rules to the extracted tokens to assign Risk Levels.
+    Detects Skeleton Collisions (Homograph Attacks).
+    """
+    tokens = intermediate_data["tokens"]
+    skeleton_map = intermediate_data["skeleton_map"]
+    
+    # --- A. Detect Skeleton Collisions ---
+    # Logic: If a skeleton maps to >1 DISTINCT token texts, it's a collision.
+    # Example: "paypal" -> {"paypal", "pаypal"}
+    collisions = []
+    collision_skeletons = set()
+    
+    for skel, indices in skeleton_map.items():
+        # Get unique text representations for these indices
+        unique_texts = set(tokens[i]["text"] for i in indices)
+        
+        if len(unique_texts) > 1:
+            collision_skeletons.add(skel)
+            # Record the collision event
+            collisions.append({
+                "skeleton": skel,
+                "variants": list(unique_texts),
+                "indices": indices,
+                "risk": "CRITICAL"
+            })
+
+    # --- B. Per-Token Risk Assessment ---
+    # We iterate through tokens and append 'triggers' and upgrade 'risk'.
+    # Risk Levels: LOW (Default) -> MED -> HIGH -> CRITICAL
+    
+    risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
+    
+    for token in tokens:
+        # Defaults
+        risk_level = 0 # 0=Low, 1=Med, 2=High, 3=Crit
+        triggers = []
+        
+        # --- Rule Set 1: Skeleton Collisions (The highest trust violation) ---
+        if token["skeleton"] in collision_skeletons:
+            risk_level = max(risk_level, 3)
+            triggers.append("R30: Skeleton Collision (Homograph)")
+
+        # --- Rule Set 2: Script Mixing ---
+        if token["is_mixed"]:
+            # Mixed scripts in a Domain or Identifier is usually malicious
+            if token["kind"] in ("domain", "identifier", "email"):
+                risk_level = max(risk_level, 2)
+                triggers.append("R10: Mixed Scripts in ID/Domain")
+            else:
+                # In generic words, it might be a typo or linguistic, but still suspicious
+                risk_level = max(risk_level, 1)
+                triggers.append("R01: Mixed Scripts")
+
+        # --- Rule Set 3: Confusables ---
+        # High density of confusables implies obfuscation
+        if token["confusables"]["density"] > 0.5:
+            risk_level = max(risk_level, 1)
+            triggers.append("R02: High Confusable Density")
+            
+        # --- Rule Set 4: Identifier Status (UAX #31) ---
+        if token["id_status"] in ("Restricted", "Disallowed"):
+            # We treat 'Restricted' as HIGH risk for identifiers
+            risk_level = max(risk_level, 2)
+            triggers.append(f"R11: Identifier Status ({token['id_status']})")
+
+        # --- Rule Set 5: Hidden Channels & Bidi ---
+        if token["invisibles"] > 0:
+            # Check specifically for Bidi vs just ZWSP
+            # Note: We rely on Stage 1 global flags usually, but local check is good
+            has_bidi = False
+            for char in token["text"]:
+                if _find_in_ranges(ord(char), "Bidi_Control"):
+                    has_bidi = True
+                    break
+            
+            if has_bidi:
+                risk_level = max(risk_level, 3) # Trojan Source class
+                triggers.append("R12: Bidi Control in Token")
+            else:
+                risk_level = max(risk_level, 2)
+                triggers.append("R03: Hidden Characters")
+
+        # --- Rule Set 6: Domain Specifics ---
+        if token["kind"] == "domain":
+            # Check for generic 'Restricted' chars that might not be in ID status
+            # e.g. Fullwidth chars, symbols in labels
+            pass # (Covered by id_status usually, but good placeholder)
+
+        # Map numeric level to string
+        final_risk = "LOW"
+        if risk_level == 3: final_risk = "CRITICAL"
+        elif risk_level == 2: final_risk = "HIGH"
+        elif risk_level == 1: final_risk = "MED"
+        
+        token["risk"] = final_risk
+        token["triggers"] = triggers
+        risk_stats[final_risk] += 1
+
+    # Return the fully enriched report
+    return {
+        "tokens": tokens,
+        "collisions": collisions,
+        "stats": {
+            "total": len(tokens),
+            "identifiers": sum(1 for t in tokens if t["kind"] == "identifier"),
+            "domains": sum(1 for t in tokens if t["kind"] == "domain"),
+            "high_risk": risk_stats["HIGH"] + risk_stats["CRITICAL"],
+            "collisions": len(collisions)
+        }
+    }
+
+def compute_adversarial_metrics(t: str):
+    """
+    Public Wrapper: Connects Block 1 (Extraction) and Block 2 (Risk).
+    Returns the final object consumed by the UI.
+    """
+    # 1. Extract
+    intermediate = analyze_adversarial_tokens(t)
+    
+    # 2. Evaluate
+    final_report = _evaluate_adversarial_risk(intermediate)
+    
+    return final_report
+
+
+
 def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
     
@@ -8273,6 +8588,164 @@ def render_threat_analysis(threat_results, text_context=None):
     
     banner_el = document.getElementById("threat-banner")
     if banner_el: banner_el.setAttribute("hidden", "true")
+
+# -------------------------------------------------------------------------
+# [MODULE 4] ADVERSARIAL TOKEN INTELLIGENCE (Block 3: Renderer)
+# -------------------------------------------------------------------------
+
+def render_adversarial_dashboard(report):
+    """
+    Renders the 'Adversarial Intelligence' Profile.
+    Displays Skeleton Collisions and Per-Token Risk Analysis.
+    """
+    container = document.getElementById("adversarial-dashboard-body")
+    if not container: return
+
+    if not report or not report.get("tokens"):
+        container.innerHTML = '<div class="empty-state">No identifier-like tokens detected.</div>'
+        return
+
+    tokens = report["tokens"]
+    collisions = report["collisions"]
+    stats = report["stats"]
+
+    # --- Part A: The Metrics Bar ---
+    # We define a mini-dashboard for this specific profile
+    
+    # CSS helper for badges
+    def _get_risk_class(level):
+        if level == "CRITICAL": return "badge-crit"
+        if level == "HIGH": return "badge-high"
+        if level == "MED": return "badge-warn"
+        return "badge-ok"
+
+    html_parts = []
+
+    # 1. Summary Header
+    summary_html = f"""
+    <div class="adversarial-stats">
+        <div class="stat-box">
+            <span class="stat-label">Total Tokens</span>
+            <span class="stat-val">{stats['total']}</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Identifiers</span>
+            <span class="stat-val">{stats['identifiers']}</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Domains/IDs</span>
+            <span class="stat-val">{stats['domains']}</span>
+        </div>
+        <div class="stat-box {'stat-alarm' if stats['collisions'] > 0 else ''}">
+            <span class="stat-label">Collisions</span>
+            <span class="stat-val">{stats['collisions']}</span>
+        </div>
+        <div class="stat-box {'stat-alarm' if stats['high_risk'] > 0 else ''}">
+            <span class="stat-label">High Risk</span>
+            <span class="stat-val">{stats['high_risk']}</span>
+        </div>
+    </div>
+    """
+    html_parts.append(summary_html)
+
+    # 2. Skeleton Collisions (The Homograph Radar)
+    if collisions:
+        rows = []
+        for c in collisions:
+            # Format variants: "paypal" vs "pаypal"
+            variants_html = []
+            for idx in c["indices"]:
+                tok = tokens[idx]
+                # Bridge link to highlight the specific token
+                click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({tok['span'][0]}, {tok['span'][1]});"
+                variants_html.append(f'<a href="#" onclick="{click_js} return false;" class="variant-link">{_escape_html(tok["text"])}</a>')
+            
+            rows.append(f"""
+            <tr class="collision-row">
+                <td class="mono-cell">{_escape_html(c['skeleton'])}</td>
+                <td class="variant-cell">{' vs '.join(variants_html)}</td>
+                <td><span class="badge badge-crit">SPOOF DETECTED</span></td>
+            </tr>
+            """)
+        
+        html_parts.append(f"""
+        <div class="collision-section">
+            <h4 class="sub-header-crit">🚨 Skeleton Collisions (Active Homograph Vectors)</h4>
+            <table class="matrix collision-table">
+                <thead><tr><th>UTS #39 Skeleton</th><th>Conflicting Tokens (Variants)</th><th>Verdict</th></tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+        </div>
+        """)
+
+    # 3. Token Risk Ledger
+    # Filter: Show all High/Med, but limit Lows if there are too many
+    display_tokens = [t for t in tokens if t["risk"] in ("CRITICAL", "HIGH", "MED")]
+    low_tokens = [t for t in tokens if t["risk"] == "LOW"]
+    
+    # Simple pagination logic for "Low" risk noise
+    hidden_count = 0
+    if len(low_tokens) > 10:
+        display_tokens.extend(low_tokens[:10])
+        hidden_count = len(low_tokens) - 10
+    else:
+        display_tokens.extend(low_tokens)
+        
+    # Sort: Critical -> High -> Med -> Low
+    risk_order = {"CRITICAL": 0, "HIGH": 1, "MED": 2, "LOW": 3}
+    display_tokens.sort(key=lambda x: risk_order[x["risk"]])
+
+    token_rows = []
+    for t in display_tokens:
+        risk_cls = _get_risk_class(t["risk"])
+        
+        # Scripts pill
+        scripts_str = ", ".join(t["scripts"]) if t["scripts"] else "Common"
+        script_cls = "script-mixed" if t["is_mixed"] else "script-single"
+        
+        # Issues/Triggers
+        triggers_html = ""
+        if t["triggers"]:
+            triggers_html = "<br>".join([f"<span class='trigger-tag'>{rule}</span>" for rule in t["triggers"]])
+        elif t["kind"] == "identifier":
+            triggers_html = "<span class='trigger-tag-ok'>Standard Syntax</span>"
+            
+        # Bridge Link
+        click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({t['span'][0]}, {t['span'][1]});"
+        
+        token_rows.append(f"""
+        <tr>
+            <td class="token-cell">
+                <a href="#" onclick="{click_js} return false;" class="token-link">{_escape_html(t['text'])}</a>
+                <div class="token-kind">{t['kind']}</div>
+            </td>
+            <td class="risk-cell"><span class="badge {risk_cls}">{t['risk']}</span></td>
+            <td class="script-cell"><span class="{script_cls}">{scripts_str}</span></td>
+            <td class="skel-cell">{_escape_html(t['skeleton'])}</td>
+            <td class="issue-cell">{triggers_html}</td>
+        </tr>
+        """)
+
+    html_parts.append(f"""
+    <div class="token-ledger">
+        <h4 class="sub-header">Token Risk Ledger</h4>
+        <table class="matrix token-table">
+            <thead>
+                <tr>
+                    <th style="width:20%">Token</th>
+                    <th style="width:10%">Risk</th>
+                    <th style="width:15%">Scripts</th>
+                    <th style="width:20%">Skeleton</th>
+                    <th style="width:35%">Forensic Notes</th>
+                </tr>
+            </thead>
+            <tbody>{''.join(token_rows)}</tbody>
+        </table>
+        {f'<div class="table-footer">... {hidden_count} low-risk tokens hidden ...</div>' if hidden_count > 0 else ''}
+    </div>
+    """)
+
+    container.innerHTML = "".join(html_parts)
 
 # ---
 # 4. DOM RENDERER FUNCTIONS
