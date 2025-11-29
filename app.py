@@ -5376,7 +5376,14 @@ def compute_adversarial_metrics(t: str):
                                 "desc": f['desc']
                             })
                             token_reasons.append(f['desc'])
-                            token_families.add("INJECTION")
+                            # [FIX] Align Family with Pillar Type
+                            # If it's a Ghost, it's Obfuscation. If it's a Spoof, it's Spoofing.
+                            # We map the specific 'cat' (Pillar) back to a Family name.
+                            if cat == "HIDDEN": token_families.add("OBFUSCATION")
+                            elif cat == "SPOOFING": token_families.add("SPOOFING")
+                            elif cat == "AMBIGUITY": token_families.add("HOMOGLYPH")
+                            elif cat == "SYNTAX": token_families.add("INJECTION")
+                            else: token_families.add("INJECTION") # Default for protocol issues
 
         # [SCRIPT]
         rest_label, rest_risk = analyze_restriction_level(t_str)
@@ -6317,6 +6324,12 @@ def analyze_idna_label(label: str):
     Refined V3: Explicitly whitelists ASCII A-Z to prevent noise.
     """
     findings = []
+
+    # Prevent binary blobs from entering the IDNA engine, regardless of caller.
+    for char in label:
+        cp = ord(char)
+        if cp == 0 or cp == 0xFFFD or (0xFDD0 <= cp <= 0xFDEF) or (cp & 0xFFFF) >= 0xFFFE:
+            return []
     
     # 1. PUNYCODE DECODING
     analysis_target = label
@@ -9654,7 +9667,8 @@ def render_adversarial_dashboard(adv_data: dict):
     set_text("adv-stat-homoglyph", topology.get("AMBIGUITY", 0))
     set_text("adv-stat-spoofing", topology.get("SPOOFING", 0))
     set_text("adv-stat-obfus", topology.get("HIDDEN", 0))
-    set_text("adv-stat-injection", topology.get("SYNTAX", 0))
+    total_injection = topology.get("SYNTAX", 0) + topology.get("INJECTION", 0)
+    set_text("adv-stat-injection", total_injection)
     
     # 6. Render Peak Row (Top Offender)
     peak_row = document.getElementById("adv-peak-row")
