@@ -5754,6 +5754,35 @@ def compute_adversarial_metrics(t: str):
     
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
 
+    # --- [LEGACY RESTORATION] Restriction Level Logic ---
+    scripts_found = set()
+    for char in t:
+        cp = ord(char)
+        sc = _find_in_ranges(cp, "Scripts")
+        if sc and sc not in ("Common", "Inherited", "Unknown"):
+            scripts_found.add(sc)
+            
+    restriction = "UNRESTRICTED"
+    badge_class = "intel-badge-danger"
+    count = len(scripts_found)
+    
+    if count == 0:
+        if all(ord(c) < 128 for c in t):
+            restriction = "ASCII-ONLY"
+            badge_class = "intel-badge-safe"
+        else:
+            restriction = "SINGLE SCRIPT (COMMON)"
+            badge_class = "intel-badge-safe"
+    elif count == 1:
+        restriction = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
+        badge_class = "intel-badge-safe"
+    elif count == 2:
+        restriction = "MINIMALLY RESTRICTIVE" 
+        badge_class = "intel-badge-warn"
+    else:
+        restriction = "UNRESTRICTED"
+        badge_class = "intel-badge-danger"
+
     # --- [NEW] Global Scope Analyzers (Module 6) ---
     
     # 1. Symbol Flood (Paper 3: SSTA)
@@ -6059,7 +6088,11 @@ def compute_adversarial_metrics(t: str):
     return {
         "findings": findings,
         "top_tokens": top_tokens[:3],
-        "topology": topology
+        "topology": topology,
+        "restriction": restriction,
+        "badge_class": badge_class,
+        "targets": top_tokens, # Maps new data to old UI loop
+        "stego": stego_report
     }
 
 def analyze_trojan_context(token: str):
