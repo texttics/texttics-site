@@ -174,6 +174,30 @@ def build_invis_table():
         (0x1107F, 0x1107F),# Brahmi Number Joiner
         (0x110BD, 0x110BD),# Kaithi Number Sign
         (0x110CD, 0x110CD),# Kaithi Number Sign Above
+        (0x11446, 0x11446),# Newa Sandhi Mark
+        # --- NEW BATCH ---
+        (0x0600, 0x0605),  # Arabic Number Signs
+        (0x06DD, 0x06DD),  # Arabic End of Ayah
+        (0x08E2, 0x08E2),  # Arabic Disputed End of Ayah
+        (0x070F, 0x070F),  # Syriac SAM
+        (0x1BC9D, 0x1BC9E) # Duployan Controls
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # 6. Manual Patch for New List Items & Historic Controls
+    # Ensures detection in Stats/Atlas/Threat Score
+    apply_mask([
+        (0x180B, 0x180F),  # Mongolian FVS 1-4
+        (0x2065, 0x2065),  # Reserved
+        (0x1D159, 0x1D159),# Musical Null
+        (0x133FC, 0x133FC),# Egyptian Z015B
+        (0x16FE4, 0x16FE4),# Khitan Filler
+        (0x13439, 0x1343B),# Egyptian Insertions
+        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
+        (0x11A47, 0x11A47),# Zanabazar Subjoiner
+        (0x11A99, 0x11A99),# Soyombo Subjoiner
+        (0x1107F, 0x1107F),# Brahmi Number Joiner
+        (0x110BD, 0x110BD),# Kaithi Number Sign
+        (0x110CD, 0x110CD),# Kaithi Number Sign Above
         (0x11446, 0x11446) # Newa Sandhi Mark
     ], INVIS_DEFAULT_IGNORABLE)
 
@@ -1261,6 +1285,21 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
+
+    # --- Missing Arabic & Syriac Format Controls ---
+    0x0600: "[ARB:NUM]",       # Arabic Number Sign
+    0x0601: "[ARB:YEAR]",      # Arabic Sign Sanah
+    0x0602: "[ARB:FOOT]",      # Arabic Footnote Marker
+    0x0603: "[ARB:PAGE]",      # Arabic Sign Safha
+    0x0604: "[ARB:SAMV]",      # Arabic Sign Samvat
+    0x0605: "[ARB:ABV]",       # Arabic Number Mark Above
+    0x06DD: "[ARB:AYAH]",      # Arabic End of Ayah
+    0x08E2: "[ARB:DISP]",      # Arabic Disputed End of Ayah
+    0x070F: "[SYR:SAM]",       # Syriac Abbreviation Mark
+
+    # --- Missing Duployan Format Controls ---
+    0x1BC9D: "[DUP:THICK]",    # Duployan Thick Letter Selector
+    0x1BC9E: "[DUP:DBL]",      # Duployan Double Mark
 
     # --- Missing Egyptian Hieroglyph Extensions ---
     0x13439: "[EGY:INS_S]",    # Insertion Joiner Start
