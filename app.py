@@ -4574,7 +4574,11 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 if cp == 0xFEFF and i > 0: health_issues["bom_mid"].append(i)
                 if (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD):
                     health_issues["pua"].append(i)
-                if (0xFDD0 <= cp <= 0xFDEF) or ((cp & 0xFFFF) >= 0xFFFE):
+                # [FIX] Specific FDD0 Tracking
+                if 0xFDD0 <= cp <= 0xFDEF: 
+                    health_issues["fdd0"].append(i)
+                    health_issues["nonchar"].append(i) # Also count as general nonchar
+                elif (cp & 0xFFFF) >= 0xFFFE:
                     health_issues["nonchar"].append(i)
                 if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
 
@@ -4801,7 +4805,12 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
-    add_row("Noncharacter", len(health_issues["nonchar"]), health_issues["nonchar"], "warn")
+    # [FIX] Distinct FDD0 Row
+    add_row("CRITICAL: Process-Internal Nonchar (FDD0)", len(health_issues["fdd0"]), health_issues["fdd0"], "crit")
+    
+    # Filter generic nonchars to exclude FDD0 (avoid double reporting)
+    generic_nonchars = [x for x in health_issues["nonchar"] if x not in health_issues["fdd0"]]
+    add_row("Noncharacter", len(generic_nonchars), generic_nonchars, "warn")
     add_row("Surrogates (Broken)", len(health_issues["surrogate"]), health_issues["surrogate"], "crit")
     
     # PROTOCOL
