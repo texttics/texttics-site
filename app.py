@@ -13,7 +13,6 @@ import html
 import urllib.parse
 import base64
 import binascii
-import unicodedata as ud
 
 LOADING_LOCK = False
 
@@ -2564,6 +2563,8 @@ def compute_whitespace_topology(t):
     Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
     Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
     """
+    import unicodedata as ud
+    
     ws_stats = collections.Counter()
     
     # State tracking for CRLF
