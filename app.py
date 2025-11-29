@@ -5301,7 +5301,7 @@ def is_plausible_domain_candidate(token: str) -> bool:
 
 def compute_adversarial_metrics(t: str):
     """
-    Adversarial Engine v7 (Topology Restored + IDNA Scoring).
+    Adversarial Engine v8 (Topology Fix + A-Z Fix + Gate Enforcement).
     """
     if not t: return {}
     tokens = tokenize_forensic(t)
@@ -5310,8 +5310,8 @@ def compute_adversarial_metrics(t: str):
     top_tokens = []
     confusables_map = DATA_STORES.get("Confusables", {})
     
-    # Initialize Global Topology (The Dashboard Counters)
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
+    # Global Topology (Dashboard Counters)
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0 }
     
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
     
@@ -5324,7 +5324,7 @@ def compute_adversarial_metrics(t: str):
         token_families = set()
         threat_stack = []
 
-        # Gate
+        # [GATE] Apply the Plausibility Gate
         is_domain_candidate = is_plausible_domain_candidate(t_str)
         
         # --- 1. Run Analysis ---
@@ -5356,14 +5356,14 @@ def compute_adversarial_metrics(t: str):
                     
                     if idna_findings:
                         for f in idna_findings:
-                            cat = "SPOOFING"
-                            # Map types to pillars
+                            # Map Types to Dashboard Categories
+                            cat = "INJECTION" # Default for Protocol
                             if f['type'] == "GHOST": cat = "HIDDEN"
                             elif f['type'] == "AMBIGUITY": cat = "AMBIGUITY"
                             elif f['type'] == "COMPAT": cat = "SYNTAX"
                             elif f['type'] == "INVALID": cat = "SPOOFING"
                             
-                            # [FIX] Propagate Risk Score based on Severity
+                            # Scoring
                             risk_adder = 0
                             if f['lvl'] == "CRIT": risk_adder = 50
                             elif f['lvl'] == "HIGH": risk_adder = 30
@@ -5461,6 +5461,7 @@ def compute_adversarial_metrics(t: str):
                 # Don't double count per token
                 if t_type not in pillars_seen:
                     # Update the global topology dict defined outside the loop
+                    # Safe get/set
                     topology[t_type] = topology.get(t_type, 0) + 1
                     pillars_seen.add(t_type)
 
@@ -5513,12 +5514,10 @@ def compute_adversarial_metrics(t: str):
             'token': 'GLOBAL',
             'severity': 'warn'
         })
-        # Add to topology
         topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
 
     top_tokens.sort(key=lambda x: x['score'], reverse=True)
     
-    # Return the topology along with targets
     return {
         "findings": findings,
         "top_tokens": top_tokens[:3],
@@ -6315,11 +6314,11 @@ def analyze_idna_label(label: str):
     """
     Label-Centric Analyzer (Top-Tier).
     Handles Punycode decoding, IDNA2008 Categories, and UTS #46 Statuses.
+    Refined V3: Explicitly whitelists ASCII A-Z to prevent noise.
     """
     findings = []
     
     # 1. PUNYCODE DECODING
-    # Spec: Strip 'xn--' prefix before decoding
     analysis_target = label
     is_punycode = label.lower().startswith("xn--")
     
@@ -6330,7 +6329,7 @@ def analyze_idna_label(label: str):
             analysis_target = decoded
             findings.append({
                 "type": "INFO", "lvl": "LOW",
-                "desc": f"Punycode Label Decodes to: '{decoded}'"
+                "desc": f"Punycode Decodes to: '{decoded}'"
             })
         except Exception:
             return [{
@@ -6345,6 +6344,13 @@ def analyze_idna_label(label: str):
     for char in analysis_target:
         cp = ord(char)
         
+        # [CRITICAL FIX] Whitelist ASCII Alphanumeric
+        # IDNA2008 technically disallows uppercase A-Z (must be mapped to lower),
+        # but flagging them as "Strict Violation" is forensic noise.
+        # We ignore A-Z, a-z, 0-9, and Hyphen.
+        if (0x41 <= cp <= 0x5A) or (0x61 <= cp <= 0x7A) or (0x30 <= cp <= 0x39) or cp == 0x2D:
+            continue
+
         # --- A. IDNA2008 (Strict Lens) ---
         cat08 = idna2008.get(cp, "UNASSIGNED")
         
@@ -6365,28 +6371,24 @@ def analyze_idna_label(label: str):
             })
 
         # --- B. UTS #46 (Compatibility Lens) ---
-        # 1. Deviations (The Schism)
         if cp in idna46["deviation"]:
              findings.append({
                  "type": "AMBIGUITY", "lvl": "HIGH", 
                  "desc": f"UTS #46 Deviation: U+{cp:04X} (Legacy/Modern Mismatch)"
              })
-        # 2. Ignored (Ghosts)
         elif cp in idna46["ignored"]:
              findings.append({
                  "type": "GHOST", "lvl": "HIGH", 
                  "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"
              })
-        # 3. NV8 (Protocol Gap)
         elif cp in idna46["nv8"]:
              findings.append({
-                 "type": "AMBIGUITY", "lvl": "MED", 
+                 "type": "COMPAT", "lvl": "MED", 
                  "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X} (Protocol Gap)"
              })
-        # 4. XV8 (Version Gap)
         elif cp in idna46["xv8"]:
              findings.append({
-                 "type": "AMBIGUITY", "lvl": "MED", 
+                 "type": "COMPAT", "lvl": "MED", 
                  "desc": f"IDNA2008 Version Mismatch (XV8): U+{cp:04X}"
              })
             
