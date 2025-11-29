@@ -5343,6 +5343,148 @@ def is_plausible_domain_candidate(token: str) -> bool:
                 
     return True
 
+# ==========================================
+# [MODULE 6] SCIENTIFIC THREAT INTELLIGENCE
+# ==========================================
+
+def analyze_symbol_flood(t: str):
+    """
+    [PAPER 3: SSTA] Detects 'Symbol Cascade' attacks.
+    Attackers flood text with 'charged' punctuation (e.g. '......') 
+    to bias model sentiment/classification without changing words.
+    """
+    if not t: return None
+    
+    # 1. Symbol Density Check
+    # Count visible punctuation/symbols (excluding spaces)
+    sym_count = sum(1 for c in t if not c.isalnum() and not c.isspace())
+    density = sym_count / len(t)
+    
+    # 2. Cascade Detection (Run-Length Encoding for Symbols)
+    max_run = 0
+    max_char = ''
+    current_run = 0
+    prev_char = ''
+    
+    for char in t:
+        if not char.isalnum() and not char.isspace():
+            if char == prev_char:
+                current_run += 1
+            else:
+                current_run = 1
+            
+            if current_run > max_run:
+                max_run = current_run
+                max_char = char
+        else:
+            current_run = 0
+        prev_char = char
+        
+    # Thresholds based on SSTA Paper (Cascades often > 8 chars)
+    if max_run >= 8:
+        risk = 40
+        if max_run > 20: risk = 80 # Critical flood
+        
+        return {
+            "type": "CASCADE", 
+            "desc": f"Symbol Flood: '{max_char}' x{max_run}", 
+            "risk": risk,
+            "verdict": "SEMANTIC BIAS"
+        }
+        
+    # High density of non-repeating symbols is also suspicious (Replacement Attack)
+    if len(t) > 20 and density > 0.25:
+        return {
+            "type": "ANOMALY",
+            "desc": f"High Symbol Density ({int(density*100)}%)",
+            "risk": 30,
+            "verdict": "OBFUSCATION"
+        }
+        
+    return None
+
+def analyze_math_spoofing(t: str):
+    """
+    [PAPER 1: Special-Char] Detects Mathematical Alphanumeric spoofing.
+    Attackers replace 'Hello' with '𝐇𝐞𝐥𝐥𝐨' (U+1D400 block) to bypass 
+    tokenizers and safety filters.
+    """
+    # Range: U+1D400 (Math Bold A) to U+1D7FF (Math Monospace digits)
+    math_hits = 0
+    for char in t:
+        cp = ord(char)
+        if 0x1D400 <= cp <= 0x1D7FF:
+            math_hits += 1
+            
+    if math_hits > 0:
+        # If it looks like a word (multiple math chars), it's a spoof
+        if math_hits >= 3:
+            return {
+                "type": "SPOOFING",
+                "desc": f"Math Alphanumeric Spoof ({math_hits} chars)",
+                "risk": 75, # High risk as this is a known jailbreak vector
+                "verdict": "FILTER BYPASS"
+            }
+    return None
+
+def analyze_token_fragmentation(tokens: list):
+    """
+    [PAPER 2: Charmer] Detects 'Word Fragmentation' attacks.
+    Refined V2: Checks for LOCAL adjacency of micro-tokens (e.g., 'c h a r m'),
+    not just global counts.
+    """
+    if not tokens: return None
+    
+    micro_runs = 0
+    max_micro_run = 0
+    current_micro_run = 0
+    
+    total_alnum = 0
+    
+    # 1. Scan for contiguous runs of micro-tokens (len 1-3)
+    for tok_obj in tokens:
+        tk = tok_obj['token']
+        if tk.isalnum():
+            total_alnum += 1
+            if len(tk) <= 3:
+                current_micro_run += 1
+            else:
+                if current_micro_run > 1:
+                    micro_runs += 1
+                if current_micro_run > max_micro_run:
+                    max_micro_run = current_micro_run
+                current_micro_run = 0
+                
+    # Catch trailing run
+    if current_micro_run > 1:
+        micro_runs += 1
+        if current_micro_run > max_micro_run:
+            max_micro_run = current_micro_run
+            
+    # 2. Heuristic: "Charmer" Attack Pattern
+    # If we have runs of 3+ micro-tokens, it suggests active fragmentation (e.g. "s e c u r e")
+    if max_micro_run >= 3:
+         return {
+            "type": "OBFUSCATION",
+            "desc": f"Token Fragmentation (Max Run: {max_micro_run} short tokens)",
+            "risk": 60 + (max_micro_run * 2), # Scales with length
+            "verdict": "TOKENIZER ATTACK"
+        }
+
+    # 3. Fallback: Global Ratio (for massive scattering)
+    if total_alnum > 10:
+        single_chars = sum(1 for t in tokens if t['token'].isalnum() and len(t['token'])==1)
+        ratio = single_chars / total_alnum
+        if ratio > 0.5:
+            return {
+                "type": "OBFUSCATION",
+                "desc": f"High Micro-Token Density ({int(ratio*100)}%)",
+                "risk": 50,
+                "verdict": "TOKENIZER ATTACK"
+            }
+            
+    return None
+
 def compute_adversarial_metrics(t: str):
     """
     Adversarial Engine v8 (Topology Fix + A-Z Fix + Gate Enforcement).
@@ -5358,6 +5500,63 @@ def compute_adversarial_metrics(t: str):
     topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0 }
     
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
+
+    # --- [NEW] Global Scope Analyzers (Module 6) ---
+    
+    # 1. Symbol Flood (Paper 3: SSTA)
+    flood = analyze_symbol_flood(t)
+    if flood:
+        findings.append({
+            'family': f"[{flood['verdict']}]",
+            'desc': flood['desc'],
+            'token': 'GLOBAL',
+            'severity': 'crit' if flood['risk'] > 50 else 'warn'
+        })
+        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
+
+    # 2. Math Spoof (Paper 1: Special-Char)
+    math_spoof = analyze_math_spoofing(t)
+    if math_spoof:
+        findings.append({
+            'family': f"[{math_spoof['verdict']}]",
+            'desc': math_spoof['desc'],
+            'token': 'GLOBAL',
+            'severity': 'crit'
+        })
+        topology["SPOOFING"] += 1
+
+    # 3. Token Fragmentation (Paper 2: Charmer - Localized)
+    frag = analyze_token_fragmentation(tokens)
+    if frag:
+        findings.append({
+            'family': f"[{frag['verdict']}]",
+            'desc': frag['desc'],
+            'token': 'GLOBAL',
+            'severity': 'warn'
+        })
+        topology["HIDDEN"] += 1
+
+    # 4. [NEW] TAG Jailbreak Detection (Paper 1)
+    # Specifically looking for U+E007F (CANCEL TAG) and Tag Block
+    tag_cancel_count = t.count("\U000E007F")
+    tag_block_count = sum(1 for c in t if 0xE0000 <= ord(c) <= 0xE007E)
+    
+    if tag_cancel_count > 0:
+        findings.append({
+            'family': '[JAILBREAK]',
+            'desc': f"Cancel Tag (U+E007F) Detected (AI Jailbreak Signature)",
+            'token': 'GLOBAL',
+            'severity': 'crit'
+        })
+        topology["INJECTION"] += 1
+    elif tag_block_count > 0:
+        findings.append({
+            'family': '[STEGO]',
+            'desc': f"Unicode Tag Injection ({tag_block_count} chars)",
+            'token': 'GLOBAL',
+            'severity': 'warn'
+        })
+        topology["HIDDEN"] += 1
     
     for tok_obj in tokens:
         t_str = tok_obj['token']
@@ -5440,9 +5639,15 @@ def compute_adversarial_metrics(t: str):
                 lvl = "CRIT" if rest_risk > 80 else "HIGH"
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
             
-        # [HOMOGLYPH]
+        # [HOMOGLYPH] (Enhanced with Index-0 Weighting - Paper 2)
         conf_data = analyze_confusion_density(t_str, confusables_map)
         if conf_data:
+            # Attacks at start of word are more dangerous/effective
+            first_char_cp = ord(t_str[0])
+            if first_char_cp in confusables_map:
+                conf_data['risk'] = min(100, conf_data['risk'] + 20)
+                conf_data['desc'] += " (Start-Char)"
+                
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
@@ -5465,7 +5670,7 @@ def compute_adversarial_metrics(t: str):
             token_families.add("OBFUSCATION")
             threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
 
-        # [PERTURBATION]
+        # [PERTURBATION] (Enhanced with Prompt Injection Awareness - Paper 1)
         pert = analyze_structural_perturbation(t_str)
         if pert:
             token_score += pert['risk']
@@ -5473,8 +5678,13 @@ def compute_adversarial_metrics(t: str):
             token_families.add("PERTURBATION")
             
             is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
-            p_type = "SYNTAX" if is_bidi else "HIDDEN"
-            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
+            
+            # [NEW] Label Bidi as Injection (AI/Compiler)
+            p_type = "INJECTION" if is_bidi else "HIDDEN"
+            desc_label = pert['desc']
+            if is_bidi: desc_label += " (Prompt/Code Injection)"
+            
+            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": desc_label })
 
         # [TROJAN]
         trojan = analyze_trojan_context(t_str)
