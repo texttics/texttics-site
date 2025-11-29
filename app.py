@@ -2859,23 +2859,19 @@ def _parse_intentional(txt: str):
 # --- 1. IDNA2008 PARSER (Strict RFC 5892) ---
 def _parse_idna2008(txt: str):
     """
-    Parses Idna2008.txt.
-    Stores Strict Categories: PVALID, DISALLOWED, CONTEXTJ, etc.
-    Source: RFC 5892 / UTS #46 Section 9
+    Parses Idna2008.txt (RFC 5892).
+    Stores: PVALID, CONTEXTJ, CONTEXTO, DISALLOWED, UNASSIGNED.
     """
     store = DATA_STORES["Idna2008"] = {}
-    
     for line in txt.splitlines():
         if '#' in line: line = line.split('#')[0]
         if not line.strip(): continue
-        
         parts = [p.strip() for p in line.split(';')]
         if len(parts) < 2: continue
         
         code_range = parts[0]
         category = parts[1].strip()
         
-        # Resolve Range
         if '..' in code_range:
             start, end = map(lambda x: int(x, 16), code_range.split('..'))
         else:
@@ -2887,9 +2883,8 @@ def _parse_idna2008(txt: str):
 # --- 2. UTS #46 PARSER (Compatibility & NV8) ---
 def _parse_idna_mapping(txt: str):
     """
-    Parses IdnaMappingTable.txt.
-    Extracts Status (valid/mapped), Mappings, and IDNA2008 Flags (NV8/XV8).
-    Source: UTS #46 Section 5
+    Parses UTS #46 IdnaMappingTable.txt.
+    Stores Status, Mappings, NV8/XV8 flags.
     """
     store = DATA_STORES["IdnaMap"] = {
         "deviation": set(), "ignored": set(), "disallowed": set(), 
@@ -2897,12 +2892,7 @@ def _parse_idna_mapping(txt: str):
     }
     
     for line in txt.splitlines():
-        # Parsing logic that respects the 4-column format in UTS #46 Table 2b
-        # Field 0: Code Points
-        # Field 1: Status
-        # Field 2: Mapping
-        # Field 3: IDNA2008 Status (NV8/XV8)
-        
+        # Parsing 4-column format: Code; Status; Mapping; IDNA2008_Status
         raw_line = line.split('#')[0]
         if not raw_line.strip(): continue
         
@@ -2912,9 +2902,10 @@ def _parse_idna_mapping(txt: str):
         code_range = parts[0]
         status = parts[1].strip()
         
-        # Capture NV8/XV8 from Column 3 if present
-        is_nv8 = (len(parts) > 3 and "NV8" in parts[3])
-        is_xv8 = (len(parts) > 3 and "XV8" in parts[3])
+        # Check for NV8/XV8 in column 4 (index 3)
+        idna08_status = parts[3] if len(parts) > 3 else ""
+        is_nv8 = "NV8" in idna08_status
+        is_xv8 = "XV8" in idna08_status
         
         if '..' in code_range:
             start, end = map(lambda x: int(x, 16), code_range.split('..'))
@@ -5673,17 +5664,27 @@ def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
         if case_anom:
             threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
 
-        # I. IDNA PROTOCOL LENS (Top-Tier Dual Source)
-        # Only analyze tokens that look like domains (dots/hyphens) to avoid noise
+        # I. IDNA PROTOCOL LENS (Label-Centric)
+        # We only analyze tokens that look like domains (contain dot or xn--)
         if '.' in token or 'xn--' in token:
-            idna_findings = analyze_domain_token(token)
-            if idna_findings:
-                for f in idna_findings:
-                    threat_stack.append({
-                        "lvl": f['lvl'],
-                        "type": "INJECTION" if f['type'] in ("GHOST", "AMBIGUITY") else "SPOOFING",
-                        "desc": f['desc']
-                    })
+            # 1. Split into Labels (UTS #46 Step 3)
+            # Note: We split by '.' only. Full UTS #46 mapping handles 3002 etc., 
+            # but for Stage 1 heuristic, '.' is sufficient for tokenization.
+            labels = token.split('.')
+            
+            for label in labels:
+                if not label: continue # Skip empty labels
+                
+                # Analyze Label
+                label_findings = analyze_idna_label(label)
+                
+                if label_findings:
+                    for f in label_findings:
+                        threat_stack.append({
+                            "lvl": f['lvl'],
+                            "type": "INJECTION" if f['type'] in ("GHOST", "AMBIGUITY") else "SPOOFING",
+                            "desc": f['desc']
+                        })
 
         # --- Aggregate Token ---
         if threat_stack:
@@ -6184,64 +6185,84 @@ def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
         
     return drift_profile
 
-def analyze_domain_token(token: str):
+def analyze_idna_label(label: str):
     """
-    Lens B: Professional Protocol Analysis (IDNA).
-    Checks: Punycode Validity -> UTS #46 Ambiguity -> IDNA2008 Strictness.
+    Label-Centric Analyzer (Top-Tier).
+    Handles Punycode decoding, IDNA2008 Categories, and UTS #46 Statuses.
     """
     findings = []
     
-    # A. PUNYCODE CHECK (Structure)
-    # Browsers interpret xn-- labels differently
-    if token.lower().startswith("xn--"):
+    # 1. PUNYCODE DECODING
+    # Spec: Strip 'xn--' prefix before decoding
+    analysis_target = label
+    is_punycode = label.lower().startswith("xn--")
+    
+    if is_punycode:
         try:
-            decoded = token.encode('ascii').decode('punycode')
+            payload = label[4:] # Strip 'xn--'
+            decoded = payload.encode('ascii').decode('punycode')
+            analysis_target = decoded
             findings.append({
                 "type": "INFO", "lvl": "LOW",
-                "desc": f"Punycode Decodes to: '{decoded}'"
+                "desc": f"Punycode Label Decodes to: '{decoded}'"
             })
         except Exception:
             return [{
                 "type": "CRITICAL", "lvl": "CRIT",
-                "desc": "Invalid Punycode (xn--) - Decoding Failed"
+                "desc": "Invalid Punycode Label (Decoding Failed)"
             }]
 
-    # B. DUAL-SOURCE CHECK (UTS #46 + IDNA2008)
+    # 2. DUAL-LENS ANALYSIS (On the Decoded/Raw Unicode Label)
     idna46 = DATA_STORES.get("IdnaMap", {})
     idna2008 = DATA_STORES.get("Idna2008", {})
     
-    for char in token:
+    for char in analysis_target:
         cp = ord(char)
         
-        # 1. UTS #46 Risks (The Mismatch / Schism)
+        # --- A. IDNA2008 (Strict Lens) ---
+        cat08 = idna2008.get(cp, "UNASSIGNED")
+        
+        if cat08 in ("DISALLOWED", "UNASSIGNED"):
+            findings.append({
+                "type": "INVALID", "lvl": "HIGH", 
+                "desc": f"IDNA2008 Strict Violation: U+{cp:04X} ({cat08})"
+            })
+        elif cat08 == "CONTEXTJ":
+            findings.append({
+                "type": "CONTEXT", "lvl": "MED", 
+                "desc": f"Context-Dependent Joiner (CONTEXTJ): U+{cp:04X} (Unverified)"
+            })
+        elif cat08 == "CONTEXTO":
+            findings.append({
+                "type": "CONTEXT", "lvl": "MED", 
+                "desc": f"Context-Dependent Char (CONTEXTO): U+{cp:04X} (Unverified)"
+            })
+
+        # --- B. UTS #46 (Compatibility Lens) ---
+        # 1. Deviations (The Schism)
         if cp in idna46["deviation"]:
-             # These resolve differently in Transitional (Legacy) vs Nontransitional
-             # Source: UTS #46 Table 1
              findings.append({
                  "type": "AMBIGUITY", "lvl": "HIGH", 
                  "desc": f"UTS #46 Deviation: U+{cp:04X} (Legacy/Modern Mismatch)"
              })
+        # 2. Ignored (Ghosts)
         elif cp in idna46["ignored"]:
-             # Characters that are valid in text but vanish in DNS
              findings.append({
                  "type": "GHOST", "lvl": "HIGH", 
                  "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"
              })
+        # 3. NV8 (Protocol Gap)
         elif cp in idna46["nv8"]:
-             # Valid in UTS #46 but Excluded in IDNA2008
-             # Source: UTS #46 Section 5
              findings.append({
                  "type": "AMBIGUITY", "lvl": "MED", 
-                 "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X}"
+                 "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X} (Protocol Gap)"
              })
-             
-        # 2. IDNA2008 Risks (The Strict Standard)
-        # Source: RFC 5892 Derived Property
-        cat08 = idna2008.get(cp, "UNASSIGNED")
-        if cat08 == "DISALLOWED":
-            findings.append({"type": "INVALID", "lvl": "MED", "desc": f"IDNA2008 Disallowed: U+{cp:04X}"})
-        elif cat08 == "UNASSIGNED":
-            findings.append({"type": "INVALID", "lvl": "MED", "desc": f"IDNA2008 Unassigned: U+{cp:04X}"})
+        # 4. XV8 (Version Gap)
+        elif cp in idna46["xv8"]:
+             findings.append({
+                 "type": "AMBIGUITY", "lvl": "MED", 
+                 "desc": f"IDNA2008 Version Mismatch (XV8): U+{cp:04X}"
+             })
             
     return findings
 
