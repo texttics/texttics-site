@@ -1563,56 +1563,65 @@ We aligned the Code Taxonomy with the User Interface to ensure "Forensic Honesty
 * **Safety:** The IDNA engine explicitly whitelists ASCII Alphanumerics (A-Z, 0-9) to prevent "Boy Who Cried Wolf" alerts on standard text.
 
 
+***
+
 ## 🛡️ Addendum #6: The "Scientific Threat Intelligence" Upgrade (AI Security & De-Obfuscation)
 
-**Session Goal:** To transition the tool from a "Structural Profiler" to a **"Predictive Adversarial Simulator."** We integrated findings from three seminal academic papers on LLM Jailbreaking and NLP Evasion, while strictly adhering to the "Post-Clipboard" (no raw byte) architecture.
+**Session Goal:** To transition the tool from a "Structural Profiler" to a **"Predictive Adversarial Simulator."** We integrated findings from three seminal academic papers on LLM Jailbreaking, NLP Evasion ("Charmer"), and Semantic Bias ("SSTA"), while strictly adhering to the "Post-Clipboard" (no raw byte) architecture.
 
 ### 1. New Core Engine: The "Scientific Threat Intelligence" Module (Group 2.F)
-We implemented a dedicated analysis block (`[MODULE 6]`) derived from specific academic attack vectors:
+
+We implemented a dedicated analysis block (`[MODULE 6]`) powered by a **Forensic Threat Dictionary** derived from SecLists, FuzzDB, and LLM Jailbreak research.
 
 * **LLM Jailbreak Detection (Paper 1: Special-Character Attacks):**
-    * **Math Alphanumeric Spoofing:** Detects the substitution of Latin letters with Mathematical Bold/Italic symbols (`U+1D400` block) used to bypass tokenizers.
-    * **Invisible Fragmentation (The "Sandwich" Detector):** A surgical heuristic that flags invisible characters (`ZWSP`, `SHY`) *only* when they split two alphanumeric characters (e.g., `k<ZWSP>ill`), identifying active tokenizer evasion.
-    * **TAG Injection:** Explicitly raised `U+E007F` (Cancel Tag) to **CRITICAL** severity as a known prompt injection signature.
+    * **Math Alphanumeric Spoofing:** Detects the substitution of Latin letters with Mathematical Bold/Italic symbols (`U+1D400` block) used to bypass tokenizers (e.g., `𝐇𝐞𝐥𝐥𝐨`).
+    * **Invisible Fragmentation (The "Sandwich" Detector):** A surgical heuristic that flags invisible characters (`ZWSP`, `SHY`) *only* when they split two alphanumeric characters (e.g., `k<ZWSP>ill`). This distinguishes active tokenizer evasion from accidental formatting.
+    * **TAG Injection:** Explicitly raised `U+E007F` (Cancel Tag) to **CRITICAL** severity as a known prompt injection signature used to "reset" LLM context windows.
 
 * **Optimized Evasion Detection (Paper 2: Charmer):**
-    * **Localized Token Fragmentation:** Replaced global counting with a "Re-Join Heuristic." It scans for contiguous runs of "micro-tokens" (len 1-3) that look like fragmented words (e.g., `c h a r m`).
+    * **Targeted Re-Assembly (High Fidelity):** Replaced global counting with a **"Re-Glue Engine."** It scans for fragmented micro-tokens (e.g., `s h e l l`) and attempts to re-assemble them into known dangerous keywords (`shell`, `admin`, `ignore instructions`) from a categorized threat vocabulary.
+    * **Localized Fragmentation (Heuristic):** Detects contiguous runs of 4+ micro-tokens (len 1-3) as a fallback for unknown payloads.
     * **First-Character Weighting:** Updated the Homoglyph engine to assign higher risk scores if an anomaly occurs at **Index 0** of a token, violating standard "Robust Word Recognition" defense constraints.
 
 * **Semantic Bias Detection (Paper 3: SSTA):**
-    * **Symbol Flooding:** Detects "Cascades" (runs of >8 identical symbols) used to manipulate model attention and sentiment.
-    * **Punctuation Skew:** Calculates the ratio of "Grammatical" vs. "Charged" punctuation (e.g., `~`, `^`, `_`) to detect Replacement Attacks that alter classification without changing words.
+    * **Symbol Flooding (Cascades):** Detects runs of >8 identical symbols (e.g., `~~~~~~`) used to manipulate model attention and sentiment classification.
+    * **Punctuation Skew (Replacement Attack):** Calculates the ratio of "Grammatical" punctuation (`.`, `,`) vs. "Charged" symbols (`~`, `^`, `_`). High skew (>70% Charged) flags a "Replacement Attack" designed to alter classification without changing words.
 
 ### 2. New Core Engine: The "Deep-Dive" Normalizer (Recursive De-Obfuscation)
+
 We acknowledged that attackers use the clipboard to transport *encoded* payloads. We implemented a recursive stripping engine (`recursive_deobfuscate`) that peels back layers until the "Naked Payload" is revealed.
 
 * **Layer Support:**
     * **URL Encoding:** Recursive unquote (`%2522` $\to$ `%22` $\to$ `"`).
     * **HTML Entities:** Named, Decimal, and Hex decoding.
     * **Escape Sequences:** Unicode (`\uXXXX`), Hex (`\xHH`), and **Octal** (`\141`) escapes.
-    * **SQL Evasion:** De-obfuscates concatenated `CHAR(83)+CHAR(69)...` patterns.
+    * **SQL Evasion:** De-obfuscates concatenated `CHAR(83)+CHAR(69)...` patterns used in SQLi.
     * **Base64 Heuristic:** Detects and decodes Base64 blobs >16 chars if they resolve to high-entropy readable text.
 
-* **The "Payload Alert" UI:** If layers are stripped, a high-visibility "DEEP OBFUSCATION DETECTED" alert is injected into the report, showing the **Naked Payload** alongside the original input.
+* **The "Payload Alert" UI:** If layers are stripped, a high-visibility **"🚨 DEEP OBFUSCATION DETECTED"** alert is injected into the report, displaying the **Naked Payload** alongside the original input and listing the exact layers removed.
 
 ### 3. New Core Engine: The "Predictive Attack Simulator"
+
 We moved beyond analyzing what the text *is* to predicting what it *will become* when processed by backend systems.
 
 * **WAF Policy Simulator:**
-    * Scans the "Naked Payload" against a hardened blacklist (derived from SiteMinder/Broadcom research) to detect **XSS** (`<script>`), **SQLi** (`UNION SELECT`), and **Path Traversal** (`../`) vectors.
+    * Scans the "Naked Payload" against a hardened blacklist (derived from SiteMinder/Broadcom research) to detect **XSS** (`<script>`, `javascript:`), **SQLi** (`UNION SELECT`, `DROP TABLE`), and **Path Traversal** (`../`, `\`) vectors.
 * **Predictive Normalizer Table:**
     * Generates a comparative preview of the text under **NFC**, **NFD**, **NFKC**, and **NFKD** forms.
     * **Visual Drift:** Highlights characters that change identity (e.g., `U+FF1C` Fullwidth `<` $\to$ ASCII `<`) in **Red**, flagging "Normalization Injection" risks.
 * **Case Collision Simulator:**
     * Detects "Length Expansion" attacks (e.g., `ß` $\to$ `SS`) that cause buffer overflows.
-    * Detects "WAF Bypass" vectors (e.g., `ſ` $\to$ `S`, `ı` $\to$ `I`).
+    * Detects "WAF Bypass" vectors (e.g., `ſ` (Long S) $\to$ `S`, `ı` (Dotless I) $\to$ `I`).
 
 ### 4. New Heuristic: "Code Masquerade" (Solders Malware)
+
 * **Logic:** Detects text that has valid code syntax (`{`, `}`, `function`, `=>`) but uses "Alien" (non-Latin) scripts for identifiers.
 * **Target:** Specifically identifies the obfuscation technique used in the `solders` npm malware package (Katakana variable names).
 
 ### 5. Architectural Refinements
+
+* **Unified Threat Scoring:** The "Score Soup" problem was resolved. The Global Threat Score is now derived from the **Maximum Token Risk**, ensuring that a single Critical (100) token correctly flags the entire document as "WEAPONIZED."
 * **Bidi Context:** Updated Bidi control messaging to explicitly warn of **"AI Prompt Injection"** alongside "Trojan Source."
-* **Punycode Forward-Prediction:** The "IDNA Lens" now shows the **Wire Format** (`xn--...`) for any Unicode domain, not just the decoded version.
+* **Punycode Forward-Prediction:** The "IDNA Lens" now shows the **Wire Format** (`xn--...`) for any Unicode domain, allowing the analyst to see the ASCII reality of a Homoglyph domain.
 
 **Status:** Stage 1 is now a fully realized **Forensic Science Instrument**, capable of detecting not just "Rot" (bad encoding) but "Malice" (active evasion, jailbreaking, and obfuscation) across the entire modern threat landscape.
