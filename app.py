@@ -9392,7 +9392,17 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
         # Skip Astral Count (it's consumed by UTF-16 card)
         elif k == "Astral Count":
             continue
-        
+        # [NEW] Specific Renderer for Zalgo Verdict in Detail Cards
+        elif k == "Avg. Marks per Grapheme":
+            verdict = stats_dict.get("seg_verdict", "")
+            badge_cls = stats_dict.get("seg_class", "")
+            
+            badge_html = ""
+            if verdict:
+                # Add the badge below the number
+                badge_html = f'<div style="margin-top:6px;"><span class="badge {badge_cls}">{verdict}</span></div>'
+            
+            html.append(f'<div class="card"><strong>{k}</strong><div>{v}</div>{badge_html}</div>')
         # --- RENDER PATH 3: Simple Cards ---
         elif isinstance(v, (int, float)):
             count = v
