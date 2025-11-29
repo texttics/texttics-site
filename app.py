@@ -3193,6 +3193,10 @@ async def load_unicode_data():
                 "Logical_Order_Exception": "LogicalOrderException"
             })
 
+        # --- IDNA Parsers ---
+        if idna_map_txt: _parse_idna_mapping(idna_map_txt)
+        if idna_2008_txt: _parse_idna2008(idna_2008_txt)
+        
         # --- Add Manual Security Overrides ---
         _add_manual_data_overrides()    
         
