@@ -7893,7 +7893,11 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     skeleton_string = ""
     skel_metrics = {} 
     final_html_report = ""
-
+    
+    # Initialize counters for the Overlay Engine
+    threat_score = 0
+    forensic_flags = []
+    
     # ----------------------------------------------------
     # [NEW] Overlay Confusable Engine (Stage 1.1 - U+0334..U+0338)
     # ----------------------------------------------------
@@ -7959,6 +7963,16 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             "description": desc
         })
 
+    # Merge Overlay flags into main threat_flags dict if any exist
+    for flag in forensic_flags:
+        # Convert list format to dict format expected by renderer
+        key = f"{flag['severity']}: {flag['metric']}"
+        threat_flags[key] = {
+            'count': 1, # Grouping handled by description
+            'positions': [flag['description']],
+            'severity': 'crit' if flag['severity'] == 'WEAPONIZED' else 'warn'
+        }
+    
     # --- 1. Early Exit ---
     if not t:
         return {
