@@ -2856,11 +2856,12 @@ def _parse_intentional(txt: str):
     # Convert to frozenset for immutability after loading
     DATA_STORES["IntentionalPairs"] = frozenset(store)
 
-# --- 1. IDNA2008 PARSER (Strict Categories) ---
+# --- 1. IDNA2008 PARSER (Strict RFC 5892) ---
 def _parse_idna2008(txt: str):
     """
-    Parses Idna2008.txt (RFC 5892).
-    Stores: PVALID, CONTEXTJ, CONTEXTO, DISALLOWED, UNASSIGNED.
+    Parses Idna2008.txt.
+    Stores Strict Categories: PVALID, DISALLOWED, CONTEXTJ, etc.
+    Source: RFC 5892 / UTS #46 Section 9
     """
     store = DATA_STORES["Idna2008"] = {}
     
@@ -2874,6 +2875,7 @@ def _parse_idna2008(txt: str):
         code_range = parts[0]
         category = parts[1].strip()
         
+        # Resolve Range
         if '..' in code_range:
             start, end = map(lambda x: int(x, 16), code_range.split('..'))
         else:
@@ -2882,11 +2884,12 @@ def _parse_idna2008(txt: str):
         for cp in range(start, end + 1):
             store[cp] = category
 
-# --- 2. UTS #46 PARSER (Mappings & Status) ---
+# --- 2. UTS #46 PARSER (Compatibility & NV8) ---
 def _parse_idna_mapping(txt: str):
     """
     Parses IdnaMappingTable.txt.
-    Extracts Status, Mappings, and NV8/XV8 flags.
+    Extracts Status (valid/mapped), Mappings, and IDNA2008 Flags (NV8/XV8).
+    Source: UTS #46 Section 5
     """
     store = DATA_STORES["IdnaMap"] = {
         "deviation": set(), "ignored": set(), "disallowed": set(), 
@@ -2894,9 +2897,12 @@ def _parse_idna_mapping(txt: str):
     }
     
     for line in txt.splitlines():
-        # Preserve NV8/XV8 from the line BEFORE stripping comments if possible,
-        # but standard format puts them in column 4 (index 3).
-        # We process the split parts directly.
+        # Parsing logic that respects the 4-column format in UTS #46 Table 2b
+        # Field 0: Code Points
+        # Field 1: Status
+        # Field 2: Mapping
+        # Field 3: IDNA2008 Status (NV8/XV8)
+        
         raw_line = line.split('#')[0]
         if not raw_line.strip(): continue
         
@@ -2906,7 +2912,7 @@ def _parse_idna_mapping(txt: str):
         code_range = parts[0]
         status = parts[1].strip()
         
-        # Check for NV8/XV8 in column 4 (if it exists)
+        # Capture NV8/XV8 from Column 3 if present
         is_nv8 = (len(parts) > 3 and "NV8" in parts[3])
         is_xv8 = (len(parts) > 3 and "XV8" in parts[3])
         
@@ -6186,6 +6192,7 @@ def analyze_domain_token(token: str):
     findings = []
     
     # A. PUNYCODE CHECK (Structure)
+    # Browsers interpret xn-- labels differently
     if token.lower().startswith("xn--"):
         try:
             decoded = token.encode('ascii').decode('punycode')
@@ -6194,7 +6201,6 @@ def analyze_domain_token(token: str):
                 "desc": f"Punycode Decodes to: '{decoded}'"
             })
         except Exception:
-            # Structurally broken Punycode is a Critical Threat
             return [{
                 "type": "CRITICAL", "lvl": "CRIT",
                 "desc": "Invalid Punycode (xn--) - Decoding Failed"
@@ -6209,13 +6215,28 @@ def analyze_domain_token(token: str):
         
         # 1. UTS #46 Risks (The Mismatch / Schism)
         if cp in idna46["deviation"]:
-             findings.append({"type": "AMBIGUITY", "lvl": "HIGH", "desc": f"UTS #46 Deviation: U+{cp:04X} (Protocol Mismatch)"})
+             # These resolve differently in Transitional (Legacy) vs Nontransitional
+             # Source: UTS #46 Table 1
+             findings.append({
+                 "type": "AMBIGUITY", "lvl": "HIGH", 
+                 "desc": f"UTS #46 Deviation: U+{cp:04X} (Legacy/Modern Mismatch)"
+             })
         elif cp in idna46["ignored"]:
-             findings.append({"type": "GHOST", "lvl": "HIGH", "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"})
+             # Characters that are valid in text but vanish in DNS
+             findings.append({
+                 "type": "GHOST", "lvl": "HIGH", 
+                 "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"
+             })
         elif cp in idna46["nv8"]:
-             findings.append({"type": "AMBIGUITY", "lvl": "MED", "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X}"})
+             # Valid in UTS #46 but Excluded in IDNA2008
+             # Source: UTS #46 Section 5
+             findings.append({
+                 "type": "AMBIGUITY", "lvl": "MED", 
+                 "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X}"
+             })
              
         # 2. IDNA2008 Risks (The Strict Standard)
+        # Source: RFC 5892 Derived Property
         cat08 = idna2008.get(cp, "UNASSIGNED")
         if cat08 == "DISALLOWED":
             findings.append({"type": "INVALID", "lvl": "MED", "desc": f"IDNA2008 Disallowed: U+{cp:04X}"})
@@ -7091,8 +7112,13 @@ def render_invisible_atlas(t: str):
             cat_badge = "BIDI"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_TAG: 
             cat_badge = "TAG"; cat_class = "atlas-badge-crit"
+        # [NEW: Distinct handling for Critical Controls]
         elif mask & INVIS_CRITICAL_CONTROL: 
-            cat_badge = "CONTROL"; cat_class = "atlas-badge-crit"
+            # Differentiate NUL/FDD0 from others
+            if cp == 0x0000 or (0xFDD0 <= cp <= 0xFDEF) or cp >= 0xFFFE:
+                cat_badge = "DANGER"; cat_class = "atlas-badge-crit"
+            else:
+                cat_badge = "CONTROL"; cat_class = "atlas-badge-crit"
         elif mask & INVIS_HIGH_RISK_MASK: 
             cat_badge = "RISK"; cat_class = "atlas-badge-warn"
         elif mask & INVIS_ZERO_WIDTH_SPACING: 
