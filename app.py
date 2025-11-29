@@ -7762,6 +7762,7 @@ def _evaluate_adversarial_risk(intermediate_data):
         # Defaults
         risk_level = 0 # 0=Low, 1=Med, 2=High, 3=Crit
         triggers = []
+        token_topology_hits = set() # Avoid double counting per token
         
         # --- Rule Set 1: Skeleton Collisions (The highest trust violation) ---
         if token["skeleton"] in collision_skeletons:
@@ -7824,10 +7825,25 @@ def _evaluate_adversarial_risk(intermediate_data):
         token["triggers"] = triggers
         risk_stats[final_risk] += 1
 
+        # Update Topology
+        for hit in token_topology_hits:
+            topology[hit] += 1
+            
+        # Add to Targets list if High/Critical (for the dashboard top list)
+        if risk_level >= 2:
+            targets.append({
+                "token": token["text"],
+                "verdict": triggers[0] if triggers else "High Risk",
+                "stack": [{"lvl": final_risk, "type": list(token_topology_hits)[0] if token_topology_hits else "GENERIC", "desc": t} for t in triggers],
+                "score": risk_level * 25 # Roughly map 0-3 to 0-100
+            })
+
     # Return the fully enriched report
     return {
         "tokens": tokens,
         "collisions": collisions,
+        "topology": topology,
+        "targets": targets,
         "stats": {
             "total": len(tokens),
             "identifiers": sum(1 for t in tokens if t["kind"] == "identifier"),
