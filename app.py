@@ -5269,60 +5269,67 @@ def analyze_context_lure(token: str):
 
 def is_plausible_domain_candidate(token: str) -> bool:
     """
-    Forensic Gate: Determines if a token is worth analyzing as a domain/IDN.
-    Rejects tokens that are clearly binary garbage, file paths, or system strings.
+    Forensic Gate v2: Strict Structural Filter.
+    Rejects binary blobs, file paths, and random prose.
     """
-    # 1. Length Bounds (DNS labels are max 63, full domains max 253)
-    if len(token) > 253 or len(token) < 3:
-        return False
-        
-    # 2. Critical Exclusion (Data Corruption)
-    # If it contains NUL, Replacement Char, or Noncharacters, it's not a domain.
-    # It's a binary blob. Let the Integrity/Decode Health module handle it.
+    if len(token) > 253 or len(token) < 3: return False
+    
+    # 1. Critical Exclusion (Data Corruption)
     for char in token:
         cp = ord(char)
-        if cp == 0x0000 or cp == 0xFFFD: return False
-        if 0xFDD0 <= cp <= 0xFDEF: return False # Process Internal
-        if (cp & 0xFFFF) >= 0xFFFE: return False # End of plane nonchars
+        if cp == 0 or cp == 0xFFFD: return False
+        if 0xFDD0 <= cp <= 0xFDEF: return False
+        if (cp & 0xFFFF) >= 0xFFFE: return False
         
+    # 2. Structural Shape (Must look like a domain)
+    has_dot = '.' in token
+    looks_puny = token.lower().startswith("xn--")
+    
+    # If no dot and not punycode, it's just a word, not a domain.
+    if not has_dot and not looks_puny:
+        return False
+        
+    # 3. ASCII Sanity (If purely ASCII, must use domain alphabet)
+    if token.isascii():
+        # Allow only: Alphanumeric, Dot, Hyphen
+        # Reject: Slash, Backslash, Brackets, etc.
+        for c in token:
+            if not (c.isalnum() or c in ".-"):
+                return False
+                
     return True
 
 def compute_adversarial_metrics(t: str):
     """
-    Calculates deep forensic metrics per token.
-    COMBINED v6: Plausibility Gate + Dual-Lens IDNA + Strict Stack Architecture.
+    Adversarial Engine v7 (Topology Restored + IDNA Scoring).
     """
     if not t: return {}
-    
-    # Use the new Forensic Tokenizer
     tokens = tokenize_forensic(t)
     
     findings = []
     top_tokens = []
     confusables_map = DATA_STORES.get("Confusables", {})
     
-    # Severity Weights for Sorting
+    # Initialize Global Topology (The Dashboard Counters)
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
+    
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
     
     for tok_obj in tokens:
         t_str = tok_obj['token']
-        # Skip pure whitespace tokens
         if not t_str.strip(): continue
         
         token_score = 0
         token_reasons = []
         token_families = set()
-        
-        # Initialize threat_stack for this token (CRITICAL Fix)
         threat_stack = []
 
-        # [GATE] Apply the Plausibility Gate
-        # Prevents "Binary Garbage" from triggering IDNA alarms
+        # Gate
         is_domain_candidate = is_plausible_domain_candidate(t_str)
         
         # --- 1. Run Analysis ---
         
-        # [CONTEXT] Check for Lures first
+        # [CONTEXT]
         lure = analyze_context_lure(t_str)
         if lure:
             token_score += lure['risk']
@@ -5330,9 +5337,9 @@ def compute_adversarial_metrics(t: str):
             token_families.add("CONTEXT")
             threat_stack.append({ "lvl": "MED", "type": "CONTEXT", "desc": lure['desc'] })
 
-        # [TYPOSQUATTING & IDNA] (Only run if plausible)
+        # [TYPOSQUATTING & IDNA]
         if is_domain_candidate:
-            # A. Typosquatting
+            # Typosquatting
             domain_risk = analyze_domain_heuristics(t_str)
             if domain_risk:
                 token_score += domain_risk['risk']
@@ -5340,8 +5347,7 @@ def compute_adversarial_metrics(t: str):
                 token_families.add("SPOOFING") 
                 threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
 
-            # B. IDNA Protocol Lens (Top-Tier Label Analysis)
-            # We use the Label-Centric analyzer from the previous turn
+            # IDNA Lens
             if '.' in t_str or 'xn--' in t_str:
                 labels = t_str.split('.')
                 for label in labels:
@@ -5350,14 +5356,20 @@ def compute_adversarial_metrics(t: str):
                     
                     if idna_findings:
                         for f in idna_findings:
-                            # Map Types to Dashboard Categories
                             cat = "SPOOFING"
+                            # Map types to pillars
                             if f['type'] == "GHOST": cat = "HIDDEN"
                             elif f['type'] == "AMBIGUITY": cat = "AMBIGUITY"
                             elif f['type'] == "COMPAT": cat = "SYNTAX"
                             elif f['type'] == "INVALID": cat = "SPOOFING"
                             
-                            # Add to stack
+                            # [FIX] Propagate Risk Score based on Severity
+                            risk_adder = 0
+                            if f['lvl'] == "CRIT": risk_adder = 50
+                            elif f['lvl'] == "HIGH": risk_adder = 30
+                            elif f['lvl'] == "MED": risk_adder = 10
+                            token_score += risk_adder
+                            
                             threat_stack.append({
                                 "lvl": f['lvl'],
                                 "type": cat,
@@ -5386,7 +5398,7 @@ def compute_adversarial_metrics(t: str):
             lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
             threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
 
-        # [SPOOFING] (Class Consistency / Sore Thumb)
+        # [SPOOFING]
         sore = analyze_class_consistency(t_str)
         if sore:
             token_score += sore['risk']
@@ -5394,7 +5406,7 @@ def compute_adversarial_metrics(t: str):
             token_families.add("SPOOFING")
             threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
             
-        # [OBFUSCATION] (Normalization Hazards)
+        # [OBFUSCATION]
         norm = analyze_normalization_hazard_advanced(t_str)
         if norm:
             token_score += norm['risk']
@@ -5402,7 +5414,7 @@ def compute_adversarial_metrics(t: str):
             token_families.add("OBFUSCATION")
             threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
 
-        # [PERTURBATION] (Broken Words)
+        # [PERTURBATION]
         pert = analyze_structural_perturbation(t_str)
         if pert:
             token_score += pert['risk']
@@ -5439,14 +5451,27 @@ def compute_adversarial_metrics(t: str):
             token_families.add("SPOOFING")
             threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
 
-        # --- 2. Aggregation ---
-        if token_score > 0:
+        # --- 2. Aggregation & Topology ---
+        if token_score > 0 or threat_stack:
             
+            # [FIX] Update Global Topology from Stack
+            pillars_seen = set()
+            for item in threat_stack:
+                t_type = item['type']
+                # Don't double count per token
+                if t_type not in pillars_seen:
+                    # Update the global topology dict defined outside the loop
+                    topology[t_type] = topology.get(t_type, 0) + 1
+                    pillars_seen.add(t_type)
+
             fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
             
             sev = 'ok'
             if token_score >= 80: sev = 'crit'
             elif token_score >= 40: sev = 'warn'
+            
+            # Ensure we have a score if stack exists but risk adder wasn't enough
+            if not token_score and threat_stack: token_score = 10 
             
             findings.append({
                 'family': fam_str,
@@ -5455,8 +5480,7 @@ def compute_adversarial_metrics(t: str):
                 'severity': sev
             })
             
-            # Reconstruct the "Stack" for the UI
-            # Sort stack by severity (CRIT > HIGH > MED > LOW)
+            # Sort stack by severity
             threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
             
             # Calculate vectors
@@ -5465,7 +5489,6 @@ def compute_adversarial_metrics(t: str):
             except: b64 = "Error"
             hex_v = "".join(f"\\x{b:02X}" for b in t_str.encode("utf-8"))
             
-            # Use the highest severity item as the primary verdict
             primary_verdict = "Unknown Risk"
             if threat_stack:
                 primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
@@ -5490,12 +5513,16 @@ def compute_adversarial_metrics(t: str):
             'token': 'GLOBAL',
             'severity': 'warn'
         })
+        # Add to topology
+        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
 
     top_tokens.sort(key=lambda x: x['score'], reverse=True)
     
+    # Return the topology along with targets
     return {
         "findings": findings,
-        "top_tokens": top_tokens[:3]
+        "top_tokens": top_tokens[:3],
+        "topology": topology
     }
 
 def analyze_trojan_context(token: str):
