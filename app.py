@@ -2984,7 +2984,7 @@ async def load_unicode_data():
             "emoji-data.txt",
             "emoji-test.txt",
             "inverse_confusables.json",
-            "ascii_confusables.json".
+            "ascii_confusables.json",
             "IdnaMappingTable.txt",
             "Idna2008.txt"
         ]
