@@ -3886,21 +3886,38 @@ def compute_statistical_profile(t: str):
             stats["ascii_density"] = round((ascii_bytes / total_bytes) * 100, 1)
     except: pass
 
-    # 2. Tokens & Payloads (Expanded to Top 12)
     try:
         raw_tokens = t.split()
         
-        # Payload Heuristics
+        # Payload Heuristics (Base64 / Hex)
         payload_candidates = []
-        b64_pattern = re.compile(r'^[A-Za-z0-9+/]{16,}={0,2}$')
+        # Base64: A-Z, a-z, 0-9, +, / (and URL-safe - _)
+        b64_pattern = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
         hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
+        
         for tok in raw_tokens:
             if len(tok) > 16:
-                if b64_pattern.match(tok):
-                    payload_candidates.append({"type": "Base64-like", "token": tok[:32] + "..." if len(tok)>32 else tok, "len": len(tok)})
-                elif hex_pattern.match(tok) and len(tok) % 2 == 0:
-                    payload_candidates.append({"type": "Hex-like", "token": tok[:32] + "..." if len(tok)>32 else tok, "len": len(tok)})
-        if payload_candidates: stats["payloads"] = payload_candidates[:3]
+                p_type = None
+                if b64_pattern.match(tok): p_type = "Base64"
+                elif hex_pattern.match(tok) and len(tok) % 2 == 0: p_type = "Hex"
+                
+                if p_type:
+                    # Calculate Local Entropy for this specific token
+                    # This distinguishes "padding" from "encrypted data"
+                    b_counts = Counter(tok)
+                    p_ent = 0.0
+                    for count in b_counts.values():
+                        p = count / len(tok)
+                        p_ent -= p * math.log2(p)
+                    
+                    payload_candidates.append({
+                        "type": p_type, 
+                        "token": tok[:32] + "..." if len(tok)>32 else tok, 
+                        "len": len(tok),
+                        "entropy": round(p_ent, 2)
+                    })
+
+        if payload_candidates: stats["payloads"] = payload_candidates[:5]
 
         # Normalized Tokens
         tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
@@ -6940,15 +6957,44 @@ def render_statistical_profile(stats):
          "Range: 0.0 (Null) to 8.0 (Random)")
     ))
 
-    # 2. Encoded Payloads
+    # 2. Encoded Payloads (Rich Heuristic Alert)
     payloads = stats.get("payloads", [])
     if payloads:
         p_chips = []
         for p in payloads:
             js_tok = _escape_for_js(p['token'])
-            safe_lbl = _escape_html(f"{p['type']} ({p['len']})")
-            p_chips.append(f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" style="background:#fff7ed; border:1px solid #fed7aa; padding:1px 6px; border-radius:4px; cursor:pointer; font-size:0.7rem; color:#9a3412; margin-right:4px; display:inline-flex; align-items:center;">⚠️ {safe_lbl}</button>')
-        rows.append(make_row("Encoded Payloads", "".join(p_chips), "", ("PAYLOAD DETECTION", "Heuristic scan for Base64/Hex patterns > 16 chars.", "Regex Match", "Potential embedded data.")))
+            ent = p.get('entropy', 0.0)
+            
+            # Styling: Red border if high entropy (likely encrypted), Orange if mid
+            style_border = "#fed7aa" # Orange (Default)
+            style_bg = "#fff7ed"
+            style_text = "#9a3412"
+            icon = "⚠️"
+            
+            if ent > 5.8: # Base64 max entropy is 6.0, Hex is 4.0. High relative entropy = data.
+                style_border = "#fecaca" # Red
+                style_bg = "#fef2f2"
+                style_text = "#dc2626"
+                icon = "🚨"
+            
+            safe_lbl = f"<b>{p['type']}</b> <span style='opacity:0.8; font-weight:400; font-size:0.65rem;'>L:{p['len']} H:{ent}</span>"
+            
+            chip = (
+                f'<button onclick="window.TEXTTICS_FIND_SEQ(\'{js_tok}\')" '
+                f'style="background:{style_bg}; border:1px solid {style_border}; padding:2px 8px; '
+                f'border-radius:4px; cursor:pointer; font-size:0.7rem; color:{style_text}; '
+                f'margin-right:6px; display:inline-flex; align-items:center; font-family:var(--font-mono);">'
+                f'{icon} {safe_lbl}</button>'
+            )
+            p_chips.append(chip)
+        
+        rows.append(make_row(
+            "Encoded Payloads", "".join(p_chips), "",
+            ("HEURISTIC PAYLOADS", 
+             "Pattern matching for encoded strings (Base64/Hex) > 16 chars. H=Local Entropy (bits). High entropy (>5.5 for B64) implies non-text payload.", 
+             "Regex(CharSet) + Shannon Entropy", 
+             "Target: Hidden shellcode, keys, or exfiltrated data.")
+        ))
 
     # 3. Lexical Density
     ttr = float(stats.get("ttr", 0.0))
