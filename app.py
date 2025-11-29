@@ -8180,18 +8180,27 @@ def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=Non
         element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
         
 def render_integrity_matrix(rows, text_context=None):
-    """Renders the forensic integrity matrix with Nested Ledger."""
+    """Renders the forensic integrity matrix with Nested Ledger and Pinned Headers."""
     tbody = document.getElementById("integrity-matrix-body")
     tbody.innerHTML = ""
     
     INTEGRITY_KEY = "Integrity Level (Heuristic)"
-    sorted_rows = sorted(rows, key=lambda r: "000" if r["label"] == INTEGRITY_KEY else r["label"])
+    DECODE_KEY = "Decode Health Grade"
+    
+    # [FIX] Sorting Logic: Pin Decode Health (000) and Integrity Level (001) to top
+    def sort_key(r):
+        lbl = r["label"]
+        if lbl == DECODE_KEY: return "000"
+        if lbl == INTEGRITY_KEY: return "001"
+        return lbl
+        
+    sorted_rows = sorted(rows, key=sort_key)
     
     for row in sorted_rows:
         tr = document.createElement("tr")
         
-        if row["label"] == INTEGRITY_KEY:
-            # --- SCORE & LEDGER ROW ---
+        # --- HEADER ROWS (Score & Health) ---
+        if row["label"] in (INTEGRITY_KEY, DECODE_KEY):
             tr.className = f"flag-row-{row['severity']}"
             tr.style.borderBottom = "2px solid var(--color-border)"
             
@@ -8209,8 +8218,9 @@ def render_integrity_matrix(rows, text_context=None):
             td_badge.appendChild(span)
             
             td_ledger = document.createElement("td")
-            ledger_data = row.get("ledger", [])
             
+            # Handle Ledger (Integrity Level only)
+            ledger_data = row.get("ledger", [])
             if ledger_data:
                 details = document.createElement("details")
                 details.className = "threat-ledger-details"
@@ -8253,6 +8263,12 @@ def render_integrity_matrix(rows, text_context=None):
                 table.appendChild(tbody_inner)
                 details.appendChild(table)
                 td_ledger.appendChild(details)
+            elif row["label"] == DECODE_KEY:
+                # [NEW] Description for Decode Health
+                if row['severity'] == 'ok':
+                    td_ledger.textContent = "No encoding artifacts detected."
+                else:
+                    td_ledger.innerHTML = "<strong>Artifacts Found:</strong> See flags below for details."
             else:
                 td_ledger.textContent = "Structure is Pristine."
             
