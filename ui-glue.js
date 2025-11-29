@@ -64,6 +64,13 @@ const JS_INVISIBLE_MAPPING = {
     0xE0001: "[TAG:LANG]", 0xE007F: "[TAG:CANCEL]"
 };
 
+// Mirrors the logic in app.py for the Copy Report deobfuscator
+for (let i = 0xFDD0; i <= 0xFDEF; i++) {
+    // Determine offset for display (00 to 1F)
+    let offset = (i - 0xFDD0).toString(16).toUpperCase().padStart(2, '0');
+    JS_INVISIBLE_MAPPING[i] = `[NON:${offset}]`;
+}
+
 // Populate Ranges for C0/C1 (Wave 3)
 for (let cp = 0x01; cp < 0x20; cp++) {
     if (!JS_INVISIBLE_MAPPING[cp] && ![0x09, 0x0A, 0x0D].includes(cp)) {
