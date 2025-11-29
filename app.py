@@ -2558,6 +2558,108 @@ def tokenize_forensic(text: str) -> List[ForensicToken]:
 # [MODULE 2] VERIFICATION BENCH (Target Matcher)
 # ==========================================
 
+def compute_whitespace_topology(t):
+    """
+    Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
+    Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
+    """
+    ws_stats = collections.Counter()
+    
+    # State tracking for CRLF
+    prev_was_cr = False
+    
+    # Flags for Verdict
+    has_lf = False
+    has_cr = False
+    has_crlf = False
+    has_nel = False
+    has_ls_ps = False
+
+    for ch in t:
+        # --- A. Newline State Machine ---
+        if ch == '\n':
+            if prev_was_cr:
+                ws_stats['CRLF (Windows)'] += 1
+                has_crlf = True
+                prev_was_cr = False # Consumed
+            else:
+                ws_stats['LF (Unix)'] += 1
+                has_lf = True
+        elif ch == '\r':
+            if prev_was_cr: # Double CR case (CR + CR)
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+            prev_was_cr = True # Defer count until next char check
+        elif ch == '\u0085':
+            ws_stats['NEL (Next Line)'] += 1
+            has_nel = True
+            prev_was_cr = False
+        elif ch == '\u2028':
+            ws_stats['LS (Line Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        elif ch == '\u2029':
+            ws_stats['PS (Para Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        else:
+            # Not a newline, but check if we have a dangling CR pending
+            if prev_was_cr:
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+                prev_was_cr = False
+            
+            # --- B. Whitespace Classification ---
+            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
+            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
+            elif ch == '\t': ws_stats['TAB'] += 1
+            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
+            elif ud.category(ch) == 'Zs':
+                name = ud.name(ch, 'UNKNOWN SPACE')
+                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
+
+    # Final check for trailing CR
+    if prev_was_cr:
+        ws_stats['CR (Legacy Mac)'] += 1
+        has_cr = True
+
+    # --- C. Heuristic Alerts ---
+    alerts = []
+    
+    # 1. Mixed Line Endings
+    newline_types = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
+    if newline_types > 1:
+        alerts.append("⚠️ Mixed Line Endings (Consistency Failure)")
+    
+    # 2. Mixed Spacing (Phishing Vector)
+    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
+        alerts.append("⚠️ Mixed Spacing (ASCII + NBSP)")
+        
+    if has_nel or has_ls_ps:
+        alerts.append("ℹ️ Unicode Newlines (NEL/LS/PS) Detected")
+
+    # --- D. Render ---
+    rows = ""
+    for k, v in ws_stats.most_common():
+        rows += f"<tr><td>{k}</td><td style='text-align:right; font-family:monospace;'>{v}</td></tr>"
+        
+    if not rows: rows = "<tr><td colspan='2' style='color:#999'>No whitespace detected.</td></tr>"
+    
+    alert_html = ""
+    if alerts:
+        alert_html = f"<div style='color:#b02a37; font-size:0.85em; margin-bottom:8px; font-weight:bold;'>{'<br>'.join(alerts)}</div>"
+
+    html = f"""
+    <div class="ws-topology-card" style="margin-top:1rem; border:1px solid #dee2e6; padding:10px; border-radius:4px; background:#f8f9fa;">
+        <h4 style="margin:0 0 8px 0; font-size:0.9rem; color:#495057;">Whitespace & Line Ending Topology</h4>
+        {alert_html}
+        <table style="width:100%; font-size:0.85rem;">
+            {rows}
+        </table>
+    </div>
+    """
+    return html
+
 import difflib
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
@@ -3771,13 +3873,40 @@ def compute_grapheme_stats(t: str):
     summary_stats = {"Total Graphemes": total_graphemes}
     
     # Build Grapheme Forensics (Module 1.5)
+
     avg_marks = (total_mark_count / total_graphemes) if total_graphemes > 0 else 0
+
+    # [NEW] Segmentation Complexity Verdict (Zalgo / Grapheme Complexity)
+    # Ref: UTR #36 "Grapheme Cluster Security"
+    seg_verdict = "LOW"
+    seg_reason = "Simple clusters."
+    seg_class = "badge-ok"
+
+    if total_graphemes >= 3: # Ignore microscopic samples
+        # Thresholds (Conservative / Latin-Centric Default)
+        # Note: Non-Latin scripts (Thai, Tibetan) naturally use more marks. 
+        # A truly script-aware engine would relax this if 'Latin' is not dominant.
+        high_max, high_avg = 5, 0.8
+        med_max, med_avg = 2, 0.2
+
+        if max_marks >= high_max or avg_marks >= high_avg:
+            seg_verdict = "HIGH (Zalgo)"
+            seg_reason = "Stacking Abuse Detected (Rendering Instability Risk)"
+            seg_class = "badge-crit"
+        elif max_marks >= med_max or avg_marks >= med_avg:
+            seg_verdict = "MED (Complex)"
+            seg_reason = "Complex Clusters (Emoji Sequences or Heavy Diacritics)"
+            seg_class = "badge-warn"
+    
     grapheme_forensic_stats = {
         "Single-Code-Point": single_cp_count,
         "Multi-Code-Point": multi_cp_count,
         "Total Combining Marks": total_mark_count,
         "Max Marks in one Grapheme": max_marks,
-        "Avg. Marks per Grapheme": round(avg_marks, 2)
+        "Avg. Marks per Grapheme": round(avg_marks, 2),
+        "seg_verdict": seg_verdict,
+        "seg_reason": seg_reason,
+        "seg_class": seg_class
     }
     
     # [NEW] Pass the NFC data out via the stats dictionary 
@@ -9092,12 +9221,17 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
         # --- RENDER PATH 2.5: High-Density Forensic Quad Cards ---
         
         # 1. VISUAL REALITY (Graphemes)
+        # 1. VISUAL REALITY (Graphemes)
         elif k == "Total Graphemes":
             icon = METRIC_ICONS["eye"]
             
             # Micro-Facts
             avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
             rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
+            
+            # [NEW] Retrieve Verdict
+            verdict = stats_dict.get("seg_verdict", "LOW")
+            badge_cls = stats_dict.get("seg_class", "badge-ok")
             
             # Scientifically Rigorous Tooltip
             tooltip = (
@@ -9110,7 +9244,8 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                 "• >2.0 marks/graph: Rendering Stack Overflow Risk\n\n"
                 "[ THIS SAMPLE ]\n"
                 f"• Mark Density: {avg_marks} marks per grapheme\n"
-                f"• RGI Emoji Sequences: {rgi_count}"
+                f"• RGI Emoji Sequences: {rgi_count}\n"
+                f"• Complexity: {verdict}"
             )
 
             html.append(
@@ -9123,7 +9258,8 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                     f'</div>'
                     f'<div class="metric-facts">'
                         f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
-                        f'<div class="fact-row">Emoji: <strong>{rgi_count}</strong></div>'
+                        # [NEW] Injected Row
+                        f'<div class="fact-row">Complexity: <span class="badge {badge_cls}" style="font-size:0.7em;">{verdict}</span></div>'
                     f'</div>'
                 f'</div>'
                 f'</div>'
@@ -11811,6 +11947,11 @@ def update_all(event=None):
     
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
+    # [NEW] Whitespace & Newline Topology (The Frankenstein Detector)
+    ws_topology_html = compute_whitespace_topology(t)
+    ws_container = document.getElementById("ws-topology-container")
+    if ws_container:
+        ws_container.innerHTML = ws_topology_html
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
     render_matrix_table(bidi_run_stats, "bidi-run-matrix-body")
     render_matrix_table(wb_run_stats, "wordbreak-run-matrix-body")
