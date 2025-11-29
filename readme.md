@@ -1500,3 +1500,64 @@ We closed the loop between abstract statistics and the raw text.
 
 * **Click-to-Find:** Every "Top Token" and "Payload Candidate" is rendered as an interactive chip. Clicking a token (e.g., `'admin'`) triggers the **Forensic Finder**, which instantly scrolls to and highlights instances of that token in the raw input.
 * **Clipboard Integration:** The **"Copy Full Report"** feature was upgraded with a Python-to-JS bridge (`py_get_stat_report_text`) to ensure the rich statistical profile is included in the plaintext evidence export.
+
+***
+
+## 🛡️ Addendum #5: The "State-Level" Forensic Upgrade (IDNA & Decode Health)
+
+**Session Goal:** To elevate the tool from a "Passive Detector" to a **"Forensic Arbitrator."** We implemented a **Dual-Lens Architecture** that separates "Data Corruption" (Physical Integrity) from "Protocol Ambiguity" (Logical Safety), resolving the classic forensic noise problem where binary garbage is misidentified as a domain spoof.
+
+### 1. Architectural Shift: The "Dual-Lens" System
+We acknowledged that a text string exists in two simultaneous realities: as a **Byte Stream** (Storage) and as a **Network Identifier** (Protocol). We engineered two orthogonal lenses to analyze these realities without cross-contamination.
+
+* **Lens A: The Decode Health Monitor (Integrity)**
+    * **Scope:** The entire input stream.
+    * **Mission:** Detect "Physical Rot"—characters that should never exist in valid interchange text.
+    * **New Signals:**
+        * **`U+FDD0..U+FDEF` (Process-Internal):** Now explicitly mapped and flagged as **DANGER**. These indicate internal memory leaks or fuzzer artifacts.
+        * **`U+0000` (NUL):** Elevated to **FATAL** severity (Binary Injection).
+    * **The "Traffic Light" Dashboard:** A new, high-priority row in the Integrity Profile that synthesizes a grade (e.g., `CRITICAL — Noncharacters; Null Bytes`) separate from the general heuristic score.
+
+* **Lens B: The Protocol Ambiguity Engine (IDNA)**
+    * **Scope:** Strictly gated. Only runs on tokens identified as **"Plausible Domain Candidates"** (must contain structure like `.` or `xn--` and pass a binary sanity check).
+    * **Mission:** Detect "Logical Schisms"—domain labels that resolve differently depending on the software version (Browser vs. Backend).
+    * **Dual-Source Truth:** We now cross-reference **UTS #46** (Compatibility/Transitional) against strict **IDNA2008** (RFC 5892) to identify gaps.
+
+### 2. Deep Forensic Capabilities (The "Top Tier")
+
+#### A. The "Plausibility Gate" (Noise Reduction)
+We solved the "False Positive" crisis where binary blobs (`Sys﷐CoreDump...`) were generating thousands of "IDNA Violation" alerts.
+* **Mechanism:** `is_plausible_domain_candidate(token)`
+* **Logic:** If a token contains `NUL`, `Replacement Char`, or `Noncharacters`, it is immediately disqualified from Protocol Analysis. It is handed exclusively to the **Decode Health** lens.
+* **Result:** 100% separation between "Corrupt Files" and "Malicious Domains."
+
+#### B. Punycode Intelligence (Recursive Scanning)
+The tool no longer just flags `xn--` as "Punycode." It performs a **Recursive Forensic Scan**:
+1.  **Detect:** Identifies the ACE prefix.
+2.  **Decode:** strips the prefix and decodes the payload to Unicode.
+3.  **Analyze:** Runs the full threat engine on the *decoded* string.
+4.  **Verdict:** If the *hidden* payload contains threats (e.g., `xn--broken-code` decoding to `br˓oken˓` with a forbidden Modifier Letter), it flags the Punycode itself as a **SPOOFING (CRIT)** vector.
+
+#### C. The "Protocol Schism" Detector
+We implemented a nuanced taxonomy for IDNA threats, moving beyond simple "Allowed/Disallowed" flags:
+* **`AMBIGUITY` (Violet):** **Deviations** (e.g., `ß`, `ς`). Characters that change form between IDNA2003 and IDNA2008.
+* **`GHOST` (Gray):** **Ignored** (e.g., `SHY`, `ZWJ`). Characters that exist in the clipboard but vanish in DNS resolution.
+* **`COMPAT` (Gap):** **NV8/XV8**. Characters allowed by browsers (UTS #46) but forbidden by strict protocols (IDNA2008).
+* **`INVALID` (Red):** **Strict Violations**. Characters strictly forbidden in all standards (e.g., Emoji in IDNA2008).
+
+### 3. Visual & Taxonomy Calibration
+We aligned the Code Taxonomy with the User Interface to ensure "Forensic Honesty."
+
+* **Taxonomy Normalization:**
+    * **`PROTOCOL`:** Now specifically refers to IDNA/Ambiguity issues.
+    * **`INJECTION`:** Reserved for Bidi Overrides and Trojan Source attacks.
+    * **`OBFUSCATION`:** Covers Invisible clusters, Ghosts, and Zalgo.
+* **Visual Language:**
+    * Added **Violet** badges (`.th-med`) for Protocol Ambiguity (signaling "Dual Nature").
+    * Added **Strikethrough/Gray** badges (`.th-ghost`) for Ignored Characters (signaling "Disappearance").
+    * Added **Red** badges (`.atlas-badge-crit`) for Internal Noncharacters in the Atlas.
+
+### 4. Technical Specifications
+* **Data Sources:** Added `IdnaMappingTable.txt` and `Idna2008.txt` to the virtual file system.
+* **Performance:** All IDNA checks are O(1) lookups against pre-parsed sets.
+* **Safety:** The IDNA engine explicitly whitelists ASCII Alphanumerics (A-Z, 0-9) to prevent "Boy Who Cried Wolf" alerts on standard text.
