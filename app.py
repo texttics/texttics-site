@@ -5756,9 +5756,17 @@ def compute_adversarial_metrics(t: str):
 
     # --- [LEGACY RESTORATION] Restriction Level Logic ---
     scripts_found = set()
+    has_math_spoof = False
+    
     for char in t:
         cp = ord(char)
         sc = _find_in_ranges(cp, "Scripts")
+        blk = _find_in_ranges(cp, "Blocks")
+        
+        # Special handling for Math Spoofing Block
+        if blk == "Mathematical Alphanumeric Symbols":
+            has_math_spoof = True
+            
         if sc and sc not in ("Common", "Inherited", "Unknown"):
             scripts_found.add(sc)
             
@@ -5766,7 +5774,10 @@ def compute_adversarial_metrics(t: str):
     badge_class = "intel-badge-danger"
     count = len(scripts_found)
     
-    if count == 0:
+    if has_math_spoof:
+        restriction = "SPOOFING (MATH ALPHANUMERIC)"
+        badge_class = "intel-badge-crit"
+    elif count == 0:
         if all(ord(c) < 128 for c in t):
             restriction = "ASCII-ONLY"
             badge_class = "intel-badge-safe"
@@ -5777,11 +5788,17 @@ def compute_adversarial_metrics(t: str):
         restriction = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
         badge_class = "intel-badge-safe"
     elif count == 2:
-        restriction = "MINIMALLY RESTRICTIVE" 
-        badge_class = "intel-badge-warn"
+        # If we have Latin + (Cyrillic OR Greek), it's High Risk Mixed
+        s_list = list(scripts_found)
+        if "Latin" in s_list and ("Cyrillic" in s_list or "Greek" in s_list):
+             restriction = "HIGH RISK MIX (CONFUSABLE)"
+             badge_class = "intel-badge-crit"
+        else:
+             restriction = "MINIMALLY RESTRICTIVE" 
+             badge_class = "intel-badge-warn"
     else:
-        restriction = "UNRESTRICTED"
-        badge_class = "intel-badge-danger"
+        restriction = "UNRESTRICTED (CHAOTIC)"
+        badge_class = "intel-badge-crit"
 
     # --- [NEW] Global Scope Analyzers (Module 6) ---
     
@@ -6085,14 +6102,30 @@ def compute_adversarial_metrics(t: str):
 
     top_tokens.sort(key=lambda x: x['score'], reverse=True)
     
+    # Normalize Scores for UI Consistency
+    # If we have a CRITICAL finding (100), the global score should reflect that.
+    max_token_score = 0
+    if top_tokens:
+        max_token_score = max(t['score'] for t in top_tokens)
+        
+    # Ensure findings list doesn't have duplicates based on token+verdict
+    unique_findings = []
+    seen_hashes = set()
+    for f in findings:
+        h = f"{f['token']}:{f['family']}"
+        if h not in seen_hashes:
+            unique_findings.append(f)
+            seen_hashes.add(h)
+
     return {
-        "findings": findings,
+        "findings": unique_findings,
         "top_tokens": top_tokens[:3],
         "topology": topology,
         "restriction": restriction,
         "badge_class": badge_class,
-        "targets": top_tokens, # Maps new data to old UI loop
-        "stego": stego_report
+        "targets": top_tokens, 
+        "stego": stego_report,
+        "max_risk": max_token_score # Hint for UI
     }
 
 def analyze_trojan_context(token: str):
