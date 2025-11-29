@@ -5521,6 +5521,43 @@ def analyze_invisible_fragmentation(t: str):
                 }
     return None
 
+def analyze_punctuation_skew(t: str):
+    """
+    [PAPER 3: SSTA] Detects 'Replacement' attacks by analyzing Symbol Distribution.
+    Normal text is dominated by Grammatical punctuation (.,:;).
+    Adversarial text is dominated by 'Charged' symbols (~_^|) used to bias models.
+    """
+    # 1. Define Sets
+    # Grammatical: High frequency in natural language
+    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-', '(', ')'}
+    # Charged: Low frequency in prose, high frequency in exploits/code
+    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
+    
+    gram_count = 0
+    charged_count = 0
+    
+    for char in t:
+        if char in grammatical: gram_count += 1
+        elif char in charged: charged_count += 1
+            
+    total_sym = gram_count + charged_count
+    if total_sym < 5: return None # Not enough data
+    
+    # 2. Calculate Skew
+    # If Charged symbols make up > 70% of all punctuation, it's anomalous for prose.
+    charged_ratio = charged_count / total_sym
+    
+    if charged_ratio > 0.70 and charged_count > 3:
+        # High skew towards non-grammatical symbols
+        return {
+            "type": "SKEW",
+            "desc": f"Abnormal Punctuation Distribution ({int(charged_ratio*100)}% Rare/Charged)",
+            "risk": 45,
+            "verdict": "REPLACEMENT ATTACK"
+        }
+        
+    return None
+
 def compute_adversarial_metrics(t: str):
     """
     Adversarial Engine v8 (Topology Fix + A-Z Fix + Gate Enforcement).
@@ -5593,6 +5630,17 @@ def compute_adversarial_metrics(t: str):
             'severity': 'warn'
         })
         topology["HIDDEN"] += 1
+
+    # 5. [NEW] Punctuation Skew (Paper 3: Replacement Attack)
+    skew = analyze_punctuation_skew(t)
+    if skew:
+        findings.append({
+            'family': f"[{skew['verdict']}]",
+            'desc': skew['desc'],
+            'token': 'GLOBAL',
+            'severity': 'warn'
+        })
+        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
     
     for tok_obj in tokens:
         t_str = tok_obj['token']
