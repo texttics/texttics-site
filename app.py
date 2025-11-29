@@ -8945,139 +8945,110 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     
     element.innerHTML = "".join(html) + legend_html
 
-def render_invisible_atlas(invisible_counts, invisible_positions=None):
+def compute_whitespace_topology(t):
     """
-    Renders the 'Invisible Atlas' - A forensic-grade legend of all hidden characters.
-    Features: 4-Tier Legality, Smart Symbol Decoding, Risk-Based Sorting, and Aggregated Summary.
+    Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
+    Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
     """
-    if not invisible_counts:
-        return '<div class="empty-state">No invisible characters detected.</div>', ""
-
-    # ---------------------------------------------------------
-    # 1. FORENSIC CLASSIFICATION LOGIC
-    # ---------------------------------------------------------
-    processed_rows = []
-    category_agg = collections.Counter() # For the summary bar
     
-    # Tier 0: Benign Typographic (Gray) - Standard formatting
-    TIER_0_BENIGN = {0x00AD, 0x200B, 0x2060, 0xFEFF, 0x034F, 0x200E, 0x200F} 
-    # Tier 1: Script/Emoji Context (Yellow) - Necessary glue
-    TIER_1_SCRIPT = {0x200C, 0x200D} 
-    # Tier 2: Risky/Bidi (Orange) - Explicit overrides
-    TIER_2_RISKY = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0x061C}
+    import unicodedata as ud
     
-    for char_code, count in invisible_counts.items():
-        char = chr(char_code)
-        
-        # --- A. Name Resolution ---
-        name = "Unknown"
-        try: name = ud.name(char)
-        except: 
-            if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
-            else: name = "UNASSIGNED / CONTROL"
+    ws_stats = collections.Counter()
+    
+    # State tracking for CRLF
+    prev_was_cr = False
+    
+    # Flags for Verdict
+    has_lf = False
+    has_cr = False
+    has_crlf = False
+    has_nel = False
+    has_ls_ps = False
 
-        # --- B. Smart Visual & Category Decoding ---
-        symbol = "."
-        category_slug = "UNKNOWN"
-        
-        # Tags (Plane 14)
-        if 0xE0000 <= char_code <= 0xE007F:
-            tag_char = chr(char_code - 0xE0000)
-            if 0xE0020 <= char_code <= 0xE007E:
-                symbol = f"[TAG:{tag_char}]"
-            elif char_code == 0xE007F:
-                symbol = "[TAG:CANCEL]"
+    for ch in t:
+        # --- A. Newline State Machine ---
+        if ch == '\n':
+            if prev_was_cr:
+                ws_stats['CRLF (Windows)'] += 1
+                has_crlf = True
+                prev_was_cr = False # Consumed
             else:
-                symbol = "[TAG:SPEC]"
-            category_slug = "TAG"
-
-        # Variation Selectors
-        elif 0xFE00 <= char_code <= 0xFE0F:
-            symbol = f"[VS{char_code - 0xFE00 + 1}]"
-            category_slug = "SELECTOR"
-        elif 0xE0100 <= char_code <= 0xE01EF:
-            symbol = f"[VS{char_code - 0xE0100 + 17}]"
-            category_slug = "SELECTOR"
-            
-        # Common Invisibles
-        elif char_code == 0x200B: symbol = "[ZWSP]"; category_slug = "ZW-SPACE"
-        elif char_code == 0x200D: symbol = "[ZWJ]"; category_slug = "JOINER"
-        elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
-        elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
-        
-        # Bidi
-        elif char_code in TIER_2_RISKY:
-            symbol = "[BIDI]"
-            category_slug = "BIDI"
-            
-        # C0 Controls
-        elif 0x00 <= char_code <= 0x1F:
-            symbol = f"[CTL:{char_code:02X}]"
-            if char_code == 0x00: category_slug = "NULL"
-            elif char_code == 0x09: category_slug = "TAB"
-            elif char_code in [0x0A, 0x0D]: category_slug = "NEWLINE"
-            else: category_slug = "CONTROL"
-            
+                ws_stats['LF (Unix)'] += 1
+                has_lf = True
+        elif ch == '\r':
+            if prev_was_cr: # Double CR case (CR + CR)
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+            prev_was_cr = True # Defer count until next char check
+        elif ch == '\u0085':
+            ws_stats['NEL (Next Line)'] += 1
+            has_nel = True
+            prev_was_cr = False
+        elif ch == '\u2028':
+            ws_stats['LS (Line Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        elif ch == '\u2029':
+            ws_stats['PS (Para Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
         else:
-            symbol = "[INV]"
-            category_slug = "FORMAT"
+            # Not a newline, but check if we have a dangling CR pending
+            if prev_was_cr:
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+                prev_was_cr = False
+            
+            # --- B. Whitespace Classification ---
+            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
+            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
+            elif ch == '\t': ws_stats['TAB'] += 1
+            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
+            elif ud.category(ch) == 'Zs':
+                name = ud.name(ch, 'UNKNOWN SPACE')
+                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
 
-        # --- C. Forensic Legality Tiering ---
-        tier_rank = 99 # Lower is worse (for sorting)
-        tier_badge = ""
-        tier_class = ""
+    # Final check for trailing CR
+    if prev_was_cr:
+        ws_stats['CR (Legacy Mac)'] += 1
+        has_cr = True
+
+    # --- C. Heuristic Alerts ---
+    alerts = []
+    
+    # 1. Mixed Line Endings
+    newline_types = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
+    if newline_types > 1:
+        alerts.append("⚠️ Mixed Line Endings (Consistency Failure)")
+    
+    # 2. Mixed Spacing (Phishing Vector)
+    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
+        alerts.append("⚠️ Mixed Spacing (ASCII + NBSP)")
         
-        if char_code == 0x0000:
-             tier_rank = 0
-             tier_badge = "🔴 FATAL (Null)"
-             tier_class = "atlas-badge-crit"
-             category_agg["FATAL"] += count
-        elif 0xE0000 <= char_code <= 0xE007F:
-             tier_rank = 1
-             tier_badge = "🔴 Illegal (Tag)"
-             tier_class = "atlas-badge-crit"
-             category_agg["ILLEGAL"] += count
-        elif char_code in TIER_2_RISKY:
-            tier_rank = 2
-            tier_badge = "🟠 Risky (Bidi)"
-            tier_class = "atlas-badge-high"
-            category_agg["RISKY"] += count
-        elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
-            tier_rank = 3
-            tier_badge = "🟠 Restricted"
-            tier_class = "atlas-badge-high"
-            category_agg["RESTRICTED"] += count
-        elif char_code in TIER_1_SCRIPT or category_slug == "SELECTOR":
-            tier_rank = 4
-            tier_badge = "🟡 Script/Emoji"
-            tier_class = "atlas-badge-warn"
-            category_agg["SCRIPT"] += count
-        elif char_code in TIER_0_BENIGN or category_slug in ["TAB", "NEWLINE"]:
-            tier_rank = 5
-            tier_badge = "✅ Typographic"
-            tier_class = "atlas-badge-ok"
-            category_agg["BENIGN"] += count
-        else:
-            tier_rank = 6
-            tier_badge = "⚪ Format"
-            tier_class = "atlas-badge-neutral"
-            category_agg["OTHER"] += count
+    if has_nel or has_ls_ps:
+        alerts.append("ℹ️ Unicode Newlines (NEL/LS/PS) Detected")
 
-        processed_rows.append({
-            "rank": tier_rank,
-            "count": count,
-            "html": f"""
-            <tr>
-                <td class="symbol-col"><span class="atlas-glyph">{symbol}</span></td>
-                <td class="code-col">U+{char_code:04X}</td>
-                <td class="name-col" title="{name}">{name}</td>
-                <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
-                <td class="count-col">{count}</td>
-                <td class="action-col">
-                    <button class="find-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})">Find</button>
-                </td>
-            </tr>"""
-        })
+    # --- D. Render ---
+    rows = ""
+    for k, v in ws_stats.most_common():
+        rows += f"<tr><td>{k}</td><td style='text-align:right; font-family:monospace;'>{v}</td></tr>"
+        
+    if not rows: rows = "<tr><td colspan='2' style='color:#999'>No whitespace detected.</td></tr>"
+    
+    alert_html = ""
+    if alerts:
+        alert_html = f"<div style='color:#b02a37; font-size:0.85em; margin-bottom:8px; font-weight:bold;'>{'<br>'.join(alerts)}</div>"
+
+    html = f"""
+    <div class="ws-topology-card" style="margin-top:1rem; border:1px solid #dee2e6; padding:10px; border-radius:4px; background:#f8f9fa;">
+        <h4 style="margin:0 0 8px 0; font-size:0.9rem; color:#495057;">Whitespace & Line Ending Topology</h4>
+        {alert_html}
+        <table style="width:100%; font-size:0.85rem;">
+            {rows}
+        </table>
+    </div>
+    """
+    return html
 
     # ---------------------------------------------------------
     # 2. SORTING & AGGREGATION
