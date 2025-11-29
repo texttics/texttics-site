@@ -1444,3 +1444,59 @@ Built on top of the Forensic Tokenizer, this module scans for structural lures s
 * **Visual Hierarchy:** The **Verification Bench** was physically relocated below the **Character Inspector**, establishing a logical workflow: *Input → Macro Metrics → Micro Inspection → Target Verification*.
 * **Adversarial Dashboard:** The "Suspicion Dashboard" was rewired to consume the new Tokenizer's output, populating the "Findings" list with specific **Typosquatting** and **Spoofing** alerts (e.g., "Mixed Script Label", "Pseudo-Delimiter").
 * **Active Feedback:** Added a dynamic **Suspect Monitor** row that mirrors the user's selection in real-time, providing immediate visual confirmation of the analysis scope.
+
+
+---
+
+## 📈 Addendum #4: The "Forensic Chemistry" Upgrade (Statistical & Lexical Profile)
+
+**Session Goal:** To complete Stage 1 by adding the missing dimension of **"Textual Thermodynamics."** While previous profiles analyzed the *physics* (structure, atoms, layout) of the text, this update implements the *chemistry* (distribution, density, and entropy). It answers the question: *"Is this text natural language, machine code, random noise, or an encrypted payload?"*
+
+### 1. New Profile: Group 2.F (Statistical & Lexical)
+We have implemented a comprehensive, serverless statistical engine that runs purely in the browser. It provides a rigorous, non-judgmental "soft signal" analysis of the text's information density and texture.
+
+* **Thermodynamics (Shannon Entropy):**
+    * **Method:** Calculates entropy on **UTF-8 Bytes** (0.0–8.0 bits/byte).
+    * **Forensic Context:**
+        * **< 3.0:** Repetitive padding or sparse data.
+        * **3.0 – 4.5:** Natural Language (English/Latin prose).
+        * **> 6.5:** High-density artifacts (Compressed archives, Encrypted payloads, or Random binary).
+    * **Science:** Includes a **"Density" (Saturation)** metric and a **Sample Confidence** badge (Low/Moderate/Stable) to prevent misinterpretation of short strings.
+
+* **Lexical Density (Forensic TTR):**
+    * **Method:** Calculates Type-Token Ratio (Unique / Total).
+    * **Upgrade:** Implements **6 Forensic Tiers** to handle TTR's natural length sensitivity. It distinguishes between "Bot-like Repetition" (<0.20), "Natural Prose" (0.40–0.60), and "High-Density Lists/UUIDs" (>0.80). Includes a **Segmented TTR** proxy for long texts.
+
+* **Layout Physics (7-Point Stats + Mass Map):**
+    * **The "Shape" of Data:** Replaced simple line counts with a full statistical breakdown: **Min**, **P25** (Lower Quartile), **Median**, **Mean**, **P75** (Upper Quartile), and **Max**.
+    * **Mass Distribution Map:** A visual "Spark-Bar" that renders the density of the file from start to end. This instantly reveals if a payload is hidden at the bottom of a file or if the structure is uniform (e.g., a log file) vs. jagged (e.g., code).
+    * **Logic:** Uses **Strict Visual Newline** splitting to match human perception.
+
+* **Honest Frequency Fingerprint:**
+    * **The "Invisible Majority":** Unlike standard frequency counters, this module operates in **"Honest Mode."** It explicitly visualizes **Whitespace** (Space, Tab, Newline) alongside letters and numbers.
+    * **Visualization:** Uses a **Stacked Composition Bar** (Letters vs. Numbers vs. Symbols vs. Whitespace) to provide an immediate spectral signature of the data type (e.g., "Code" is symbol-heavy; "Prose" is letter-heavy).
+
+* **ASCII Phonotactics (Gated):**
+    * **Method:** Vowel/Consonant ratio analysis restricted strictly to ASCII Latin letters.
+    * **Forensic Value:** Detects **Machine Code** (Base64, Hex keys) which typically have a V/C ratio < 0.20, contrasting with Natural English (~0.40).
+    * **Visualization:** A "Sweet Spot" gauge showing deviation from natural language norms.
+
+* **Heuristic Payload Detection (The "Silent Sentinel"):**
+    * **Method:** Scans for contiguous strings > 16 chars matching **Base64** or **Hex** patterns.
+    * **Entropy-Aware:** Calculates local entropy of the candidate string to distinguish "padding" (low entropy) from "actual payloads" (high entropy).
+    * **UX:** This row is **hidden by default** and only renders a high-visibility alert row if a threat is detected.
+
+### 2. UI/UX: The "Interactive Lab Console"
+To manage the complexity of statistical data without overwhelming the user, we implemented a **Dynamic Console Pattern**.
+
+* **Hover-to-Explain:** The static legend was replaced with a dynamic **"Lab Console"** at the bottom of the profile. Hovering over any metric row (e.g., Entropy) instantly updates the console with:
+    * **Scientific Definition:** What is being measured?
+    * **The Logic:** The formula used (e.g., $H = -\Sigma p(x) \log_2 p(x)$).
+    * **Forensic Norms:** The expected ranges for natural vs. malicious text.
+* **Micro-Card Layouts:** Layout Physics and Phonotactics use high-density **Micro-Card Grids** to present multiple data points (P90, Median, Counts) in a single, scannable row.
+
+### 3. The Interaction Bridge (Data $\to$ Reality)
+We closed the loop between abstract statistics and the raw text.
+
+* **Click-to-Find:** Every "Top Token" and "Payload Candidate" is rendered as an interactive chip. Clicking a token (e.g., `'admin'`) triggers the **Forensic Finder**, which instantly scrolls to and highlights instances of that token in the raw input.
+* **Clipboard Integration:** The **"Copy Full Report"** feature was upgraded with a Python-to-JS bridge (`py_get_stat_report_text`) to ensure the rich statistical profile is included in the plaintext evidence export.
