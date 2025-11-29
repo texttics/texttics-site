@@ -159,6 +159,9 @@ def build_invis_table():
     # Interlinear Annotation Controls
     apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
 
+    # In build_invis_table:
+    apply_mask([(0x11A3E, 0x11A3E)], INVIS_DEFAULT_IGNORABLE)
+
     # 6. Manual Patch for New List Items & Historic Controls
     # Comprehensive coverage for Unicode 14.0/15.0+ and script-specific invisibles
     # that might not be flagged in older UCD DefaultIgnorable files.
@@ -1318,6 +1321,14 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
+
+    # [PATCH] Missing Structural Invisible (Zanabazar)
+    0x11A3E: "[ZAN:INIT]",     # Zanabazar Square Cluster Initial
+
+    # [PATCH] Missing Specials (Reserved Sentinels)
+    0xFFF0: "[RSV:FFF0]", 0xFFF1: "[RSV:FFF1]", 0xFFF2: "[RSV:FFF2]",
+    0xFFF3: "[RSV:FFF3]", 0xFFF4: "[RSV:FFF4]", 0xFFF5: "[RSV:FFF5]",
+    0xFFF6: "[RSV:FFF6]", 0xFFF7: "[RSV:FFF7]", 0xFFF8: "[RSV:FFF8]",
 
     # --- Missing Egyptian Hieroglyph Format Controls (Extended) ---
     0x1343C: "[EGY:C1]",       # Egyptian Control 1
