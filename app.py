@@ -159,6 +159,31 @@ def build_invis_table():
     # Interlinear Annotation Controls
     apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
 
+    # 6. Manual Patch for New List Items & Historic Controls
+    # Comprehensive coverage for Unicode 14.0/15.0+ and script-specific invisibles
+    # that might not be flagged in older UCD DefaultIgnorable files.
+    apply_mask([
+        (0x180B, 0x180F),  # Mongolian FVS 1-4 (Inc. 180F)
+        (0x2065, 0x2065),  # Reserved / Invisible Operator
+        (0x1D159, 0x1D159),# Musical Null Notehead
+        (0x133FC, 0x133FC),# Egyptian Z015B (Font Exploit)
+        (0x16FE4, 0x16FE4),# Khitan Small Script Filler
+        (0x13439, 0x1343F),# Egyptian Hieroglyph Format Controls (Extended)
+        (0x1BCA4, 0x1BCAE),# Shorthand Format Controls (Extended)
+        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
+        (0x11A47, 0x11A47),# Zanabazar Square Subjoiner
+        (0x11A99, 0x11A99),# Soyombo Subjoiner
+        (0x1107F, 0x1107F),# Brahmi Number Joiner
+        (0x110BD, 0x110BD),# Kaithi Number Sign
+        (0x110CD, 0x110CD),# Kaithi Number Sign Above
+        (0x11446, 0x11446),# Newa Sandhi Mark
+        (0x0600, 0x0605),  # Arabic Number Signs (0600-0605)
+        (0x06DD, 0x06DD),  # Arabic End of Ayah
+        (0x08E2, 0x08E2),  # Arabic Disputed End of Ayah
+        (0x070F, 0x070F),  # Syriac Abbreviation Mark
+        (0x1BC9D, 0x1BC9E) # Duployan Shorthand Controls
+    ], INVIS_DEFAULT_IGNORABLE)
+
     # 7. Noncharacters (Process-Internal)
     # We map 0xFFFE (Bad BOM) and 0xFFFF (Max Value) to CRITICAL_CONTROL
     # This ensures they trigger "Red/Critical" flags in the Atlas, similar to NUL.
@@ -1290,6 +1315,25 @@ REGEX_MATCHER = {
 # 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
 # ---
 INVISIBLE_MAPPING = {
+
+    # --- Missing Egyptian Hieroglyph Format Controls (Extended) ---
+    0x1343C: "[EGY:C1]",       # Egyptian Control 1
+    0x1343D: "[EGY:C2]",       # Egyptian Control 2
+    0x1343E: "[EGY:C3]",       # Egyptian Control 3
+    0x1343F: "[EGY:C4]",       # Egyptian Control 4
+
+    # --- Missing Shorthand Format Controls (Extended) ---
+    0x1BCA4: "[SHORT:STEP]",   # Shorthand Format Step
+    0x1BCA5: "[SHORT:MIN]",    # Shorthand Format Minus
+    0x1BCA6: "[SHORT:DBL]",    # Shorthand Format Double
+    0x1BCA7: "[SHORT:CONT]",   # Shorthand Format Continued
+    0x1BCA8: "[SHORT:DOWN]",   # Shorthand Format Down
+    0x1BCA9: "[SHORT:UP]",     # Shorthand Format Up
+    0x1BCAA: "[SHORT:HIGH]",   # Shorthand Format High
+    0x1BCAB: "[SHORT:LOW]",    # Shorthand Format Low
+    0x1BCAC: "[SHORT:MED]",    # Shorthand Format Medium
+    0x1BCAD: "[SHORT:VAR1]",   # Shorthand Format Variation 1
+    0x1BCAE: "[SHORT:VAR2]",   # Shorthand Format Variation 2
 
     # --- Unicode "Specials" (Process-Internal Noncharacters) ---
     0xFFFE: "[BAD:BOM]",       # Reversed Byte Order Mark (Endian mismatch)
