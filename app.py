@@ -7655,12 +7655,6 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                     'badge': 'ARTIFACT'
                  }
             
-            # Bidi
-            if bidi_danger_indices:
-                threat_flags["DANGER: Malicious Bidi Control"] = {
-                    'count': len(bidi_danger_indices),
-                    'positions': bidi_danger_indices
-                }
 
             # --- 4. Populate Threat Flags ---
             
