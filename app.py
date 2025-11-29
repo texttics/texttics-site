@@ -352,6 +352,19 @@ def build_invis_table():
         if cp not in (0x09, 0x0A, 0x0D): # Skip TAB, LF, CR
             c0_controls.append((cp, cp))
     apply_mask(c0_controls, INVIS_CRITICAL_CONTROL)
+    
+    # [FIX] Map C1 Controls (0x80-0x9F) as Critical
+    # These are legacy control codes that often indicate encoding errors or obfuscation.
+    # Note: 0x85 (NEL) is also handled as a newline elsewhere, but it IS a control.
+    apply_mask([(0x80, 0x9F)], INVIS_CRITICAL_CONTROL)
+    
+    # [FIX] Map Plane-End Noncharacters (FFFE/FFFF) for ALL Planes (0-16)
+    # U+1FFFE, U+1FFFF, U+2FFFE, etc.
+    plane_ends = []
+    for plane in range(1, 17): # Planes 1 through 16
+        base = plane * 0x10000
+        plane_ends.append((base + 0xFFFE, base + 0xFFFF))
+    apply_mask(plane_ends, INVIS_CRITICAL_CONTROL)
 
 def run_self_tests():
     """
