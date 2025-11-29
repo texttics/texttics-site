@@ -13,6 +13,7 @@ import html
 import urllib.parse
 import base64
 import binascii
+import unicodedata as ud
 
 LOADING_LOCK = False
 
