@@ -5485,6 +5485,42 @@ def analyze_token_fragmentation(tokens: list):
             
     return None
 
+def analyze_invisible_fragmentation(t: str):
+    """
+    [PAPER 1: Special-Char] Detects 'Invisible Sandwich' attacks.
+    Unlike generic invisibles, this looks for invisibles embedded BETWEEN
+    alphanumeric characters (e.g. 'k<ZWSP>ill'), which specifically 
+    shatters LLM tokenization.
+    """
+    if len(t) < 3: return None
+    
+    # Scan internal characters only (indices 1 to len-2)
+    for i in range(1, len(t) - 1):
+        cp = ord(t[i])
+        
+        # Check using O(1) Lookup
+        is_invis = False
+        if cp < 1114112:
+            mask = INVIS_TABLE[cp]
+            # We care about Spacing, Format, and Joiners for fragmentation
+            if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_SOFT_HYPHEN | INVIS_DEFAULT_IGNORABLE):
+                is_invis = True
+        
+        if is_invis:
+            # The "Sandwich" Check
+            prev_char = t[i-1]
+            next_char = t[i+1]
+            
+            if prev_char.isalnum() and next_char.isalnum():
+                # We found an invisible breaking a word
+                return {
+                    "type": "FRAGMENTATION",
+                    "desc": "Invisible Tokenizer Split (Safety Bypass)",
+                    "risk": 95, # Critical: This is almost always malicious
+                    "verdict": "JAILBREAK VECTOR"
+                }
+    return None
+
 def compute_adversarial_metrics(t: str):
     """
     Adversarial Engine v8 (Topology Fix + A-Z Fix + Gate Enforcement).
@@ -5669,6 +5705,19 @@ def compute_adversarial_metrics(t: str):
             token_reasons.append(norm['desc'])
             token_families.add("OBFUSCATION")
             threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
+
+        # [FRAGMENTATION] (Invisible Sandwich - Paper 1)
+        inv_frag = analyze_invisible_fragmentation(t_str)
+        if inv_frag:
+            token_score += inv_frag['risk']
+            token_reasons.append(inv_frag['desc'])
+            token_families.add("OBFUSCATION")
+            # Priority Stack Injection
+            threat_stack.insert(0, { 
+                "lvl": "CRIT", 
+                "type": "HIDDEN", 
+                "desc": inv_frag['desc'] + " (LLM Jailbreak Pattern)" 
+            })
 
         # [PERTURBATION] (Enhanced with Prompt Injection Awareness - Paper 1)
         pert = analyze_structural_perturbation(t_str)
