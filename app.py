@@ -5221,29 +5221,33 @@ def analyze_normalization_hazard_advanced(token: str):
 def analyze_structural_perturbation(token: str):
     """
     [BROKEN WORD] Detects non-standard separators inside a token.
-    FIX: Ignores VS16 (Emoji style selector) to reduce noise on valid Emoji.
+    FIXED: Returns accurate labels (Bidi, ZWSP, Joiner, Tag, Invisible).
     """
     perturbations = 0
     types = set()
     
     for char in token:
         cp = ord(char)
-        # FIX: Ignore VS16 (0xFE0F) and VS15 (0xFE0E) for perturbation check
-        if cp == 0xFE0F or cp == 0xFE0E:
-            continue
+        if cp == 0xFE0F or cp == 0xFE0E: continue # Ignore VS
             
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         if mask & INVIS_ANY_MASK:
             perturbations += 1
+            
+            # Precise labeling based on bitmask
             if mask & INVIS_BIDI_CONTROL: types.add("Bidi")
-            elif mask & INVIS_ZERO_WIDTH_SPACING: types.add("ZWSP")
+            elif mask & INVIS_ZERO_WIDTH_SPACING: types.add("ZWSP") # Includes BOM
             elif mask & INVIS_JOIN_CONTROL: types.add("Joiner")
             elif mask & INVIS_TAG: types.add("Tag")
+            elif mask & INVIS_SOFT_HYPHEN: types.add("SHY") # Explicit SHY
+            elif cp == 0x0000: types.add("Null") # Explicit NUL
             else: types.add("Invisible")
             
     if perturbations > 0:
+        # Sort for deterministic output
+        type_list = sorted(list(types))
         score = 40 + (perturbations * 10)
-        return {"desc": f"Perturbation ({perturbations}x {', '.join(types)})", "risk": min(100, score)}
+        return {"desc": f"Perturbation ({perturbations}x {', '.join(type_list)})", "risk": min(100, score)}
     return None
 
 def analyze_context_lure(token: str):
@@ -5263,19 +5267,42 @@ def analyze_context_lure(token: str):
         
     return None
 
+def is_plausible_domain_candidate(token: str) -> bool:
+    """
+    Forensic Gate: Determines if a token is worth analyzing as a domain/IDN.
+    Rejects tokens that are clearly binary garbage, file paths, or system strings.
+    """
+    # 1. Length Bounds (DNS labels are max 63, full domains max 253)
+    if len(token) > 253 or len(token) < 3:
+        return False
+        
+    # 2. Critical Exclusion (Data Corruption)
+    # If it contains NUL, Replacement Char, or Noncharacters, it's not a domain.
+    # It's a binary blob. Let the Integrity/Decode Health module handle it.
+    for char in token:
+        cp = ord(char)
+        if cp == 0x0000 or cp == 0xFFFD: return False
+        if 0xFDD0 <= cp <= 0xFDEF: return False # Process Internal
+        if (cp & 0xFFFF) >= 0xFFFE: return False # End of plane nonchars
+        
+    return True
+
 def compute_adversarial_metrics(t: str):
     """
     Calculates deep forensic metrics per token.
-    v3: Includes Typosquatting, Context Lures, and Noise Reduction.
+    COMBINED v6: Plausibility Gate + Dual-Lens IDNA + Strict Stack Architecture.
     """
     if not t: return {}
     
-    # Use the new Forensic Tokenizer (Module 1)
+    # Use the new Forensic Tokenizer
     tokens = tokenize_forensic(t)
     
     findings = []
     top_tokens = []
     confusables_map = DATA_STORES.get("Confusables", {})
+    
+    # Severity Weights for Sorting
+    SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
     
     for tok_obj in tokens:
         t_str = tok_obj['token']
@@ -5286,21 +5313,58 @@ def compute_adversarial_metrics(t: str):
         token_reasons = []
         token_families = set()
         
+        # Initialize threat_stack for this token (CRITICAL Fix)
+        threat_stack = []
+
+        # [GATE] Apply the Plausibility Gate
+        # Prevents "Binary Garbage" from triggering IDNA alarms
+        is_domain_candidate = is_plausible_domain_candidate(t_str)
+        
         # --- 1. Run Analysis ---
         
-        # [CONTEXT] Check for Lures first (might override others)
+        # [CONTEXT] Check for Lures first
         lure = analyze_context_lure(t_str)
         if lure:
             token_score += lure['risk']
             token_reasons.append(lure['desc'])
             token_families.add("CONTEXT")
+            threat_stack.append({ "lvl": "MED", "type": "CONTEXT", "desc": lure['desc'] })
 
-        # --- [NEW] [TYPOSQUATTING] (Module 3) ---
-        domain_risk = analyze_domain_heuristics(t_str)
-        if domain_risk:
-            token_score += domain_risk['risk']
-            token_reasons.append(domain_risk['desc'])
-            token_families.add("SPOOFING") # Typosquatting is a subset of Spoofing
+        # [TYPOSQUATTING & IDNA] (Only run if plausible)
+        if is_domain_candidate:
+            # A. Typosquatting
+            domain_risk = analyze_domain_heuristics(t_str)
+            if domain_risk:
+                token_score += domain_risk['risk']
+                token_reasons.append(domain_risk['desc'])
+                token_families.add("SPOOFING") 
+                threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
+
+            # B. IDNA Protocol Lens (Top-Tier Label Analysis)
+            # We use the Label-Centric analyzer from the previous turn
+            if '.' in t_str or 'xn--' in t_str:
+                labels = t_str.split('.')
+                for label in labels:
+                    if not label: continue
+                    idna_findings = analyze_idna_label(label)
+                    
+                    if idna_findings:
+                        for f in idna_findings:
+                            # Map Types to Dashboard Categories
+                            cat = "SPOOFING"
+                            if f['type'] == "GHOST": cat = "HIDDEN"
+                            elif f['type'] == "AMBIGUITY": cat = "AMBIGUITY"
+                            elif f['type'] == "COMPAT": cat = "SYNTAX"
+                            elif f['type'] == "INVALID": cat = "SPOOFING"
+                            
+                            # Add to stack
+                            threat_stack.append({
+                                "lvl": f['lvl'],
+                                "type": cat,
+                                "desc": f['desc']
+                            })
+                            token_reasons.append(f['desc'])
+                            token_families.add("INJECTION")
 
         # [SCRIPT]
         rest_label, rest_risk = analyze_restriction_level(t_str)
@@ -5310,6 +5374,8 @@ def compute_adversarial_metrics(t: str):
                 token_score += rest_risk
                 token_reasons.append(rest_label)
                 token_families.add("SCRIPT")
+                lvl = "CRIT" if rest_risk > 80 else "HIGH"
+                threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
             
         # [HOMOGLYPH]
         conf_data = analyze_confusion_density(t_str, confusables_map)
@@ -5317,6 +5383,8 @@ def compute_adversarial_metrics(t: str):
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
+            lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
+            threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
 
         # [SPOOFING] (Class Consistency / Sore Thumb)
         sore = analyze_class_consistency(t_str)
@@ -5324,6 +5392,7 @@ def compute_adversarial_metrics(t: str):
             token_score += sore['risk']
             token_reasons.append(sore['desc'])
             token_families.add("SPOOFING")
+            threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
             
         # [OBFUSCATION] (Normalization Hazards)
         norm = analyze_normalization_hazard_advanced(t_str)
@@ -5331,16 +5400,18 @@ def compute_adversarial_metrics(t: str):
             token_score += norm['risk']
             token_reasons.append(norm['desc'])
             token_families.add("OBFUSCATION")
+            threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
 
         # [PERTURBATION] (Broken Words)
         pert = analyze_structural_perturbation(t_str)
         if pert:
-            is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
-            p_type = "SYNTAX" if is_bidi else "HIDDEN"
-            
             token_score += pert['risk']
             token_reasons.append(pert['desc'])
             token_families.add("PERTURBATION")
+            
+            is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
+            p_type = "SYNTAX" if is_bidi else "HIDDEN"
+            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
 
         # [TROJAN]
         trojan = analyze_trojan_context(t_str)
@@ -5348,6 +5419,8 @@ def compute_adversarial_metrics(t: str):
             token_score += trojan['risk']
             token_reasons.append(trojan['desc'])
             token_families.add("TROJAN")
+            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
+            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
             
         # [ZALGO]
         zalgo = analyze_zalgo_load(t_str)
@@ -5355,16 +5428,20 @@ def compute_adversarial_metrics(t: str):
             token_score += zalgo['risk']
             token_reasons.append(zalgo['desc'])
             token_families.add("OBFUSCATION")
-
+            lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
+            threat_stack.append({ "lvl": lvl, "type": "HIDDEN", "desc": zalgo['desc'] })
+            
         # [CASE]
         case_anom = analyze_case_anomalies(t_str)
         if case_anom:
             token_score += case_anom['risk']
             token_reasons.append(case_anom['desc'])
             token_families.add("SPOOFING")
+            threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
 
-        # --- 2. Aggregation (Same as before) ---
+        # --- 2. Aggregation ---
         if token_score > 0:
+            
             fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
             
             sev = 'ok'
@@ -5379,12 +5456,29 @@ def compute_adversarial_metrics(t: str):
             })
             
             # Reconstruct the "Stack" for the UI
+            # Sort stack by severity (CRIT > HIGH > MED > LOW)
+            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
+            
+            # Calculate vectors
+            try:
+                b64 = base64.b64encode(t_str.encode("utf-8")).decode("ascii")
+            except: b64 = "Error"
+            hex_v = "".join(f"\\x{b:02X}" for b in t_str.encode("utf-8"))
+            
+            # Use the highest severity item as the primary verdict
+            primary_verdict = "Unknown Risk"
+            if threat_stack:
+                primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
+
             top_tokens.append({
                 'token': t_str,
                 'score': min(100, token_score),
                 'reasons': token_reasons, 
                 'families': list(token_families),
-                'stack': [{'lvl': 'HIGH', 'type': 'RISK', 'desc': r} for r in token_reasons] 
+                'stack': threat_stack,
+                'verdict': primary_verdict,
+                'b64': b64,
+                'hex': hex_v
             })
 
     # Global Stego Check
@@ -5561,6 +5655,7 @@ def detect_invisible_patterns(t: str):
             "score": 75
         }
     return None
+
 
 def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
     """
