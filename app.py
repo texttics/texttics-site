@@ -7194,6 +7194,14 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         if not s: return ""
         return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
+    # --- [NEW] Run Adversarial Metrics Engine (Safety Wrapped) ---
+    try:
+        adversarial_data = compute_adversarial_profile(t, script_stats or {})
+    except Exception as e:
+        print(f"CRITICAL ERROR in Adversarial Engine: {e}")
+        # Return empty structure so UI doesn't break
+        adversarial_data = {"findings": [], "top_tokens": []}
+
     try:
         # --- 2. Generate Normalized States ---
         nf_string = normalize_extended(t)
@@ -7660,13 +7668,6 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     if 'script_mix_class' not in locals(): script_mix_class = ""
     if 'skel_metrics' not in locals(): skel_metrics = {}
 
-    # --- [NEW] Run Adversarial Metrics Engine (Safety Wrapped) ---
-    try:
-        adversarial_data = compute_adversarial_profile(t, script_stats or {})
-    except Exception as e:
-        print(f"CRITICAL ERROR in Adversarial Engine: {e}")
-        # Return empty structure so UI doesn't break
-        adversarial_data = {"findings": [], "top_tokens": []}
 
     return {
         'flags': threat_flags,
