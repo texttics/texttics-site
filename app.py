@@ -179,6 +179,16 @@ def build_invis_table():
     # 5. Tags
     apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
 
+    # 6. Manual Patch for New List Items (Ensure detection in Stats/Atlas)
+    # These might not be in UCD "DefaultIgnorable" yet, but we want to flag them.
+    # Includes: Mongolian FVS (180B-180D), Reserved (2065), Musical Null (1D159)
+    apply_mask([
+        (0x180B, 0x180D), # Mongolian FVS 1-3
+        (0x2065, 0x2065), # Reserved / Invisible Operator
+        (0x1D159, 0x1D159), # Musical Null Notehead
+        (0x133FC, 0x133FC)  # Egyptian Z015B (Exploit)
+    ], INVIS_DEFAULT_IGNORABLE)
+
     # 6. Variation Selectors
     apply_mask([(0xFE00, 0xFE0F)], INVIS_VARIATION_STANDARD)
     apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
