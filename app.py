@@ -12465,7 +12465,15 @@ def update_all(event=None):
     render_toc_counts(toc_counts)
 
     # [Phase 3] Render Invisible Atlas
-    render_invisible_atlas(t)
+    # We must calculate counts first because the renderer expects a dict
+    atlas_counts = collections.Counter()
+    for char in t:
+        cp = ord(char)
+        # Collect Invisibles, Tags, and Control Characters (C0/C1/DEL)
+        if (INVIS_TABLE[cp] & INVIS_ANY_MASK) or (0x00 <= cp <= 0x1F) or (0x7F <= cp <= 0x9F):
+            atlas_counts[cp] += 1
+            
+    render_invisible_atlas(atlas_counts)
 
     is_ascii_safe = True
     if "ASCII-Compatible" in cp_summary:
