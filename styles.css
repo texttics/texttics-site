@@ -3054,14 +3054,15 @@ tr.flag-row-crit {
 
 /* 5. UNIVERSAL HOVER EFFECT */
 .action-bar .tool-btn:hover,
+.action-btn:hover, /* ADDED: Hover state for new class */
 .macro-btn:hover,
 .wb-btn-strict:hover, 
 .wb-btn-cons:hover, 
 .wb-btn-code:hover, 
 .wb-btn-evidence:hover {
     background-color: #f5f3ff !important; 
-    border-color: #8b5cf6 !important;     
-    color: #7c3aed !important;            
+    border-color: #8b5cf6 !important;      
+    color: #7c3aed !important;             
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(124, 58, 237, 0.1) !important;
     z-index: 2;
