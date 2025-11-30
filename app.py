@@ -7754,10 +7754,10 @@ def _evaluate_adversarial_risk(intermediate_data):
     # Risk Levels: LOW (Default) -> MED -> HIGH -> CRITICAL
     
     risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
-
-    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0}
+    #Initialize Topology Counters
+    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0}
     targets = [] # List of high-risk tokens for the dashboard
-    
+
     for token in tokens:
         # Defaults
         risk_level = 0 # 0=Low, 1=Med, 2=High, 3=Crit
@@ -7768,6 +7768,7 @@ def _evaluate_adversarial_risk(intermediate_data):
         if token["skeleton"] in collision_skeletons:
             risk_level = max(risk_level, 3)
             triggers.append("R30: Skeleton Collision (Homograph)")
+            topology["HOMOGLYPH"] += 1
 
         # --- Rule Set 2: Script Mixing ---
         if token["is_mixed"]:
@@ -7775,6 +7776,7 @@ def _evaluate_adversarial_risk(intermediate_data):
             if token["kind"] in ("domain", "identifier", "email"):
                 risk_level = max(risk_level, 2)
                 triggers.append("R10: Mixed Scripts in ID/Domain")
+                topology["SPOOFING"] += 1
             else:
                 # In generic words, it might be a typo or linguistic, but still suspicious
                 risk_level = max(risk_level, 1)
@@ -8682,17 +8684,19 @@ def render_adversarial_dashboard(report):
     """
     html_parts.append(summary_html)
 
-    # 2. Skeleton Collisions (The Homograph Radar)
+    # --- 2. Skeleton Collisions (The Homograph Radar) ---
     if collisions:
         rows = []
         for c in collisions:
             # Format variants: "paypal" vs "pаypal"
             variants_html = []
             for idx in c["indices"]:
-                tok = tokens[idx]
-                # Bridge link to highlight the specific token
-                click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({tok['span'][0]}, {tok['span'][1]});"
-                variants_html.append(f'<a href="#" onclick="{click_js} return false;" class="variant-link">{_escape_html(tok["text"])}</a>')
+                # Safety check for index out of bounds
+                if idx < len(tokens):
+                    tok = tokens[idx]
+                    # Bridge link to highlight the specific token
+                    click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({tok['span'][0]}, {tok['span'][1]});"
+                    variants_html.append(f'<a href="#" onclick="{click_js} return false;" class="variant-link">{_escape_html(tok["text"])}</a>')
             
             rows.append(f"""
             <tr class="collision-row">
@@ -8712,7 +8716,7 @@ def render_adversarial_dashboard(report):
         </div>
         """)
 
-    # 3. Token Risk Ledger
+    # --- 3. Token Risk Ledger (The Detail View) ---
     # Filter: Show all High/Med, but limit Lows if there are too many
     display_tokens = [t for t in tokens if t["risk"] in ("CRITICAL", "HIGH", "MED")]
     low_tokens = [t for t in tokens if t["risk"] == "LOW"]
@@ -8727,57 +8731,63 @@ def render_adversarial_dashboard(report):
         
     # Sort: Critical -> High -> Med -> Low
     risk_order = {"CRITICAL": 0, "HIGH": 1, "MED": 2, "LOW": 3}
-    display_tokens.sort(key=lambda x: risk_order[x["risk"]])
+    display_tokens.sort(key=lambda x: risk_order.get(x["risk"], 3))
 
-    token_rows = []
-    for t in display_tokens:
-        risk_cls = _get_risk_class(t["risk"])
-        
-        # Scripts pill
-        scripts_str = ", ".join(t["scripts"]) if t["scripts"] else "Common"
-        script_cls = "script-mixed" if t["is_mixed"] else "script-single"
-        
-        # Issues/Triggers
-        triggers_html = ""
-        if t["triggers"]:
-            triggers_html = "<br>".join([f"<span class='trigger-tag'>{rule}</span>" for rule in t["triggers"]])
-        elif t["kind"] == "identifier":
-            triggers_html = "<span class='trigger-tag-ok'>Standard Syntax</span>"
+    if display_tokens:
+        token_rows = []
+        for t in display_tokens:
+            risk_cls = _get_risk_class(t["risk"])
             
-        # Bridge Link
-        click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({t['span'][0]}, {t['span'][1]});"
-        
-        token_rows.append(f"""
-        <tr>
-            <td class="token-cell">
-                <a href="#" onclick="{click_js} return false;" class="token-link">{_escape_html(t['text'])}</a>
-                <div class="token-kind">{t['kind']}</div>
-            </td>
-            <td class="risk-cell"><span class="badge {risk_cls}">{t['risk']}</span></td>
-            <td class="script-cell"><span class="{script_cls}">{scripts_str}</span></td>
-            <td class="skel-cell">{_escape_html(t['skeleton'])}</td>
-            <td class="issue-cell">{triggers_html}</td>
-        </tr>
-        """)
+            # Scripts pill
+            scripts_str = ", ".join(t["scripts"]) if t["scripts"] else "Common"
+            script_cls = "script-mixed" if t["is_mixed"] else "script-single"
+            
+            # Issues/Triggers
+            triggers_html = ""
+            if t["triggers"]:
+                triggers_html = "<br>".join([f"<span class='trigger-tag'>{rule}</span>" for rule in t["triggers"]])
+            elif t["kind"] == "identifier":
+                triggers_html = "<span class='trigger-tag-ok'>Standard Syntax</span>"
+            else:
+                triggers_html = "<span class='trigger-tag-neutral'>No Anomalies</span>"
+                
+            # Bridge Link
+            click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({t['span'][0]}, {t['span'][1]});"
+            
+            token_rows.append(f"""
+            <tr>
+                <td class="token-cell">
+                    <a href="#" onclick="{click_js} return false;" class="token-link">{_escape_html(t['text'])}</a>
+                    <div class="token-kind">{t['kind']}</div>
+                </td>
+                <td class="risk-cell"><span class="badge {risk_cls}">{t['risk']}</span></td>
+                <td class="script-cell"><span class="{script_cls}">{scripts_str}</span></td>
+                <td class="skel-cell">{_escape_html(t['skeleton'])}</td>
+                <td class="issue-cell">{triggers_html}</td>
+            </tr>
+            """)
 
-    html_parts.append(f"""
-    <div class="token-ledger">
-        <h4 class="sub-header">Token Risk Ledger</h4>
-        <table class="matrix token-table">
-            <thead>
-                <tr>
-                    <th style="width:20%">Token</th>
-                    <th style="width:10%">Risk</th>
-                    <th style="width:15%">Scripts</th>
-                    <th style="width:20%">Skeleton</th>
-                    <th style="width:35%">Forensic Notes</th>
-                </tr>
-            </thead>
-            <tbody>{''.join(token_rows)}</tbody>
-        </table>
-        {f'<div class="table-footer">... {hidden_count} low-risk tokens hidden ...</div>' if hidden_count > 0 else ''}
-    </div>
-    """)
+        html_parts.append(f"""
+        <div class="token-ledger">
+            <h4 class="sub-header">Token Risk Ledger</h4>
+            <table class="matrix token-table">
+                <thead>
+                    <tr>
+                        <th style="width:20%">Token</th>
+                        <th style="width:10%">Risk</th>
+                        <th style="width:15%">Scripts</th>
+                        <th style="width:20%">Skeleton</th>
+                        <th style="width:35%">Forensic Notes</th>
+                    </tr>
+                </thead>
+                <tbody>{''.join(token_rows)}</tbody>
+            </table>
+            {f'<div class="table-footer">... {hidden_count} low-risk tokens hidden ...</div>' if hidden_count > 0 else ''}
+        </div>
+        """)
+    else:
+        # Fallback if no tokens worth showing (rare, but good safety)
+        html_parts.append('<div class="empty-state">No significant identifiers found.</div>')
 
     container.innerHTML = "".join(html_parts)
 
