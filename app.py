@@ -9896,8 +9896,8 @@ def py_get_stat_report_text():
         return "\n".join(lines)
     
     except Exception as e:
-            print(f"Error generating stats report: {e}")
-            return f"Error generating stats report: {str(e)}"
+        print(f"Error generating stats report: {e}")
+        return f"Error generating stats report: {str(e)}"
 
 window.py_get_stat_report_text = py_get_stat_report_text
 
