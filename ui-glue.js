@@ -1094,12 +1094,19 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       report += `\n`;
 
       // 3. IDENTITY DETAILS
-      // We scrape the spec-chips or matrix items if present
+      // [FIX] Now targets .spec-label for keys and includes optional .matrix-sub details
       report += `[ IDENTITY PROFILE ]\n`;
       root.querySelectorAll('.col-identity .matrix-item').forEach(item => {
-          const val = item.querySelector('.matrix-val')?.textContent.trim();
+          const label = item.querySelector('.spec-label')?.textContent.trim() || "PROPERTY";
+          let val = item.querySelector('.matrix-val')?.textContent.trim() || "";
+          
+          // Check for sub-details (e.g. Script Extensions or Grapheme Break subtypes)
           const sub = item.querySelector('.matrix-sub')?.textContent.trim();
-          if(val && sub) report += `${sub.padEnd(15, ' ')}: ${val}\n`;
+          if (sub) val += ` (${sub})`;
+
+          if (label && val) {
+              report += `${label.padEnd(15, ' ')}: ${val}\n`;
+          }
       });
       report += `\n`;
 
