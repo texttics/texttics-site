@@ -9894,6 +9894,8 @@ def py_get_stat_report_text():
 
     return "\n".join(lines)
 
+window.py_get_stat_report_text = py_get_stat_report_text
+
 # Expose
 window.py_get_stat_report_text = py_get_stat_report_text
 
