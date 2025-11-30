@@ -9813,13 +9813,19 @@ def render_statistical_profile(stats):
 def py_get_stat_report_text():
     """
     Generates a rich, structured plaintext report of the Statistical Profile.
+    (Hardened Version: Catches errors to prevent UI freeze)
     """
     try:
         el = document.getElementById("text-input")
         if not el or not el.value: return ""
         
         t = el.value
-        stats = compute_statistical_profile(t)
+        # Safety: Handle if compute_statistical_profile fails
+        try:
+            stats = compute_statistical_profile(t)
+        except Exception as e:
+            return f"Error in computation: {e}"
+
         if not stats: return ""
         
         lines = []
@@ -9831,7 +9837,6 @@ def py_get_stat_report_text():
         n = stats.get("entropy_n", 0)
         ascii_dens = stats.get("ascii_density", 0.0)
         
-        # Re-calculate status logic for report context
         status_txt = "Unknown"
         if n < 64: status_txt = "Insufficient Data"
         elif ent > 6.5: status_txt = "High Density (Compressed / Encrypted)"
@@ -9851,7 +9856,7 @@ def py_get_stat_report_text():
             lines.append("")
             lines.append(f"[ ! HEURISTIC PAYLOADS DETECTED ({len(payloads)}) ]")
             for p in payloads:
-                 lines.append(f"  - {p['type']}: '{p['token']}' (H={p['entropy']})")
+                 lines.append(f"  - {p.get('type','UNK')}: '{p.get('token','?')}' (H={p.get('entropy',0)})")
         
         # 3. Lexical Density
         ttr = stats.get("ttr", 0.0)
@@ -9866,7 +9871,10 @@ def py_get_stat_report_text():
         
         # 4. Fingerprint (Category Dist)
         cd = stats.get("char_dist", {})
-        l, n_dig, s, w = cd.get('letters',0), cd.get('digits',0), cd.get('sym',0), cd.get('ws',0)
+        l = cd.get('letters', 0)
+        n_dig = cd.get('digits', 0)
+        s = cd.get('sym', 0)
+        w = cd.get('ws', 0)
         
         lines.append("")
         lines.append("[ FREQ. FINGERPRINT ]")
@@ -9879,9 +9887,12 @@ def py_get_stat_report_text():
             lines.append("")
             lines.append("[ LAYOUT PHYSICS ]")
             lines.append(f"  Lines:   {count} (Empty: {ls.get('empty', 0)})")
-            lines.append(f"  Widths:  Min:{ls.get('min')}  P25:{ls.get('p25')}  Med:{ls.get('median')}  P75:{ls.get('p75')}  Max:{ls.get('max')}")
-            lines.append(f"  Average: {ls.get('avg')}")
-    
+            # Safe access with defaults
+            p25 = ls.get('p25', '-')
+            p75 = ls.get('p75', '-')
+            lines.append(f"  Widths:  Min:{ls.get('min',0)}  P25:{p25}  Med:{ls.get('median',0)}  P75:{p75}  Max:{ls.get('max',0)}")
+            lines.append(f"  Average: {ls.get('avg',0)}")
+
         # 6. Phonotactics
         ph = stats.get("phonotactics", {})
         if ph.get("is_valid", False):
@@ -9892,13 +9903,13 @@ def py_get_stat_report_text():
             lines.append(f"  Letter Dens: {ph.get('count', 0)} chars")
             lines.append(f"  Entropy:     {ph.get('bits_per_phoneme', 0)} bits/phoneme")
             lines.append(f"  Scoring:     Uni:{ph.get('uni_score',0)}% | Bi:{ph.get('bi_score',0)}% | Tri:{ph.get('tri_score',0)}%")
-    
+
         return "\n".join(lines)
     
     except Exception as e:
-        print(f"Error generating stats report: {e}")
         return f"Error generating stats report: {str(e)}"
 
+# Expose to JS (Critical)
 window.py_get_stat_report_text = py_get_stat_report_text
 
 
