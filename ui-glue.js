@@ -1185,53 +1185,7 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     });
   }
 
-// D. Copy All Data (Aggregator)
-  const btnCopyAll = document.getElementById('btn-copy-all-everything');
-  if (btnCopyAll) {
-    btnCopyAll.addEventListener('click', () => {
-      let megaReport = "";
-      const separator = "\n\n==================================================\n\n";
-
-      // 1. Get HUD Data
-      const hud = document.getElementById('forensic-hud');
-      if (hud) {
-        let hudText = "[ HUD Metrics ]\n";
-        const cols = hud.querySelectorAll('.hud-col');
-        cols.forEach(col => {
-          const header = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
-          const groups = col.querySelectorAll('.hud-metric-group');
-          if (groups.length > 0) {
-              hudText += `\n[${header}]\n`;
-              groups.forEach(group => {
-                  const label = group.querySelector('.hud-label')?.textContent.trim() || "VAL";
-                  const val = group.querySelector('.hud-val')?.textContent.trim() || "-";
-                  hudText += `  ${label}: ${val}\n`;
-              });
-          }
-        });
-        megaReport += hudText;
-      }
-
-      // 2. Get Inspector Data
-      const inspector = document.getElementById('inspector-panel-content');
-      if (inspector) {
-        megaReport += separator + "[ Character Inspector Data ]\n";
-        
-        // Check if the inspector is showing the default placeholder or an error
-        const isPlaceholder = inspector.querySelector('.inspector-placeholder');
-        const isError = inspector.querySelector('.status-error');
-        const hasContent = inspector.innerText.trim().length > 0;
-        
-        if (!isPlaceholder && !isError && hasContent) {
-            // Active: Dump the data
-            megaReport += inspector.innerText; 
-        } else {
-            // Inactive: Show standard placeholder
-            megaReport += "  (Inactive - Select a character to inspect)";
-        }
-      }
-
-    // --- E. Copy Verification Bench (New) ---
+  // --- E. Copy Verification Bench (New) ---
   const btnCopyBench = document.getElementById('btn-copy-bench');
   if (btnCopyBench) {
     btnCopyBench.addEventListener('click', () => {
@@ -1289,6 +1243,52 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       copyToClipboard(report, 'btn-copy-bench');
     });
   }
+
+  // D. Copy All Data (Aggregator)
+  const btnCopyAll = document.getElementById('btn-copy-all-everything');
+  if (btnCopyAll) {
+    btnCopyAll.addEventListener('click', () => {
+      let megaReport = "";
+      const separator = "\n\n==================================================\n\n";
+
+      // 1. Get HUD Data
+      const hud = document.getElementById('forensic-hud');
+      if (hud) {
+        let hudText = "[ HUD Metrics ]\n";
+        const cols = hud.querySelectorAll('.hud-col');
+        cols.forEach(col => {
+          const header = col.querySelector('.hud-row-sci')?.textContent.trim() || "METRIC";
+          const groups = col.querySelectorAll('.hud-metric-group');
+          if (groups.length > 0) {
+              hudText += `\n[${header}]\n`;
+              groups.forEach(group => {
+                  const label = group.querySelector('.hud-label')?.textContent.trim() || "VAL";
+                  const val = group.querySelector('.hud-val')?.textContent.trim() || "-";
+                  hudText += `  ${label}: ${val}\n`;
+              });
+          }
+        });
+        megaReport += hudText;
+      }
+
+      // 2. Get Inspector Data
+      const inspector = document.getElementById('inspector-panel-content');
+      if (inspector) {
+        megaReport += separator + "[ Character Inspector Data ]\n";
+        
+        // Check if the inspector is showing the default placeholder or an error
+        const isPlaceholder = inspector.querySelector('.inspector-placeholder');
+        const isError = inspector.querySelector('.status-error');
+        const hasContent = inspector.innerText.trim().length > 0;
+        
+        if (!isPlaceholder && !isError && hasContent) {
+            // Active: Dump the data
+            megaReport += inspector.innerText; 
+        } else {
+            // Inactive: Show standard placeholder
+            megaReport += "  (Inactive - Select a character to inspect)";
+        }
+      }
 
       // 3. Get Full Profile Data
       // We call the existing buildStructuredReport function
