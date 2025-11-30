@@ -7768,7 +7768,7 @@ def _evaluate_adversarial_risk(intermediate_data):
         if token["skeleton"] in collision_skeletons:
             risk_level = max(risk_level, 3)
             triggers.append("R30: Skeleton Collision (Homograph)")
-            topology["HOMOGLYPH"] += 1
+            token_topology_hits.add("HOMOGLYPH")
 
         # --- Rule Set 2: Script Mixing ---
         if token["is_mixed"]:
@@ -7776,28 +7776,30 @@ def _evaluate_adversarial_risk(intermediate_data):
             if token["kind"] in ("domain", "identifier", "email"):
                 risk_level = max(risk_level, 2)
                 triggers.append("R10: Mixed Scripts in ID/Domain")
-                topology["SPOOFING"] += 1
+                token_topology_hits.add("SPOOFING")
             else:
                 # In generic words, it might be a typo or linguistic, but still suspicious
                 risk_level = max(risk_level, 1)
                 triggers.append("R01: Mixed Scripts")
+                token_topology_hits.add("SPOOFING")
 
         # --- Rule Set 3: Confusables ---
         # High density of confusables implies obfuscation
         if token["confusables"]["density"] > 0.5:
             risk_level = max(risk_level, 1)
             triggers.append("R02: High Confusable Density")
+            token_topology_hits.add("SPOOFING")
             
         # --- Rule Set 4: Identifier Status (UAX #31) ---
         if token["id_status"] in ("Restricted", "Disallowed"):
             # We treat 'Restricted' as HIGH risk for identifiers
             risk_level = max(risk_level, 2)
             triggers.append(f"R11: Identifier Status ({token['id_status']})")
+            token_topology_hits.add("PROTOCOL")
 
         # --- Rule Set 5: Hidden Channels & Bidi ---
         if token["invisibles"] > 0:
             # Check specifically for Bidi vs just ZWSP
-            # Note: We rely on Stage 1 global flags usually, but local check is good
             has_bidi = False
             for char in token["text"]:
                 if _find_in_ranges(ord(char), "Bidi_Control"):
@@ -7807,15 +7809,15 @@ def _evaluate_adversarial_risk(intermediate_data):
             if has_bidi:
                 risk_level = max(risk_level, 3) # Trojan Source class
                 triggers.append("R12: Bidi Control in Token")
+                token_topology_hits.add("INJECTION")
             else:
                 risk_level = max(risk_level, 2)
                 triggers.append("R03: Hidden Characters")
+                token_topology_hits.add("OBFUSCATION")
 
         # --- Rule Set 6: Domain Specifics ---
         if token["kind"] == "domain":
-            # Check for generic 'Restricted' chars that might not be in ID status
-            # e.g. Fullwidth chars, symbols in labels
-            pass # (Covered by id_status usually, but good placeholder)
+            pass # (Placeholder for IDNA-specific checks)
 
         # Map numeric level to string
         final_risk = "LOW"
@@ -7827,17 +7829,17 @@ def _evaluate_adversarial_risk(intermediate_data):
         token["triggers"] = triggers
         risk_stats[final_risk] += 1
 
-        # Update Topology
+        # [CRITICAL FIX] Update Global Topology ONCE per token
         for hit in token_topology_hits:
             topology[hit] += 1
             
-        # Add to Targets list if High/Critical (for the dashboard top list)
+        # Add to Targets list if High/Critical
         if risk_level >= 2:
             targets.append({
                 "token": token["text"],
                 "verdict": triggers[0] if triggers else "High Risk",
                 "stack": [{"lvl": final_risk, "type": list(token_topology_hits)[0] if token_topology_hits else "GENERIC", "desc": t} for t in triggers],
-                "score": risk_level * 25 # Roughly map 0-3 to 0-100
+                "score": risk_level * 25 
             })
 
     # Return the fully enriched report
