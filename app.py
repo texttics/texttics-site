@@ -7807,7 +7807,7 @@ def _evaluate_adversarial_risk(intermediate_data):
             # Check specifically for Bidi vs just ZWSP
             has_bidi = False
             for char in token["text"]:
-                if _find_in_ranges(ord(char), "Bidi_Control"):
+                if _find_in_ranges(ord(char), "BidiControl"):
                     has_bidi = True
                     break
             
