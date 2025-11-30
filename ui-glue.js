@@ -455,13 +455,16 @@ function buildStructuredReport() {
     return lines;
   };
 
-  // --- Helper: Universal Table Scraper ---
+  // --- Helper: Universal Table Scraper (Fixed for Nested Tables) ---
   const parseTable = (tbodyId, prefix = '') => {
     const lines = [];
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return lines;
 
-    tbody.querySelectorAll('tr').forEach(row => {
+    // [FIX] Use .children to get direct rows only. 
+    // querySelectorAll('tr') was digging into the nested Ledger tables, causing duplicate/broken lines.
+    Array.from(tbody.children).forEach(row => {
+      if (row.tagName !== 'TR') return; // Safety check
       if (row.querySelector('.placeholder-text')) return;
       if (row.classList.contains('ledger-noise')) return;
 
@@ -479,6 +482,7 @@ function buildStructuredReport() {
       const nestedTable = tdDetails ? tdDetails.querySelector('table') : null;
       
       if (nestedTable) {
+        // This is a Ledger Row (Integrity or Threat)
         lines.push(`  ${prefix}${label}: ${value}`);
         nestedTable.querySelectorAll('tbody tr').forEach(subRow => {
           const cols = Array.from(subRow.querySelectorAll('td'));
@@ -494,6 +498,7 @@ function buildStructuredReport() {
           }
         });
       } else if (tdDetails) {
+        // Standard Row
         let detailsText = "";
         const detailsEl = tdDetails.querySelector('details');
         if (detailsEl) {
@@ -543,30 +548,7 @@ function buildStructuredReport() {
   report.push('\n[ Analysis Configuration ]');
   report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
   
-  // --- VERIFICATION BENCH (Conditional) ---
-  const verdictBox = document.getElementById('verdict-display');
-  const isBenchActive = verdictBox && !verdictBox.classList.contains('hidden');
-  
-  report.push('\n[ Verification Bench ]');
-  if (isBenchActive) {
-      report.push(`  Verdict: ${getText('#verdict-title')}`);
-      report.push(`  Detail:  ${getText('#verdict-desc')}`);
-      
-      // Scrape Metrics
-      const scrapeMetric = (id) => {
-          const el = document.getElementById(id);
-          if (!el) return "N/A";
-          const val = el.querySelector('.v-metric-val')?.textContent.trim();
-          const det = el.querySelector('.v-metric-detail')?.textContent.trim();
-          return val ? `${val} (${det})` : el.textContent.trim();
-      };
-      
-      report.push(`  RAW:     ${scrapeMetric('vm-raw')}`);
-      report.push(`  NFKC:    ${scrapeMetric('vm-nfkc')}`);
-      report.push(`  SKEL:    ${getText('#vm-skel')}`);
-  } else {
-      report.push('  (Inactive - Select text to compare)');
-  }
+  // [REMOVED] Verification Bench Section
 
   // Dual-Atom
   report.push('\n[ Dual-Atom Profile ]');
@@ -624,7 +606,7 @@ function buildStructuredReport() {
   report.push(`\n[ ${getText('#integrity-title') || 'Structural Integrity Profile'} ]`);
   report.push(...parseTable('integrity-matrix-body', ''));
   
-  // Invisible Atlas (New)
+  // Invisible Atlas
   report.push('\n[ Invisible Character Atlas ]');
   const atlasBody = document.getElementById('invisible-atlas-body');
   if (atlasBody) {
@@ -730,10 +712,7 @@ function buildStructuredReport() {
   report.push('\n[ Perception vs. Reality (Forensic States) ]');
   if (window.latest_threat_data) {
     try {
-        // 1. Access the nested 'states' dictionary
         const states = window.latest_threat_data.get('states');
-        
-        // 2. Access the specific keys (s1, s2, s3, s4) defined in app.py
         if (states) {
             report.push(`  1. Forensic (Raw):    ${states.get('s1')}`);
             report.push(`  2. NFKC:              ${states.get('s2')}`);
@@ -741,7 +720,6 @@ function buildStructuredReport() {
             report.push(`  4. UTS #39 Skeleton:  ${states.get('s4')}`);
         }
     } catch (e) {
-        // Failsafe if PyProxy access is stale
         report.push("  (Forensic state data unavailable)");
     }
   }
@@ -775,29 +753,17 @@ function buildStructuredReport() {
       report.push(revealed);
   }
 
-// Statistical & Lexical Profile (Group 2.F)
-  // We use the Python helper because the data is rich and structured
+  // Statistical & Lexical Profile
   if (window.py_get_stat_report_text) {
       try {
-          // This function is synchronous in PyScript/Pyodide when called from JS 
-          // (if using the standard bridge), but if it returns a promise, we handle it.
-          // Since buildStructuredReport is sync, we might need to handle this carefully.
-          // However, for simplicity in this architecture:
-          
-          // Ideally, we'd call the Python helper. But since we are inside a sync function,
-          // we can also SCRAPE the DOM which we just rendered. This is safer/faster for sync logic.
-          
           report.push('\n[ Statistical & Lexical Profile ]');
           const statBody = document.getElementById('statistical-profile-body');
           if (statBody) {
               statBody.querySelectorAll('tr').forEach(row => {
                   const th = row.querySelector('th')?.textContent.trim();
-                  // For the value, we want the text content but cleaned up
                   const td = row.querySelector('td');
                   if (th && td) {
-                      // Remove the "Visuals" (graphs) by cloning and stripping divs
                       let clone = td.cloneNode(true);
-                      // Remove buttons to get just the text
                       clone.querySelectorAll('button').forEach(b => {
                           b.replaceWith(b.textContent + " "); 
                       });
