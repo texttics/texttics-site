@@ -1282,16 +1282,6 @@ We implemented a rigorous standard for data tooltips. They no longer just define
 
 ---
 
-### 🔮 Roadmap Update: The "Missing Pillars" Identified
-
-Following a critical audit of the original vision vs. current reality, we have identified that Stage 1 is a **Structural** powerhouse but lacks **Statistical** insight.
-
-**Next Priority: Group 2.F (Statistical & Lexical Profile)**
-To detect random noise, encrypted payloads, and flooding attacks, we will implement:
-1.  **Shannon Entropy:** To distinguish between machine noise (High Entropy) and human text (Medium Entropy).
-2.  **Lexical Profile:** To detect "Word" content (Vocabulary Richness, Top Tokens) without requiring an external dictionary.
-3.  **Vowel/Consonant Ratio:** A heuristic to detect Base64 strings masquerading as text.
-
 ***
 
 ## 🛡️ Update: The "Forensic Superiority" & Remediation Upgrade
