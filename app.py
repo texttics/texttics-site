@@ -9814,90 +9814,90 @@ def py_get_stat_report_text():
     """
     Generates a rich, structured plaintext report of the Statistical Profile.
     """
-try:
-    el = document.getElementById("text-input")
-    if not el or not el.value: return ""
-    
-    t = el.value
-    stats = compute_statistical_profile(t)
-    if not stats: return ""
-    
-    lines = []
-    lines.append("[ Statistical & Lexical Profile ]")
-    
-    # 1. Thermodynamics & Density
-    ent = stats.get("entropy", 0.0)
-    ent_norm = stats.get("entropy_norm", 0.0)
-    n = stats.get("entropy_n", 0)
-    ascii_dens = stats.get("ascii_density", 0.0)
-    
-    # Re-calculate status logic for report context
-    status_txt = "Unknown"
-    if n < 64: status_txt = "Insufficient Data"
-    elif ent > 6.5: status_txt = "High Density (Compressed / Encrypted)"
-    elif ent > 5.5: status_txt = "Complex Structure (Code / Binary / Markup)"
-    elif ent > 3.2: status_txt = "Natural Language (Standard Text)"
-    else: status_txt = "Low Entropy (Repetitive / Sparse)"
-    
-    lines.append("")
-    lines.append("[ THERMODYNAMICS ]")
-    lines.append(f"  Entropy: {ent:.2f} bits/byte (Saturation: {int(ent_norm*100)}%)")
-    lines.append(f"  Context: {status_txt}")
-    lines.append(f"  Storage: {n} bytes (ASCII: {ascii_dens}%)")
-    
-    # 2. Payloads
-    payloads = stats.get("payloads", [])
-    if payloads:
+    try:
+        el = document.getElementById("text-input")
+        if not el or not el.value: return ""
+        
+        t = el.value
+        stats = compute_statistical_profile(t)
+        if not stats: return ""
+        
+        lines = []
+        lines.append("[ Statistical & Lexical Profile ]")
+        
+        # 1. Thermodynamics & Density
+        ent = stats.get("entropy", 0.0)
+        ent_norm = stats.get("entropy_norm", 0.0)
+        n = stats.get("entropy_n", 0)
+        ascii_dens = stats.get("ascii_density", 0.0)
+        
+        # Re-calculate status logic for report context
+        status_txt = "Unknown"
+        if n < 64: status_txt = "Insufficient Data"
+        elif ent > 6.5: status_txt = "High Density (Compressed / Encrypted)"
+        elif ent > 5.5: status_txt = "Complex Structure (Code / Binary / Markup)"
+        elif ent > 3.2: status_txt = "Natural Language (Standard Text)"
+        else: status_txt = "Low Entropy (Repetitive / Sparse)"
+        
         lines.append("")
-        lines.append(f"[ ! HEURISTIC PAYLOADS DETECTED ({len(payloads)}) ]")
-        for p in payloads:
-             lines.append(f"  - {p['type']}: '{p['token']}' (H={p['entropy']})")
-    
-    # 3. Lexical Density
-    ttr = stats.get("ttr", 0.0)
-    uniq = stats.get("unique_tokens", 0)
-    tot = stats.get("total_tokens", 0)
-    ttr_seg = stats.get("ttr_segmented")
-    seg_str = f" | Seg-TTR: {ttr_seg:.2f}" if ttr_seg else ""
-    
-    lines.append("")
-    lines.append("[ LEXICAL DENSITY ]")
-    lines.append(f"  TTR:     {ttr:.2f} ({uniq}/{tot} tokens){seg_str}")
-    
-    # 4. Fingerprint (Category Dist)
-    cd = stats.get("char_dist", {})
-    l, n_dig, s, w = cd.get('letters',0), cd.get('digits',0), cd.get('sym',0), cd.get('ws',0)
-    
-    lines.append("")
-    lines.append("[ FREQ. FINGERPRINT ]")
-    lines.append(f"  Dist:    L:{l}% | N:{n_dig}% | S:{s}% | WS:{w}%")
-    
-    # 5. Layout Physics
-    ls = stats.get("line_stats", {})
-    count = ls.get("count", 0)
-    if count > 0:
+        lines.append("[ THERMODYNAMICS ]")
+        lines.append(f"  Entropy: {ent:.2f} bits/byte (Saturation: {int(ent_norm*100)}%)")
+        lines.append(f"  Context: {status_txt}")
+        lines.append(f"  Storage: {n} bytes (ASCII: {ascii_dens}%)")
+        
+        # 2. Payloads
+        payloads = stats.get("payloads", [])
+        if payloads:
+            lines.append("")
+            lines.append(f"[ ! HEURISTIC PAYLOADS DETECTED ({len(payloads)}) ]")
+            for p in payloads:
+                 lines.append(f"  - {p['type']}: '{p['token']}' (H={p['entropy']})")
+        
+        # 3. Lexical Density
+        ttr = stats.get("ttr", 0.0)
+        uniq = stats.get("unique_tokens", 0)
+        tot = stats.get("total_tokens", 0)
+        ttr_seg = stats.get("ttr_segmented")
+        seg_str = f" | Seg-TTR: {ttr_seg:.2f}" if ttr_seg else ""
+        
         lines.append("")
-        lines.append("[ LAYOUT PHYSICS ]")
-        lines.append(f"  Lines:   {count} (Empty: {ls.get('empty', 0)})")
-        lines.append(f"  Widths:  Min:{ls.get('min')}  P25:{ls.get('p25')}  Med:{ls.get('median')}  P75:{ls.get('p75')}  Max:{ls.get('max')}")
-        lines.append(f"  Average: {ls.get('avg')}")
-
-    # 6. Phonotactics
-    ph = stats.get("phonotactics", {})
-    if ph.get("is_valid", False):
+        lines.append("[ LEXICAL DENSITY ]")
+        lines.append(f"  TTR:     {ttr:.2f} ({uniq}/{tot} tokens){seg_str}")
+        
+        # 4. Fingerprint (Category Dist)
+        cd = stats.get("char_dist", {})
+        l, n_dig, s, w = cd.get('letters',0), cd.get('digits',0), cd.get('sym',0), cd.get('ws',0)
+        
         lines.append("")
-        lines.append("[ ASCII PHONOTACTICS ]")
-        lines.append(f"  V/C Ratio:   {ph.get('vowel_ratio', 0)}")
-        lines.append(f"  Balance:     Vowels: {ph.get('v_count', 0)} | Consonants: {ph.get('c_count', 0)}")
-        lines.append(f"  Letter Dens: {ph.get('count', 0)} chars")
-        lines.append(f"  Entropy:     {ph.get('bits_per_phoneme', 0)} bits/phoneme")
-        lines.append(f"  Scoring:     Uni:{ph.get('uni_score',0)}% | Bi:{ph.get('bi_score',0)}% | Tri:{ph.get('tri_score',0)}%")
-
-    return "\n".join(lines)
-
-except Exception as e:
-        print(f"Error generating stats report: {e}")
-        return f"Error generating stats report: {str(e)}"
+        lines.append("[ FREQ. FINGERPRINT ]")
+        lines.append(f"  Dist:    L:{l}% | N:{n_dig}% | S:{s}% | WS:{w}%")
+        
+        # 5. Layout Physics
+        ls = stats.get("line_stats", {})
+        count = ls.get("count", 0)
+        if count > 0:
+            lines.append("")
+            lines.append("[ LAYOUT PHYSICS ]")
+            lines.append(f"  Lines:   {count} (Empty: {ls.get('empty', 0)})")
+            lines.append(f"  Widths:  Min:{ls.get('min')}  P25:{ls.get('p25')}  Med:{ls.get('median')}  P75:{ls.get('p75')}  Max:{ls.get('max')}")
+            lines.append(f"  Average: {ls.get('avg')}")
+    
+        # 6. Phonotactics
+        ph = stats.get("phonotactics", {})
+        if ph.get("is_valid", False):
+            lines.append("")
+            lines.append("[ ASCII PHONOTACTICS ]")
+            lines.append(f"  V/C Ratio:   {ph.get('vowel_ratio', 0)}")
+            lines.append(f"  Balance:     Vowels: {ph.get('v_count', 0)} | Consonants: {ph.get('c_count', 0)}")
+            lines.append(f"  Letter Dens: {ph.get('count', 0)} chars")
+            lines.append(f"  Entropy:     {ph.get('bits_per_phoneme', 0)} bits/phoneme")
+            lines.append(f"  Scoring:     Uni:{ph.get('uni_score',0)}% | Bi:{ph.get('bi_score',0)}% | Tri:{ph.get('tri_score',0)}%")
+    
+        return "\n".join(lines)
+    
+    except Exception as e:
+            print(f"Error generating stats report: {e}")
+            return f"Error generating stats report: {str(e)}"
 
 window.py_get_stat_report_text = py_get_stat_report_text
 
