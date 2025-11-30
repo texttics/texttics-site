@@ -9901,8 +9901,6 @@ except Exception as e:
 
 window.py_get_stat_report_text = py_get_stat_report_text
 
-# Expose
-window.py_get_stat_report_text = py_get_stat_report_text
 
 def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
     """Generates and injects HTML for standard stat cards."""
