@@ -1668,7 +1668,7 @@ window.updateStatConsole = function(row) {
       copyToClipboard(r.join('\n'), 'btn-p-emoji');
   });
 
-  // --- 7. Threat ---
+// --- 7. Threat ---
   const btnThreat = document.getElementById('btn-p-threat');
   if(btnThreat) btnThreat.addEventListener('click', () => {
       const tbody = document.getElementById('threat-report-body');
@@ -1717,7 +1717,7 @@ window.updateStatConsole = function(row) {
       copyToClipboard(r.join('\n'), 'btn-p-threat');
   });
 
-// --- 8. Stats ---
+  // --- 8. Stats ---
   const btnStat = document.getElementById('btn-p-stat');
   if(btnStat) btnStat.addEventListener('click', () => {
       if (window.py_get_stat_report_text) {
@@ -1728,4 +1728,4 @@ window.updateStatConsole = function(row) {
       }
   });
 
-});
+}); // End of DOMContentLoaded
