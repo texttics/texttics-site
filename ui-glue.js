@@ -1716,3 +1716,16 @@ window.updateStatConsole = function(row) {
       
       copyToClipboard(r.join('\n'), 'btn-p-threat');
   });
+}
+// --- 8. Stats ---
+  const btnStat = document.getElementById('btn-p-stat');
+  if(btnStat) btnStat.addEventListener('click', () => {
+      if (window.py_get_stat_report_text) {
+          const text = window.py_get_stat_report_text();
+          copyToClipboard(text, 'btn-p-stat');
+      } else {
+          copyToClipboard("Stats not ready.", 'btn-p-stat');
+      }
+  });
+
+});
