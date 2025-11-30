@@ -7633,8 +7633,13 @@ def analyze_adversarial_tokens(t: str):
     # Note: We include Non-Spacing Marks (\p{Mn}) via \w implies unicode word chars in Py3
     # But we want explicit control.
     
-    # Pattern: "Word chars" + "Connectors"
-    token_pattern = re.compile(r'[\w\-\.\@]+') 
+    # [FIX] Forensic Tokenizer Pattern
+    # Captures: Word chars, dots, @, dashes
+    # PLUS: ZWJ/ZWNJ/ZWSP/BOM (u200b-u200d, u2060, ufeff)
+    # PLUS: Bidi Controls (u202a-u202e, u2066-u2069)
+    # PLUS: Tags (Plane 14 - via surrogate ranges or \w match if Python unicode is strictly compliant)
+    # We explicitly add the common invisible ranges to ensure they "stick" to the token.
+    token_pattern = re.compile(r'[\w\-\.\@\u200b\u200c\u200d\u2060\ufeff\u202a-\u202e\u2066-\u2069]+') 
     
     raw_tokens = []
     for match in token_pattern.finditer(t):
