@@ -1648,12 +1648,20 @@ window.updateStatConsole = function(row) {
       let r = [`[ Emoji Qualification Profile ]`, summary];
       
       if(tbody) {
+          r.push('  SEQ | KIND | BASE | RGI | STATUS | COUNT');
           Array.from(tbody.children).forEach(row => {
               if (row.tagName !== 'TR') return;
               const c = row.querySelectorAll('td');
               // 0:Seq, 1:Kind, 2:Base, 3:RGI, 4:Status, 5:Count
               if(c.length >= 6) {
-                  r.push(`  ${c[0].textContent.trim()} | ${c[4].textContent.trim()} | RGI:${c[3].textContent.trim()}`);
+                  // Clean up badges (remove newlines/spaces)
+                  const seq = c[0].textContent.trim();
+                  const kind = c[1].textContent.trim();
+                  const base = c[2].textContent.trim();
+                  const rgi = c[3].textContent.trim();
+                  const stat = c[4].textContent.trim();
+                  const cnt = c[5].textContent.trim();
+                  r.push(`  ${seq} | ${kind} | ${base} | RGI:${rgi} | ${stat} | x${cnt}`);
               }
           });
       }
@@ -1663,24 +1671,48 @@ window.updateStatConsole = function(row) {
   // --- 7. Threat ---
   const btnThreat = document.getElementById('btn-p-threat');
   if(btnThreat) btnThreat.addEventListener('click', () => {
+      const tbody = document.getElementById('threat-report-body');
+      let r = [`[ Threat-Hunting Profile ]`];
+      
+      if (tbody) {
+          Array.from(tbody.children).forEach(row => {
+              if (row.tagName !== 'TR') return;
+              const label = row.querySelector('th')?.textContent.trim();
+              const val = row.querySelector('td')?.textContent.trim();
+              
+              // Special handling for the Nested Ledger Table
+              const nestedTable = row.querySelector('table');
+              
+              if (nestedTable) {
+                  // It's the Header Row with the Ledger
+                  r.push(`  ${label}: ${val}`);
+                  r.push(`  -- Penalty Breakdown --`);
+                  nestedTable.querySelectorAll('tbody tr').forEach(sub => {
+                      const sc = sub.querySelectorAll('td');
+                      if(sc.length >= 3) {
+                          const vec = sc[0].textContent.trim();
+                          const sev = sc[1].textContent.trim();
+                          const pts = sc[2].textContent.trim();
+                          r.push(`    • ${vec} [${sev}]: ${pts}`);
+                      } else if(sc.length >= 2) {
+                           // Noise rows
+                           r.push(`    • ${sc[0].textContent.trim()}: ${sc[sc.length-1].textContent.trim()}`);
+                      }
+                  });
+              } else {
+                  // Normal Row
+                  const details = row.querySelector('td:nth-child(3)')?.textContent.replace(/\s+/g, ' ').trim();
+                  let line = `  ${label}: ${val}`;
+                  if(details) line += ` | ${details}`;
+                  r.push(line);
+              }
+          });
+      }
+      
       const advBody = document.getElementById('adv-target-body');
       const advText = advBody ? (advBody.innerText || "No anomalies.") : "N/A";
+      r.push('\n[ Adversarial Dashboard ]');
+      r.push(advText);
       
-      const r = [
-          ...scrapeTableLocal('threat-report-body', 'Threat-Hunting Profile'),
-          '\n[ Adversarial Dashboard ]',
-          advText
-      ];
       copyToClipboard(r.join('\n'), 'btn-p-threat');
-  });
-
-  // --- 8. Stats ---
-  const btnStat = document.getElementById('btn-p-stat');
-  if(btnStat) btnStat.addEventListener('click', () => {
-      if (window.py_get_stat_report_text) {
-          const text = window.py_get_stat_report_text();
-          copyToClipboard(text, 'btn-p-stat');
-      } else {
-          copyToClipboard("Stats not ready.", 'btn-p-stat');
-      }
   });
