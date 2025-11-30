@@ -9814,6 +9814,7 @@ def py_get_stat_report_text():
     """
     Generates a rich, structured plaintext report of the Statistical Profile.
     """
+try:
     el = document.getElementById("text-input")
     if not el or not el.value: return ""
     
@@ -9893,6 +9894,10 @@ def py_get_stat_report_text():
         lines.append(f"  Scoring:     Uni:{ph.get('uni_score',0)}% | Bi:{ph.get('bi_score',0)}% | Tri:{ph.get('tri_score',0)}%")
 
     return "\n".join(lines)
+
+except Exception as e:
+        print(f"Error generating stats report: {e}")
+        return f"Error generating stats report: {str(e)}"
 
 window.py_get_stat_report_text = py_get_stat_report_text
 
