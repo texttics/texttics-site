@@ -1088,19 +1088,24 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
           const label = row.querySelector('.risk-facet')?.textContent.trim() || "";
           const status = row.querySelector('.risk-status')?.textContent.trim() || "";
           const detail = row.querySelector('.risk-detail')?.textContent.trim() || "";
-          // Format: "Visibility: PASS (Standard ASCII)"
           if(label) report += `${label.padEnd(12, ' ')}: ${status} (${detail})\n`;
       });
+
+      // [NEW] Scrape Risk Footer (Detailed Detection Info)
+      const footerLabel = txt('.risk-footer-label');
+      const footerContent = txt('.risk-footer-content');
+      if (footerLabel && footerContent) {
+          report += `${footerLabel.padEnd(12, ' ')}: ${footerContent}\n`;
+      }
       report += `\n`;
 
-      // 3. IDENTITY DETAILS
-      // [FIX] Now targets .spec-label for keys and includes optional .matrix-sub details
+      // 3. IDENTITY PROFILE
       report += `[ IDENTITY PROFILE ]\n`;
       root.querySelectorAll('.col-identity .matrix-item').forEach(item => {
           const label = item.querySelector('.spec-label')?.textContent.trim() || "PROPERTY";
           let val = item.querySelector('.matrix-val')?.textContent.trim() || "";
           
-          // Check for sub-details (e.g. Script Extensions or Grapheme Break subtypes)
+          // Check for sub-details
           const sub = item.querySelector('.matrix-sub')?.textContent.trim();
           if (sub) val += ` (${sub})`;
 
@@ -1110,13 +1115,34 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       });
       report += `\n`;
 
-      // 4. LOOKALIKES (If present)
+      // [NEW] NORMALIZATION GHOSTS
+      const ghostSection = root.querySelector('.ghost-section');
+      if (ghostSection) {
+          report += `[ NORMALIZATION ]\n`;
+          // Check if stable
+          if (ghostSection.classList.contains('stable')) {
+               const key = ghostSection.querySelector('.ghost-key')?.textContent.trim() || "STATUS";
+               const val = ghostSection.querySelector('.ghost-val-ok')?.textContent.trim() || "STABLE";
+               report += `${key} ${val}\n`;
+          } else {
+               // Iterate steps (RAW -> NFKC -> SKEL)
+               const steps = ghostSection.querySelectorAll('.ghost-step');
+               steps.forEach(step => {
+                   // Split label "RAW" from value "A" (contained in span)
+                   const label = step.childNodes[0].textContent.trim();
+                   const val = step.querySelector('span')?.textContent.trim() || "";
+                   report += `${label.padEnd(10, ' ')}: ${val}\n`;
+               });
+          }
+          report += `\n`;
+      }
+
+      // 4. LOOKALIKES
       const lookalikes = root.querySelector('.ghost-section.lookalikes');
       if (lookalikes) {
           const count = lookalikes.querySelector('.ghost-key')?.textContent.trim();
           report += `[ CONFUSABLES ]\n`;
           report += `${count}\n`;
-          // Grab chips
           const chips = [];
           lookalikes.querySelectorAll('.lookalike-chip').forEach(chip => {
              const lkGlyph = chip.querySelector('.lk-glyph')?.textContent;
@@ -1127,11 +1153,10 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
           report += `\n`;
       }
 
-      // 5. CLUSTER COMPONENTS (Table)
+      // 5. CLUSTER COMPONENTS
       report += `[ CLUSTER COMPONENTS ]\n`;
       const rows = root.querySelectorAll('.structure-table tbody tr');
       if (rows.length > 0) {
-          // Header
           report += `CP`.padEnd(10) + `Cat`.padEnd(6) + `CCC`.padEnd(6) + `Name\n`;
           rows.forEach(row => {
               const cells = row.querySelectorAll('td');
@@ -1152,7 +1177,6 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       report += `[ ENCODINGS ]\n`;
       root.querySelectorAll('.byte-row').forEach(row => {
           const label = row.querySelector('.label')?.textContent.replace(':','').trim();
-          // Get the text node following the label
           const val = row.innerText.split(':')[1]?.trim() || ""; 
           if(label) report += `${label.padEnd(12, ' ')}: ${val}\n`;
       });
