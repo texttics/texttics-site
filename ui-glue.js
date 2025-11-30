@@ -1231,6 +1231,65 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
         }
       }
 
+    // --- E. Copy Verification Bench (New) ---
+  const btnCopyBench = document.getElementById('btn-copy-bench');
+  if (btnCopyBench) {
+    btnCopyBench.addEventListener('click', () => {
+      const bench = document.getElementById('verdict-display');
+      const trustedInput = document.getElementById('trusted-input');
+      
+      // 1. Safety Check: Is Bench Active?
+      if (!bench || bench.classList.contains('hidden') || !trustedInput.value) {
+          copyToClipboard("[ Verification Bench Inactive ]\n(Enter text in 'Trusted Reference' to activate)", 'btn-copy-bench');
+          return;
+      }
+
+      // 2. Scrape Header Info
+      const scope = document.getElementById('scope-badge')?.innerText || "UNKNOWN";
+      const trusted = trustedInput.value;
+      const verdict = document.getElementById('verdict-title')?.innerText || "N/A";
+      const desc = document.getElementById('verdict-desc')?.innerText || "";
+
+      // 3. Scrape Metrics Helper
+      const getMetric = (id) => {
+          const el = document.getElementById(id);
+          if (!el) return "N/A";
+          // Check for Code Block (Skeleton)
+          const code = el.querySelector('code');
+          if (code) return code.textContent.trim();
+          
+          // Check for Split Value (Raw/NFKC)
+          const val = el.querySelector('.v-metric-val')?.textContent.trim();
+          const det = el.querySelector('.v-metric-detail')?.textContent.trim();
+          if (val && det) return `${val} (${det})`;
+          
+          return el.textContent.trim();
+      };
+
+      const rawMetric = getMetric('vm-raw');
+      const nfkcMetric = getMetric('vm-nfkc');
+      const skelMetric = getMetric('vm-skel');
+
+      // 4. Build Report
+      let report = `[ VERIFICATION BENCH ]\n`;
+      report += `--------------------------------------------------\n`;
+      report += `SCOPE:    ${scope}\n`;
+      report += `TRUSTED:  ${trusted}\n`;
+      report += `--------------------------------------------------\n\n`;
+      
+      report += `[ VERDICT ]\n`;
+      report += `STATUS:   ${verdict}\n`;
+      report += `DETAIL:   ${desc}\n\n`;
+      
+      report += `[ METRICS ]\n`;
+      report += `RAW BYTES:      ${rawMetric}\n`;
+      report += `COMPAT (NFKC):  ${nfkcMetric}\n`;
+      report += `SKELETON:       ${skelMetric}\n`;
+
+      copyToClipboard(report, 'btn-copy-bench');
+    });
+  }
+
       // 3. Get Full Profile Data
       // We call the existing buildStructuredReport function
       const fullProfile = buildStructuredReport(); 
