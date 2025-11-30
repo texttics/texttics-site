@@ -1716,7 +1716,7 @@ window.updateStatConsole = function(row) {
       
       copyToClipboard(r.join('\n'), 'btn-p-threat');
   });
-}
+
 // --- 8. Stats ---
   const btnStat = document.getElementById('btn-p-stat');
   if(btnStat) btnStat.addEventListener('click', () => {
