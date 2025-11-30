@@ -5169,26 +5169,42 @@ details.profile-section > summary:hover::marker {
 
 /* Compact styling for Profile Buttons to fit the grid */
 .prof-btn {
-    height: 32px !important;       /* Shorter than main buttons */
-    font-size: 0.75rem !important; /* Smaller text */
+    /* 1. SIZE OVERRIDES (Keep these so they fit the grid) */
+    height: 32px !important;       
+    font-size: 0.75rem !important; 
     padding: 0 2px !important;
     
-    background-color: #f9fafb !important;
-    color: #6b7280 !important;
-    border: 1px solid #e5e7eb !important;
+    /* 2. VISUAL MATCHING (Fixed to match main buttons) */
+    background-color: transparent !important; /* Changed from #f9fafb to match others */
+    border: 1px solid #d1d5db !important;     /* Darker border to match others */
+    color: #4b5563 !important;                /* Darker text to match others */
+    
+    /* 3. STANDARD PROPERTIES */
     border-radius: 4px;
     cursor: pointer;
     font-weight: 600;
-    transition: all 0.1s;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     
     display: inline-flex;
     align-items: center;
     justify-content: center;
     white-space: nowrap;
+    box-shadow: none !important;
 }
 
+/* Hover State - Matching the Violet Theme of the main buttons */
 .prof-btn:hover {
-    background-color: #e0e7ff !important;
-    color: #4f46e5 !important;
-    border-color: #c7d2fe !important;
+    background-color: #f5f3ff !important; /* Violet-50 */
+    border-color: #8b5cf6 !important;     /* Violet-500 */
+    color: #7c3aed !important;            /* Violet-600 */
+    
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(124, 58, 237, 0.1) !important;
+    z-index: 2;
+}
+
+/* Active/Click State */
+.prof-btn:active {
+    transform: translateY(0);
+    box-shadow: none !important;
 }
