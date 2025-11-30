@@ -867,7 +867,7 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     el = document.getElementById("text-input")
     if not el: return
     
-    # [CRITICAL FIX] Force conversion to Python string to ensure 'enumerate' yields chars, not ints.
+    # Force conversion to Python string to ensure 'enumerate' yields chars, not ints.
     t = str(el.value)
     
     # 1. Map DOM Position to Logical Index (Pure Python)
@@ -2563,7 +2563,7 @@ def compute_whitespace_topology(t):
     Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
     Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
     """
-    import unicodedata as ud  # <--- CRITICAL FIX: Import Added Here
+    import unicodedata as ud
     ws_stats = collections.Counter()
     
     # State tracking for CRLF
@@ -3311,7 +3311,7 @@ async def load_unicode_data():
                 "Bidi_Mirrored": "BidiMirrored"
             })
 
-        # --- CRITICAL FIX: Create the bucket dynamically ---
+        # ---: Create the bucket dynamically ---
         if derivedcore_txt:
             # 1. Initialize the new bucket
             DATA_STORES["DefaultIgnorable"] = {"ranges": [], "starts": [], "ends": []}
@@ -3347,7 +3347,7 @@ async def load_unicode_data():
     except Exception as e:
         LOADING_STATE = "FAILED"
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
-        # --- CRITICAL FIX: Remove 'is_error=True' ---
+        # ---: Remove 'is_error=True' ---
         render_status("Error: Failed to load Unicode data. Please refresh.")
 
 def compute_emoji_analysis(text: str) -> dict:
@@ -7100,7 +7100,7 @@ def analyze_idna_label(label: str):
     for char in analysis_target:
         cp = ord(char)
         
-        # [CRITICAL FIX] Whitelist ASCII Alphanumeric
+        # Whitelist ASCII Alphanumeric
         # IDNA2008 technically disallows uppercase A-Z (must be mapped to lower),
         # but flagging them as "Strict Violation" is forensic noise.
         # We ignore A-Z, a-z, 0-9, and Hyphen.
@@ -7834,7 +7834,7 @@ def _evaluate_adversarial_risk(intermediate_data):
         token["triggers"] = triggers
         risk_stats[final_risk] += 1
 
-        # [CRITICAL FIX] Update Global Topology ONCE per token
+        # Update Global Topology ONCE per token
         for hit in token_topology_hits:
             topology[hit] += 1
             
@@ -10677,7 +10677,7 @@ def inspect_character(event):
         # Previously, we returned here if selectionStart != selectionEnd.
         # We removed that check so the Inspector works when the Highlighter selects a char.
 
-        # [CRITICAL FIX] Handle Newline normalization mismatch (Windows \r\n vs \n)
+        # Handle Newline normalization mismatch (Windows \r\n vs \n)
         text = str(text_input.value)
         if not text:
             render_inspector_panel(None)
@@ -11379,7 +11379,7 @@ def render_inspector_panel(data):
             
         grid_html = "".join(chips_buffer)
         
-        # [CRITICAL FIX] Inherit the color class from the Identity Risk Facet
+        # Inherit the color class from the Identity Risk Facet
         # ident_data['class'] will be 'risk-info' (Blue), 'risk-warn' (Orange), etc.
         risk_css = ident_data['class'] 
         
