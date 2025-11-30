@@ -1516,3 +1516,171 @@ window.updateStatConsole = function(row) {
         document.getElementById('stat-console-strip').classList.remove('active');
     }
 };
+
+// ==========================================
+  // 14. PROFILE-SPECIFIC COPY BUTTONS (4x2 Grid)
+  // ==========================================
+  
+  // Local Helper: Scrape a specific table ID
+  const scrapeTableLocal = (id, title) => {
+      const tbody = document.getElementById(id);
+      if (!tbody) return [];
+      const lines = [];
+      if(title) lines.push(`[ ${title} ]`);
+      
+      Array.from(tbody.children).forEach(row => {
+          if (row.tagName !== 'TR' || row.querySelector('.placeholder-text')) return;
+          
+          const label = row.querySelector('th')?.textContent.trim();
+          const val = row.querySelector('td')?.textContent.trim();
+          
+          // Get details from 3rd column if it exists
+          let details = "";
+          const td3 = row.querySelector('td:nth-child(3)');
+          if (td3) {
+              details = td3.textContent.replace(/\s+/g, ' ').trim();
+          }
+          
+          if(label) {
+              let line = `  ${label}: ${val}`;
+              if(details) line += ` | ${details}`;
+              lines.push(line);
+          }
+      });
+      return lines;
+  };
+
+  // Local Helper: Scrape Cards
+  const scrapeCardsLocal = (id, title) => {
+      const container = document.getElementById(id);
+      if (!container) return [];
+      const lines = [`[ ${title} ]`];
+      container.querySelectorAll('.card').forEach(c => {
+          // Try to find the header (Metric Name)
+          const k = c.querySelector('.card-header, strong')?.textContent.trim();
+          // Try to find the value
+          const v = c.querySelector('.metric-value, .card-main-value, div:nth-child(2)')?.textContent.trim();
+          
+          if(k && v) lines.push(`  ${k}: ${v}`);
+      });
+      return lines;
+  };
+
+  // --- 1. Dual-Atom ---
+  const btnDual = document.getElementById('btn-p-dual');
+  if(btnDual) btnDual.addEventListener('click', () => {
+      const r = [
+          ...scrapeCardsLocal('meta-totals-cards', 'Core Metrics'),
+          ...scrapeCardsLocal('grapheme-integrity-cards', 'Grapheme Integrity'),
+          ...scrapeTableLocal('ccc-matrix-body', 'Combining Class'),
+          ...scrapeTableLocal('major-parallel-body', 'Major Category'),
+          ...scrapeTableLocal('minor-parallel-body', 'Minor Category')
+      ];
+      copyToClipboard(r.join('\n'), 'btn-p-dual');
+  });
+
+  // --- 2. Structural Shape ---
+  const btnShape = document.getElementById('btn-p-shape');
+  if(btnShape) btnShape.addEventListener('click', () => {
+      let r = [`[ Structural Shape Profile ]`];
+      const sections = [
+          'shape-matrix-body', 'minor-shape-matrix-body', 'linebreak-run-matrix-body',
+          'bidi-run-matrix-body', 'wordbreak-run-matrix-body', 'sentencebreak-run-matrix-body',
+          'graphemebreak-run-matrix-body', 'eawidth-run-matrix-body', 'vo-run-matrix-body'
+      ];
+      sections.forEach(id => {
+          // We assume table titles are implicit or handled by the general scraper logic
+          // But for this specific button, let's just grab the rows
+          const rows = scrapeTableLocal(id, null); 
+          if(rows.length) {
+              const secTitle = id.replace('-body','').replace('-run-matrix','').replace('-matrix','').toUpperCase();
+              r.push(`\n-- ${secTitle} --`);
+              r.push(...rows);
+          }
+      });
+      copyToClipboard(r.join('\n'), 'btn-p-shape');
+  });
+
+  // --- 3. Integrity ---
+  const btnInteg = document.getElementById('btn-p-integ');
+  if(btnInteg) btnInteg.addEventListener('click', () => {
+      // Re-use the main parseTable logic if available, or use local
+      // Local scraper is safer here to avoid dependency issues
+      const r = scrapeTableLocal('integrity-matrix-body', 'Structural Integrity Profile');
+      copyToClipboard(r.join('\n'), 'btn-p-integ');
+  });
+
+  // --- 4. Atlas ---
+  const btnAtlas = document.getElementById('btn-p-atlas');
+  if(btnAtlas) btnAtlas.addEventListener('click', () => {
+      const tbody = document.getElementById('invisible-atlas-body');
+      let r = [`[ Invisible Character Atlas ]`];
+      if (tbody) {
+          Array.from(tbody.children).forEach(row => {
+              if (row.tagName !== 'TR') return;
+              const cells = row.querySelectorAll('td');
+              // 0:Vis, 1:Code, 2:Name, 3:Badge, 4:Count, 5:Action
+              // Let's grab specific columns: Vis, Code, Name, Count
+              if(cells.length >= 5) {
+                  r.push(`  ${cells[0].textContent.trim()} ${cells[1].textContent.trim()} : ${cells[4].textContent.trim()} (${cells[2].textContent.trim()})`);
+              }
+          });
+      }
+      copyToClipboard(r.join('\n'), 'btn-p-atlas');
+  });
+
+  // --- 5. Provenance ---
+  const btnProv = document.getElementById('btn-p-prov');
+  if(btnProv) btnProv.addEventListener('click', () => {
+      const r = [
+          ...scrapeTableLocal('provenance-matrix-body', 'Provenance & Context'),
+          '\n',
+          ...scrapeTableLocal('script-run-matrix-body', 'Script Runs')
+      ];
+      copyToClipboard(r.join('\n'), 'btn-p-prov');
+  });
+
+  // --- 6. Emoji ---
+  const btnEmoji = document.getElementById('btn-p-emoji');
+  if(btnEmoji) btnEmoji.addEventListener('click', () => {
+      const tbody = document.getElementById('emoji-qualification-body');
+      const summary = document.getElementById('emoji-summary')?.innerText || "";
+      let r = [`[ Emoji Qualification Profile ]`, summary];
+      
+      if(tbody) {
+          Array.from(tbody.children).forEach(row => {
+              if (row.tagName !== 'TR') return;
+              const c = row.querySelectorAll('td');
+              // 0:Seq, 1:Kind, 2:Base, 3:RGI, 4:Status, 5:Count
+              if(c.length >= 6) {
+                  r.push(`  ${c[0].textContent.trim()} | ${c[4].textContent.trim()} | RGI:${c[3].textContent.trim()}`);
+              }
+          });
+      }
+      copyToClipboard(r.join('\n'), 'btn-p-emoji');
+  });
+
+  // --- 7. Threat ---
+  const btnThreat = document.getElementById('btn-p-threat');
+  if(btnThreat) btnThreat.addEventListener('click', () => {
+      const advBody = document.getElementById('adv-target-body');
+      const advText = advBody ? (advBody.innerText || "No anomalies.") : "N/A";
+      
+      const r = [
+          ...scrapeTableLocal('threat-report-body', 'Threat-Hunting Profile'),
+          '\n[ Adversarial Dashboard ]',
+          advText
+      ];
+      copyToClipboard(r.join('\n'), 'btn-p-threat');
+  });
+
+  // --- 8. Stats ---
+  const btnStat = document.getElementById('btn-p-stat');
+  if(btnStat) btnStat.addEventListener('click', () => {
+      if (window.py_get_stat_report_text) {
+          const text = window.py_get_stat_report_text();
+          copyToClipboard(text, 'btn-p-stat');
+      } else {
+          copyToClipboard("Stats not ready.", 'btn-p-stat');
+      }
+  });
