@@ -548,8 +548,6 @@ function buildStructuredReport() {
   report.push('\n[ Analysis Configuration ]');
   report.push(`Input Text:\n"""\n${getVal('#text-input')}\n"""`);
   
-  // [REMOVED] Verification Bench Section
-
   // Dual-Atom
   report.push('\n[ Dual-Atom Profile ]');
   report.push(...parseCards('meta-totals-cards'));
@@ -1254,6 +1252,33 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
             // Inactive: Show standard placeholder
             megaReport += "  (Inactive - Select a character to inspect)";
         }
+      }
+
+      // --- [NEW] 2.5. Get Verification Bench (Aggregator Only) ---
+      const bench = document.getElementById('verdict-display');
+      const isBenchActive = bench && !bench.classList.contains('hidden');
+
+      if (isBenchActive) {
+          let benchText = "";
+          // Helper for this scope
+          const getTxt = (sel) => document.querySelector(sel)?.innerText || "N/A";
+          
+          benchText += `  Verdict: ${getTxt('#verdict-title')}\n`;
+          benchText += `  Detail:  ${getTxt('#verdict-desc')}\n`;
+          
+          const scrapeMetric = (id) => {
+              const el = document.getElementById(id);
+              if (!el) return "N/A";
+              const val = el.querySelector('.v-metric-val')?.textContent.trim();
+              const det = el.querySelector('.v-metric-detail')?.textContent.trim();
+              return val ? `${val} (${det})` : el.textContent.trim();
+          };
+          
+          benchText += `  RAW:     ${scrapeMetric('vm-raw')}\n`;
+          benchText += `  NFKC:    ${scrapeMetric('vm-nfkc')}\n`;
+          benchText += `  SKEL:    ${getTxt('#vm-skel')}\n`;
+          
+          megaReport += separator + "[ Verification Bench ]\n" + benchText;
       }
 
       // 3. Get Full Profile Data
