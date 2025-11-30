@@ -2976,8 +2976,8 @@ tr.flag-row-crit {
     
     /* CENTER ALIGNMENT CONSTRAINT */
     width: 100%; 
-    max-width: 900px; /* Prevents buttons from stretching to far right */
-    margin: 0 auto;   /* Centers the panel itself */
+    max-width: 100%; /* CHANGED: Was 900px. Now allows full width to fit 5 buttons. */
+    margin: 0 auto;    /* Centers the panel itself */
     
     padding: 16px; 
     background-color: var(--color-white);
@@ -3007,6 +3007,7 @@ tr.flag-row-crit {
 
 /* 4. UNIVERSAL BUTTON STYLING (The "Unifier" Engine) */
 .action-bar .tool-btn,
+.action-btn, /* ADDED: Ensures the new 'action-btn' class gets styled */
 .macro-btn,
 .wb-btn-strict, 
 .wb-btn-cons, 
@@ -3021,7 +3022,7 @@ tr.flag-row-crit {
     
     /* UNIFIED TYPOGRAPHY */
     font-family: var(--font-sans) !important;
-    font-size: 0.9rem !important;
+    font-size: 0.85rem !important; /* CHANGED: Was 0.9rem (Slightly smaller text) */
     font-weight: 600 !important;
     line-height: 1;
     white-space: nowrap;
@@ -3029,8 +3030,8 @@ tr.flag-row-crit {
     
     /* UNIFIED BOX MODEL */
     height: 42px;
-    padding: 0 12px;
-    gap: 8px;
+    padding: 0 8px; /* CHANGED: Was 0 12px (Makes buttons narrower) */
+    gap: 6px;       /* CHANGED: Slightly tighter gap between text/icon */
     border-radius: 4px;
     
     /* UNIFIED COLORS: TRANSPARENT DEFAULT */
