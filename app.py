@@ -5601,29 +5601,6 @@ def analyze_token_fragmentation(tokens: list):
             
     return None
 
-def analyze_punctuation_skew(t: str):
-    """
-    Replacement Attack Detector.
-    Checks if 'Charged' symbols (e.g. ~ _ ^) significantly outnumber 
-    'Grammatical' punctuation (. , ;).
-    """
-    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-'}
-    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
-    
-    gram_count = sum(1 for c in t if c in grammatical)
-    charged_count = sum(1 for c in t if c in charged)
-    total = gram_count + charged_count
-    
-    if total > 5 and charged_count > 3:
-        ratio = charged_count / total
-        if ratio > 0.7:
-            return {
-                "type": "SKEW",
-                "desc": f"Punctuation Replacement ({int(ratio*100)}% Charged Symbols)",
-                "risk": 50,
-                "verdict": "SEMANTIC BIAS"
-            }
-    return None
 
 # --- FORENSIC THREAT VOCABULARY (Seed List) ---
 # Derived from SecLists, FuzzDB, and LLM Jailbreak research.
@@ -5715,51 +5692,6 @@ def check_reassembly(tokens: list):
             
     return findings
 
-def analyze_token_fragmentation_v2(tokens: list):
-    """
-    [PAPER 2: Charmer] Enhanced Fragmentation Detector.
-    1. Checks for re-assembly into forensic threat categories.
-    2. Checks for contiguous runs of micro-tokens (General Obfuscation).
-    """
-    if not tokens: return None
-    
-    # 1. Charmer Re-Assembly Check (High Fidelity)
-    reassembly_hits = check_reassembly(tokens)
-    if reassembly_hits:
-        # Calculate Risk based on category severity
-        risk = 90
-        desc_str = ", ".join(reassembly_hits)
-        
-        if "[EXECUTION]" in desc_str or "[INJECTION]" in desc_str:
-            risk = 100
-            
-        return {
-            "type": "FRAGMENTATION",
-            "desc": f"Fragmented Threat Words: {desc_str}",
-            "risk": risk,
-            "verdict": "TOKENIZER EVASION"
-        }
-
-    # 2. Contiguous Micro-Run Check (Heuristic fallback)
-    max_micro_run = 0
-    current_micro_run = 0
-    for tok in tokens:
-        if tok['token'].isalnum() and len(tok['token']) <= 2:
-            current_micro_run += 1
-        else:
-            max_micro_run = max(max_micro_run, current_micro_run)
-            current_micro_run = 0
-    max_micro_run = max(max_micro_run, current_micro_run)
-    
-    if max_micro_run >= 4:
-         return {
-            "type": "OBFUSCATION",
-            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
-            "risk": 60,
-            "verdict": "TOKENIZER CONFUSION"
-        }
-
-    return None
 
 def analyze_invisible_fragmentation(t: str):
     """
@@ -5795,43 +5727,6 @@ def analyze_invisible_fragmentation(t: str):
                     "risk": 95, # Critical: This is almost always malicious
                     "verdict": "JAILBREAK VECTOR"
                 }
-    return None
-
-def analyze_punctuation_skew(t: str):
-    """
-    [PAPER 3: SSTA] Detects 'Replacement' attacks by analyzing Symbol Distribution.
-    Normal text is dominated by Grammatical punctuation (.,:;).
-    Adversarial text is dominated by 'Charged' symbols (~_^|) used to bias models.
-    """
-    # 1. Define Sets
-    # Grammatical: High frequency in natural language
-    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-', '(', ')'}
-    # Charged: Low frequency in prose, high frequency in exploits/code
-    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
-    
-    gram_count = 0
-    charged_count = 0
-    
-    for char in t:
-        if char in grammatical: gram_count += 1
-        elif char in charged: charged_count += 1
-            
-    total_sym = gram_count + charged_count
-    if total_sym < 5: return None # Not enough data
-    
-    # 2. Calculate Skew
-    # If Charged symbols make up > 70% of all punctuation, it's anomalous for prose.
-    charged_ratio = charged_count / total_sym
-    
-    if charged_ratio > 0.70 and charged_count > 3:
-        # High skew towards non-grammatical symbols
-        return {
-            "type": "SKEW",
-            "desc": f"Abnormal Punctuation Distribution ({int(charged_ratio*100)}% Rare/Charged)",
-            "risk": 45,
-            "verdict": "REPLACEMENT ATTACK"
-        }
-        
     return None
 
 def analyze_visual_redaction(t: str):
@@ -5994,6 +5889,83 @@ def analyze_idna_compression(token: str):
         }
     return None
 
+def analyze_punctuation_skew(t: str):
+    """
+    [PAPER 3: SSTA] Replacement Attack Detector.
+    Analyzes ratio of 'Grammatical' vs 'Charged' punctuation.
+    """
+    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-', '(', ')'}
+    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
+    
+    gram_count = sum(1 for c in t if c in grammatical)
+    charged_count = sum(1 for c in t if c in charged)
+    total = gram_count + charged_count
+    
+    if total > 5 and charged_count > 3:
+        ratio = charged_count / total
+        if ratio > 0.70:
+            return {
+                "type": "SKEW",
+                "desc": f"Abnormal Punctuation ({int(ratio*100)}% Charged Symbols)",
+                "risk": 45,
+                "verdict": "REPLACEMENT ATTACK"
+            }
+    return None
+
+def analyze_token_fragmentation_v2(tokens: list):
+    """
+    [PAPER 2: Charmer] Deep Fragmentation Engine.
+    Checks for re-assembly (Charmer) and contiguous micro-runs.
+    Robust against 'string vs dict' token types.
+    """
+    if not tokens: return None
+    
+    # 1. Charmer Re-Assembly Check (High Fidelity)
+    # Safe check ensures we don't crash if helper is missing
+    if 'check_reassembly' in globals():
+        reassembly_hits = check_reassembly(tokens)
+        if reassembly_hits:
+            desc_str = ", ".join(reassembly_hits)
+            # Critical risk for Exec/Injection keywords, High for others
+            risk = 100 if ("[EXECUTION]" in desc_str or "[INJECTION]" in desc_str) else 90
+            
+            return {
+                "type": "FRAGMENTATION",
+                "desc": f"Fragmented Threat Words: {desc_str}",
+                "risk": risk,
+                "verdict": "TOKENIZER EVASION"
+            }
+
+    # 2. Contiguous Micro-Run Check (Heuristic)
+    max_micro_run = 0
+    current_micro_run = 0
+    
+    for tok_obj in tokens:
+        # DEFENSIVE EXTRACTION: Prevents "string indices must be integers" error
+        if isinstance(tok_obj, dict):
+            txt = tok_obj.get('token', '')
+        else:
+            txt = str(tok_obj)
+        
+        if txt.isalnum() and len(txt) <= 2:
+            current_micro_run += 1
+        else:
+            max_micro_run = max(max_micro_run, current_micro_run)
+            current_micro_run = 0
+            
+    # Capture trailing run
+    max_micro_run = max(max_micro_run, current_micro_run)
+    
+    if max_micro_run >= 4:
+         return {
+            "type": "OBFUSCATION",
+            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
+            "risk": 60,
+            "verdict": "TOKENIZER CONFUSION"
+        }
+
+    return None
+
 def compute_adversarial_metrics(t: str):
     """
     Adversarial Engine v10 (Consolidated & Paper-Aligned).
@@ -6053,7 +6025,27 @@ def compute_adversarial_metrics(t: str):
             'family': f"[{flood['verdict']}]", 'desc': flood['desc'],
             'token': 'GLOBAL', 'severity': 'crit' if flood['risk'] > 50 else 'warn'
         })
-        topology["SEMANTIC"] += 1
+        # Safe update (Fixes KeyError risk)
+        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
+
+    # E. Punctuation Skew (SSTA - Replacement)
+    skew = analyze_punctuation_skew(t)
+    if skew:
+        findings.append({
+            'family': f"[{skew['verdict']}]", 'desc': skew['desc'],
+            'token': 'GLOBAL', 'severity': 'warn'
+        })
+        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
+
+    # F. Token Fragmentation (Charmer)
+    frag = analyze_token_fragmentation_v2(tokens)
+    if frag:
+        sev = 'crit' if frag['risk'] > 80 else 'warn'
+        findings.append({
+            'family': f"[{frag['verdict']}]", 'desc': frag['desc'],
+            'token': 'GLOBAL', 'severity': sev
+        })
+        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
 
     # --- 3. Token Loop ---
     
