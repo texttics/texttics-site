@@ -6086,6 +6086,49 @@ def compute_adversarial_metrics(t: str):
 
         is_domain_candidate = is_plausible_domain_candidate(token_text)
 
+        # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
+        # Detects: Alpha -> Agent -> Alpha (e.g. "sens😎itive")
+        fracture_risk = 0
+        fracture_desc = ""
+        
+        if len(token_text) > 2:
+            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
+            SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
+            
+            for char in token_text:
+                cp = ord(char)
+                is_alnum = char.isalnum()
+                is_safe = char in SAFE_PUNCT
+                f_is_agent = False
+                
+                if cp < 1114112:
+                    mask = INVIS_TABLE[cp]
+                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
+                        f_is_agent = True
+                    # Hardened Emoji Check
+                    elif not is_alnum and (_find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic")):
+                        f_is_agent = True
+
+                if f_state == 0:
+                    if is_alnum: f_state = 1
+                elif f_state == 1:
+                    if not is_alnum and not is_safe:
+                        if f_is_agent: f_state = 2
+                    elif not is_alnum and is_safe:
+                        f_state = 0
+                elif f_state == 2:
+                    if is_alnum:
+                        fracture_risk = 90
+                        fracture_desc = "Token Fracture (Mid-Token Injection)"
+                        break
+                    elif is_safe:
+                        f_state = 0
+
+        if fracture_risk > 0:
+            threat_stack.insert(0, { "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
+            token_score += 90
+            token_families.add("OBFUSCATION")
+
         # [NEW] Lexical Stutter (Unicode Evil)
         # Logic: Check for exact doubling (e.g. "adminadmin")
         if len(token_text) >= 6:
