@@ -1652,3 +1652,75 @@ To support these new engines, we upgraded the core **Risk Scoring & UI Architect
 * **Scoring Logic:** Updated the `compute_threat_score` Auditor to include "Multi-Vector Correlation," boosting the score if an attack combines Execution (Injection) with Obfuscation (Fracture).
 * **Leaderboard Sorting:** Enforced a strict re-sort of the "Paranoia Peak" (Top Offender) to ensure that high-scoring Token Fractures (75+) correctly displace lower-scoring generic payloads (45).
 * **Stack integrity:** Implemented explicit "Visual Stacks" for tokens to prevent badge collision (e.g., ensuring a Fracture correctly displays the `OBFUSCATION` badge instead of a generic `PROTOCOL` badge).
+
+### Six Papers - Adversarial Intelligence & Forensic Hardening
+
+**Session Summary:**
+In this session, we evolved **Text...tics Stage 1** from a "Structural Profiler" into an **"Active Adversarial Intelligence Engine" (Stage 1.5)**. We integrated cutting-edge forensic logic derived from **six seminal security papers** (Boucher et al. 2022, Dionysiou & Athanasopoulos 2021, Cooper et al. 2025, Sakpal 2025, Daniel & Pal 2024, OWASP 2014), closing critical gaps in the detection of tokenizer evasion, visual spoofing, and DoS vectors.
+
+### 1. New Forensic Engines (The Detectors)
+
+We implemented **nine** new specialized detection engines, each targeting a specific class of attack identified in the literature.
+
+* **The "Ghost" Scanner (Visual Deletion)**
+    * *Source:* *Bad Characters* (Boucher et al., 2022).
+    * *Logic:* Detects characters that actively modify cursor position to "erase" previous content (Backspace `U+0008`, Delete `U+007F`, Carriage Return `U+000D`).
+    * *Verdict:* **CRITICAL (Execution)**. Flags "Active Deception" where the visual string differs from the logical payload without normalization.
+    * *Impact:* Closes the "Browser Boundary" gap by treating raw control codes as payloads, not editing operations.
+
+* **The "Fracture" Scanner v2 (Syntax Sandwich)**
+    * *Source:* *A Survey on Emoji...* (Sakpal, 2025) & *Bad Characters*.
+    * *Logic:* Detects alphanumeric runs split by **Emojis**, **Invisibles**, or **Tags** (e.g., `print🚀data`, `sys<ZWSP>tem`).
+    * *Verdict:* **CRITICAL (Obfuscation)**. Identified as the primary vector for "Jailbreaking" tokenizers and bypassing safety filters.
+    * *Impact:* Upgraded the previous "Invisible Fragmentation" logic to include visible Emojis as functional separators.
+
+* **The "Jailbreak Alphabet" Detector (Evasion Styles)**
+    * *Source:* *Impact of Non-Standard Unicode...* (Daniel & Pal, 2024).
+    * *Logic:* Detects usage of specific Unicode blocks proven to bypass LLM safety filters. Tracks **20+ sets** including Mathematical Alphanumerics (Bold/Italic), Enclosed Alphanumerics (Circled/Squared), Braille Patterns, and Plane 14 Tags.
+    * *Verdict:* **CRITICAL/HIGH (Spoofing/Injection)**. Assigns risk based on the "Alien" quality of the block.
+
+* **The "Normalization Bomb" Detector (Inflation DoS)**
+    * *Source:* *Fun with Unicode* (OWASP, 2014).
+    * *Logic:* Detects single characters that expand significantly (>10 chars) upon NFKC normalization (e.g., `U+FDFA` $\to$ 18 chars).
+    * *Verdict:* **WARN (DoS)**. Identifies potential buffer overflow or resource exhaustion vectors targeting fixed-width backends.
+
+* **The "IDNA Compression" Detector**
+    * *Source:* *Fun with Unicode* (OWASP, 2014).
+    * *Logic:* Detects non-ASCII characters that normalize to multi-character ASCII strings in IDNA/NFKC (e.g., `U+33C5` ㏅ $\to$ `cd`).
+    * *Verdict:* **HIGH (Spoofing)**. Flags attempts to spoof ASCII keywords using complex symbols that "compress" down.
+
+* **The "Deep Fragmentation" Engine (Re-Assembly)**
+    * *Source:* *Unicode Evil* (Dionysiou et al., 2021) & *Charmer* logic.
+    * *Logic:* Attempts to "re-glue" fragmented micro-tokens (e.g., "s", "h", "e", "ll") to see if they form high-value threat words from a forensic vocabulary (Execution, Auth, Injection).
+    * *Verdict:* **CRITICAL (Evasion)**.
+
+* **The "Punctuation Skew" Analyzer**
+    * *Source:* *The Lies Characters Tell* (Cooper et al., 2025).
+    * *Logic:* Calculates the ratio of "Charged" symbols (used in exploits like `~`, `_`, `^`) versus "Grammatical" symbols (`.`, `,`).
+    * *Verdict:* **WARN (Semantic Bias)**. Detects "Replacement Attacks" where symbols flood text to manipulate model attention.
+
+* **The "Lexical Stutter" Scanner (Doubling)**
+    * *Source:* *Unicode Evil* (Dionysiou et al., 2021).
+    * *Logic:* Detects exact-repeat substrings within a single token (e.g., `adminadmin` or `badbad`), a proven method for evading sentiment/toxicity classifiers.
+    * *Verdict:* **MEDIUM (Obfuscation)**.
+
+* **The "Hardened Tokenizer" (Option A)**
+    * *Source:* Architectural Requirement.
+    * *Logic:* Updated to return **Dictionaries** instead of Objects/Strings to resolve critical type errors and ensure compatibility with the new Adversarial Engine.
+
+### 2. Unified Reporting Architecture
+
+We solved the "Split Brain" reporting problem by implementing a **Bridge Mechanism**.
+
+* **Adversarial Dashboard (Group 4):** The primary home for detailed forensic analysis. Displays per-token risk stacks, decoding layers, and paranoia peaks.
+* **Threat Flags (Group 3):** The "Bridge" now promotes **CRITICAL** and **HIGH** findings from the Adversarial Engine up to the main Threat Profile summary. This ensures that a "Token Fracture" found deep in the token list is visible immediately in the high-level report.
+* **Integrity Profile (Group 2.C):** Continues to track "Rot" and "Structure" (e.g., Legacy Control Chars), maintaining the "Dual-Ledger" separation of concerns.
+
+### 3. Validation Status
+
+The system has been verified against the `ULTIMATE_STRESS_TEST` string, confirming correct detection and reporting for:
+* [x] **Ghost Chars** (`Safe[BS]...`) -> **CRITICAL**
+* [x] **Token Fracture** (`sys[ZW]tem`, `print🚀data`) -> **CRITICAL**
+* [x] **IDNA Compression** (`corp.㏅.com`) -> **HIGH**
+* [x] **Lexical Stutter** (`adminadmin`) -> **MEDIUM**
+* [x] **Math/Tag Evasion** (`𝐀𝐝𝐦𝐢𝐧`) -> **CRITICAL**
