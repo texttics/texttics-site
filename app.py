@@ -4583,6 +4583,84 @@ def _get_codepoint_properties(t: str):
 
     return word_break_props, sentence_break_props
 
+def analyze_visual_redaction(t: str):
+    """
+    [PAPER: Bad Characters] Visual Deletion Engine ('Ghost' Scanner).
+    Detects characters that modify cursor position (BS, DEL) to hide content.
+    These are 'Active Deception' vs standard 'Legacy Control'.
+    """
+    findings = []
+    # BS (0x08), DEL (0x7F) are the primary visual erasers.
+    # CR (0x0D) overwrites line start.
+    REDACTION_SET = {0x0008, 0x007F, 0x000D}
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        if cp in REDACTION_SET:
+            name = "BACKSPACE" if cp == 0x0008 else ("DELETE" if cp == 0x7F else "CARRIAGE RETURN")
+            # Format: position (NAME)
+            findings.append(f"#{i} ({name})")
+            
+    if findings:
+        return {
+            "label": "CRITICAL: Visual Redaction (Ghost Chars)",
+            "count": len(findings),
+            "positions": findings,
+            "severity": "crit",
+            "badge": "GHOST"
+        }
+    return None
+
+def analyze_syntax_fracture_enhanced(t: str):
+    """
+    [PAPER: Emoji Survey] Enhanced Fracture Scanner (v2).
+    Detects 'Sandwich Attacks' where an alphanumeric run is split by
+    Emojis, Invisibles, or Tags (e.g. 'print🚀data').
+    Replaces older 'analyze_invisible_fragmentation' logic.
+    """
+    if len(t) < 3: return None
+
+    fractures = []
+    
+    # 1. Define Fracture Agents (The Wedge)
+    def is_agent(cp):
+        if cp >= 1114112: return False
+        # Check Bitmask for Invisibles/Tags/Joiners
+        mask = INVIS_TABLE[cp]
+        if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL | INVIS_SOFT_HYPHEN):
+            return True
+        # Check for Emoji (Visual fracture - New from Paper)
+        if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
+            return True
+        return False
+
+    # 2. Scan for [Alpha] -> [Agent] -> [Alpha]
+    for i in range(1, len(t) - 1):
+        mid_char = t[i]
+        cp_mid = ord(mid_char)
+        
+        # Optimization: Skip expensive check if char is common Alpha/Space
+        if mid_char.isalnum() or mid_char.isspace():
+            continue
+            
+        if is_agent(cp_mid):
+            prev_char = t[i-1]
+            next_char = t[i+1]
+            
+            # Context Check: Must be embedded in words
+            if prev_char.isalnum() and next_char.isalnum():
+                fractures.append(f"#{i} (U+{cp_mid:04X} splits token)")
+
+    if fractures:
+        return {
+            "label": "CRITICAL: Syntax Fracture (Token Evasion)",
+            "count": len(fractures),
+            "positions": fractures,
+            "severity": "crit", 
+            "badge": "JAILBREAK"
+        }
+    return None
+
 def compute_integrity_score(inputs):
     """
     The Integrity Auditor.
@@ -5033,6 +5111,17 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for k, v in id_type_stats.items(): add_row(k, v['count'], v['positions'], "warn")
 
     rows.extend(struct_rows)
+
+    # [NEW] Visual Redaction (Ghost Scanner)
+    ghost_report = analyze_visual_redaction(t)
+    if ghost_report:
+        rows.append(ghost_report)
+        # Register for HUD Stepper
+        for p in ghost_report["positions"]:
+            try:
+                idx = int(p.split()[0].replace("#", ""))
+                _register_hit("int_fatal", idx, idx+1, "Ghost Char")
+            except: pass
 
     return rows, audit_result
 
@@ -8384,7 +8473,15 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 elif not threat_flags: 
                      threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
-
+            # [NEW] Enhanced Fracture Scanner (Emoji + Invisible)
+            fracture_data = analyze_syntax_fracture_enhanced(t)
+            if fracture_data:
+                threat_flags["Flag: Syntax Fracture (Sandwich Attack)"] = {
+                    'count': fracture_data["count"],
+                    'positions': fracture_data["positions"],
+                    'severity': 'crit'
+                }
+            
         # --- 5. Skeleton Drift (METRICS ENGINE) ---
         if skel_metrics["total_drift"] > 0:
             drift_desc = f"{skel_metrics['total_drift']} total"
@@ -8409,6 +8506,18 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 'count': skel_metrics["total_drift"],
                 'positions': [drift_desc]
             }
+
+        # --- Rule 6: Lexical Stutter (Unicode Evil TPT 4) ---
+        # Detects 'doubling' attacks like 'badbad' or 'adminadmin'
+        if len(t_str) >= 6:
+            mid = len(t_str) // 2
+            # Exact half check (e.g. "admin" == "admin")
+            if t_str[:mid] == t_str[mid:]:
+                risk_level = max(risk_level, 1) # Medium Risk
+                desc = "R06: Lexical Stutter (Doubling)"
+                triggers.append(desc)
+                token_topology_hits.add("OBFUSCATION")
+                detailed_stack.append({"lvl": "MED", "type": "OBFUSCATION", "desc": desc})
 
         # --- 6. QUAD-STATE FORENSIC PIPELINE (New Architecture) ---
         
