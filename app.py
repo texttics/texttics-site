@@ -164,56 +164,255 @@ TAG_BLOCK_END = 0xE007F
 # ------------------------------------------------------------
 
 # ==========================================
-# [STAGE 1.5] SIDE-CAR DETECTION ENGINES (Pure Logic)
+# [STAGE 1.5] NEW SIDECAR ENGINES (Block 1)
+# ==========================================
+
+def scan_vs_topology(text: str):
+    """
+    [STAGE 1.5] Variation Selector Topology Engine.
+    Detects: Excessive runs (>1) and Bare VS (not preceded by valid base).
+    Source: Imperceptible Jailbreaking (VS flooding).
+    """
+    if not text: return {}, []
+    
+    vs_run_count = 0
+    max_run = 0
+    bare_count = 0
+    total_vs = 0
+    
+    # Get the valid base set (Tier 1 + Tier 3 from Data Stores)
+    valid_bases = DATA_STORES.get("VariantBase", frozenset())
+    
+    # Bitmask for ANY VS (Standard or Ideographic)
+    VS_MASK = INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG
+    
+    prev_cp = -1
+    
+    for char in text:
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        
+        if mask & VS_MASK:
+            total_vs += 1
+            vs_run_count += 1
+            
+            # Check if Bare (Start of run check)
+            if vs_run_count == 1:
+                # This is the first VS in a sequence. Check antecedent.
+                # If prev_cp is -1 (Start of string) or not in Valid Bases -> Bare
+                if prev_cp == -1 or prev_cp not in valid_bases:
+                    bare_count += 1
+        else:
+            if vs_run_count > 0:
+                max_run = max(max_run, vs_run_count)
+                vs_run_count = 0
+        
+        prev_cp = cp
+        
+    # Capture trailing run
+    if vs_run_count > 0:
+        max_run = max(max_run, vs_run_count)
+        
+    metrics = {
+        "vs_total_count": total_vs,
+        "vs_max_run_length": max_run,
+        "vs_bare_count": bare_count
+    }
+    
+    signals = []
+    if bare_count > 0:
+        signals.append({
+            "type": "VS_BARE",
+            "count": bare_count,
+            "desc": f"{bare_count} Orphaned Variation Selectors"
+        })
+        
+    if max_run > 1:
+        # A run of >1 is structurally redundant (Standard allows 1 per base)
+        signals.append({
+            "type": "VS_CLUSTER",
+            "max_len": max_run,
+            "desc": f"Variation Selector Cluster (Length {max_run})"
+        })
+        
+    return metrics, signals
+
+def decode_tag_payload(text: str):
+    """
+    [STAGE 1.5] Tag Payload Decoder.
+    Decodes Plane 14 Tags (U+E00xx) into ASCII to reveal hidden instructions.
+    Source: Bypassing Guardrails (Hidden Instructions).
+    """
+    hidden_chars = []
+    
+    for char in text:
+        cp = ord(char)
+        # Plane 14 Tag Block: E0020 - E007E (printable ASCII range mapped to Tags)
+        if 0xE0020 <= cp <= 0xE007E:
+            ascii_code = cp - 0xE0000
+            hidden_chars.append(chr(ascii_code))
+            
+    if not hidden_chars:
+        return None
+        
+    decoded = "".join(hidden_chars)
+    preview = decoded[:50] + "..." if len(decoded) > 50 else decoded
+    
+    return {
+        "type": "TAG_PAYLOAD",
+        "payload_len": len(hidden_chars),
+        "preview": preview,
+        "desc": f"Hidden Tag Payload: '{_escape_html(preview)}'"
+    }
+
+def scan_delimiter_masking(text: str):
+    """
+    [STAGE 1.5] Delimiter Masking Engine (Extension Hiding).
+    Detects: [Suspicious Space] + [Dot] + [AlphaExtension].
+    Source: Mandiant (Malware extension masking with U+2800).
+    """
+    if "." not in text: return []
+    
+    signals = []
+    text_len = len(text)
+    
+    # Define Suspicious Mask: Non-ASCII Space, ZWSP, Default Ignorable, or Joiners
+    MASK_DECEPTIVE = INVIS_NON_ASCII_SPACE | INVIS_ZERO_WIDTH_SPACING | INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL
+    
+    for i, char in enumerate(text):
+        if char == '.':
+            if i == 0: continue
+            
+            # 1. Check Left Context (Must be suspicious)
+            prev_char = text[i-1]
+            prev_cp = ord(prev_char)
+            prev_mask = INVIS_TABLE[prev_cp] if prev_cp < 1114112 else 0
+            
+            # [cite_start]Specific check for Braille Pattern Blank (U+2800) as it's the highest risk [cite: 1460]
+            is_braille = (prev_cp == 0x2800)
+            is_suspicious = (prev_mask & MASK_DECEPTIVE) or is_braille
+            
+            if not is_suspicious:
+                continue
+                
+            # 2. Check Right Context (Must look like an extension: 2-4 Alphanumerics)
+            # e.g., .exe, .bat, .js
+            ext_str = ""
+            valid_ext = False
+            
+            for k in range(1, 5):
+                if i + k >= text_len: break
+                next_char = text[i+k]
+                if next_char.isalnum():
+                    ext_str += next_char
+                else:
+                    break
+            
+            if 2 <= len(ext_str) <= 4:
+                valid_ext = True
+                
+            if valid_ext:
+                mask_type = "Braille Blank" if is_braille else "Invisible/Deceptive Space"
+                signals.append({
+                    "type": "MASKED_EXTENSION",
+                    "pos": i - 1, # Point to the masking char
+                    "desc": f"Extension Masking ({mask_type} before '.{ext_str}')"
+                })
+                
+    return signals
+
+# ==========================================
+# [STAGE 1.5] UPGRADE EXISTING FUNCTION (Block 2)
 # ==========================================
 
 def scan_token_fracture_safe(token_text):
     """
-    [STAGE 1.5] Script-Aware Fracture Scanner.
-    Detects: [Alpha] + [Invisible] + [Alpha] (The "Sandwich").
-    Safety: Explicitly IGNORES legitimate joiners (ZWJ/ZWNJ) in Complex Scripts
-            (Arabic, Persian, etc.) via the 'Persian Defense' whitelist.
+    [STAGE 1.5] Script-Aware Fracture Scanner (Upgraded v3).
+    Detects: [Alpha] + [Fracture Agent(s)] + [Alpha].
+    Fracture Agents: Invisibles, Tags, Bidi, AND Emojis.
+    
+    Improvements:
+    1. Handles contiguous runs of agents (e.g. "te<ZWSP><ZWSP>st").
+    2. Script-Aware Safety (Persian Defense) applied to ALL agents in the fracture.
     """
     if len(token_text) < 3: return []
     
     signals = []
-    # Iterate internal chars only
-    for i in range(1, len(token_text) - 1):
-        char = token_text[i]
-        cp = ord(char)
-        
-        # 1. Is it an Agent? (Invisible / Format / Tag / Bidi)
-        is_agent = False
-        if cp < 1114112:
-            mask = INVIS_TABLE[cp]
-            # We care about Spacing, Joiners, Tags, Bidi, and Soft Hyphen
-            if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL | INVIS_SOFT_HYPHEN):
-                is_agent = True
-        
-        if not is_agent: continue
+    
+    # Helper to check if a char is a Fracture Agent
+    def is_fracture_agent(cp):
+        if cp >= 1114112: return False
+        mask = INVIS_TABLE[cp]
+        # Invisible/Format/Control mask
+        if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | 
+                   INVIS_BIDI_CONTROL | INVIS_SOFT_HYPHEN | INVIS_VARIATION_STANDARD | 
+                   INVIS_VARIATION_IDEOG):
+            return True
+        # Emoji/Pictographic check
+        if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
+            return True
+        return False
 
-        # 2. The "Sandwich" Check
-        prev_char = token_text[i-1]
-        next_char = token_text[i+1]
-        
-        if prev_char.isalnum() and next_char.isalnum():
-            # 3. The "Persian Defense" (Contextual Whitelist)
-            # Check script of surrounding characters
-            prev_cp = ord(prev_char)
-            prev_script = _find_in_ranges(prev_cp, "Scripts") or "Common"
+    # Iterate looking for transitions: Alpha -> Agent
+    i = 0
+    while i < len(token_text):
+        char = token_text[i]
+        if not char.isalnum():
+            i += 1
+            continue
             
-            # Logic: If the context is a Complex Script AND the agent is a Joiner, it is valid.
-            # ZWNJ (200C) and ZWJ (200D) are critical for these languages.
-            if prev_script in COMPLEX_ORTHOGRAPHY_SCRIPTS and cp in (0x200C, 0x200D):
-                continue # Legitimate typography
+        # Found Alpha at `i`. Now look ahead for Agents.
+        j = i + 1
+        agent_run = []
+        
+        while j < len(token_text):
+            next_char = token_text[j]
+            next_cp = ord(next_char)
+            
+            if is_fracture_agent(next_cp):
+                agent_run.append((j, next_cp))
+                j += 1
+            else:
+                break
+        
+        # Now `j` is at the character AFTER the agent run (or end of string)
+        # If we found agents AND we have an Alpha on the other side...
+        if agent_run and j < len(token_text) and token_text[j].isalnum():
+            
+            # --- ANALYSIS: Verify the fracture ---
+            prev_cp = ord(token_text[i])
+            # We use the script of the LEFT char as the context anchor
+            context_script = _find_in_ranges(prev_cp, "Scripts") or "Common"
+            
+            # Check PERSIAN DEFENSE for *every* agent in the run
+            # If ANY agent is "unsafe" in this context, the whole fracture is valid.
+            # If ALL agents are "safe" (valid joiners), we ignore it.
+            is_valid_fracture = False
+            
+            for pos, ag_cp in agent_run:
+                # ZWJ/ZWNJ in Complex Scripts is Valid Orthography
+                if context_script in COMPLEX_ORTHOGRAPHY_SCRIPTS and ag_cp in (0x200C, 0x200D):
+                    continue # Safe
                 
-            # Otherwise: It is a Fracture
-            signals.append({
-                "type": "INTRA_TOKEN_INVIS",
-                "char_hex": f"U+{cp:04X}",
-                "context_script": prev_script,
-                "position": i
-            })
+                # If we hit a non-safe agent (e.g. Emoji, Tag, or ZWSP in English), flag it!
+                is_valid_fracture = True
+                
+                # Determine type for reporting
+                ag_mask = INVIS_TABLE[ag_cp] if ag_cp < 1114112 else 0
+                ag_type = "Emoji" if not (ag_mask & INVIS_ANY_MASK) else "Invisible"
+                
+                if is_valid_fracture:
+                    signals.append({
+                        "type": "TOKEN_FRACTURE",
+                        "char_hex": f"U+{ag_cp:04X}",
+                        "context_script": context_script,
+                        "position": pos,
+                        "agent_type": ag_type,
+                        "run_len": len(agent_run)
+                    })
+            
+        # Advance main loop past the agents
+        i = j
 
     return signals
 
@@ -362,14 +561,14 @@ def scan_contextual_lures(text):
     return signals
 
 # ==========================================
-# [STAGE 1.5] THREAT AUDITOR V2 (Policy Layer)
+# [STAGE 1.5] THREAT AUDITOR V3 (Structural Profiler Mode)
 # ==========================================
 
 def audit_stage1_5_signals(signals):
     """
-    [STAGE 1.5] Policy Engine.
-    Interprets neutral forensic signals into Risk Flags.
-    Returns a dictionary compatible with the existing 'threat_flags' structure.
+    [STAGE 1.5] Structural Profiler Engine.
+    Converts raw forensic signals into high-fidelity structural flags.
+    Focus: Observable Phenomena (Physics), not just Intent (Policy).
     """
     flags = {}
     
@@ -380,175 +579,262 @@ def audit_stage1_5_signals(signals):
         if t not in sig_map: sig_map[t] = []
         sig_map[t].append(s)
 
-    # --- Heuristic A: Token Fracture (Source 1: Phantom Text) ---
-    # Logic: If we see invisible chars inside a Latin/Cyrillic/Greek token, it's evasion.
-    # Note: The "Persian Defense" in the Engine has already filtered out legitimate scripts.
-    if "INTRA_TOKEN_INVIS" in sig_map:
-        # We assume remaining signals are suspicious because the Engine filtered the safe ones.
-        count = len(sig_map["INTRA_TOKEN_INVIS"])
+    # --- 1. FRACTURE TOPOLOGY (Tokenization Physics) ---
+    # Phenomenon: Non-standard characters embedded within alphanumeric tokens.
+    if "TOKEN_FRACTURE" in sig_map:
+        count = len(sig_map["TOKEN_FRACTURE"])
         
-        # Extract contexts for the report
+        # Analyze the 'Agent' distribution
+        agents = collections.Counter()
         contexts = set()
-        for s in sig_map["INTRA_TOKEN_INVIS"]:
+        
+        for s in sig_map["TOKEN_FRACTURE"]:
+            agents[s.get('agent_type', 'Unknown')] += 1
             contexts.add(s.get('context_script', 'Unknown'))
             
-        key = f"CRITICAL: Token Fracture ({', '.join(contexts)} Context)"
+        # Detailed Breakdown string
+        breakdown = ", ".join([f"{k}: {v}" for k, v in agents.items()])
+        
+        key = f"CRITICAL: Token Fracture Topology ({breakdown})"
         flags[key] = {
             "count": count,
-            "positions": ["(Invisible chars inside words - NLP Evasion)"],
+            "positions": [f"(Scripts: {', '.join(contexts)})"],
             "severity": "crit",
-            "badge": "EVASION"
+            "badge": "STRUCT"
         }
 
-    # --- Heuristic B: Injection Patterns (Source 1: Web Exfiltration) ---
+    # --- 2. VARIATION SELECTOR TOPOLOGY (Sequence Physics) ---
+    # Phenomenon: VS characters appearing in non-standard clusters or isolation.
     
-    # 1. ANSI Logs
+    # A. Orphaned VS (No Base)
+    if "VS_BARE" in sig_map:
+        bare_count = sum(s['count'] for s in sig_map["VS_BARE"])
+        key = f"SUSPICIOUS: Orphaned Variation Selectors ({bare_count})"
+        flags[key] = {
+            "count": bare_count,
+            "positions": ["(VS codepoint without valid base - Rendering Artifact)"],
+            "severity": "warn",
+            "badge": "SYNTAX"
+        }
+
+    # B. Redundant Clustering (The "Run" Metric)
+    if "VS_CLUSTER" in sig_map:
+        # Get the worst offender
+        max_len = max(s['max_len'] for s in sig_map["VS_CLUSTER"])
+        count = len(sig_map["VS_CLUSTER"])
+        
+        # Grading: >1 is technically redundant. >3 is structurally anomalous.
+        if max_len >= 4:
+            sev = "crit"
+            badge = "DENSITY"
+            label = f"CRITICAL: High-Density VS Sequence (Len: {max_len})"
+        else:
+            sev = "warn"
+            badge = "REDUNDANT"
+            label = f"HIGH: Redundant VS Sequence (Len: {max_len})"
+        
+        flags[label] = {
+            "count": count,
+            "positions": ["(Multiple VS per base char - Information Density Risk)"],
+            "severity": sev,
+            "badge": badge
+        }
+
+    # --- 3. PLANE 14 ANALYSIS (Hidden Channel Physics) ---
+    # Phenomenon: Presence of Deprecated Tag Characters (U+E00xx).
+    
+    # A. Decoded Payload (High Fidelity)
+    if "TAG_PAYLOAD" in sig_map:
+        for s in sig_map["TAG_PAYLOAD"]:
+            p_len = s['payload_len']
+            preview = s['preview']
+            
+            key = f"CRITICAL: Plane 14 Tag Payload ({p_len} chars)"
+            flags[key] = {
+                "count": 1,
+                "positions": [f"Reconstructed: '{_escape_html(preview)}'"],
+                "severity": "crit",
+                "badge": "CHANNEL"
+            }
+            
+    # B. Raw Count (Fallback)
+    elif "TAG_SEQUENCE" in sig_map:
+        total_tags = sum(s['count'] for s in sig_map["TAG_SEQUENCE"])
+        key = f"CRITICAL: Plane 14 Tag Characters ({total_tags})"
+        flags[key] = {
+            "count": total_tags,
+            "positions": ["(Deprecated Format Characters Detected)"],
+            "severity": "crit",
+            "badge": "DEPRECATED"
+        }
+
+    # --- 4. DELIMITER MASKING (Visual/Logical Gap) ---
+    # Phenomenon: Non-Standard Spacing adjacent to File Extension Syntax.
+    if "MASKED_EXTENSION" in sig_map:
+        count = len(sig_map["MASKED_EXTENSION"])
+        key = "CRITICAL: Deceptive Delimiter Spacing"
+        flags[key] = {
+            "count": count,
+            "positions": ["(Non-Standard Space preceding '.' operator)"],
+            "severity": "crit",
+            "badge": "MASKING"
+        }
+
+    # --- 5. INJECTION SIGNATURES (Syntax Physics) ---
+    
+    # A. ANSI Sequences
     if "ANSI_SEQUENCE" in sig_map:
         total_ansi = sum(s['count'] for s in sig_map["ANSI_SEQUENCE"])
         key = f"HIGH: ANSI Control Sequences ({total_ansi})"
         flags[key] = {
             "count": total_ansi,
-            "positions": ["(Terminal/Log Injection Risk)"],
-            "severity": "crit", # Paper says 12% success rate, so CRIT/HIGH
-            "badge": "INJECTION"
-        }
-
-    # 2. Plane 14 Tags (Hidden Instruction)
-    if "TAG_SEQUENCE" in sig_map:
-        total_tags = sum(s['count'] for s in sig_map["TAG_SEQUENCE"])
-        key = f"CRITICAL: Invisible Unicode Tags ({total_tags})"
-        flags[key] = {
-            "count": total_tags,
-            "positions": ["(Deprecated Plane 14 Chars - Prompt Injection Vector)"],
+            "positions": ["(Terminal Emulation Controls Detected)"],
             "severity": "crit",
-            "badge": "HIDDEN"
+            "badge": "CONTROL"
         }
 
-    # 3. Prompt Override (The "Jailbreak" Signature)
-    # IF (Override Phrase) AND (Tool Chain Syntax) -> CRITICAL
+    # B. Imperative Syntax (Override)
     has_override = "IMPERATIVE_OVERRIDE" in sig_map
-    has_tool_chain = "TOOL_CHAIN_PATTERN" in sig_map
+    has_tool = "TOOL_CHAIN_PATTERN" in sig_map
     
-    if has_override and has_tool_chain:
-        key = "CRITICAL: Agent Exfiltration Pattern"
+    if has_override and has_tool:
+        key = "CRITICAL: Imperative Tool-Use Sequence"
         flags[key] = {
             "count": 1,
-            "positions": ["(Contains 'Ignore Instructions' + 'Use Tool' syntax)"],
+            "positions": ["(Syntax: 'Ignore' + 'Use Tool' pattern)"],
             "severity": "crit",
-            "badge": "EXFIL"
+            "badge": "SYNTAX"
         }
     elif has_override:
-        key = "HIGH: Prompt Override Syntax"
+        key = "HIGH: Imperative Override Syntax"
         flags[key] = {
             "count": 1,
-            "positions": ["(Imperative directive detected)"],
+            "positions": ["(Syntax: Directive to ignore instructions)"],
             "severity": "warn",
-            "badge": "PROMPT"
+            "badge": "SEMANTIC"
         }
 
-    # --- Heuristic C: Domain Masquerading (Source 2: IDN) ---
+    # --- 6. DOMAIN STRUCTURE (IDN Physics) ---
     
-    # 1. Pseudo-Delimiters
+    # A. Pseudo-Delimiters
     if "PSEUDO_DELIMITER" in sig_map:
         artifacts = []
         for s in sig_map["PSEUDO_DELIMITER"]:
             artifacts.extend(s['artifacts'])
         
-        key = "CRITICAL: Domain Syntax Spoofing"
+        key = "CRITICAL: Homoglyph Delimiters"
         flags[key] = {
             "count": len(artifacts),
-            "positions": list(set(artifacts)), # Dedupe
+            "positions": list(set(artifacts)),
             "severity": "crit",
-            "badge": "SPOOF"
+            "badge": "SYNTAX"
         }
 
-    # 2. Script Mixing (Per Label)
+    # B. Script Mixing
     if "DOMAIN_MIXED_SCRIPTS" in sig_map:
         for s in sig_map["DOMAIN_MIXED_SCRIPTS"]:
             scripts = s['scripts']
             label = s['label']
-            # Logic: Latin + (Cyrillic/Greek) is High Risk. Others are Medium.
-            is_high_risk = "Latin" in scripts and ("Cyrillic" in scripts or "Greek" in scripts)
             
-            sev = "crit" if is_high_risk else "warn"
-            prefix = "CRITICAL" if is_high_risk else "SUSPICIOUS"
+            # Profiling Logic: Is this a high-entropy mix?
+            is_complex = "Latin" in scripts and ("Cyrillic" in scripts or "Greek" in scripts)
+            sev = "crit" if is_complex else "warn"
+            badge = "COMPLEX" if is_complex else "MIXED"
             
-            key = f"{prefix}: Mixed Script Domain Label"
-            # We create a unique entry per mix type to be specific
+            key = f"CRITICAL: Multi-Script Label ({', '.join(scripts)})" if is_complex else f"SUSPICIOUS: Mixed-Script Label"
+            
             flags[key] = {
                 "count": 1,
-                "positions": [f"Label '{label}' mixes {scripts}"],
+                "positions": [f"Label: '{label}'"],
                 "severity": sev,
-                "badge": "IDN"
+                "badge": badge
             }
             
-    # 3. Skeleton Collision (ASCII Match)
+    # C. Skeleton Collision
     if "DOMAIN_SKELETON_MATCH_ASCII" in sig_map:
-        key = "HIGH: Homoglyph Skeleton Collision"
+        key = "HIGH: Skeleton Collision (ASCII)"
         flags[key] = {
             "count": len(sig_map["DOMAIN_SKELETON_MATCH_ASCII"]),
-            "positions": ["(Domain skeleton mimics valid ASCII string)"],
+            "positions": ["(Non-ASCII text normalizes to valid ASCII string)"],
             "severity": "warn",
-            "badge": "SPOOF"
+            "badge": "COLLISION"
         }
 
-    # --- Heuristic D: Contextual Lures (New Additions) ---
-
-    # 1. Data Exfiltration (Markdown)
+    # --- 7. APPLICATION CONTEXT (Lure Physics) ---
+    
+    # A. Markdown Exfiltration
     if "MARKDOWN_EXFIL" in sig_map:
         count = sum(s['count'] for s in sig_map["MARKDOWN_EXFIL"])
-        key = f"HIGH: Markdown Data Exfiltration Risk"
+        key = "HIGH: Remote Image Inclusion (Markdown)"
         flags[key] = {
             "count": count,
-            "positions": ["(Auto-rendering images can leak IP/Chat Data)"],
-            "severity": "warn", # High/Warn, not Critical unless combined with others
-            "badge": "LEAK"
+            "positions": ["(External resource loading pattern)"],
+            "severity": "warn",
+            "badge": "REMOTE"
         }
 
-    # 2. Chat Template Injection
+    # B. Chat Template Injection
     if "CHAT_TEMPLATE_INJ" in sig_map:
         headers = []
         for s in sig_map["CHAT_TEMPLATE_INJ"]:
             headers.extend(s['headers'])
+        unique = list(set(headers))
         
-        unique_headers = list(set(headers))
-        key = f"CRITICAL: Chat Template Injection ({', '.join(unique_headers)})"
+        key = f"CRITICAL: Chat Template Tokens ({len(unique)})"
         flags[key] = {
-            "count": len(unique_headers),
-            "positions": ["(Fake system/user turns detected - Jailbreak Risk)"],
+            "count": len(unique),
+            "positions": [f"Tokens: {', '.join(unique)}"],
             "severity": "crit",
-            "badge": "MASQUERADE"
+            "badge": "STRUCT"
         }
 
-    # 3. Memory Poisoning
+    # C. Memory Directives
     if "MEMORY_POISON" in sig_map:
         keywords = []
         for s in sig_map["MEMORY_POISON"]:
             keywords.extend(s['keywords'])
             
-        key = "HIGH: Persistent Memory Injection (SpAIware)"
+        key = "HIGH: Persistence Directives"
         flags[key] = {
             "count": len(keywords),
-            "positions": [f"(Directives found: {', '.join(list(set(keywords))[:3])}...)"],
-            "severity": "crit", # Critical because persistence vectors are hard to clean
-            "badge": "PERSIST"
+            "positions": [f"(Keywords: {', '.join(list(set(keywords))[:3])}...)"],
+            "severity": "crit",
+            "badge": "SEMANTIC"
         }
 
     return {"flags": flags}
+
+# ==========================================
+# [STAGE 1.5] ORCHESTRATOR (Block 3)
+# ==========================================
 
 def compute_stage1_5_forensics(text):
     """
     [STAGE 1.5] Orchestrator.
     Runs the Sidecar Engines and feeds the Auditor.
+    Updated to include VS Topology, Tag Decoding, and Extension Masking.
     """
     all_signals = []
     
-    # 1. Scan Global Injection Patterns
+    # 1. Scan Global Injection Patterns (Existing)
     all_signals.extend(scan_injection_vectors(text))
-    # Scan Contextual Lures (Markdown/Chat/Memory) ---
+    # Scan Contextual Lures (Markdown/Chat/Memory) (Existing)
     all_signals.extend(scan_contextual_lures(text))
     
-    # 2. Token-Level Scans
+    # 2. [NEW] Global Structural Scans
+    # A. Variation Selector Topology
+    vs_metrics, vs_signals = scan_vs_topology(text)
+    all_signals.extend(vs_signals)
+    
+    # B. Tag Payload Decoding
+    tag_payload = decode_tag_payload(text)
+    if tag_payload:
+        all_signals.append(tag_payload)
+        
+    # C. Delimiter Masking (Extension Hiding)
+    all_signals.extend(scan_delimiter_masking(text))
+
+    # 3. Token-Level Scans
     # We use the existing forensic tokenizer helper
     tokens = tokenize_forensic(text)
     
@@ -561,13 +847,13 @@ def compute_stage1_5_forensics(text):
             
         if not t_str: continue
         
-        # A. Fracture Scan
+        # A. Fracture Scan (Uses the Upgraded Function from Block 2)
         all_signals.extend(scan_token_fracture_safe(t_str))
         
-        # B. Domain Scan
+        # B. Domain Scan (Existing)
         all_signals.extend(scan_domain_structure_v2(t_str))
 
-    # 3. Audit Signals
+    # 4. Audit Signals
     return audit_stage1_5_signals(all_signals)
 
 
