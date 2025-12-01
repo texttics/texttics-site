@@ -7886,8 +7886,8 @@ def analyze_adversarial_tokens(t: str):
 
 def _evaluate_adversarial_risk(intermediate_data):
     """
-    Block 2: The Risk Engine (Hardened Fracture Scanner).
-    Applies deterministic rules to the extracted tokens to assign Risk Levels.
+    Block 2: The Risk Engine (Robust Version).
+    Restores R11 Safety Net and implements Precision Fracture Scanning.
     """
     tokens = intermediate_data["tokens"]
     skeleton_map = intermediate_data["skeleton_map"]
@@ -7895,7 +7895,6 @@ def _evaluate_adversarial_risk(intermediate_data):
     # --- A. Detect Skeleton Collisions ---
     collisions = []
     collision_skeletons = set()
-    
     for skel, indices in skeleton_map.items():
         unique_texts = set(tokens[i]["text"] for i in indices)
         if len(unique_texts) > 1:
@@ -7916,21 +7915,13 @@ def _evaluate_adversarial_risk(intermediate_data):
         risk_level = 0 
         triggers = []
         token_topology_hits = set()
-        t_str = token["text"]
-
-        # We build the visual stack items AS we detect them to ensure correct typing.
-        detailed_stack = [] 
+        detailed_stack = [] # Explicit visual stack
         
         t_str = token["text"]
-    
+        
         # --- Rule 0: Fracture Scanner (Precision Mode) ---
-        # Logic: Alpha -> [Fracture Agent] -> Alpha
-        # Fracture Agent = Invisible, Tag, Joiner, or Non-Alphanumeric Emoji.
-        # This catches "sens😎itive" and "sys<ZWSP>tem" but ignores "foo!bar" or "file.txt".
-        
         if len(t_str) > 2:
-            f_state = 0 # 0=Start, 1=Alpha, 2=Agent, 3=Trigger
-            
+            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
             for fc in t_str:
                 f_cp = ord(fc)
                 f_is_alnum = fc.isalnum()
@@ -7938,78 +7929,70 @@ def _evaluate_adversarial_risk(intermediate_data):
                 
                 # Check for Forensic Fracture Agent
                 if f_cp < 1114112:
-                    # 1. Check Invisibles/Tags/Joiners via O(1) Table
                     mask = INVIS_TABLE[f_cp]
                     if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
                         f_is_agent = True
-                    # 2. Check Emojis (Must not be alphanumeric digits like '1')
+                    # Emoji check: Must be Emoji AND Not Alphanumeric
                     elif not f_is_alnum and (_find_in_ranges(f_cp, "Emoji") or _find_in_ranges(f_cp, "Extended_Pictographic")):
                         f_is_agent = True
 
-                # State Machine
                 if f_state == 0:
                     if f_is_alnum: f_state = 1
                 elif f_state == 1:
-                    # Inside Word
-                    if f_is_agent: 
-                        f_state = 2 # Found Agent
-                    elif not f_is_alnum: 
-                        f_state = 0 # Reset on standard punctuation
+                    if f_is_agent: f_state = 2 # Found Agent
+                    elif not f_is_alnum: f_state = 0 # Reset
                 elif f_state == 2:
-                    # After Agent
                     if f_is_alnum:
-                        # TRIGGER: Alpha immediately after Agent -> FRACTURE!
+                        # TRIGGER: Alpha -> Agent -> Alpha
                         risk_level = max(risk_level, 3)
-                        triggers.append("R99: Token Fracture (Mid-Token Injection)")
+                        desc = "R99: Token Fracture (Mid-Token Injection)"
+                        triggers.append(desc)
                         token_topology_hits.add("OBFUSCATION")
-                        # [FIX] Explicitly bind OBFUSCATION to this finding
-                        detailed_stack.append({
-                            "lvl": "CRITICAL", 
-                            "type": "OBFUSCATION", 
-                            "desc": desc
-                        })
+                        detailed_stack.append({"lvl": "CRITICAL", "type": "OBFUSCATION", "desc": desc})
                         break
                     elif not f_is_agent:
-                        f_state = 0
+                        f_state = 0 # Reset
 
-        # --- Rule Set 1: Skeleton Collisions ---
+        # --- Rule 1: Skeleton Collisions ---
         if token["skeleton"] in collision_skeletons:
             risk_level = max(risk_level, 3)
-            triggers.append("R30: Skeleton Collision (Homograph)")
+            desc = "R30: Skeleton Collision (Homograph)"
+            triggers.append(desc)
             token_topology_hits.add("HOMOGLYPH")
+            detailed_stack.append({"lvl": "CRITICAL", "type": "HOMOGLYPH", "desc": desc})
 
-        # --- Rule Set 2: Script Mixing ---
+        # --- Rule 2: Script Mixing ---
         if token["is_mixed"]:
             if token["kind"] in ("domain", "identifier", "email"):
                 risk_level = max(risk_level, 2)
-                triggers.append("R10: Mixed Scripts in ID/Domain")
-                token_topology_hits.add("SPOOFING")
+                desc = "R10: Mixed Scripts in ID/Domain"
+                lvl_tag = "HIGH"
             else:
                 risk_level = max(risk_level, 1)
-                triggers.append("R01: Mixed Scripts")
-                token_topology_hits.add("SPOOFING")
+                desc = "R01: Mixed Scripts"
+                lvl_tag = "MED"
+            triggers.append(desc)
+            token_topology_hits.add("SPOOFING")
+            detailed_stack.append({"lvl": lvl_tag, "type": "SPOOFING", "desc": desc})
 
-        # --- Rule Set 3: Confusables ---
+        # --- Rule 3: Confusables ---
         if token["confusables"]["density"] > 0.5:
             risk_level = max(risk_level, 1)
-            triggers.append("R02: High Confusable Density")
+            desc = "R02: High Confusable Density"
+            triggers.append(desc)
             token_topology_hits.add("SPOOFING")
+            detailed_stack.append({"lvl": "MED", "type": "SPOOFING", "desc": desc})
             
-        # --- Rule Set 4: Identifier Status ---
+        # --- Rule 4: Identifier Status (Restored Safety Net) ---
         if token["id_status"] in ("Restricted", "Disallowed"):
-            # 'Restricted' often just means Emoji or Symbols
-            # We bump to High ONLY if it's not already flagged as Fracture
-            current_max = risk_level
-            new_risk = 2 if token["id_status"] == "Disallowed" else 1
-            risk_level = max(risk_level, new_risk)
-            triggers.append(f"R11: Identifier Status ({token['id_status']})")
+            # SAFETY NET: Restricted is always at least HIGH risk
+            risk_level = max(risk_level, 2)
+            desc = f"R11: Identifier Status ({token['id_status']})"
+            triggers.append(desc)
             token_topology_hits.add("PROTOCOL")
+            detailed_stack.append({"lvl": "HIGH", "type": "PROTOCOL", "desc": desc})
 
-            # [FIX] Explicitly bind PROTOCOL to this finding
-            lvl_str = "HIGH" if new_risk == 2 else "MED"
-            detailed_stack.append({"lvl": lvl_str, "type": "PROTOCOL", "desc": desc})
-
-        # --- Rule Set 5: Hidden Channels & Bidi ---
+        # --- Rule 5: Hidden Channels & Bidi ---
         if token["invisibles"] > 0:
             has_bidi = False
             for char in t_str:
@@ -8019,12 +8002,18 @@ def _evaluate_adversarial_risk(intermediate_data):
             
             if has_bidi:
                 risk_level = max(risk_level, 3)
-                triggers.append("R12: Bidi Control in Token")
-                token_topology_hits.add("INJECTION")
+                desc = "R12: Bidi Control in Token"
+                lvl_tag = "CRITICAL"
+                top_tag = "INJECTION"
             else:
                 risk_level = max(risk_level, 2)
-                triggers.append("R03: Hidden Characters")
-                token_topology_hits.add("OBFUSCATION")
+                desc = "R03: Hidden Characters"
+                lvl_tag = "HIGH"
+                top_tag = "OBFUSCATION"
+                
+            triggers.append(desc)
+            token_topology_hits.add(top_tag)
+            detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
 
         # Map numeric level to string
         final_risk = "LOW"
@@ -8043,10 +8032,9 @@ def _evaluate_adversarial_risk(intermediate_data):
             targets.append({
                 "token": t_str,
                 "verdict": triggers[0] if triggers else "High Risk",
-                # [FIX] Use the explicitly built stack
-                "stack": detailed_stack, 
+                "stack": detailed_stack, # Use the explicitly built stack
                 "score": risk_level * 25,
-                "b64": "N/A", "hex": "N/A"
+                "b64": "N/A", "hex": "N/A" 
             })
 
     return {
