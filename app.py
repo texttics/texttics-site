@@ -7744,51 +7744,65 @@ def analyze_adversarial_tokens(t: str):
     """
     The Core Engine for Stage 1.1 "Adversarial Intelligence".
     Tokenizes text and performs per-token forensic extraction.
+    
+    ULTIMATE VERSION:
+    1. Uses Greedy Tokenization (\S+) to capture 'Sandwich' attacks (sens😎itive).
+    2. Performs deep forensic enrichment (Skeletons, Scripts, ID Profile).
     """
     if not t: return {"tokens": [], "collisions": [], "stats": {}}
 
-    # 1. Forensic Tokenization (Greedy)
-    # We split by characters that are NOT typically part of identifiers/domains.
-    # Allowed: Alphanumerics, marks, ., -, _, @
-    # Splitters: Spaces, brackets, quotes, slashes (unless we want to support paths?), symbols
-    # Regex: Capture sequences of "Identifier-like" characters
-    # Note: We include Non-Spacing Marks (\p{Mn}) via \w implies unicode word chars in Py3
-    # But we want explicit control.
-    
-    # [FIX] Forensic Tokenizer Pattern
-    # Captures: Word chars, dots, @, dashes
-    # PLUS: ZWJ/ZWNJ/ZWSP/BOM (u200b-u200d, u2060, ufeff)
-    # PLUS: Bidi Controls (u202a-u202e, u2066-u2069)
-    # PLUS: Tags (Plane 14 - via surrogate ranges or \w match if Python unicode is strictly compliant)
-    # We explicitly add the common invisible ranges to ensure they "stick" to the token.
-    token_pattern = re.compile(r'[\w\-\.\@\u200b\u200c\u200d\u2060\ufeff\u202a-\u202e\u2066-\u2069]+') 
+    # --- 1. Forensic Tokenization (Greedy / Whitespace-Based) ---
+    # We switch from specific Regex to strict whitespace splitting (\S+).
+    # Why? A regex like [\w\.]+ splits "sens😎itive" into ["sens", "😎", "itive"].
+    # This hides the attack.
+    # Whitespace splitting keeps "sens😎itive" as ONE token, allowing the 
+    # Fracture Scanner to detect the internal injection.
     
     raw_tokens = []
+    
+    # Iterate over non-whitespace chunks
+    token_pattern = re.compile(r'\S+')
+    
     for match in token_pattern.finditer(t):
-        raw_tokens.append({
-            "text": match.group(),
-            "start": match.start(),
-            "end": match.end()
-        })
+        raw_text = match.group()
+        
+        # Trim outer punctuation to find the "Root" identifier for analysis.
+        # We strip common delimiters (brackets, quotes) but KEEP internal 
+        # structural chars (dots, @, underscores) necessary for domains/emails.
+        clean_text = raw_text.strip("()[]{}<>\"',;!|")
+        
+        # Only add if content remains after trimming
+        if clean_text:
+            # Calculate the REAL start index relative to the cleaned text
+            # match.start() is the start of the chunk. 
+            # .find(clean_text) gives the offset inside that chunk.
+            offset = raw_text.find(clean_text)
+            real_start = match.start() + offset
+            
+            raw_tokens.append({
+                "text": clean_text,
+                "start": real_start,
+                "end": real_start + len(clean_text)
+            })
 
     enriched_tokens = []
     skeleton_map = collections.defaultdict(list) # skeleton -> [token_indices]
 
-    # 2. Enrichment Loop
+    # --- 2. Enrichment Loop ---
     for idx, raw in enumerate(raw_tokens):
         txt = raw["text"]
         
-        # A. Classification
+        # A. Classification (Email, Domain, Identifier, Word)
         kind = _classify_token_kind(txt)
         
-        # B. Scripts
+        # B. Scripts (Set of scripts used in token)
         scripts = _get_script_set(txt)
         
-        # C. Identifier Profile
+        # C. Identifier Profile (UAX #31 Status/Type)
         id_profile = _get_identifier_profile(txt)
         
-        # D. Skeleton Generation (Reuse existing function)
-        # Note: _generate_uts39_skeleton handles the mapping
+        # D. Skeleton Generation & Metadata
+        # We need return_events=True to calculate Confusable Density
         skel, skel_events = _generate_uts39_skeleton(txt, return_events=True)
         
         # E. Confusable Analysis (Local Density)
@@ -7797,19 +7811,19 @@ def analyze_adversarial_tokens(t: str):
         if len(txt) > 0:
             confusable_density = round(confusable_count / len(txt), 2)
             
-        # F. Invisible/Hidden Check (Local)
+        # F. Invisible/Hidden Check (Local Count)
         invis_count = 0
         for char in txt:
+            # Use O(1) Lookup Table
             if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
                 invis_count += 1
                 
         # G. Mixed Script Check
-        # Filter out "safe" scripts for mixing (like Common/Inherited if they leaked in)
-        # Ideally we check for disjoint sets like {Latin, Cyrillic}
+        # Filter out "safe" scripts (Common/Inherited) to find true mixing
         major_scripts = {s for s in scripts if s not in ("Common", "Inherited", "Unknown")}
         is_mixed_script = len(major_scripts) > 1
 
-        # Build Feature Vector
+        # Build Feature Vector (Consumed by _evaluate_adversarial_risk)
         token_data = {
             "id": idx,
             "text": txt,
@@ -7823,21 +7837,21 @@ def analyze_adversarial_tokens(t: str):
             "confusables": {
                 "count": confusable_count,
                 "density": confusable_density,
-                "mappings": skel_events.get('mappings', []) # Store specific mappings for tooltip
+                "mappings": skel_events.get('mappings', []) 
             },
             "invisibles": invis_count,
-            "risk": "LOW", # Placeholder for Block 2
-            "triggers": [] # Placeholder for Block 2
+            "risk": "LOW", # Will be updated by Block 2 (Risk Engine)
+            "triggers": [] # Will be populated by Block 2
         }
         
         enriched_tokens.append(token_data)
         
-        # Map for collision detection
-        # Only map relevant tokens (length > 1) to avoid noise on single chars
+        # Map for collision detection (Homograph Radar)
+        # Only map tokens > 1 char to avoid noise
         if len(txt) > 1:
             skeleton_map[skel].append(idx)
 
-    # Return intermediate data structure (Block 2 will process this)
+    # Return intermediate data structure
     return {
         "tokens": enriched_tokens,
         "skeleton_map": skeleton_map
@@ -12010,83 +12024,129 @@ def render_adversarial_dashboard(adv_data: dict):
 
 def compute_threat_score(inputs):
     """
-    The Threat Auditor.
-    Calculates Weaponization & Malice.
-    Strictly excludes 'Rot' (Integrity issues).
+    The Threat Auditor (Maximal Forensic Logic).
+    Calculates Weaponization & Malice with Context-Aware Weighting.
+    
+    Principles:
+    1. Clean Room: Strictly excludes 'Rot' (Integrity issues).
+    2. Zero-Redundancy: Prevents double-counting of related vectors.
+    3. Multi-Vector Boost: Increases score if attacks span multiple pillars.
     """
     ledger = []
     
     def add_entry(vector, points, category):
         ledger.append({"vector": vector, "points": int(points), "category": category})
 
-    # --- 1. EXECUTION ATTACKS (Tier 1) ---
-    # Trojan Source: Requires Bidi Override/Embedding (not just Isolates)
+    # --- PILLAR 1: EXECUTION (Target: Machine / Compiler) ---
+    # Severity: FATAL. One hit here is usually enough to Weaponize.
+    
+    has_execution_threat = False
+    
+    # [NEW] WAF / Payload Heuristics (Module 4)
+    # The WAF Simulator returns a raw risk score (0-100). We trust it.
+    waf_score = inputs.get("waf_score", 0)
+    if waf_score > 0:
+        add_entry(f"Payload Detected (WAF Pattern)", waf_score, "EXECUTION")
+        has_execution_threat = True
+
+    # [NEW] Normalization Injection (Syntax Predator)
+    # This is a confirmed CVE vector (U+FF07 -> '). 
+    norm_inj_count = inputs.get("norm_injection_count", 0)
+    if norm_inj_count > 0:
+        # High base penalty + density charge
+        pts = THR_BASE_EXECUTION + (norm_inj_count * 5)
+        add_entry(f"Normalization-Activated Injection (x{norm_inj_count})", pts, "EXECUTION")
+        has_execution_threat = True
+
+    # [NEW] Logic Bypass / Case Collision (Shapeshifter)
+    # Detects Dotless-i / Long-S attacks on logic
+    logic_bypass_count = inputs.get("logic_bypass_count", 0)
+    if logic_bypass_count > 0:
+        add_entry("Logic Bypass Vector (Case Collision)", THR_BASE_EXECUTION, "EXECUTION")
+        has_execution_threat = True
+
+    # Trojan Source (Bidi Syntax Attack)
+    # Critical distinction: Must be Override/Embedding, not just Isolates.
     if inputs.get("malicious_bidi"):
         add_entry("Trojan Source (Malicious Bidi)", THR_BASE_EXECUTION, "EXECUTION")
+        has_execution_threat = True
         
-    # Terminal Injection: ESC key patterns
-    # (Assuming forensic stats passes 'has_esc' check)
-    # For now, we use the Bidi Danger check as the primary signal
-    
-    # Syntax Spoofing: Variation Selector on Operator/Syntax
+    # Syntax Spoofing (Unicode 17.0)
+    # Variation Selector attached to operators/syntax (e.g. `+` + VS1)
     if inputs.get("suspicious_syntax_vs"):
         add_entry("Syntax Spoofing (VS on Operator)", THR_BASE_EXECUTION, "EXECUTION")
+        has_execution_threat = True
 
-    # --- 2. IDENTITY SPOOFING (Tier 2) ---
+    # --- PILLAR 2: SPOOFING (Target: Human / ID) ---
+    # Severity: HIGH. Can lead to Phishing or Identity Theft.
+    
+    # Cross-Script Homoglyphs (The Classic)
     drift_cross = inputs.get("drift_cross_script", 0)
     if drift_cross > 0:
-        # Capped Density Model: Base + min(count, 25)
+        # Saturation Logic: 
+        # Base (25) + 1pt per char, capped at +25 extra. 
+        # Prevents 1000 homoglyphs from scoring 1000 points.
         density_bonus = min(drift_cross, 25) * THR_MULT_SPOOFING
         total_pts = THR_BASE_SPOOFING + density_bonus
         add_entry(f"Cross-Script Homoglyphs ({drift_cross})", total_pts, "SPOOFING")
 
-    # --- 3. OBFUSCATION (Tier 3) ---
-    # Massive Clusters
+    # Mixed Scripts (Ontology Check)
+    mix_class = inputs.get("script_mix_class", "")
+    if "Highly Mixed" in mix_class:
+        # If we already have Homoglyphs, this is redundant context, but valid.
+        # We charge a lower 'Obfuscation' fee if purely structural.
+        add_entry(mix_class, THR_BASE_OBFUSCATION, "SPOOFING")
+    elif "Mixed Scripts (Base)" in mix_class:
+        add_entry(mix_class, THR_BASE_SUSPICIOUS, "SUSPICIOUS")
+
+    # --- PILLAR 3: OBFUSCATION (Target: Filter / Scanner) ---
+    # Severity: MEDIUM/HIGH. Used to hide payloads or bypass AI safety.
+    
+    # Massive Clusters (Invisible Walls)
     cluster_len = inputs.get("max_invis_run", 0)
     cluster_count = inputs.get("invis_cluster_count", 0)
-    rgi_count = inputs.get("rgi_count", 0) # [NEW]
+    rgi_count = inputs.get("rgi_count", 0)
+    
+    # Smart Filter: Is this just broken Emoji glue?
+    is_likely_emoji_glue = (rgi_count > 0 and cluster_len <= 2 and cluster_count <= (rgi_count * 3))
     
     if cluster_len > 4:
-        # Logic: Massive cluster is obfuscation.
+        # Logic: Massive contiguous run is almost certainly malicious/stego
         add_entry(f"Massive Invisible Cluster (len={cluster_len})", THR_BASE_OBFUSCATION, "OBFUSCATION")
-    elif cluster_count > 0:
-         # [SMART FILTER] If clusters are likely just RGI Emoji structure (VS/ZWJ), downgrade risk.
-         # Heuristic: Max run is small (1-2 chars) and we have RGI sequences present.
-         is_likely_emoji_glue = (rgi_count > 0 and cluster_len <= 2 and cluster_count <= (rgi_count * 2))
-         
-         if not inputs.get("malicious_bidi") and not is_likely_emoji_glue:
-             # If no Trojan Source and NOT emoji glue, treat as Obfuscation attempt
+    elif cluster_count > 0 and not is_likely_emoji_glue:
+         # If not Emoji glue and not Trojan Source (already charged), charge for Obfuscation
+         if not inputs.get("malicious_bidi"):
              pts = THR_BASE_OBFUSCATION + min(cluster_count, 10) * THR_MULT_OBFUSCATION
              add_entry(f"Invisible Clusters ({cluster_count})", pts, "OBFUSCATION")
 
-    # Plane 14 Tags
+    # Plane 14 Tags (Steganography / AI Jailbreak)
     tags = inputs.get("tags_count", 0)
     if tags > 0:
-        add_entry(f"Plane 14 Tags ({tags})", THR_BASE_OBFUSCATION, "OBFUSCATION")
+        # Tags are illegal in almost all protocols. High penalty.
+        add_entry(f"Plane 14 Tags ({tags})", THR_BASE_OBFUSCATION + 10, "OBFUSCATION")
 
-    # Highly Mixed Scripts
-    mix_class = inputs.get("script_mix_class", "")
-    if "Highly Mixed" in mix_class:
-        add_entry(mix_class, THR_BASE_OBFUSCATION, "OBFUSCATION")
-
-    # Forced Presentation (VS15/VS16 on invalid base)
-    # Severity: Low (1 point). It's an anomaly, but rarely an exploit.
+    # Forced Presentation (VS15/VS16 Abuse)
     forced_pres = inputs.get("forced_pres_count", 0)
     if forced_pres > 0:
-        add_entry(f"Forced Presentation (VS15/VS16)", 1, "SUSPICIOUS")
+        add_entry(f"Forced Presentation (VS15/VS16)", 5, "SUSPICIOUS") # Low, often just artifacts
         
-    # --- 4. SUSPICIOUS (Tier 4) ---
-    # Unclosed Bidi (Sloppy) - Only if NOT Malicious
+    # --- 4. SUSPICIOUS CONTEXT (Tier 4) ---
+    # Unclosed Bidi (Sloppy) - Only charge if we didn't charge for Malicious Bidi
     if inputs.get("has_unclosed_bidi") and not inputs.get("malicious_bidi"):
         add_entry("Unclosed Bidi Sequence", THR_BASE_SUSPICIOUS, "SUSPICIOUS")
-        
-    # Mixed Scripts (Base)
-    if "Mixed Scripts (Base)" in mix_class:
-        add_entry(mix_class, THR_BASE_SUSPICIOUS, "SUSPICIOUS")
 
-    # --- CALCULATION ---
+    # --- 5. SCORE SYNTHESIS ---
     total_score = sum(item["points"] for item in ledger)
     
+    # Multi-Vector Boost (The "Smart" Logic)
+    # If we have Execution AND Spoofing/Obfuscation, it's a coordinated attack.
+    categories = {item["category"] for item in ledger}
+    if "EXECUTION" in categories and len(categories) > 1:
+        boost = 10
+        total_score += boost
+        add_entry("Multi-Vector Correlation (Execution + Other)", boost, "CORRELATION")
+
+    # --- VERDICT DETERMINATION ---
     verdict = "CLEAN"
     severity_class = "ok"
     
@@ -12095,7 +12155,7 @@ def compute_threat_score(inputs):
         severity_class = "crit"
     elif total_score >= 15:
         verdict = "HIGH RISK"
-        severity_class = "crit" # High Risk is still critical red
+        severity_class = "crit" # High Risk is functionally critical
     elif total_score >= 1:
         verdict = "SUSPICIOUS"
         severity_class = "warn"
@@ -12105,7 +12165,7 @@ def compute_threat_score(inputs):
         "verdict": verdict,
         "severity_class": severity_class,
         "ledger": ledger,
-        "noise": inputs.get("noise_list", []) # Pass noise list for display
+        "noise": inputs.get("noise_list", []) 
     }
 
 def render_encoding_footprint(t: str):
@@ -12693,7 +12753,20 @@ def update_all(event=None):
     drift_ascii = skel_metrics.get("drift_ascii", 0)
     if drift_ascii > 0: noise_list.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
 
+    # Calculate counts for new engines
+    # 1. Syntax Predator: Count keys starting with "CRITICAL: Normalization"
+    norm_inj_count = sum(1 for k in threat_flags if "Normalization-Activated" in k)
+    
+    # 2. Case Collision: Count keys related to Case Mapping
+    logic_bypass_count = sum(1 for k in threat_flags if "Case Mapping" in k or "Bypass Vector" in k)
+
     score_inputs = {
+        # [NEW] WIRING
+        "waf_score": waf_score, # From analyze_waf_policy
+        "norm_injection_count": norm_inj_count,
+        "logic_bypass_count": logic_bypass_count,
+        
+        # [EXISTING]
         "malicious_bidi": malicious_bidi,
         "has_unclosed_bidi": get_count("Flag: Unclosed Bidi Sequence") > 0,
         "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
