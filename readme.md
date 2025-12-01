@@ -1798,3 +1798,51 @@ Isolated Engines: New logic resides in standalone functions (scan_token_fracture
 Soft Merge: Results are computed in parallel and merged into the final report only at the last step.
 
 Zero Regression: Existing "Stage 1" logic remains untouched and authoritative.
+
+---
+
+## 🛡️ Addendum #9: The "Adversarial Physics" & Contextual Lure Upgrade (Stage 1.5)
+
+**Session Goal:** To elevate the tool from a **Structural Profiler (Stage 1)** to an **Adversarial Physics Engine (Stage 1.5)**. We integrated actionable intelligence from the "Golden Trio" of security papers (*Trust No AI*, *TRAPDOC*, *Trojan Source*), transitioning the system from passive measurement to active anomaly detection without violating the "Post-Clipboard" boundary.
+
+### 1. Architectural Pivot: Physics vs. Policy
+We formalized the separation between **Measurement** (Sensors) and **Judgment** (Auditors) to prevent false positives in complex scripts.
+
+* **The Physics Layer (`AdversarialEngine`):** A set of deterministic sensors that report observable facts (e.g., "This token contains a mid-word ZWSP"). It does *not* assign severity.
+* **The Policy Layer (`ThreatAuditor`):** A logic engine that interprets physical facts based on context. It decides whether a mid-word ZWSP is a **"Token Fracture Attack"** (in Latin text) or valid orthography (in Persian/Arabic).
+
+### 2. New Detection Engines (The "Golden Trio" Implementation)
+We implemented three targeted scanners to detect "Blind Spot" attacks that bypass standard tokenizers and filters.
+
+#### A. The "Fracture" Scanner (Source: *TRAPDOC*)
+* **The Threat:** Attackers inject invisible characters inside words (e.g., `P<ZWSP>rint`) to break LLM tokenization and bypass safety filters.
+* **The Logic:** `scan_token_fracture_safe` detects the specific pattern `[Alpha] + [Invisible] + [Alpha]`.
+* **The "Persian Defense":** A sophisticated whitelist mechanism that ignores legitimate ZWJ/ZWNJ sequences in complex scripts (Arabic, Syriac, Indic), ensuring the tool flags only actual evasion attempts without punishing non-Latin languages.
+
+#### B. The "Protocol Smuggler" Scanner (Source: *Trust No AI*)
+* **The Threat:** Using non-printing characters to execute code or exfiltrate data.
+* **The Logic:** `scan_injection_vectors` scans for two specific high-fidelity signatures:
+    * **Plane 14 Tags (`U+E0000`+):** Flagged as **CRITICAL**. These have zero valid use in plain text and are a known vector for "ASCII Smuggling."
+    * **ANSI Escape Sequences (`\x1b[...]`):** Flagged as **Terminal Injection Risk**. Detects attempts to hijack developer consoles or spoof logs.
+
+#### C. The "Contextual Lure" Scanner (Source: *Trust No AI*, *WASA*)
+* **The Threat:** Exploiting the *application layer* (Chat UI, Markdown parsers, Memory) rather than the LLM itself.
+* **The Logic:** `scan_contextual_lures` detects three specific application-layer attacks:
+    1.  **Markdown Exfiltration:** Detects `![alt](url)` patterns used to auto-trigger GET requests and leak chat context to third-party servers.
+    2.  **Chat Masquerade:** Detects fake conversation headers (e.g., `<|im_start|>`, `[INST]`) used to confuse the model's turn-taking logic.
+    3.  **Memory Poisoning (SpAIware):** Detects persistence directives (e.g., "store in memory", "always reply with") used to implant permanent instructions in the user's profile.
+
+### 3. The Forensic Visual System (UI/UX Upgrade)
+We overhauled the visualization layer to support "High-Density Forensics."
+
+* **The Forensic X-Ray:** A vertical "DNA Alignment" view that renders the **Raw** string vs. the **UTS #39 Skeleton**. It uses clustering logic to hide safe text and zoom in on "Drift Hotspots," visualizing exactly where the visual appearance diverges from the logical reality.
+* **The Adversarial Dashboard:** A dedicated "Scoreboard" module that categorizes threats into **Spoofing**, **Obfuscation**, **Injection**, and **Ambiguity**, complete with a "Paranoia Peak" row that highlights the single highest-risk token in the document.
+* **The Token Risk Ledger:** A detailed table view of every suspicious identifier, sorting them by risk severity (CRITICAL > HIGH > MED) and exposing their internal script composition.
+
+### 4. Validation & Completeness Audit
+We performed a "Red Team" audit against external threat intelligence (AWS Security Blog, Neural Computing NMT papers) and confirmed **Forensic Completeness**.
+* **Unicode Tag Smuggling:** Covered by the **Protocol Smuggler** engine.
+* **Homoglyph Phishing:** Covered by the **Skeleton Drift** metric.
+* **Invisible NMT Attacks:** Covered by the **Fracture Scanner** and **Ghost Scanner** (Visual Redaction).
+
+**Result:** The tool now effectively immunizes the user against the entire known spectrum of structural text attacks described in the current security literature (2024-2025).
