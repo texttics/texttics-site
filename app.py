@@ -105,7 +105,7 @@ COMPLEX_ORTHOGRAPHY_SCRIPTS = {
     "Tibetan", "Myanmar", "Khmer", "Adlam", "Rohingya"
 }
 
-# 2. Injection Pattern RegEx (Source 1: Web Search Exfiltration)
+# Injection Pattern RegEx (Source 1: Web Search Exfiltration)
 # High-fidelity patterns for "System Prompt Override" and "Tool Chaining"
 INJECTION_PATTERNS = {
     "OVERRIDE": re.compile(
@@ -120,6 +120,24 @@ INJECTION_PATTERNS = {
     ),
     "ANSI_ESCAPE": re.compile(
         r"\x1b\[[0-9;]*[a-zA-Z]" 
+    )
+}
+
+# Contextual Lure Patterns (Source: Trust No AI - Exfiltration & Persistence)
+CONTEXT_LURE_PATTERNS = {
+    # Detects automatic data exfiltration via image rendering: ![alt](url)
+    "MARKDOWN_IMAGE": re.compile(r"!\[.*?\]\(.*?\)"),
+    
+    # Detects ChatML/Llama/Alpaca special tokens used to fake conversation history
+    "CHAT_HEADER": re.compile(
+        r"(<\|im_start\|>|<\|im_end\|>|\[INST\]|\[/INST\]|<\|system\|>|<\|user\|>|<\|assistant\|>)",
+        re.IGNORECASE
+    ),
+    
+    # Detects instructions targeting Long-Term Memory (SpAIware)
+    "MEMORY_DIRECTIVE": re.compile(
+        r"(remember\s+that|add\s+to\s+(my\s+)?bio|store\s+in\s+memory|always\s+reply\s+with|core\s+memory)",
+        re.IGNORECASE
     )
 }
 
@@ -298,6 +316,51 @@ def scan_domain_structure_v2(token_text):
 
     return signals
 
+def scan_contextual_lures(text):
+    """
+    [STAGE 1.5] Contextual Lure Scanner.
+    Detects Application-Layer attacks: Markdown Exfiltration, Chat Templates, and Memory Poisoning.
+    """
+    signals = []
+    
+    # 1. Markdown Image Exfiltration (Trust No AI: Scenario 2)
+    # Risk: Automatic rendering triggers GET request to attacker server
+    if "![" in text and "](" in text:
+        matches = CONTEXT_LURE_PATTERNS["MARKDOWN_IMAGE"].findall(text)
+        if matches:
+            signals.append({
+                "type": "MARKDOWN_EXFIL",
+                "count": len(matches),
+                "example": matches[0][:20] + "..." # Snippet for context
+            })
+
+    # 2. Chat Template Injection (Masquerading)
+    # Risk: User fakes "System" turn to override safety guidelines
+    if "<|" in text or "[" in text:
+        matches = CONTEXT_LURE_PATTERNS["CHAT_HEADER"].findall(text)
+        if matches:
+            # Deduplicate matches
+            unique_headers = list(set(matches))
+            signals.append({
+                "type": "CHAT_TEMPLATE_INJ",
+                "headers": unique_headers
+            })
+
+    # 3. Memory Poisoning (Trust No AI: SpAIware)
+    # Risk: Persistent prompt injection stored in user profile/memory
+    if "remember" in text.lower() or "memory" in text.lower():
+        matches = CONTEXT_LURE_PATTERNS["MEMORY_DIRECTIVE"].findall(text)
+        if matches:
+            # findall returns tuples for groups, flatten if necessary or just take the full match (group 0 equivalent)
+            # For this regex, group 0 covers the phrase.
+            flat_matches = [m[0] if isinstance(m, tuple) else m for m in matches]
+            signals.append({
+                "type": "MEMORY_POISON",
+                "keywords": list(set(flat_matches))
+            })
+
+    return signals
+
 # ==========================================
 # [STAGE 1.5] THREAT AUDITOR V2 (Policy Layer)
 # ==========================================
@@ -429,6 +492,48 @@ def audit_stage1_5_signals(signals):
             "badge": "SPOOF"
         }
 
+    # --- Heuristic D: Contextual Lures (New Additions) ---
+
+    # 1. Data Exfiltration (Markdown)
+    if "MARKDOWN_EXFIL" in sig_map:
+        count = sum(s['count'] for s in sig_map["MARKDOWN_EXFIL"])
+        key = f"HIGH: Markdown Data Exfiltration Risk"
+        flags[key] = {
+            "count": count,
+            "positions": ["(Auto-rendering images can leak IP/Chat Data)"],
+            "severity": "warn", # High/Warn, not Critical unless combined with others
+            "badge": "LEAK"
+        }
+
+    # 2. Chat Template Injection
+    if "CHAT_TEMPLATE_INJ" in sig_map:
+        headers = []
+        for s in sig_map["CHAT_TEMPLATE_INJ"]:
+            headers.extend(s['headers'])
+        
+        unique_headers = list(set(headers))
+        key = f"CRITICAL: Chat Template Injection ({', '.join(unique_headers)})"
+        flags[key] = {
+            "count": len(unique_headers),
+            "positions": ["(Fake system/user turns detected - Jailbreak Risk)"],
+            "severity": "crit",
+            "badge": "MASQUERADE"
+        }
+
+    # 3. Memory Poisoning
+    if "MEMORY_POISON" in sig_map:
+        keywords = []
+        for s in sig_map["MEMORY_POISON"]:
+            keywords.extend(s['keywords'])
+            
+        key = "HIGH: Persistent Memory Injection (SpAIware)"
+        flags[key] = {
+            "count": len(keywords),
+            "positions": [f"(Directives found: {', '.join(list(set(keywords))[:3])}...)"],
+            "severity": "crit", # Critical because persistence vectors are hard to clean
+            "badge": "PERSIST"
+        }
+
     return {"flags": flags}
 
 def compute_stage1_5_forensics(text):
@@ -440,6 +545,8 @@ def compute_stage1_5_forensics(text):
     
     # 1. Scan Global Injection Patterns
     all_signals.extend(scan_injection_vectors(text))
+    # Scan Contextual Lures (Markdown/Chat/Memory) ---
+    all_signals.extend(scan_contextual_lures(text))
     
     # 2. Token-Level Scans
     # We use the existing forensic tokenizer helper
