@@ -7761,7 +7761,8 @@ def analyze_adversarial_tokens(t: str):
     raw_tokens = []
     
     # Iterate over non-whitespace chunks
-    token_pattern = re.compile(r'\S+')
+    # [FIX] Use double-backslash '\\S+' to satisfy strict Python 3.12 syntax checks
+    token_pattern = re.compile('\\S+')
     
     for match in token_pattern.finditer(t):
         raw_text = match.group()
