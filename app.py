@@ -8498,7 +8498,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # Ensure WAF/Global injections don't displace higher-risk token fractures.
         # We sort by score (descending) to ensure Paranoia Peak is mathematically accurate.
         if adversarial_data and 'targets' in adversarial_data:
-        adversarial_data['targets'].sort(key=lambda x: x['score'], reverse=True)
+            adversarial_data['targets'].sort(key=lambda x: x['score'], reverse=True)
 
         # --- [NEW] Module 5: Predictive Attack Simulation ---
         # 1. Anti-Sanitization Flags (Legacy Heuristics)
