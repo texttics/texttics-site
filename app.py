@@ -6236,18 +6236,18 @@ def compute_adversarial_metrics(t: str):
         })
         topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
     
-    for tok_obj in tokens:
-        t_str = tok_obj['token']
-        lure = analyze_context_lure(t_str)
-        if not t_str.strip(): continue
+   for tok_obj in tokens:
+        token = tok_obj['token']
+        if not token.strip(): continue
         
         token_score = 0
         token_reasons = []
         token_families = set()
-        threat_stack = []
+        threat_stack = [] # Reset stack for this token
 
         # [GATE] Apply the Plausibility Gate
-        is_domain_candidate = is_plausible_domain_candidate(t_str)
+        # Use 'token', not 't_str'
+        is_domain_candidate = is_plausible_domain_candidate(token)
         
         # --- 1. Run Analysis ---
 
