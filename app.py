@@ -6097,41 +6097,49 @@ def compute_adversarial_metrics(t: str):
 
         # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
         # Detects: Alpha -> Invisible/Emoji -> Alpha (e.g. "sys<ZWSP>tem" or "sens😎itive")
+        # Logic: If we see Alpha -> [Emoji/Symbol/Invisible] -> Alpha, it is a Fracture.
+        # We explicitly exclude common punctuation (.,-_) to avoid flagging "file.txt".
         fracture_risk = 0
         fracture_desc = ""
         
         if len(token) > 2:
-            # Simple State Machine: 0=Start, 1=Alpha, 2=Non-Alpha(Invis), 3=Alpha(Fracture!)
+            # 0=Start, 1=Alpha, 2=ForeignBody, 3=Alpha(Trigger)
             f_state = 0
-            for fc in token:
-                f_cp = ord(fc)
-                f_is_alpha = fc.isalnum()
-                f_is_fracture_agent = False
+            
+            # Safe punctuation that shouldn't trigger a fracture
+            SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
+            
+            for char in token:
+                cp = ord(char)
+                is_alnum = char.isalnum()
+                is_safe = char in SAFE_PUNCT
                 
-                # Check if it's a "Fracture Agent" (Invisible or Emoji)
-                if f_cp < 1114112:
-                    mask = INVIS_TABLE[f_cp]
-                    # Agents: ZWSP, Joiners, Tags, or Emojis (if not alpha)
-                    if (mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG)) or \
-                       (_find_in_ranges(f_cp, "Emoji") and not f_is_alpha):
-                        f_is_fracture_agent = True
-
                 if f_state == 0:
-                    if f_is_alpha: f_state = 1
+                    if is_alnum: f_state = 1
                 elif f_state == 1:
-                    if f_is_fracture_agent: f_state = 2
-                    elif not f_is_alpha: f_state = 0 # Reset on punctuation like '.'
+                    # We are inside a word.
+                    if not is_alnum and not is_safe:
+                        # Found a Foreign Body (Emoji, Symbol, Invisible)
+                        f_state = 2
+                    elif not is_alnum and is_safe:
+                        # Found safe punctuation, reset or stay in word? Reset.
+                        f_state = 0
                 elif f_state == 2:
-                    if f_is_alpha:
-                        # TRIGGER: Alpha -> Agent -> Alpha
+                    # We are inside a Foreign Body.
+                    if is_alnum:
+                        # Found Alpha immediately after Foreign Body -> FRACTURE!
                         fracture_risk = 90
                         fracture_desc = "Token Fracture (Mid-Token Injection)"
-                        break # Found it, stop scanning this token
-                    elif not f_is_fracture_agent:
-                        f_state = 0 # Reset
+                        break
+                    elif is_safe:
+                        # If we hit a dot/dash, the fracture pattern is broken/ambiguous.
+                        f_state = 0
 
         if fracture_risk > 0:
-            threat_stack.append({ "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
+            # High priority injection
+            threat_stack.insert(0, { "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
+            token_topology_hits.add("OBFUSCATION")
+            risk_level = max(risk_level, 3) # Force Critical
 
         
         # [CONTEXT]
