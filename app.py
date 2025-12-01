@@ -6238,6 +6238,7 @@ def compute_adversarial_metrics(t: str):
     
     for tok_obj in tokens:
         t_str = tok_obj['token']
+        lure = analyze_context_lure(t_str)
         if not t_str.strip(): continue
         
         token_score = 0
@@ -6303,7 +6304,8 @@ def compute_adversarial_metrics(t: str):
 
         
         # [CONTEXT]
-        lure = analyze_context_lure(t_str)
+        # Use 't' for global checks
+        masq = analyze_code_masquerade(t, script_stats or {})
         if lure:
             token_score += lure['risk']
             token_reasons.append(lure['desc'])
