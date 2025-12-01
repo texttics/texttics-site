@@ -5920,58 +5920,56 @@ ALL_THREAT_TERMS = set().union(*THREAT_VOCAB.values())
 def check_reassembly(tokens: list):
     """
     [PAPER 2: Charmer - Deep Logic]
-    Attempts to 're-glue' fragmented micro-tokens to see if they form 
-    high-value threat words from the Forensic Vocabulary.
+    Robust version: Handles both dict tokens and raw strings.
     """
     micro_run = []
     findings = []
     
-    # Ensure we have access to the threat vocab
-    # (These should be defined globally as per previous instructions)
-    if 'ALL_THREAT_TERMS' not in globals() or 'THREAT_VOCAB' not in globals():
-        return []
+    # Safe access to global vocab
+    vocab = globals().get('THREAT_VOCAB', {})
+    all_terms = globals().get('ALL_THREAT_TERMS', set())
 
     for tok in tokens:
-        token = tok['token']
-        
-        # Collect micro-tokens (len 1-2) - e.g. "s" "h" "e" "ll"
-        # Must be alphanumeric to be part of a word fragmentation
-        if token.isalnum() and len(token) <= 2:
-            micro_run.append(token)
+        # DEFENSIVE: Handle both dicts (standard) and strings (fallback)
+        if isinstance(tok, dict):
+            t_str = tok.get('token', '')
+        elif isinstance(tok, str):
+            t_str = tok
         else:
-            # We hit a non-micro token or symbol. 
-            # Check if the ACCUMULATED run forms a threat.
+            continue # Skip unknown types
+
+        # Collect micro-tokens (len 1-2)
+        if t_str.isalnum() and len(t_str) <= 2:
+            micro_run.append(t_str)
+        else:
+            # Process accumulated run
             if len(micro_run) >= 3:
                 reassembled = "".join(micro_run).lower()
                 
                 # 1. Exact Match Check
-                if reassembled in ALL_THREAT_TERMS:
-                    # Identify Category
+                if reassembled in all_terms:
                     cat = "UNKNOWN"
-                    for c, terms in THREAT_VOCAB.items():
+                    for c, terms in vocab.items():
                         if reassembled in terms:
                             cat = c
                             break
                     findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
                     
-                # 2. Substring Heuristic (for longer re-assembled chunks)
-                # e.g. "c m d . e x e" -> "cmd.exe" contains "cmd"
+                # 2. Substring Heuristic
                 else:
-                     for term in ALL_THREAT_TERMS:
-                         # Only check significant terms to avoid noise (len > 3)
+                     for term in all_terms:
                          if len(term) > 3 and term in reassembled:
                               findings.append(f"[SUSPICIOUS] ...{' '.join(micro_run)}... -> contains '{term}'")
                               break
 
-            # Reset the run because the chain was broken
             micro_run = []
             
-    # Flush final run (if the text ends with micro-tokens)
+    # Flush final run
     if len(micro_run) >= 3:
         reassembled = "".join(micro_run).lower()
-        if reassembled in ALL_THREAT_TERMS:
+        if reassembled in all_terms:
             cat = "UNKNOWN"
-            for c, terms in THREAT_VOCAB.items():
+            for c, terms in vocab.items():
                 if reassembled in terms:
                     cat = c
                     break
@@ -6237,7 +6235,12 @@ def compute_adversarial_metrics(t: str):
         topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
     
     for tok_obj in tokens:
-        token = tok_obj['token']
+        # Defensive extraction
+        if isinstance(tok_obj, dict):
+            token = tok_obj.get('token', '')
+        else:
+            token = str(tok_obj)
+            
         if not token.strip(): continue
         
         # Reset per-token variables
