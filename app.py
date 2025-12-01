@@ -8636,7 +8636,8 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             's3': state_3_casefold,
             's4': state_4_skeleton
         },
-        'adversarial': adversarial_data 
+        'adversarial': adversarial_data,
+        'waf_score': waf_score
     }
     
 def render_threat_analysis(threat_results, text_context=None):
