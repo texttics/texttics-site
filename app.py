@@ -8308,6 +8308,17 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     # Initialize counters for the Overlay Engine
     threat_score = 0
     forensic_flags = []
+
+    # --- Initialize waf_score early ---
+    waf_score = 0
+    naked_text = ""
+    layers_found = []
+    adversarial_data = {
+        "findings": [], 
+        "top_tokens": [], 
+        "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0},
+        "targets": [] # Initialize targets list
+    }
     
     # ----------------------------------------------------
     # [NEW] Overlay Confusable Engine (Stage 1.1 - U+0334..U+0338)
