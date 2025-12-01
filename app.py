@@ -8621,14 +8621,6 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 elif not threat_flags: 
                      threat_flags[f"Script Profile: Single Script ({s_name})"] = {'count': 0, 'positions': []}
 
-            # [NEW] Enhanced Fracture Scanner (Emoji + Invisible)
-            fracture_data = analyze_syntax_fracture_enhanced(t)
-            if fracture_data:
-                threat_flags["Flag: Syntax Fracture (Sandwich Attack)"] = {
-                    'count': fracture_data["count"],
-                    'positions': fracture_data["positions"],
-                    'severity': 'crit'
-                }
             
         # --- 5. Skeleton Drift (METRICS ENGINE) ---
         if skel_metrics["total_drift"] > 0:
@@ -8753,7 +8745,16 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # Normalization Bomb (DoS)
         bomb_flags = analyze_normalization_inflation(t)
         threat_flags.update(bomb_flags)
-        
+
+        # [NEW] Enhanced Fracture Scanner (Emoji + Invisible)
+        fracture_data = analyze_syntax_fracture_enhanced(t)
+        if fracture_data:
+            threat_flags["Flag: Syntax Fracture (Sandwich Attack)"] = {
+                'count': fracture_data["count"],
+                'positions': fracture_data["positions"],
+                'severity': 'crit'
+            }
+            
         # 1.5 Syntax Predator (Deterministic Normalization Hazards)
         # This catches dynamic threats missed by the static list above
         norm_hazard_flags = analyze_normalization_hazards(t)
