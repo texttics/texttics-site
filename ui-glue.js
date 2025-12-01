@@ -1727,3 +1727,15 @@ window.updateStatConsole = function(row) {
           copyToClipboard("Stats not ready.", 'btn-p-stat');
       }
   });
+
+if (!window.py_get_stat_report_text) {
+    copyToClipboard("Stats bridge missing.", 'btn-p-stat');
+} else {
+    const text = window.py_get_stat_report_text();
+    if (!text.trim()) {
+        copyToClipboard("Stats not ready. Run analysis first.", 'btn-p-stat');
+    } else {
+        copyToClipboard(text, 'btn-p-stat');
+    }
+}
+
