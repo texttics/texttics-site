@@ -6251,11 +6251,6 @@ def compute_adversarial_metrics(t: str):
         
         # --- 1. Run Analysis ---
 
-        # --- 3. Token Loop ---
-    for tok_obj in tokens:
-        token = tok_obj['token']
-        threat_stack = [] 
-
         # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
         # Detects: Alpha -> Invisible/Emoji -> Alpha (e.g. "sys<ZWSP>tem" or "sens😎itive")
         # Logic: If we see Alpha -> [Emoji/Symbol/Invisible] -> Alpha, it is a Fracture.
