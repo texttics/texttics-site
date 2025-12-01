@@ -12781,7 +12781,7 @@ def update_all(event=None):
 
     score_inputs = {
         # [NEW] WIRING
-        "waf_score": waf_score, # From analyze_waf_policy
+        "waf_score": threat_results.get("waf_score", 0),
         "norm_injection_count": norm_inj_count,
         "logic_bypass_count": logic_bypass_count,
         
