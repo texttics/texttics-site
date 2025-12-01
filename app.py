@@ -8532,6 +8532,26 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     if 'script_mix_class' not in locals(): script_mix_class = ""
     if 'skel_metrics' not in locals(): skel_metrics = {}
 
+    # --- BRIDGE: Promote Adversarial Findings to Threat Flags ---
+    # This ensures the "Group 3" table sees the "Group 4" discoveries.
+    if adversarial_data and 'targets' in adversarial_data:
+        for target in adversarial_data['targets']:
+            for item in target.get('stack', []):
+                # We only promote CRITICAL/HIGH findings to the main flag list to avoid noise
+                if item['lvl'] in ('CRIT', 'HIGH'):
+                    # Create a readable key like "CRITICAL: Token Fracture (Mid-Token Injection)"
+                    key = f"{item['lvl']}: {item['desc']}"
+                    
+                    if key not in threat_flags:
+                        threat_flags[key] = {
+                            'count': 0,
+                            'positions': [],
+                            'severity': 'crit' if item['lvl'] == 'CRIT' else 'warn'
+                        }
+                    
+                    threat_flags[key]['count'] += 1
+                    # Add the token itself as the position context
+                    threat_flags[key]['positions'].append(f"in '{target['token']}'")
 
     return {
         'flags': threat_flags,
