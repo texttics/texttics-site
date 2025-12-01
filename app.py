@@ -2455,117 +2455,7 @@ def _add_manual_data_overrides():
     
     print(f"Loaded {len(ranges_list)} manual 'Discouraged' ranges.")
 
-# ==========================================
-# [MODULE 1] FORENSIC TOKENIZER (Option A - Revised)
-# ==========================================
-from dataclasses import dataclass, field
-from typing import List, Literal
 
-@dataclass
-class ForensicToken:
-    text: str
-    start: int
-    end: int
-    kind: Literal["WORD", "DELIMITER", "WHITESPACE", "SYMBOL"]
-    
-    # Placeholder for Phase 2 Metrics
-    risk_score: float = 0.0
-    flags: List[str] = field(default_factory=list)
-
-def tokenize_forensic(text: str) -> List[ForensicToken]:
-    """
-    Forensic Tokenizer (Option A - Hardened).
-    Splits text into atomic units of intent while preserving invisible payloads.
-    
-    Rules:
-    1. WORD: Alphanumeric + Internal Connectors ('_', '-')
-    2. DELIMITER: Structural chars ('.', '@', '/', ':', '?', '=', '&', '#')
-    3. WHITESPACE: Separators
-    4. INVISIBLES: Transparent (inherit current state, never split)
-    """
-    tokens = []
-    if not text:
-        return tokens
-
-    # Definition of Structural Delimiters for URL/Code contexts
-    STRUCTURAL_DELIMS = {'.', '@', '/', ':', '?', '=', '&', '#', '%', '$', '+', ','}
-    
-    # Internal Connectors (Glue if inside words)
-    CONNECTORS = {'_', '-'}
-
-    current_chars = []
-    current_start = 0
-    state = None  # "WORD", "DELIMITER", "WHITESPACE", "SYMBOL"
-
-    for i, char in enumerate(text):
-        cp = ord(char)
-        
-        # --- 1. Determine Character Flavor ---
-        
-        # A. Invisibles (Transparent)
-        # REVISION: Use the O(1) INVIS_TABLE for strict consistency
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        is_invisible = bool(mask & INVIS_ANY_MASK)
-        
-        # Also treat strict Mn/Mc/Me (Combining Marks) as glue, 
-        # but NOT as "Invisible" in the forensic sense. 
-        # They naturally attach to words via category logic below.
-        
-        if is_invisible:
-            # Invisibles are parasitic; they attach to whatever is currently happening.
-            current_chars.append(char)
-            # If state is None (start of string), we wait.
-            continue
-
-        cat = unicodedata.category(char)
-
-        # B. Determine Candidate State
-        if cat.startswith('Z') or char in ('\t', '\n', '\r'):
-            char_state = "WHITESPACE"
-        elif char in STRUCTURAL_DELIMS:
-            char_state = "DELIMITER"
-        elif cat.startswith('L') or cat.startswith('N') or char in CONNECTORS or cat.startswith('M'):
-            # Letters, Numbers, Connectors, and Marks form WORDS
-            char_state = "WORD"
-        else:
-            # Emojis, Symbols, etc.
-            char_state = "SYMBOL"
-
-        # --- 2. State Machine Transition ---
-        if state is None:
-            # Initialization
-            state = char_state
-            current_chars.append(char)
-            current_start = i
-        
-        elif state == char_state:
-            # Continuation (Same State)
-            
-            # REVISION: Always split Delimiters atomically.
-            # ".." -> ".", "." and "//" -> "/", "/"
-            # This allows precise detection of ".." (Directory Traversal) vs "."
-            if state == "DELIMITER":
-                 tokens.append(ForensicToken("".join(current_chars), current_start, i, state))
-                 current_chars = [char]
-                 current_start = i
-                 state = char_state
-            else:
-                current_chars.append(char)
-        
-        else:
-            # Transition (State Change)
-            tokens.append(ForensicToken("".join(current_chars), current_start, i, state))
-            current_chars = [char]
-            current_start = i
-            state = char_state
-
-    # Flush final buffer
-    if current_chars:
-        # If text was 100% invisible, state might still be None. Default to SYMBOL/NOISE.
-        final_state = state if state else "SYMBOL"
-        tokens.append(ForensicToken("".join(current_chars), current_start, len(text), final_state))
-
-    return tokens
 
 # ==========================================
 # [MODULE 2] VERIFICATION BENCH (Target Matcher)
@@ -5263,34 +5153,32 @@ def _escape_for_js(s: str) -> str:
 def tokenize_forensic(text: str):
     """
     Forensic Tokenizer (Adversarial Hardened).
-    Splits on whitespace but treats Invisible/Format characters as PAYLOADS,
-    not delimiters. Preserves internal punctuation for domain analysis.
+    Splits on whitespace but treats Invisible/Format characters as PAYLOADS.
+    Returns list of DICTIONARIES.
     """
     tokens = []
     if not text: return tokens
     
     # Python's .split() breaks on whitespace (Zs, Cc whitespace)
-    # Crucially, it PRESERVES ZWSP, ZWNJ, etc. (Cf) inside the chunks.
-    # This is exactly what we want for detecting "Structural Perturbation".
     raw_chunks = text.split()
     
     current_start = 0
     for chunk in raw_chunks:
         # Calculate real index (approximation for locating)
         idx = text.find(chunk, current_start)
+        if idx == -1: idx = current_start # Fallback
         current_start = idx + len(chunk)
         
         # Strip outer "Open/Close" delimiters to isolate the Identifier
-        # We strip: () [] {} <> " '
-        # We KEEP: . - _ @ (Domain/Username connectors)
-        clean = chunk.strip("()[]{}<>\"'")
+        clean = chunk.strip("()[]{}<>\"',;!|")
         
         if clean:
             tokens.append({
                 'token': clean,
                 'raw_chunk': chunk,
                 'start': idx,
-                'end': idx + len(chunk)
+                'end': idx + len(chunk),
+                'kind': 'word' # Default kind
             })
             
     return tokens
@@ -6090,60 +5978,61 @@ def compute_adversarial_metrics(t: str):
         
         # --- 1. Run Analysis ---
 
-        # --- 3. Token Loop ---
+    # --- 3. Token Loop (Fixed) ---
     for tok_obj in tokens:
-        token = tok_obj['token']
+        token = tok_obj.get('token', '')
+        if not token.strip(): continue
+        
+        # Reset per-token variables
+        token_score = 0
+        token_reasons = []
+        token_families = set()
         threat_stack = [] 
 
+        # [GATE] Apply the Plausibility Gate
+        is_domain_candidate = is_plausible_domain_candidate(token)
+        
         # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
-        # Detects: Alpha -> Invisible/Emoji -> Alpha (e.g. "sys<ZWSP>tem" or "sens😎itive")
-        # Logic: If we see Alpha -> [Emoji/Symbol/Invisible] -> Alpha, it is a Fracture.
-        # We explicitly exclude common punctuation (.,-_) to avoid flagging "file.txt".
         fracture_risk = 0
         fracture_desc = ""
         
         if len(token) > 2:
-            # 0=Start, 1=Alpha, 2=ForeignBody, 3=Alpha(Trigger)
             f_state = 0
-            
-            # Safe punctuation that shouldn't trigger a fracture
             SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
-            
             for char in token:
                 cp = ord(char)
                 is_alnum = char.isalnum()
                 is_safe = char in SAFE_PUNCT
+                f_is_agent = False
                 
+                if cp < 1114112:
+                    mask = INVIS_TABLE[cp]
+                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
+                        f_is_agent = True
+                    elif not is_alnum and (_find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic")):
+                        f_is_agent = True
+
                 if f_state == 0:
                     if is_alnum: f_state = 1
                 elif f_state == 1:
-                    # We are inside a word.
                     if not is_alnum and not is_safe:
-                        # Found a Foreign Body (Emoji, Symbol, Invisible)
-                        f_state = 2
+                        if f_is_agent: f_state = 2
                     elif not is_alnum and is_safe:
-                        # Found safe punctuation, reset or stay in word? Reset.
                         f_state = 0
                 elif f_state == 2:
-                    # We are inside a Foreign Body.
                     if is_alnum:
-                        # Found Alpha immediately after Foreign Body -> FRACTURE!
                         fracture_risk = 90
                         fracture_desc = "Token Fracture (Mid-Token Injection)"
                         break
                     elif is_safe:
-                        # If we hit a dot/dash, the fracture pattern is broken/ambiguous.
                         f_state = 0
-
+                        
         if fracture_risk > 0:
-            # High priority injection
             threat_stack.insert(0, { "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
-            token_topology_hits.add("OBFUSCATION")
-            risk_level = max(risk_level, 3) # Force Critical
+            token_score += 90
 
-        
         # [CONTEXT]
-        lure = analyze_context_lure(t_str)
+        lure = analyze_context_lure(token)
         if lure:
             token_score += lure['risk']
             token_reasons.append(lure['desc'])
@@ -6152,8 +6041,7 @@ def compute_adversarial_metrics(t: str):
 
         # [TYPOSQUATTING & IDNA]
         if is_domain_candidate:
-            # Typosquatting
-            domain_risk = analyze_domain_heuristics(t_str)
+            domain_risk = analyze_domain_heuristics(token)
             if domain_risk:
                 token_score += domain_risk['risk']
                 token_reasons.append(domain_risk['desc'])
@@ -6161,63 +6049,50 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
 
             # IDNA Lens
-            if '.' in t_str or 'xn--' in t_str:
-                labels = t_str.split('.')
+            if '.' in token or 'xn--' in token:
+                labels = token.split('.')
                 for label in labels:
                     if not label: continue
                     idna_findings = analyze_idna_label(label)
-                    
                     if idna_findings:
                         for f in idna_findings:
-                            # Map Types to Dashboard Categories
-                            cat = "INJECTION" # Default for Protocol
+                            cat = "INJECTION"
                             if f['type'] == "GHOST": cat = "HIDDEN"
                             elif f['type'] == "AMBIGUITY": cat = "AMBIGUITY"
                             elif f['type'] == "COMPAT": cat = "SYNTAX"
                             elif f['type'] == "INVALID": cat = "SPOOFING"
                             
-                            # Scoring
                             risk_adder = 0
                             if f['lvl'] == "CRIT": risk_adder = 50
                             elif f['lvl'] == "HIGH": risk_adder = 30
                             elif f['lvl'] == "MED": risk_adder = 10
                             token_score += risk_adder
                             
-                            threat_stack.append({
-                                "lvl": f['lvl'],
-                                "type": cat,
-                                "desc": f['desc']
-                            })
-                            token_reasons.append(f['desc'])
-                            # [FIX] Align Family with Pillar Type
-                            # If it's a Ghost, it's Obfuscation. If it's a Spoof, it's Spoofing.
-                            # We map the specific 'cat' (Pillar) back to a Family name.
+                            threat_stack.append({ "lvl": f['lvl'], "type": cat, "desc": f['desc'] })
+                            
                             if cat == "HIDDEN": token_families.add("OBFUSCATION")
                             elif cat == "SPOOFING": token_families.add("SPOOFING")
                             elif cat == "AMBIGUITY": token_families.add("HOMOGLYPH")
                             elif cat == "SYNTAX": token_families.add("INJECTION")
-                            else: token_families.add("INJECTION") # Default for protocol issues
+                            else: token_families.add("INJECTION")
 
         # [SCRIPT]
-        rest_label, rest_risk = analyze_restriction_level(t_str)
-        if rest_risk > 0:
-            if "CONTEXT" in token_families and rest_risk < 50: pass 
+        r_lbl, r_score = analyze_restriction_level(token)
+        if r_score > 0:
+            if "CONTEXT" in token_families and r_score < 50: pass 
             else:
-                token_score += rest_risk
-                token_reasons.append(rest_label)
+                token_score += r_score
+                token_reasons.append(r_lbl)
                 token_families.add("SCRIPT")
-                lvl = "CRIT" if rest_risk > 80 else "HIGH"
-                threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
+                lvl = "CRIT" if r_score > 80 else "HIGH"
+                threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
-        # [HOMOGLYPH] (Enhanced with Index-0 Weighting - Paper 2)
-        conf_data = analyze_confusion_density(t_str, confusables_map)
+        # [HOMOGLYPH]
+        conf_data = analyze_confusion_density(token, confusables_map)
         if conf_data:
-            # Attacks at start of word are more dangerous/effective
-            first_char_cp = ord(t_str[0])
-            if first_char_cp in confusables_map:
+            if len(token) > 0 and ord(token[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
                 conf_data['desc'] += " (Start-Char)"
-                
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
@@ -6225,7 +6100,7 @@ def compute_adversarial_metrics(t: str):
             threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
 
         # [SPOOFING]
-        sore = analyze_class_consistency(t_str)
+        sore = analyze_class_consistency(token)
         if sore:
             token_score += sore['risk']
             token_reasons.append(sore['desc'])
@@ -6233,79 +6108,34 @@ def compute_adversarial_metrics(t: str):
             threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
             
         # [OBFUSCATION]
-        norm = analyze_normalization_hazard_advanced(t_str)
+        norm = analyze_normalization_hazard_advanced(token)
         if norm:
             token_score += norm['risk']
             token_reasons.append(norm['desc'])
             token_families.add("OBFUSCATION")
             threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
-
-        # [FRAGMENTATION] (Invisible Sandwich - Paper 1)
-        inv_frag = analyze_invisible_fragmentation(t_str)
-        if inv_frag:
-            token_score += inv_frag['risk']
-            token_reasons.append(inv_frag['desc'])
-            token_families.add("OBFUSCATION")
-            # Priority Stack Injection
-            threat_stack.insert(0, { 
-                "lvl": "CRIT", 
-                "type": "HIDDEN", 
-                "desc": inv_frag['desc'] + " (LLM Jailbreak Pattern)" 
-            })
-
-        # [PERTURBATION] (Enhanced with Prompt Injection Awareness - Paper 1)
-        pert = analyze_structural_perturbation(t_str)
-        if pert:
-            token_score += pert['risk']
-            token_reasons.append(pert['desc'])
-            token_families.add("PERTURBATION")
-            
-            is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
-            
-            # [NEW] Label Bidi as Injection (AI/Compiler)
-            p_type = "INJECTION" if is_bidi else "HIDDEN"
-            desc_label = pert['desc']
-            if is_bidi: desc_label += " (Prompt/Code Injection)"
-            
-            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": desc_label })
-
-        # [TROJAN]
-        trojan = analyze_trojan_context(t_str)
-        if trojan:
-            token_score += trojan['risk']
-            token_reasons.append(trojan['desc'])
-            token_families.add("TROJAN")
-            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
-            
-        # [ZALGO]
-        zalgo = analyze_zalgo_load(t_str)
-        if zalgo:
-            token_score += zalgo['risk']
-            token_reasons.append(zalgo['desc'])
-            token_families.add("OBFUSCATION")
-            lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
-            threat_stack.append({ "lvl": lvl, "type": "HIDDEN", "desc": zalgo['desc'] })
-            
-        # [CASE]
-        case_anom = analyze_case_anomalies(t_str)
-        if case_anom:
-            token_score += case_anom['risk']
-            token_reasons.append(case_anom['desc'])
+        
+        # [IDNA Compression]
+        idna_comp = analyze_idna_compression(token)
+        if idna_comp:
+            threat_stack.append(idna_comp)
             token_families.add("SPOOFING")
-            threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
+            token_score += 50
 
-        # --- 2. Aggregation & Topology ---
+        # [Lexical Stutter]
+        if len(token) >= 6:
+            mid = len(token) // 2
+            if token[:mid] == token[mid:]:
+                desc = "Lexical Stutter (Doubling)"
+                threat_stack.append({"lvl": "MED", "type": "OBFUSCATION", "desc": desc})
+                token_score += 30
+
+        # --- Aggregation ---
         if token_score > 0 or threat_stack:
-            
-            # [FIX] Update Global Topology from Stack
             pillars_seen = set()
             for item in threat_stack:
                 t_type = item['type']
-                # Don't double count per token
                 if t_type not in pillars_seen:
-                    # Update the global topology dict defined outside the loop
-                    # Safe get/set
                     topology[t_type] = topology.get(t_type, 0) + 1
                     pillars_seen.add(t_type)
 
@@ -6315,31 +6145,27 @@ def compute_adversarial_metrics(t: str):
             if token_score >= 80: sev = 'crit'
             elif token_score >= 40: sev = 'warn'
             
-            # Ensure we have a score if stack exists but risk adder wasn't enough
             if not token_score and threat_stack: token_score = 10 
             
             findings.append({
                 'family': fam_str,
                 'desc': ", ".join(token_reasons),
-                'token': t_str,
+                'token': token,
                 'severity': sev
             })
             
-            # Sort stack by severity
             threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
             
-            # Calculate vectors
-            try:
-                b64 = base64.b64encode(t_str.encode("utf-8")).decode("ascii")
+            try: b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
             except: b64 = "Error"
-            hex_v = "".join(f"\\x{b:02X}" for b in t_str.encode("utf-8"))
+            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
             
             primary_verdict = "Unknown Risk"
             if threat_stack:
                 primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
 
             top_tokens.append({
-                'token': t_str,
+                'token': token,
                 'score': min(100, token_score),
                 'reasons': token_reasons, 
                 'families': list(token_families),
