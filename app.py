@@ -2455,117 +2455,7 @@ def _add_manual_data_overrides():
     
     print(f"Loaded {len(ranges_list)} manual 'Discouraged' ranges.")
 
-# ==========================================
-# [MODULE 1] FORENSIC TOKENIZER (Option A - Revised)
-# ==========================================
-from dataclasses import dataclass, field
-from typing import List, Literal
 
-@dataclass
-class ForensicToken:
-    text: str
-    start: int
-    end: int
-    kind: Literal["WORD", "DELIMITER", "WHITESPACE", "SYMBOL"]
-    
-    # Placeholder for Phase 2 Metrics
-    risk_score: float = 0.0
-    flags: List[str] = field(default_factory=list)
-
-def tokenize_forensic(text: str) -> List[ForensicToken]:
-    """
-    Forensic Tokenizer (Option A - Hardened).
-    Splits text into atomic units of intent while preserving invisible payloads.
-    
-    Rules:
-    1. WORD: Alphanumeric + Internal Connectors ('_', '-')
-    2. DELIMITER: Structural chars ('.', '@', '/', ':', '?', '=', '&', '#')
-    3. WHITESPACE: Separators
-    4. INVISIBLES: Transparent (inherit current state, never split)
-    """
-    tokens = []
-    if not text:
-        return tokens
-
-    # Definition of Structural Delimiters for URL/Code contexts
-    STRUCTURAL_DELIMS = {'.', '@', '/', ':', '?', '=', '&', '#', '%', '$', '+', ','}
-    
-    # Internal Connectors (Glue if inside words)
-    CONNECTORS = {'_', '-'}
-
-    current_chars = []
-    current_start = 0
-    state = None  # "WORD", "DELIMITER", "WHITESPACE", "SYMBOL"
-
-    for i, char in enumerate(text):
-        cp = ord(char)
-        
-        # --- 1. Determine Character Flavor ---
-        
-        # A. Invisibles (Transparent)
-        # REVISION: Use the O(1) INVIS_TABLE for strict consistency
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        is_invisible = bool(mask & INVIS_ANY_MASK)
-        
-        # Also treat strict Mn/Mc/Me (Combining Marks) as glue, 
-        # but NOT as "Invisible" in the forensic sense. 
-        # They naturally attach to words via category logic below.
-        
-        if is_invisible:
-            # Invisibles are parasitic; they attach to whatever is currently happening.
-            current_chars.append(char)
-            # If state is None (start of string), we wait.
-            continue
-
-        cat = unicodedata.category(char)
-
-        # B. Determine Candidate State
-        if cat.startswith('Z') or char in ('\t', '\n', '\r'):
-            char_state = "WHITESPACE"
-        elif char in STRUCTURAL_DELIMS:
-            char_state = "DELIMITER"
-        elif cat.startswith('L') or cat.startswith('N') or char in CONNECTORS or cat.startswith('M'):
-            # Letters, Numbers, Connectors, and Marks form WORDS
-            char_state = "WORD"
-        else:
-            # Emojis, Symbols, etc.
-            char_state = "SYMBOL"
-
-        # --- 2. State Machine Transition ---
-        if state is None:
-            # Initialization
-            state = char_state
-            current_chars.append(char)
-            current_start = i
-        
-        elif state == char_state:
-            # Continuation (Same State)
-            
-            # REVISION: Always split Delimiters atomically.
-            # ".." -> ".", "." and "//" -> "/", "/"
-            # This allows precise detection of ".." (Directory Traversal) vs "."
-            if state == "DELIMITER":
-                 tokens.append(ForensicToken("".join(current_chars), current_start, i, state))
-                 current_chars = [char]
-                 current_start = i
-                 state = char_state
-            else:
-                current_chars.append(char)
-        
-        else:
-            # Transition (State Change)
-            tokens.append(ForensicToken("".join(current_chars), current_start, i, state))
-            current_chars = [char]
-            current_start = i
-            state = char_state
-
-    # Flush final buffer
-    if current_chars:
-        # If text was 100% invisible, state might still be None. Default to SYMBOL/NOISE.
-        final_state = state if state else "SYMBOL"
-        tokens.append(ForensicToken("".join(current_chars), current_start, len(text), final_state))
-
-    return tokens
 
 # ==========================================
 # [MODULE 2] VERIFICATION BENCH (Target Matcher)
@@ -5354,32 +5244,31 @@ def tokenize_forensic(text: str):
     Forensic Tokenizer (Adversarial Hardened).
     Splits on whitespace but treats Invisible/Format characters as PAYLOADS,
     not delimiters. Preserves internal punctuation for domain analysis.
+    Returns list of DICTIONARIES.
     """
     tokens = []
     if not text: return tokens
     
     # Python's .split() breaks on whitespace (Zs, Cc whitespace)
-    # Crucially, it PRESERVES ZWSP, ZWNJ, etc. (Cf) inside the chunks.
-    # This is exactly what we want for detecting "Structural Perturbation".
     raw_chunks = text.split()
     
     current_start = 0
     for chunk in raw_chunks:
         # Calculate real index (approximation for locating)
         idx = text.find(chunk, current_start)
+        if idx == -1: idx = current_start # Fallback
         current_start = idx + len(chunk)
         
         # Strip outer "Open/Close" delimiters to isolate the Identifier
-        # We strip: () [] {} <> " '
-        # We KEEP: . - _ @ (Domain/Username connectors)
-        clean = chunk.strip("()[]{}<>\"'")
+        clean = chunk.strip("()[]{}<>\"',;!|")
         
         if clean:
             tokens.append({
                 'token': clean,
                 'raw_chunk': chunk,
                 'start': idx,
-                'end': idx + len(chunk)
+                'end': idx + len(chunk),
+                'kind': 'word' # Default kind
             })
             
     return tokens
