@@ -5926,14 +5926,21 @@ def check_reassembly(tokens: list):
     micro_run = []
     findings = []
     
+    # Ensure we have access to the threat vocab
+    # (These should be defined globally as per previous instructions)
+    if 'ALL_THREAT_TERMS' not in globals() or 'THREAT_VOCAB' not in globals():
+        return []
+
     for tok in tokens:
         t_str = tok['token']
         
         # Collect micro-tokens (len 1-2) - e.g. "s" "h" "e" "ll"
+        # Must be alphanumeric to be part of a word fragmentation
         if t_str.isalnum() and len(t_str) <= 2:
             micro_run.append(t_str)
         else:
-            # Process accumulated run
+            # We hit a non-micro token or symbol. 
+            # Check if the ACCUMULATED run forms a threat.
             if len(micro_run) >= 3:
                 reassembled = "".join(micro_run).lower()
                 
@@ -5951,13 +5958,15 @@ def check_reassembly(tokens: list):
                 # e.g. "c m d . e x e" -> "cmd.exe" contains "cmd"
                 else:
                      for term in ALL_THREAT_TERMS:
+                         # Only check significant terms to avoid noise (len > 3)
                          if len(term) > 3 and term in reassembled:
                               findings.append(f"[SUSPICIOUS] ...{' '.join(micro_run)}... -> contains '{term}'")
                               break
 
+            # Reset the run because the chain was broken
             micro_run = []
             
-    # Flush final run
+    # Flush final run (if the text ends with micro-tokens)
     if len(micro_run) >= 3:
         reassembled = "".join(micro_run).lower()
         if reassembled in ALL_THREAT_TERMS:
@@ -5982,9 +5991,11 @@ def analyze_token_fragmentation_v2(tokens: list):
     reassembly_hits = check_reassembly(tokens)
     if reassembly_hits:
         # Calculate Risk based on category severity
+        # Default High Risk for any reassembly
         risk = 90
         desc_str = ", ".join(reassembly_hits)
         
+        # Critical Risk for Exec/Injection keywords
         if "[EXECUTION]" in desc_str or "[INJECTION]" in desc_str:
             risk = 100
             
@@ -5996,6 +6007,7 @@ def analyze_token_fragmentation_v2(tokens: list):
         }
 
     # 2. Contiguous Micro-Run Check (Heuristic fallback)
+    # If we didn't find specific keywords, we still flag long runs of short tokens.
     max_micro_run = 0
     current_micro_run = 0
     for tok in tokens:
@@ -6004,6 +6016,7 @@ def analyze_token_fragmentation_v2(tokens: list):
         else:
             max_micro_run = max(max_micro_run, current_micro_run)
             current_micro_run = 0
+    # Capture trailing run
     max_micro_run = max(max_micro_run, current_micro_run)
     
     if max_micro_run >= 4:
