@@ -1724,3 +1724,77 @@ The system has been verified against the `ULTIMATE_STRESS_TEST` string, confirmi
 * [x] **IDNA Compression** (`corp.㏅.com`) -> **HIGH**
 * [x] **Lexical Stutter** (`adminadmin`) -> **MEDIUM**
 * [x] **Math/Tag Evasion** (`𝐀𝐝𝐦𝐢𝐧`) -> **CRITICAL**
+
+🛡️ Addendum #8: The "Stage 1.5" Adversarial Intelligence Upgrade
+
+Session Goal: To transition the tool from a "Passive Structural Profiler" (what characters are) to an "Active Forensic Hunter" (detecting specific patterns of evasion, spoofing, and injection). This upgrade integrates insights from five seminal security papers (2018–2025) on RAG Poisoning, IDN Masquerading, and AI Agent Exfiltration.
+
+1. Architectural Philosophy: "Physics vs. Judgment"
+
+We enforced a strict architectural boundary to maintain the tool's integrity as a "Lab Instrument":
+
+Stage 1 (The Detectors): Pure, neutral "Physics Engines" that report observable facts (e.g., "This string contains ANSI codes"). They never assign risk scores.
+
+Stage 1.5 (The Auditors): A "Policy Layer" that interprets those facts through specific heuristics (e.g., "ANSI codes in a prompt context = High Risk"). This ensures we don't conflate capability with intent.
+
+2. New Forensic Modules
+
+A. The "Token Fracture" Scanner (The Persian Defense)
+
+Source: The Hidden Threat in Plain Text (2025).
+
+The Threat: Attackers insert invisible characters inside keywords (e.g., vio<ZWSP>lent) to break LLM tokenization and bypass safety filters.
+
+The Defense: A script-aware engine detects [Alpha] + [Invisible] + [Alpha] patterns.
+
+The "Persian Defense": Crucially, we implemented a whitelist for complex scripts (Arabic, Syriac, N'Ko, etc.) where ZWJ/ZWNJ are legitimate orthographic tools. This prevents false positives on non-Latin languages, respecting global typography while catching Latin evasion attempts.
+
+B. The "Injection Pattern" Matcher
+
+Source: Exploiting Web Search Tools of AI Agents... (2025).
+
+The Threat: "Indirect Prompt Injection" via web content.
+
+The Defense:
+
+ANSI Escape Detection: Flags terminal control sequences (\x1b[...]) used to manipulate logs or model output (proven 12% success rate).
+
+Imperative Overrides: Detects structural patterns of "Jailbreak" syntax (e.g., "Ignore previous instructions", "System Prompt Override").
+
+Tool Chaining: Identifies syntax designed to hijack agent tools (e.g., "Search for X and send to URL").
+
+C. The Domain Structure Scanner (IDN Masquerading)
+
+Source: Large Scale Detection of IDN Domain Name Masquerading (2018).
+
+The Threat: Homoglyph spoofing in Internationalized Domain Names.
+
+The Defense:
+
+Script Mixing: Detects labels mixing conflicting scripts (e.g., Latin + Cyrillic) which is a primary phishing indicator.
+
+Pseudo-Delimiters: specific detection of characters that mimic structural syntax (e.g., U+2024 One Dot Leader mimicking .).
+
+Skeleton Collision: Flags when a non-ASCII domain's visual skeleton matches a pure ASCII string.
+
+D. The "Legal Clarity" Inspector
+
+Source: Emojis: An Approach to Interpretation (2024).
+
+The Threat: Courts misinterpreting emojis due to cross-platform rendering differences.
+
+The Defense:
+
+Decomposition View: The Inspector now breaks down emoji sequences into their "Bill of Materials" (Base + Glue + Modifier).
+
+Ambiguity Flag: Explicitly warns users if an emoji lacks a specific Variation Selector (VS16) or Emoji Presentation property, signaling that it may render as text on some devices and color graphics on others.
+
+3. "Sidecar" Implementation Strategy
+
+To protect the stability of the existing codebase, these features were implemented as an Additive Sidecar:
+
+Isolated Engines: New logic resides in standalone functions (scan_token_fracture_safe, scan_injection_vectors).
+
+Soft Merge: Results are computed in parallel and merged into the final report only at the last step.
+
+Zero Regression: Existing "Stage 1" logic remains untouched and authoritative.
