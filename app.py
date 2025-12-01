@@ -6315,7 +6315,7 @@ def compute_adversarial_metrics(t: str):
         # [TYPOSQUATTING & IDNA]
         if is_domain_candidate:
             # Typosquatting
-            domain_risk = analyze_domain_heuristics(t_str)
+            domain_risk = analyze_domain_heuristics(token)
             if domain_risk:
                 token_score += domain_risk['risk']
                 token_reasons.append(domain_risk['desc'])
