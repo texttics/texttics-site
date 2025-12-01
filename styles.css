@@ -5208,3 +5208,366 @@ details.profile-section > summary:hover::marker {
     transform: translateY(0);
     box-shadow: none !important;
 }
+
+/* ==========================================================================
+   [STAGE 1.5] ADVERSARIAL INTELLIGENCE & FORENSIC VISUAL SYSTEM
+   ========================================================================== */
+
+/* --- MODULE 4: ADVERSARIAL DASHBOARD (The "Scoreboard") --- */
+#adv-console {
+    margin-top: 20px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: #fff;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.adv-header {
+    background: #f8fafc;
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.adv-title {
+    font-weight: 700;
+    color: #334155;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.intel-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+.intel-badge-safe { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+.intel-badge-warn { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+.intel-badge-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* Top Stats Bar */
+.adversarial-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: #e2e8f0; /* Grid lines */
+    border-bottom: 1px solid var(--color-border);
+}
+
+.stat-box {
+    background: #fff;
+    padding: 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-label { font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+.stat-val { font-size: 1.1rem; font-weight: 700; color: #0f172a; font-family: var(--font-mono); }
+
+.stat-alarm .stat-val { color: #dc2626; }
+.stat-alarm .stat-label { color: #ef4444; }
+
+/* Peak Row (Top Offender) */
+.peak-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 15px;
+    background: #fff1f2;
+    border-bottom: 1px solid #fecaca;
+    color: #9f1239;
+    font-size: 0.85rem;
+    gap: 12px;
+}
+.peak-label { font-weight: 700; font-size: 0.7rem; background: #e11d48; color: #fff; padding: 2px 6px; border-radius: 3px; }
+.peak-token { font-family: var(--font-mono); font-weight: 700; background: #fff; padding: 1px 6px; border-radius: 3px; border: 1px solid #fda4af; }
+.peak-tags { display: flex; gap: 6px; }
+.peak-tag { font-size: 0.7rem; border: 1px solid #f43f5e; padding: 0 6px; border-radius: 10px; background: #fff0f7; }
+
+/* --- MODULE 3: FORENSIC STACK (The Dual View) --- */
+.forensic-stack {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    margin-top: 15px;
+    background: #fff;
+}
+
+.stack-separator {
+    background: #f1f5f9;
+    color: #94a3b8;
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 4px;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    user-select: none;
+}
+
+/* --- VIEW A: X-RAY (DNA Alignment) --- */
+.xray-container {
+    padding: 15px;
+    background: #fafafa;
+    overflow-x: auto;
+}
+
+.xray-legend-bar {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 10px;
+    font-size: 0.7rem;
+    color: #64748b;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 5px;
+}
+.xl-item { display: flex; align-items: center; gap: 4px; }
+.xl-dot { width: 8px; height: 8px; border-radius: 50%; }
+.dot-red { background: #ef4444; }
+.dot-gray { background: #cbd5e1; }
+
+.xray-cluster {
+    margin-bottom: 15px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.xray-meta {
+    background: #f8fafc;
+    padding: 4px 8px;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.xray-strip {
+    display: flex;
+    padding: 8px;
+    overflow-x: auto;
+    gap: 2px;
+}
+
+.xray-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 24px;
+    min-width: 24px;
+    border-right: 1px dashed #f1f5f9;
+}
+
+.x-raw, .x-skel {
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+}
+
+.x-raw { border-bottom: 1px solid #e2e8f0; color: #334155; background: #f8fafc; width: 100%; }
+.x-skel { color: #64748b; width: 100%; }
+
+/* Drift Highlights */
+.xray-drift .x-raw { background: #fee2e2; color: #dc2626; font-weight: 700; }
+.xray-drift .x-skel { background: #fff; color: #dc2626; }
+
+/* Void/Hidden */
+.xray-void .x-raw { background: #f3f4f6; color: #9ca3af; font-size: 0.7rem; }
+.xray-void .x-skel { color: #d1d5db; font-size: 0.7rem; }
+
+.x-tag {
+    font-size: 0.5rem;
+    background: #e5e7eb;
+    padding: 1px 2px;
+    border-radius: 2px;
+    color: #4b5563;
+}
+
+/* --- VIEW B: CLASSIC STREAM (Cards & Stacks) --- */
+.xray-stream-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+}
+
+.cluster-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.cluster-header {
+    background: #f8fafc;
+    padding: 6px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cluster-body {
+    padding: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    word-break: break-all;
+    background: #fff;
+}
+
+/* The "Stacks" inside the stream text */
+.xray-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 2px;
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    padding: 0 2px;
+    background: #f1f5f9;
+    cursor: help;
+    line-height: 1;
+    min-width: 18px;
+}
+
+.xray-top { font-size: 0.9rem; font-weight: 700; padding-bottom: 1px; border-bottom: 1px solid #e2e8f0; }
+.xray-bot { font-size: 0.55rem; font-weight: 600; text-transform: uppercase; padding-top: 1px; }
+
+/* Threat-Specific Stack Styles */
+.stack-bidi { border-color: #fcd34d; background: #fffbeb; color: #b45309; }
+.stack-spoof { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+.stack-invis { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
+
+.xray-safe { opacity: 0.6; }
+.xray-control { color: #94a3b8; font-size: 0.8em; }
+
+/* --- MODULE 2: TOKEN RISK LEDGER --- */
+.token-ledger {
+    max-height: 300px;
+    overflow-y: auto;
+    border-top: 1px solid var(--color-border);
+}
+
+.token-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.token-table th { background: #f1f5f9; position: sticky; top: 0; z-index: 10; padding: 6px; text-align: left; color: #475569; font-size: 0.7rem; text-transform: uppercase; }
+.token-table td { padding: 6px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+
+.token-link { font-family: var(--font-mono); font-weight: 600; color: #2563eb; text-decoration: none; }
+.token-link:hover { text-decoration: underline; }
+.token-kind { font-size: 0.65rem; color: #94a3b8; margin-top: 1px; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+.badge-crit { background: #ffe4e6; color: #be123c; border: 1px solid #fda4af; }
+.badge-high { background: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
+.badge-warn { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+.badge-ok   { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+
+.script-mixed { color: #c2410c; font-weight: 600; }
+.script-single { color: #64748b; }
+
+.trigger-tag { display: inline-block; background: #f3f4f6; border: 1px solid #e5e7eb; padding: 1px 4px; border-radius: 3px; color: #4b5563; font-size: 0.7rem; margin-bottom: 2px; }
+.trigger-tag-ok { color: #15803d; font-size: 0.7rem; opacity: 0.8; }
+
+/* --- MODULE 5: PAYLOAD ALERT --- */
+.payload-alert {
+    margin: 10px 0;
+    border: 2px solid #dc2626;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+    animation: pulse-border 2s infinite;
+}
+
+.pa-header {
+    background: #dc2626;
+    color: #fff;
+    padding: 6px 10px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+}
+
+.pa-body { padding: 10px; }
+
+.pa-layers {
+    font-size: 0.7rem;
+    color: #6b7280;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.layer-badge {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid #fecaca;
+    font-family: var(--font-mono);
+}
+
+.pa-content code {
+    display: block;
+    background: #1e293b;
+    color: #4ade80;
+    padding: 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    margin-top: 4px;
+    word-break: break-all;
+}
+
+.pa-waf {
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: #dc2626;
+    background: #fef2f2;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #fecaca;
+}
+
+/* --- PREDICTIVE TABLE --- */
+.predictive-wrapper {
+    margin-top: 15px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.pred-header { background: #f8fafc; padding: 6px 10px; font-size: 0.75rem; font-weight: 700; color: #475569; border-bottom: 1px solid #e2e8f0; }
+.pred-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.pred-table th { text-align: left; background: #fff; color: #64748b; font-weight: 600; padding: 6px; border-bottom: 2px solid #f1f5f9; }
+.pred-table td { padding: 6px; border-bottom: 1px solid #f1f5f9; }
+
+.pred-row.pred-changed { background: #fffbeb; }
+.pred-row.pred-danger { background: #fef2f2; }
+.pred-form { font-weight: 700; color: #64748b; width: 60px; }
+.pred-val { font-family: var(--font-mono); word-break: break-all; }
+
+/* --- ANIMATIONS --- */
+@keyframes pulse-border {
+    0% { border-color: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+    70% { border-color: #b91c1c; box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+    100% { border-color: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
