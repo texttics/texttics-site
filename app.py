@@ -5834,205 +5834,217 @@ def analyze_punctuation_skew(t: str):
         
     return None
 
+def analyze_visual_redaction(t: str):
+    """
+    [PAPER: Bad Characters] Visual Deletion Engine ('Ghost' Scanner).
+    Detects characters that modify cursor position (BS, DEL) to hide content.
+    """
+    findings = []
+    # BS (0x08), DEL (0x7F) are the primary visual erasers.
+    # CR (0x0D) overwrites line start.
+    REDACTION_SET = {0x0008, 0x007F, 0x000D}
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        if cp in REDACTION_SET:
+            name = "BACKSPACE" if cp == 0x0008 else ("DELETE" if cp == 0x7F else "CARRIAGE RETURN")
+            findings.append(f"#{i} ({name})")
+            
+    if findings:
+        return {
+            "label": "CRITICAL: Visual Redaction (Ghost Chars)",
+            "count": len(findings),
+            "positions": findings,
+            "severity": "crit",
+            "badge": "GHOST"
+        }
+    return None
+
+def analyze_syntax_fracture_enhanced(t: str):
+    """
+    [PAPER: Emoji Survey] Enhanced Fracture Scanner (v2).
+    Detects 'Sandwich Attacks' where an alphanumeric run is split by
+    Emojis, Invisibles, or Tags.
+    """
+    if len(t) < 3: return None
+
+    fractures = []
+    
+    # Inline Agent Check
+    def is_fracture_agent(cp):
+        if cp >= 1114112: return False
+        mask = INVIS_TABLE[cp]
+        if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL | INVIS_SOFT_HYPHEN):
+            return True
+        # Check for Emoji ranges
+        if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
+            return True
+        return False
+
+    # Scan for [Alpha] -> [Agent] -> [Alpha]
+    for i in range(1, len(t) - 1):
+        mid_char = t[i]
+        cp_mid = ord(mid_char)
+        
+        if mid_char.isalnum() or mid_char.isspace():
+            continue
+            
+        if is_fracture_agent(cp_mid):
+            prev_char = t[i-1]
+            next_char = t[i+1]
+            
+            if prev_char.isalnum() and next_char.isalnum():
+                fractures.append(f"#{i} (U+{cp_mid:04X} splits token)")
+
+    if fractures:
+        return {
+            "label": "CRITICAL: Syntax Fracture (Token Evasion)",
+            "count": len(fractures),
+            "positions": fractures,
+            "severity": "crit", 
+            "badge": "JAILBREAK"
+        }
+    return None
+
+def analyze_jailbreak_styles(t: str):
+    """
+    [PAPER: Impact of Non-Standard Unicode] Evasion Alphabet Detector.
+    Detects usage of specific Unicode blocks proved to bypass LLM safety filters.
+    """
+    if not t: return None
+    
+    hits = {"MATH": 0, "ENCLOSED": 0, "BRAILLE": 0, "TAGS": 0}
+    
+    for char in t:
+        cp = ord(char)
+        if 0x1D400 <= cp <= 0x1D7FF: hits["MATH"] += 1
+        elif (0x2460 <= cp <= 0x24FF) or (0x1F100 <= cp <= 0x1F1FF): hits["ENCLOSED"] += 1
+        elif 0x2800 <= cp <= 0x28FF: hits["BRAILLE"] += 1
+        elif 0xE0000 <= cp <= 0xE007F: hits["TAGS"] += 1
+
+    if hits["TAGS"] > 0:
+        return {"type": "INJECTION", "desc": f"Unicode Tags (x{hits['TAGS']})", "risk": 95, "verdict": "JAILBREAK (TAGS)"}
+    if hits["MATH"] > 3:
+        return {"type": "SPOOFING", "desc": f"Math Alphanumerics (x{hits['MATH']})", "risk": 80, "verdict": "JAILBREAK (MATH)"}
+    if hits["ENCLOSED"] > 3:
+        return {"type": "OBFUSCATION", "desc": f"Enclosed Alphanumerics (x{hits['ENCLOSED']})", "risk": 60, "verdict": "EVASION (STYLE)"}
+    if hits["BRAILLE"] > 3:
+         return {"type": "OBFUSCATION", "desc": f"Braille Patterns (x{hits['BRAILLE']})", "risk": 70, "verdict": "EVASION (BRAILLE)"}
+
+    return None
+
 def compute_adversarial_metrics(t: str):
     """
-    Adversarial Engine v8 (Topology Fix + A-Z Fix + Gate Enforcement).
+    Adversarial Engine v10 (Consolidated & Paper-Aligned).
+    Integrates: Ghost, Fracture, Stutter, and Jailbreak Styles.
     """
-    if not t: return {}
-    tokens = tokenize_forensic(t)
+    if not t: 
+        return {
+            "findings": [], "top_tokens": [], "targets": [],
+            "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0}
+        }
+
+    # --- 1. Setup ---
+    tokens = tokenize_forensic(t) 
+    confusables_map = DATA_STORES.get("Confusables", {})
     
     findings = []
     top_tokens = []
-    confusables_map = DATA_STORES.get("Confusables", {})
     
-    # Global Topology (Dashboard Counters)
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0 }
-    
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0, "SEMANTIC": 0 }
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
 
-    # --- [LEGACY RESTORATION] Restriction Level Logic ---
+    # --- 2. Global Analyzers (State 1.5) ---
+    
+    # A. Visual Redaction (Ghost)
+    ghost = analyze_visual_redaction(t)
+    if ghost:
+        findings.append({
+            'family': '[GHOST]', 'desc': f"{ghost['count']} Deletion Characters",
+            'token': 'GLOBAL', 'severity': 'crit'
+        })
+        topology["HIDDEN"] += 1
+
+    # B. Syntax Fracture (Sandwich)
+    frac = analyze_syntax_fracture_enhanced(t)
+    if frac:
+        findings.append({
+            'family': '[FRACTURE]', 'desc': f"{frac['count']} Token Fractures",
+            'token': 'GLOBAL', 'severity': 'crit'
+        })
+        topology["OBFUSCATION"] += 1
+
+    # C. Jailbreak Styles (Evasion Alphabets)
+    style = analyze_jailbreak_styles(t)
+    if style:
+        sev = 'crit' if style['risk'] >= 80 else 'warn'
+        findings.append({
+            'family': f"[{style['verdict']}]", 'desc': style['desc'],
+            'token': 'GLOBAL', 'severity': sev
+        })
+        t_type = style.get('type', 'OBFUSCATION')
+        topology[t_type] = topology.get(t_type, 0) + 1
+
+    # D. Symbol Flood (SSTA)
+    flood = analyze_symbol_flood(t)
+    if flood:
+        findings.append({
+            'family': f"[{flood['verdict']}]", 'desc': flood['desc'],
+            'token': 'GLOBAL', 'severity': 'crit' if flood['risk'] > 50 else 'warn'
+        })
+        topology["SEMANTIC"] += 1
+
+    # --- 3. Token Loop ---
+    
+    # Legacy Script logic for Restriction Badge
     scripts_found = set()
     has_math_spoof = False
-    
     for char in t:
         cp = ord(char)
         sc = _find_in_ranges(cp, "Scripts")
         blk = _find_in_ranges(cp, "Blocks")
-        
-        # Special handling for Math Spoofing Block
-        if blk == "Mathematical Alphanumeric Symbols":
-            has_math_spoof = True
-            
-        if sc and sc not in ("Common", "Inherited", "Unknown"):
-            scripts_found.add(sc)
-            
+        if blk == "Mathematical Alphanumeric Symbols": has_math_spoof = True
+        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts_found.add(sc)
+    
     restriction = "UNRESTRICTED"
     badge_class = "intel-badge-danger"
     count = len(scripts_found)
-    
-    if has_math_spoof:
-        restriction = "SPOOFING (MATH ALPHANUMERIC)"
-        badge_class = "intel-badge-crit"
+    if has_math_spoof: restriction = "SPOOFING (MATH)"
     elif count == 0:
-        if all(ord(c) < 128 for c in t):
-            restriction = "ASCII-ONLY"
-            badge_class = "intel-badge-safe"
-        else:
-            restriction = "SINGLE SCRIPT (COMMON)"
-            badge_class = "intel-badge-safe"
-    elif count == 1:
-        restriction = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
-        badge_class = "intel-badge-safe"
-    elif count == 2:
-        # If we have Latin + (Cyrillic OR Greek), it's High Risk Mixed
-        s_list = list(scripts_found)
-        if "Latin" in s_list and ("Cyrillic" in s_list or "Greek" in s_list):
-             restriction = "HIGH RISK MIX (CONFUSABLE)"
-             badge_class = "intel-badge-crit"
-        else:
-             restriction = "MINIMALLY RESTRICTIVE" 
-             badge_class = "intel-badge-warn"
-    else:
-        restriction = "UNRESTRICTED (CHAOTIC)"
-        badge_class = "intel-badge-crit"
+        if all(ord(c) < 128 for c in t): restriction, badge_class = "ASCII-ONLY", "intel-badge-safe"
+        else: restriction, badge_class = "SINGLE SCRIPT", "intel-badge-safe"
+    elif count == 1: restriction, badge_class = f"SINGLE ({list(scripts_found)[0]})", "intel-badge-safe"
+    else: restriction, badge_class = "MIXED SCRIPTS", "intel-badge-warn"
 
-    # --- [NEW] Global Scope Analyzers (Module 6) ---
-    
-    # 1. Symbol Flood (Paper 3: SSTA)
-    flood = analyze_symbol_flood(t)
-    if flood:
-        findings.append({
-            'family': f"[{flood['verdict']}]",
-            'desc': flood['desc'],
-            'token': 'GLOBAL',
-            'severity': 'crit' if flood['risk'] > 50 else 'warn'
-        })
-        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
-
-    # 2. Math Spoof (Paper 1: Special-Char)
-    math_spoof = analyze_math_spoofing(t)
-    if math_spoof:
-        findings.append({
-            'family': f"[{math_spoof['verdict']}]",
-            'desc': math_spoof['desc'],
-            'token': 'GLOBAL',
-            'severity': 'crit'
-        })
-        topology["SPOOFING"] += 1
-
-    # 3. Token Fragmentation (Paper 2: Charmer - Localized)
-    frag = analyze_token_fragmentation(tokens)
-    if frag:
-        findings.append({
-            'family': f"[{frag['verdict']}]",
-            'desc': frag['desc'],
-            'token': 'GLOBAL',
-            'severity': 'warn'
-        })
-        topology["HIDDEN"] += 1
-
-    # 4. [NEW] TAG Jailbreak Detection (Paper 1)
-    # Specifically looking for U+E007F (CANCEL TAG) and Tag Block
-    tag_cancel_count = t.count("\U000E007F")
-    tag_block_count = sum(1 for c in t if 0xE0000 <= ord(c) <= 0xE007E)
-    
-    if tag_cancel_count > 0:
-        findings.append({
-            'family': '[JAILBREAK]',
-            'desc': f"Cancel Tag (U+E007F) Detected (AI Jailbreak Signature)",
-            'token': 'GLOBAL',
-            'severity': 'crit'
-        })
-        topology["INJECTION"] += 1
-    elif tag_block_count > 0:
-        findings.append({
-            'family': '[STEGO]',
-            'desc': f"Unicode Tag Injection ({tag_block_count} chars)",
-            'token': 'GLOBAL',
-            'severity': 'warn'
-        })
-        topology["HIDDEN"] += 1
-
-    # 5. [NEW] Punctuation Skew (Paper 3: Replacement Attack)
-    skew = analyze_punctuation_skew(t)
-    if skew:
-        findings.append({
-            'family': f"[{skew['verdict']}]",
-            'desc': skew['desc'],
-            'token': 'GLOBAL',
-            'severity': 'warn'
-        })
-        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
-    
+    # Main Loop
     for tok_obj in tokens:
-        t_str = tok_obj['token']
-        if not t_str.strip(): continue
-        
-        token_score = 0
-        token_reasons = []
-        token_families = set()
-        threat_stack = []
+        # Defensive Extraction
+        if isinstance(tok_obj, dict):
+            token_text = tok_obj.get('token', '')
+        else:
+            token_text = str(tok_obj)
 
-        # [GATE] Apply the Plausibility Gate
-        is_domain_candidate = is_plausible_domain_candidate(t_str)
+        if not token_text.strip(): continue
         
-        # --- 1. Run Analysis ---
-
-    # --- 3. Token Loop (Fixed) ---
-    for tok_obj in tokens:
-        token = tok_obj.get('token', '')
-        if not token.strip(): continue
-        
-        # Reset per-token variables
         token_score = 0
         token_reasons = []
         token_families = set()
         threat_stack = [] 
 
-        # [GATE] Apply the Plausibility Gate
-        is_domain_candidate = is_plausible_domain_candidate(token)
-        
-        # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
-        fracture_risk = 0
-        fracture_desc = ""
-        
-        if len(token) > 2:
-            f_state = 0
-            SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
-            for char in token:
-                cp = ord(char)
-                is_alnum = char.isalnum()
-                is_safe = char in SAFE_PUNCT
-                f_is_agent = False
-                
-                if cp < 1114112:
-                    mask = INVIS_TABLE[cp]
-                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
-                        f_is_agent = True
-                    elif not is_alnum and (_find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic")):
-                        f_is_agent = True
+        is_domain_candidate = is_plausible_domain_candidate(token_text)
 
-                if f_state == 0:
-                    if is_alnum: f_state = 1
-                elif f_state == 1:
-                    if not is_alnum and not is_safe:
-                        if f_is_agent: f_state = 2
-                    elif not is_alnum and is_safe:
-                        f_state = 0
-                elif f_state == 2:
-                    if is_alnum:
-                        fracture_risk = 90
-                        fracture_desc = "Token Fracture (Mid-Token Injection)"
-                        break
-                    elif is_safe:
-                        f_state = 0
-                        
-        if fracture_risk > 0:
-            threat_stack.insert(0, { "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
-            token_score += 90
+        # [NEW] Lexical Stutter (Unicode Evil)
+        # Logic: Check for exact doubling (e.g. "adminadmin")
+        if len(token_text) >= 6:
+            mid = len(token_text) // 2
+            if token_text[:mid] == token_text[mid:]:
+                desc = "Lexical Stutter (Doubling)"
+                threat_stack.append({"lvl": "MED", "type": "OBFUSCATION", "desc": desc})
+                token_score += 30
+                token_families.add("OBFUSCATION")
 
         # [CONTEXT]
-        lure = analyze_context_lure(token)
+        lure = analyze_context_lure(token_text)
         if lure:
             token_score += lure['risk']
             token_reasons.append(lure['desc'])
@@ -6041,16 +6053,15 @@ def compute_adversarial_metrics(t: str):
 
         # [TYPOSQUATTING & IDNA]
         if is_domain_candidate:
-            domain_risk = analyze_domain_heuristics(token)
+            domain_risk = analyze_domain_heuristics(token_text)
             if domain_risk:
                 token_score += domain_risk['risk']
                 token_reasons.append(domain_risk['desc'])
                 token_families.add("SPOOFING") 
                 threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
 
-            # IDNA Lens
-            if '.' in token or 'xn--' in token:
-                labels = token.split('.')
+            if '.' in token_text or 'xn--' in token_text:
+                labels = token_text.split('.')
                 for label in labels:
                     if not label: continue
                     idna_findings = analyze_idna_label(label)
@@ -6069,7 +6080,6 @@ def compute_adversarial_metrics(t: str):
                             token_score += risk_adder
                             
                             threat_stack.append({ "lvl": f['lvl'], "type": cat, "desc": f['desc'] })
-                            
                             if cat == "HIDDEN": token_families.add("OBFUSCATION")
                             elif cat == "SPOOFING": token_families.add("SPOOFING")
                             elif cat == "AMBIGUITY": token_families.add("HOMOGLYPH")
@@ -6077,7 +6087,7 @@ def compute_adversarial_metrics(t: str):
                             else: token_families.add("INJECTION")
 
         # [SCRIPT]
-        r_lbl, r_score = analyze_restriction_level(token)
+        r_lbl, r_score = analyze_restriction_level(token_text)
         if r_score > 0:
             if "CONTEXT" in token_families and r_score < 50: pass 
             else:
@@ -6088,9 +6098,9 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
         # [HOMOGLYPH]
-        conf_data = analyze_confusion_density(token, confusables_map)
+        conf_data = analyze_confusion_density(token_text, confusables_map)
         if conf_data:
-            if len(token) > 0 and ord(token[0]) in confusables_map:
+            if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
                 conf_data['desc'] += " (Start-Char)"
             token_score += conf_data['risk']
@@ -6100,7 +6110,7 @@ def compute_adversarial_metrics(t: str):
             threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
 
         # [SPOOFING]
-        sore = analyze_class_consistency(token)
+        sore = analyze_class_consistency(token_text)
         if sore:
             token_score += sore['risk']
             token_reasons.append(sore['desc'])
@@ -6108,27 +6118,38 @@ def compute_adversarial_metrics(t: str):
             threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
             
         # [OBFUSCATION]
-        norm = analyze_normalization_hazard_advanced(token)
+        norm = analyze_normalization_hazard_advanced(token_text)
         if norm:
             token_score += norm['risk']
             token_reasons.append(norm['desc'])
             token_families.add("OBFUSCATION")
             threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
         
+        # [PERTURBATION]
+        pert = analyze_structural_perturbation(token_text)
+        if pert:
+            token_score += pert['risk']
+            token_reasons.append(pert['desc'])
+            token_families.add("PERTURBATION")
+            is_bidi = "Bidi" in pert['desc']
+            p_type = "INJECTION" if is_bidi else "HIDDEN"
+            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
+
+        # [TROJAN]
+        trojan = analyze_trojan_context(token_text)
+        if trojan:
+            token_score += trojan['risk']
+            token_reasons.append(trojan['desc'])
+            token_families.add("TROJAN")
+            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
+            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
+
         # [IDNA Compression]
-        idna_comp = analyze_idna_compression(token)
+        idna_comp = analyze_idna_compression(token_text)
         if idna_comp:
             threat_stack.append(idna_comp)
             token_families.add("SPOOFING")
             token_score += 50
-
-        # [Lexical Stutter]
-        if len(token) >= 6:
-            mid = len(token) // 2
-            if token[:mid] == token[mid:]:
-                desc = "Lexical Stutter (Doubling)"
-                threat_stack.append({"lvl": "MED", "type": "OBFUSCATION", "desc": desc})
-                token_score += 30
 
         # --- Aggregation ---
         if token_score > 0 or threat_stack:
@@ -6140,7 +6161,6 @@ def compute_adversarial_metrics(t: str):
                     pillars_seen.add(t_type)
 
             fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
-            
             sev = 'ok'
             if token_score >= 80: sev = 'crit'
             elif token_score >= 40: sev = 'warn'
@@ -6148,53 +6168,39 @@ def compute_adversarial_metrics(t: str):
             if not token_score and threat_stack: token_score = 10 
             
             findings.append({
-                'family': fam_str,
-                'desc': ", ".join(token_reasons),
-                'token': token,
-                'severity': sev
+                'family': fam_str, 'desc': ", ".join(token_reasons),
+                'token': token_text, 'severity': sev
             })
             
             threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
             
-            try: b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
+            try: b64 = base64.b64encode(token_text.encode("utf-8")).decode("ascii")
             except: b64 = "Error"
-            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
+            hex_v = "".join(f"\\x{b:02X}" for b in token_text.encode("utf-8"))
             
             primary_verdict = "Unknown Risk"
             if threat_stack:
                 primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
 
             top_tokens.append({
-                'token': token,
-                'score': min(100, token_score),
-                'reasons': token_reasons, 
-                'families': list(token_families),
-                'stack': threat_stack,
-                'verdict': primary_verdict,
-                'b64': b64,
-                'hex': hex_v
+                'token': token_text, 'score': min(100, token_score),
+                'reasons': token_reasons, 'families': list(token_families),
+                'stack': threat_stack, 'verdict': primary_verdict,
+                'b64': b64, 'hex': hex_v
             })
 
-    # Global Stego Check
+    # Global Stego Check (Final)
     stego_report = detect_invisible_patterns(t)
     if stego_report:
         findings.append({
-            'family': '[STEGO]',
-            'desc': stego_report['detail'],
-            'token': 'GLOBAL',
-            'severity': 'warn'
+            'family': '[STEGO]', 'desc': stego_report['detail'],
+            'token': 'GLOBAL', 'severity': 'warn'
         })
         topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
 
     top_tokens.sort(key=lambda x: x['score'], reverse=True)
-    
-    # Normalize Scores for UI Consistency
-    # If we have a CRITICAL finding (100), the global score should reflect that.
-    max_token_score = 0
-    if top_tokens:
-        max_token_score = max(t['score'] for t in top_tokens)
+    max_token_score = max(t['score'] for t in top_tokens) if top_tokens else 0
         
-    # Ensure findings list doesn't have duplicates based on token+verdict
     unique_findings = []
     seen_hashes = set()
     for f in findings:
@@ -6204,14 +6210,10 @@ def compute_adversarial_metrics(t: str):
             seen_hashes.add(h)
 
     return {
-        "findings": unique_findings,
-        "top_tokens": top_tokens[:3],
-        "topology": topology,
-        "restriction": restriction,
-        "badge_class": badge_class,
-        "targets": top_tokens, 
-        "stego": stego_report,
-        "max_risk": max_token_score # Hint for UI
+        "findings": unique_findings, "top_tokens": top_tokens[:3],
+        "topology": topology, "restriction": restriction,
+        "badge_class": badge_class, "targets": top_tokens, 
+        "stego": stego_report, "max_risk": max_token_score 
     }
 
 def analyze_trojan_context(token: str):
@@ -7876,19 +7878,6 @@ def _evaluate_adversarial_risk(intermediate_data):
             "collisions": len(collisions)
         }
     }
-
-def compute_adversarial_metrics(t: str):
-    """
-    Public Wrapper: Connects Block 1 (Extraction) and Block 2 (Risk).
-    Returns the final object consumed by the UI.
-    """
-    # 1. Extract
-    intermediate = analyze_adversarial_tokens(t)
-    
-    # 2. Evaluate
-    final_report = _evaluate_adversarial_risk(intermediate)
-    
-    return final_report
 
 
 
