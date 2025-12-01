@@ -1844,5 +1844,3 @@ We performed a "Red Team" audit against external threat intelligence (AWS Securi
 * **Unicode Tag Smuggling:** Covered by the **Protocol Smuggler** engine.
 * **Homoglyph Phishing:** Covered by the **Skeleton Drift** metric.
 * **Invisible NMT Attacks:** Covered by the **Fracture Scanner** and **Ghost Scanner** (Visual Redaction).
-
-**Result:** The tool now effectively immunizes the user against the entire known spectrum of structural text attacks described in the current security literature (2024-2025).
