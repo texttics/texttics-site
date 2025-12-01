@@ -12770,11 +12770,14 @@ def update_all(event=None):
     if drift_ascii > 0: noise_list.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
 
     # Calculate counts for new engines
-    # 1. Syntax Predator: Count keys starting with "CRITICAL: Normalization"
-    norm_inj_count = sum(1 for k in threat_flags if "Normalization-Activated" in k)
+    # Retrieve flags from the results object (threat_flags is not local to this function)
+    current_flags = threat_results.get('flags', {})
     
-    # 2. Case Collision: Count keys related to Case Mapping
-    logic_bypass_count = sum(1 for k in threat_flags if "Case Mapping" in k or "Bypass Vector" in k)
+    # 1. Syntax Predator: Count keys starting with "Normalization-Activated"
+    norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
+    
+    # 2. Case Collision: Count keys related to Case Mapping/Bypass
+    logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
 
     score_inputs = {
         # [NEW] WIRING
