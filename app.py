@@ -5433,11 +5433,13 @@ def analyze_normalization_hazards(t: str):
 def analyze_normalization_hazard_advanced(token: str):
     """
     [SHAPESHIFTING] Checks NFC (Binary) and NFKC_Casefold (Visual).
+    Detects tokens that are unstable under normalization (Adversarial Evasion).
     """
     hazards = []
     score = 0
     
     # 1. NFC Hazard (Binary Instability)
+    # Detects things like "Ghost Characters" that vanish or merge
     try:
         nfc = unicodedata.normalize("NFC", token)
         if token != nfc:
@@ -5450,7 +5452,7 @@ def analyze_normalization_hazard_advanced(token: str):
     except: pass
 
     # 2. NFKC_Casefold Hazard (Compatibility/Visual Instability)
-    # Using our custom normalize_extended if available, else standard
+    # Uses the app's robust 'normalize_extended' to catch Enclosed Alphanumerics
     try:
         # Simulate NFKC_CF: Normalize NFKC then Casefold
         nfkc = normalize_extended(token)
