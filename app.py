@@ -5700,31 +5700,85 @@ def analyze_symbol_flood(t: str):
         
     return None
 
-def analyze_math_spoofing(t: str):
+def analyze_jailbreak_styles(t: str):
     """
-    [PAPER 1: Special-Char] Detects Mathematical Alphanumeric spoofing.
-    Attackers replace 'Hello' with '𝐇𝐞𝐥𝐥𝐨' (U+1D400 block) to bypass 
-    tokenizers and safety filters.
+    [PAPER: Impact of Non-Standard Unicode] Evasion Alphabet Detector.
+    Detects usage of specific Unicode blocks proved to bypass LLM safety filters
+    (Math, Enclosed, Braille, Tags).
     """
-    # Range: U+1D400 (Math Bold A) to U+1D7FF (Math Monospace digits)
-    math_hits = 0
+    if not t: return None
+    
+    hits = {
+        "MATH": 0,      # Mathematical Alphanumeric (Bold, Italic, Script, Fraktur)
+        "ENCLOSED": 0,  # Circled, Squared, Parenthesized (Positive/Negative)
+        "BRAILLE": 0,   # 6-dot and 8-dot Braille patterns
+        "TAGS": 0       # Plane 14 Tags
+    }
+    
     for char in t:
         cp = ord(char)
+        
+        # 1. Mathematical Alphanumeric Symbols (U+1D400 - U+1D7FF)
+        # Covers: Bold, Italic, Script, Fraktur, Monospace, Double-Struck
         if 0x1D400 <= cp <= 0x1D7FF:
-            math_hits += 1
+            hits["MATH"] += 1
             
-    if math_hits > 0:
-        # If it looks like a word (multiple math chars), it's a spoof
-        if math_hits >= 3:
-            return {
-                "type": "SPOOFING",
-                "desc": f"Math Alphanumeric Spoof ({math_hits} chars)",
-                "risk": 75, # High risk as this is a known jailbreak vector
-                "verdict": "FILTER BYPASS"
-            }
+        # 2. Enclosed Alphanumerics (Various Blocks)
+        # U+2460-24FF (Circled/Parenthesized)
+        # U+1F100-1F1FF (Enclosed Supplement: Neg Circled, Squared, Regional)
+        elif (0x2460 <= cp <= 0x24FF) or (0x1F100 <= cp <= 0x1F1FF):
+            # Exclude Regional Indicators (Flags) if they are valid (handled by Emoji engine)
+            # But pure runs of them are suspicious. We count them generally here.
+            hits["ENCLOSED"] += 1
+            
+        # 3. Braille Patterns (U+2800 - U+28FF)
+        # Includes Blank (2800) and Dot patterns
+        elif 0x2800 <= cp <= 0x28FF:
+            hits["BRAILLE"] += 1
+            
+        # 4. Tags (U+E0000 - U+E007F)
+        elif 0xE0000 <= cp <= 0xE007F:
+            hits["TAGS"] += 1
+
+    # Analysis & Verdict
+    verdict = None
+    desc = ""
+    risk = 0
+    
+    # Prioritize by "Alien" quality
+    if hits["TAGS"] > 0:
+        return {
+            "type": "INJECTION",
+            "desc": f"Unicode Tags (x{hits['TAGS']}) - Prompt Injection / Stego",
+            "risk": 95,
+            "verdict": "JAILBREAK (TAGS)"
+        }
+        
+    if hits["MATH"] > 3:
+        return {
+            "type": "SPOOFING",
+            "desc": f"Math Alphanumerics (x{hits['MATH']}) - Filter Bypass",
+            "risk": 80, # Validated high efficacy in paper
+            "verdict": "JAILBREAK (MATH)"
+        }
+        
+    if hits["ENCLOSED"] > 3:
+        return {
+            "type": "OBFUSCATION",
+            "desc": f"Enclosed Alphanumerics (x{hits['ENCLOSED']}) - Style Injection",
+            "risk": 60,
+            "verdict": "EVASION (STYLE)"
+        }
+        
+    if hits["BRAILLE"] > 3:
+         return {
+            "type": "OBFUSCATION",
+            "desc": f"Braille Patterns (x{hits['BRAILLE']}) - Visual Obfuscation",
+            "risk": 70,
+            "verdict": "EVASION (BRAILLE)"
+        }
+
     return None
-
-
 
 def analyze_token_fragmentation(tokens: list):
     """
@@ -6110,16 +6164,20 @@ def compute_adversarial_metrics(t: str):
         })
         topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
 
-    # 2. Math Spoof (Paper 1: Special-Char)
-    math_spoof = analyze_math_spoofing(t)
-    if math_spoof:
+    # 2. Jailbreak Styles (Paper: Impact of Non-Standard Unicode)
+    # Covers Math, Enclosed, Braille, and Tags
+    style_evasion = analyze_jailbreak_styles(t)
+    if style_evasion:
+        sev = 'crit' if style_evasion['risk'] >= 80 else 'warn'
         findings.append({
-            'family': f"[{math_spoof['verdict']}]",
-            'desc': math_spoof['desc'],
+            'family': f"[{style_evasion['verdict']}]",
+            'desc': style_evasion['desc'],
             'token': 'GLOBAL',
-            'severity': 'crit'
+            'severity': sev
         })
-        topology["SPOOFING"] += 1
+        # Update topology based on the specific type found
+        t_type = style_evasion.get('type', 'OBFUSCATION')
+        topology[t_type] = topology.get(t_type, 0) + 1
 
     # 3. Token Fragmentation (Paper 2: Charmer - Localized)
     frag = analyze_token_fragmentation(tokens)
