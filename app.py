@@ -6742,7 +6742,12 @@ def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
         if case_anom:
             threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
 
-        # I. IDNA PROTOCOL LENS (Label-Centric)
+        # I.1 IDNA Compression (SPOOFING)
+        idna_comp = analyze_idna_compression(token)
+        if idna_comp:
+            threat_stack.append(idna_comp)
+
+        # I.2 IDNA PROTOCOL LENS (Label-Centric)
         # We only analyze tokens that look like domains (contain dot or xn--)
         if '.' in token or 'xn--' in token:
             # 1. Split into Labels (UTS #46 Step 3)
@@ -7682,6 +7687,67 @@ def analyze_case_collisions(t: str):
 
     return flags
 
+def analyze_normalization_inflation(t: str):
+    """
+    [PAPER: Fun with Unicode] Normalization Bomb Detector.
+    Detects single characters that expand significantly (DoS vector).
+    """
+    flags = {}
+    findings = []
+    
+    # Threshold: If a single char expands to > 10 chars, it's a bomb.
+    BOMB_THRESHOLD = 10 
+    
+    for i, char in enumerate(t):
+        # Optimization: Only check complex scripts (skip ASCII)
+        if ord(char) < 128: continue
+            
+        try:
+            nfkc = unicodedata.normalize("NFKC", char)
+            if len(nfkc) >= BOMB_THRESHOLD:
+                # Special Label for the famous U+FDFA
+                label = "Arabic Ligature (U+FDFA)" if ord(char) == 0xFDFA else f"U+{ord(char):04X}"
+                findings.append(f"#{i} ({label} expands to {len(nfkc)} chars)")
+        except: pass
+            
+    if findings:
+        flags["RISK: Normalization Inflation (DoS Vector)"] = {
+            "count": len(findings),
+            "positions": findings,
+            "severity": "warn",
+            "badge": "DOS"
+        }
+    return flags
+
+def analyze_idna_compression(token: str):
+    """
+    [PAPER: Fun with Unicode] IDNA Compression Detector.
+    Detects characters that map to multi-char ASCII strings in IDNA.
+    """
+    # Scope: Only analyze domain-like tokens
+    if not token or '.' not in token: return None
+    
+    # Heuristic: Check for non-ASCII chars that normalize to ASCII sequences
+    # e.g. U+33C5 (㏅) -> "cd"
+    suspicious = []
+    
+    for char in token:
+        if ord(char) > 127:
+            try:
+                norm = unicodedata.normalize("NFKC", char)
+                # If it expands to 2+ chars AND becomes pure ASCII
+                if len(norm) > 1 and norm.isascii():
+                    suspicious.append(f"U+{ord(char):04X}→'{norm}'")
+            except: pass
+            
+    if suspicious:
+        return {
+            "lvl": "HIGH",
+            "type": "SPOOFING", 
+            "desc": f"IDNA Compression ({', '.join(suspicious)})"
+        }
+    return None
+
 def render_predictive_normalizer(t: str):
     """
     Generates a Comparative Table showing the future state of the text
@@ -8597,12 +8663,16 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         if adversarial_data and 'targets' in adversarial_data:
             adversarial_data['targets'].sort(key=lambda x: x['score'], reverse=True)
 
-        # --- [NEW] Module 5: Predictive Attack Simulation ---
+        # --- Predictive Attack Simulation ---
         # 1. Anti-Sanitization Flags (Legacy Heuristics)
         sanit_flags = analyze_anti_sanitization(t)
         threat_flags.update(sanit_flags)
+
+        # Normalization Bomb (DoS)
+        bomb_flags = analyze_normalization_inflation(t)
+        threat_flags.update(bomb_flags)
         
-        # 1.5 [NEW] Syntax Predator (Deterministic Normalization Hazards)
+        # 1.5 Syntax Predator (Deterministic Normalization Hazards)
         # This catches dynamic threats missed by the static list above
         norm_hazard_flags = analyze_normalization_hazards(t)
         threat_flags.update(norm_hazard_flags)
