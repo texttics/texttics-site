@@ -7917,7 +7917,12 @@ def _evaluate_adversarial_risk(intermediate_data):
         triggers = []
         token_topology_hits = set()
         t_str = token["text"]
+
+        # We build the visual stack items AS we detect them to ensure correct typing.
+        detailed_stack = [] 
         
+        t_str = token["text"]
+    
         # --- Rule 0: Fracture Scanner (Precision Mode) ---
         # Logic: Alpha -> [Fracture Agent] -> Alpha
         # Fracture Agent = Invisible, Tag, Joiner, or Non-Alphanumeric Emoji.
@@ -7957,9 +7962,15 @@ def _evaluate_adversarial_risk(intermediate_data):
                         risk_level = max(risk_level, 3)
                         triggers.append("R99: Token Fracture (Mid-Token Injection)")
                         token_topology_hits.add("OBFUSCATION")
+                        # [FIX] Explicitly bind OBFUSCATION to this finding
+                        detailed_stack.append({
+                            "lvl": "CRITICAL", 
+                            "type": "OBFUSCATION", 
+                            "desc": desc
+                        })
                         break
                     elif not f_is_agent:
-                        f_state = 0 # Reset if we hit normal punctuation
+                        f_state = 0
 
         # --- Rule Set 1: Skeleton Collisions ---
         if token["skeleton"] in collision_skeletons:
@@ -7993,6 +8004,10 @@ def _evaluate_adversarial_risk(intermediate_data):
             risk_level = max(risk_level, new_risk)
             triggers.append(f"R11: Identifier Status ({token['id_status']})")
             token_topology_hits.add("PROTOCOL")
+
+            # [FIX] Explicitly bind PROTOCOL to this finding
+            lvl_str = "HIGH" if new_risk == 2 else "MED"
+            detailed_stack.append({"lvl": lvl_str, "type": "PROTOCOL", "desc": desc})
 
         # --- Rule Set 5: Hidden Channels & Bidi ---
         if token["invisibles"] > 0:
@@ -8028,9 +8043,10 @@ def _evaluate_adversarial_risk(intermediate_data):
             targets.append({
                 "token": t_str,
                 "verdict": triggers[0] if triggers else "High Risk",
-                "stack": [{"lvl": final_risk, "type": list(token_topology_hits)[0] if token_topology_hits else "GENERIC", "desc": t} for t in triggers],
+                # [FIX] Use the explicitly built stack
+                "stack": detailed_stack, 
                 "score": risk_level * 25,
-                "b64": "N/A", "hex": "N/A" # Placeholders for display
+                "b64": "N/A", "hex": "N/A"
             })
 
     return {
@@ -8478,6 +8494,11 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 "stack": [{"lvl": "CRIT", "type": "OBFUSCATION", "desc": masq['detail']}],
                 "b64": "N/A", "hex": "N/A", "score": masq['score']
             })
+
+        # Ensure WAF/Global injections don't displace higher-risk token fractures.
+        # We sort by score (descending) to ensure Paranoia Peak is mathematically accurate.
+        if adversarial_data and 'targets' in adversarial_data:
+        adversarial_data['targets'].sort(key=lambda x: x['score'], reverse=True)
 
         # --- [NEW] Module 5: Predictive Attack Simulation ---
         # 1. Anti-Sanitization Flags (Legacy Heuristics)
