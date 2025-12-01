@@ -7745,40 +7745,54 @@ def analyze_adversarial_tokens(t: str):
     The Core Engine for Stage 1.1 "Adversarial Intelligence".
     Tokenizes text and performs per-token forensic extraction.
     
-    ULTIMATE VERSION:
-    1. Uses Greedy Tokenization (\S+) to capture 'Sandwich' attacks (sens😎itive).
+    ULTIMATE VERSION (Syntax-Safe):
+    1. Uses Manual Tokenization (char.isspace) to avoid Regex escape issues.
     2. Performs deep forensic enrichment (Skeletons, Scripts, ID Profile).
     """
     if not t: return {"tokens": [], "collisions": [], "stats": {}}
 
     # --- 1. Forensic Tokenization (Greedy / Whitespace-Based) ---
-    # We switch from specific Regex to strict whitespace splitting (\S+).
-    # Why? A regex like [\w\.]+ splits "sens😎itive" into ["sens", "😎", "itive"].
-    # This hides the attack.
-    # Whitespace splitting keeps "sens😎itive" as ONE token, allowing the 
-    # Fracture Scanner to detect the internal injection.
+    # [FIX] Replaced Regex with Manual Loop to eliminate "invalid escape sequence" errors.
+    # This splits purely on Unicode Whitespace while preserving all internal characters
+    # (including invisible joiners/format controls) as a single token.
     
     raw_tokens = []
+    current_start = -1
     
-    # Iterate over non-whitespace chunks
-    # [FIX] Use double-backslash '\\S+' to satisfy strict Python 3.12 syntax checks
-    token_pattern = re.compile('\\S+')
-    
-    for match in token_pattern.finditer(t):
-        raw_text = match.group()
+    for i, char in enumerate(t):
+        is_ws = char.isspace()
         
-        # Trim outer punctuation to find the "Root" identifier for analysis.
-        # We strip common delimiters (brackets, quotes) but KEEP internal 
-        # structural chars (dots, @, underscores) necessary for domains/emails.
-        clean_text = raw_text.strip("()[]{}<>\"',;!|")
+        if not is_ws:
+            # If we are not in a token, start one
+            if current_start == -1:
+                current_start = i
+        else:
+            # If we were in a token, close it
+            if current_start != -1:
+                clean_text = t[current_start:i].strip("()[]{}<>\"',;!|")
+                
+                if clean_text:
+                    # Calculate real offsets after strip
+                    raw_chunk = t[current_start:i]
+                    offset = raw_chunk.find(clean_text)
+                    real_start = current_start + offset
+                    
+                    raw_tokens.append({
+                        "text": clean_text,
+                        "start": real_start,
+                        "end": real_start + len(clean_text)
+                    })
+                
+                current_start = -1
+
+    # Flush final token if string didn't end with whitespace
+    if current_start != -1:
+        clean_text = t[current_start:].strip("()[]{}<>\"',;!|")
         
-        # Only add if content remains after trimming
         if clean_text:
-            # Calculate the REAL start index relative to the cleaned text
-            # match.start() is the start of the chunk. 
-            # .find(clean_text) gives the offset inside that chunk.
-            offset = raw_text.find(clean_text)
-            real_start = match.start() + offset
+            raw_chunk = t[current_start:]
+            offset = raw_chunk.find(clean_text)
+            real_start = current_start + offset
             
             raw_tokens.append({
                 "text": clean_text,
