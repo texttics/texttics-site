@@ -842,7 +842,8 @@ def analyze_bidi_structure(t: str, rows: list):
     # --- E. FINAL SWEEP (Spillover) ---
     for frame in main_stack:
         # Highlight the unclosed opener
-        lbl = "Unclosed Isolate" if frame['is_isolate'] else "Unclosed Embedding"
+        # [FORENSIC UPGRADE] Distinguish Scope Bleed from simple unclosed embedding
+        lbl = "Unclosed Isolate (Scope Bleed)" if frame['is_isolate'] else "Unclosed Embedding (Stack Leak)"
         fracture_ranges.append((frame['pos'], frame['pos']+1, lbl))
             
     for idx, _ in bracket_stack:
@@ -1757,6 +1758,18 @@ INT_MULT_RISK = 0.5
 # Tier 4: DECAY (Hygiene / Artifacts)
 INT_BASE_DECAY = 5
 INT_MULT_DECAY = 0.2
+
+# ------------------------------------------------------------
+# FORENSIC HAZARD SETS (Stage 1.5 Upgrades)
+# ------------------------------------------------------------
+# Characters that represent structural syntax in backend systems.
+# Used by the "Syntax Predator" engine to detect Normalization Injection.
+HAZARD_SQL = frozenset({"'", '"', "-", "/", ";", "%"})
+HAZARD_HTML = frozenset({"<", ">", "&"})
+HAZARD_SYSTEM = frozenset({"/", "\\", ".", "|", "$", "`"})
+
+# Union set for fast initial filtering
+HAZARD_ALL = HAZARD_SQL | HAZARD_HTML | HAZARD_SYSTEM
 
 # ------------------------------------------------------------
 #  PATCH B: Robust Normalization Layer for Pyodide/PyScript
@@ -5355,6 +5368,68 @@ def analyze_restriction_level(token: str):
         
     return f"Mixed Scripts ({', '.join(s_list)})", 60 # Warning
 
+def analyze_normalization_hazards(t: str):
+    """
+    [SYNTAX PREDATOR]
+    Detects characters that are SAFE in Raw state but become DANGEROUS SYNTAX
+    after NFKC/NFKD normalization (e.g. U+FF07 'FULLWIDTH APOSTROPHE' -> ').
+    """
+    hazards = {}
+    
+    # Optimization: Only scan if text contains non-ASCII (potential transformers)
+    if all(ord(c) < 128 for c in t):
+        return hazards
+
+    for i, char in enumerate(t):
+        # Optimization: Skip if char is already dangerous in raw form (not a hidden attack)
+        if char in HAZARD_ALL:
+            continue
+            
+        # 1. Normalize
+        try:
+            nfkc = unicodedata.normalize("NFKC", char)
+            nfkd = unicodedata.normalize("NFKD", char)
+        except: continue
+        
+        # 2. Check for Syntax Injection
+        # We check both forms because some filters use NFD (decomposition)
+        transformed_chars = set(nfkc) | set(nfkd)
+        
+        detected_vectors = []
+        
+        # Check SQL
+        if not (HAZARD_SQL & {char}) and (HAZARD_SQL & transformed_chars):
+            detected_vectors.append("SQL")
+            
+        # Check HTML/XSS
+        if not (HAZARD_HTML & {char}) and (HAZARD_HTML & transformed_chars):
+            detected_vectors.append("HTML")
+            
+        # Check System/Path
+        if not (HAZARD_SYSTEM & {char}) and (HAZARD_SYSTEM & transformed_chars):
+            detected_vectors.append("SYSTEM")
+            
+        if detected_vectors:
+            # Build the report key
+            vec_str = "/".join(detected_vectors)
+            key = f"CRITICAL: Normalization-Activated {vec_str} Injection"
+            
+            if key not in hazards:
+                hazards[key] = {
+                    "count": 0,
+                    "positions": [],
+                    "severity": "crit",
+                    "badge": "INJECTION"
+                }
+            
+            hazards[key]["count"] += 1
+            # Limit position tracking to avoid UI lag on massive attacks
+            if hazards[key]["count"] <= 10:
+                target = list(transformed_chars & HAZARD_ALL)[0]
+                hazards[key]["positions"].append(f"#{i} (U+{ord(char):04X} &rarr; '{target}')")
+
+    return hazards
+
 def analyze_normalization_hazard_advanced(token: str):
     """
     [SHAPESHIFTING] Checks NFC (Binary) and NFKC_Casefold (Visual).
@@ -6012,6 +6087,51 @@ def compute_adversarial_metrics(t: str):
         is_domain_candidate = is_plausible_domain_candidate(t_str)
         
         # --- 1. Run Analysis ---
+
+        # --- 3. Token Loop ---
+    for tok_obj in tokens:
+        token = tok_obj['token']
+        threat_stack = [] 
+
+        # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
+        # Detects: Alpha -> Invisible/Emoji -> Alpha (e.g. "sys<ZWSP>tem" or "sens😎itive")
+        # This bypasses tokenizers that split on whitespace but assume contiguous words.
+        fracture_risk = 0
+        fracture_desc = ""
+        
+        if len(token) > 2:
+            # Simple State Machine: 0=Start, 1=Alpha, 2=Non-Alpha(Invis), 3=Alpha(Fracture!)
+            f_state = 0
+            for fc in token:
+                f_cp = ord(fc)
+                f_is_alpha = fc.isalnum()
+                f_is_fracture_agent = False
+                
+                # Check if it's a "Fracture Agent" (Invisible or Emoji)
+                if f_cp < 1114112:
+                    mask = INVIS_TABLE[f_cp]
+                    # Agents: ZWSP, Joiners, Tags, or Emojis (if not alpha)
+                    if (mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG)) or \
+                       (_find_in_ranges(f_cp, "Emoji") and not f_is_alpha):
+                        f_is_fracture_agent = True
+
+                if f_state == 0:
+                    if f_is_alpha: f_state = 1
+                elif f_state == 1:
+                    if f_is_fracture_agent: f_state = 2
+                    elif not f_is_alpha: f_state = 0 # Reset on punctuation like '.'
+                elif f_state == 2:
+                    if f_is_alpha:
+                        # TRIGGER: Alpha -> Agent -> Alpha
+                        fracture_risk = 90
+                        fracture_desc = "Token Fracture (Mid-Token Injection)"
+                        break # Found it, stop scanning this token
+                    elif not f_is_fracture_agent:
+                        f_state = 0 # Reset
+
+        if fracture_risk > 0:
+            threat_stack.append({ "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
+
         
         # [CONTEXT]
         lure = analyze_context_lure(t_str)
@@ -7341,6 +7461,7 @@ def analyze_code_masquerade(text: str, script_stats: dict):
     
     return None
 
+
 # ==========================================
 # [MODULE 5] PREDICTIVE ATTACK SIMULATOR (Post-Clipboard)
 # ==========================================
@@ -8295,9 +8416,14 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             })
 
         # --- [NEW] Module 5: Predictive Attack Simulation ---
-        # 1. Anti-Sanitization Flags
+        # 1. Anti-Sanitization Flags (Legacy Heuristics)
         sanit_flags = analyze_anti_sanitization(t)
         threat_flags.update(sanit_flags)
+        
+        # 1.5 [NEW] Syntax Predator (Deterministic Normalization Hazards)
+        # This catches dynamic threats missed by the static list above
+        norm_hazard_flags = analyze_normalization_hazards(t)
+        threat_flags.update(norm_hazard_flags)
         
         # 2. Case Collision Flags
         case_flags = analyze_case_collisions(t)
