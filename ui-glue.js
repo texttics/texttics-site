@@ -1727,5 +1727,3 @@ window.updateStatConsole = function(row) {
           copyToClipboard("Stats not ready.", 'btn-p-stat');
       }
   });
-
-}); // End of DOMContentLoaded
