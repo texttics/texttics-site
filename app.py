@@ -1760,7 +1760,7 @@ INT_BASE_DECAY = 5
 INT_MULT_DECAY = 0.2
 
 # ------------------------------------------------------------
-# FORENSIC HAZARD SETS (Stage 1.5 Upgrades)
+# [NEW] FORENSIC HAZARD SETS (Global Definition)
 # ------------------------------------------------------------
 # Characters that represent structural syntax in backend systems.
 # Used by the "Syntax Predator" engine to detect Normalization Injection.
@@ -6097,7 +6097,6 @@ def compute_adversarial_metrics(t: str):
 
         # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
         # Detects: Alpha -> Invisible/Emoji -> Alpha (e.g. "sys<ZWSP>tem" or "sens😎itive")
-        # This bypasses tokenizers that split on whitespace but assume contiguous words.
         fracture_risk = 0
         fracture_desc = ""
         
