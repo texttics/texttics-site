@@ -5933,6 +5933,67 @@ def analyze_jailbreak_styles(t: str):
 
     return None
 
+def analyze_normalization_inflation(t: str):
+    """
+    [PAPER: Fun with Unicode] Normalization Bomb Detector.
+    Detects single characters that expand significantly (DoS vector).
+    """
+    flags = {}
+    findings = []
+    
+    # Threshold: If a single char expands to > 10 chars, it's a bomb.
+    BOMB_THRESHOLD = 10 
+    
+    for i, char in enumerate(t):
+        # Optimization: Only check complex scripts (skip ASCII)
+        if ord(char) < 128: continue
+            
+        try:
+            nfkc = unicodedata.normalize("NFKC", char)
+            if len(nfkc) >= BOMB_THRESHOLD:
+                # Special Label for the famous U+FDFA
+                label = "Arabic Ligature (U+FDFA)" if ord(char) == 0xFDFA else f"U+{ord(char):04X}"
+                findings.append(f"#{i} ({label} expands to {len(nfkc)} chars)")
+        except: pass
+            
+    if findings:
+        flags["RISK: Normalization Inflation (DoS Vector)"] = {
+            "count": len(findings),
+            "positions": findings,
+            "severity": "warn",
+            "badge": "DOS"
+        }
+    return flags
+
+def analyze_idna_compression(token: str):
+    """
+    [PAPER: Fun with Unicode] IDNA Compression Detector.
+    Detects characters that map to multi-char ASCII strings in IDNA.
+    """
+    # Scope: Only analyze domain-like tokens
+    if not token or '.' not in token: return None
+    
+    # Heuristic: Check for non-ASCII chars that normalize to ASCII sequences
+    # e.g. U+33C5 (㏅) -> "cd"
+    suspicious = []
+    
+    for char in token:
+        if ord(char) > 127:
+            try:
+                norm = unicodedata.normalize("NFKC", char)
+                # If it expands to 2+ chars AND becomes pure ASCII
+                if len(norm) > 1 and norm.isascii():
+                    suspicious.append(f"U+{ord(char):04X}→'{norm}'")
+            except: pass
+            
+    if suspicious:
+        return {
+            "lvl": "HIGH",
+            "type": "SPOOFING", 
+            "desc": f"IDNA Compression ({', '.join(suspicious)})"
+        }
+    return None
+
 def compute_adversarial_metrics(t: str):
     """
     Adversarial Engine v10 (Consolidated & Paper-Aligned).
