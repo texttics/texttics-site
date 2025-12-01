@@ -5817,12 +5817,12 @@ def analyze_token_fragmentation(tokens: list):
     total_alnum = 0
     
     for tok in tokens:
-        t_str = tok['token']
-        if t_str.isalnum():
+        token = tok['token']
+        if token.isalnum():
             total_alnum += 1
             
             # Check if it's a micro-token (len 1-2)
-            if len(t_str) <= 2:
+            if len(token) <= 2:
                 current_micro_run += 1
                 micro_tokens_count += 1
             else:
@@ -5932,12 +5932,12 @@ def check_reassembly(tokens: list):
         return []
 
     for tok in tokens:
-        t_str = tok['token']
+        token = tok['token']
         
         # Collect micro-tokens (len 1-2) - e.g. "s" "h" "e" "ll"
         # Must be alphanumeric to be part of a word fragmentation
-        if t_str.isalnum() and len(t_str) <= 2:
-            micro_run.append(t_str)
+        if token.isalnum() and len(token) <= 2:
+            micro_run.append(token)
         else:
             # We hit a non-micro token or symbol. 
             # Check if the ACCUMULATED run forms a threat.
@@ -6245,8 +6245,6 @@ def compute_adversarial_metrics(t: str):
             token_families = set()
             threat_stack = [] # Reset stack for this token
     
-            # [GATE] Apply the Plausibility Gate
-            # Use 'token', not 't_str'
             is_domain_candidate = is_plausible_domain_candidate(token)
             
             # --- 1. Run Analysis ---
@@ -6318,8 +6316,8 @@ def compute_adversarial_metrics(t: str):
                     threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
     
                 # IDNA Lens
-                if '.' in t_str or 'xn--' in t_str:
-                    labels = t_str.split('.')
+                if '.' in t_str or 'xn--' in token:
+                    labels = token.split('.')
                     for label in labels:
                         if not label: continue
                         idna_findings = analyze_idna_label(label)
@@ -6356,7 +6354,7 @@ def compute_adversarial_metrics(t: str):
                                 else: token_families.add("INJECTION") # Default for protocol issues
     
             # [SCRIPT]
-            rest_label, rest_risk = analyze_restriction_level(t_str)
+            rest_label, rest_risk = analyze_restriction_level(token)
             if rest_risk > 0:
                 if "CONTEXT" in token_families and rest_risk < 50: pass 
                 else:
@@ -6367,10 +6365,10 @@ def compute_adversarial_metrics(t: str):
                     threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
                 
             # [HOMOGLYPH] (Enhanced with Index-0 Weighting - Paper 2)
-            conf_data = analyze_confusion_density(t_str, confusables_map)
+            conf_data = analyze_confusion_density(token, confusables_map)
             if conf_data:
                 # Attacks at start of word are more dangerous/effective
-                first_char_cp = ord(t_str[0])
+                first_char_cp = ord(token[0])
                 if first_char_cp in confusables_map:
                     conf_data['risk'] = min(100, conf_data['risk'] + 20)
                     conf_data['desc'] += " (Start-Char)"
@@ -6382,7 +6380,7 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
     
             # [SPOOFING]
-            sore = analyze_class_consistency(t_str)
+            sore = analyze_class_consistency(token)
             if sore:
                 token_score += sore['risk']
                 token_reasons.append(sore['desc'])
@@ -6390,7 +6388,7 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
                 
             # [OBFUSCATION]
-            norm = analyze_normalization_hazard_advanced(t_str)
+            norm = analyze_normalization_hazard_advanced(token)
             if norm:
                 token_score += norm['risk']
                 token_reasons.append(norm['desc'])
@@ -6398,7 +6396,7 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
     
             # [FRAGMENTATION] (Invisible Sandwich - Paper 1)
-            inv_frag = analyze_invisible_fragmentation(t_str)
+            inv_frag = analyze_invisible_fragmentation(token)
             if inv_frag:
                 token_score += inv_frag['risk']
                 token_reasons.append(inv_frag['desc'])
@@ -6411,7 +6409,7 @@ def compute_adversarial_metrics(t: str):
                 })
     
             # [PERTURBATION] (Enhanced with Prompt Injection Awareness - Paper 1)
-            pert = analyze_structural_perturbation(t_str)
+            pert = analyze_structural_perturbation(token)
             if pert:
                 token_score += pert['risk']
                 token_reasons.append(pert['desc'])
@@ -6427,7 +6425,7 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": desc_label })
     
             # [TROJAN]
-            trojan = analyze_trojan_context(t_str)
+            trojan = analyze_trojan_context(token)
             if trojan:
                 token_score += trojan['risk']
                 token_reasons.append(trojan['desc'])
@@ -6436,7 +6434,7 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
                 
             # [ZALGO]
-            zalgo = analyze_zalgo_load(t_str)
+            zalgo = analyze_zalgo_load(token)
             if zalgo:
                 token_score += zalgo['risk']
                 token_reasons.append(zalgo['desc'])
@@ -6445,7 +6443,7 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "HIDDEN", "desc": zalgo['desc'] })
                 
             # [CASE]
-            case_anom = analyze_case_anomalies(t_str)
+            case_anom = analyze_case_anomalies(token)
             if case_anom:
                 token_score += case_anom['risk']
                 token_reasons.append(case_anom['desc'])
@@ -6478,7 +6476,7 @@ def compute_adversarial_metrics(t: str):
                 findings.append({
                     'family': fam_str,
                     'desc': ", ".join(token_reasons),
-                    'token': t_str,
+                    'token': token,
                     'severity': sev
                 })
                 
@@ -6487,16 +6485,16 @@ def compute_adversarial_metrics(t: str):
                 
                 # Calculate vectors
                 try:
-                    b64 = base64.b64encode(t_str.encode("utf-8")).decode("ascii")
+                    b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
                 except: b64 = "Error"
-                hex_v = "".join(f"\\x{b:02X}" for b in t_str.encode("utf-8"))
+                hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
                 
                 primary_verdict = "Unknown Risk"
                 if threat_stack:
                     primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
     
                 top_tokens.append({
-                    'token': t_str,
+                    'token': token,
                     'score': min(100, token_score),
                     'reasons': token_reasons, 
                     'families': list(token_families),
@@ -8140,12 +8138,12 @@ def _evaluate_adversarial_risk(intermediate_data):
         token_topology_hits = set()
         detailed_stack = [] # Explicit visual stack
         
-        t_str = token["text"]
+        token = token["text"]
         
         # --- Rule 0: Fracture Scanner (Precision Mode) ---
-        if len(t_str) > 2:
+        if len(token) > 2:
             f_state = 0 # 0=Start, 1=Alpha, 2=Agent
-            for fc in t_str:
+            for fc in token:
                 f_cp = ord(fc)
                 f_is_alnum = fc.isalnum()
                 f_is_agent = False
@@ -8218,7 +8216,7 @@ def _evaluate_adversarial_risk(intermediate_data):
         # --- Rule 5: Hidden Channels & Bidi ---
         if token["invisibles"] > 0:
             has_bidi = False
-            for char in t_str:
+            for char in token:
                 if INVIS_TABLE[ord(char)] & INVIS_BIDI_CONTROL:
                     has_bidi = True
                     break
@@ -8253,7 +8251,7 @@ def _evaluate_adversarial_risk(intermediate_data):
             
         if risk_level >= 2:
             targets.append({
-                "token": t_str,
+                "token": token,
                 "verdict": triggers[0] if triggers else "High Risk",
                 "stack": detailed_stack, # Use the explicitly built stack
                 "score": risk_level * 25,
@@ -8646,10 +8644,10 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
         # --- Rule 6: Lexical Stutter (Unicode Evil TPT 4) ---
         # Detects 'doubling' attacks like 'badbad' or 'adminadmin'
-        if len(t_str) >= 6:
-            mid = len(t_str) // 2
+        if len(token) >= 6:
+            mid = len(token) // 2
             # Exact half check (e.g. "admin" == "admin")
-            if t_str[:mid] == t_str[mid:]:
+            if token[:mid] == token[mid:]:
                 risk_level = max(risk_level, 1) # Medium Risk
                 desc = "R06: Lexical Stutter (Doubling)"
                 triggers.append(desc)
