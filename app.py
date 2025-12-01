@@ -6114,7 +6114,7 @@ def compute_adversarial_metrics(t: str):
     confusables_map = DATA_STORES.get("Confusables", {})
     
     # Global Topology (Dashboard Counters)
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0 }
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0, "SEMANTIC": 0 }
     
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
 
@@ -6756,121 +6756,116 @@ def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
     import base64
     import math
 
-    # --- 3. Token Loop ---
-    for tok_obj in tokens:
-        token = tok_obj['token']
-        threat_stack = [] 
+    # A. Restriction (SPOOFING)
+    rest_label, rest_risk = analyze_restriction_level(token)
+    if rest_risk != "safe":
+        lvl = "CRIT" if rest_risk == "crit" else "HIGH"
+        threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
 
-        # A. Restriction (SPOOFING)
-        rest_label, rest_risk = analyze_restriction_level(token)
-        if rest_risk != "safe":
-            lvl = "CRIT" if rest_risk == "crit" else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
+    # B. Class Consistency (AMBIGUITY)
+    sore = analyze_class_consistency(token)
+    if sore:
+        threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
 
-        # B. Class Consistency (AMBIGUITY)
-        sore = analyze_class_consistency(token)
-        if sore:
-            threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
+    # C. Confusion Density (AMBIGUITY)
+    conf_data = analyze_confusion_density(token, confusables_map)
+    if conf_data:
+        lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
+        threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
 
-        # C. Confusion Density (AMBIGUITY)
-        conf_data = analyze_confusion_density(token, confusables_map)
-        if conf_data:
-            lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
-            threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
+    # D. Normalization Hazard (HIDDEN)
+    norm = analyze_normalization_hazard_advanced(token)
+    if norm:
+        threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
 
-        # D. Normalization Hazard (HIDDEN)
-        norm = analyze_normalization_hazard_advanced(token)
-        if norm:
-            threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
+    # E. Structural Perturbation (SYNTAX / HIDDEN)
+    pert = analyze_structural_perturbation(token)
+    if pert:
+        # Direct text check for Bidi
+        is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
+        p_type = "SYNTAX" if is_bidi else "HIDDEN"
+        threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
 
-        # E. Structural Perturbation (SYNTAX / HIDDEN)
-        pert = analyze_structural_perturbation(token)
-        if pert:
-            # Direct text check for Bidi
-            is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
-            p_type = "SYNTAX" if is_bidi else "HIDDEN"
-            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
+    # F. Trojan Context (SYNTAX)
+    trojan = analyze_trojan_context(token)
+    if trojan:
+        lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
+        threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
+        
+    # G. Zalgo (HIDDEN)
+    zalgo = analyze_zalgo_load(token)
+    if zalgo:
+        lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
+        threat_stack.append({ "lvl": lvl, "type": "HIDDEN", "desc": zalgo['desc'] })
+        
+    # H. Case Anomaly (SPOOFING)
+    case_anom = analyze_case_anomalies(token)
+    if case_anom:
+        threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
 
-        # F. Trojan Context (SYNTAX)
-        trojan = analyze_trojan_context(token)
-        if trojan:
-            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
+    # I.1 IDNA Compression (SPOOFING)
+    idna_comp = analyze_idna_compression(token)
+    if idna_comp:
+        threat_stack.append(idna_comp)
+
+    # I.2 IDNA PROTOCOL LENS (Label-Centric)
+    # We only analyze tokens that look like domains (contain dot or xn--)
+    if '.' in token or 'xn--' in token:
+        # 1. Split into Labels (UTS #46 Step 3)
+        # Note: We split by '.' only. Full UTS #46 mapping handles 3002 etc., 
+        # but for Stage 1 heuristic, '.' is sufficient for tokenization.
+        labels = token.split('.')
+        
+        for label in labels:
+            if not label: continue # Skip empty labels
             
-        # G. Zalgo (HIDDEN)
-        zalgo = analyze_zalgo_load(token)
-        if zalgo:
-            lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
-            threat_stack.append({ "lvl": lvl, "type": "HIDDEN", "desc": zalgo['desc'] })
+            # Analyze Label
+            label_findings = analyze_idna_label(label)
             
-        # H. Case Anomaly (SPOOFING)
-        case_anom = analyze_case_anomalies(token)
-        if case_anom:
-            threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
+            if label_findings:
+                for f in label_findings:
+                    threat_stack.append({
+                        "lvl": f['lvl'],
+                        "type": "INJECTION" if f['type'] in ("GHOST", "AMBIGUITY") else "SPOOFING",
+                        "desc": f['desc']
+                    })
 
-        # I.1 IDNA Compression (SPOOFING)
-        idna_comp = analyze_idna_compression(token)
-        if idna_comp:
-            threat_stack.append(idna_comp)
+    # --- Aggregate Token ---
+    if threat_stack:
+        # 1. Unique Pillar Counting
+        pillars_seen = set()
+        for item in threat_stack:
+            t_type = item['type']
+            if t_type not in pillars_seen:
+                # Direct dictionary update with safety default
+                topology[t_type] = topology.get(t_type, 0) + 1
+                pillars_seen.add(t_type)
 
-        # I.2 IDNA PROTOCOL LENS (Label-Centric)
-        # We only analyze tokens that look like domains (contain dot or xn--)
-        if '.' in token or 'xn--' in token:
-            # 1. Split into Labels (UTS #46 Step 3)
-            # Note: We split by '.' only. Full UTS #46 mapping handles 3002 etc., 
-            # but for Stage 1 heuristic, '.' is sufficient for tokenization.
-            labels = token.split('.')
-            
-            for label in labels:
-                if not label: continue # Skip empty labels
-                
-                # Analyze Label
-                label_findings = analyze_idna_label(label)
-                
-                if label_findings:
-                    for f in label_findings:
-                        threat_stack.append({
-                            "lvl": f['lvl'],
-                            "type": "INJECTION" if f['type'] in ("GHOST", "AMBIGUITY") else "SPOOFING",
-                            "desc": f['desc']
-                        })
-
-        # --- Aggregate Token ---
-        if threat_stack:
-            # 1. Unique Pillar Counting
-            pillars_seen = set()
-            for item in threat_stack:
-                t_type = item['type']
-                if t_type not in pillars_seen:
-                    # Direct dictionary update with safety default
-                    topology[t_type] = topology.get(t_type, 0) + 1
-                    pillars_seen.add(t_type)
-
-            # 2. Sort by Severity
-            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
-            
-            # 3. Verdict
-            primary = threat_stack[0]
-            verdict = f"{primary['type']} ({primary['lvl']})"
-            
-            # 4. Score
-            raw_score = sum(SEVERITY_MAP.get(x['lvl'], 0) for x in threat_stack)
-            score = int(100 * (1 - math.exp(-0.25 * raw_score)))
-            
-            # 5. Vectors
-            try:
-                b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
-            except: b64 = "Error"
-            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
-            
-            targets.append({
-                "token": token,
-                "verdict": verdict,
-                "stack": threat_stack,
-                "b64": b64,
-                "hex": hex_v,
-                "score": score
-            })
+        # 2. Sort by Severity
+        threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
+        
+        # 3. Verdict
+        primary = threat_stack[0]
+        verdict = f"{primary['type']} ({primary['lvl']})"
+        
+        # 4. Score
+        raw_score = sum(SEVERITY_MAP.get(x['lvl'], 0) for x in threat_stack)
+        score = int(100 * (1 - math.exp(-0.25 * raw_score)))
+        
+        # 5. Vectors
+        try:
+            b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
+        except: b64 = "Error"
+        hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
+        
+        targets.append({
+            "token": token,
+            "verdict": verdict,
+            "stack": threat_stack,
+            "b64": b64,
+            "hex": hex_v,
+            "score": score
+        })
 
     # Sort
     targets.sort(key=lambda x: x['score'], reverse=True)
