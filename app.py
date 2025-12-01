@@ -7886,26 +7886,20 @@ def analyze_adversarial_tokens(t: str):
 
 def _evaluate_adversarial_risk(intermediate_data):
     """
-    Block 2: The Risk Engine.
+    Block 2: The Risk Engine (Hardened Fracture Scanner).
     Applies deterministic rules to the extracted tokens to assign Risk Levels.
-    Detects Skeleton Collisions (Homograph Attacks).
     """
     tokens = intermediate_data["tokens"]
     skeleton_map = intermediate_data["skeleton_map"]
     
     # --- A. Detect Skeleton Collisions ---
-    # Logic: If a skeleton maps to >1 DISTINCT token texts, it's a collision.
-    # Example: "paypal" -> {"paypal", "pаypal"}
     collisions = []
     collision_skeletons = set()
     
     for skel, indices in skeleton_map.items():
-        # Get unique text representations for these indices
         unique_texts = set(tokens[i]["text"] for i in indices)
-        
         if len(unique_texts) > 1:
             collision_skeletons.add(skel)
-            # Record the collision event
             collisions.append({
                 "skeleton": skel,
                 "variants": list(unique_texts),
@@ -7914,21 +7908,60 @@ def _evaluate_adversarial_risk(intermediate_data):
             })
 
     # --- B. Per-Token Risk Assessment ---
-    # We iterate through tokens and append 'triggers' and upgrade 'risk'.
-    # Risk Levels: LOW (Default) -> MED -> HIGH -> CRITICAL
-    
     risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
-    #Initialize Topology Counters
     topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0}
-    targets = [] # List of high-risk tokens for the dashboard
+    targets = [] 
 
     for token in tokens:
-        # Defaults
-        risk_level = 0 # 0=Low, 1=Med, 2=High, 3=Crit
+        risk_level = 0 
         triggers = []
-        token_topology_hits = set() # Avoid double counting per token
+        token_topology_hits = set()
+        t_str = token["text"]
         
-        # --- Rule Set 1: Skeleton Collisions (The highest trust violation) ---
+        # --- Rule 0: Fracture Scanner (Precision Mode) ---
+        # Logic: Alpha -> [Fracture Agent] -> Alpha
+        # Fracture Agent = Invisible, Tag, Joiner, or Non-Alphanumeric Emoji.
+        # This catches "sens😎itive" and "sys<ZWSP>tem" but ignores "foo!bar" or "file.txt".
+        
+        if len(t_str) > 2:
+            f_state = 0 # 0=Start, 1=Alpha, 2=Agent, 3=Trigger
+            
+            for fc in t_str:
+                f_cp = ord(fc)
+                f_is_alnum = fc.isalnum()
+                f_is_agent = False
+                
+                # Check for Forensic Fracture Agent
+                if f_cp < 1114112:
+                    # 1. Check Invisibles/Tags/Joiners via O(1) Table
+                    mask = INVIS_TABLE[f_cp]
+                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
+                        f_is_agent = True
+                    # 2. Check Emojis (Must not be alphanumeric digits like '1')
+                    elif not f_is_alnum and (_find_in_ranges(f_cp, "Emoji") or _find_in_ranges(f_cp, "Extended_Pictographic")):
+                        f_is_agent = True
+
+                # State Machine
+                if f_state == 0:
+                    if f_is_alnum: f_state = 1
+                elif f_state == 1:
+                    # Inside Word
+                    if f_is_agent: 
+                        f_state = 2 # Found Agent
+                    elif not f_is_alnum: 
+                        f_state = 0 # Reset on standard punctuation
+                elif f_state == 2:
+                    # After Agent
+                    if f_is_alnum:
+                        # TRIGGER: Alpha immediately after Agent -> FRACTURE!
+                        risk_level = max(risk_level, 3)
+                        triggers.append("R99: Token Fracture (Mid-Token Injection)")
+                        token_topology_hits.add("OBFUSCATION")
+                        break
+                    elif not f_is_agent:
+                        f_state = 0 # Reset if we hit normal punctuation
+
+        # --- Rule Set 1: Skeleton Collisions ---
         if token["skeleton"] in collision_skeletons:
             risk_level = max(risk_level, 3)
             triggers.append("R30: Skeleton Collision (Homograph)")
@@ -7936,52 +7969,47 @@ def _evaluate_adversarial_risk(intermediate_data):
 
         # --- Rule Set 2: Script Mixing ---
         if token["is_mixed"]:
-            # Mixed scripts in a Domain or Identifier is usually malicious
             if token["kind"] in ("domain", "identifier", "email"):
                 risk_level = max(risk_level, 2)
                 triggers.append("R10: Mixed Scripts in ID/Domain")
                 token_topology_hits.add("SPOOFING")
             else:
-                # In generic words, it might be a typo or linguistic, but still suspicious
                 risk_level = max(risk_level, 1)
                 triggers.append("R01: Mixed Scripts")
                 token_topology_hits.add("SPOOFING")
 
         # --- Rule Set 3: Confusables ---
-        # High density of confusables implies obfuscation
         if token["confusables"]["density"] > 0.5:
             risk_level = max(risk_level, 1)
             triggers.append("R02: High Confusable Density")
             token_topology_hits.add("SPOOFING")
             
-        # --- Rule Set 4: Identifier Status (UAX #31) ---
+        # --- Rule Set 4: Identifier Status ---
         if token["id_status"] in ("Restricted", "Disallowed"):
-            # We treat 'Restricted' as HIGH risk for identifiers
-            risk_level = max(risk_level, 2)
+            # 'Restricted' often just means Emoji or Symbols
+            # We bump to High ONLY if it's not already flagged as Fracture
+            current_max = risk_level
+            new_risk = 2 if token["id_status"] == "Disallowed" else 1
+            risk_level = max(risk_level, new_risk)
             triggers.append(f"R11: Identifier Status ({token['id_status']})")
             token_topology_hits.add("PROTOCOL")
 
         # --- Rule Set 5: Hidden Channels & Bidi ---
         if token["invisibles"] > 0:
-            # Check specifically for Bidi vs just ZWSP
             has_bidi = False
-            for char in token["text"]:
-                if _find_in_ranges(ord(char), "BidiControl"):
+            for char in t_str:
+                if INVIS_TABLE[ord(char)] & INVIS_BIDI_CONTROL:
                     has_bidi = True
                     break
             
             if has_bidi:
-                risk_level = max(risk_level, 3) # Trojan Source class
+                risk_level = max(risk_level, 3)
                 triggers.append("R12: Bidi Control in Token")
                 token_topology_hits.add("INJECTION")
             else:
                 risk_level = max(risk_level, 2)
                 triggers.append("R03: Hidden Characters")
                 token_topology_hits.add("OBFUSCATION")
-
-        # --- Rule Set 6: Domain Specifics ---
-        if token["kind"] == "domain":
-            pass # (Placeholder for IDNA-specific checks)
 
         # Map numeric level to string
         final_risk = "LOW"
@@ -7993,20 +8021,18 @@ def _evaluate_adversarial_risk(intermediate_data):
         token["triggers"] = triggers
         risk_stats[final_risk] += 1
 
-        # Update Global Topology ONCE per token
         for hit in token_topology_hits:
             topology[hit] += 1
             
-        # Add to Targets list if High/Critical
         if risk_level >= 2:
             targets.append({
-                "token": token["text"],
+                "token": t_str,
                 "verdict": triggers[0] if triggers else "High Risk",
                 "stack": [{"lvl": final_risk, "type": list(token_topology_hits)[0] if token_topology_hits else "GENERIC", "desc": t} for t in triggers],
-                "score": risk_level * 25 
+                "score": risk_level * 25,
+                "b64": "N/A", "hex": "N/A" # Placeholders for display
             })
 
-    # Return the fully enriched report
     return {
         "tokens": tokens,
         "collisions": collisions,
