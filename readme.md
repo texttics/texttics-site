@@ -1616,3 +1616,39 @@ We moved beyond analyzing what the text *is* to predicting what it *will become*
 * **Adversarial Token Intelligence:** A dedicated counter-intelligence module that shifts analysis from "Global Stats" to **"Per-Token Forensics."** It features a **"Sticky" Forensic Tokenizer** that captures invisible characters *inside* identifiers (preventing token-splitting evasion) and a **Skeleton Collision Radar** that deterministically proves Homograph Attacks by flagging distinct tokens that share the same UTS #39 visual skeleton (e.g., `paypal` vs `pаypal`).
 * **Segmentation Complexity Verdict:** A heuristic engine embedded in the Grapheme Profile that assigns a stability grade (**LOW / MED / HIGH**) to the text's rendering structure. It specifically detects **Stacking Abuse (Zalgo)** by measuring the density of combining marks per cluster, flagging sequences that threaten rendering engines or visual stability.
 * **Whitespace & Line Ending Topology:** A "Frankenstein Detector" that analyzes the invisible substrate of the text. It exposes **Mixed Line Endings** (consistency failures like `CRLF` mixed with `LF`) and **Deceptive Spacing** (mixing ASCII Space with Non-Breaking Space), providing immediate evidence of "patchwork" text origin or active phishing obfuscation.
+
+
+## 🛡️ Addendum #7: The "Stage 1.5" Adversarial Intelligence Upgrade
+
+**Session Goal:** To transition the tool from **Passive Profiling** (what characters *are*) to **Active Threat Hunting** (what characters *do*). We implemented a "Stage 1.5" layer that detects active exploitation attempts against LLMs, SQL parsers, and WAFs without requiring semantic understanding.
+
+### 1. New Engine: The "Syntax Predator" (Global Injection)
+We implemented a deterministic detector for **Normalization-Activated Injection** attacks, a class of vulnerability where safe characters "shapeshift" into dangerous syntax after backend normalization.
+
+* **The Threat:** Attackers bypass WAFs by using fullwidth or compatibility characters (e.g., `U+FF07` Fullwidth Apostrophe) that normalize to syntax triggers (e.g., `'`) *after* the security check.
+* **The Defense:** The Syntax Predator Engine scans the **Raw** vs. **NFKC** delta against three hardened hazard sets (`HAZARD_SQL`, `HAZARD_HTML`, `HAZARD_SYSTEM`).
+* **Verdict:** If a safe character transforms into a hazard, it triggers **"CRITICAL: Normalization-Activated Injection"**.
+
+### 2. New Engine: The "Fracture Scanner" (Token Evasion)
+We engineered a **Precision State Machine** to detect "Invisible Sandwich" attacks designed to shatter LLM tokenization.
+
+* **The Threat:** Injecting Emoji or Invisible characters *inside* a word (e.g., `sens😎itive`) to force the tokenizer to split it into harmless sub-tokens (`sens`, `😎`, `itive`), bypassing safety filters.
+* **The Defense:**
+    * **Greedy Tokenizer:** Replaced regex splitting with a manual whitespace scanner to capture the "sandwich" as a single token.
+    * **Fracture Logic:** Implemented a strict `Alpha` $\to$ `[Fracture Agent]` $\to$ `Alpha` state machine.
+    * **Agent Definition:** Strictly defined "Fracture Agents" as **Invisibles**, **Tags**, **Joiners**, or **Non-Alphanumeric Emojis**, ensuring standard punctuation (e.g., `file.txt`) does not trigger false positives.
+* **Verdict:** Flags `sens😎itive` as **"R99: Token Fracture (Mid-Token Injection)"** with a **CRITICAL** risk score.
+
+### 3. New Engine: The "Shapeshifter" (Visual Drift)
+We formalized the detection of **Identity Instability** tokens that change meaning or length when normalized.
+
+* **The Threat:** Attacks relying on "Ghost Characters" that vanish (e.g., Soft Hyphens in usernames) or "Identity Maps" (e.g., `admın` (Dotless i) $\to$ `admin`) to spoof identity or bypass logic.
+* **The Defense:** Calculates the **Binary Drift** (`Raw` vs `NFC`) and **Visual Drift** (`Raw` vs `NFKC-Casefold`) for every token.
+* **Verdict:** Flags tokens with **"NFC Length Change"** or **"Visual Drift"**, creating a forensic audit trail for spoofing attempts.
+
+### 4. Architectural Hardening (The "Paranoia Peak")
+To support these new engines, we upgraded the core **Risk Scoring & UI Architecture**:
+
+* **Scoring Logic:** Updated the `compute_threat_score` Auditor to include "Multi-Vector Correlation," boosting the score if an attack combines Execution (Injection) with Obfuscation (Fracture).
+* **Leaderboard Sorting:** Enforced a strict re-sort of the "Paranoia Peak" (Top Offender) to ensure that high-scoring Token Fractures (75+) correctly displace lower-scoring generic payloads (45).
+* **Stack integrity:** Implemented explicit "Visual Stacks" for tokens to prevent badge collision (e.g., ensuring a Fracture correctly displays the `OBFUSCATION` badge instead of a generic `PROTOCOL` badge).
