@@ -5984,7 +5984,7 @@ def compute_adversarial_metrics(t: str):
     findings = []
     top_tokens = []
     
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0, "SEMANTIC": 0 }
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0, "SEMANTIC": 0, "OBFUSCATION": 0 }
     SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
 
     # --- 2. Global Analyzers (State 1.5) ---
