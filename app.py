@@ -9467,15 +9467,15 @@ def render_statistical_profile(stats):
     ent_pct = min(100, max(0, (ent / 8.0) * 100))
     bar_color = "linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%)"
     
-    # Dynamic Forensic Status
+    # Dynamic Forensic Status (Context-Aware Update)
     status_txt = "Unknown structure"
     if n_bytes < 64:
         status_txt = "Insufficient Data (Unstable)"
-    elif ent > 6.5:
+    elif ent > 6.3:
         status_txt = "High Density (Compressed / Encrypted)"
-    elif ent > 5.5:
-        status_txt = "Complex Structure (Code / Binary / Markup)"
-    elif ent > 3.2:
+    elif ent > 4.8:  # Lowered from 5.5 to catch obfuscated strings
+        status_txt = "Complex Structure (Code / Binary / Obfuscated)"
+    elif ent > 3.5:
         status_txt = "Natural Language (Standard Text)"
     else:
         status_txt = "Low Entropy (Repetitive / Sparse)"
@@ -9837,11 +9837,12 @@ def py_get_stat_report_text():
         n = stats.get("entropy_n", 0)
         ascii_dens = stats.get("ascii_density", 0.0)
         
+        # Updated Logic to match UI
         status_txt = "Unknown"
         if n < 64: status_txt = "Insufficient Data"
-        elif ent > 6.5: status_txt = "High Density (Compressed / Encrypted)"
-        elif ent > 5.5: status_txt = "Complex Structure (Code / Binary / Markup)"
-        elif ent > 3.2: status_txt = "Natural Language (Standard Text)"
+        elif ent > 6.3: status_txt = "High Density (Compressed / Encrypted)"
+        elif ent > 4.8: status_txt = "Complex Structure (Code / Binary / Obfuscated)"
+        elif ent > 3.5: status_txt = "Natural Language (Standard Text)"
         else: status_txt = "Low Entropy (Repetitive / Sparse)"
         
         lines.append("")
@@ -9868,8 +9869,18 @@ def py_get_stat_report_text():
         lines.append("")
         lines.append("[ LEXICAL DENSITY ]")
         lines.append(f"  TTR:     {ttr:.2f} ({uniq}/{tot} tokens){seg_str}")
+
+        # 4. Top Tokens (Restored)
+        top_toks = stats.get("top_tokens", [])
+        if top_toks:
+            lines.append("")
+            lines.append("[ TOP TOKENS ]")
+            token_strs = []
+            for t in top_toks[:5]: # Limit to top 5
+                token_strs.append(f"{t['token']} ({t['share']}%)")
+            lines.append("  " + " | ".join(token_strs))
         
-        # 4. Fingerprint (Category Dist)
+        # 5. Fingerprint (Category Dist)
         cd = stats.get("char_dist", {})
         l = cd.get('letters', 0)
         n_dig = cd.get('digits', 0)
@@ -9880,7 +9891,7 @@ def py_get_stat_report_text():
         lines.append("[ FREQ. FINGERPRINT ]")
         lines.append(f"  Dist:    L:{l}% | N:{n_dig}% | S:{s}% | WS:{w}%")
         
-        # 5. Layout Physics
+        # 6. Layout Physics
         ls = stats.get("line_stats", {})
         count = ls.get("count", 0)
         if count > 0:
@@ -9893,7 +9904,7 @@ def py_get_stat_report_text():
             lines.append(f"  Widths:  Min:{ls.get('min',0)}  P25:{p25}  Med:{ls.get('median',0)}  P75:{p75}  Max:{ls.get('max',0)}")
             lines.append(f"  Average: {ls.get('avg',0)}")
 
-        # 6. Phonotactics
+        # 7. Phonotactics
         ph = stats.get("phonotactics", {})
         if ph.get("is_valid", False):
             lines.append("")
