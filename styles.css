@@ -5677,7 +5677,8 @@ details.profile-section > summary:hover::marker {
 .hud-detail-right {
     flex: 1;
     display: flex;
-    align-items: center;
+    align-items: center; /* Vertically center the row of chips */
+    justify-content: flex-start; /* FORCE LEFT ALIGNMENT */
     flex-wrap: wrap;
     padding: 12px 16px;
     gap: 8px;
