@@ -166,7 +166,7 @@ TAG_BLOCK_END = 0xE007F
 # ==========================================
 # [STAGE 1.5] METADATA WORKBENCH ANALYZER (New Module)
 # ==========================================
-
+@create_proxy
 def analyze_html_metadata(raw_html_string: str):
     """
     Scans raw HTML clipboard content for CSS-based obfuscation and hiding techniques.
@@ -200,16 +200,16 @@ def analyze_html_metadata(raw_html_string: str):
     # --- CRITICAL STYLE DEFINITIONS ---
     # We use simpler strings because the regex above extracts the full attribute value.
     CRITICAL_STYLE_RULES = [
-        "visibility:\s*hidden",
-        "display:\s*none",
-        "opacity:\s*0",
-        "position:\s*absolute;\s*left:\s*-?\d{3,}px" # Matches left: -9999px
+        r"visibility:\s*hidden",
+        r"display:\s*none",
+        r"opacity:\s*0",
+        r"position:\s*absolute;\s*left:\s*-?\d{3,}px" # Matches left: -9999px etc.
     ]
     
     CRITICAL_CONTRAST_RULES = [
         # Note: Must use a single space or no space, as the attribute extraction is raw
-        "color:\s*white;\s*background:\s*white", # Explicit white-on-white
-        "color:\s*#fff;\s*background:\s*#fff"    # Explicit hex-on-hex
+        r"color:\s*white;\s*background:\s*white", # Explicit white-on-white
+        r"color:\s*#fff;\s*background:\s*#fff"    # Explicit hex-on-hex
     ]
 
     # --- 1. Scan for Absolute Hiding (Visibility, Opacity, Position) ---
@@ -225,7 +225,7 @@ def analyze_html_metadata(raw_html_string: str):
         rule_hit = ""
         
         for rule in CRITICAL_STYLE_RULES:
-            if re.search(rule, normalized_style):
+            if rule in normalized_style: # Since rule is already pre-normalized, direct search is fast.
                 is_hidden = True
                 rule_hit = rule.split(":")[0] # e.g., 'visibility'
                 break
@@ -248,8 +248,9 @@ def analyze_html_metadata(raw_html_string: str):
         is_low_contrast = False
         
         for rule in CRITICAL_CONTRAST_RULES:
-            if re.search(rule, normalized_style):
+            if rule in normalized_style:
                 is_low_contrast = True
+                rule_hit = "low-contrast"
                 break
 
         if is_low_contrast:
