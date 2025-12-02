@@ -12956,6 +12956,46 @@ def update_all(event=None):
     # Extract Stage 1.5 Data
     stage1_5_data = threat_results.get('adversarial', {})
 
+    # Helper for extracting flags
+    def get_flag_count(label): return forensic_map.get(label, {}).get("count", 0)
+    current_flags = threat_results.get('flags', {})
+    
+    # Derived Metrics
+    norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
+    logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
+    
+    # Zalgo / Noise Checks
+    grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
+    nsm_stats = analyze_nsm_overload(grapheme_strings)
+    noise_list = []
+    if nsm_stats["level"] >= 1: noise_list.append("Excessive Combining Marks (Zalgo)")
+    if threat_results.get("skel_metrics", {}).get("drift_ascii", 0) > 0: 
+        noise_list.append("ASCII Normalization Drift")
+
+    # Build Inputs for Threat Auditor
+    score_inputs = {
+        "waf_score": threat_results.get("waf_score", 0),
+        "norm_injection_count": norm_inj_count,
+        "logic_bypass_count": logic_bypass_count,
+        "malicious_bidi": threat_results.get('bidi_danger', False),
+        "has_unclosed_bidi": get_flag_count("Flag: Unclosed Bidi Sequence") > 0,
+        "drift_cross_script": threat_results.get("skel_metrics", {}).get("drift_cross_script", 0),
+        "script_mix_class": threat_results.get('script_mix_class', ""),
+        "max_invis_run": get_flag_count("Max Invisible Run Length"),
+        "invis_cluster_count": get_flag_count("Invisible Clusters (All)"),
+        "rgi_count": emoji_counts.get("rgi_total", 0),
+        "tags_count": get_flag_count("Flag: Unicode Tags (Plane 14)"),
+        "suspicious_syntax_vs": get_flag_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
+        "forced_pres_count": (
+            emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("count", 0) +
+            emoji_flags.get("Flag: Forced Text Presentation", {}).get("count", 0)
+        ),
+        "noise_list": noise_list
+    }
+    
+    # Calculate! (This generates the 'ledger' key)
+    final_score = compute_threat_score(score_inputs)
+
     # THE MASTER AUDITOR (New Logic from Block 7)
     master_ledgers = audit_master_ledgers(
         inputs=integrity_inputs, 
