@@ -7017,7 +7017,7 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
             "score": auth["score"],
             "severity": auth["severity_class"],
             "vector_count": auth["vector_count"],
-            "vectors": auth["vectors"]
+            "vectors": auth["vectors"] 
         },
         "threat": {
             "verdict": threat_output["verdict"],
@@ -7025,7 +7025,7 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
             "severity": threat_output["severity_class"],
             "peak_score": peak_score,
             "signals": len(threat_output["ledger"]),
-            "ledger": threat_output["ledger"]
+            "ledger": threat_output["ledger"] 
         },
         "anomaly": {
             "verdict": anomaly["verdict"],
@@ -12567,7 +12567,7 @@ def render_forensic_hud_v2(t, stats):
     """
     Forensic HUD V2 (The 'Sprawl' 5-Row Layout).
     Row 1: 8-Column Metric Header.
-    Rows 2-5: Detailed Ledger Rows for deep context.
+    Rows 2-5: Detailed Ledger Rows using Vector Icons.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -12576,7 +12576,42 @@ def render_forensic_hud_v2(t, stats):
     emoji_counts = stats.get("emoji_counts", {})
     master_ledgers = stats.get("master_ledgers", {}) 
 
+    # --- FORENSIC ICON SET (SVG PATHS) ---
+    VERDICT_ICONS = {
+        "integrity": (
+            # Shield with Checkmark
+            '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>'
+            '<path d="M9 12l2 2 4-4"></path>'
+        ),
+        "authenticity": (
+            # Theatre Masks (Geometric)
+            '<path d="M2 10c0-4 4-6 9-6s9 2 9 6"></path>'
+            '<path d="M12 2c0 3-2 6-2 9"></path>'
+            '<path d="M19 10c0 4-3 7-7 7"></path>'
+            '<path d="M7 15C4 15 2 12 2 10"></path>'
+            '<circle cx="15.5" cy="9.5" r="1.5"></circle>'
+            '<circle cx="8.5" cy="9.5" r="1.5"></circle>'
+        ),
+        "threat": (
+            # Crosshair / Target
+            '<circle cx="12" cy="12" r="10"></circle>'
+            '<line x1="22" y1="12" x2="18" y2="12"></line>'
+            '<line x1="6" y1="12" x2="2" y2="12"></line>'
+            '<line x1="12" y1="6" x2="12" y2="2"></line>'
+            '<line x1="12" y1="22" x2="12" y2="18"></line>'
+            '<circle cx="12" cy="12" r="2" fill="currentColor"></circle>'
+        ),
+        "anomaly": (
+            # Glitch Waveform / Activity Pulse
+            '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>'
+        )
+    }
+
     # --- HELPERS ---
+    def get_svg(key):
+        paths = VERDICT_ICONS.get(key, "")
+        return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
+
     def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
     def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
 
@@ -12597,17 +12632,18 @@ def render_forensic_hud_v2(t, stats):
         </div>
         """
 
-    def r_ledger_row(title, icon, data, type_key):
-        """Generates the wide detailed rows (2-5)."""
+    def r_ledger_row(title, type_key, data):
+        """Generates the wide detailed rows (2-5) using SVGs."""
         sev = data.get("severity", "ok")
         score = data.get("score", 0)
         verdict = data.get("verdict", "UNKNOWN")
+        icon_svg = get_svg(type_key)
         
         # Build the detail chips
         chips = []
+        items = []
         
         # EXTRACT DETAILS based on type
-        items = []
         if type_key == "integrity":
             # Integrity Ledger: [{'vector':..., 'points':...}]
             for i in data.get("ledger", []):
@@ -12627,19 +12663,29 @@ def render_forensic_hud_v2(t, stats):
         if not items:
             chips.append(f'<span class="hud-chip chip-dim">No active signals.</span>')
         else:
-            for item in items[:5]: # Limit to 5 to prevent blowout
+            for item in items[:6]: # Limit to 6 to prevent blowout
                 chips.append(f'<span class="hud-chip chip-{sev}">{item}</span>')
-            if len(items) > 5:
-                chips.append(f'<span class="hud-chip chip-dim">+{len(items)-5} more...</span>')
+            if len(items) > 6:
+                chips.append(f'<span class="hud-chip chip-dim">+{len(items)-6} more...</span>')
+
+        # Interaction for jumping to details
+        row_id_map = {
+            "integrity": "integrity-matrix-body",
+            "threat": "threat-report-body", 
+            "authenticity": "adversarial-dashboard-body",
+            "anomaly": "statistical-profile-body"
+        }
+        target_id = row_id_map.get(type_key)
+        click_attr = f'onclick="document.getElementById(\'{target_id}\').scrollIntoView({{behavior: \'smooth\'}})"'
 
         return f"""
-        <div class="hud-detail-row border-{sev}">
+        <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table">
             <div class="hud-detail-left bg-{sev}">
-                <div class="h-icon">{icon}</div>
+                <div class="h-icon-box text-{sev}">{icon_svg}</div>
                 <div class="h-meta">
-                    <div class="h-title">{title}</div>
-                    <div class="h-verdict">{verdict}</div>
-                    <div class="h-score">Score: {score}</div>
+                    <div class="h-title text-{sev}">{title}</div>
+                    <div class="h-verdict text-{sev}">{verdict}</div>
+                    <div class="h-score text-{sev}">Score: {score}</div>
                 </div>
             </div>
             <div class="hud-detail-right">
@@ -12698,10 +12744,10 @@ def render_forensic_hud_v2(t, stats):
 
     # --- ROWS 2-5: THE LEDGER ROWS ---
     rows_html = ""
-    rows_html += r_ledger_row("INTEGRITY", "🛡️", master_ledgers.get("integrity",{}), "integrity")
-    rows_html += r_ledger_row("AUTHENTICITY", "🎭", master_ledgers.get("authenticity",{}), "authenticity")
-    rows_html += r_ledger_row("THREAT", "💣", master_ledgers.get("threat",{}), "threat")
-    rows_html += r_ledger_row("ANOMALY", "📉", master_ledgers.get("anomaly",{}), "anomaly")
+    rows_html += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}))
+    rows_html += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}))
+    rows_html += r_ledger_row("THREAT", "threat", master_ledgers.get("threat",{}))
+    rows_html += r_ledger_row("ANOMALY", "anomaly", master_ledgers.get("anomaly",{}))
 
     container.innerHTML = row1_html + rows_html
 
