@@ -10373,8 +10373,45 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- LEDGER ROW RENDERER (Hero Rows) ---
+    # Unified Ledger Row Renderer (Hero Rows) - WITH METADATA
     def r_ledger_row(title, type_key, data):
+        # 1. Define the Forensic Context (The "Intellectual" Layer)
+        meta = {
+            "integrity": {
+                "d1": "Measures the physical health of the data stream. Penalties applied for data corruption (U+FFFD), broken encoding (surrogates), and binary injection (NULLs).",
+                "m1": "Base Score + Density Penalty",
+                "r1": "Std: Unicode Core Spec",
+                "d2": "High scores indicate a file that is technically broken, truncated, or dangerous to parsers regardless of content.",
+                "m2": "Auditor: Integrity",
+                "r2": "Scope: Physical Rot"
+            },
+            "authenticity": {
+                "d1": "Verifies the identity claims of the text. Penalties applied for Homoglyphs (Cyrillic vs Latin), Mixed-Script Spoofing, and IDNA protocol violations.",
+                "m1": "UTS #39 Skeleton / Script Mixing",
+                "r1": "Std: UTS #39 & #46",
+                "d2": "High scores indicate an attempt to impersonate a trusted domain, user, or file extension (e.g. Phishing).",
+                "m2": "Auditor: Authenticity",
+                "r2": "Scope: Identity"
+            },
+            "threat": {
+                "d1": "Detects active weaponization and malicious intent. Penalties applied for Execution Vectors (Bidi), Injection (ANSI/Tags), and Evasion (Token Fractures).",
+                "m1": "Pattern Matching + Behavior Analysis",
+                "r1": "Ref: Trojan Source / TRAPDOC",
+                "d2": "High scores indicate a confirmed exploit payload designed to execute code or bypass filters.",
+                "m2": "Auditor: Threat",
+                "r2": "Scope: Malice"
+            },
+            "anomaly": {
+                "d1": "Analyzes the statistical physics of the text. Measures Entropy, Character Distribution, and Zalgo Density.",
+                "m1": "Shannon Entropy / Mark Density",
+                "r1": "Heuristic Analysis",
+                "d2": "High scores indicate unnatural, machine-generated, or obfuscated content without specific exploit signatures.",
+                "m2": "Auditor: Anomaly",
+                "r2": "Scope: Physics"
+            }
+        }
+
+        # 2. Get Logic State
         if is_initial:
             sev, score, verdict, items, click_attr, title_attr = "neutral", 0, "WAITING", [], "", "Waiting for input..."
         else:
@@ -10393,6 +10430,10 @@ def render_forensic_hud(t, stats):
             elif type_key in ["authenticity", "anomaly"]:
                 items = data.get("vectors", [])
 
+        # 3. Build Metadata Attributes
+        m = meta.get(type_key, {})
+        data_attrs = f'data-l1="{esc(title)} STATUS" data-d1="{esc(m.get("d1",""))}" data-m1="{esc(m.get("m1",""))}" data-r1="{esc(m.get("r1",""))}" data-l2="IMPACT" data-d2="{esc(m.get("d2",""))}" data-m2="{esc(m.get("m2",""))}" data-r2="{esc(m.get("r2",""))}"'
+
         icon_svg = get_svg(type_key)
         
         if is_initial: chips_html = '<span class="hud-chip chip-dim">System Ready</span>'
@@ -10402,8 +10443,9 @@ def render_forensic_hud(t, stats):
             if len(items) > 6: chips.append(f'<span class="hud-chip chip-dim">+{len(items)-6} more...</span>')
             chips_html = "".join(chips)
 
+        # 4. Return HTML with Data Attributes
         return f"""
-        <div class="hud-detail-row border-{sev}" {click_attr} title="{title_attr}">
+        <div class="hud-detail-row border-{sev}" {click_attr} title="{title_attr}" {data_attrs}>
             <div class="hud-detail-left bg-{sev}">
                 <div class="h-icon-box text-{sev}">{icon_svg}</div>
                 <div class="h-meta">
