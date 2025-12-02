@@ -5678,7 +5678,7 @@ details.profile-section > summary:hover::marker {
     flex: 1;
     display: flex;
     align-items: center; /* Vertically center the row of chips */
-    justify-content: flex-start; /* FORCE LEFT ALIGNMENT */
+    justify-content: flex-start !important; /* FORCE LEFT ALIGNMENT */
     flex-wrap: wrap;
     padding: 12px 16px;
     gap: 8px;
