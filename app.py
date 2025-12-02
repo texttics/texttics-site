@@ -164,6 +164,119 @@ TAG_BLOCK_END = 0xE007F
 # ------------------------------------------------------------
 
 # ==========================================
+# [STAGE 1.5] METADATA WORKBENCH ANALYZER (New Module)
+# ==========================================
+
+def analyze_html_metadata(raw_html_string: str):
+    """
+    Scans raw HTML clipboard content for CSS-based obfuscation and hiding techniques.
+    Source: External Security Research (CSS Filtering/Low Contrast Attacks).
+    
+    Args:
+        raw_html_string: The raw HTML content received directly from the clipboard.
+    
+    Returns:
+        A list of findings dictionaries.
+    """
+    if not raw_html_string:
+        return []
+        
+    findings = []
+
+    # Regex flags: DOTALL (s) to match newlines/CR, IGNORECASE (i)
+    # This pattern targets: <tag ... style="[ATTRIBUTES]">HIDDEN TEXT</tag>
+    # It captures (1) the style attribute and (2) the content.
+    # Note: Regex parsing of arbitrary HTML is fragile, but sufficient for simple malicious injection targets.
+    
+    # Pattern explanation: 
+    #   <(\w+)\s+[^>]*?: Finds the opening tag.
+    #   style\s*=\s*['"](.*?)['"]?: Captures the full style attribute (Group 1).
+    #   >(.*?)</\1>: Captures the content (Group 2), matching against the closing tag.
+    STYLE_CONTENT_PATTERN = re.compile(
+        r'<(\w+)\s+[^>]*?style\s*=\s*["\'](.*?)["\'][^>]*?>(.*?)</\1>',
+        re.IGNORECASE | re.DOTALL
+    )
+
+    # --- CRITICAL STYLE DEFINITIONS ---
+    # We use simpler strings because the regex above extracts the full attribute value.
+    CRITICAL_STYLE_RULES = [
+        "visibility:\s*hidden",
+        "display:\s*none",
+        "opacity:\s*0",
+        "position:\s*absolute;\s*left:\s*-?\d{3,}px" # Matches left: -9999px
+    ]
+    
+    CRITICAL_CONTRAST_RULES = [
+        # Note: Must use a single space or no space, as the attribute extraction is raw
+        "color:\s*white;\s*background:\s*white", # Explicit white-on-white
+        "color:\s*#fff;\s*background:\s*#fff"    # Explicit hex-on-hex
+    ]
+
+    # --- 1. Scan for Absolute Hiding (Visibility, Opacity, Position) ---
+    
+    for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
+        tag, style_attr, content = match.groups()
+        
+        # Normalize the style attribute for easier searching (remove all whitespace)
+        normalized_style = style_attr.lower().replace(" ", "")
+        
+        # Check for absolute hiding rules
+        is_hidden = False
+        rule_hit = ""
+        
+        for rule in CRITICAL_STYLE_RULES:
+            if re.search(rule, normalized_style):
+                is_hidden = True
+                rule_hit = rule.split(":")[0] # e.g., 'visibility'
+                break
+
+        if is_hidden:
+            # We found a definitive hiding technique
+            findings.append({
+                "type": "CSS_ABSOLUTE_HIDE",
+                "rule": rule_hit,
+                "content_preview": content.strip()[:50] + "...",
+                "desc": f"Text hidden via {rule_hit} style in <{tag}> tag."
+            })
+            
+    # --- 2. Scan for Low-Contrast Hiding (Requires content check) ---
+    
+    for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
+        tag, style_attr, content = match.groups()
+        normalized_style = style_attr.lower().replace(" ", "")
+        
+        is_low_contrast = False
+        
+        for rule in CRITICAL_CONTRAST_RULES:
+            if re.search(rule, normalized_style):
+                is_low_contrast = True
+                break
+
+        if is_low_contrast:
+            findings.append({
+                "type": "CSS_LOW_CONTRAST",
+                "rule": "color:white/background:white",
+                "content_preview": content.strip()[:50] + "...",
+                "desc": f"Text hidden via explicit low-contrast style in <{tag}> tag."
+            })
+            
+    # NOTE: Since the current PyScript context does not have a mechanism
+    # to store global state based on Python functions (only JavaScript properties),
+    # we simulate the "reporting" by returning the findings.
+    
+    # In a real app.py integration, this would push a flag list to the Threat Auditor.
+    if findings:
+        print(f"[{len(findings)} CSS OBFUSCATION FINDING(S) DETECTED]")
+    else:
+        print("[No CSS Obfuscation detected in HTML payload]")
+
+    return findings
+
+# NOTE: This function needs to be exposed to JavaScript via PyScript's 'create_proxy'.
+# You would need to add 'window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)'
+# in your main app.py execution block.
+
+# ==========================================
 # [STAGE 1.5] NEW SIDECAR ENGINES (Block 1)
 # ==========================================
 
