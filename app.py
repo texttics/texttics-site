@@ -12720,7 +12720,6 @@ def render_forensic_hud_v2(t, stats):
                 reg_key="emoji_irregular")}
     </div>
     """
-    """
 
     # --- ROWS 2-5: THE LEDGER ROWS ---
     rows_html = ""
