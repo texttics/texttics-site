@@ -1729,48 +1729,63 @@ window.updateStatConsole = function(row) {
   });
 
 // --- NEW: METADATA WORKBENCH LOGIC ---
-  const metadataInput = document.getElementById('metadata-input');
-  
-  if (metadataInput) {
-      // Temporary JS function to pass raw HTML string to Python
-      // Python will call this function to process HTML data
-      window.py_analyze_html_metadata = (htmlData) => {
-          console.log("[Metadata Workbench] Received HTML Payload:", htmlData.length, "chars.");
-          // IMPORTANT: We do not process this HTML in JS due to XSS risk.
-          // The Python PyScript environment is the target for safe parsing.
-          
-          // For now, we only alert that the function needs implementation in app.py
-          // You will implement the actual contrast scanning logic in Python in a later step.
-          
-          // Optional: Display the raw HTML payload in the console for immediate debugging
-          console.log("--- RAW HTML PAYLOAD ---");
-          console.log(htmlData);
-          
-          // Notify the user that the primary text input needs to be analyzed
-          alert("Metadata copied! Now paste the same content into the main 'Text Input' area to correlate findings.");
-      };
-      
-      // 1. Intercept the Paste Event
-      metadataInput.onpaste = function(event) {
-          event.preventDefault(); 
-          
-          const clipboardData = event.clipboardData || window.clipboardData;
-          // CRITICAL: Intercept the HTML format, dropping RTF/Plaintext first
-          const rawHtml = clipboardData.getData('text/html');
-          const plainText = clipboardData.getData('text/plain');
-          
-          // 2. Insert Plain Text for visibility (so user knows what was pasted)
-          document.execCommand('insertText', false, plainText); 
+const metadataInput = document.getElementById('metadata-input');
+ 
+if (metadataInput) {
+    // Temporary JS function to pass raw HTML string to Python (Logic remains the same)
+    window.py_analyze_html_metadata = (htmlData) => {
+        console.log("[Metadata Workbench] Received HTML Payload:", htmlData.length, "chars.");
+        console.log("--- RAW HTML PAYLOAD ---");
+        console.log(htmlData);
+        alert("Metadata copied! Now paste the same content into the main 'Text Input' area to correlate findings.");
+    };
+    
+    // 1. Intercept the Paste Event
+    metadataInput.onpaste = function(event) {
+        event.preventDefault(); 
+        
+        const clipboardData = event.clipboardData || window.clipboardData;
+        // CRITICAL: Intercept the HTML format
+        const rawHtml = clipboardData.getData('text/html');
+        // We still extract plain text, but only to feed the Python side later
+        const plainText = clipboardData.getData('text/plain');
+        
+        // --- START FIX: VISUAL HTML INJECTION ---
+        // 2. Clear the input, then insert the raw HTML string.
+        // This forces the browser to render the colors, boldness, etc.
+        
+        // Clear existing content (important for clean paste)
+        this.innerHTML = ''; 
+        
+        // Use the clipboard's native 'items' to ensure rich text is handled, 
+        // falling back to 'insertHTML' with the string payload.
+        if (clipboardData.items) {
+             // If clipboard items are available, try inserting the first HTML item directly
+             const htmlItem = Array.from(clipboardData.items).find(item => item.type === 'text/html');
+             if (htmlItem) {
+                 htmlItem.getAsString(function(htmlString) {
+                     document.execCommand('insertHTML', false, htmlString);
+                 });
+             } else {
+                 // If item access fails, fall back to string insertion
+                 document.execCommand('insertHTML', false, rawHtml);
+             }
+        } else {
+             // Legacy method: insert the raw HTML string
+             document.execCommand('insertHTML', false, rawHtml);
+        }
+        
+        // --- END FIX: VISUAL HTML INJECTION ---
 
-          // 3. Pass the HTML Payload to the Python Bridge
-          if (window.py_analyze_html_metadata) {
-              window.py_analyze_html_metadata(rawHtml);
-          }
-      };
-      
-      // 4. Reveal the workbench interface
-      const container = document.getElementById('metadata-workbench-container');
-      if (container) {
-          container.style.display = 'block';
-      }
-  }
+        // 3. Pass the captured raw HTML Payload to the Python Bridge
+        if (window.py_analyze_html_metadata) {
+            window.py_analyze_html_metadata(rawHtml);
+        }
+    };
+    
+    // 4. Reveal the workbench interface (Logic remains the same)
+    const container = document.getElementById('metadata-workbench-container');
+    if (container) {
+        container.style.display = 'block';
+    }
+}
