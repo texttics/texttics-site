@@ -37,6 +37,9 @@ except Exception:
     NORMALIZER = "unicodedata"
     print("LOG: Using standard 'unicodedata' library (Fallback).")
 
+# Defining the 'ud' alias globally so functions using it don't crash
+ud = _ud
+
 def _debug_threat_bridge(t: str, hit: tuple):
     """
     Non-invasive auditor for the Python->DOM selection bridge.
