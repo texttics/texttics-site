@@ -13,11 +13,29 @@ import html
 import urllib.parse
 import base64
 import binascii
+import difflib
+import bisect
+
+# ==========================================
+# BLOCK 1. GLOBAL CONFIG & ENVIRONMENT
+# ==========================================
 
 LOADING_LOCK = False
+LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
 
 # --- DEBUG FLAGS ---
 TEXTTICS_DEBUG_THREAT_BRIDGE = True
+
+# --- NORMALIZATION LIBRARY SETUP (Tier 1 vs Tier 2) ---
+# We check this ONCE at startup, not every time we normalize a string.
+try:
+    import unicodedata2 as _ud
+    NORMALIZER = "unicodedata2"
+    print("LOG: Using full 'unicodedata2' library (C-Optimized).")
+except Exception:
+    import unicodedata as _ud
+    NORMALIZER = "unicodedata"
+    print("LOG: Using standard 'unicodedata' library (Fallback).")
 
 def _debug_threat_bridge(t: str, hit: tuple):
     """
@@ -60,41 +78,11 @@ def _debug_threat_bridge(t: str, hit: tuple):
         hex_snip = " ".join(f"{ord(c):04X}" for c in snippet)
         print(f"[ThreatBridge-AUDIT] OK: Log {log_start}-{log_end} -> DOM {dom_start}-{dom_end}. Snip: '{snippet}' ({hex_snip})")
 
+# ===============================================
+# BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
+# ===============================================
 
-# Simple SVG paths for the Forensic Metric Pack
-METRIC_ICONS = {
-    "eye": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
-    "hash": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>',
-    "code": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>',
-    "save": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>'
-}
-
-# Forensic Icon Set (Vector Paths for SVG)
-ICONS = {
-    # --- HEADERS ---
-    "shield_ok": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path>',
-    "shield_warn": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>',
-    "octagon_crit": '<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>',
-
-    # --- FACETS (SENSORS) ---
-    # 1. Visibility (Eye)
-    "eye": '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>',
-    "eye_off": '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>',
-    
-    # 2. Structure (Cube/Grid)
-    "cube": '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
-    "layers": '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
-    
-    # 3. Identity (Fingerprint)
-    "fingerprint": '<path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 6"></path><path d="M5 15.1a7 7 0 0 0 10.88-1.66"></path><path d="M19 16c-1.7 2-4 4-7 4-3.3 0-6-2.7-6-6a6 6 0 0 1 12 0"></path><path d="M8 12.5a4 4 0 0 1 8 0"></path><path d="M10.5 12.5a1.5 1.5 0 0 1 3 0"></path>',
-    "clone": '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>'
-}
-
-# ------------------------------------------------------------
-# [STAGE 1.5] ADVERSARIAL KNOWLEDGE BASE (New Additions)
-# ------------------------------------------------------------
-
-# 1. The "Persian Defense" Whitelist (Complex Orthography Scripts)
+# The "Persian Defense" Whitelist (Complex Orthography Scripts)
 # These scripts legitimately use ZWJ/ZWNJ for shaping.
 # We must NOT flag "Token Fracture" in these contexts.
 COMPLEX_ORTHOGRAPHY_SCRIPTS = {
@@ -141,7 +129,7 @@ CONTEXT_LURE_PATTERNS = {
     )
 }
 
-# 3. Domain Spoofing Artifacts (Source 2: IDN Masquerading)
+# Domain Spoofing Artifacts (Source 2: IDN Masquerading)
 # Characters that mimic structural delimiters (Dots, Slashes, At-signs)
 PSEUDO_DELIMITERS = {
     0x2024: "One Dot Leader",
@@ -161,148 +149,2868 @@ PSEUDO_DELIMITERS = {
 TAG_BLOCK_START = 0xE0000
 TAG_BLOCK_END = 0xE007F
 
-# ------------------------------------------------------------
+# --- INVISIBILITY BITMASKS (Forensic Grade) ---
+INVIS_DEFAULT_IGNORABLE  = 1 << 0
+INVIS_JOIN_CONTROL       = 1 << 1
+INVIS_ZERO_WIDTH_SPACING = 1 << 2  # ZWSP, WJ, BOM
+INVIS_BIDI_CONTROL       = 1 << 3
+INVIS_TAG                = 1 << 4
+INVIS_VARIATION_STANDARD = 1 << 5
+INVIS_VARIATION_IDEOG    = 1 << 6
+INVIS_DO_NOT_EMIT        = 1 << 7
+INVIS_SOFT_HYPHEN        = 1 << 8
+INVIS_NON_ASCII_SPACE    = 1 << 9
+INVIS_NONSTANDARD_NL     = 1 << 10
 
-# ==========================================
-# [STAGE 1.5] METADATA WORKBENCH ANALYZER (New Module)
-# ==========================================
-@create_proxy
-def analyze_html_metadata(raw_html_string: str):
+# 1. A new bit flag for Critical Controls
+INVIS_CRITICAL_CONTROL   = 1 << 11
+
+# Aggregates
+INVIS_ANY_MASK = (
+    INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL | INVIS_ZERO_WIDTH_SPACING |
+    INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_VARIATION_STANDARD |
+    INVIS_VARIATION_IDEOG | INVIS_DO_NOT_EMIT | INVIS_SOFT_HYPHEN |
+    INVIS_NON_ASCII_SPACE | INVIS_NONSTANDARD_NL | INVIS_CRITICAL_CONTROL
+)
+INVIS_HIGH_RISK_MASK = INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DO_NOT_EMIT
+
+# The O(1) Lookup Table (Populated in load_unicode_data)
+INVIS_TABLE = [0] * 1114112  # Covers all of Unicode (0x110000)
+
+# --- FORENSIC ENCODING PROFILES ---
+# Tier 0 (Modern) + Tier 1 (Legacy)
+FORENSIC_ENCODINGS = [
+    # --- TIER 0: MODERN ANCHORS (Reference) ---
+    ("UTF-8", "utf_8", "Universal Web Standard"),
+    ("UTF-16", "utf_16", "Windows/JavaScript Native"),
+    ("UTF-32", "utf_32", "True Code Point Storage"),
+    
+    # --- TIER 1: LEGACY FILTERS (Provenance) ---
+    ("ASCII", "ascii", "Universal Baseline (7-bit)"),
+    ("Win-1252", "cp1252", "Western / Windows (ANSI)"),
+    ("ISO-8859-1", "latin_1", "Western / Strict Protocol"),
+    ("MacRoman", "mac_roman", "Legacy Apple / Classic Mac"),
+    ("CP437", "cp437", "DOS / Terminal / Warez Art"),
+    ("Win-1251", "cp1251", "Cyrillic Legacy"),
+    ("Win-1256", "cp1256", "Arabic Legacy"),
+    ("Win-1253", "cp1253", "Greek Legacy"),
+    ("Win-1255", "cp1255", "Hebrew Legacy"),
+    ("Shift_JIS", "shift_jis", "Japanese Legacy"),
+    ("Big5", "big5", "Traditional Chinese"),
+    ("EUC-KR", "euc_kr", "Korean Legacy"),
+    ("GBK", "gbk", "Simp. Chinese Legacy")
+]
+
+# --- FORENSIC THREAT VOCABULARY (Seed List) ---
+# Derived from SecLists, FuzzDB, and LLM Jailbreak research.
+# Used to detect re-assembled fragmentation attacks (e.g. "s h e l l").
+
+THREAT_VOCAB = {
+    "EXECUTION": {
+        "sh", "bash", "zsh", "ksh", "cmd", "powershell", "pwsh", "shell", "webshell",
+        "python", "python3", "php", "perl", "ruby", "node", "java", "javac", "dotnet",
+        "system", "exec", "execute", "spawn", "eval", "compile", "popen", "subprocess",
+        "runtime", "processbuilder", "nc", "netcat", "telnet", "ssh", "sftp", 
+        "curl", "wget", "invoke-webrequest", "iex", "iwr"
+    },
+    "AUTH": {
+        "admin", "administrator", "root", "sudo", "user", "username", "login", "logon",
+        "signin", "signup", "password", "passwd", "passphrase", "pin", "token", 
+        "access_token", "refresh_token", "apikey", "secret", "client_secret", 
+        "session", "sessionid", "cookie", "jwt", "bearer", "credential", "auth"
+    },
+    "INJECTION": {
+        "script", "javascript", "alert", "onerror", "onclick", "onload", "iframe", 
+        "document.cookie", "innerhtml", "select", "insert", "update", "delete", 
+        "drop", "truncate", "union", "load_file", "xp_cmdshell"
+    },
+    "JAILBREAK": {
+        "ignore", "previous", "instructions", "forget", "override", "bypass", 
+        "developer", "mode", "uncensored", "dan", "jailbreak", "guidelines",
+        "constraints", "ethical", "rules"
+    },
+    "SYSTEM": {
+        "bin", "sbin", "usr", "var", "tmp", "etc", "passwd", "shadow", "hosts",
+        "boot", "ini", "cfg", "config", "registry", "regedit"
+    }
+}
+
+# Flatten for O(1) lookup
+ALL_THREAT_TERMS = set().union(*THREAT_VOCAB.values())
+
+
+# CATEGORY & REGEX DEFINITIONS. We only use "Honest" mode, so we only need the 29 categories
+# (Cn is calculated mathematically)
+MINOR_CATEGORIES_29 = {
+    # Letters
+    "Lu": r"\p{Lu}", "Ll": r"\p{Ll}", "Lt": r"\p{Lt}", "Lm": r"\p{Lm}", "Lo": r"\p{Lo}",
+    # Marks
+    "Mn": r"\p{Mn}", "Mc": r"\p{Mc}", "Me": r"\p{Me}",
+    # Numbers
+    "Nd": r"\p{Nd}", "Nl": r"\p{Nl}", "No": r"\p{No}",
+    # Punctuation
+    "Pc": r"\p{Pc}", "Pd": r"\p{Pd}", "Ps": r"\p{Ps}", "Pe": r"\p{Pe}",
+    "Pi": r"\p{Pi}", "Pf": r"\p{Pf}", "Po": r"\p{Po}",
+    # Symbols
+    "Sm": r"\p{Sm}", "Sc": r"\p{Sc}", "Sk": r"\p{Sk}", "So": r"\p{So}",
+    # Separators
+    "Zs": r"\p{Zs}", "Zl": r"\p{Zl}", "Zp": r"\p{Zp}",
+    # Other (excl. Cn)
+    "Cc": r"\p{Cc}", "Cf": r"\p{Cf}", "Cs": r"\p{Cs}", "Co": r"\p{Co}"
+}
+
+# Regexes for finding *all* matches and their indices (must be 'gu')
+REGEX_MATCHER = {
+    "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
+    "Marks": window.RegExp.new(r"\p{M}", "gu"),
+    
+    # Forensic Properties (for Module 2.C)
+    # "Noncharacter" and "Deceptive Spaces" are now handled in Python
+    "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
+    
+    # UAX #44 Properties (for Module 2.D)
+    "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
+    "Alphabetic": window.RegExp.new(r"\p{Alphabetic}", "gu"),
+    "Script: Cyrillic": window.RegExp.new(r"\p{Script=Cyrillic}", "gu"),
+    "Script: Greek": window.RegExp.new(r"\p{Script=Greek}", "gu"),
+    "Script: Han": window.RegExp.new(r"\p{Script=Han}", "gu"),
+    "Script: Arabic": window.RegExp.new(r"\p{Script=Arabic}", "gu"),
+    "Script: Hebrew": window.RegExp.new(r"\p{Script=Hebrew}", "gu"),
+    "Script: Latin": window.RegExp.new(r"\p{Script=Latin}", "gu"),
+    "Script: Common": window.RegExp.new(r"\p{Script=Common}", "gu"),
+    "Script: Inherited": window.RegExp.new(r"\p{Script=Inherited}", "gu"),
+
+    # Confusable runs (for Module 3)
+    "LNPS_Runs": window.RegExp.new(r"\p{L}+|\p{N}+|\p{P}+|\p{S}+", "gu"),
+}
+
+# ---
+# 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
+# ---
+INVISIBLE_MAPPING = {
+
+    # [PATCH] Missing Structural Invisible (Zanabazar)
+    0x11A3E: "[ZAN:INIT]",     # Zanabazar Square Cluster Initial
+
+    # [PATCH] Missing Specials (Reserved Sentinels)
+    0xFFF0: "[RSV:FFF0]", 0xFFF1: "[RSV:FFF1]", 0xFFF2: "[RSV:FFF2]",
+    0xFFF3: "[RSV:FFF3]", 0xFFF4: "[RSV:FFF4]", 0xFFF5: "[RSV:FFF5]",
+    0xFFF6: "[RSV:FFF6]", 0xFFF7: "[RSV:FFF7]", 0xFFF8: "[RSV:FFF8]",
+
+    # --- Missing Egyptian Hieroglyph Format Controls (Extended) ---
+    0x1343C: "[EGY:C1]",       # Egyptian Control 1
+    0x1343D: "[EGY:C2]",       # Egyptian Control 2
+    0x1343E: "[EGY:C3]",       # Egyptian Control 3
+    0x1343F: "[EGY:C4]",       # Egyptian Control 4
+
+    # --- Missing Shorthand Format Controls (Extended) ---
+    0x1BCA4: "[SHORT:STEP]",   # Shorthand Format Step
+    0x1BCA5: "[SHORT:MIN]",    # Shorthand Format Minus
+    0x1BCA6: "[SHORT:DBL]",    # Shorthand Format Double
+    0x1BCA7: "[SHORT:CONT]",   # Shorthand Format Continued
+    0x1BCA8: "[SHORT:DOWN]",   # Shorthand Format Down
+    0x1BCA9: "[SHORT:UP]",     # Shorthand Format Up
+    0x1BCAA: "[SHORT:HIGH]",   # Shorthand Format High
+    0x1BCAB: "[SHORT:LOW]",    # Shorthand Format Low
+    0x1BCAC: "[SHORT:MED]",    # Shorthand Format Medium
+    0x1BCAD: "[SHORT:VAR1]",   # Shorthand Format Variation 1
+    0x1BCAE: "[SHORT:VAR2]",   # Shorthand Format Variation 2
+
+    # --- Unicode "Specials" (Process-Internal Noncharacters) ---
+    0xFFFE: "[BAD:BOM]",       # Reversed Byte Order Mark (Endian mismatch)
+    0xFFFF: "[NON:MAX]",       # Max Value (Process internal)
+
+    # --- Missing Arabic & Syriac Format Controls ---
+    0x0600: "[ARB:NUM]",       # Arabic Number Sign
+    0x0601: "[ARB:YEAR]",      # Arabic Sign Sanah
+    0x0602: "[ARB:FOOT]",      # Arabic Footnote Marker
+    0x0603: "[ARB:PAGE]",      # Arabic Sign Safha
+    0x0604: "[ARB:SAMV]",      # Arabic Sign Samvat
+    0x0605: "[ARB:ABV]",       # Arabic Number Mark Above
+    0x06DD: "[ARB:AYAH]",      # Arabic End of Ayah
+    0x08E2: "[ARB:DISP]",      # Arabic Disputed End of Ayah
+    0x070F: "[SYR:SAM]",       # Syriac Abbreviation Mark
+
+    # --- Missing Duployan Format Controls ---
+    0x1BC9D: "[DUP:THICK]",    # Duployan Thick Letter Selector
+    0x1BC9E: "[DUP:DBL]",      # Duployan Double Mark
+
+    # --- Missing Egyptian Hieroglyph Extensions ---
+    0x13439: "[EGY:INS_S]",    # Insertion Joiner Start
+    0x1343A: "[EGY:INS_E]",    # Insertion Joiner End
+    0x1343B: "[EGY:MID]",      # Stack Middle
+
+    # --- Historic Script Fillers & Joiners (Format Controls) ---
+    0x11C40: "[BHAIK:GAP]",    # Bhaiksuki Gap Filler
+    0x11A47: "[ZAN:SUB]",      # Zanabazar Square Subjoiner (Invisible Glue)
+    0x11A99: "[SOY:SUB]",      # Soyombo Subjoiner (Invisible Glue)
+    0x1107F: "[BRAH:NJ]",      # Brahmi Number Joiner
+    0x110BD: "[KAI:NS]",       # Kaithi Number Sign
+    0x110CD: "[KAI:NSA]",      # Kaithi Number Sign Above
+    0x11446: "[NEWA:SAN]",     # Newa Sandhi Mark (Invisible Elision)
+    
+    # --- System & Control Risks ---
+    0x0000: "[NUL]",           # Null Byte (Critical)
+    0x001B: "[ESC]",           # Escape (Terminal Injection)
+    0x00AD: "[SHY]",           # Soft Hyphen
+    
+    # --- Bidi Controls (Trojan Source) ---
+    0x061C: "[ALM]",           # Arabic Letter Mark
+    0x200E: "[LRM]",           # Left-To-Right Mark
+    0x200F: "[RLM]",           # Right-To-Left Mark
+    0x202A: "[LRE]",           # Left-To-Right Embedding
+    0x202B: "[RLE]",           # Right-To-Left Embedding
+    0x202C: "[PDF]",           # Pop Directional Formatting
+    0x202D: "[LRO]",           # Left-To-Right Override
+    0x202E: "[RLO]",           # Right-To-Left Override
+    0x2066: "[LRI]",           # Left-To-Right Isolate
+    0x2067: "[RLI]",           # Right-To-Left Isolate
+    0x2068: "[FSI]",           # First Strong Isolate
+    0x2069: "[PDI]",           # Pop Directional Isolate
+
+    # --- Joiners & Separators ---
+    0x034F: "[CGJ]",           # Combining Grapheme Joiner
+    0x180E: "[MVS]",           # Mongolian Vowel Separator
+    0x200B: "[ZWSP]",          # Zero Width Space
+    0x200C: "[ZWNJ]",          # Zero Width Non-Joiner
+    0x200D: "[ZWJ]",           # Zero Width Joiner
+    0x2060: "[WJ]",            # Word Joiner
+    
+    # --- Missing Mongolian FVS4 ---
+    0x180F: "[FVS4]",          # Mongolian Free Variation Selector 4
+
+    # --- Missing Khitan Filler (Critical Spoofing Vector) ---
+    0x16FE4: "[KSSF]",         # Khitan Small Script Filler
+    
+    # --- Byte Order Mark ---
+    0xFEFF: "[BOM]",           # Zero Width No-Break Space
+    
+    # --- Interlinear Annotation (Rare Format) ---
+    0xFFF9: "[IAA]",           # Anchor
+    0xFFFA: "[IAS]",           # Separator
+    0xFFFB: "[IAT]",           # Terminator
+
+    # --- Exotic Spaces (Visual Spoofing) ---
+    0x00A0: "[NBSP]",          # No-Break Space
+    0x2002: "[ENSP]",          # En Space
+    0x2003: "[EMSP]",          # Em Space
+    0x2004: "[3/EM]",          # Three-Per-Em Space
+    0x2005: "[4/EM]",          # Four-Per-Em Space
+    0x2006: "[6/EM]",          # Six-Per-Em Space
+    0x2007: "[FIGSP]",         # Figure Space
+    0x2008: "[PUNCSP]",        # Punctuation Space
+    0x2009: "[THIN]",          # Thin Space
+    0x200A: "[HAIR]",          # Hair Space
+    0x202F: "[NNBSP]",         # Narrow No-Break Space
+    0x205F: "[MMSP]",          # Medium Mathematical Space
+    0x3000: "[IDSP]",          # Ideographic Space
+    
+    # --- Line Breaks ---
+    0x2028: "[LS]",            # Line Separator
+    0x2029: "[PS]",            # Paragraph Separator
+
+    # --- Tags (Special) ---
+    0xE0001: "[TAG:LANG]",     # Language Tag
+    0xE007F: "[TAG:CANCEL]",   # Cancel Tag
+
+    # 1. C0 Control Codes (Legacy/Obfuscation)
+    0x0001: "[CTL:0x01]", 0x0002: "[CTL:0x02]", 0x0003: "[CTL:0x03]", 0x0004: "[CTL:0x04]",
+    0x0005: "[CTL:0x05]", 0x0006: "[CTL:0x06]", 0x0007: "[CTL:0x07]", 0x0008: "[CTL:0x08]",
+    0x000B: "[CTL:0x0B]", 0x000C: "[CTL:0x0C]", 0x000E: "[CTL:0x0E]", 0x000F: "[CTL:0x0F]",
+    0x0010: "[CTL:0x10]", 0x0011: "[CTL:0x11]", 0x0012: "[CTL:0x12]", 0x0013: "[CTL:0x13]",
+    0x0014: "[CTL:0x14]", 0x0015: "[CTL:0x15]", 0x0016: "[CTL:0x16]", 0x0017: "[CTL:0x17]",
+    0x0018: "[CTL:0x18]", 0x0019: "[CTL:0x19]", 0x001A: "[CTL:0x1A]", 0x001C: "[CTL:0x1C]",
+    0x001D: "[CTL:0x1D]", 0x001E: "[CTL:0x1E]", 0x001F: "[CTL:0x1F]",
+    
+    # 2. C1 Control Codes (Legacy/Obfuscation)
+    0x007F: "[DEL]",      # Delete (Common mutation particle)
+    0x0085: "[NEL]",      # Next Line (Often breaks parsers)
+    # Range 0x80-0x9F
+    0x0080: "[CTL:0x80]", 0x0081: "[CTL:0x81]", 0x0082: "[CTL:0x82]", 0x0083: "[CTL:0x83]",
+    0x0084: "[CTL:0x84]", 0x0086: "[CTL:0x86]", 0x0087: "[CTL:0x87]", 0x0088: "[CTL:0x88]",
+    0x0089: "[CTL:0x89]", 0x008A: "[CTL:0x8A]", 0x008B: "[CTL:0x8B]", 0x008C: "[CTL:0x8C]",
+    0x008D: "[CTL:0x8D]", 0x008E: "[CTL:0x8E]", 0x008F: "[CTL:0x8F]", 0x0090: "[CTL:0x90]",
+    0x0091: "[CTL:0x91]", 0x0092: "[CTL:0x92]", 0x0093: "[CTL:0x93]", 0x0094: "[CTL:0x94]",
+    0x0095: "[CTL:0x95]", 0x0096: "[CTL:0x96]", 0x0097: "[CTL:0x97]", 0x0098: "[CTL:0x98]",
+    0x0099: "[CTL:0x99]", 0x009A: "[CTL:0x9A]", 0x009B: "[CTL:0x9B]", 0x009C: "[CTL:0x9C]",
+    0x009D: "[CTL:0x9D]", 0x009E: "[CTL:0x9E]", 0x009F: "[CTL:0x9F]",
+
+    # Invisible Khmer Vowels (Fillers)
+    0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
+    0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
+    
+    # Invisible Math Operators
+    0x2061: "[FA]",            # Function Application
+    0x2062: "[IT]",            # Invisible Times
+    0x2063: "[IS]",            # Invisible Separator
+    # (U+2064 Invisible Plus was added in Wave 1)
+
+    # The "Rich Text Ghost"
+    0xFFFC: "[OBJ]",           # Object Replacement Character
+    
+    # Table 1: The "False Vacuums" (Hangul & Braille)
+    # These characters are often rendered as invisible but possess width or distinct properties.
+    0x3164: "[HF]",            # Hangul Filler (Critical ID spoofer)
+    0xFFA0: "[HHF]",           # Halfwidth Hangul Filler
+    0x115F: "[HCF]",           # Hangul Choseong Filler
+    0x1160: "[HJF]",           # Hangul Jungseong Filler
+    0x2800: "[BRAILLE]",       # Braille Pattern Blank (Critical Trim Bypass)
+
+    # Table 2: Anomalous Spaces & Quads (Visual Alignment Spoofing)
+    0x1680: "[OSM]",           # Ogham Space Mark
+    0x2000: "[EQ]",            # En Quad
+    0x2001: "[MQ]",            # Em Quad (M is standardized abbr)
+    0x2007: "[FIGSP]",         # Figure Space (Non-breaking)
+    # (Note: 0x2002-0x200A are often handled by general whitespace logic, but 2007/EQ/MQ are specific)
+
+    # Table 3: The "Glue" Class (Layout Locking / Non-Breaking Punctuation)
+    0x2011: "[NBH]",           # Non-Breaking Hyphen
+    0x2024: "[ODL]",           # One Dot Leader
+    0x0F08: "[TIB:SS]",        # Tibetan Mark Sbrul Shad
+    0x0F0C: "[TIB:DT]",        # Tibetan Mark Delimiter Tsheg
+    0x0F12: "[TIB:RGS]",       # Tibetan Mark Rgya Gram Shad
+    0x1802: "[MNG:C]",         # Mongolian Comma
+    0x1803: "[MNG:FS]",        # Mongolian Full Stop
+    0x1808: "[MNG:MC]",        # Mongolian Manchu Comma
+    0x1809: "[MNG:MFS]",       # Mongolian Manchu Full Stop
+
+    # --- Missing Mongolian Free Variation Selectors ---
+    0x180B: "[FVS1]",          # Mongolian Free Variation Selector 1
+    0x180C: "[FVS2]",          # Mongolian Free Variation Selector 2
+    0x180D: "[FVS3]",          # Mongolian Free Variation Selector 3
+
+    # --- Missing Egyptian Hieroglyph Format Controls ---
+    0x13430: "[EGY:VJ]",       # Vertical Joiner
+    0x13431: "[EGY:HJ]",       # Horizontal Joiner
+    0x13432: "[EGY:TOP]",      # Top Joiner
+    0x13433: "[EGY:BOT]",      # Bottom Joiner
+    0x13434: "[EGY:OVR]",      # Overlay Middle
+    0x13435: "[EGY:START]",    # Segment Start
+    0x13436: "[EGY:END]",      # Segment End
+
+    # --- Missing Musical Symbol ---
+    0x1D159: "[MUS:NULL]",     # Musical Symbol Null Notehead
+
+    # --- Standard Whitespace & Structure (Explicit Tags) ---
+    0x0009: "[TAB]",           # Character Tabulation
+    0x000A: "[LF]",            # Line Feed
+    0x000B: "[VT]",            # Line Tabulation (Vertical Tab)
+    0x000C: "[FF]",            # Form Feed
+    0x000D: "[CR]",            # Carriage Return
+
+    # --- Missing Egyptian Exploits ---
+    0x133FC: "[EGY:Z015B]",    # Egyptian Hieroglyph Z015B (Font Exploit)
+
+    # --- Undefined / Reserved ---
+    0x2065: "[RSV:2065]",      # Unassigned (Reserved for future format)
+
+    # Table 4: Invisible Operators & Scoping Containers
+    0x2064: "[INV+]",          # Invisible Plus (Mathematical Ghost)
+    0x13437: "[EGY:BS]",       # Egyptian Hieroglyph Begin Segment
+    0x13438: "[EGY:ES]",       # Egyptian Hieroglyph End Segment
+    0x1BCA0: "[SHORT:LO]",     # Shorthand Format Letter Overlap
+    0x1BCA1: "[SHORT:CO]",     # Shorthand Format Continuing Overlap
+    0x1BCA2: "[SHORT:DS]",     # Shorthand Format Down Step
+    0x1BCA3: "[SHORT:US]",     # Shorthand Format Up Step
+
+    # Table 5: Musical Scoping (The "Ghost" Structures)
+    0x1D173: "[MUS:BB]",       # Musical Symbol Begin Beam
+    0x1D174: "[MUS:EB]",       # Musical Symbol End Beam
+    0x1D175: "[MUS:BT]",       # Musical Symbol Begin Tie
+    0x1D176: "[MUS:ET]",       # Musical Symbol End Tie
+    0x1D177: "[MUS:BS]",       # Musical Symbol Begin Slur
+    0x1D178: "[MUS:ES]",       # Musical Symbol End Slur
+    0x1D179: "[MUS:BP]",       # Musical Symbol Begin Phrase
+    0x1D17A: "[MUS:EP]",       # Musical Symbol End Phrase
+
+    # 5. Visual Control Pictures (Obfuscation / Social Engineering)
+    # These are VISIBLE glyphs that mimic control codes (e.g., ␀ vs NUL).
+    # We tag them as [PIC:...] to distinguish them from real controls.
+    0x2400: "[PIC:NUL]", 0x2401: "[PIC:SOH]", 0x2402: "[PIC:STX]", 0x2403: "[PIC:ETX]",
+    0x2404: "[PIC:EOT]", 0x2405: "[PIC:ENQ]", 0x2406: "[PIC:ACK]", 0x2407: "[PIC:BEL]",
+    0x2408: "[PIC:BS]",  0x2409: "[PIC:HT]",  0x240A: "[PIC:LF]",  0x240B: "[PIC:VT]",
+    0x240C: "[PIC:FF]",  0x240D: "[PIC:CR]",  0x240E: "[PIC:SO]",  0x240F: "[PIC:SI]",
+    0x2410: "[PIC:DLE]", 0x2411: "[PIC:DC1]", 0x2412: "[PIC:DC2]", 0x2413: "[PIC:DC3]",
+    0x2414: "[PIC:DC4]", 0x2415: "[PIC:NAK]", 0x2416: "[PIC:SYN]", 0x2417: "[PIC:ETB]",
+    0x2418: "[PIC:CAN]", 0x2419: "[PIC:EM]",  0x241A: "[PIC:SUB]", 0x241B: "[PIC:ESC]",
+    0x241C: "[PIC:FS]",  0x241D: "[PIC:GS]",  0x241E: "[PIC:RS]",  0x241F: "[PIC:US]",
+    0x2420: "[PIC:SP]",  0x2421: "[PIC:DEL]", 0x2422: "[PIC:BLANK]", 0x2423: "[PIC:OB]",
+    0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
+
+    # --- Phase 1 Update: Control Picture Overrides (Cleaner Visuals) ---
+    # We map the actual critical controls to their Unicode Picture representations.
+    # This reduces visual length from [NUL] (5 chars) to ␀ (1 char).
+    0x0000: "\u2400",  # ␀ (Null)
+    0x001B: "\u241B",  # ␛ (Escape)
+    0x007F: "\u2421",  # ␡ (Delete)
+
+    # --- Phase 1 Update: Spacing Specifics ---
+    # These often look like spaces but have specific typographic widths/roles.
+    0x2000: "[NQSP]",  # En Quad
+    0x2001: "[MQSP]",  # Em Quad
+
+   
+
+    # --- Invisible Khmer Vowels ---
+    0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
+    0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
+    
+    # --- Rich Text Ghost ---
+    0xFFFC: "[OBJ]",           # Object Replacement Character
+
+    # --- Zombie Controls (Deprecated Format) ---
+    0x206A: "[ISS]",           # Inhibit Symmetric Swapping
+    0x206B: "[ASS]",           # Activate Symmetric Swapping
+    0x206C: "[IAFS]",          # Inhibit Arabic Form Shaping
+    0x206D: "[AAFS]",          # Activate Arabic Form Shaping
+    0x206E: "[NDS]",           # National Digit Shapes
+    0x206F: "[NODS]",          # Nominal Digit Shapes
+
+    # --- Interlinear Annotation Controls ---
+    0xFFF9: "[IAA]",  # Interlinear Annotation Anchor
+    0xFFFA: "[IAS]",  # Interlinear Annotation Separator
+    0xFFFB: "[IAT]",  # Interlinear Annotation Terminator
+}
+
+# Valid base characters for U+20E3 (Combining Enclosing Keycap)
+VALID_KEYCAP_BASES = frozenset({
+    0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, # Digits 0-9
+    0x0023, # Hash
+    0x002A  # Asterisk
+})
+
+# Sequences that modify intent (Direction, Color, Prohibition).
+# Some are RGI (Emoji 15.1+), others are non-RGI but semantically distinct.
+INTENT_MODIFYING_ZWJ_SEQUENCES = {
+    # --- 1. DIRECTIONAL (Facing Right) ---
+    # RGI in Emoji 15.1, but structurally intent-modifying
+    "🏃‍➡️": "Person running facing right",
+    "🏃‍♂️‍➡️": "Man running facing right",
+    "🏃‍♀️‍➡️": "Woman running facing right",
+    "🚶‍➡️": "Person walking facing right",
+    "🚶‍♂️‍➡️": "Man walking facing right",
+    "🚶‍♀️‍➡️": "Woman walking facing right",
+    "🧍‍➡️": "Person standing facing right",
+    "🧍‍♂️‍➡️": "Man standing facing right",
+    "🧍‍♀️‍➡️": "Woman standing facing right",
+    "🧎‍➡️": "Person kneeling facing right",
+    "🧎‍♂️‍➡️": "Man kneeling facing right",
+    "🧎‍♀️‍➡️": "Woman kneeling facing right",
+    "🧑‍🦯‍➡️": "Person with cane facing right",
+    "👨‍🦯‍➡️": "Man with cane facing right",
+    "👩‍🦯‍➡️": "Woman with cane facing right",
+    "🧑‍🦽‍➡️": "Person in manual wheelchair facing right",
+    "👨‍🦽‍➡️": "Man in manual wheelchair facing right",
+    "👩‍🦽‍➡️": "Woman in manual wheelchair facing right",
+    "🧑‍🦼‍➡️": "Person in motorized wheelchair facing right",
+    "👨‍🦼‍➡️": "Man in motorized wheelchair facing right",
+    "👩‍🦼‍➡️": "Woman in motorized wheelchair facing right",
+
+    # --- 2. COLORIZATION (Base + ZWJ + Color Square) ---
+    "🍋‍🟩": "Lime (Lemon + Green Square)",
+    "🍄‍🟫": "Brown Mushroom (Mushroom + Brown Square)",
+    "➡️‍⬛": "Black Arrow (Right Arrow + Black Square)",
+    "⬅️‍⬛": "Black Left Arrow",
+    "⬆️‍⬛": "Black Up Arrow",
+    "⬇️‍⬛": "Black Down Arrow",
+    "🐦‍🔥": "Phoenix (Bird + Fire)",
+    "🙂‍↔️": "Head Shaking Horizontally (Smile + Arrows)",
+    "🙂‍↕️": "Head Shaking Vertically (Smile + Arrows)",
+
+    # --- 3. PROHIBITION (No + ZWJ + Object) ---
+    # Common non-RGI patterns for "No [Thing]"
+    "🚫‍🚗": "No Cars",
+    "🚫‍🚙": "No Vehicles",
+    "🚫‍🏍️": "No Motorcycles",
+    "🚫‍🚲": "No Bicycles",
+    "🚫‍✈️": "No Airplanes",
+    "🚫‍🚬": "No Smoking (Sequence Variant)",
+    "🚫‍🔞": "No Under 18"
+}
+
+# Also create a set for fast lookup
+INTENT_MODIFYING_ZWJ_SET = frozenset(INTENT_MODIFYING_ZWJ_SEQUENCES.keys())
+INTENT_MODIFYING_MAX_LEN = max((len(s) for s in INTENT_MODIFYING_ZWJ_SET), default=0)
+
+TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
+TEST_MAJOR = {
+    "L (Letter)": window.RegExp.new(r"^\p{L}$", "u"),
+    "M (Mark)": window.RegExp.new(r"^\p{M}$", "u"),
+    "N (Number)": window.RegExp.new(r"^\p{N}$", "u"),
+    "P (Punctuation)": window.RegExp.new(r"^\p{P}$", "u"),
+    "S (Symbol)": window.RegExp.new(r"^\p{S}$", "u"),
+    "Z (Separator)": window.RegExp.new(r"^\p{Z}$", "u"),
+    "C (Other)": window.RegExp.new(r"^\p{C}$", "u")
+}
+
+
+ALIASES = {
+    "Lu": "Uppercase Letter", "Ll": "Lowercase Letter", "Lt": "Titlecase Letter", "Lm": "Modifier Letter", "Lo": "Other Letter",
+    "Mn": "Nonspacing Mark", "Mc": "Spacing Mark", "Me": "Enclosing Mark",
+    "Nd": "Decimal Number", "Nl": "Letter Number", "No": "Other Number",
+    "Pc": "Connector Punct.", "Pd": "Dash Punct.", "Ps": "Open Punct.", "Pe": "Close Punct.",
+    "Pi": "Initial Punct.", "Pf": "Final Punct.", "Po": "Other Punct.",
+    "Sm": "Math Symbol", "Sc": "Currency Symbol", "Sk": "Modifier Symbol", "So": "Other Symbol",
+    "Zs": "Space Separator", "Zl": "Line Separator", "Zp": "Paragraph Separator",
+    "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
+}
+
+CCC_ALIASES = {
+    # --- General Reordering Classes ---
+    "0": "Not Reordered",
+    "1": "Overlay",
+    "7": "Nukta",
+    "8": "Kana Voicing",
+    "9": "Virama",
+
+    # --- Fixed Position Range Markers (UAX #44) ---
+    "10": "Start of fixed-position classes",
+    "199": "End of fixed-position classes",
+    
+    # --- Attached / Reordering Classes (The "Zalgo" Reservoir) ---
+    "200": "Attached Below Left",
+    "202": "Attached Below",
+    "214": "Attached Above",
+    "216": "Attached Above Right",
+    "218": "Below Left",
+    "220": "Below",
+    "222": "Below Right",
+    "224": "Left",
+    "226": "Right",
+    "228": "Above Left",
+    "230": "Above",
+    "232": "Above Right",
+    "233": "Double Below",
+    "234": "Double Above",
+    "240": "Iota Subscript"
+}
+
+# --- THREAT PENALTY CONSTANTS (The "Weaponization Code") ---
+# Tier 1: COMPILER / EXECUTION ATTACKS (Target: Machine)
+THR_BASE_EXECUTION = 40
+
+# Tier 2: IDENTITY SPOOFING (Target: Human)
+THR_BASE_SPOOFING = 25
+THR_MULT_SPOOFING = 1.0 # Capped at +25 extra
+
+# Tier 3: OBFUSCATION & STEGO (Target: Filter/Scanner)
+THR_BASE_OBFUSCATION = 15
+THR_MULT_OBFUSCATION = 0.5
+
+# Tier 4: SUSPICIOUS CONTEXT (Target: Ambiguity)
+THR_BASE_SUSPICIOUS = 10
+
+# 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
+# We must define all categories to correctly implement the "default-to-restricted" rule.# Source: https://www.unicode.org/reports/tr31/
+# These are explicitly "Allowed" or "Recommended"
+UAX31_ALLOWED_STATUSES = {
+    "Allowed",
+    "Recommended",
+    "Limited_Use",
+}
+
+# These are the various "Restricted" types.
+UAX31_RESTRICTED_STATUSES = {
+    "Restricted",
+    "Technical",
+    "Uncommon_Use",
+    "Deprecated",
+    "Obsolete",
+}
+
+# --- INTEGRITY PENALTY CONSTANTS (The "Health Code") ---
+# Tier 1: FATAL (Irreversible Data Loss)
+INT_BASE_FATAL = 40
+INT_MULT_FATAL = 2.0 
+
+# Tier 2: FRACTURE (Logic/Physics Break)
+INT_BASE_FRACTURE = 25
+INT_MULT_FRACTURE = 1.0
+
+# Tier 3: RISK (Protocol Violation / Interchange Risk)
+INT_BASE_RISK = 15
+INT_MULT_RISK = 0.5
+
+# Tier 4: DECAY (Hygiene / Artifacts)
+INT_BASE_DECAY = 5
+INT_MULT_DECAY = 0.2
+
+# FORENSIC HAZARD SETS (Global Definition) Characters that represent structural syntax in backend systems.
+# Used by the "Syntax Predator" engine to detect Normalization Injection.
+HAZARD_SQL = frozenset({"'", '"', "-", "/", ";", "%"})
+HAZARD_HTML = frozenset({"<", ">", "&"})
+HAZARD_SYSTEM = frozenset({"/", "\\", ".", "|", "$", "`"})
+
+# Union set for fast initial filtering
+HAZARD_ALL = HAZARD_SQL | HAZARD_HTML | HAZARD_SYSTEM
+
+# Simple SVG paths for the Forensic Metric Pack
+METRIC_ICONS = {
+    "eye": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+    "hash": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>',
+    "code": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>',
+    "save": '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>'
+}
+
+# Forensic Icon Set (Vector Paths for SVG)
+ICONS = {
+    # --- HEADERS ---
+    "shield_ok": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path>',
+    "shield_warn": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>',
+    "octagon_crit": '<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>',
+
+    # --- FACETS (SENSORS) ---
+    # 1. Visibility (Eye)
+    "eye": '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>',
+    "eye_off": '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>',
+    
+    # 2. Structure (Cube/Grid)
+    "cube": '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
+    "layers": '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
+    
+    # 3. Identity (Fingerprint)
+    "fingerprint": '<path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 6"></path><path d="M5 15.1a7 7 0 0 0 10.88-1.66"></path><path d="M19 16c-1.7 2-4 4-7 4-3.3 0-6-2.7-6-6a6 6 0 0 1 12 0"></path><path d="M8 12.5a4 4 0 0 1 8 0"></path><path d="M10.5 12.5a1.5 1.5 0 0 1 3 0"></path>',
+    "clone": '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>'
+}
+
+# We pre-compile all 29 regexes into REGEX_MATCHER
+# to use the proven-correct 'matchAll' method, just like the 'Provenance' module does.
+for key, regex_str in MINOR_CATEGORIES_29.items():
+    # Add to the main matcher dict
+    REGEX_MATCHER[key] = window.RegExp.new(regex_str, "gu")
+
+# ===============================================
+# BLOCK 3. GLOBAL STATE & DATA STORES
+# ===============================================
+
+# Tier 3: Manual expansions Pyodide fails to handle
+# Enclosed Alphanumerics → ASCII (⓼ → 8, ⓐ → a, ① → 1, etc.)
+ENCLOSED_MAP = {}
+
+def _build_enclosed():
+    """Populates the ENCLOSED_MAP with manual normalization rules."""
+    try:
+        # Build mapping for numbers ①–⑳ etc. (U+2460 to U+2473)
+        for codepoint in range(0x2460, 0x2474):
+            ENCLOSED_MAP[chr(codepoint)] = str(codepoint - 0x245F)
+        
+        # Build mapping for circled numbers ⓵–⓾ (U+24F5 to U+24FE)
+        for i in range(1, 11):
+            ENCLOSED_MAP[chr(0x24F4 + i)] = str(i) # 0x24F5 is 1
+            
+        # Build mapping for circled Latin letters ⓐ–ⓩ (U+24D0 to U+24E9)
+        for i in range(26):
+            ENCLOSED_MAP[chr(0x24D0 + i)] = chr(ord('a') + i)
+            
+        # Build mapping for circled capital letters Ⓐ–Ⓩ (U+24B6 to U+24CF)
+        for i in range(26):
+            ENCLOSED_MAP[chr(0x24B6 + i)] = chr(ord('A') + i)
+            
+        print(f"LOG: Built manual ENCLOSED_MAP with {len(ENCLOSED_MAP)} rules.")
+    except Exception as e:
+        print(f"ERROR: Failed building ENCLOSED_MAP: {e}")
+
+# Execute once at startup
+_build_enclosed()
+
+# --- THE MASSIVE DATA STORE ---
+DATA_STORES = {
+    "Blocks": {"ranges": [], "starts": [], "ends": []},
+    "Age": {"ranges": [], "starts": [], "ends": []},
+    "Discouraged": {"ranges": [], "starts": [], "ends": []},
+    "IdentifierType": {"ranges": [], "starts": [], "ends": []},
+    "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
+    "IntentionalPairs": set(),
+    "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
+    "LineBreak": {"ranges": [], "starts": [], "ends": []},
+    "BidiControl": {"ranges": [], "starts": [], "ends": []},
+    "JoinControl": {"ranges": [], "starts": [], "ends": []},
+    "Extender": {"ranges": [], "starts": [], "ends": []},
+    "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
+    "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
+    "Deprecated": {"ranges": [], "starts": [], "ends": []},
+    "VariationSelector": {"ranges": [], "starts": [], "ends": []},
+    "Scripts": {"ranges": [], "starts": [], "ends": []},
+    "Dash": {"ranges": [], "starts": [], "ends": []},
+    "QuotationMark": {"ranges": [], "starts": [], "ends": []},
+    "TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
+    "SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
+    "Alphabetic": {"ranges": [], "starts": [], "ends": []},
+    "WordBreak": {"ranges": [], "starts": [], "ends": []},
+    "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
+    "GraphemeBreak": {"ranges": [], "starts": [], "ends": []},
+    "DoNotEmit": {"ranges": [], "starts": [], "ends": []},
+    "CombiningClass": {"ranges": [], "starts": [], "ends": []},
+    "DecompositionType": {"ranges": [], "starts": [], "ends": []},
+    "NumericType": {"ranges": [], "starts": [], "ends": []},
+    "BidiMirrored": {"ranges": [], "starts": [], "ends": []},
+    "LogicalOrderException": {"ranges": [], "starts": [], "ends": []},
+    "Confusables": {},
+    "InverseConfusables": {}, # Loaded from JSON
+    "EastAsianWidth": {"ranges": [], "starts": [], "ends": []},
+    "VerticalOrientation": {"ranges": [], "starts": [], "ends": []},
+    "BidiBracketType": {"ranges": [], "starts": [], "ends": []},
+    "CompositionExclusions": {"ranges": [], "starts": [], "ends": []},
+    "ChangesWhenNFKCCasefolded": {"ranges": [], "starts": [], "ends": []},
+    "BidiMirroring": {}, 
+    "VariantBase": set(),
+    "VariantSelectors": set(),
+    # Buckets for Emoji Data
+    "Emoji": {"ranges": [], "starts": [], "ends": []},
+    "Emoji_Presentation": {"ranges": [], "starts": [], "ends": []},
+    "Emoji_Modifier": {"ranges": [], "starts": [], "ends": []},
+    "Emoji_Modifier_Base": {"ranges": [], "starts": [], "ends": []},
+    "Emoji_Component": {"ranges": [], "starts": [], "ends": []},
+    "Extended_Pictographic": {"ranges": [], "starts": [], "ends": []},
+    # IDNA Buckets
+    "Idna2008": {},
+    "IdnaMap": {"deviation": set(), "ignored": set(), "disallowed": set(), "mapped": set(), "nv8": set(), "xv8": set()}
+}
+
+# ===============================================
+# BLOCK 4. DATA PARSERS & LOADERS
+# ===============================================
+
+# The Range Parsers
+def _parse_and_store_ranges(txt: str, store_key: str):
+    """Generic parser for Unicode range data files (Blocks, Age, etc.)"""
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+        code_range, value = parts[0].strip(), parts[1].strip()
+        
+        if '..' in code_range:
+            a, b = code_range.split('..', 1)
+            ranges_list.append((int(a, 16), int(b, 16), value))
+        else:
+            cp = int(code_range, 16)
+            ranges_list.append((cp, cp, value))
+    
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+    
+    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
+
+def _parse_script_extensions(txt: str):
+    """Custom parser for ScriptExtensions.txt (which uses ';')."""
+    store_key = "ScriptExtensions"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+
+    ranges_list = []
+    for raw in txt.splitlines():
+        # 1. Remove comments
+        line = raw.split('#', 1)[0]
+        # 2. Find the semicolon
+        parts = line.split(';', 1)
+
+        if len(parts) < 2:
+            continue # Not a data line
+
+        code_range = parts[0].strip()
+        value = parts[1].strip()
+
+        if not value or not code_range:
+            continue
+
+        if '..' in code_range:
+            a, b = code_range.split('..', 1)
+            ranges_list.append((int(a, 16), int(b, 16), value))
+        else:
+            cp = int(code_range, 16)
+            ranges_list.append((cp, cp, value))
+
+    ranges_list.sort()
+
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+
+    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
+
+def _parse_property_file(txt: str, property_map: dict):
     """
-    [STAGE 1.5] METADATA WORKBENCH ANALYZER (Updated v2.0)
-    Scans raw HTML clipboard content for CSS-based obfuscation.
-    Injects the verdict directly into the Metadata Workbench UI section.
+    Generic parser for property files like PropList.txt.
+    It iterates a file once and sorts properties into *multiple* DATA_STORES buckets based on the property_map.
+    
+    property_map = {"FilePropertyName": "DataStoreKey"}
     """
-    if not raw_html_string:
-        # Clear UI if input is empty
-        _update_css_workbench_ui("NEUTRAL", "Awaiting input...", 0, None)
-        return []
-        
-    findings = []
+    # A temp dict to hold lists of ranges before sorting
+    temp_ranges = {store_key: [] for store_key in property_map.values()}
     
-    # Check for empty paste (sometimes raw_html is just boilerplate from the editor)
-    if not raw_html_string.strip() or len(raw_html_string.strip()) < 10:
-        _update_css_workbench_ui("NEUTRAL", "No significant HTML source found in paste.", 0, None)
-        return []
-
-    # FIX 1: STYLE_CONTENT_PATTERN must be a raw string.
-    STYLE_CONTENT_PATTERN = re.compile(
-        r'<(\w+)\s+[^>]*?style\s*=\s*["\'](.*?)["\'][^>]*?>(.*?)</\1>',
-        re.IGNORECASE | re.DOTALL
-    )
-
-    # --- CRITICAL STYLE DEFINITIONS (FIXED WITH 'r') ---
-    CRITICAL_STYLE_RULES = [
-        r"visibility:\s*hidden",
-        r"display:\s*none",
-        r"opacity:\s*0",
-        r"position:\s*absolute;\s*left:\s*-?\d{3,}px"
-    ]
-    
-    CRITICAL_CONTRAST_RULES = [
-        r"color:\s*white;\s*background:\s*white",
-        r"color:\s*#fff;\s*background:\s*#fff"
-    ]
-
-    # --- 1. Scan for Hiding (Visibility, Position) and Contrast ---
-    
-    for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
-        tag, style_attr, content = match.groups()
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line: continue
         
-        # 2. Normalize the style attribute (remove all whitespace)
-        # This speeds up searching significantly
-        normalized_style = style_attr.lower().replace(" ", "")
+        parts = line.split(';', 1)
+        if len(parts) < 2: continue
         
-        rule_hit = ""
+        code_range, prop_name = parts[0].strip(), parts[1].strip()
         
-        # Check for ABOLUTE hiding rules
-        for rule in CRITICAL_STYLE_RULES:
-            if re.search(rule, normalized_style):
-                rule_hit = rule.split(":")[0] 
-                break
-        
-        # Check for low-contrast rules
-        if not rule_hit:
-            for rule in CRITICAL_CONTRAST_RULES:
-                if re.search(rule, normalized_style):
-                    rule_hit = "low-contrast"
-                    break
-
-        if rule_hit:
-            # We found a definitive hiding technique
-            findings.append({
-                "type": "CSS_OBFUSCATION",
-                "rule": rule_hit,
-                "content_preview": content.strip()[:50] + "...", # Preview of hidden text
-                "desc": f"Text hidden via {rule_hit} style in <{tag}> tag."
-            })
+        # Check if this is one of the properties we're looking for
+        if prop_name in property_map:
+            store_key = property_map[prop_name]
+            
+            try:
+                if '..' in code_range:
+                    a, b = code_range.split('..', 1)
+                    temp_ranges[store_key].append((int(a, 16), int(b, 16), prop_name))
+                else:
+                    cp = int(code_range, 16)
+                    temp_ranges[store_key].append((cp, cp, prop_name))
+            except Exception:
+                pass # Ignore malformed lines
     
-    # --- 3. UI Update and Reporting ---
-    
-    if findings:
-        _update_css_workbench_ui("CRITICAL", "CSS Obfuscation detected in pasted HTML.", len(findings), findings)
-    else:
-        _update_css_workbench_ui("CLEAN", "No CSS Obfuscation detected in HTML payload.", 0, None)
+    # Now, populate the real DATA_STORES
+    for store_key, ranges_list in temp_ranges.items():
+        if not ranges_list: continue
+        
+        store = DATA_STORES[store_key]
+        store["ranges"].clear()
+        store["starts"].clear()
+        store["ends"].clear()
+        
+        ranges_list.sort()
+        
+        for s, e, v in ranges_list:
+            store["ranges"].append((s, e, v))
+            store["starts"].append(s)
+            store["ends"].append(e)
+        
+        print(f"Loaded {len(ranges_list)} ranges for {store_key} from property file.")
 
-    return findings
-
-# --- NEW HELPER: DOM INJECTION ---
-def _update_css_workbench_ui(verdict_key: str, summary: str, count: int, findings: list):
+def _parse_donotemit(txt: str):
     """
-    Handles all UI injection logic for the Metadata Workbench report panel.
+    Parses DoNotEmit.txt for single chars and ranges.
+    (Applies 80/20 rule: IGNORES sequences like '0340 0341').
     """
-    # Mapping table for visual output
-    UI_MAP = {
-        "CRITICAL": {"title": "CSS THREAT DETECTED", "color": "#dc2626", "icon": "🚨"},
-        "CLEAN": {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": "✅"},
-        "NEUTRAL": {"title": "Awaiting Paste", "color": "#4b5563", "icon": "ⓘ"}
+    store_key = "DoNotEmit"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        code_range = parts[0].strip()
+        
+        # --- THIS IS THE 80/20 RULE ---
+        # If there's a space, it's a sequence. Ignore it.
+        if ' ' in code_range:
+            continue
+        # --- END 80/20 RULE ---
+            
+        try:
+            if '..' in code_range:
+                a, b = code_range.split('..', 1)
+                ranges_list.append((int(a, 16), int(b, 16), "DoNotEmit"))
+            else:
+                cp = int(code_range, 16)
+                ranges_list.append((cp, cp, "DoNotEmit"))
+        except Exception:
+            pass # Ignore malformed lines
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+        
+    print(f"Loaded {len(ranges_list)} single-char/range rules for {store_key}.")
+
+def _parse_composition_exclusions(txt: str):
+    """Parses CompositionExclusions.txt."""
+    store_key = "CompositionExclusions"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        try:
+            # The format is just the code point, e.g., "00A0"
+            code_range = line.split(None, 1)[0]
+            if '..' in code_range:
+                a, b = code_range.split('..', 1)
+                ranges_list.append((int(a, 16), int(b, 16), "Full_Composition_Exclusion"))
+            else:
+                cp = int(code_range, 16)
+                ranges_list.append((cp, cp, "Full_Composition_Exclusion"))
+        except Exception:
+            pass # Ignore malformed lines
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+        
+    print(f"Loaded {len(ranges_list)} composition exclusion ranges.")
+
+# The Specific Logic Parsers
+
+def _parse_confusables(txt: str):
+    """Parses confusables.txt into the CONFUSABLES_MAP."""
+    store = DATA_STORES["Confusables"]
+    store.clear()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line or line.startswith(';'):
+            continue
+        
+        parts = line.split(';', 2)
+        if len(parts) < 2:
+            continue
+        
+        try:
+            source_hex = parts[0].strip()
+            skeleton_hex_list = parts[1].strip().split()
+            source_cp = int(source_hex, 16)
+            skeleton_str = "".join([chr(int(hex_val, 16)) for hex_val in skeleton_hex_list])
+            
+            # Add to map
+            store[source_cp] = skeleton_str
+            count += 1
+        except Exception:
+            pass # Ignore malformed lines
+    print(f"Loaded {count} confusable mappings.")
+
+def _parse_intentional(txt: str):
+    """Parses intentional.txt into a set of frozenset pairs."""
+    store = DATA_STORES["IntentionalPairs"]
+    store.clear()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        try:
+            cp1_hex = parts[0].strip()
+            cp2_hex_list = parts[1].strip().split() # Can be one or more
+            
+            cp1 = int(cp1_hex, 16)
+            for cp2_hex in cp2_hex_list:
+                cp2 = int(cp2_hex, 16)
+                # Store as a frozenset so {A, B} is the same as {B, A}
+                pair = frozenset([cp1, cp2])
+                store.add(pair)
+                count += 1
+        except Exception:
+            pass # Ignore malformed lines
+    print(f"Loaded {count} intentional pairs.")
+    # Convert to frozenset for immutability after loading
+    DATA_STORES["IntentionalPairs"] = frozenset(store)
+
+def _parse_bidi_mirroring(txt: str):
+    """Parses BidiMirroring.txt into a simple dict."""
+    store = DATA_STORES["BidiMirroring"]
+    store.clear()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        try:
+            source_hex = parts[0].strip()
+            mirror_hex = parts[1].strip()
+            source_cp = int(source_hex, 16)
+            mirror_cp = int(mirror_hex, 16)
+            store[source_cp] = mirror_cp
+            count += 1
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {count} bidi mirroring pairs.")
+
+def _parse_bidi_brackets(txt: str):
+    """Parses BidiBrackets.txt for open/close types."""
+    store_key = "BidiBracketType"
+    store = DATA_STORES[store_key]
+    store["ranges"].clear()
+    store["starts"].clear()
+    store["ends"].clear()
+    
+    ranges_list = []
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        
+        parts = line.split(';', 2) # Format is: CP; Type; Mirrored_CP
+        if len(parts) < 3:
+            continue
+            
+        code_range = parts[0].strip()
+        bracket_type = parts[1].strip() # 'o' (Open) or 'c' (Close)
+        
+        try:
+            # We only care about ranges, not single code points
+            if '..' in code_range:
+                a, b = code_range.split('..', 1)
+                ranges_list.append((int(a, 16), int(b, 16), bracket_type))
+            else:
+                cp = int(code_range, 16)
+                ranges_list.append((cp, cp, bracket_type))
+        except Exception:
+            pass # Ignore malformed lines
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+        
+    print(f"Loaded {len(ranges_list)} bidi bracket ranges.")
+
+def _parse_standardized_variants(txt: str):
+    """Parses StandardizedVariants.txt into two sets."""
+    # Create new, local sets instead of modifying the global one
+    base_set = set()
+    selector_set = set()
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+        
+        hex_codes = parts[0].strip().split()
+        if len(hex_codes) == 2:
+            try:
+                base_cp = int(hex_codes[0], 16)
+                selector_cp = int(hex_codes[1], 16)
+                base_set.add(base_cp)
+                selector_set.add(selector_cp)
+            except ValueError:
+                pass
+                
+    print(f"Loaded {len(base_set)} variant base chars and {len(selector_set)} unique selectors.")
+    # Return the new local sets
+    return base_set, selector_set
+
+# The Emoji Parsers (The "Powerhouse")
+
+def _parse_emoji_variants(txt: str):
+    """Parses emoji-variation-sequences.txt to find emoji base chars."""
+    # Create a new, local set
+    base_set = set()
+    count = 0
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        parts = line.split(';', 1)
+        if len(parts) < 2:
+            continue
+            
+        hex_codes = parts[0].strip().split()
+        
+        try:
+            # The base char is always the first one (e.g., '0023' from '0023 FE0E')
+            if hex_codes:
+                base_cp = int(hex_codes[0], 16)
+                if base_cp not in base_set:
+                    base_set.add(base_cp)
+                    count += 1
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {count} new emoji base chars from emoji-variation-sequences.")
+    # Return the new local set
+    return base_set
+
+def _parse_emoji_test(txt: str) -> dict:
+    """
+    Parses emoji-test.txt to build a map of {sequence: qualification_status}
+    
+    Format:
+    # group: fully-qualified
+    1F600 ; fully-qualified # 😀 grinning face
+    ...
+    # group: unqualified
+    00A9 ; unqualified # © copyright
+    """
+    qualification_map = {}
+    current_group = "unknown"
+    
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        # Check if this is a group header
+        if line.startswith("# group:"):
+            current_group = line.split(":", 1)[-1].strip()
+            continue
+            
+        try:
+            parts = line.split(';', 1)
+            if len(parts) < 2:
+                continue
+                
+            hex_codes_str = parts[0].strip()
+            status = parts[1].strip()
+            
+            # Use the status from the line if available, otherwise from the group
+            final_status = status if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"} else current_group
+            
+            # We only care about these statuses
+            if final_status not in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
+                continue
+
+            hex_codes = hex_codes_str.split()
+            sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+            
+            if sequence_str:
+                qualification_map[sequence_str] = final_status
+
+        except Exception as e:
+            # print(f"Skipping malformed TEST line: {line} | Error: {e}")
+            pass
+            
+    print(f"Loaded {len(qualification_map)} emoji qualification statuses from emoji-test.txt.")
+    return qualification_map
+
+def _define_emoji_property_map() -> dict:
+    """
+    Returns the property map for parsing emoji-data.txt.
+    We will create new DATA_STORES buckets for these.
+    """
+    # Create new store entries for these properties
+    DATA_STORES["Emoji"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Presentation"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Modifier"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Modifier_Base"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Emoji_Component"] = {"ranges": [], "starts": [], "ends": []}
+    DATA_STORES["Extended_Pictographic"] = {"ranges": [], "starts": [], "ends": []}
+    
+    return {
+        "Emoji": "Emoji",
+        "Emoji_Presentation": "Emoji_Presentation",
+        "Emoji_Modifier": "Emoji_Modifier",
+        "Emoji_Modifier_Base": "Emoji_Modifier_Base",
+        "Emoji_Component": "Emoji_Component",
+        "Extended_Pictographic": "Extended_Pictographic"
+    }
+
+def _parse_emoji_zwj_sequences(txt: str) -> set:
+    """
+    Parse emoji-zwj-sequences.txt into a set of ZWJ emoji strings.
+
+    Supports two formats:
+
+    1) Old UTR #51-style (what you actually have now):
+       1F441 200D 1F5E8                            # (👁‍🗨) eye, zwj, left speech bubble
+
+    2) Newer TR51-style:
+       1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
+    """
+    sequences: set[str] = set()
+
+    for raw in txt.splitlines():
+        # Strip trailing comment
+        before_hash = raw.split('#', 1)[0]
+        line = before_hash.strip()
+        if not line:
+            continue
+
+        try:
+            # --- Case A: newer semicolon-based format ---
+            if ';' in line:
+                parts = [p.strip() for p in line.split(';')]
+                if not parts:
+                    continue
+
+                hex_codes_str = parts[0]
+                type_field = parts[1] if len(parts) > 1 else ""
+
+                hex_codes = hex_codes_str.split()
+                # Need at least 2 code points to be a sequence
+                if len(hex_codes) <= 1:
+                    continue
+                # Must contain ZWJ (200D)
+                if "200D" not in hex_codes_str:
+                    continue
+
+                type_field_lower = type_field.lower()
+                # Be tolerant: accept the usual Unicode-style labels
+                is_rgi = (
+                    "rgi_emoji_zwj_sequence" in type_field_lower
+                    or "emoji_zwj_sequence" in type_field_lower
+                    or "fully-qualified" in type_field_lower
+                )
+                if not is_rgi:
+                    continue
+
+            # --- Case B: old UTR #51-style (your current file) ---
+            else:
+                # Entire line is just hex codes
+                hex_codes = line.split()
+                if len(hex_codes) <= 1:
+                    continue
+                # Heuristic: Must contain ZWJ (U+200D) to be a ZWJ sequence
+                if "200D" not in hex_codes:
+                    continue
+            
+            # Build the actual Unicode string (applies to both cases)
+            seq = "".join(chr(int(h, 16)) for h in hex_codes)
+            sequences.add(seq)
+
+        except Exception:
+            # Ignore malformed lines, don't kill the whole parse
+            continue
+
+    print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
+    return sequences
+
+def _parse_emoji_sequences(txt: str) -> set:
+    """
+    Parses emoji-sequences.txt for RGI sequences.
+    Includes RGI_Emoji_*, Emoji_Keycap_Sequence, AND Basic_Emoji.
+    """
+    sequences = set()
+    rgi_types = {
+        "RGI_Emoji_Flag_Sequence",
+        "RGI_Emoji_Tag_Sequence",
+        "RGI_Emoji_Modifier_Sequence",
+        "Emoji_Keycap_Sequence",
+        "Basic_Emoji" # <--- ADDED THIS
     }
     
-    data = UI_MAP.get(verdict_key, UI_MAP["NEUTRAL"])
-    
-    # 1. Update Header and Summary
-    document.getElementById("css-verdict-title").textContent = data["title"]
-    document.getElementById("css-summary-text").textContent = summary
-    document.getElementById("css-finding-count").textContent = str(count)
-    
-    # 2. Update Visuals
-    verdict_box = document.getElementById("metadata-findings-report")
-    icon_box = document.getElementById("css-verdict-icon")
-    
-    verdict_box.style.borderLeftColor = data["color"]
-    icon_box.textContent = data["icon"]
-    
-    # 3. Update Findings List (Detailed)
-    list_el = document.getElementById("css-findings-list")
-    
-    if list_el:
-        list_el.innerHTML = ""
-        if findings:
-            details = document.getElementById("css-findings-details")
-            if details: details.open = True
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
             
-            for f in findings:
-                li = document.createElement("li")
-                li.style.fontFamily = "monospace"
-                li.style.fontSize = "0.85rem"
+        try:
+            parts = line.split(';', 2)
+            if len(parts) < 2:
+                continue
                 
-                # Highlight Rule and Preview
-                rule_text = f.get('rule', 'UNKNOWN').toUpperCase()
+            hex_codes_str = parts[0].strip()
+            type_field = parts[1].strip()
+            
+            if type_field in rgi_types:
+                # Ensure it's a space-delimited sequence
+                # AND not a range (which this parser doesn't handle)
+                if '..' not in hex_codes_str:
+                    hex_codes = hex_codes_str.split()
+                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                    sequences.add(sequence_str)
                 
-                # Use standard black/white for text, but color the rule
-                li.innerHTML = (
-                    f'<span style="color:{data["color"]}; font-weight:700;">{rule_text}</span>'
-                    f': "{f["content_preview"]}"'
-                )
-                list_el.appendChild(li)
-        else:
-             # Ensure the accordion is closed if clean
-            details = document.getElementById("css-findings-details")
-            if details: details.open = false
+                # [PATCH] Handle ranges for Basic_Emoji (e.g., 1F1E6..1F1FF)
+                elif type_field == "Basic_Emoji":
+                    # Ranges are common in Basic_Emoji
+                    range_parts = hex_codes_str.split('..')
+                    start = int(range_parts[0], 16)
+                    end = int(range_parts[1], 16) if len(range_parts) > 1 else start
+                    
+                    for cp in range(start, end + 1):
+                        sequences.add(chr(cp))
 
-# ==========================================
-# [STAGE 1.5] NEW SIDECAR ENGINES (Block 1)
-# ==========================================
+        except Exception as e:
+            pass 
+            
+    print(f"Loaded {len(sequences)} RGI sequences (including Basic_Emoji).")
+    return sequences
+
+def _parse_emoji_variation_sequences(txt: str) -> set:
+    """
+    Parses emoji-variation-sequences.txt for *emoji-style* (FE0F) sequences.
+    Format: 0023 FE0E  ; text style;  ...
+            0023 FE0F  ; emoji style; ...
+    """
+    sequences = set()
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+            
+        try:
+            parts = line.split(';', 2)
+            if len(parts) < 2:
+                continue
+            
+            # We only care about emoji-style sequences
+            if "emoji style" in parts[1]:
+                hex_codes = parts[0].strip().split()
+                if len(hex_codes) == 2: # Should be <base> <FE0F>
+                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
+                    sequences.add(sequence_str)
+        except Exception:
+            pass # Ignore malformed lines
+            
+    print(f"Loaded {len(sequences)} RGI emoji-style variation sequences.")
+    return sequences
+
+# The Protocol Parsers
+
+# --- IDNA2008 PARSER (Strict RFC 5892) ---
+def _parse_idna2008(txt: str):
+    """
+    Parses Idna2008.txt (RFC 5892).
+    Stores: PVALID, CONTEXTJ, CONTEXTO, DISALLOWED, UNASSIGNED.
+    """
+    store = DATA_STORES["Idna2008"] = {}
+    for line in txt.splitlines():
+        if '#' in line: line = line.split('#')[0]
+        if not line.strip(): continue
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        code_range = parts[0]
+        category = parts[1].strip()
+        
+        if '..' in code_range:
+            start, end = map(lambda x: int(x, 16), code_range.split('..'))
+        else:
+            start = end = int(code_range, 16)
+            
+        for cp in range(start, end + 1):
+            store[cp] = category
+
+# --- UTS #46 PARSER (Compatibility & NV8) ---
+def _parse_idna_mapping(txt: str):
+    """
+    Parses UTS #46 IdnaMappingTable.txt.
+    Stores Status, Mappings, NV8/XV8 flags.
+    """
+    store = DATA_STORES["IdnaMap"] = {
+        "deviation": set(), "ignored": set(), "disallowed": set(), 
+        "mapped": set(), "nv8": set(), "xv8": set()
+    }
+    
+    for line in txt.splitlines():
+        # Parsing 4-column format: Code; Status; Mapping; IDNA2008_Status
+        raw_line = line.split('#')[0]
+        if not raw_line.strip(): continue
+        
+        parts = [p.strip() for p in raw_line.split(';')]
+        if len(parts) < 2: continue
+        
+        code_range = parts[0]
+        status = parts[1].strip()
+        
+        # Check for NV8/XV8 in column 4 (index 3)
+        idna08_status = parts[3] if len(parts) > 3 else ""
+        is_nv8 = "NV8" in idna08_status
+        is_xv8 = "XV8" in idna08_status
+        
+        if '..' in code_range:
+            start, end = map(lambda x: int(x, 16), code_range.split('..'))
+        else:
+            start = end = int(code_range, 16)
+            
+        target_set = store.get(status)
+        if target_set is not None:
+            for cp in range(start, end + 1):
+                target_set.add(cp)
+                if is_nv8: store["nv8"].add(cp)
+                if is_xv8: store["xv8"].add(cp)
+
+# The Builders & Overrides
+
+def _add_manual_data_overrides():
+    """
+    Manually injects security-related data that isn't in the UCD files.
+    This flags broad "compatibility" blocks as "Discouraged" for security analysis.
+    """
+    print("Adding manual security overrides...")
+    store_key = "Discouraged"
+    store = DATA_STORES[store_key]
+    
+    # Ranges defined by Unicode blocks known to be problematic
+    # (e.g., CJK Compat, Half/Fullwidth, Presentation Forms)
+    discouraged_ranges = [
+        (0x2F00, 0x2FDF, "Kangxi Radicals"),
+        (0x2FF0, 0x2FFF, "Ideographic Description"),
+        (0x31C0, 0x31EF, "CJK Strokes"),
+        (0x3200, 0x32FF, "Enclosed CJK Letters and Months"),
+        (0x3300, 0x33FF, "CJK Compatibility"),
+        (0xF900, 0xFAFF, "CJK Compatibility Ideographs"),
+        (0xFB00, 0xFB4F, "Alphabetic Presentation Forms"), # Ligatures
+        (0xFB50, 0xFDFF, "Arabic Presentation Forms-A"),
+        (0xFE10, 0xFE1F, "Vertical Forms"),
+        (0xFE20, 0xFE2F, "Combining Half Marks"),
+        (0xFE30, 0xFE4F, "CJK Compatibility Forms"),
+        (0xFE50, 0xFE6F, "Small Form Variants"),
+        (0xFE70, 0xFEFF, "Arabic Presentation Forms-B"), # Excludes BOM
+        (0xFF00, 0xFFEF, "Halfwidth and Fullwidth Forms"),
+        (0x1F100, 0x1F1FF, "Enclosed Alphanumeric Supplement"),
+        (0x1F200, 0x1F2FF, "Enclosed Ideographic Supplement"),
+        (0x2F800, 0x2FA1F, "CJK Compatibility Ideographs Supplement"),
+    ]
+
+    ranges_list = []
+    for s, e, v in discouraged_ranges:
+        ranges_list.append((s, e, v))
+
+    ranges_list.sort()
+    
+    for s, e, v in ranges_list:
+        store["ranges"].append((s, e, v))
+        store["starts"].append(s)
+        store["ends"].append(e)
+    
+    print(f"Loaded {len(ranges_list)} manual 'Discouraged' ranges.")
+
+def build_invis_table():
+    """
+    Populates the global INVIS_TABLE with forensic bitmasks.
+    """
+    global INVIS_TABLE
+    
+    def apply_mask(ranges, mask):
+        if not ranges: return
+        for item in ranges:
+            start = item[0]
+            end = item[1]
+            start, end = max(0, start), min(1114111, end)
+            for cp in range(start, end + 1):
+                INVIS_TABLE[cp] |= mask
+
+    # Interlinear Annotation Controls
+    apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
+
+    # In build_invis_table:
+    apply_mask([(0x11A3E, 0x11A3E)], INVIS_DEFAULT_IGNORABLE)
+
+    # Manual Patch for New List Items & Historic Controls
+    # Comprehensive coverage for Unicode 14.0/15.0+ and script-specific invisibles
+    # that might not be flagged in older UCD DefaultIgnorable files.
+    apply_mask([
+        (0x180B, 0x180F),  # Mongolian FVS 1-4 (Inc. 180F)
+        (0x2065, 0x2065),  # Reserved / Invisible Operator
+        (0x1D159, 0x1D159),# Musical Null Notehead
+        (0x133FC, 0x133FC),# Egyptian Z015B (Font Exploit)
+        (0x16FE4, 0x16FE4),# Khitan Small Script Filler
+        (0x13439, 0x1343F),# Egyptian Hieroglyph Format Controls (Extended)
+        (0x1BCA4, 0x1BCAE),# Shorthand Format Controls (Extended)
+        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
+        (0x11A47, 0x11A47),# Zanabazar Square Subjoiner
+        (0x11A99, 0x11A99),# Soyombo Subjoiner
+        (0x1107F, 0x1107F),# Brahmi Number Joiner
+        (0x110BD, 0x110BD),# Kaithi Number Sign
+        (0x110CD, 0x110CD),# Kaithi Number Sign Above
+        (0x11446, 0x11446),# Newa Sandhi Mark
+        (0x0600, 0x0605),  # Arabic Number Signs (0600-0605)
+        (0x06DD, 0x06DD),  # Arabic End of Ayah
+        (0x08E2, 0x08E2),  # Arabic Disputed End of Ayah
+        (0x070F, 0x070F),  # Syriac Abbreviation Mark
+        (0x1BC9D, 0x1BC9E) # Duployan Shorthand Controls
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # Noncharacters (Process-Internal)
+    # Includes FFFE, FFFF, and the FDD0-FDEF block.
+    # These trigger "Red/Critical" flags in the Atlas.
+    apply_mask([
+        (0xFFFE, 0xFFFF),      # End-of-plane nonchars
+        (0xFDD0, 0xFDEF)       # Process-internal block
+    ], INVIS_CRITICAL_CONTROL)
+
+    # Manual Patch for New List Items & Historic Controls
+    # Ensures detection in Stats/Atlas/Threat Score
+    apply_mask([
+        (0x180B, 0x180F),  # Mongolian FVS 1-4
+        (0x2065, 0x2065),  # Reserved
+        (0x1D159, 0x1D159),# Musical Null
+        (0x133FC, 0x133FC),# Egyptian Z015B
+        (0x16FE4, 0x16FE4),# Khitan Filler
+        (0x13439, 0x1343B),# Egyptian Insertions
+        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
+        (0x11A47, 0x11A47),# Zanabazar Subjoiner
+        (0x11A99, 0x11A99),# Soyombo Subjoiner
+        (0x1107F, 0x1107F),# Brahmi Number Joiner
+        (0x110BD, 0x110BD),# Kaithi Number Sign
+        (0x110CD, 0x110CD),# Kaithi Number Sign Above
+        (0x11446, 0x11446),# Newa Sandhi Mark
+        (0x0600, 0x0605),  # Arabic Number Signs
+        (0x06DD, 0x06DD),  # Arabic End of Ayah
+        (0x08E2, 0x08E2),  # Arabic Disputed End of Ayah
+        (0x070F, 0x070F),  # Syriac SAM
+        (0x1BC9D, 0x1BC9E) # Duployan Controls
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # Manual Patch for New List Items & Historic Controls
+    # Ensures detection in Stats/Atlas/Threat Score
+    apply_mask([
+        (0x180B, 0x180F),  # Mongolian FVS 1-4
+        (0x2065, 0x2065),  # Reserved
+        (0x1D159, 0x1D159),# Musical Null
+        (0x133FC, 0x133FC),# Egyptian Z015B
+        (0x16FE4, 0x16FE4),# Khitan Filler
+        (0x13439, 0x1343B),# Egyptian Insertions
+        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
+        (0x11A47, 0x11A47),# Zanabazar Subjoiner
+        (0x11A99, 0x11A99),# Soyombo Subjoiner
+        (0x1107F, 0x1107F),# Brahmi Number Joiner
+        (0x110BD, 0x110BD),# Kaithi Number Sign
+        (0x110CD, 0x110CD),# Kaithi Number Sign Above
+        (0x11446, 0x11446) # Newa Sandhi Mark
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # Default Ignorable
+    ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
+    apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
+
+    # Join Controls
+    apply_mask([(0x200C, 0x200D)], INVIS_JOIN_CONTROL)
+    # --- Explicitly catch CGJ (U+034F) as a Join Control ---
+    # It acts as invisible glue, so we treat it as a structural joiner for forensics.
+    apply_mask([(0x034F, 0x034F)], INVIS_JOIN_CONTROL)
+
+    # Zero Width Spacing
+    apply_mask([(0x200B, 0x200B), (0x2060, 0x2060), (0xFEFF, 0xFEFF)], INVIS_ZERO_WIDTH_SPACING)
+
+    # Bidi Controls
+    bidi_ranges = DATA_STORES.get("BidiControl", {}).get("ranges", [])
+    apply_mask(bidi_ranges, INVIS_BIDI_CONTROL)
+
+    # Tags
+    apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
+
+    # Add 0x180F and 0x16FE4 to the manual mask list
+    apply_mask([
+        (0x180B, 0x180F),  # Updated range to include FVS4 (180F)
+        (0x2065, 0x2065), 
+        (0x1D159, 0x1D159), 
+        (0x133FC, 0x133FC),
+        (0x16FE4, 0x16FE4) # Khitan Filler
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # Manual Patch for New List Items (Ensure detection in Stats/Atlas)
+    # These might not be in UCD "DefaultIgnorable" yet, but we want to flag them.
+    # Includes: Mongolian FVS (180B-180D), Reserved (2065), Musical Null (1D159)
+    apply_mask([
+        (0x180B, 0x180D), # Mongolian FVS 1-3
+        (0x2065, 0x2065), # Reserved / Invisible Operator
+        (0x1D159, 0x1D159), # Musical Null Notehead
+        (0x133FC, 0x133FC)  # Egyptian Z015B (Exploit)
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # Variation Selectors
+    apply_mask([(0xFE00, 0xFE0F)], INVIS_VARIATION_STANDARD)
+    apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
+
+    # Do Not Emit
+    apply_mask(DATA_STORES.get("DoNotEmit", {}).get("ranges", []), INVIS_DO_NOT_EMIT)
+
+    # Soft Hyphen
+    apply_mask([(0x00AD, 0x00AD)], INVIS_SOFT_HYPHEN)
+
+    # Non-Standard Newlines
+    apply_mask([(0x2028, 0x2029)], INVIS_NONSTANDARD_NL)
+
+    # Non-ASCII Spaces (Zs != 0x20)
+    # Explicitly included MVS (0x180E) and Ogham (0x1680)
+    zs_ranges = [
+        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E), 
+        (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), 
+        (0x3000, 0x3000)
+    ]
+    apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE)
+
+    # --- MANUAL FORENSIC OVERRIDES ---
+    
+    # The "False Vacuums" (Letters/Symbols that act as Spaces)
+    # We map these to INVIS_NON_ASCII_SPACE so they trigger "Deceptive Space" flags.
+    # U+3164 (Hangul Filler), U+FFA0 (Halfwidth Filler), U+2800 (Braille Blank)
+    apply_mask([(0x3164, 0x3164), (0xFFA0, 0xFFA0), (0x2800, 0x2800)], INVIS_NON_ASCII_SPACE)
+
+    # The "Ghost Operators" & "Fillers"
+    # These are technically 'Lo' (Letters) or 'Cf' (Format) but behave like invisibles.
+    # U+115F (Choseong), U+1160 (Jungseong), U+2064 (Invisible Plus)
+    # We map these to INVIS_DEFAULT_IGNORABLE so they trigger "Invisible" flags.
+    apply_mask([(0x115F, 0x1160), (0x2061, 0x2064)], INVIS_DEFAULT_IGNORABLE)
+
+    # The "Structural Containers" (Scoping)
+    # Egyptian, Musical, Shorthand format controls.
+    # Map to INVIS_DEFAULT_IGNORABLE.
+    apply_mask([
+        (0x13437, 0x13438), # Egyptian
+        (0x1D173, 0x1D17A), # Musical
+        (0x1BCA0, 0x1BCA3)  # Shorthand
+    ], INVIS_DEFAULT_IGNORABLE)
+
+    # The "Zombie Controls" & Invisible Math
+    # These are Format (Cf) characters that are deprecated or invisible.
+    # Map to INVIS_DEFAULT_IGNORABLE.
+    apply_mask([
+        (0x206A, 0x206F), # Deprecated Formatting (ISS, ASS, etc.)
+        (0x2061, 0x2063), # Invisible Math (FA, IT, IS)
+        (0x17B4, 0x17B5)  # Khmer Invisible Vowels
+    ], INVIS_DEFAULT_IGNORABLE)
+    
+    # Object Replacement Character
+    # Technically 'So' (Symbol), but acts as a placeholder.
+    # Map to INVIS_DEFAULT_IGNORABLE to ensure it's flagged.
+    apply_mask([(0xFFFC, 0xFFFC)], INVIS_DEFAULT_IGNORABLE)
+
+    # The "Layout Locks" (Glue)
+    # These prevent line breaks. We don't have a specific bitmask for "Glue" yet, 
+    # but if you want to detect "Layout Sabotage", you might map them to INVIS_ZERO_WIDTH_SPACING
+    # or create a new mask. For now, leaving them as visual characters is safer 
+    # unless you want to flag them as "Suspicious". 
+    # (Recommendation: Leave unmasked for now, rely on the [TAG] mapping in Part 1 for visibility).
+
+    # Map NUL (0x00), ESC (0x1B), and DEL (0x7F) to the Bitmask
+    # This ensures the O(1) engine sees them as "Invisibles" too.
+    apply_mask([(0x0000, 0x0000), (0x001B, 0x001B), (0x007F, 0x007F)], INVIS_CRITICAL_CONTROL)
+    
+    # Map C0 controls (0x00-0x1F) excluding whitespace (TAB/LF/CR)
+    # This aligns the Bitmask perfectly with the 'reveal2' Dictionary
+    c0_controls = []
+    for cp in range(0x00, 0x20):
+        if cp not in (0x09, 0x0A, 0x0D): # Skip TAB, LF, CR
+            c0_controls.append((cp, cp))
+    apply_mask(c0_controls, INVIS_CRITICAL_CONTROL)
+    
+    # Map C1 Controls (0x80-0x9F) as Critical
+    # These are legacy control codes that often indicate encoding errors or obfuscation.
+    # Note: 0x85 (NEL) is also handled as a newline elsewhere, but it IS a control.
+    apply_mask([(0x80, 0x9F)], INVIS_CRITICAL_CONTROL)
+    
+    # Map Plane-End Noncharacters (FFFE/FFFF) for ALL Planes (0-16)
+    # U+1FFFE, U+1FFFF, U+2FFFE, etc.
+    plane_ends = []
+    for plane in range(1, 17): # Planes 1 through 16
+        base = plane * 0x10000
+        plane_ends.append((base + 0xFFFE, base + 0xFFFF))
+    apply_mask(plane_ends, INVIS_CRITICAL_CONTROL)
+
+def run_self_tests():
+    """
+    PARANOID MODE: Verify that INVIS_TABLE bitmasks strictly match the UCD data.
+    This runs once at startup. If it fails, it prints critical warnings to the console.
+    """
+    print("--- Running Forensic Self-Tests ---")
+    
+    def check_property(store_key, mask_bit, name):
+        """Verifies that every CP in DATA_STORES[store_key] has mask_bit set."""
+        store = DATA_STORES.get(store_key, {})
+        ranges = store.get("ranges", [])
+        
+        missing_count = 0
+        checked_count = 0
+        
+        for item in ranges:
+            start, end = item[0], item[1]
+            start, end = max(0, start), min(1114111, end)
+            
+            for cp in range(start, end + 1):
+                checked_count += 1
+                if not (INVIS_TABLE[cp] & mask_bit):
+                    missing_count += 1
+                    if missing_count <= 5: # Print first 5 failures
+                        print(f"TEST FAIL [{name}]: U+{cp:04X} missing bit.")
+                        
+        if missing_count == 0:
+            print(f"PASS: {name} ({checked_count} codepoints verified)")
+        else:
+            print(f"CRITICAL FAIL: {name} has {missing_count} missing coverage!")
+
+    # 1. Verify Bidi Controls
+    check_property("BidiControl", INVIS_BIDI_CONTROL, "Bidi Controls")
+
+    # 2. Verify Join Controls
+    # We loaded this into "JoinControl" bucket from PropList
+    check_property("JoinControl", INVIS_JOIN_CONTROL, "Join Controls")
+
+    # 3. Verify Tags (if available in PropList, otherwise we rely on range)
+    # Note: PropList might call it "Pattern_Syntax" or "Depreciated" depending on version
+    # We manually mapped 0xE0000..0xE007F, so we check that range directly
+    tag_missing = 0
+    for cp in range(0xE0000, 0xE0080):
+        if not (INVIS_TABLE[cp] & INVIS_TAG):
+            tag_missing += 1
+    if tag_missing == 0:
+        print(f"PASS: Tags Plane 14 (128 codepoints verified)")
+    else:
+        print(f"CRITICAL FAIL: Tags has {tag_missing} missing coverage!")
+
+    # 4. Verify Default Ignorables (The Big One)
+    check_property("DefaultIgnorable", INVIS_DEFAULT_IGNORABLE, "Default Ignorables")
+
+    # 5. Verify Do Not Emit
+    check_property("DoNotEmit", INVIS_DO_NOT_EMIT, "Do Not Emit")
+
+    # 6. Verify WhiteSpace (PropList) -> INVIS_NON_ASCII_SPACE
+    # Note: Our mask excludes ASCII space, so we test logic, not direct mapping
+    # This is complex to test strictly without replicating logic, so we skip for now 
+    # to avoid false failures on 0x20.
+
+    # 7. Verify Variation Selectors
+    # Check a few known ones
+    if (INVIS_TABLE[0xFE0F] & INVIS_VARIATION_STANDARD) and (INVIS_TABLE[0xE0100] & INVIS_VARIATION_IDEOG):
+        print("PASS: Variation Selectors (Sample check)")
+    else:
+        print("CRITICAL FAIL: Variation Selector bits missing!")
+
+    print("--- Self-Tests Complete ---")
+
+async def load_unicode_data():
+
+    # --- USE THE GLOBAL LOCK ---
+    global LOADING_LOCK
+    
+    # 1. Check if another process is already loading
+    if LOADING_LOCK:
+        print("LOG: Loading locked. Skipping concurrent execution.")
+        return
+
+    # 2. Check if data is already fully loaded (from a previous completed run)
+    if "Blocks" in DATA_STORES and isinstance(DATA_STORES["Blocks"], frozenset):
+        print("LOG: Data already loaded. Skipping re-initialization.")
+        return
+
+    # 3. Lock the door immediately
+    LOADING_LOCK = True
+    
+    """Fetches, parses, and then triggers a UI update."""
+    global LOADING_STATE
+    
+    async def fetch_file(filename):
+        try:
+            # Use "./" prefix for all files (no subdirectories)
+            response = await pyfetch(f"./{filename}")
+            if response.ok:
+                return await response.string()
+            else:
+                print(f"Failed to load {filename}: {response.status}")
+                return None
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            return None
+
+    LOADING_STATE = "LOADING"
+    render_status(f"Loading Unicode data files...")
+    print("Unicode data loading started.")
+    
+    try:
+        # --- MODIFIED (Feature 2 Expanded) ---
+        files_to_fetch = [
+            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt",
+            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
+            "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
+            "Scripts.txt",
+            "emoji-variation-sequences.txt",
+            "WordBreakProperty.txt",
+            "SentenceBreakProperty.txt",
+            "GraphemeBreakProperty.txt",
+            "DoNotEmit.txt",
+            "DerivedCombiningClass.txt",
+            "DerivedDecompositionType.txt",
+            "DerivedBinaryProperties.txt",
+            "DerivedNumericType.txt",
+            "EastAsianWidth.txt",
+            "VerticalOrientation.txt",
+            "BidiBrackets.txt",
+            "BidiMirroring.txt",
+            "DerivedNormalizationProps.txt",
+            "CompositionExclusions.txt",
+            "emoji-sequences.txt",
+            "emoji-zwj-sequences.txt",
+            "emoji-data.txt",
+            "emoji-test.txt",
+            "inverse_confusables.json",
+            "ascii_confusables.json",
+            "IdnaMappingTable.txt",
+            "Idna2008.txt"
+        ]
+        results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
+    
+        # --- MODIFIED (Feature 2 Expanded) ---
+        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_txt, variants_txt, 
+         script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
+         scripts_txt, emoji_variants_txt, word_break_txt, 
+         sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
+         decomp_type_txt, derived_binary_txt, num_type_txt, 
+         ea_width_txt, vert_orient_txt, bidi_brackets_txt,
+         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt, 
+         inverse_json, ascii_json, idna_map_txt, idna_2008_txt) = results
+    
+        # Parse each file
+        if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
+        if age_txt: _parse_and_store_ranges(age_txt, "Age")
+        if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
+        if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
+        if intentional_txt: _parse_intentional(intentional_txt)
+        if confusables_txt:
+            # Parse Confusables with Type Preservation (Forensic Upgrade)
+            # Format: Code ; Target ; Type # Comment
+            # We strictly need the 'Type' (MA, ML, SA, SL) for the new Intel Engine.
+            temp_map = {}
+            lines = confusables_txt.split('\n')
+            for line in lines:
+                # 1. Strip comments first to ensure clean parsing
+                if '#' in line:
+                    line = line.split('#')[0]
+                
+                if line.strip():
+                    parts = line.split(';')
+                    if len(parts) >= 3:
+                        src = int(parts[0].strip(), 16)
+                        
+                        # Parse target sequence
+                        tgt_hex = parts[1].strip().split()
+                        tgt = "".join([chr(int(x, 16)) for x in tgt_hex])
+                        
+                        # Parse Type (MA, ML, SA, SL)
+                        tag = parts[2].strip()
+                        
+                        # Store as tuple: (target_string, tag_type)
+                        # This enables the "Smart Skeleton" logic
+                        temp_map[src] = (tgt, tag)
+                        
+            DATA_STORES["Confusables"] = temp_map
+            print(f"Loaded {len(temp_map)} Confusable mappings with Forensic Types.")
+
+        # --- Load Forensic JSONs ---
+        if inverse_json:
+            DATA_STORES["InverseConfusables"] = json.loads(inverse_json)
+            print(f"Loaded Inverse Confusables map.")
+
+        if ascii_json:
+            # Update the global ASCII_CONFUSABLES set with rigorous data
+            # We assume ascii_json is a list of integers
+            loaded_ascii = set(json.loads(ascii_json))
+            global ASCII_CONFUSABLES
+            ASCII_CONFUSABLES = loaded_ascii
+            print(f"Loaded {len(ASCII_CONFUSABLES)} high-risk ASCII homoglyphs.")
+        
+        # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
+        std_base_set = set()
+        std_selector_set = set()
+        emoji_base_set = set()
+        
+        if variants_txt: 
+            std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
+        else:
+            print("--- WARNING: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
+            
+        if emoji_variants_txt: 
+            emoji_base_set = _parse_emoji_variants(emoji_variants_txt)
+        else:
+            print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
+        
+        # 1. Create a new, temporary combined set, starting with the emoji set
+        combined_base_set = emoji_base_set.union(std_base_set)
+        
+        # 2. Store it as an IMMUTABLE frozenset
+        DATA_STORES["VariantBase"] = frozenset(combined_base_set)
+        DATA_STORES["VariantSelectors"] = frozenset(std_selector_set) # Make this one immutable too
+        
+        # --- End Feature 1 Logic ---
+
+        # --- NEW (Phase 1: Emoji Bugfix - Optimized) ---
+        # Build the RGI Sequence Set from Tiers 1-3
+        set_zwj = set()
+        set_non_zwj = set()
+        set_variations = set()
+        
+        if emoji_zwj_seq_txt:
+            set_zwj = _parse_emoji_zwj_sequences(emoji_zwj_seq_txt)
+        
+        if emoji_seq_txt:
+            set_non_zwj = _parse_emoji_sequences(emoji_seq_txt)
+            
+        if emoji_variants_txt:
+            # We re-use the file we already loaded for variants
+            set_variations = _parse_emoji_variation_sequences(emoji_variants_txt)
+            
+        # Combine all sequences into one master set
+        combined_rgi_sequences = set_zwj.union(set_non_zwj).union(set_variations)
+        
+        # --- THIS IS THE OPTIMIZATION ---
+        # Store as a set (fast membership) + max length (for sliding window)
+        DATA_STORES["RGISequenceSet"] = combined_rgi_sequences
+        DATA_STORES["RGISequenceMaxLen"] = max((len(s) for s in combined_rgi_sequences), default=0)
+        # --- END OPTIMIZATION ---
+        
+        # Store the sorted list (optional, but good for debugging)
+        DATA_STORES["RGISequenceList"] = sorted(
+            list(combined_rgi_sequences),
+            key=len,
+            reverse=True
+        )
+        
+        print(
+            f"--- Emoji Engine: Created RGISequenceSet with "
+            f"{len(DATA_STORES['RGISequenceSet'])} total sequences; "
+            f"max length = {DATA_STORES['RGISequenceMaxLen']}."
+        )
+        # --- END (Phase 1: Emoji Bugfix) ---
+
+        # --- NEW (Phase 2: Emoji Powerhouse) ---
+        # Load single-char properties from emoji-data.txt
+        if emoji_data_txt:
+            emoji_prop_map = _define_emoji_property_map()
+            _parse_property_file(emoji_data_txt, emoji_prop_map)
+        
+        # Load qualification status for sequences
+        if emoji_test_txt:
+            DATA_STORES["EmojiQualificationMap"] = _parse_emoji_test(emoji_test_txt)
+        else:
+            DATA_STORES["EmojiQualificationMap"] = {}
+        # --- END (Phase 2: Emoji Powerhouse) ---
+        
+        if script_ext_txt: _parse_script_extensions(script_ext_txt)
+        if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
+        if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
+        
+        # --- NEW (Feature 2 Expanded) ---
+        if word_break_txt: _parse_and_store_ranges(word_break_txt, "WordBreak")
+        if sentence_break_txt: _parse_and_store_ranges(sentence_break_txt, "SentenceBreak")
+        if grapheme_break_txt: _parse_and_store_ranges(grapheme_break_txt, "GraphemeBreak")
+
+        # --- NEW (Feature 3) ---
+        if donotemit_txt: _parse_donotemit(donotemit_txt)
+
+        # New ones
+        if ccc_txt: _parse_and_store_ranges(ccc_txt, "CombiningClass")
+        if decomp_type_txt: _parse_and_store_ranges(decomp_type_txt, "DecompositionType")
+        if num_type_txt: _parse_and_store_ranges(num_type_txt, "NumericType")
+
+        if ea_width_txt: _parse_and_store_ranges(ea_width_txt, "EastAsianWidth")
+        if vert_orient_txt: _parse_and_store_ranges(vert_orient_txt, "VerticalOrientation")
+        if bidi_brackets_txt: _parse_bidi_brackets(bidi_brackets_txt)
+        if bidi_mirroring_txt: _parse_bidi_mirroring(bidi_mirroring_txt)
+        if comp_ex_txt: _parse_composition_exclusions(comp_ex_txt)
+        
+        # Use the multi-property parser for DerivedBinaryProperties.txt
+        if derived_binary_txt:
+            _parse_property_file(derived_binary_txt, {
+                "Bidi_Mirrored": "BidiMirrored",
+                "Logical_Order_Exception": "LogicalOrderException"
+                # We can add more properties here later
+            })
+
+        # Parse DerivedNormalizationProps.txt
+        if norm_props_txt:
+            _parse_property_file(norm_props_txt, {
+                "Changes_When_NFKC_Casefolded": "ChangesWhenNFKCCasefolded"
+                # This file also contains Changes_When_Casemapped, etc.
+                # We can add more properties here later as needed.
+            })
+        
+        if proplist_txt:
+            _parse_property_file(proplist_txt, {
+                "Bidi_Control": "BidiControl",
+                "Join_Control": "JoinControl",
+                "Extender": "Extender",
+                "White_Space": "WhiteSpace",
+                "Deprecated": "Deprecated",
+                "Dash": "Dash",
+                "Quotation_Mark": "QuotationMark",
+                "Terminal_Punctuation": "TerminalPunctuation",
+                "Sentence_Terminal": "SentenceTerminal",
+                "Variation_Selector": "VariationSelector",
+                "Bidi_Mirrored": "BidiMirrored"
+            })
+
+        # ---: Create the bucket dynamically ---
+        if derivedcore_txt:
+            # 1. Initialize the new bucket
+            DATA_STORES["DefaultIgnorable"] = {"ranges": [], "starts": [], "ends": []}
+            
+            # 2. Map the file properties
+            _parse_property_file(derivedcore_txt, {
+                # Map the specific property name to our new bucket key
+                "Default_Ignorable_Code_Point": "DefaultIgnorable",
+                "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
+                "Alphabetic": "Alphabetic", 
+                "Logical_Order_Exception": "LogicalOrderException"
+            })
+
+        # --- IDNA Parsers ---
+        if idna_map_txt: _parse_idna_mapping(idna_map_txt)
+        if idna_2008_txt: _parse_idna2008(idna_2008_txt)
+        
+        # --- Add Manual Security Overrides ---
+        _add_manual_data_overrides()    
+        
+        # --- NEW: Build Forensic Bitmask Table ---
+        # This must happen AFTER all parsing is done
+        build_invis_table()
+        
+        # --- NEW: Run Paranoid Self-Tests ---
+        run_self_tests()
+        
+        LOADING_STATE = "READY"
+        print("Unicode data loaded successfully.")
+        render_status("Ready.")
+        update_all() # Re-render with ready state
+        
+    except Exception as e:
+        LOADING_STATE = "FAILED"
+        print(f"CRITICAL: Unicode data loading failed. Error: {e}")
+        # ---: Remove 'is_error=True' ---
+        render_status("Error: Failed to load Unicode data. Please refresh.")
+
+# ===============================================
+# BLOCK 5. HELPER UTILITIES & TRANSFORMS
+# ===============================================
+
+# Grapheme Segmenter (UAX #29)
+# Required by: compute_emoji_analysis, inspect_character
+try:
+    GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
+except Exception:
+    GRAPHEME_SEGMENTER = None # Fallback or error handling
+
+# Runtime State Initialization
+HUD_HIT_REGISTRY = {}
+
+# Registry & DOM Helpers
+
+def _register_hit(key: str, start: int, end: int, label: str):
+    """Helper to append a hit to the global registry."""
+    if key not in HUD_HIT_REGISTRY:
+        HUD_HIT_REGISTRY[key] = []
+    HUD_HIT_REGISTRY[key].append((start, end, label))
+
+def _dom_to_logical(t: str, dom_idx: int) -> int:
+    """
+    Converts a DOM UTF-16 index to a Python Logical Code Point index.
+    """
+    if not t: return 0
+    
+    logical_idx = 0
+    utf16_acc = 0
+    
+    for char in t:
+        if utf16_acc >= dom_idx:
+            return logical_idx
+        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        logical_idx += 1
+        
+    return logical_idx
+
+# Visual Helpers
+def get_icon(key, color="currentColor", size=16):
+    path = ICONS.get(key, "")
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{path}</svg>'
+
+# Core Lookup Utilities
+
+def _find_in_ranges(cp: int, store_key: str):
+    """Generic range finder using bisect."""
+    
+    store = DATA_STORES[store_key]
+    starts_list = store["starts"]
+    
+    if not starts_list:
+        return None
+    
+    i = bisect.bisect_right(starts_list, cp) - 1
+    if i >= 0 and cp <= store["ends"][i]:
+        return store["ranges"][i][2] # Return the value
+    return None
+
+def _find_matches_with_indices(regex_key: str, text: str):
+    """Uses matchAll to find all matches and their indices."""
+    regex = REGEX_MATCHER.get(regex_key)
+    if not regex:
+        return [], 0
+    
+    try:
+        matches_iter = window.String.prototype.matchAll.call(text, regex)
+        matches = window.Array.from_(matches_iter)
+        # Use segmenter-aware indices for \p{RGI_Emoji}
+        if regex_key == "RGI Emoji":
+            indices = [m.index for m in matches]
+        else:
+            # For code-point based regex, we must use JS-style indices
+            indices = [m.index for m in matches]
+        return indices, len(indices)
+    except Exception as e:
+        print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
+        return [], 0
+
+def _get_char_script_id(char, cp: int):
+    """Helper for the RLE engine. Returns a single string ID for a char's script."""
+    # 1. Check ScriptExtensions first (for '·', '(', etc.)
+    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+    if script_ext_val:
+        # 'Latn Grek' becomes one "state"
+        return f"Script-Ext: {script_ext_val}"
+
+    # 2. Fall back to primary Script property (using our new data store)
+    script_val = _find_in_ranges(cp, "Scripts")
+    if script_val:
+        return f"Script: {script_val}"
+
+    return "Script: Unknown"
+
+def _compute_storage_metrics(t: str, supplementary_count: int):
+    """
+    Helper to calculate the Physical and Runtime dimensions of the text.
+    Centralizes the 'encode' logic to ensure consistency.
+    """
+    return {
+        "UTF-16 Units": len(t.encode('utf-16-le')) // 2, # JS/Java .length
+        "UTF-8 Bytes": len(t.encode('utf-8')),           # Disk/Network size
+        "Astral Count": supplementary_count              # Re-use existing loop count
+    }
+
+# Sanitization & Escaping
+
+def _escape_html(s: str):
+    """Escapes basic HTML characters including quotes for attribute safety."""
+    s = s.replace("&", "&amp;")
+    s = s.replace("<", "&lt;")
+    s = s.replace(">", "&gt;")
+    s = s.replace('"', "&quot;")
+    return s
+
+def _escape_for_js(s: str) -> str:
+    """
+    Sanitizes a string for safe insertion into a JS single-quoted string literal.
+    Escapes backslashes, quotes, newlines, and dangerous HTML-like sequences.
+    """
+    # 1. Backslash must be first to avoid double-escaping
+    s = s.replace("\\", "\\\\")
+    # 2. Escape quotes
+    s = s.replace("'", "\\'")
+    s = s.replace('"', '\\"')
+    # 3. Escape whitespace control chars
+    s = s.replace("\n", "\\n")
+    s = s.replace("\r", "\\r")
+    # 4. Defensive: Break potentially dangerous tags if they somehow sneaked in
+    s = s.replace("</", "<\\/")
+    return s
+
+# Normalization Engines (Transformations)
+
+def normalize_extended(text: str) -> str:
+    """
+    Extended normalization pipeline:
+    Tier 1: NFKC via unicodedata2 if available
+    Tier 2: fallback Pyodide NFKC
+    Tier 3: manually expand enclosed alphanumerics & width-forms
+    """
+    if not text:
+        return ""
+        
+    # Base normalization (Tier 1 or 2)
+    try:
+        s = _ud.normalize("NFKC", text)
+    except Exception:
+        s = text # Failsafe
+
+    # Manual Enclosed Alphanumerics (fixes ⓼ → 8)
+    s = "".join(ENCLOSED_MAP.get(ch, ch) for ch in s)
+
+    # Normalize Fullwidth ASCII (Ｆ → F)
+    # (U+FF01 to U+FF5E)
+    s = "".join(
+        chr(ord(ch) - 0xFEE0) if 0xFF01 <= ord(ch) <= 0xFF5E else ch
+        for ch in s
+    )
+
+    # Remove default emoji variation selectors (FE0F)
+    # This makes '❤️' (U+2764 FE0F) normalize to '❤' (U+2764)
+    s = re.sub(r"[\uFE0E\uFE0F]", "", s)
+
+    return s
+
+def _generate_uts39_skeleton(t: str, return_events=False):
+    """
+    Generates the UTS #39 'Skeleton' following the full forensic pipeline.
+    
+    Args:
+        t (str): Input string.
+        return_events (bool): If True, returns (skeleton, events_dict). 
+                              If False, returns just skeleton string (Backward Compat).
+    """
+    if LOADING_STATE != "READY" or not t:
+        return ("", {}) if return_events else ""
+        
+    events = {
+        "confusables_mapped": 0,
+        "ignorables_stripped": 0,
+        "mappings": []
+    }
+
+    # 1. NFKC (Compatibility)
+    # Collapses fullwidth (Ａ->A) and ligatures (ﬁ->fi)
+    try:
+        s1 = unicodedata2.normalize("NFKC", t)
+    except:
+        s1 = unicodedata.normalize("NFKC", t)
+
+    # 2. Casefold (Identity)
+    # Collapses case distinctions (A->a)
+    s2 = s1.casefold()
+
+    # 3. Map Confusables (Visual) + Track Events
+    confusables_map = DATA_STORES.get("Confusables", {})
+    mapped_chars = []
+    
+    for char in s2:
+        cp = ord(char)
+        if cp in confusables_map:
+            # Found a mapping!
+            val = confusables_map[cp]
+            
+            # DEFENSIVE UNPACKING: Handles both old (str) and new (tuple) formats
+            if isinstance(val, tuple):
+                tgt, tag = val
+            else:
+                tgt = val
+                tag = "UNK" # Fallback for legacy data
+            
+            mapped_chars.append(tgt)
+            
+            # Log the event
+            events["confusables_mapped"] += 1
+            events["mappings"].append({
+                "char": char,
+                "hex": f"{cp:04X}",
+                "map_to": tgt,
+                "type": tag # MA, ML, etc.
+            })
+        else:
+            mapped_chars.append(char)
+        
+    s3 = "".join(mapped_chars)
+
+    # 4. Strip Default Ignorables & Bidi (Structure) + Track Events
+    # UTS #39 requires stripping these to see the "Visual Bone Structure"
+    filtered_chars = []
+    for char in s3:
+        cp = ord(char)
+        is_ignorable = False
+        
+        # O(1) Bitmask Check
+        if cp < 0x110000:
+             if (INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_CRITICAL_CONTROL)):
+                 is_ignorable = True
+        
+        if not is_ignorable:
+            filtered_chars.append(char)
+        else:
+            events["ignorables_stripped"] += 1
+            
+    s4 = "".join(filtered_chars)
+
+    # 5. NFD Normalization (Canonical Final Form)
+    try:
+        final_skel = unicodedata2.normalize("NFD", s4)
+    except:
+        final_skel = unicodedata.normalize("NFD", s4)
+        
+    if return_events:
+        return final_skel, events
+        
+    return final_skel
+
+# Tokenization & Profile Helpers
+
+def tokenize_forensic(text: str):
+    """
+    Forensic Tokenizer (Adversarial Hardened).
+    Splits on whitespace but treats Invisible/Format characters as PAYLOADS.
+    Returns list of DICTIONARIES.
+    """
+    tokens = []
+    if not text: return tokens
+    
+    # Python's .split() breaks on whitespace (Zs, Cc whitespace)
+    raw_chunks = text.split()
+    
+    current_start = 0
+    for chunk in raw_chunks:
+        # Calculate real index (approximation for locating)
+        idx = text.find(chunk, current_start)
+        if idx == -1: idx = current_start # Fallback
+        current_start = idx + len(chunk)
+        
+        # Strip outer "Open/Close" delimiters to isolate the Identifier
+        clean = chunk.strip("()[]{}<>\"',;!|")
+        
+        if clean:
+            tokens.append({
+                'token': clean,
+                'raw_chunk': chunk,
+                'start': idx,
+                'end': idx + len(chunk),
+                'kind': 'word' # Default kind
+            })
+            
+    return tokens
+
+def _get_script_set(token: str) -> set:
+    """Returns the set of unique Scripts used in the token."""
+    scripts = set()
+    for char in token:
+        cp = ord(char)
+        # 1. Try ScriptExtensions first (Handles common/inherited chars that morph)
+        sc_ext = _find_in_ranges(cp, "ScriptExtensions")
+        if sc_ext:
+            # ScriptExtensions returns space-separated list e.g. "Latn Grek"
+            scripts.update(sc_ext.split())
+        else:
+            # 2. Fallback to base Script
+            sc = _find_in_ranges(cp, "Scripts")
+            if sc and sc not in ("Common", "Inherited"):
+                scripts.add(sc)
+            elif sc == "Common" and 0x30 <= cp <= 0x39:
+                # Digits are often Common but functionally behave as the surrounding script
+                # We don't add them to avoid polluting the set with "Common"
+                pass
+    return scripts
+
+def _get_identifier_profile(token: str) -> dict:
+    """
+    Checks UAX #31 Identifier Status and Type.
+    Returns: { 'status': 'Allowed'|'Restricted'|'Disallowed', 'types': {Set of types} }
+    """
+    # Defaults
+    profile = {
+        "status": "Allowed", 
+        "types": set(),
+        "banned_chars": [] 
+    }
+    
+    overall_status_priority = 0 # 0=Allowed, 1=Restricted, 2=Disallowed
+    
+    for char in token:
+        cp = ord(char)
+        
+        # Check Status
+        # Note: Data loader maps IdentifierStatus ranges. 
+        # Usually: "Allowed" is implicit if not Restricted? 
+        # Actually, UAX31 usually defines 'Allowed' ranges. 
+        # We assume if found in "Restricted" list it is restricted.
+        status_val = _find_in_ranges(cp, "IdentifierStatus")
+        
+        if status_val == "Restricted":
+            overall_status_priority = max(overall_status_priority, 1)
+            profile["banned_chars"].append(char)
+        
+        # Check Type (Technical, Recommended, Obsolete, etc.)
+        type_val = _find_in_ranges(cp, "IdentifierType")
+        if type_val:
+            profile["types"].add(type_val)
+            if type_val in ("Not_Recommended", "Deprecated", "Not_XID", "Obsolete"):
+                overall_status_priority = max(overall_status_priority, 1)
+
+    if overall_status_priority == 1: profile["status"] = "Restricted"
+    if overall_status_priority == 2: profile["status"] = "Disallowed"
+    
+    return profile
+
+def _classify_token_kind(token: str) -> str:
+    """
+    Heuristic classification of token type.
+    """
+    if "@" in token: return "email"
+    if "." in token and not token.startswith(".") and not token.endswith("."):
+        # Rudimentary domain check: looks like parts separated by dots
+        # Refine: check if TLD part is > 1 char
+        parts = token.split(".")
+        if all(len(p) > 0 for p in parts) and len(parts[-1]) >= 2:
+            return "domain"
+    
+    # Check if purely alphanumeric (plus _)
+    # We use a broad regex for "Identifier-like"
+    if re.match(r'^[\w]+$', token): 
+        return "identifier"
+        
+    return "word"
+
+def _get_broad_category(char):
+    """Helper: Maps char to broad Forensic Class (Letter, Number, Symbol, Punct)."""
+    cat = unicodedata.category(char)
+    if cat.startswith('L'): return 'L'
+    if cat.startswith('N'): return 'N'
+    if cat.startswith('P'): return 'P'
+    if cat.startswith('S'): return 'S'
+    if cat.startswith('M'): return 'M' # Mark
+    return 'O' # Other
+
+# Normalization Metrics & Drift
+
+def _generate_uts39_skeleton_metrics(t: str):
+    """
+    Generates the skeleton AND granular drift metrics deterministically.
+    Returns: (skeleton_string, metrics_dict)
+    """
+    if LOADING_STATE != "READY":
+        return "", {}
+        
+    confusables_map = DATA_STORES.get("Confusables", {})
+    
+    mapped_chars = []
+    metrics = {
+        "total_drift": 0,
+        "drift_ascii": 0,        # Safe-ish (1 -> l)
+        "drift_cross_script": 0, # Dangerous (Cyrillic a -> Latin a)
+        "drift_other": 0         # Neutral (Accents, etc.)
+    }
+    
+    for char in t:
+        cp = ord(char)
+        val = confusables_map.get(cp)
+        
+        # [FIX] Handle Tuples
+        skeleton_char_str = None
+        if val:
+            if isinstance(val, tuple):
+                skeleton_char_str = val[0]
+            else:
+                skeleton_char_str = val
+        
+        if skeleton_char_str:
+            mapped_chars.append(skeleton_char_str)
+            metrics["total_drift"] += 1
+            
+            # 1. ASCII Drift
+            if cp < 128 and all(ord(c) < 128 for c in skeleton_char_str):
+                metrics["drift_ascii"] += 1
+            # 2. Cross-Script Drift
+            else:
+                input_script = _find_in_ranges(cp, "Scripts")
+                target_is_latin = any(_find_in_ranges(ord(c), "Scripts") == "Latin" for c in skeleton_char_str)
+                if input_script not in ("Latin", "Common", "Inherited") and target_is_latin:
+                    metrics["drift_cross_script"] += 1
+                else:
+                    metrics["drift_other"] += 1
+        else:
+            mapped_chars.append(char)
+            
+    return "".join(mapped_chars), metrics
+
+def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
+    """
+    Determines forensic drift using Metadata Proofs.
+    Robustly handles missing metadata for backward compatibility.
+    """
+    # 1. Calculate Standard Equality Deltas
+    changed_nfkc = (raw != nfkc)
+    changed_casefold = (nfkc != nfkc_cf)
+    string_diff_skeleton = (nfkc_cf != skeleton) # Fallback check
+    
+    # 2. Safe Event Unpacking (Back-Compat)
+    if skel_events is None:
+        skel_events = {'confusables_mapped': 0, 'ignorables_stripped': 0}
+        
+    # 3. Use Metadata for Advanced Deltas
+    has_visual_mappings = skel_events.get('confusables_mapped', 0) > 0
+    has_structure_strip = skel_events.get('ignorables_stripped', 0) > 0
+    
+    # Fallback: If string changed but no events recorded (Legacy Mode), assume Visual
+    if string_diff_skeleton and not has_visual_mappings and not has_structure_strip:
+        has_visual_mappings = True
+
+    drift_profile = {
+        "format": False,
+        "identity": False,
+        "visual": False,
+        "structure": False,
+        "verdict": "Stable (No Drift)",
+        "class": "drift-clean",
+        "score": 0,
+        "events": skel_events # Pass through for UI
+    }
+    
+    if not (changed_nfkc or changed_casefold or has_visual_mappings or has_structure_strip or string_diff_skeleton):
+        return drift_profile
+
+    # --- PRIORITY 1: Visual Drift (Homoglyphs) ---
+    if has_visual_mappings:
+        drift_profile["visual"] = True
+        drift_profile["format"] = changed_nfkc
+        drift_profile["identity"] = changed_casefold
+        
+        count = skel_events.get('confusables_mapped', 0)
+        count_str = f"{count} " if count > 0 else ""
+        drift_profile["verdict"] = f"Visual Drift ({count_str}Homoglyphs Mapped)"
+        drift_profile["class"] = "drift-alert"
+        drift_profile["score"] = 3
+        return drift_profile
+
+    # --- PRIORITY 2: Structure Drift (Invisible Stripping) ---
+    if has_structure_strip:
+        drift_profile["structure"] = True
+        drift_profile["format"] = changed_nfkc
+        
+        count = skel_events.get('ignorables_stripped', 0)
+        drift_profile["verdict"] = f"Structure Drift ({count} Hidden Chars Stripped)"
+        drift_profile["class"] = "drift-alert" # High risk because usually malicious
+        drift_profile["score"] = 2
+        return drift_profile
+
+    # --- PRIORITY 3: Identity Drift ---
+    if changed_casefold:
+        drift_profile["identity"] = True
+        drift_profile["format"] = changed_nfkc
+        drift_profile["verdict"] = "Identity Drift (Case Differences)"
+        drift_profile["class"] = "drift-warn"
+        drift_profile["score"] = 1
+        return drift_profile
+
+    # --- PRIORITY 4: Format Drift ---
+    if changed_nfkc:
+        drift_profile["format"] = True
+        drift_profile["verdict"] = "Format Drift (Compatibility / Width)"
+        drift_profile["class"] = "drift-warn"
+        drift_profile["score"] = 1
+        return drift_profile
+        
+    return drift_profile
+
+# Inspector & Visualization Helpers
+
+def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
+    """
+    Helper to build the <span class="confusable" title="...">...</span> HTML.
+    This logic is extracted from the original compute_threat_analysis loop.
+    """
+    try:
+        skeleton_char_str = confusables_map[cp]
+        skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
+        skeleton_cp = ord(skeleton_char_str[0])
+        source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
+        target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
+
+        if (source_script != target_script and 
+            target_script != "Common" and 
+            source_script != "Unknown"):
+            risk_label = f"{source_script}–{target_script} Confusable"
+        else:
+            risk_label = f"{source_script} Confusable"
+
+        title = (
+            f"Appears as: '{char}' (U+{cp:04X})\n"
+            f"Script: {source_script}\n"
+            f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
+            f"Risk: {risk_label}"
+        )
+        return (
+            f'<span class="confusable" title="{_escape_html(title)}">'
+            f"{_escape_html(char)}</span>"
+        )
+    except Exception:
+        # Failsafe
+        return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
+
+def _get_single_char_skeleton(s: str) -> str:
+    """
+    Generates the UTS #39 skeleton for a single character context.
+    Reuses the global Confusables map to ensure consistency with Threat Engine.
+    """
+    confusables_map = DATA_STORES.get("Confusables", {})
+    res = []
+    for char in s:
+        cp = ord(char)
+        val = confusables_map.get(cp)
+        
+        if val:
+            # DEFENSIVE: Handle New Tuple Format (tgt, tag) vs Legacy String
+            if isinstance(val, tuple):
+                mapped = val[0] # Extract the skeleton string
+            else:
+                mapped = val    # Legacy fallback
+        else:
+            mapped = char       # No mapping exists
+            
+        res.append(mapped)
+    return "".join(res)
+
+def _classify_macro_type(cp, cat, id_status, mask):
+    """
+    Determines the 'Macro-Type' for the Forensic HUD.
+    Refined V3 Logic: strict separation of Rot, Syntax, and Threat.
+    """
+    is_ascii = (cp <= 0x7F)
+
+    # 0. DATA ROT (Corruption / Integrity Failures)
+    # Cn (Unassigned), Cs (Surrogate), Co (Private Use)
+    # Add FFFD and NUL to the definition of ROT
+    if cat in ('Cn', 'Cs', 'Co') or cp == 0xFFFD or cp == 0x0000: 
+        return "ROT"
+
+    # 1. TRUE THREATS (Active Attack Vectors)
+    # Must mask specifically to Bidi, High-Risk Invisibles, or Tags
+    if mask & (INVIS_BIDI_CONTROL | INVIS_HIGH_RISK_MASK): 
+        return "THREAT"
+
+    # 2. FORMAT / CONTROL (Context-Dependent)
+    # Cf (Format) that isn't high-risk. E.g. ZWNJ in Persian is fine.
+    if cat == 'Cf': 
+        return "COMPLEX"
+
+    # 3. COMPLEX (Rich Text)
+    # Combining Marks (Mn, Mc, Me)
+    if cat.startswith('M'): 
+        return "COMPLEX"
+    
+    # 4. WHITESPACE (Structural)
+    if cat.startswith('Z'):
+        return "SYNTAX"
+
+    # 5. STANDARD (Safe Atoms)
+    # ASCII Letters/Digits.
+    if is_ascii and cat in ('Ll', 'Lu', 'Nd'): 
+        return "STANDARD"
+
+    # 6. SYNTAX (Technical/Punctuation)
+    # ASCII Punctuation/Symbols.
+    if is_ascii and cat.startswith(('P', 'S')):
+        return "SYNTAX"
+
+    # 7. LEGACY / EXTENDED (Everything Else)
+    # Extended Latin, Emoji, Symbols, non-ASCII punctuation.
+    return "LEGACY"
+
+def _get_ghost_chain(char: str):
+    """
+    Returns the Quad-State Ghost Chain if meaningful normalization occurs.
+    Filters out simple ASCII case changes to reduce noise.
+    """
+    raw = char
+    nfkc = normalize_extended(raw)
+    casefold = nfkc.casefold()
+    
+    # Use the consistent skeleton logic
+    skeleton = _get_single_char_skeleton(casefold)
+
+    # NOISE FILTER: Ignore simple ASCII case changes (A -> a)
+    def is_boring_change(a, b):
+        return a == b or (len(a) == 1 and len(b) == 1 and ord(a) < 128 and ord(b) < 128 and a.lower() == b.lower())
+
+    # If raw matches skeleton (ignoring case), it's boring
+    if is_boring_change(raw, nfkc) and is_boring_change(nfkc, casefold) and is_boring_change(casefold, skeleton):
+        return None
+
+    # VISUALIZE ERASURE: If char disappears, show ∅
+    return {
+        "raw": raw,
+        "nfkc": nfkc if nfkc else "∅",
+        "casefold": casefold if casefold else "∅",
+        "skeleton": skeleton if skeleton else "∅"
+    }
+
+def _compute_cluster_identity(cluster_str, base_char_data):
+    """
+    Forensic Cluster Aggregator (Pro Grade).
+    Implements TR-51 Emoji Semantics, UAX #9 Strong Bidi, and UAX #31 Script logic.
+    """
+    # 1. Atomic Shortcut
+    if len(cluster_str) == 1:
+        return {
+            "type_label": "CATEGORY (Gc)",
+            "type_val": f"{base_char_data['category_full']} ({base_char_data['category_short']})",
+            "block_val": base_char_data['block'],
+            "script_val": base_char_data['script'],
+            "bidi_val": base_char_data['bidi'],
+            "age_val": base_char_data['age'],
+            "is_cluster": False,
+            "cluster_mask": INVIS_TABLE[ord(cluster_str)] if ord(cluster_str) < 1114112 else 0,
+            "max_risk_cat": base_char_data['category_short']
+        }
+
+    # 2. Molecular Aggregation
+    blocks = set()
+    scripts = set()
+    bidi_strong = set() # Strong types only (L, R, AL)
+    ages = []
+    
+    cluster_mask = 0
+    risk_cats = set()
+    
+    mark_count = 0
+    
+    for char in cluster_str:
+        cp = ord(char)
+        
+        # A. Harvest Data
+        blk = _find_in_ranges(cp, "Blocks") or "No_Block"
+        scr = _find_in_ranges(cp, "Scripts") or "Common"
+        bid = unicodedata.bidirectional(char)
+        cat = unicodedata.category(char)
+        age_str = _find_in_ranges(cp, "Age") or "0.0"
+        
+        # B. Accumulate
+        blocks.add(blk)
+        
+        # UAX #31: Ignore Common/Inherited for script mixing
+        if scr not in ("Common", "Inherited"):
+            scripts.add(scr)
+            
+        # UAX #9: Track only Strong Bidi Types
+        if bid in ("L", "R", "AL"):
+            bidi_strong.add(bid)
+            
+        try: ages.append(float(age_str))
+        except: pass
+        
+        # C. Risk Tracking
+        if cp < 1114112:
+             cluster_mask |= INVIS_TABLE[cp]
+        risk_cats.add(cat)
+        
+        if cat.startswith("M"): mark_count += 1
+
+    # --- SYNTHESIZE TRUTH ---
+
+    # 1. Emoji Semantics (TR-51)
+    # Check against pre-loaded RGI sets (if available)
+    rgi_set = DATA_STORES.get("RGISequenceSet", set())
+    
+    # Default Type
+    if mark_count > 0:
+        type_label = "COMPOSITION"
+        type_val = f"Base + {mark_count} Marks"
+    else:
+        type_label = "SEQUENCE"
+        type_val = f"{len(cluster_str)} Code Points"
+
+    # Specific Overrides
+    if cluster_str in rgi_set:
+        type_label = "EMOJI SEQUENCE"
+        # Distinguish types if possible, or just label RGI
+        if "\u20E3" in cluster_str: type_val = "Keycap Sequence" # Keycap
+        elif "\u200D" in cluster_str: type_val = "ZWJ Sequence"   # ZWJ
+        elif len(cluster_str) == 2 and 0x1F1E6 <= ord(cluster_str[0]) <= 0x1F1FF: type_val = "Flag Sequence" # RI
+        else: type_val = "RGI (Valid)"
+
+    # 2. Block Truth
+    # Prioritize the Base Block, but flag mixture
+    base_block = base_char_data['block']
+    other_blocks = blocks - {base_block}
+    if not other_blocks:
+        block_display = base_block
+    else:
+        # Explicitly label as 'Block(s)' to distinguish from character count
+        count = len(other_blocks)
+        suffix = "Block" if count == 1 else "Blocks"
+        block_display = f"{base_block} + {count} {suffix}"
+
+    # 3. Script Truth (Clean)
+    if not scripts:
+        script_display = "Common / Inherited"
+    elif len(scripts) == 1:
+        script_display = list(scripts)[0]
+    else:
+        script_display = f"Mixed ({', '.join(sorted(scripts))})"
+
+    # 4. Bidi Truth (Strong)
+    if not bidi_strong:
+        bidi_display = base_char_data['bidi'] # Fallback to base (likely Neutral/Weak)
+    elif len(bidi_strong) == 1:
+        bidi_display = list(bidi_strong)[0]
+    else:
+        bidi_display = "Mixed Strong Direction" # Real risk
+
+    # 5. Age Range
+    if ages:
+        min_age = min(ages)
+        max_age = max(ages)
+        age_display = f"{min_age} – {max_age}" if min_age != max_age else str(max_age)
+    else:
+        age_display = "1.1"
+
+    # 6. Max Risk Category (for Macro-Classification)
+    # Precedence: Rot > Control > Mark > Standard
+    max_risk_cat = "Ll" # Default safe
+    if any(c in ("Cn", "Cs", "Co") for c in risk_cats): max_risk_cat = "Cn"
+    elif any(c == "Cf" for c in risk_cats): max_risk_cat = "Cf"
+    elif any(c.startswith("M") for c in risk_cats): max_risk_cat = "Mn"
+    
+    return {
+        "type_label": type_label,
+        "type_val": type_val,
+        "block_val": block_display,
+        "script_val": script_display,
+        "bidi_val": bidi_display,
+        "age_val": age_display,
+        "is_cluster": True,
+        "cluster_mask": cluster_mask,
+        "max_risk_cat": max_risk_cat
+    }
+
+def _get_codepoint_properties(t: str):
+    """
+    A fast, single-pass helper to get the UAX properties needed for Stage 2.
+    This iterates by code point, not grapheme.
+    """
+    if LOADING_STATE != "READY":
+        return [], []
+
+    word_break_props = []
+    sentence_break_props = []
+    
+    # We must iterate by code point (char)
+    for char in t:
+        cp = ord(char)
+        
+        # 1. Get Word Break Property
+        wb_prop = _find_in_ranges(cp, "WordBreak")
+        word_break_props.append(wb_prop if wb_prop else "Other")
+        
+        # 2. Get Sentence Break Property
+        sb_prop = _find_in_ranges(cp, "SentenceBreak")
+        sentence_break_props.append(sb_prop if sb_prop else "Other")
+
+    return word_break_props, sentence_break_props
+
+# ===============================================
+# BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
+# ===============================================
+
+# A. Stage 1.5 Micro-Analyzers (The Sensors)
 
 def scan_vs_topology(text: str):
     """
@@ -457,10 +3165,6 @@ def scan_delimiter_masking(text: str):
                 })
                 
     return signals
-
-# ==========================================
-# [STAGE 1.5] UPGRADE EXISTING FUNCTION (Block 2)
-# ==========================================
 
 def scan_token_fracture_safe(token_text):
     """
@@ -697,655 +3401,7 @@ def scan_contextual_lures(text):
 
     return signals
 
-# ==========================================
-# [STAGE 1.5] THREAT AUDITOR V3 (Structural Profiler Mode)
-# ==========================================
-
-def audit_stage1_5_signals(signals):
-    """
-    [STAGE 1.5] Structural Profiler Engine.
-    Converts raw forensic signals into high-fidelity structural flags.
-    Focus: Observable Phenomena (Physics), not just Intent (Policy).
-    """
-    flags = {}
-    
-    # 1. Aggregate Signals by Type
-    sig_map = {}
-    for s in signals:
-        t = s['type']
-        if t not in sig_map: sig_map[t] = []
-        sig_map[t].append(s)
-
-    # --- 1. FRACTURE TOPOLOGY (Tokenization Physics) ---
-    # Phenomenon: Non-standard characters embedded within alphanumeric tokens.
-    if "TOKEN_FRACTURE" in sig_map:
-        count = len(sig_map["TOKEN_FRACTURE"])
-        
-        # Analyze the 'Agent' distribution
-        agents = collections.Counter()
-        contexts = set()
-        
-        for s in sig_map["TOKEN_FRACTURE"]:
-            agents[s.get('agent_type', 'Unknown')] += 1
-            contexts.add(s.get('context_script', 'Unknown'))
-            
-        # Detailed Breakdown string
-        breakdown = ", ".join([f"{k}: {v}" for k, v in agents.items()])
-        
-        key = f"CRITICAL: Token Fracture Topology ({breakdown})"
-        flags[key] = {
-            "count": count,
-            "positions": [f"(Scripts: {', '.join(contexts)})"],
-            "severity": "crit",
-            "badge": "STRUCT"
-        }
-
-    # --- 2. VARIATION SELECTOR TOPOLOGY (Sequence Physics) ---
-    # Phenomenon: VS characters appearing in non-standard clusters or isolation.
-    
-    # A. Orphaned VS (No Base)
-    if "VS_BARE" in sig_map:
-        bare_count = sum(s['count'] for s in sig_map["VS_BARE"])
-        key = f"SUSPICIOUS: Orphaned Variation Selectors ({bare_count})"
-        flags[key] = {
-            "count": bare_count,
-            "positions": ["(VS codepoint without valid base - Rendering Artifact)"],
-            "severity": "warn",
-            "badge": "SYNTAX"
-        }
-
-    # B. Redundant Clustering (The "Run" Metric)
-    if "VS_CLUSTER" in sig_map:
-        # Get the worst offender
-        max_len = max(s['max_len'] for s in sig_map["VS_CLUSTER"])
-        count = len(sig_map["VS_CLUSTER"])
-        
-        # Grading: >1 is technically redundant. >3 is structurally anomalous.
-        if max_len >= 4:
-            sev = "crit"
-            badge = "DENSITY"
-            label = f"CRITICAL: High-Density VS Sequence (Len: {max_len})"
-        else:
-            sev = "warn"
-            badge = "REDUNDANT"
-            label = f"HIGH: Redundant VS Sequence (Len: {max_len})"
-        
-        flags[label] = {
-            "count": count,
-            "positions": ["(Multiple VS per base char - Information Density Risk)"],
-            "severity": sev,
-            "badge": badge
-        }
-
-    # --- 3. PLANE 14 ANALYSIS (Hidden Channel Physics) ---
-    # Phenomenon: Presence of Deprecated Tag Characters (U+E00xx).
-    
-    # A. Decoded Payload (High Fidelity)
-    if "TAG_PAYLOAD" in sig_map:
-        for s in sig_map["TAG_PAYLOAD"]:
-            p_len = s['payload_len']
-            preview = s['preview']
-            
-            key = f"CRITICAL: Plane 14 Tag Payload ({p_len} chars)"
-            flags[key] = {
-                "count": 1,
-                "positions": [f"Reconstructed: '{_escape_html(preview)}'"],
-                "severity": "crit",
-                "badge": "CHANNEL"
-            }
-            
-    # B. Raw Count (Fallback)
-    elif "TAG_SEQUENCE" in sig_map:
-        total_tags = sum(s['count'] for s in sig_map["TAG_SEQUENCE"])
-        key = f"CRITICAL: Plane 14 Tag Characters ({total_tags})"
-        flags[key] = {
-            "count": total_tags,
-            "positions": ["(Deprecated Format Characters Detected)"],
-            "severity": "crit",
-            "badge": "DEPRECATED"
-        }
-
-    # --- 4. DELIMITER MASKING (Visual/Logical Gap) ---
-    # Phenomenon: Non-Standard Spacing adjacent to File Extension Syntax.
-    if "MASKED_EXTENSION" in sig_map:
-        count = len(sig_map["MASKED_EXTENSION"])
-        key = "CRITICAL: Deceptive Delimiter Spacing"
-        flags[key] = {
-            "count": count,
-            "positions": ["(Non-Standard Space preceding '.' operator)"],
-            "severity": "crit",
-            "badge": "MASKING"
-        }
-
-    # --- 5. INJECTION SIGNATURES (Syntax Physics) ---
-    
-    # A. ANSI Sequences
-    if "ANSI_SEQUENCE" in sig_map:
-        total_ansi = sum(s['count'] for s in sig_map["ANSI_SEQUENCE"])
-        key = f"HIGH: ANSI Control Sequences ({total_ansi})"
-        flags[key] = {
-            "count": total_ansi,
-            "positions": ["(Terminal Emulation Controls Detected)"],
-            "severity": "crit",
-            "badge": "CONTROL"
-        }
-
-    # B. Imperative Syntax (Override)
-    has_override = "IMPERATIVE_OVERRIDE" in sig_map
-    has_tool = "TOOL_CHAIN_PATTERN" in sig_map
-    
-    if has_override and has_tool:
-        key = "CRITICAL: Imperative Tool-Use Sequence"
-        flags[key] = {
-            "count": 1,
-            "positions": ["(Syntax: 'Ignore' + 'Use Tool' pattern)"],
-            "severity": "crit",
-            "badge": "SYNTAX"
-        }
-    elif has_override:
-        key = "HIGH: Imperative Override Syntax"
-        flags[key] = {
-            "count": 1,
-            "positions": ["(Syntax: Directive to ignore instructions)"],
-            "severity": "warn",
-            "badge": "SEMANTIC"
-        }
-
-    # --- 6. DOMAIN STRUCTURE (IDN Physics) ---
-    
-    # A. Pseudo-Delimiters
-    if "PSEUDO_DELIMITER" in sig_map:
-        artifacts = []
-        for s in sig_map["PSEUDO_DELIMITER"]:
-            artifacts.extend(s['artifacts'])
-        
-        key = "CRITICAL: Homoglyph Delimiters"
-        flags[key] = {
-            "count": len(artifacts),
-            "positions": list(set(artifacts)),
-            "severity": "crit",
-            "badge": "SYNTAX"
-        }
-
-    # B. Script Mixing
-    if "DOMAIN_MIXED_SCRIPTS" in sig_map:
-        for s in sig_map["DOMAIN_MIXED_SCRIPTS"]:
-            scripts = s['scripts']
-            label = s['label']
-            
-            # Profiling Logic: Is this a high-entropy mix?
-            is_complex = "Latin" in scripts and ("Cyrillic" in scripts or "Greek" in scripts)
-            sev = "crit" if is_complex else "warn"
-            badge = "COMPLEX" if is_complex else "MIXED"
-            
-            key = f"CRITICAL: Multi-Script Label ({', '.join(scripts)})" if is_complex else f"SUSPICIOUS: Mixed-Script Label"
-            
-            flags[key] = {
-                "count": 1,
-                "positions": [f"Label: '{label}'"],
-                "severity": sev,
-                "badge": badge
-            }
-            
-    # C. Skeleton Collision
-    if "DOMAIN_SKELETON_MATCH_ASCII" in sig_map:
-        key = "HIGH: Skeleton Collision (ASCII)"
-        flags[key] = {
-            "count": len(sig_map["DOMAIN_SKELETON_MATCH_ASCII"]),
-            "positions": ["(Non-ASCII text normalizes to valid ASCII string)"],
-            "severity": "warn",
-            "badge": "COLLISION"
-        }
-
-    # --- 7. APPLICATION CONTEXT (Lure Physics) ---
-    
-    # A. Markdown Exfiltration
-    if "MARKDOWN_EXFIL" in sig_map:
-        count = sum(s['count'] for s in sig_map["MARKDOWN_EXFIL"])
-        key = "HIGH: Remote Image Inclusion (Markdown)"
-        flags[key] = {
-            "count": count,
-            "positions": ["(External resource loading pattern)"],
-            "severity": "warn",
-            "badge": "REMOTE"
-        }
-
-    # B. Chat Template Injection
-    if "CHAT_TEMPLATE_INJ" in sig_map:
-        headers = []
-        for s in sig_map["CHAT_TEMPLATE_INJ"]:
-            headers.extend(s['headers'])
-        unique = list(set(headers))
-        
-        key = f"CRITICAL: Chat Template Tokens ({len(unique)})"
-        flags[key] = {
-            "count": len(unique),
-            "positions": [f"Tokens: {', '.join(unique)}"],
-            "severity": "crit",
-            "badge": "STRUCT"
-        }
-
-    # C. Memory Directives
-    if "MEMORY_POISON" in sig_map:
-        keywords = []
-        for s in sig_map["MEMORY_POISON"]:
-            keywords.extend(s['keywords'])
-            
-        key = "HIGH: Persistence Directives"
-        flags[key] = {
-            "count": len(keywords),
-            "positions": [f"(Keywords: {', '.join(list(set(keywords))[:3])}...)"],
-            "severity": "crit",
-            "badge": "SEMANTIC"
-        }
-
-    return {"flags": flags}
-
-# ==========================================
-# [STAGE 1.5] ORCHESTRATOR (Block 3)
-# ==========================================
-
-def compute_stage1_5_forensics(text):
-    """
-    [STAGE 1.5] Orchestrator.
-    Runs the Sidecar Engines and feeds the Auditor.
-    Updated to include VS Topology, Tag Decoding, and Extension Masking.
-    """
-    all_signals = []
-    
-    # 1. Scan Global Injection Patterns (Existing)
-    all_signals.extend(scan_injection_vectors(text))
-    # Scan Contextual Lures (Markdown/Chat/Memory) (Existing)
-    all_signals.extend(scan_contextual_lures(text))
-    
-    # 2. [NEW] Global Structural Scans
-    # A. Variation Selector Topology
-    vs_metrics, vs_signals = scan_vs_topology(text)
-    all_signals.extend(vs_signals)
-    
-    # B. Tag Payload Decoding
-    tag_payload = decode_tag_payload(text)
-    if tag_payload:
-        all_signals.append(tag_payload)
-        
-    # C. Delimiter Masking (Extension Hiding)
-    all_signals.extend(scan_delimiter_masking(text))
-
-    # 3. Token-Level Scans
-    # We use the existing forensic tokenizer helper
-    tokens = tokenize_forensic(text)
-    
-    for tok_obj in tokens:
-        # Defensive extraction (handle dict vs str legacy)
-        if isinstance(tok_obj, dict):
-            t_str = tok_obj.get('token', '')
-        else:
-            t_str = str(tok_obj)
-            
-        if not t_str: continue
-        
-        # A. Fracture Scan (Uses the Upgraded Function from Block 2)
-        all_signals.extend(scan_token_fracture_safe(t_str))
-        
-        # B. Domain Scan (Existing)
-        all_signals.extend(scan_domain_structure_v2(t_str))
-
-    # 4. Audit Signals
-    return audit_stage1_5_signals(all_signals)
-
-
-
-def get_icon(key, color="currentColor", size=16):
-    path = ICONS.get(key, "")
-    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{path}</svg>'
-    
-# --- INVISIBILITY BITMASKS (Forensic Grade) ---
-INVIS_DEFAULT_IGNORABLE  = 1 << 0
-INVIS_JOIN_CONTROL       = 1 << 1
-INVIS_ZERO_WIDTH_SPACING = 1 << 2  # ZWSP, WJ, BOM
-INVIS_BIDI_CONTROL       = 1 << 3
-INVIS_TAG                = 1 << 4
-INVIS_VARIATION_STANDARD = 1 << 5
-INVIS_VARIATION_IDEOG    = 1 << 6
-INVIS_DO_NOT_EMIT        = 1 << 7
-INVIS_SOFT_HYPHEN        = 1 << 8
-INVIS_NON_ASCII_SPACE    = 1 << 9
-INVIS_NONSTANDARD_NL     = 1 << 10
-
-# 1. A new bit flag for Critical Controls
-INVIS_CRITICAL_CONTROL   = 1 << 11
-
-# Aggregates
-INVIS_ANY_MASK = (
-    INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL | INVIS_ZERO_WIDTH_SPACING |
-    INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_VARIATION_STANDARD |
-    INVIS_VARIATION_IDEOG | INVIS_DO_NOT_EMIT | INVIS_SOFT_HYPHEN |
-    INVIS_NON_ASCII_SPACE | INVIS_NONSTANDARD_NL | INVIS_CRITICAL_CONTROL
-)
-INVIS_HIGH_RISK_MASK = INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_DO_NOT_EMIT
-
-# The O(1) Lookup Table (Populated in load_unicode_data)
-INVIS_TABLE = [0] * 1114112  # Covers all of Unicode (0x110000)
-
-# --- FORENSIC ENCODING PROFILES ---
-# Tier 0 (Modern) + Tier 1 (Legacy)
-FORENSIC_ENCODINGS = [
-    # --- TIER 0: MODERN ANCHORS (Reference) ---
-    ("UTF-8", "utf_8", "Universal Web Standard"),
-    ("UTF-16", "utf_16", "Windows/JavaScript Native"),
-    ("UTF-32", "utf_32", "True Code Point Storage"),
-    
-    # --- TIER 1: LEGACY FILTERS (Provenance) ---
-    ("ASCII", "ascii", "Universal Baseline (7-bit)"),
-    ("Win-1252", "cp1252", "Western / Windows (ANSI)"),
-    ("ISO-8859-1", "latin_1", "Western / Strict Protocol"),
-    ("MacRoman", "mac_roman", "Legacy Apple / Classic Mac"),
-    ("CP437", "cp437", "DOS / Terminal / Warez Art"),
-    ("Win-1251", "cp1251", "Cyrillic Legacy"),
-    ("Win-1256", "cp1256", "Arabic Legacy"),
-    ("Win-1253", "cp1253", "Greek Legacy"),
-    ("Win-1255", "cp1255", "Hebrew Legacy"),
-    ("Shift_JIS", "shift_jis", "Japanese Legacy"),
-    ("Big5", "big5", "Traditional Chinese"),
-    ("EUC-KR", "euc_kr", "Korean Legacy"),
-    ("GBK", "gbk", "Simp. Chinese Legacy")
-]
-
-def build_invis_table():
-    """
-    Populates the global INVIS_TABLE with forensic bitmasks.
-    """
-    global INVIS_TABLE
-    
-    def apply_mask(ranges, mask):
-        if not ranges: return
-        for item in ranges:
-            start = item[0]
-            end = item[1]
-            start, end = max(0, start), min(1114111, end)
-            for cp in range(start, end + 1):
-                INVIS_TABLE[cp] |= mask
-
-    # Interlinear Annotation Controls
-    apply_mask([(0xFFF9, 0xFFFB)], INVIS_DEFAULT_IGNORABLE)
-
-    # In build_invis_table:
-    apply_mask([(0x11A3E, 0x11A3E)], INVIS_DEFAULT_IGNORABLE)
-
-    # 6. Manual Patch for New List Items & Historic Controls
-    # Comprehensive coverage for Unicode 14.0/15.0+ and script-specific invisibles
-    # that might not be flagged in older UCD DefaultIgnorable files.
-    apply_mask([
-        (0x180B, 0x180F),  # Mongolian FVS 1-4 (Inc. 180F)
-        (0x2065, 0x2065),  # Reserved / Invisible Operator
-        (0x1D159, 0x1D159),# Musical Null Notehead
-        (0x133FC, 0x133FC),# Egyptian Z015B (Font Exploit)
-        (0x16FE4, 0x16FE4),# Khitan Small Script Filler
-        (0x13439, 0x1343F),# Egyptian Hieroglyph Format Controls (Extended)
-        (0x1BCA4, 0x1BCAE),# Shorthand Format Controls (Extended)
-        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
-        (0x11A47, 0x11A47),# Zanabazar Square Subjoiner
-        (0x11A99, 0x11A99),# Soyombo Subjoiner
-        (0x1107F, 0x1107F),# Brahmi Number Joiner
-        (0x110BD, 0x110BD),# Kaithi Number Sign
-        (0x110CD, 0x110CD),# Kaithi Number Sign Above
-        (0x11446, 0x11446),# Newa Sandhi Mark
-        (0x0600, 0x0605),  # Arabic Number Signs (0600-0605)
-        (0x06DD, 0x06DD),  # Arabic End of Ayah
-        (0x08E2, 0x08E2),  # Arabic Disputed End of Ayah
-        (0x070F, 0x070F),  # Syriac Abbreviation Mark
-        (0x1BC9D, 0x1BC9E) # Duployan Shorthand Controls
-    ], INVIS_DEFAULT_IGNORABLE)
-
-    # 7. Noncharacters (Process-Internal)
-    # Includes FFFE, FFFF, and the FDD0-FDEF block.
-    # These trigger "Red/Critical" flags in the Atlas.
-    apply_mask([
-        (0xFFFE, 0xFFFF),      # End-of-plane nonchars
-        (0xFDD0, 0xFDEF)       # Process-internal block
-    ], INVIS_CRITICAL_CONTROL)
-
-    # 6. Manual Patch for New List Items & Historic Controls
-    # Ensures detection in Stats/Atlas/Threat Score
-    apply_mask([
-        (0x180B, 0x180F),  # Mongolian FVS 1-4
-        (0x2065, 0x2065),  # Reserved
-        (0x1D159, 0x1D159),# Musical Null
-        (0x133FC, 0x133FC),# Egyptian Z015B
-        (0x16FE4, 0x16FE4),# Khitan Filler
-        (0x13439, 0x1343B),# Egyptian Insertions
-        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
-        (0x11A47, 0x11A47),# Zanabazar Subjoiner
-        (0x11A99, 0x11A99),# Soyombo Subjoiner
-        (0x1107F, 0x1107F),# Brahmi Number Joiner
-        (0x110BD, 0x110BD),# Kaithi Number Sign
-        (0x110CD, 0x110CD),# Kaithi Number Sign Above
-        (0x11446, 0x11446),# Newa Sandhi Mark
-        # --- NEW BATCH ---
-        (0x0600, 0x0605),  # Arabic Number Signs
-        (0x06DD, 0x06DD),  # Arabic End of Ayah
-        (0x08E2, 0x08E2),  # Arabic Disputed End of Ayah
-        (0x070F, 0x070F),  # Syriac SAM
-        (0x1BC9D, 0x1BC9E) # Duployan Controls
-    ], INVIS_DEFAULT_IGNORABLE)
-
-    # 6. Manual Patch for New List Items & Historic Controls
-    # Ensures detection in Stats/Atlas/Threat Score
-    apply_mask([
-        (0x180B, 0x180F),  # Mongolian FVS 1-4
-        (0x2065, 0x2065),  # Reserved
-        (0x1D159, 0x1D159),# Musical Null
-        (0x133FC, 0x133FC),# Egyptian Z015B
-        (0x16FE4, 0x16FE4),# Khitan Filler
-        (0x13439, 0x1343B),# Egyptian Insertions
-        (0x11C40, 0x11C40),# Bhaiksuki Gap Filler
-        (0x11A47, 0x11A47),# Zanabazar Subjoiner
-        (0x11A99, 0x11A99),# Soyombo Subjoiner
-        (0x1107F, 0x1107F),# Brahmi Number Joiner
-        (0x110BD, 0x110BD),# Kaithi Number Sign
-        (0x110CD, 0x110CD),# Kaithi Number Sign Above
-        (0x11446, 0x11446) # Newa Sandhi Mark
-    ], INVIS_DEFAULT_IGNORABLE)
-
-    # 1. Default Ignorable
-    ignorable_ranges = DATA_STORES.get("DefaultIgnorable", {}).get("ranges", [])
-    apply_mask(ignorable_ranges, INVIS_DEFAULT_IGNORABLE)
-
-    # 2. Join Controls
-    apply_mask([(0x200C, 0x200D)], INVIS_JOIN_CONTROL)
-    # --- Explicitly catch CGJ (U+034F) as a Join Control ---
-    # It acts as invisible glue, so we treat it as a structural joiner for forensics.
-    apply_mask([(0x034F, 0x034F)], INVIS_JOIN_CONTROL)
-
-    # 3. Zero Width Spacing
-    apply_mask([(0x200B, 0x200B), (0x2060, 0x2060), (0xFEFF, 0xFEFF)], INVIS_ZERO_WIDTH_SPACING)
-
-    # 4. Bidi Controls
-    bidi_ranges = DATA_STORES.get("BidiControl", {}).get("ranges", [])
-    apply_mask(bidi_ranges, INVIS_BIDI_CONTROL)
-
-    # 5. Tags
-    apply_mask([(0xE0000, 0xE007F)], INVIS_TAG)
-
-    # Add 0x180F and 0x16FE4 to the manual mask list
-    apply_mask([
-        (0x180B, 0x180F),  # Updated range to include FVS4 (180F)
-        (0x2065, 0x2065), 
-        (0x1D159, 0x1D159), 
-        (0x133FC, 0x133FC),
-        (0x16FE4, 0x16FE4) # Khitan Filler
-    ], INVIS_DEFAULT_IGNORABLE)
-
-    # 6. Manual Patch for New List Items (Ensure detection in Stats/Atlas)
-    # These might not be in UCD "DefaultIgnorable" yet, but we want to flag them.
-    # Includes: Mongolian FVS (180B-180D), Reserved (2065), Musical Null (1D159)
-    apply_mask([
-        (0x180B, 0x180D), # Mongolian FVS 1-3
-        (0x2065, 0x2065), # Reserved / Invisible Operator
-        (0x1D159, 0x1D159), # Musical Null Notehead
-        (0x133FC, 0x133FC)  # Egyptian Z015B (Exploit)
-    ], INVIS_DEFAULT_IGNORABLE)
-
-    # 6. Variation Selectors
-    apply_mask([(0xFE00, 0xFE0F)], INVIS_VARIATION_STANDARD)
-    apply_mask([(0xE0100, 0xE01EF)], INVIS_VARIATION_IDEOG)
-
-    # 7. Do Not Emit
-    apply_mask(DATA_STORES.get("DoNotEmit", {}).get("ranges", []), INVIS_DO_NOT_EMIT)
-
-    # 8. Soft Hyphen
-    apply_mask([(0x00AD, 0x00AD)], INVIS_SOFT_HYPHEN)
-
-    # 9. Non-Standard Newlines
-    apply_mask([(0x2028, 0x2029)], INVIS_NONSTANDARD_NL)
-
-    # 10. Non-ASCII Spaces (Zs != 0x20)
-    # [UPDATE] Explicitly included MVS (0x180E) and Ogham (0x1680)
-    zs_ranges = [
-        (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E), 
-        (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), 
-        (0x3000, 0x3000)
-    ]
-    apply_mask(zs_ranges, INVIS_NON_ASCII_SPACE)
-
-    # --- MANUAL FORENSIC OVERRIDES (From Tables 1-8) ---
-    
-    # 1. The "False Vacuums" (Letters/Symbols that act as Spaces)
-    # We map these to INVIS_NON_ASCII_SPACE so they trigger "Deceptive Space" flags.
-    # U+3164 (Hangul Filler), U+FFA0 (Halfwidth Filler), U+2800 (Braille Blank)
-    apply_mask([(0x3164, 0x3164), (0xFFA0, 0xFFA0), (0x2800, 0x2800)], INVIS_NON_ASCII_SPACE)
-
-    # 2. The "Ghost Operators" & "Fillers"
-    # These are technically 'Lo' (Letters) or 'Cf' (Format) but behave like invisibles.
-    # U+115F (Choseong), U+1160 (Jungseong), U+2064 (Invisible Plus)
-    # We map these to INVIS_DEFAULT_IGNORABLE so they trigger "Invisible" flags.
-    apply_mask([(0x115F, 0x1160), (0x2061, 0x2064)], INVIS_DEFAULT_IGNORABLE)
-
-    # 3. The "Structural Containers" (Scoping)
-    # Egyptian, Musical, Shorthand format controls.
-    # Map to INVIS_DEFAULT_IGNORABLE.
-    apply_mask([
-        (0x13437, 0x13438), # Egyptian
-        (0x1D173, 0x1D17A), # Musical
-        (0x1BCA0, 0x1BCA3)  # Shorthand
-    ], INVIS_DEFAULT_IGNORABLE)
-
-    # 4. The "Zombie Controls" & Invisible Math
-    # These are Format (Cf) characters that are deprecated or invisible.
-    # Map to INVIS_DEFAULT_IGNORABLE.
-    apply_mask([
-        (0x206A, 0x206F), # Deprecated Formatting (ISS, ASS, etc.)
-        (0x2061, 0x2063), # Invisible Math (FA, IT, IS)
-        (0x17B4, 0x17B5)  # Khmer Invisible Vowels
-    ], INVIS_DEFAULT_IGNORABLE)
-    
-    # 5. Object Replacement Character
-    # Technically 'So' (Symbol), but acts as a placeholder.
-    # Map to INVIS_DEFAULT_IGNORABLE to ensure it's flagged.
-    apply_mask([(0xFFFC, 0xFFFC)], INVIS_DEFAULT_IGNORABLE)
-
-    # 4. The "Layout Locks" (Glue)
-    # These prevent line breaks. We don't have a specific bitmask for "Glue" yet, 
-    # but if you want to detect "Layout Sabotage", you might map them to INVIS_ZERO_WIDTH_SPACING
-    # or create a new mask. For now, leaving them as visual characters is safer 
-    # unless you want to flag them as "Suspicious". 
-    # (Recommendation: Leave unmasked for now, rely on the [TAG] mapping in Part 1 for visibility).
-
-    # Map NUL (0x00), ESC (0x1B), and DEL (0x7F) to the Bitmask
-    # This ensures the O(1) engine sees them as "Invisibles" too.
-    apply_mask([(0x0000, 0x0000), (0x001B, 0x001B), (0x007F, 0x007F)], INVIS_CRITICAL_CONTROL)
-    
-    # Optional: Map C0 controls (0x00-0x1F) excluding whitespace (TAB/LF/CR)
-    # This aligns the Bitmask perfectly with the 'reveal2' Dictionary
-    c0_controls = []
-    for cp in range(0x00, 0x20):
-        if cp not in (0x09, 0x0A, 0x0D): # Skip TAB, LF, CR
-            c0_controls.append((cp, cp))
-    apply_mask(c0_controls, INVIS_CRITICAL_CONTROL)
-    
-    # [FIX] Map C1 Controls (0x80-0x9F) as Critical
-    # These are legacy control codes that often indicate encoding errors or obfuscation.
-    # Note: 0x85 (NEL) is also handled as a newline elsewhere, but it IS a control.
-    apply_mask([(0x80, 0x9F)], INVIS_CRITICAL_CONTROL)
-    
-    # [FIX] Map Plane-End Noncharacters (FFFE/FFFF) for ALL Planes (0-16)
-    # U+1FFFE, U+1FFFF, U+2FFFE, etc.
-    plane_ends = []
-    for plane in range(1, 17): # Planes 1 through 16
-        base = plane * 0x10000
-        plane_ends.append((base + 0xFFFE, base + 0xFFFF))
-    apply_mask(plane_ends, INVIS_CRITICAL_CONTROL)
-
-def run_self_tests():
-    """
-    PARANOID MODE: Verify that INVIS_TABLE bitmasks strictly match the UCD data.
-    This runs once at startup. If it fails, it prints critical warnings to the console.
-    """
-    print("--- Running Forensic Self-Tests ---")
-    
-    def check_property(store_key, mask_bit, name):
-        """Verifies that every CP in DATA_STORES[store_key] has mask_bit set."""
-        store = DATA_STORES.get(store_key, {})
-        ranges = store.get("ranges", [])
-        
-        missing_count = 0
-        checked_count = 0
-        
-        for item in ranges:
-            start, end = item[0], item[1]
-            start, end = max(0, start), min(1114111, end)
-            
-            for cp in range(start, end + 1):
-                checked_count += 1
-                if not (INVIS_TABLE[cp] & mask_bit):
-                    missing_count += 1
-                    if missing_count <= 5: # Print first 5 failures
-                        print(f"TEST FAIL [{name}]: U+{cp:04X} missing bit.")
-                        
-        if missing_count == 0:
-            print(f"PASS: {name} ({checked_count} codepoints verified)")
-        else:
-            print(f"CRITICAL FAIL: {name} has {missing_count} missing coverage!")
-
-    # 1. Verify Bidi Controls
-    check_property("BidiControl", INVIS_BIDI_CONTROL, "Bidi Controls")
-
-    # 2. Verify Join Controls
-    # We loaded this into "JoinControl" bucket from PropList
-    check_property("JoinControl", INVIS_JOIN_CONTROL, "Join Controls")
-
-    # 3. Verify Tags (if available in PropList, otherwise we rely on range)
-    # Note: PropList might call it "Pattern_Syntax" or "Depreciated" depending on version
-    # We manually mapped 0xE0000..0xE007F, so we check that range directly
-    tag_missing = 0
-    for cp in range(0xE0000, 0xE0080):
-        if not (INVIS_TABLE[cp] & INVIS_TAG):
-            tag_missing += 1
-    if tag_missing == 0:
-        print(f"PASS: Tags Plane 14 (128 codepoints verified)")
-    else:
-        print(f"CRITICAL FAIL: Tags has {tag_missing} missing coverage!")
-
-    # 4. Verify Default Ignorables (The Big One)
-    check_property("DefaultIgnorable", INVIS_DEFAULT_IGNORABLE, "Default Ignorables")
-
-    # 5. Verify Do Not Emit
-    check_property("DoNotEmit", INVIS_DO_NOT_EMIT, "Do Not Emit")
-
-    # 6. Verify WhiteSpace (PropList) -> INVIS_NON_ASCII_SPACE
-    # Note: Our mask excludes ASCII space, so we test logic, not direct mapping
-    # This is complex to test strictly without replicating logic, so we skip for now 
-    # to avoid false failures on 0x20.
-
-    # 7. Verify Variation Selectors
-    # Check a few known ones
-    if (INVIS_TABLE[0xFE0F] & INVIS_VARIATION_STANDARD) and (INVIS_TABLE[0xE0100] & INVIS_VARIATION_IDEOG):
-        print("PASS: Variation Selectors (Sample check)")
-    else:
-        print("CRITICAL FAIL: Variation Selector bits missing!")
-
-    print("--- Self-Tests Complete ---")
-
+# B. Structural Analyzers (Macro Physics)
 
 def analyze_invisible_clusters(t: str):
     """
@@ -1762,1616 +3818,12 @@ def analyze_bidi_structure(t: str, rows: list):
     penalty_count = len(fracture_ranges)
                      
     return penalty_count, fracture_ranges, danger_ranges
-    
-
-@create_proxy
-def cycle_hud_metric(metric_key, current_dom_pos):
-    """
-    Stateless stepper. Finds the next range after current_dom_pos.
-    Updates the LEFT-SIDE HUD Status bar.
-    """
-    el = document.getElementById("text-input")
-    if not el: return
-    
-    # Force conversion to Python string to ensure 'enumerate' yields chars, not ints.
-    t = str(el.value)
-    
-    # 1. Map DOM Position to Logical Index (Pure Python)
-    current_logical = 0
-    if t:
-        utf16_acc = 0
-        for i, char in enumerate(t):
-            if utf16_acc >= current_dom_pos:
-                current_logical = i
-                break
-            # Robust check: ensure char is a string before ord()
-            # (The str() cast above guarantees this, but this is the logic)
-            utf16_acc += (2 if ord(char) > 0xFFFF else 1)
-        else:
-            current_logical = len(t)
-
-    # 2. Define Human-Readable Labels
-    labels = {
-        "integrity_agg": "Integrity Issues",
-        "threat_agg": "Threat Signals",
-        "ws_nonstd": "Non-Std Whitespace",
-        "punc_exotic": "Exotic Delimiters",
-        "sym_exotic": "Exotic Symbols",
-        "emoji_hybrid": "Hybrid Emoji",
-        "emoji_irregular": "Irregular Emoji"
-    }
-    category_label = labels.get(metric_key, "Forensic Metric")
-
-    # 3. Resolve targets (With Deduplication)
-    raw_targets = []
-    if metric_key == "integrity_agg":
-        raw_targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
-                       HUD_HIT_REGISTRY.get("int_fracture", []) +
-                       HUD_HIT_REGISTRY.get("int_risk", []) +
-                       HUD_HIT_REGISTRY.get("int_decay", []))
-    elif metric_key == "threat_agg":
-        raw_targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
-                       HUD_HIT_REGISTRY.get("thr_spoofing", []) +
-                       HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
-                       HUD_HIT_REGISTRY.get("thr_suspicious", []))
-    else:
-        raw_targets = HUD_HIT_REGISTRY.get(metric_key, [])
-
-    if not raw_targets: return
-
-    # [DEDUPLICATION LOGIC]
-    # Filter out duplicate start indices to prevent "double jumping" on the same character.
-    targets = []
-    seen_starts = set()
-    
-    # Sort first to ensure consistent order
-    raw_targets.sort(key=lambda x: x[0])
-    
-    for hit in raw_targets:
-        start_idx = hit[0]
-        if start_idx not in seen_starts:
-            targets.append(hit)
-            seen_starts.add(start_idx)
-
-    # 4. Find Next
-    next_hit = targets[0]
-    hit_index = 1
-    
-    for i, hit in enumerate(targets):
-        if hit[0] >= current_logical:
-            next_hit = hit
-            hit_index = i + 1
-            break
-
-    # 5. Execute Highlight
-    if metric_key == "threat_agg":
-        # [DEBUG HOOK]
-        if TEXTTICS_DEBUG_THREAT_BRIDGE:
-            _debug_threat_bridge(t, next_hit)
-        # PURE PYTHON DOM CALCULATION
-        log_start = next_hit[0]
-        log_end = next_hit[1]
-        
-        dom_start = -1
-        dom_end = -1
-        
-        acc = 0
-        # Iterate the Python string (t is guaranteed str now)
-        for i, char in enumerate(t):
-            if i == log_start: dom_start = acc
-            if i == log_end: dom_end = acc; break 
-            
-            acc += (2 if ord(char) > 0xFFFF else 1)
-        
-        if dom_end == -1 and log_end >= len(t): 
-            dom_end = acc
-        
-        if dom_start != -1:
-            el.focus()
-            el.setSelectionRange(dom_start, dom_end)
-        
-    else:
-        # [LEGACY PATH]
-        window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
-
-    # 6. Feedback UI
-    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-
-    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
-    
-    hud_status = document.getElementById("hud-stepper-status")
-    if hud_status:
-        hud_status.className = "status-details status-hud-active"
-        hud_status.style.display = "inline-flex"
-        hud_status.innerHTML = f"{status_msg}{icon_loc}"
-    
-    # 7. Update Inspector
-    inspect_character(None)
-
-@create_proxy
-def render_forensic_hud(t, stats):
-    """
-    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
-    """
-    container = document.getElementById("forensic-hud")
-    if not container: return 
-    if t is None: t = ""
-    
-    emoji_counts = stats.get("emoji_counts", {})
-
-    # --- INTERACTION HELPER ---
-    def get_interaction(val, key, severity="warn"):
-        """Checks registry and returns CSS class and onclick attribute."""
-        try:
-            if float(val) <= 0: return "", ""
-        except: return "", ""
-        
-        has_hits = False
-        target_key = key
-        
-        if key == "integrity":
-            # Aggregator check
-            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "integrity_agg"
-                has_hits = True
-        elif key == "threat":
-            # Aggregator check
-            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "threat_agg"
-                has_hits = True
-        else:
-            # Direct check
-            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
-                has_hits = True
-                
-        if has_hits:
-            cls = " hud-interactive"
-            if severity == "crit": cls += " hud-interactive-crit"
-            elif severity == "warn": cls += " hud-interactive-risk"
-            
-            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
-            return cls, attr
-            
-        return "", ""
-
-    # --- HELPER: Cell Builder ---
-    def render_cell(sci_title, 
-                    label_1, val_1, class_1,
-                    label_2, val_2, class_2,
-                    d1="", m1="", r1="",
-                    d2="", m2="", r2="",
-                    reg_key_2=None, risk_2="warn"): # New Args
-        
-        def esc(s): return s.replace('"', '&quot;')
-        
-        # Check for interaction on Value 2 (Secondary Metric)
-        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
-
-        return f"""
-        <div class="hud-col" 
-             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
-             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
-             
-            <div class="hud-row-sci">{sci_title}</div>
-            
-            <div class="hud-metric-group">
-                <div class="hud-label">{label_1}</div>
-                <div class="hud-val {class_1}">{val_1}</div>
-            </div>
-            
-            <div class="hud-metric-divider"></div>
-
-            <div class="hud-metric-group">
-                <div class="hud-label">{label_2}</div>
-                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
-            </div>
-
-        </div>
-        """
-
-    # --- COLOR LOGIC ---
-    def color_neutral(val):
-        try: return "txt-muted" if float(val) == 0 else "txt-normal"
-        except: return "txt-normal"
-
-    def color_clean(val):
-        try: return "txt-clean" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
-
-    def color_risk(val):
-        try: return "txt-good" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
-
-    # --- 0. PRE-CALC ---
-    uax_word = 0
-    uax_sent = 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
-
-    # --- 1. COLUMNS ---
-
-    # C0: ALPHANUMERIC
-    alpha_chars = sum(1 for c in t if c.isalnum())
-    alpha_runs = 0
-    in_run = False
-    for c in t:
-        if c.isalnum():
-            if not in_run:
-                alpha_runs += 1
-                in_run = True
-        else:
-            in_run = False
-
-    c0 = render_cell(
-        "ALPHANUMERIC", 
-        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
-        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
-        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
-        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
-    )
-
-    # C1: LEXICAL MASS
-    L = stats.get('major_stats', {}).get("L (Letter)", 0)
-    N = stats.get('major_stats', {}).get("N (Number)", 0)
-    vu = (L + N) / 5.0
-    c1 = render_cell(
-        "LEXICAL MASS", 
-        "UNITS", f"{vu:.1f}", color_neutral(vu),
-        "WORDS", str(uax_word), color_neutral(uax_word),
-        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
-        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
-    )
-
-    # C2: SEGMENTATION
-    seg_est = vu / 20.0
-    c2 = render_cell(
-        "SEGMENTATION", 
-        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
-        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
-        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
-    )
-
-    # C3: WHITESPACE (Interactive)
-    std_set = {0x20, 0x09, 0x0A, 0x0D}
-    std_inv = sum(1 for c in t if ord(c) in std_set)
-    flags = stats.get('forensic_flags', {})
-    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    
-    c3 = render_cell(
-        "WHITESPACE", 
-        "ASCII WS", str(std_inv), color_neutral(std_inv),
-        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
-        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
-        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
-        reg_key_2="ws_nonstd" # LINK
-    )
-
-    # C4: DELIMITERS (Interactive)
-    cnt_p_ascii = 0
-    cnt_p_comfort = 0
-    cnt_p_exotic = 0
-    
-    for c in t:
-        if unicodedata.category(c).startswith('P'):
-            cp = ord(c)
-            if cp <= 0x7F:
-                cnt_p_ascii += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F):
-                cnt_p_comfort += 1
-            else:
-                cnt_p_exotic += 1
-
-    if cnt_p_comfort > 0:
-        c4_label = "TYPOGRAPHIC"
-        c4_val = cnt_p_ascii + cnt_p_comfort
-        c4_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
-        c4_ref = "Scope: ASCII+Common"
-    else:
-        c4_label = "ASCII"
-        c4_val = cnt_p_ascii
-        c4_desc = "Standard ASCII punctuation characters."
-        c4_ref = "Scope: ASCII"
-
-    c4 = render_cell(
-        "DELIMITERS", 
-        c4_label, str(c4_val), color_neutral(c4_val),
-        "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
-        d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
-        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
-        reg_key_2="punc_exotic" # LINK
-    )
-
-    # C5: SYMBOLS (Interactive)
-    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
-    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
-    
-    c5_label = "EXTENDED"
-    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
-    if cnt_s_ext == 0 and cnt_s_exotic == 0:
-        c5_label = "KEYBOARD"
-        c5_desc = "Standard ASCII keyboard symbols."
-
-    c5 = render_cell(
-        "SYMBOLS", 
-        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
-        "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
-        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
-        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
-        reg_key_2="sym_exotic" # LINK
-    )
-
-    # C6: HYBRIDS (Interactive)
-    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
-    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
-    
-    c6 = render_cell(
-        "HYBRIDS", 
-        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
-        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
-        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
-        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
-        reg_key_2="emoji_hybrid" # LINK
-    )
-
-    # C7: EMOJI (Interactive)
-    rgi_total = emoji_counts.get("rgi_total", 0)
-    abnormal = emoji_counts.get("emoji_irregular", 0)
-    
-    c7 = render_cell(
-        "EMOJI", 
-        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
-        "IRREGULAR", str(abnormal), color_clean(abnormal),
-        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
-        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
-        reg_key_2="emoji_irregular" # LINK
-    )
-
-    # C8: INTEGRITY (Interactive Aggregator)
-    int_res = stats.get('integrity', {})
-    int_v = int_res.get('verdict', 'INTACT')
-    
-    # [FIX] Count actual registry hits, not ledger rows
-    int_issues = (
-        len(HUD_HIT_REGISTRY.get("int_fatal", [])) +
-        len(HUD_HIT_REGISTRY.get("int_fracture", [])) +
-        len(HUD_HIT_REGISTRY.get("int_risk", [])) +
-        len(HUD_HIT_REGISTRY.get("int_decay", []))
-    )
-    
-    if int_issues == 0: int_v = "INTACT"
-    
-    v_cls = "txt-safe"
-    if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
-    elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
-    
-    # Determine risk color for the count button
-    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
-
-    c8 = render_cell(
-        "INTEGRITY", 
-        "STATUS", int_v, v_cls,
-        "ISSUES", str(int_issues), color_risk(int_issues),
-        d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
-        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Registry Hits)", r2="Data Health",
-        reg_key_2="integrity", risk_2=risk_level # LINK
-    )
-
-    # C9: THREAT (Interactive Aggregator)
-    thr_res = stats.get('threat', {})
-    thr_v = thr_res.get('verdict', 'CLEAR')
-    
-    # [FIX] Count actual registry hits, not ledger rows
-    thr_sigs = (
-        len(HUD_HIT_REGISTRY.get("thr_execution", [])) +
-        len(HUD_HIT_REGISTRY.get("thr_spoofing", [])) +
-        len(HUD_HIT_REGISTRY.get("thr_obfuscation", [])) +
-        len(HUD_HIT_REGISTRY.get("thr_suspicious", []))
-    )
-    
-    if thr_sigs == 0: thr_v = "CLEAR"
-
-    t_cls = "txt-safe"
-    risk_level_thr = "warn"
-    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: 
-        t_cls = "txt-crit"
-        risk_level_thr = "crit"
-    elif "SUSPICIOUS" in thr_v: 
-        t_cls = "txt-warn"
-
-    c9 = render_cell(
-        "THREAT", 
-        "STATUS", thr_v, t_cls,
-        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
-        d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
-        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Registry Hits)", r2="Attack Vectors",
-        reg_key_2="threat", risk_2=risk_level_thr # LINK
-    )
-
-    # --- ASSEMBLY ---
-    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
-# ---
-# 1. CATEGORY & REGEX DEFINITIONS
-# ---
-
-# We only use "Honest" mode, so we only need the 29 categories
-# (Cn is calculated mathematically)
-MINOR_CATEGORIES_29 = {
-    # Letters
-    "Lu": r"\p{Lu}", "Ll": r"\p{Ll}", "Lt": r"\p{Lt}", "Lm": r"\p{Lm}", "Lo": r"\p{Lo}",
-    # Marks
-    "Mn": r"\p{Mn}", "Mc": r"\p{Mc}", "Me": r"\p{Me}",
-    # Numbers
-    "Nd": r"\p{Nd}", "Nl": r"\p{Nl}", "No": r"\p{No}",
-    # Punctuation
-    "Pc": r"\p{Pc}", "Pd": r"\p{Pd}", "Ps": r"\p{Ps}", "Pe": r"\p{Pe}",
-    "Pi": r"\p{Pi}", "Pf": r"\p{Pf}", "Po": r"\p{Po}",
-    # Symbols
-    "Sm": r"\p{Sm}", "Sc": r"\p{Sc}", "Sk": r"\p{Sk}", "So": r"\p{So}",
-    # Separators
-    "Zs": r"\p{Zs}", "Zl": r"\p{Zl}", "Zp": r"\p{Zp}",
-    # Other (excl. Cn)
-    "Cc": r"\p{Cc}", "Cf": r"\p{Cf}", "Cs": r"\p{Cs}", "Co": r"\p{Co}"
-}
-
-# Regexes for finding *all* matches and their indices (must be 'gu')
-REGEX_MATCHER = {
-    "Whitespace": window.RegExp.new(r"\p{White_Space}", "gu"),
-    "Marks": window.RegExp.new(r"\p{M}", "gu"),
-    
-    # Forensic Properties (for Module 2.C)
-    # "Noncharacter" and "Deceptive Spaces" are now handled in Python
-    "Ignorables (Invisible)": window.RegExp.new(r"\p{Default_Ignorable_Code_Point}", "gu"),
-    
-    # UAX #44 Properties (for Module 2.D)
-    "Dash": window.RegExp.new(r"\p{Dash}", "gu"),
-    "Alphabetic": window.RegExp.new(r"\p{Alphabetic}", "gu"),
-    "Script: Cyrillic": window.RegExp.new(r"\p{Script=Cyrillic}", "gu"),
-    "Script: Greek": window.RegExp.new(r"\p{Script=Greek}", "gu"),
-    "Script: Han": window.RegExp.new(r"\p{Script=Han}", "gu"),
-    "Script: Arabic": window.RegExp.new(r"\p{Script=Arabic}", "gu"),
-    "Script: Hebrew": window.RegExp.new(r"\p{Script=Hebrew}", "gu"),
-    "Script: Latin": window.RegExp.new(r"\p{Script=Latin}", "gu"),
-    "Script: Common": window.RegExp.new(r"\p{Script=Common}", "gu"),
-    "Script: Inherited": window.RegExp.new(r"\p{Script=Inherited}", "gu"),
-
-    # Confusable runs (for Module 3)
-    "LNPS_Runs": window.RegExp.new(r"\p{L}+|\p{N}+|\p{P}+|\p{S}+", "gu"),
-}
-
-# ---
-# 1.B. INVISIBLE CHARACTER MAPPING (For Deobfuscator)
-# ---
-INVISIBLE_MAPPING = {
-
-    # [PATCH] Missing Structural Invisible (Zanabazar)
-    0x11A3E: "[ZAN:INIT]",     # Zanabazar Square Cluster Initial
-
-    # [PATCH] Missing Specials (Reserved Sentinels)
-    0xFFF0: "[RSV:FFF0]", 0xFFF1: "[RSV:FFF1]", 0xFFF2: "[RSV:FFF2]",
-    0xFFF3: "[RSV:FFF3]", 0xFFF4: "[RSV:FFF4]", 0xFFF5: "[RSV:FFF5]",
-    0xFFF6: "[RSV:FFF6]", 0xFFF7: "[RSV:FFF7]", 0xFFF8: "[RSV:FFF8]",
-
-    # --- Missing Egyptian Hieroglyph Format Controls (Extended) ---
-    0x1343C: "[EGY:C1]",       # Egyptian Control 1
-    0x1343D: "[EGY:C2]",       # Egyptian Control 2
-    0x1343E: "[EGY:C3]",       # Egyptian Control 3
-    0x1343F: "[EGY:C4]",       # Egyptian Control 4
-
-    # --- Missing Shorthand Format Controls (Extended) ---
-    0x1BCA4: "[SHORT:STEP]",   # Shorthand Format Step
-    0x1BCA5: "[SHORT:MIN]",    # Shorthand Format Minus
-    0x1BCA6: "[SHORT:DBL]",    # Shorthand Format Double
-    0x1BCA7: "[SHORT:CONT]",   # Shorthand Format Continued
-    0x1BCA8: "[SHORT:DOWN]",   # Shorthand Format Down
-    0x1BCA9: "[SHORT:UP]",     # Shorthand Format Up
-    0x1BCAA: "[SHORT:HIGH]",   # Shorthand Format High
-    0x1BCAB: "[SHORT:LOW]",    # Shorthand Format Low
-    0x1BCAC: "[SHORT:MED]",    # Shorthand Format Medium
-    0x1BCAD: "[SHORT:VAR1]",   # Shorthand Format Variation 1
-    0x1BCAE: "[SHORT:VAR2]",   # Shorthand Format Variation 2
-
-    # --- Unicode "Specials" (Process-Internal Noncharacters) ---
-    0xFFFE: "[BAD:BOM]",       # Reversed Byte Order Mark (Endian mismatch)
-    0xFFFF: "[NON:MAX]",       # Max Value (Process internal)
-
-    # --- Missing Arabic & Syriac Format Controls ---
-    0x0600: "[ARB:NUM]",       # Arabic Number Sign
-    0x0601: "[ARB:YEAR]",      # Arabic Sign Sanah
-    0x0602: "[ARB:FOOT]",      # Arabic Footnote Marker
-    0x0603: "[ARB:PAGE]",      # Arabic Sign Safha
-    0x0604: "[ARB:SAMV]",      # Arabic Sign Samvat
-    0x0605: "[ARB:ABV]",       # Arabic Number Mark Above
-    0x06DD: "[ARB:AYAH]",      # Arabic End of Ayah
-    0x08E2: "[ARB:DISP]",      # Arabic Disputed End of Ayah
-    0x070F: "[SYR:SAM]",       # Syriac Abbreviation Mark
-
-    # --- Missing Duployan Format Controls ---
-    0x1BC9D: "[DUP:THICK]",    # Duployan Thick Letter Selector
-    0x1BC9E: "[DUP:DBL]",      # Duployan Double Mark
-
-    # --- Missing Egyptian Hieroglyph Extensions ---
-    0x13439: "[EGY:INS_S]",    # Insertion Joiner Start
-    0x1343A: "[EGY:INS_E]",    # Insertion Joiner End
-    0x1343B: "[EGY:MID]",      # Stack Middle
-
-    # --- Historic Script Fillers & Joiners (Format Controls) ---
-    0x11C40: "[BHAIK:GAP]",    # Bhaiksuki Gap Filler
-    0x11A47: "[ZAN:SUB]",      # Zanabazar Square Subjoiner (Invisible Glue)
-    0x11A99: "[SOY:SUB]",      # Soyombo Subjoiner (Invisible Glue)
-    0x1107F: "[BRAH:NJ]",      # Brahmi Number Joiner
-    0x110BD: "[KAI:NS]",       # Kaithi Number Sign
-    0x110CD: "[KAI:NSA]",      # Kaithi Number Sign Above
-    0x11446: "[NEWA:SAN]",     # Newa Sandhi Mark (Invisible Elision)
-    
-    # --- System & Control Risks ---
-    0x0000: "[NUL]",           # Null Byte (Critical)
-    0x001B: "[ESC]",           # Escape (Terminal Injection)
-    0x00AD: "[SHY]",           # Soft Hyphen
-    
-    # --- Bidi Controls (Trojan Source) ---
-    0x061C: "[ALM]",           # Arabic Letter Mark
-    0x200E: "[LRM]",           # Left-To-Right Mark
-    0x200F: "[RLM]",           # Right-To-Left Mark
-    0x202A: "[LRE]",           # Left-To-Right Embedding
-    0x202B: "[RLE]",           # Right-To-Left Embedding
-    0x202C: "[PDF]",           # Pop Directional Formatting
-    0x202D: "[LRO]",           # Left-To-Right Override
-    0x202E: "[RLO]",           # Right-To-Left Override
-    0x2066: "[LRI]",           # Left-To-Right Isolate
-    0x2067: "[RLI]",           # Right-To-Left Isolate
-    0x2068: "[FSI]",           # First Strong Isolate
-    0x2069: "[PDI]",           # Pop Directional Isolate
-
-    # --- Joiners & Separators ---
-    0x034F: "[CGJ]",           # Combining Grapheme Joiner
-    0x180E: "[MVS]",           # Mongolian Vowel Separator
-    0x200B: "[ZWSP]",          # Zero Width Space
-    0x200C: "[ZWNJ]",          # Zero Width Non-Joiner
-    0x200D: "[ZWJ]",           # Zero Width Joiner
-    0x2060: "[WJ]",            # Word Joiner
-    
-    # --- Missing Mongolian FVS4 ---
-    0x180F: "[FVS4]",          # Mongolian Free Variation Selector 4
-
-    # --- Missing Khitan Filler (Critical Spoofing Vector) ---
-    0x16FE4: "[KSSF]",         # Khitan Small Script Filler
-    
-    # --- Byte Order Mark ---
-    0xFEFF: "[BOM]",           # Zero Width No-Break Space
-    
-    # --- Interlinear Annotation (Rare Format) ---
-    0xFFF9: "[IAA]",           # Anchor
-    0xFFFA: "[IAS]",           # Separator
-    0xFFFB: "[IAT]",           # Terminator
-
-    # --- Exotic Spaces (Visual Spoofing) ---
-    0x00A0: "[NBSP]",          # No-Break Space
-    0x2002: "[ENSP]",          # En Space
-    0x2003: "[EMSP]",          # Em Space
-    0x2004: "[3/EM]",          # Three-Per-Em Space
-    0x2005: "[4/EM]",          # Four-Per-Em Space
-    0x2006: "[6/EM]",          # Six-Per-Em Space
-    0x2007: "[FIGSP]",         # Figure Space
-    0x2008: "[PUNCSP]",        # Punctuation Space
-    0x2009: "[THIN]",          # Thin Space
-    0x200A: "[HAIR]",          # Hair Space
-    0x202F: "[NNBSP]",         # Narrow No-Break Space
-    0x205F: "[MMSP]",          # Medium Mathematical Space
-    0x3000: "[IDSP]",          # Ideographic Space
-    
-    # --- Line Breaks ---
-    0x2028: "[LS]",            # Line Separator
-    0x2029: "[PS]",            # Paragraph Separator
-
-    # --- Tags (Special) ---
-    0xE0001: "[TAG:LANG]",     # Language Tag
-    0xE007F: "[TAG:CANCEL]",   # Cancel Tag
-
-    # 1. C0 Control Codes (Legacy/Obfuscation)
-    0x0001: "[CTL:0x01]", 0x0002: "[CTL:0x02]", 0x0003: "[CTL:0x03]", 0x0004: "[CTL:0x04]",
-    0x0005: "[CTL:0x05]", 0x0006: "[CTL:0x06]", 0x0007: "[CTL:0x07]", 0x0008: "[CTL:0x08]",
-    0x000B: "[CTL:0x0B]", 0x000C: "[CTL:0x0C]", 0x000E: "[CTL:0x0E]", 0x000F: "[CTL:0x0F]",
-    0x0010: "[CTL:0x10]", 0x0011: "[CTL:0x11]", 0x0012: "[CTL:0x12]", 0x0013: "[CTL:0x13]",
-    0x0014: "[CTL:0x14]", 0x0015: "[CTL:0x15]", 0x0016: "[CTL:0x16]", 0x0017: "[CTL:0x17]",
-    0x0018: "[CTL:0x18]", 0x0019: "[CTL:0x19]", 0x001A: "[CTL:0x1A]", 0x001C: "[CTL:0x1C]",
-    0x001D: "[CTL:0x1D]", 0x001E: "[CTL:0x1E]", 0x001F: "[CTL:0x1F]",
-    
-    # 2. C1 Control Codes (Legacy/Obfuscation)
-    0x007F: "[DEL]",      # Delete (Common mutation particle)
-    0x0085: "[NEL]",      # Next Line (Often breaks parsers)
-    # Range 0x80-0x9F
-    0x0080: "[CTL:0x80]", 0x0081: "[CTL:0x81]", 0x0082: "[CTL:0x82]", 0x0083: "[CTL:0x83]",
-    0x0084: "[CTL:0x84]", 0x0086: "[CTL:0x86]", 0x0087: "[CTL:0x87]", 0x0088: "[CTL:0x88]",
-    0x0089: "[CTL:0x89]", 0x008A: "[CTL:0x8A]", 0x008B: "[CTL:0x8B]", 0x008C: "[CTL:0x8C]",
-    0x008D: "[CTL:0x8D]", 0x008E: "[CTL:0x8E]", 0x008F: "[CTL:0x8F]", 0x0090: "[CTL:0x90]",
-    0x0091: "[CTL:0x91]", 0x0092: "[CTL:0x92]", 0x0093: "[CTL:0x93]", 0x0094: "[CTL:0x94]",
-    0x0095: "[CTL:0x95]", 0x0096: "[CTL:0x96]", 0x0097: "[CTL:0x97]", 0x0098: "[CTL:0x98]",
-    0x0099: "[CTL:0x99]", 0x009A: "[CTL:0x9A]", 0x009B: "[CTL:0x9B]", 0x009C: "[CTL:0x9C]",
-    0x009D: "[CTL:0x9D]", 0x009E: "[CTL:0x9E]", 0x009F: "[CTL:0x9F]",
-
-    # Invisible Khmer Vowels (Fillers)
-    0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
-    0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
-    
-    # Invisible Math Operators
-    0x2061: "[FA]",            # Function Application
-    0x2062: "[IT]",            # Invisible Times
-    0x2063: "[IS]",            # Invisible Separator
-    # (U+2064 Invisible Plus was added in Wave 1)
-
-    # The "Rich Text Ghost"
-    0xFFFC: "[OBJ]",           # Object Replacement Character
-    
-    # Table 1: The "False Vacuums" (Hangul & Braille)
-    # These characters are often rendered as invisible but possess width or distinct properties.
-    0x3164: "[HF]",            # Hangul Filler (Critical ID spoofer)
-    0xFFA0: "[HHF]",           # Halfwidth Hangul Filler
-    0x115F: "[HCF]",           # Hangul Choseong Filler
-    0x1160: "[HJF]",           # Hangul Jungseong Filler
-    0x2800: "[BRAILLE]",       # Braille Pattern Blank (Critical Trim Bypass)
-
-    # Table 2: Anomalous Spaces & Quads (Visual Alignment Spoofing)
-    0x1680: "[OSM]",           # Ogham Space Mark
-    0x2000: "[EQ]",            # En Quad
-    0x2001: "[MQ]",            # Em Quad (M is standardized abbr)
-    0x2007: "[FIGSP]",         # Figure Space (Non-breaking)
-    # (Note: 0x2002-0x200A are often handled by general whitespace logic, but 2007/EQ/MQ are specific)
-
-    # Table 3: The "Glue" Class (Layout Locking / Non-Breaking Punctuation)
-    0x2011: "[NBH]",           # Non-Breaking Hyphen
-    0x2024: "[ODL]",           # One Dot Leader
-    0x0F08: "[TIB:SS]",        # Tibetan Mark Sbrul Shad
-    0x0F0C: "[TIB:DT]",        # Tibetan Mark Delimiter Tsheg
-    0x0F12: "[TIB:RGS]",       # Tibetan Mark Rgya Gram Shad
-    0x1802: "[MNG:C]",         # Mongolian Comma
-    0x1803: "[MNG:FS]",        # Mongolian Full Stop
-    0x1808: "[MNG:MC]",        # Mongolian Manchu Comma
-    0x1809: "[MNG:MFS]",       # Mongolian Manchu Full Stop
-
-    # --- Missing Mongolian Free Variation Selectors ---
-    0x180B: "[FVS1]",          # Mongolian Free Variation Selector 1
-    0x180C: "[FVS2]",          # Mongolian Free Variation Selector 2
-    0x180D: "[FVS3]",          # Mongolian Free Variation Selector 3
-
-    # --- Missing Egyptian Hieroglyph Format Controls ---
-    0x13430: "[EGY:VJ]",       # Vertical Joiner
-    0x13431: "[EGY:HJ]",       # Horizontal Joiner
-    0x13432: "[EGY:TOP]",      # Top Joiner
-    0x13433: "[EGY:BOT]",      # Bottom Joiner
-    0x13434: "[EGY:OVR]",      # Overlay Middle
-    0x13435: "[EGY:START]",    # Segment Start
-    0x13436: "[EGY:END]",      # Segment End
-
-    # --- Missing Musical Symbol ---
-    0x1D159: "[MUS:NULL]",     # Musical Symbol Null Notehead
-
-    # --- Standard Whitespace & Structure (Explicit Tags) ---
-    0x0009: "[TAB]",           # Character Tabulation
-    0x000A: "[LF]",            # Line Feed
-    0x000B: "[VT]",            # Line Tabulation (Vertical Tab)
-    0x000C: "[FF]",            # Form Feed
-    0x000D: "[CR]",            # Carriage Return
-
-    # --- Missing Egyptian Exploits ---
-    0x133FC: "[EGY:Z015B]",    # Egyptian Hieroglyph Z015B (Font Exploit)
-
-    # --- Undefined / Reserved ---
-    0x2065: "[RSV:2065]",      # Unassigned (Reserved for future format)
-
-    # Table 4: Invisible Operators & Scoping Containers
-    0x2064: "[INV+]",          # Invisible Plus (Mathematical Ghost)
-    0x13437: "[EGY:BS]",       # Egyptian Hieroglyph Begin Segment
-    0x13438: "[EGY:ES]",       # Egyptian Hieroglyph End Segment
-    0x1BCA0: "[SHORT:LO]",     # Shorthand Format Letter Overlap
-    0x1BCA1: "[SHORT:CO]",     # Shorthand Format Continuing Overlap
-    0x1BCA2: "[SHORT:DS]",     # Shorthand Format Down Step
-    0x1BCA3: "[SHORT:US]",     # Shorthand Format Up Step
-
-    # Table 5: Musical Scoping (The "Ghost" Structures)
-    0x1D173: "[MUS:BB]",       # Musical Symbol Begin Beam
-    0x1D174: "[MUS:EB]",       # Musical Symbol End Beam
-    0x1D175: "[MUS:BT]",       # Musical Symbol Begin Tie
-    0x1D176: "[MUS:ET]",       # Musical Symbol End Tie
-    0x1D177: "[MUS:BS]",       # Musical Symbol Begin Slur
-    0x1D178: "[MUS:ES]",       # Musical Symbol End Slur
-    0x1D179: "[MUS:BP]",       # Musical Symbol Begin Phrase
-    0x1D17A: "[MUS:EP]",       # Musical Symbol End Phrase
-
-    # 5. Visual Control Pictures (Obfuscation / Social Engineering)
-    # These are VISIBLE glyphs that mimic control codes (e.g., ␀ vs NUL).
-    # We tag them as [PIC:...] to distinguish them from real controls.
-    0x2400: "[PIC:NUL]", 0x2401: "[PIC:SOH]", 0x2402: "[PIC:STX]", 0x2403: "[PIC:ETX]",
-    0x2404: "[PIC:EOT]", 0x2405: "[PIC:ENQ]", 0x2406: "[PIC:ACK]", 0x2407: "[PIC:BEL]",
-    0x2408: "[PIC:BS]",  0x2409: "[PIC:HT]",  0x240A: "[PIC:LF]",  0x240B: "[PIC:VT]",
-    0x240C: "[PIC:FF]",  0x240D: "[PIC:CR]",  0x240E: "[PIC:SO]",  0x240F: "[PIC:SI]",
-    0x2410: "[PIC:DLE]", 0x2411: "[PIC:DC1]", 0x2412: "[PIC:DC2]", 0x2413: "[PIC:DC3]",
-    0x2414: "[PIC:DC4]", 0x2415: "[PIC:NAK]", 0x2416: "[PIC:SYN]", 0x2417: "[PIC:ETB]",
-    0x2418: "[PIC:CAN]", 0x2419: "[PIC:EM]",  0x241A: "[PIC:SUB]", 0x241B: "[PIC:ESC]",
-    0x241C: "[PIC:FS]",  0x241D: "[PIC:GS]",  0x241E: "[PIC:RS]",  0x241F: "[PIC:US]",
-    0x2420: "[PIC:SP]",  0x2421: "[PIC:DEL]", 0x2422: "[PIC:BLANK]", 0x2423: "[PIC:OB]",
-    0x2424: "[PIC:NL]",  0x2425: "[PIC:DEL2]", 0x2426: "[PIC:SUB2]",
-
-    # --- Phase 1 Update: Control Picture Overrides (Cleaner Visuals) ---
-    # We map the actual critical controls to their Unicode Picture representations.
-    # This reduces visual length from [NUL] (5 chars) to ␀ (1 char).
-    0x0000: "\u2400",  # ␀ (Null)
-    0x001B: "\u241B",  # ␛ (Escape)
-    0x007F: "\u2421",  # ␡ (Delete)
-
-    # --- Phase 1 Update: Spacing Specifics ---
-    # These often look like spaces but have specific typographic widths/roles.
-    0x2000: "[NQSP]",  # En Quad
-    0x2001: "[MQSP]",  # Em Quad
-
-   
-
-    # --- Wave 4: Invisible Khmer Vowels ---
-    0x17B4: "[KHM:AQ]",        # Khmer Vowel Inherent AQ
-    0x17B5: "[KHM:AA]",        # Khmer Vowel Inherent AA
-    
-    # --- Wave 4: Rich Text Ghost ---
-    0xFFFC: "[OBJ]",           # Object Replacement Character
-
-    # --- Wave 4: Zombie Controls (Deprecated Format) ---
-    0x206A: "[ISS]",           # Inhibit Symmetric Swapping
-    0x206B: "[ASS]",           # Activate Symmetric Swapping
-    0x206C: "[IAFS]",          # Inhibit Arabic Form Shaping
-    0x206D: "[AAFS]",          # Activate Arabic Form Shaping
-    0x206E: "[NDS]",           # National Digit Shapes
-    0x206F: "[NODS]",          # Nominal Digit Shapes
-
-    # --- Interlinear Annotation Controls ---
-    0xFFF9: "[IAA]",  # Interlinear Annotation Anchor
-    0xFFFA: "[IAS]",  # Interlinear Annotation Separator
-    0xFFFB: "[IAT]",  # Interlinear Annotation Terminator
-}
-
-# Programmatically inject the full range of ASCII-Mapped Tags (Plane 14)
-# Range: U+E0020 (Tag Space) to U+E007E (Tag Tilde)
-# This converts U+E0041 to "[TAG:A]", U+E0030 to "[TAG:0]", etc.
-for ascii_val in range(0x20, 0x7F):
-    tag_cp = 0xE0000 + ascii_val
-    if ascii_val == 0x20:
-         INVISIBLE_MAPPING[tag_cp] = "[TAG:SP]" # Explicit Space
-    else:
-         INVISIBLE_MAPPING[tag_cp] = f"[TAG:{chr(ascii_val)}]"
-
-
-# Valid base characters for U+20E3 (Combining Enclosing Keycap)
-VALID_KEYCAP_BASES = frozenset({
-    0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, # Digits 0-9
-    0x0023, # Hash
-    0x002A  # Asterisk
-})
-
-# Pre-compiled testers for single characters
-
-# Sequences that modify intent but are not RGI
-# (This is just an example list, you would need to curate this)
-INTENT_MODIFYING_ZWJ_SEQUENCES = {
-    "🏃‍➡️": "Directional ZWJ (Runner + Right Arrow)",
-    "➡️‍⬛": "Color ZWJ (Right Arrow + Black Square)",
-    # Add other sequences here, like Hand + ZWJ + Holding...
-}
-
-# Also create a set for fast lookup
-INTENT_MODIFYING_ZWJ_SET = frozenset(INTENT_MODIFYING_ZWJ_SEQUENCES.keys())
-INTENT_MODIFYING_MAX_LEN = max((len(s) for s in INTENT_MODIFYING_ZWJ_SET), default=0)
-
-TEST_MINOR = {key: window.RegExp.new(f"^{val}$", "u") for key, val in MINOR_CATEGORIES_29.items()}
-TEST_MAJOR = {
-    "L (Letter)": window.RegExp.new(r"^\p{L}$", "u"),
-    "M (Mark)": window.RegExp.new(r"^\p{M}$", "u"),
-    "N (Number)": window.RegExp.new(r"^\p{N}$", "u"),
-    "P (Punctuation)": window.RegExp.new(r"^\p{P}$", "u"),
-    "S (Symbol)": window.RegExp.new(r"^\p{S}$", "u"),
-    "Z (Separator)": window.RegExp.new(r"^\p{Z}$", "u"),
-    "C (Other)": window.RegExp.new(r"^\p{C}$", "u")
-}
-
-
-ALIASES = {
-    "Lu": "Uppercase Letter", "Ll": "Lowercase Letter", "Lt": "Titlecase Letter", "Lm": "Modifier Letter", "Lo": "Other Letter",
-    "Mn": "Nonspacing Mark", "Mc": "Spacing Mark", "Me": "Enclosing Mark",
-    "Nd": "Decimal Number", "Nl": "Letter Number", "No": "Other Number",
-    "Pc": "Connector Punct.", "Pd": "Dash Punct.", "Ps": "Open Punct.", "Pe": "Close Punct.",
-    "Pi": "Initial Punct.", "Pf": "Final Punct.", "Po": "Other Punct.",
-    "Sm": "Math Symbol", "Sc": "Currency Symbol", "Sk": "Modifier Symbol", "So": "Other Symbol",
-    "Zs": "Space Separator", "Zl": "Line Separator", "Zp": "Paragraph Separator",
-    "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
-}
-
-CCC_ALIASES = {
-    # --- General Reordering Classes ---
-    "0": "Not Reordered",
-    "1": "Overlay",
-    "7": "Nukta",
-    "8": "Kana Voicing",
-    "9": "Virama",
-
-    # --- Fixed Position Range Markers (UAX #44) ---
-    "10": "Start of fixed-position classes",
-    "199": "End of fixed-position classes",
-    
-    # --- Attached / Reordering Classes (The "Zalgo" Reservoir) ---
-    "200": "Attached Below Left",
-    "202": "Attached Below",
-    "214": "Attached Above",
-    "216": "Attached Above Right",
-    "218": "Below Left",
-    "220": "Below",
-    "222": "Below Right",
-    "224": "Left",
-    "226": "Right",
-    "228": "Above Left",
-    "230": "Above",
-    "232": "Above Right",
-    "233": "Double Below",
-    "234": "Double Above",
-    "240": "Iota Subscript"
-}
-
-# --- THREAT PENALTY CONSTANTS (The "Weaponization Code") ---
-# Tier 1: COMPILER / EXECUTION ATTACKS (Target: Machine)
-THR_BASE_EXECUTION = 40
-
-# Tier 2: IDENTITY SPOOFING (Target: Human)
-THR_BASE_SPOOFING = 25
-THR_MULT_SPOOFING = 1.0 # Capped at +25 extra
-
-# Tier 3: OBFUSCATION & STEGO (Target: Filter/Scanner)
-THR_BASE_OBFUSCATION = 15
-THR_MULT_OBFUSCATION = 0.5
-
-# Tier 4: SUSPICIOUS CONTEXT (Target: Ambiguity)
-THR_BASE_SUSPICIOUS = 10
-
-# 1.C. UAX #31 IDENTIFIER STATUS DEFINITIONS# ---
-# We must define all categories to correctly implement the "default-to-restricted" rule.# Source: https://www.unicode.org/reports/tr31/
-# These are explicitly "Allowed" or "Recommended"
-UAX31_ALLOWED_STATUSES = {
-    "Allowed",
-    "Recommended",
-    "Limited_Use",
-}
-
-# These are the various "Restricted" types.
-UAX31_RESTRICTED_STATUSES = {
-    "Restricted",
-    "Technical",
-    "Uncommon_Use",
-    "Deprecated",
-    "Obsolete",
-}
-
-# --- INTEGRITY PENALTY CONSTANTS (The "Health Code") ---
-# Tier 1: FATAL (Irreversible Data Loss)
-INT_BASE_FATAL = 40
-INT_MULT_FATAL = 2.0 
-
-# Tier 2: FRACTURE (Logic/Physics Break)
-INT_BASE_FRACTURE = 25
-INT_MULT_FRACTURE = 1.0
-
-# Tier 3: RISK (Protocol Violation / Interchange Risk)
-INT_BASE_RISK = 15
-INT_MULT_RISK = 0.5
-
-# Tier 4: DECAY (Hygiene / Artifacts)
-INT_BASE_DECAY = 5
-INT_MULT_DECAY = 0.2
-
-# ------------------------------------------------------------
-# [NEW] FORENSIC HAZARD SETS (Global Definition)
-# ------------------------------------------------------------
-# Characters that represent structural syntax in backend systems.
-# Used by the "Syntax Predator" engine to detect Normalization Injection.
-HAZARD_SQL = frozenset({"'", '"', "-", "/", ";", "%"})
-HAZARD_HTML = frozenset({"<", ">", "&"})
-HAZARD_SYSTEM = frozenset({"/", "\\", ".", "|", "$", "`"})
-
-# Union set for fast initial filtering
-HAZARD_ALL = HAZARD_SQL | HAZARD_HTML | HAZARD_SYSTEM
-
-# ------------------------------------------------------------
-#  PATCH B: Robust Normalization Layer for Pyodide/PyScript
-# ------------------------------------------------------------
-
-# Tier 1: Attempt to import unicodedata2 (full Unicode)
-try:
-    import unicodedata2 as _ud
-    NORMALIZER = "unicodedata2"
-    print("Using full unicodedata2 library.")
-except Exception:
-    import unicodedata as _ud
-    NORMALIZER = "unicodedata"
-    # We already print a warning for this during startup
-
-# Tier 3: Manual expansions Pyodide fails to handle
-# Enclosed Alphanumerics → ASCII (⓼ → 8, ⓐ → a, ① → 1, etc.)
-# Covers U+2460–U+24FF (Full set)
-
-ENCLOSED_MAP = {}
-
-# Build mapping for numbers ①–⑳ etc.
-def _build_enclosed():
-    """Populates the ENCLOSED_MAP with manual normalization rules."""
-    try:
-        # Build mapping for numbers ①–⑳ etc. (U+2460 to U+2473)
-        for codepoint in range(0x2460, 0x2474):
-            ENCLOSED_MAP[chr(codepoint)] = str(codepoint - 0x245F)
-        
-        # Build mapping for circled numbers ⓵–⓾ (U+24F5 to U+24FE)
-        for i in range(1, 11):
-            ENCLOSED_MAP[chr(0x24F4 + i)] = str(i) # 0x24F5 is 1
-            
-        # Build mapping for circled Latin letters ⓐ–ⓩ (U+24D0 to U+24E9)
-        for i in range(26):
-            ENCLOSED_MAP[chr(0x24D0 + i)] = chr(ord('a') + i)
-            
-        # Build mapping for circled capital letters Ⓐ–Ⓩ (U+24B6 to U+24CF)
-        for i in range(26):
-            ENCLOSED_MAP[chr(0x24B6 + i)] = chr(ord('A') + i)
-            
-        print(f"Built manual ENCLOSED_MAP with {len(ENCLOSED_MAP)} rules.")
-    except Exception as e:
-        print(f"Error building ENCLOSED_MAP: {e}")
-
-# --- THIS IS THE FIX ---
-# Call the function once at startup to populate the map.
-_build_enclosed()
-# --- END OF FIX ---
-
-
-def normalize_extended(text: str) -> str:
-    """
-    Extended normalization pipeline:
-    Tier 1: NFKC via unicodedata2 if available
-    Tier 2: fallback Pyodide NFKC
-    Tier 3: manually expand enclosed alphanumerics & width-forms
-    """
-    if not text:
-        return ""
-        
-    # Base normalization (Tier 1 or 2)
-    try:
-        s = _ud.normalize("NFKC", text)
-    except Exception:
-        s = text # Failsafe
-
-    # Manual Enclosed Alphanumerics (fixes ⓼ → 8)
-    s = "".join(ENCLOSED_MAP.get(ch, ch) for ch in s)
-
-    # Normalize Fullwidth ASCII (Ｆ → F)
-    # (U+FF01 to U+FF5E)
-    s = "".join(
-        chr(ord(ch) - 0xFEE0) if 0xFF01 <= ord(ch) <= 0xFF5E else ch
-        for ch in s
-    )
-
-    # Remove default emoji variation selectors (FE0F)
-    # This makes '❤️' (U+2764 FE0F) normalize to '❤' (U+2764)
-    s = re.sub(r"[\uFE0E\uFE0F]", "", s)
-
-    return s
-
-# Grapheme Segmenter (UAX #29)
-GRAPHEME_SEGMENTER = window.Intl.Segmenter.new("en", {"granularity": "grapheme"})
-
-# ---
-# 1.A. PRE-COMPILE ALL MINOR CATEGORY REGEXES
-# ---
-# This is the fix: We pre-compile all 29 regexes into REGEX_MATCHER
-# to use the proven-correct 'matchAll' method, just like the
-# 'Provenance' module does.
-
-for key, regex_str in MINOR_CATEGORIES_29.items():
-    # Add to the main matcher dict
-    REGEX_MATCHER[key] = window.RegExp.new(regex_str, "gu")
-
-# ---
-# 2. GLOBAL DATA STORES & ASYNC LOADING
-# ---
-
-LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
-
-DATA_STORES = {
-    "Blocks": {"ranges": [], "starts": [], "ends": []},
-    "Age": {"ranges": [], "starts": [], "ends": []},
-    "Discouraged": {"ranges": [], "starts": [], "ends": []}, # For manual security overrides
-    "IdentifierType": {"ranges": [], "starts": [], "ends": []},
-    "IdentifierStatus": {"ranges": [], "starts": [], "ends": []},
-    "IntentionalPairs": set(),
-    "ScriptExtensions": {"ranges": [], "starts": [], "ends": []},
-    "LineBreak": {"ranges": [], "starts": [], "ends": []},
-    "BidiControl": {"ranges": [], "starts": [], "ends": []},
-    "JoinControl": {"ranges": [], "starts": [], "ends": []},
-    "Extender": {"ranges": [], "starts": [], "ends": []},
-    "WhiteSpace": {"ranges": [], "starts": [], "ends": []},
-    "OtherDefaultIgnorable": {"ranges": [], "starts": [], "ends": []},
-    "Deprecated": {"ranges": [], "starts": [], "ends": []},
-    "VariationSelector": {"ranges": [], "starts": [], "ends": []},
-    "Scripts": {"ranges": [], "starts": [], "ends": []},
-    "Dash": {"ranges": [], "starts": [], "ends": []},
-    "QuotationMark": {"ranges": [], "starts": [], "ends": []},
-    "TerminalPunctuation": {"ranges": [], "starts": [], "ends": []},
-    "SentenceTerminal": {"ranges": [], "starts": [], "ends": []},
-    "Alphabetic": {"ranges": [], "starts": [], "ends": []},
-    "WordBreak": {"ranges": [], "starts": [], "ends": []},
-    "SentenceBreak": {"ranges": [], "starts": [], "ends": []},
-    "GraphemeBreak": {"ranges": [], "starts": [], "ends": []},
-    "DoNotEmit": {"ranges": [], "starts": [], "ends": []},
-    "CombiningClass": {"ranges": [], "starts": [], "ends": []},
-    "DecompositionType": {"ranges": [], "starts": [], "ends": []},
-    "NumericType": {"ranges": [], "starts": [], "ends": []},
-    "BidiMirrored": {"ranges": [], "starts": [], "ends": []},
-    "LogicalOrderException": {"ranges": [], "starts": [], "ends": []},
-    "Confusables": {},
-
-    "EastAsianWidth": {"ranges": [], "starts": [], "ends": []},
-    "VerticalOrientation": {"ranges": [], "starts": [], "ends": []},
-    "BidiBracketType": {"ranges": [], "starts": [], "ends": []},
-    "CompositionExclusions": {"ranges": [], "starts": [], "ends": []},
-    "ChangesWhenNFKCCasefolded": {"ranges": [], "starts": [], "ends": []},
-    "BidiMirroring": {}, # This will be a simple dict {cp: mirrored_cp}
-    
-    "VariantBase": set(),
-    "VariantSelectors": set()
-}
-
-def _parse_and_store_ranges(txt: str, store_key: str):
-    """Generic parser for Unicode range data files (Blocks, Age, etc.)"""
-    store = DATA_STORES[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-    
-    ranges_list = []
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-        
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-        code_range, value = parts[0].strip(), parts[1].strip()
-        
-        if '..' in code_range:
-            a, b = code_range.split('..', 1)
-            ranges_list.append((int(a, 16), int(b, 16), value))
-        else:
-            cp = int(code_range, 16)
-            ranges_list.append((cp, cp, value))
-    
-    ranges_list.sort()
-    
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-    
-    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
-
-def _parse_confusables(txt: str):
-    """Parses confusables.txt into the CONFUSABLES_MAP."""
-    store = DATA_STORES["Confusables"]
-    store.clear()
-    count = 0
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line or line.startswith(';'):
-            continue
-        
-        parts = line.split(';', 2)
-        if len(parts) < 2:
-            continue
-        
-        try:
-            source_hex = parts[0].strip()
-            skeleton_hex_list = parts[1].strip().split()
-            source_cp = int(source_hex, 16)
-            skeleton_str = "".join([chr(int(hex_val, 16)) for hex_val in skeleton_hex_list])
-            
-            # Add to map
-            store[source_cp] = skeleton_str
-            count += 1
-        except Exception:
-            pass # Ignore malformed lines
-    print(f"Loaded {count} confusable mappings.")
-
-def _parse_standardized_variants(txt: str):
-    """Parses StandardizedVariants.txt into two sets."""
-    # Create new, local sets instead of modifying the global one
-    base_set = set()
-    selector_set = set()
-    
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-        
-        hex_codes = parts[0].strip().split()
-        if len(hex_codes) == 2:
-            try:
-                base_cp = int(hex_codes[0], 16)
-                selector_cp = int(hex_codes[1], 16)
-                base_set.add(base_cp)
-                selector_set.add(selector_cp)
-            except ValueError:
-                pass
-                
-    print(f"Loaded {len(base_set)} variant base chars and {len(selector_set)} unique selectors.")
-    # Return the new local sets
-    return base_set, selector_set
-
-def _parse_emoji_variants(txt: str):
-    """Parses emoji-variation-sequences.txt to find emoji base chars."""
-    # Create a new, local set
-    base_set = set()
-    count = 0
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-            
-        hex_codes = parts[0].strip().split()
-        
-        try:
-            # The base char is always the first one (e.g., '0023' from '0023 FE0E')
-            if hex_codes:
-                base_cp = int(hex_codes[0], 16)
-                if base_cp not in base_set:
-                    base_set.add(base_cp)
-                    count += 1
-        except Exception:
-            pass # Ignore malformed lines
-            
-    print(f"Loaded {count} new emoji base chars from emoji-variation-sequences.")
-    # Return the new local set
-    return base_set
-
-def _parse_emoji_test(txt: str) -> dict:
-    """
-    Parses emoji-test.txt to build a map of {sequence: qualification_status}
-    
-    Format:
-    # group: fully-qualified
-    1F600 ; fully-qualified # 😀 grinning face
-    ...
-    # group: unqualified
-    00A9 ; unqualified # © copyright
-    """
-    qualification_map = {}
-    current_group = "unknown"
-    
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        # Check if this is a group header
-        if line.startswith("# group:"):
-            current_group = line.split(":", 1)[-1].strip()
-            continue
-            
-        try:
-            parts = line.split(';', 1)
-            if len(parts) < 2:
-                continue
-                
-            hex_codes_str = parts[0].strip()
-            status = parts[1].strip()
-            
-            # Use the status from the line if available, otherwise from the group
-            final_status = status if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"} else current_group
-            
-            # We only care about these statuses
-            if final_status not in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
-                continue
-
-            hex_codes = hex_codes_str.split()
-            sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
-            
-            if sequence_str:
-                qualification_map[sequence_str] = final_status
-
-        except Exception as e:
-            # print(f"Skipping malformed TEST line: {line} | Error: {e}")
-            pass
-            
-    print(f"Loaded {len(qualification_map)} emoji qualification statuses from emoji-test.txt.")
-    return qualification_map
-
-def _define_emoji_property_map() -> dict:
-    """
-    Returns the property map for parsing emoji-data.txt.
-    We will create new DATA_STORES buckets for these.
-    """
-    # Create new store entries for these properties
-    DATA_STORES["Emoji"] = {"ranges": [], "starts": [], "ends": []}
-    DATA_STORES["Emoji_Presentation"] = {"ranges": [], "starts": [], "ends": []}
-    DATA_STORES["Emoji_Modifier"] = {"ranges": [], "starts": [], "ends": []}
-    DATA_STORES["Emoji_Modifier_Base"] = {"ranges": [], "starts": [], "ends": []}
-    DATA_STORES["Emoji_Component"] = {"ranges": [], "starts": [], "ends": []}
-    DATA_STORES["Extended_Pictographic"] = {"ranges": [], "starts": [], "ends": []}
-    
-    return {
-        "Emoji": "Emoji",
-        "Emoji_Presentation": "Emoji_Presentation",
-        "Emoji_Modifier": "Emoji_Modifier",
-        "Emoji_Modifier_Base": "Emoji_Modifier_Base",
-        "Emoji_Component": "Emoji_Component",
-        "Extended_Pictographic": "Extended_Pictographic"
-    }
-
-def _parse_donotemit(txt: str):
-    """
-    Parses DoNotEmit.txt for single chars and ranges.
-    (Applies 80/20 rule: IGNORES sequences like '0340 0341').
-    """
-    store_key = "DoNotEmit"
-    store = DATA_STORES[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-    
-    ranges_list = []
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-            
-        code_range = parts[0].strip()
-        
-        # --- THIS IS THE 80/20 RULE ---
-        # If there's a space, it's a sequence. Ignore it.
-        if ' ' in code_range:
-            continue
-        # --- END 80/20 RULE ---
-            
-        try:
-            if '..' in code_range:
-                a, b = code_range.split('..', 1)
-                ranges_list.append((int(a, 16), int(b, 16), "DoNotEmit"))
-            else:
-                cp = int(code_range, 16)
-                ranges_list.append((cp, cp, "DoNotEmit"))
-        except Exception:
-            pass # Ignore malformed lines
-
-    ranges_list.sort()
-    
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-        
-    print(f"Loaded {len(ranges_list)} single-char/range rules for {store_key}.")
-
-def _parse_bidi_mirroring(txt: str):
-    """Parses BidiMirroring.txt into a simple dict."""
-    store = DATA_STORES["BidiMirroring"]
-    store.clear()
-    count = 0
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-        
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-            
-        try:
-            source_hex = parts[0].strip()
-            mirror_hex = parts[1].strip()
-            source_cp = int(source_hex, 16)
-            mirror_cp = int(mirror_hex, 16)
-            store[source_cp] = mirror_cp
-            count += 1
-        except Exception:
-            pass # Ignore malformed lines
-            
-    print(f"Loaded {count} bidi mirroring pairs.")
-
-def _parse_bidi_brackets(txt: str):
-    """Parses BidiBrackets.txt for open/close types."""
-    store_key = "BidiBracketType"
-    store = DATA_STORES[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-    
-    ranges_list = []
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-        
-        parts = line.split(';', 2) # Format is: CP; Type; Mirrored_CP
-        if len(parts) < 3:
-            continue
-            
-        code_range = parts[0].strip()
-        bracket_type = parts[1].strip() # 'o' (Open) or 'c' (Close)
-        
-        try:
-            # We only care about ranges, not single code points
-            if '..' in code_range:
-                a, b = code_range.split('..', 1)
-                ranges_list.append((int(a, 16), int(b, 16), bracket_type))
-            else:
-                cp = int(code_range, 16)
-                ranges_list.append((cp, cp, bracket_type))
-        except Exception:
-            pass # Ignore malformed lines
-
-    ranges_list.sort()
-    
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-        
-    print(f"Loaded {len(ranges_list)} bidi bracket ranges.")
-
-def _parse_composition_exclusions(txt: str):
-    """Parses CompositionExclusions.txt."""
-    store_key = "CompositionExclusions"
-    store = DATA_STORES[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-    
-    ranges_list = []
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        try:
-            # The format is just the code point, e.g., "00A0"
-            code_range = line.split(None, 1)[0]
-            if '..' in code_range:
-                a, b = code_range.split('..', 1)
-                ranges_list.append((int(a, 16), int(b, 16), "Full_Composition_Exclusion"))
-            else:
-                cp = int(code_range, 16)
-                ranges_list.append((cp, cp, "Full_Composition_Exclusion"))
-        except Exception:
-            pass # Ignore malformed lines
-
-    ranges_list.sort()
-    
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-        
-    print(f"Loaded {len(ranges_list)} composition exclusion ranges.")
-
-def _parse_emoji_zwj_sequences(txt: str) -> set:
-    """
-    Parse emoji-zwj-sequences.txt into a set of ZWJ emoji strings.
-
-    Supports two formats:
-
-    1) Old UTR #51-style (what you actually have now):
-       1F441 200D 1F5E8                            # (👁‍🗨) eye, zwj, left speech bubble
-
-    2) Newer TR51-style:
-       1F468 200D 2695 FE0F ; RGI_Emoji_ZWJ_Sequence ; man health worker # 👨‍⚕️
-    """
-    sequences: set[str] = set()
-
-    for raw in txt.splitlines():
-        # Strip trailing comment
-        before_hash = raw.split('#', 1)[0]
-        line = before_hash.strip()
-        if not line:
-            continue
-
-        try:
-            # --- Case A: newer semicolon-based format ---
-            if ';' in line:
-                parts = [p.strip() for p in line.split(';')]
-                if not parts:
-                    continue
-
-                hex_codes_str = parts[0]
-                type_field = parts[1] if len(parts) > 1 else ""
-
-                hex_codes = hex_codes_str.split()
-                # Need at least 2 code points to be a sequence
-                if len(hex_codes) <= 1:
-                    continue
-                # Must contain ZWJ (200D)
-                if "200D" not in hex_codes_str:
-                    continue
-
-                type_field_lower = type_field.lower()
-                # Be tolerant: accept the usual Unicode-style labels
-                is_rgi = (
-                    "rgi_emoji_zwj_sequence" in type_field_lower
-                    or "emoji_zwj_sequence" in type_field_lower
-                    or "fully-qualified" in type_field_lower
-                )
-                if not is_rgi:
-                    continue
-
-            # --- Case B: old UTR #51-style (your current file) ---
-            else:
-                # Entire line is just hex codes
-                hex_codes = line.split()
-                if len(hex_codes) <= 1:
-                    continue
-                # Heuristic: Must contain ZWJ (U+200D) to be a ZWJ sequence
-                if "200D" not in hex_codes:
-                    continue
-            
-            # Build the actual Unicode string (applies to both cases)
-            seq = "".join(chr(int(h, 16)) for h in hex_codes)
-            sequences.add(seq)
-
-        except Exception:
-            # Ignore malformed lines, don't kill the whole parse
-            continue
-
-    print(f"Loaded {len(sequences)} RGI ZWJ sequences.")
-    return sequences
-
-def _parse_emoji_sequences(txt: str) -> set:
-    """
-    Parses emoji-sequences.txt for RGI sequences.
-    Includes RGI_Emoji_*, Emoji_Keycap_Sequence, AND Basic_Emoji.
-    """
-    sequences = set()
-    rgi_types = {
-        "RGI_Emoji_Flag_Sequence",
-        "RGI_Emoji_Tag_Sequence",
-        "RGI_Emoji_Modifier_Sequence",
-        "Emoji_Keycap_Sequence",
-        "Basic_Emoji" # <--- ADDED THIS
-    }
-    
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        try:
-            parts = line.split(';', 2)
-            if len(parts) < 2:
-                continue
-                
-            hex_codes_str = parts[0].strip()
-            type_field = parts[1].strip()
-            
-            if type_field in rgi_types:
-                # Ensure it's a space-delimited sequence
-                # AND not a range (which this parser doesn't handle)
-                if '..' not in hex_codes_str:
-                    hex_codes = hex_codes_str.split()
-                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
-                    sequences.add(sequence_str)
-                
-                # [PATCH] Handle ranges for Basic_Emoji (e.g., 1F1E6..1F1FF)
-                elif type_field == "Basic_Emoji":
-                    # Ranges are common in Basic_Emoji
-                    range_parts = hex_codes_str.split('..')
-                    start = int(range_parts[0], 16)
-                    end = int(range_parts[1], 16) if len(range_parts) > 1 else start
-                    
-                    for cp in range(start, end + 1):
-                        sequences.add(chr(cp))
-
-        except Exception as e:
-            pass 
-            
-    print(f"Loaded {len(sequences)} RGI sequences (including Basic_Emoji).")
-    return sequences
-
-def _parse_emoji_variation_sequences(txt: str) -> set:
-    """
-    Parses emoji-variation-sequences.txt for *emoji-style* (FE0F) sequences.
-    Format: 0023 FE0E  ; text style;  ...
-            0023 FE0F  ; emoji style; ...
-    """
-    sequences = set()
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-            
-        try:
-            parts = line.split(';', 2)
-            if len(parts) < 2:
-                continue
-            
-            # We only care about emoji-style sequences
-            if "emoji style" in parts[1]:
-                hex_codes = parts[0].strip().split()
-                if len(hex_codes) == 2: # Should be <base> <FE0F>
-                    sequence_str = "".join([chr(int(h, 16)) for h in hex_codes])
-                    sequences.add(sequence_str)
-        except Exception:
-            pass # Ignore malformed lines
-            
-    print(f"Loaded {len(sequences)} RGI emoji-style variation sequences.")
-    return sequences
-
-def _add_manual_data_overrides():
-    """
-    Manually injects security-related data that isn't in the UCD files.
-    This flags broad "compatibility" blocks as "Discouraged" for security analysis.
-    """
-    print("Adding manual security overrides...")
-    store_key = "Discouraged"
-    store = DATA_STORES[store_key]
-    
-    # Ranges defined by Unicode blocks known to be problematic
-    # (e.g., CJK Compat, Half/Fullwidth, Presentation Forms)
-    discouraged_ranges = [
-        (0x2F00, 0x2FDF, "Kangxi Radicals"),
-        (0x2FF0, 0x2FFF, "Ideographic Description"),
-        (0x31C0, 0x31EF, "CJK Strokes"),
-        (0x3200, 0x32FF, "Enclosed CJK Letters and Months"),
-        (0x3300, 0x33FF, "CJK Compatibility"),
-        (0xF900, 0xFAFF, "CJK Compatibility Ideographs"),
-        (0xFB00, 0xFB4F, "Alphabetic Presentation Forms"), # Ligatures
-        (0xFB50, 0xFDFF, "Arabic Presentation Forms-A"),
-        (0xFE10, 0xFE1F, "Vertical Forms"),
-        (0xFE20, 0xFE2F, "Combining Half Marks"),
-        (0xFE30, 0xFE4F, "CJK Compatibility Forms"),
-        (0xFE50, 0xFE6F, "Small Form Variants"),
-        (0xFE70, 0xFEFF, "Arabic Presentation Forms-B"), # Excludes BOM
-        (0xFF00, 0xFFEF, "Halfwidth and Fullwidth Forms"),
-        (0x1F100, 0x1F1FF, "Enclosed Alphanumeric Supplement"),
-        (0x1F200, 0x1F2FF, "Enclosed Ideographic Supplement"),
-        (0x2F800, 0x2FA1F, "CJK Compatibility Ideographs Supplement"),
-    ]
-
-    ranges_list = []
-    for s, e, v in discouraged_ranges:
-        ranges_list.append((s, e, v))
-
-    ranges_list.sort()
-    
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-    
-    print(f"Loaded {len(ranges_list)} manual 'Discouraged' ranges.")
-
-
-
-# ==========================================
-# [MODULE 2] VERIFICATION BENCH (Target Matcher)
-# ==========================================
 
 def compute_whitespace_topology(t):
     """
     Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
     Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
     """
-    import unicodedata as ud
     ws_stats = collections.Counter()
     
     # State tracking for CRLF
@@ -3469,7 +3921,1221 @@ def compute_whitespace_topology(t):
     """
     return html
 
-import difflib
+# C. Scientific Threat Intelligence (The Papers)
+
+def analyze_symbol_flood(t: str):
+    """
+    [PAPER 3: SSTA] Detects 'Symbol Cascade' attacks.
+    Attackers flood text with 'charged' punctuation (e.g. '......') 
+    to bias model sentiment/classification without changing words.
+    """
+    if not t: return None
+    
+    # 1. Symbol Density Check
+    # Count visible punctuation/symbols (excluding spaces)
+    sym_count = sum(1 for c in t if not c.isalnum() and not c.isspace())
+    density = sym_count / len(t)
+    
+    # 2. Cascade Detection (Run-Length Encoding for Symbols)
+    max_run = 0
+    max_char = ''
+    current_run = 0
+    prev_char = ''
+    
+    for char in t:
+        if not char.isalnum() and not char.isspace():
+            if char == prev_char:
+                current_run += 1
+            else:
+                current_run = 1
+            
+            if current_run > max_run:
+                max_run = current_run
+                max_char = char
+        else:
+            current_run = 0
+        prev_char = char
+        
+    # Thresholds based on SSTA Paper (Cascades often > 8 chars)
+    if max_run >= 8:
+        risk = 40
+        if max_run > 20: risk = 80 # Critical flood
+        
+        return {
+            "type": "CASCADE", 
+            "desc": f"Symbol Flood: '{max_char}' x{max_run}", 
+            "risk": risk,
+            "verdict": "SEMANTIC BIAS"
+        }
+        
+    # High density of non-repeating symbols is also suspicious (Replacement Attack)
+    if len(t) > 20 and density > 0.25:
+        return {
+            "type": "ANOMALY",
+            "desc": f"High Symbol Density ({int(density*100)}%)",
+            "risk": 30,
+            "verdict": "OBFUSCATION"
+        }
+        
+    return None
+
+def analyze_math_spoofing(t: str):
+    """
+    [PAPER 1: Special-Char] Detects Mathematical Alphanumeric spoofing.
+    Attackers replace 'Hello' with '𝐇𝐞𝐥𝐥𝐨' (U+1D400 block) to bypass 
+    tokenizers and safety filters.
+    """
+    # Range: U+1D400 (Math Bold A) to U+1D7FF (Math Monospace digits)
+    math_hits = 0
+    for char in t:
+        cp = ord(char)
+        if 0x1D400 <= cp <= 0x1D7FF:
+            math_hits += 1
+            
+    if math_hits > 0:
+        # If it looks like a word (multiple math chars), it's a spoof
+        if math_hits >= 3:
+            return {
+                "type": "SPOOFING",
+                "desc": f"Math Alphanumeric Spoof ({math_hits} chars)",
+                "risk": 75, # High risk as this is a known jailbreak vector
+                "verdict": "FILTER BYPASS"
+            }
+    return None
+
+
+
+def analyze_token_fragmentation(tokens: list):
+    """
+    [PAPER 2: Charmer] Unified Fragmentation Detector.
+    Combines three layers of detection:
+    1. TARGETED: Re-assembly of high-value threat keywords (Risk 90-100).
+    2. LOCAL: Contiguous runs of micro-tokens (Risk 60+).
+    3. GLOBAL: Statistical density of micro-tokens (Risk 50).
+    """
+    if not tokens: return None
+    
+    # --- LAYER 1: Targeted Re-Assembly (Highest Fidelity) ---
+    reassembly_hits = check_reassembly(tokens)
+    if reassembly_hits:
+        # Calculate Risk based on category severity
+        desc_str = ", ".join(reassembly_hits)
+        risk = 90
+        if "[EXECUTION]" in desc_str or "[INJECTION]" in desc_str:
+            risk = 100
+            
+        return {
+            "type": "FRAGMENTATION",
+            "desc": f"Fragmented Threat Words: {desc_str}",
+            "risk": risk,
+            "verdict": "EVASION (TARGETED)"
+        }
+
+    # --- LAYER 2: Local Contiguity (Heuristic) ---
+    # Detects "s e c u r i t y" even if not in our dictionary
+    max_micro_run = 0
+    current_micro_run = 0
+    
+    # --- LAYER 3: Global Statistics (Thermodynamic) ---
+    # Detects "l a z y s p a c i n g" across the whole file
+    micro_tokens_count = 0
+    total_alnum = 0
+    
+    for tok in tokens:
+        t_str = tok['token']
+        if t_str.isalnum():
+            total_alnum += 1
+            
+            # Check if it's a micro-token (len 1-2)
+            if len(t_str) <= 2:
+                current_micro_run += 1
+                micro_tokens_count += 1
+            else:
+                max_micro_run = max(max_micro_run, current_micro_run)
+                current_micro_run = 0
+                
+    # Catch trailing run
+    max_micro_run = max(max_micro_run, current_micro_run)
+    
+    # Evaluate Layer 2 (Local Run)
+    # A run of 4+ micro-tokens is statistically unlikely in prose (e.g., "a b c d")
+    if max_micro_run >= 4:
+         return {
+            "type": "OBFUSCATION",
+            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
+            "risk": 50 + (max_micro_run * 5), # Scales up quickly with length
+            "verdict": "TOKENIZER CONFUSION"
+        }
+
+    # Evaluate Layer 3 (Global Density)
+    # Only apply if we have enough tokens to be statistically significant
+    if total_alnum > 10:
+        ratio = micro_tokens_count / total_alnum
+        if ratio > 0.5:
+            return {
+                "type": "ANOMALY",
+                "desc": f"High Micro-Token Density ({int(ratio*100)}% of text)",
+                "risk": 45,
+                "verdict": "GLOBAL FRAGMENTATION"
+            }
+            
+    return None
+
+def analyze_token_fragmentation_v2(tokens: list):
+    """
+    [PAPER 2: Charmer] Deep Fragmentation Engine.
+    Checks for re-assembly (Charmer) and contiguous micro-runs.
+    Robust against 'string vs dict' token types.
+    """
+    if not tokens: return None
+    
+    # 1. Charmer Re-Assembly Check (High Fidelity)
+    # Safe check ensures we don't crash if helper is missing
+    if 'check_reassembly' in globals():
+        reassembly_hits = check_reassembly(tokens)
+        if reassembly_hits:
+            desc_str = ", ".join(reassembly_hits)
+            # Critical risk for Exec/Injection keywords, High for others
+            risk = 100 if ("[EXECUTION]" in desc_str or "[INJECTION]" in desc_str) else 90
+            
+            return {
+                "type": "FRAGMENTATION",
+                "desc": f"Fragmented Threat Words: {desc_str}",
+                "risk": risk,
+                "verdict": "TOKENIZER EVASION"
+            }
+
+    # 2. Contiguous Micro-Run Check (Heuristic)
+    max_micro_run = 0
+    current_micro_run = 0
+    
+    for tok_obj in tokens:
+        # DEFENSIVE EXTRACTION: Prevents "string indices must be integers" error
+        if isinstance(tok_obj, dict):
+            txt = tok_obj.get('token', '')
+        else:
+            txt = str(tok_obj)
+        
+        if txt.isalnum() and len(txt) <= 2:
+            current_micro_run += 1
+        else:
+            max_micro_run = max(max_micro_run, current_micro_run)
+            current_micro_run = 0
+            
+    # Capture trailing run
+    max_micro_run = max(max_micro_run, current_micro_run)
+    
+    if max_micro_run >= 4:
+         return {
+            "type": "OBFUSCATION",
+            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
+            "risk": 60,
+            "verdict": "TOKENIZER CONFUSION"
+        }
+
+    return None
+
+def check_reassembly(tokens: list):
+    """
+    [PAPER 2: Charmer - Deep Logic]
+    Attempts to 're-glue' fragmented micro-tokens to see if they form 
+    high-value threat words from the Forensic Vocabulary.
+    """
+    micro_run = []
+    findings = []
+    
+    for tok in tokens:
+        t_str = tok['token']
+        
+        # Collect micro-tokens (len 1-2) - e.g. "s" "h" "e" "ll"
+        if t_str.isalnum() and len(t_str) <= 2:
+            micro_run.append(t_str)
+        else:
+            # Process accumulated run
+            if len(micro_run) >= 3:
+                reassembled = "".join(micro_run).lower()
+                
+                # 1. Exact Match Check
+                if reassembled in ALL_THREAT_TERMS:
+                    # Identify Category
+                    cat = "UNKNOWN"
+                    for c, terms in THREAT_VOCAB.items():
+                        if reassembled in terms:
+                            cat = c
+                            break
+                    findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
+                    
+                # 2. Substring Heuristic (for longer re-assembled chunks)
+                # e.g. "c m d . e x e" -> "cmd.exe" contains "cmd"
+                else:
+                     for term in ALL_THREAT_TERMS:
+                         if len(term) > 3 and term in reassembled:
+                              findings.append(f"[SUSPICIOUS] ...{' '.join(micro_run)}... -> contains '{term}'")
+                              break
+
+            micro_run = []
+            
+    # Flush final run
+    if len(micro_run) >= 3:
+        reassembled = "".join(micro_run).lower()
+        if reassembled in ALL_THREAT_TERMS:
+            cat = "UNKNOWN"
+            for c, terms in THREAT_VOCAB.items():
+                if reassembled in terms:
+                    cat = c
+                    break
+            findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
+            
+    return findings
+
+def analyze_invisible_fragmentation(t: str):
+    """
+    [PAPER 1: Special-Char] Detects 'Invisible Sandwich' attacks.
+    Unlike generic invisibles, this looks for invisibles embedded BETWEEN
+    alphanumeric characters (e.g. 'k<ZWSP>ill'), which specifically 
+    shatters LLM tokenization.
+    """
+    if len(t) < 3: return None
+    
+    # Scan internal characters only (indices 1 to len-2)
+    for i in range(1, len(t) - 1):
+        cp = ord(t[i])
+        
+        # Check using O(1) Lookup
+        is_invis = False
+        if cp < 1114112:
+            mask = INVIS_TABLE[cp]
+            # We care about Spacing, Format, and Joiners for fragmentation
+            if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_SOFT_HYPHEN | INVIS_DEFAULT_IGNORABLE):
+                is_invis = True
+        
+        if is_invis:
+            # The "Sandwich" Check
+            prev_char = t[i-1]
+            next_char = t[i+1]
+            
+            if prev_char.isalnum() and next_char.isalnum():
+                # We found an invisible breaking a word
+                return {
+                    "type": "FRAGMENTATION",
+                    "desc": "Invisible Tokenizer Split (Safety Bypass)",
+                    "risk": 95, # Critical: This is almost always malicious
+                    "verdict": "JAILBREAK VECTOR"
+                }
+    return None
+
+def analyze_visual_redaction(t: str):
+    """
+    [PAPER: Bad Characters] Visual Deletion Engine ('Ghost' Scanner).
+    Detects characters that modify cursor position (BS, DEL) to hide content.
+    """
+    findings = []
+    # BS (0x08), DEL (0x7F) are the primary visual erasers.
+    # CR (0x0D) overwrites line start.
+    REDACTION_SET = {0x0008, 0x007F, 0x000D}
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        if cp in REDACTION_SET:
+            name = "BACKSPACE" if cp == 0x0008 else ("DELETE" if cp == 0x7F else "CARRIAGE RETURN")
+            findings.append(f"#{i} ({name})")
+            
+    if findings:
+        return {
+            "label": "CRITICAL: Visual Redaction (Ghost Chars)",
+            "count": len(findings),
+            "positions": findings,
+            "severity": "crit",
+            "badge": "GHOST"
+        }
+    return None
+
+def analyze_syntax_fracture_enhanced(t: str):
+    """
+    [PAPER: Emoji Survey] Enhanced Fracture Scanner (v2).
+    Detects 'Sandwich Attacks' where an alphanumeric run is split by
+    Emojis, Invisibles, or Tags.
+    """
+    if len(t) < 3: return None
+
+    fractures = []
+    
+    # Inline Agent Check
+    def is_fracture_agent(cp):
+        if cp >= 1114112: return False
+        mask = INVIS_TABLE[cp]
+        if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL | INVIS_SOFT_HYPHEN):
+            return True
+        # Check for Emoji ranges
+        if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
+            return True
+        return False
+
+    # Scan for [Alpha] -> [Agent] -> [Alpha]
+    for i in range(1, len(t) - 1):
+        mid_char = t[i]
+        cp_mid = ord(mid_char)
+        
+        if mid_char.isalnum() or mid_char.isspace():
+            continue
+            
+        if is_fracture_agent(cp_mid):
+            prev_char = t[i-1]
+            next_char = t[i+1]
+            
+            if prev_char.isalnum() and next_char.isalnum():
+                fractures.append(f"#{i} (U+{cp_mid:04X} splits token)")
+
+    if fractures:
+        return {
+            "label": "CRITICAL: Syntax Fracture (Token Evasion)",
+            "count": len(fractures),
+            "positions": fractures,
+            "severity": "crit", 
+            "badge": "JAILBREAK"
+        }
+    return None
+
+def analyze_jailbreak_styles(t: str):
+    """
+    [PAPER: Impact of Non-Standard Unicode] Evasion Alphabet Detector.
+    Detects usage of specific Unicode blocks proved to bypass LLM safety filters.
+    """
+    if not t: return None
+    
+    hits = {"MATH": 0, "ENCLOSED": 0, "BRAILLE": 0, "TAGS": 0}
+    
+    for char in t:
+        cp = ord(char)
+        if 0x1D400 <= cp <= 0x1D7FF: hits["MATH"] += 1
+        elif (0x2460 <= cp <= 0x24FF) or (0x1F100 <= cp <= 0x1F1FF): hits["ENCLOSED"] += 1
+        elif 0x2800 <= cp <= 0x28FF: hits["BRAILLE"] += 1
+        elif 0xE0000 <= cp <= 0xE007F: hits["TAGS"] += 1
+
+    if hits["TAGS"] > 0:
+        return {"type": "INJECTION", "desc": f"Unicode Tags (x{hits['TAGS']})", "risk": 95, "verdict": "JAILBREAK (TAGS)"}
+    if hits["MATH"] > 3:
+        return {"type": "SPOOFING", "desc": f"Math Alphanumerics (x{hits['MATH']})", "risk": 80, "verdict": "JAILBREAK (MATH)"}
+    if hits["ENCLOSED"] > 3:
+        return {"type": "OBFUSCATION", "desc": f"Enclosed Alphanumerics (x{hits['ENCLOSED']})", "risk": 60, "verdict": "EVASION (STYLE)"}
+    if hits["BRAILLE"] > 3:
+         return {"type": "OBFUSCATION", "desc": f"Braille Patterns (x{hits['BRAILLE']})", "risk": 70, "verdict": "EVASION (BRAILLE)"}
+
+    return None
+
+def analyze_normalization_inflation(t: str):
+    """
+    [PAPER: Fun with Unicode] Normalization Bomb Detector.
+    Detects single characters that expand significantly (DoS vector).
+    """
+    flags = {}
+    findings = []
+    
+    # Threshold: If a single char expands to > 10 chars, it's a bomb.
+    BOMB_THRESHOLD = 10 
+    
+    for i, char in enumerate(t):
+        # Optimization: Only check complex scripts (skip ASCII)
+        if ord(char) < 128: continue
+            
+        try:
+            nfkc = unicodedata.normalize("NFKC", char)
+            if len(nfkc) >= BOMB_THRESHOLD:
+                # Special Label for the famous U+FDFA
+                label = "Arabic Ligature (U+FDFA)" if ord(char) == 0xFDFA else f"U+{ord(char):04X}"
+                findings.append(f"#{i} ({label} expands to {len(nfkc)} chars)")
+        except: pass
+            
+    if findings:
+        flags["RISK: Normalization Inflation (DoS Vector)"] = {
+            "count": len(findings),
+            "positions": findings,
+            "severity": "warn",
+            "badge": "DOS"
+        }
+    return flags
+
+def analyze_idna_compression(token: str):
+    """
+    [PAPER: Fun with Unicode] IDNA Compression Detector.
+    Detects characters that map to multi-char ASCII strings in IDNA.
+    """
+    # Scope: Only analyze domain-like tokens
+    if not token or '.' not in token: return None
+    
+    # Heuristic: Check for non-ASCII chars that normalize to ASCII sequences
+    # e.g. U+33C5 (㏅) -> "cd"
+    suspicious = []
+    
+    for char in token:
+        if ord(char) > 127:
+            try:
+                norm = unicodedata.normalize("NFKC", char)
+                # If it expands to 2+ chars AND becomes pure ASCII
+                if len(norm) > 1 and norm.isascii():
+                    suspicious.append(f"U+{ord(char):04X}→'{norm}'")
+            except: pass
+            
+    if suspicious:
+        return {
+            "lvl": "HIGH",
+            "type": "SPOOFING", 
+            "desc": f"IDNA Compression ({', '.join(suspicious)})"
+        }
+    return None
+
+def analyze_punctuation_skew(t: str):
+    """
+    [PAPER 3: SSTA] Replacement Attack Detector.
+    Analyzes ratio of 'Grammatical' vs 'Charged' punctuation.
+    """
+    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-', '(', ')'}
+    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
+    
+    gram_count = sum(1 for c in t if c in grammatical)
+    charged_count = sum(1 for c in t if c in charged)
+    total = gram_count + charged_count
+    
+    if total > 5 and charged_count > 3:
+        ratio = charged_count / total
+        if ratio > 0.70:
+            return {
+                "type": "SKEW",
+                "desc": f"Abnormal Punctuation ({int(ratio*100)}% Charged Symbols)",
+                "risk": 45,
+                "verdict": "REPLACEMENT ATTACK"
+            }
+    return None
+
+# D. Adversarial & Protocol Engines
+
+def analyze_class_consistency(token: str):
+    """
+    [SORE THUMB] Scans for singleton anomalies (e.g. 'paypa1' -> LLLLLN).
+    """
+    if len(token) < 2: return None
+    
+    runs = []
+    current_cat = None
+    current_len = 0
+    
+    for char in token:
+        cat = _get_broad_category(char)
+        if cat == 'M' and current_cat: continue # Absorb marks
+        
+        if cat != current_cat:
+            if current_cat: runs.append({'cat': current_cat, 'len': current_len})
+            current_cat = cat; current_len = 1
+        else:
+            current_len += 1
+    if current_cat: runs.append({'cat': current_cat, 'len': current_len})
+    
+    counts = {}
+    for r in runs: counts[r['cat']] = counts.get(r['cat'], 0) + r['len']
+    if not counts: return None
+    dominant_cat = max(counts, key=counts.get)
+    
+    anomalies = []
+    for i, r in enumerate(runs):
+        # Sore Thumb Rule: Length=1, Not Dominant, Flanked by Dominant
+        if r['len'] == 1 and r['cat'] != dominant_cat and r['cat'] in ('L', 'N'):
+            if i > 0 and runs[i-1]['cat'] == dominant_cat and runs[i-1]['len'] >= 2:
+                anomalies.append(f"Suspicious {r['cat']} in {dominant_cat}-run")
+                
+    if anomalies:
+        return {"desc": ", ".join(anomalies), "risk": 50}
+    return None
+
+def analyze_restriction_level(token: str):
+    """
+    [SCRIPT MIXING] UTS #39 Restriction Level Classifier.
+    """
+    scripts = set()
+    for char in token:
+        cp = ord(char)
+        sc = _find_in_ranges(cp, "Scripts")
+        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts.add(sc)
+            
+    if not scripts:
+        if all(ord(c) < 128 for c in token): return "Highly Restrictive (ASCII)", 0
+        return "Single Script (Common)", 0
+    if len(scripts) == 1: return f"Single Script ({list(scripts)[0]})", 0
+        
+    s_list = sorted(list(scripts))
+    has_latin = "Latin" in scripts
+    has_cyr_greek = "Cyrillic" in scripts or "Greek" in scripts
+    
+    if has_latin and has_cyr_greek:
+        return f"Minimally Restrictive ({', '.join(s_list)})", 90 # Critical
+        
+    return f"Mixed Scripts ({', '.join(s_list)})", 60 # Warning
+
+def analyze_normalization_hazards(t: str):
+    """
+    [SYNTAX PREDATOR]
+    Detects characters that are SAFE in Raw state but become DANGEROUS SYNTAX
+    after NFKC/NFKD normalization (e.g. U+FF07 'FULLWIDTH APOSTROPHE' -> ').
+    """
+    hazards = {}
+    
+    # Optimization: Only scan if text contains non-ASCII (potential transformers)
+    if all(ord(c) < 128 for c in t):
+        return hazards
+
+    for i, char in enumerate(t):
+        # Optimization: Skip if char is already dangerous in raw form (not a hidden attack)
+        if char in HAZARD_ALL:
+            continue
+            
+        # 1. Normalize
+        try:
+            nfkc = unicodedata.normalize("NFKC", char)
+            nfkd = unicodedata.normalize("NFKD", char)
+        except: continue
+        
+        # 2. Check for Syntax Injection
+        # We check both forms because some filters use NFD (decomposition)
+        transformed_chars = set(nfkc) | set(nfkd)
+        
+        detected_vectors = []
+        
+        # Check SQL
+        if not (HAZARD_SQL & {char}) and (HAZARD_SQL & transformed_chars):
+            detected_vectors.append("SQL")
+            
+        # Check HTML/XSS
+        if not (HAZARD_HTML & {char}) and (HAZARD_HTML & transformed_chars):
+            detected_vectors.append("HTML")
+            
+        # Check System/Path
+        if not (HAZARD_SYSTEM & {char}) and (HAZARD_SYSTEM & transformed_chars):
+            detected_vectors.append("SYSTEM")
+            
+        if detected_vectors:
+            # Build the report key
+            vec_str = "/".join(detected_vectors)
+            key = f"CRITICAL: Normalization-Activated {vec_str} Injection"
+            
+            if key not in hazards:
+                hazards[key] = {
+                    "count": 0,
+                    "positions": [],
+                    "severity": "crit",
+                    "badge": "INJECTION"
+                }
+            
+            hazards[key]["count"] += 1
+            # Limit position tracking to avoid UI lag on massive attacks
+            if hazards[key]["count"] <= 10:
+                target = list(transformed_chars & HAZARD_ALL)[0]
+                hazards[key]["positions"].append(f"#{i} (U+{ord(char):04X} &rarr; '{target}')")
+
+    return hazards
+
+def analyze_normalization_hazard_advanced(token: str):
+    """
+    [SHAPESHIFTING] Checks NFC (Binary) and NFKC_Casefold (Visual).
+    Detects tokens that are unstable under normalization (Adversarial Evasion).
+    """
+    hazards = []
+    score = 0
+    
+    # 1. NFC Hazard (Binary Instability)
+    # Detects things like "Ghost Characters" that vanish or merge
+    try:
+        nfc = unicodedata.normalize("NFC", token)
+        if token != nfc:
+            if len(token) != len(nfc):
+                hazards.append("NFC Length Change (Ghost/Hollow)")
+                score += 40
+            else:
+                hazards.append("NFC Binary Drift")
+                score += 20
+    except: pass
+
+    # 2. NFKC_Casefold Hazard (Compatibility/Visual Instability)
+    # Uses the app's robust 'normalize_extended' to catch Enclosed Alphanumerics
+    try:
+        # Simulate NFKC_CF: Normalize NFKC then Casefold
+        nfkc = normalize_extended(token)
+        nfkc_cf = nfkc.casefold()
+        
+        # Compare against normalized raw
+        raw_cf = token.casefold()
+        
+        if nfkc_cf != raw_cf:
+             hazards.append("NFKC-CF Visual Drift")
+             score += 30
+    except: pass
+
+    if hazards:
+        return {"desc": ", ".join(hazards), "risk": score}
+    return None
+
+def analyze_structural_perturbation(token: str):
+    """
+    [BROKEN WORD] Detects non-standard separators inside a token.
+    FIXED: Returns accurate labels (Bidi, ZWSP, Joiner, Tag, Invisible).
+    """
+    perturbations = 0
+    types = set()
+    
+    for char in token:
+        cp = ord(char)
+        if cp == 0xFE0F or cp == 0xFE0E: continue # Ignore VS
+            
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        if mask & INVIS_ANY_MASK:
+            perturbations += 1
+            
+            # Precise labeling based on bitmask
+            if mask & INVIS_BIDI_CONTROL: types.add("Bidi")
+            elif mask & INVIS_ZERO_WIDTH_SPACING: types.add("ZWSP") # Includes BOM
+            elif mask & INVIS_JOIN_CONTROL: types.add("Joiner")
+            elif mask & INVIS_TAG: types.add("Tag")
+            elif mask & INVIS_SOFT_HYPHEN: types.add("SHY") # Explicit SHY
+            elif cp == 0x0000: types.add("Null") # Explicit NUL
+            else: types.add("Invisible")
+            
+    if perturbations > 0:
+        # Sort for deterministic output
+        type_list = sorted(list(types))
+        score = 40 + (perturbations * 10)
+        return {"desc": f"Perturbation ({perturbations}x {', '.join(type_list)})", "risk": min(100, score)}
+    return None
+
+def analyze_context_lure(token: str):
+    """
+    [CONTEXT] Detects Phishing/Auth Keywords and Syntax Lures.
+    Reclassifies 'Login:' and '//' from SPOOFING to CONTEXT.
+    """
+    # 1. Syntax Lures (//, https://, www)
+    if token in ("//", "https://", "http://", "www", "ftp://"):
+        return {"desc": "High-Risk URL Syntax", "risk": 20, "type": "CONTEXT"}
+        
+    # 2. Auth Keywords (Case insensitive)
+    t_lower = token.lower().strip(":")
+    keywords = {"login", "signin", "password", "admin", "verify", "secure", "account", "update", "confirm"}
+    if t_lower in keywords:
+        return {"desc": "Authentication Keyword (Phishing Lure)", "risk": 30, "type": "CONTEXT"}
+        
+    return None
+
+def is_plausible_domain_candidate(token: str) -> bool:
+    """
+    Forensic Gate v2: Strict Structural Filter.
+    Rejects binary blobs, file paths, and random prose.
+    """
+    if len(token) > 253 or len(token) < 3: return False
+    
+    # 1. Critical Exclusion (Data Corruption)
+    for char in token:
+        cp = ord(char)
+        if cp == 0 or cp == 0xFFFD: return False
+        if 0xFDD0 <= cp <= 0xFDEF: return False
+        if (cp & 0xFFFF) >= 0xFFFE: return False
+        
+    # 2. Structural Shape (Must look like a domain)
+    has_dot = '.' in token
+    looks_puny = token.lower().startswith("xn--")
+    
+    # If no dot and not punycode, it's just a word, not a domain.
+    if not has_dot and not looks_puny:
+        return False
+        
+    # 3. ASCII Sanity (If purely ASCII, must use domain alphabet)
+    if token.isascii():
+        # Allow only: Alphanumeric, Dot, Hyphen
+        # Reject: Slash, Backslash, Brackets, etc.
+        for c in token:
+            if not (c.isalnum() or c in ".-"):
+                return False
+                
+    return True
+
+def analyze_idna_label(label: str):
+    """
+    Label-Centric Analyzer (Top-Tier).
+    Handles Punycode decoding, IDNA2008 Categories, and UTS #46 Statuses.
+    Refined V3: Explicitly whitelists ASCII A-Z to prevent noise.
+    Added V4: Forward Punycode Prediction (Wire Format).
+    """
+    findings = []
+
+    # Prevent binary blobs from entering the IDNA engine, regardless of caller.
+    for char in label:
+        cp = ord(char)
+        if cp == 0 or cp == 0xFFFD or (0xFDD0 <= cp <= 0xFDEF) or (cp & 0xFFFF) >= 0xFFFE:
+            return []
+    
+    # 1. PUNYCODE INTELLIGENCE
+    analysis_target = label
+    is_punycode = label.lower().startswith("xn--")
+    
+    if is_punycode:
+        # DECODING (Punycode -> Unicode)
+        try:
+            payload = label[4:] # Strip 'xn--'
+            decoded = payload.encode('ascii').decode('punycode')
+            analysis_target = decoded
+            findings.append({
+                "type": "INFO", "lvl": "LOW",
+                "desc": f"Punycode Decodes to: '{decoded}'"
+            })
+        except Exception:
+            return [{
+                "type": "CRITICAL", "lvl": "CRIT",
+                "desc": "Invalid Punycode Label (Decoding Failed)"
+            }]
+    else:
+        # [NEW] ENCODING (Unicode -> Punycode / Wire Format)
+        # If the label contains non-ASCII, show how it looks on the wire.
+        if not label.isascii():
+            try:
+                # We use the 'idna' codec to simulate browser behavior
+                encoded_wire = label.encode('idna').decode('ascii')
+                if encoded_wire.startswith("xn--"):
+                    findings.append({
+                        "type": "WIRE", "lvl": "MED",
+                        "desc": f"Wire Format: '{encoded_wire}'"
+                    })
+            except: pass
+
+    # 2. DUAL-LENS ANALYSIS (On the Decoded/Raw Unicode Label)
+    idna46 = DATA_STORES.get("IdnaMap", {})
+    idna2008 = DATA_STORES.get("Idna2008", {})
+    
+    for char in analysis_target:
+        cp = ord(char)
+        
+        # Whitelist ASCII Alphanumeric
+        # IDNA2008 technically disallows uppercase A-Z (must be mapped to lower),
+        # but flagging them as "Strict Violation" is forensic noise.
+        # We ignore A-Z, a-z, 0-9, and Hyphen.
+        if (0x41 <= cp <= 0x5A) or (0x61 <= cp <= 0x7A) or (0x30 <= cp <= 0x39) or cp == 0x2D:
+            continue
+
+        # --- A. IDNA2008 (Strict Lens) ---
+        cat08 = idna2008.get(cp, "UNASSIGNED")
+        
+        if cat08 in ("DISALLOWED", "UNASSIGNED"):
+            findings.append({
+                "type": "INVALID", "lvl": "HIGH", 
+                "desc": f"IDNA2008 Strict Violation: U+{cp:04X} ({cat08})"
+            })
+        elif cat08 == "CONTEXTJ":
+            findings.append({
+                "type": "CONTEXT", "lvl": "MED", 
+                "desc": f"Context-Dependent Joiner (CONTEXTJ): U+{cp:04X} (Unverified)"
+            })
+        elif cat08 == "CONTEXTO":
+            findings.append({
+                "type": "CONTEXT", "lvl": "MED", 
+                "desc": f"Context-Dependent Char (CONTEXTO): U+{cp:04X} (Unverified)"
+            })
+
+        # --- B. UTS #46 (Compatibility Lens) ---
+        if cp in idna46["deviation"]:
+             findings.append({
+                 "type": "AMBIGUITY", "lvl": "HIGH", 
+                 "desc": f"UTS #46 Deviation: U+{cp:04X} (Legacy/Modern Mismatch)"
+             })
+        elif cp in idna46["ignored"]:
+             findings.append({
+                 "type": "GHOST", "lvl": "HIGH", 
+                 "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"
+             })
+        elif cp in idna46["nv8"]:
+             findings.append({
+                 "type": "COMPAT", "lvl": "MED", 
+                 "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X} (Protocol Gap)"
+             })
+        elif cp in idna46["xv8"]:
+             findings.append({
+                 "type": "COMPAT", "lvl": "MED", 
+                 "desc": f"IDNA2008 Version Mismatch (XV8): U+{cp:04X}"
+             })
+            
+    return findings
+
+# E. Deobfuscation & Simulation
+
+def recursive_deobfuscate(text: str, depth=0, max_depth=5):
+    """
+    Recursively strips encoding layers (URL -> HTML -> Base64 -> Escapes -> SQL CHAR).
+    Returns: (final_decoded_text, list_of_layers_found)
+    """
+    if depth >= max_depth or not text:
+        return text, []
+
+    layers = []
+    current = text
+    
+    # 1. URL Decoding (Look for %XX)
+    if "%" in current:
+        try:
+            decoded = urllib.parse.unquote(current)
+            if decoded != current:
+                current = decoded
+                layers.append("URL-Encoded")
+        except: pass
+
+    # 2. HTML Entity Decoding (Look for &...;)
+    if "&" in current and ";" in current:
+        try:
+            decoded = html.unescape(current)
+            if decoded != current:
+                current = decoded
+                layers.append("HTML-Entity")
+        except: pass
+
+    # 3. Unicode/Hex/Octal Escapes (\uXXXX, \xXX, \NNN)
+    if "\\" in current:
+        try:
+            # A. Try Standard Python Decode
+            # This handles \u0041, \x41, and some octal
+            decoded = current.encode('utf-8').decode('unicode_escape')
+            if decoded != current:
+                current = decoded
+                layers.append("Escape-Sequence")
+            
+            # B. Explicit Octal Pattern (e.g. \141\142) if Python missed it
+            # Matches \1 to \7 followed by two digits
+            octal_pattern = re.compile(r'\\([0-7]{1,3})')
+            if octal_pattern.search(current):
+                def oct_sub(match):
+                    try: return chr(int(match.group(1), 8))
+                    except: return match.group(0)
+                
+                decoded_oct = octal_pattern.sub(oct_sub, current)
+                if decoded_oct != current:
+                    current = decoded_oct
+                    if "Escape-Sequence" not in layers: layers.append("Octal-Escapes")
+        except: pass
+
+    # 4. SQL CHAR() De-obfuscation (The "Concat" Pattern)
+    # Matches: CHAR(83) or CHAR(0x53), optionally joined by + or || or spaces
+    # Regex: CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)
+    sql_pattern = re.compile(r'CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)', re.IGNORECASE)
+    if "CHAR" in current.upper():
+        def sql_sub(match):
+            val = match.group(1)
+            try:
+                # Handle Hex (0x...) or Decimal
+                code = int(val, 16) if val.lower().startswith("0x") else int(val)
+                return chr(code)
+            except: return match.group(0)
+            
+        # We also need to strip the '+' concatenation if present between CHARs
+        # Simplified approach: Replace CHAR(...) -> X, then cleanup artifacts? 
+        # Better: decode in place.
+        decoded_sql = sql_pattern.sub(sql_sub, current)
+        
+        if decoded_sql != current:
+            # Cleanup SQL concatenation noise (e.g., 'S'+'E'+'L' -> 'SEL')
+            # This is a heuristic cleanup for '+' and '||' between decoded chars
+            # Ideally, the user sees "S+E+L+E+C+T", which is readable enough to flag.
+            current = decoded_sql
+            layers.append("SQL-CHAR")
+
+    # 5. Base64 Heuristic (The False Positive Hazard)
+    # Logic: Must be > 16 chars, valid B64 charsets, and decode to meaningful text
+    if len(current) > 16 and re.match(r'^[A-Za-z0-9+/=]+$', current.strip()):
+        try:
+            # Add padding if missing
+            pad = len(current) % 4
+            if pad: current += "=" * (4 - pad)
+            
+            b_data = base64.b64decode(current, validate=True)
+            decoded_utf8 = b_data.decode('utf-8')
+            
+            # Entropy check: > 70% printable
+            printable = sum(1 for c in decoded_utf8 if c.isprintable())
+            if printable / len(decoded_utf8) > 0.7:
+                current = decoded_utf8
+                layers.append("Base64")
+        except: pass
+
+    # Recursion Step
+    if layers:
+        next_text, next_layers = recursive_deobfuscate(current, depth + 1, max_depth)
+        return next_text, layers + next_layers
+    
+    return current, []
+
+def analyze_waf_policy(text: str):
+    """
+    Simulates a hardened WAF (SiteMinder/Broadcom style).
+    Checks the 'Naked' (De-obfuscated) string for forbidden artifacts.
+    """
+    alerts = []
+    score = 0
+    
+    # 1. Critical Injection Vectors (SiteMinder BadCssChars)
+    # < > ' " ( ) ; +
+    xss_vectors = []
+    if "<" in text or ">" in text: xss_vectors.append("HTML Tag (< >)")
+    if "javascript:" in text.lower(): xss_vectors.append("JS Scheme")
+    if "onerror" in text.lower() or "onload" in text.lower(): xss_vectors.append("Event Handler")
+    
+    if xss_vectors:
+        alerts.append(f"XSS Injection ({', '.join(xss_vectors)})")
+        score += 40
+
+    # 2. Path Traversal (SiteMinder BadUrlChars)
+    # .. // \ %00
+    traversal = []
+    if "../" in text or "..\\" in text: traversal.append("Dir Traversal (..)")
+    if "//" in text and "http" not in text: traversal.append("Double Slash (//)")
+    if "\x00" in text: traversal.append("Null Byte Injection")
+    
+    if traversal:
+        alerts.append(f"Path Traversal ({', '.join(traversal)})")
+        score += 50
+
+    # 3. SQL Injection Heuristics (Broadcom BadQueryChars)
+    sqli_keywords = ["union select", "information_schema", "drop table", "1=1", "--"]
+    lower_t = text.lower()
+    for kw in sqli_keywords:
+        if kw in lower_t:
+            alerts.append(f"SQL Injection ({kw})")
+            score += 45
+            break # One is enough
+
+    return alerts, score
+
+def analyze_code_masquerade(text: str, script_stats: dict):
+    """
+    Detects 'Solders' style malware: Valid Code structure using Alien Scripts.
+    Heuristic: High-Density Non-Latin Identifiers + Code Syntax.
+    """
+    # 1. Check for Code Syntax ( { } ; function var const => )
+    code_syntax_chars = { '{', '}', ';', '(', ')', '[', ']', '=', '+', '>' }
+    syntax_hits = sum(1 for c in text if c in code_syntax_chars)
+    
+    # Needs a minimum syntax density to be considered "Code"
+    if len(text) < 50 or (syntax_hits / len(text)) < 0.05:
+        return None
+
+    # 2. Check Script Usage (from Module 2.D stats)
+    # If we have significant non-Latin/non-Common script usage
+    # but the text is structured like code, it's suspicious.
+    
+    suspicious_scripts = []
+    for key in script_stats:
+        if "Latin" not in key and "Common" not in key and "Inherited" not in key:
+            # Check if this script makes up a significant portion of the text
+            # (We approximate using the 'count' from stats)
+            count = script_stats[key].get('count', 0)
+            if count > 10: # Threshold for relevance
+                suspicious_scripts.append(key.replace("Script: ", ""))
+
+    # 3. Dynamic Execution Sinks (The 'eval' equivalent)
+    # Check for "constructor" access patterns or "eval"
+    has_sinks = False
+    if 'constructor' in text or 'eval(' in text or 'Function(' in text:
+        has_sinks = True
+
+    if suspicious_scripts and (has_sinks or syntax_hits > 20):
+        scripts_str = ", ".join(suspicious_scripts)
+        return {
+            "verdict": "Obfuscated Code",
+            "detail": f"Code Syntax + Alien Identifiers ({scripts_str})",
+            "risk": "High (Solders-style malware)",
+            "score": 85
+        }
+    
+    return None
+
+def analyze_anti_sanitization(t: str):
+    """
+    Detects specific characters known to bypass standard filters
+    before normalizing into dangerous payloads.
+    Source: AppCheck / OWASP / 7ASecurity Research.
+    """
+    flags = {}
+    
+    # 1. SQL Injection Vectors (Normalization Exploits)
+    # U+FF07 (Fullwidth Apostrophe) -> ' (0x27)
+    if "\uff07" in t:
+        flags["CRITICAL: SQL Injection Vector (U+FF07)"] = {
+            "count": t.count("\uff07"),
+            "positions": ["Becomes ' (Apostrophe) under NFKC/NFKD"],
+            "severity": "crit",
+            "badge": "SQLi"
+        }
+
+    # 2. XSS Vectors (Normalization Exploits)
+    # U+FE64 (Small Less-Than) -> < (0x3C)
+    # U+FF1C (Fullwidth Less-Than) -> < (0x3C)
+    # U+FF1E (Fullwidth Greater-Than) -> > (0x3E)
+    xss_norm_chars = {
+        "\ufe64": "Small <", "\uff1c": "Fullwidth <", "\uff1e": "Fullwidth >"
+    }
+    found_xss = [name for char, name in xss_norm_chars.items() if char in t]
+    if found_xss:
+        flags[f"CRITICAL: XSS Bypass Vector ({', '.join(found_xss)})"] = {
+            "count": sum(t.count(c) for c in xss_norm_chars if c in t),
+            "positions": ["Normalizes to HTML syntax (< >)"],
+            "severity": "crit",
+            "badge": "XSS"
+        }
+
+    # 3. Source Code Obfuscation
+    # U+00A0 (NBSP) often breaks parsers expecting 0x20
+    if "\u00a0" in t:
+        flags["RISK: Source Code Obfuscation (NBSP)"] = {
+            "count": t.count("\u00a0"),
+            "positions": ["Non-Breaking Space (Breaks Parsers)"],
+            "severity": "warn",
+            "badge": "SYNTAX"
+        }
+        
+    # 4. Polyglot Canaries (Probing Tools)
+    # U+0212A (Kelvin Sign) -> 'K'
+    if "\u212a" in t:
+        flags["SUSPICIOUS: Polyglot Canary (Kelvin Sign)"] = {
+            "count": t.count("\u212a"),
+            "positions": ["Used to probe normalization (Becomes 'K')"],
+            "severity": "warn",
+            "badge": "PROBE"
+        }
+
+    # 5. [NEW] Structural Mutation (Overlay Attacks)
+    # U+0338 (Combining Long Solidus Overlay) on Syntax Chars
+    # Research Vector: '>' + U+0338 = '≯' (Masks the tag closer)
+    if "\u0338" in t:
+        syntax_targets = {'<', '>', '/', "'", '"', ';', '=', '-'}
+        mutation_hits = 0
+        
+        # Iterate to find U+0338 applied to syntax
+        for i, char in enumerate(t):
+            if char == "\u0338" and i > 0:
+                prev = t[i-1]
+                if prev in syntax_targets:
+                    mutation_hits += 1
+                    
+        if mutation_hits > 0:
+            flags["CRITICAL: Structural Mutation (Overlay Masking)"] = {
+                "count": mutation_hits,
+                "positions": ["Syntax characters masked by U+0338 (e.g. ≯)"],
+                "severity": "crit",
+                "badge": "MASKING"
+            }
+
+    return flags
+
+def analyze_case_collisions(t: str):
+    """
+    Simulates Upper/Lower case transformations to detect
+    buffer overflows and logic bypasses (e.g. GitHub Dotless i).
+    """
+    flags = {}
+    
+    # 1. Length Expansion (Buffer Overflow Risk)
+    # Classic Example: 'ß' (len 1) -> 'SS' (len 2)
+    t_upper = t.upper()
+    if len(t) != len(t_upper):
+        diff = len(t_upper) - len(t)
+        flags["DANGER: Case Mapping Expansion"] = {
+            "count": 1,
+            "positions": [f"String grows by {diff} chars on Uppercase (Buffer Overflow Risk)"],
+            "severity": "crit",
+            "badge": "OVERFLOW"
+        }
+
+    # 2. WAF/Logic Bypass Vectors
+    # Long S (ſ) -> S
+    if "\u017f" in t:
+        flags["CRITICAL: WAF Bypass Vector (Long S)"] = {
+            "count": t.count("\u017f"),
+            "positions": ["Becomes 'S' on Uppercase (Shadows Keywords)"],
+            "severity": "crit",
+            "badge": "BYPASS"
+        }
+    
+    # Dotless i (ı) -> I (or I -> i depending on locale, but dotless i is the main vector)
+    if "\u0131" in t:
+        flags["CRITICAL: Logic Bypass Vector (Dotless i)"] = {
+            "count": t.count("\u0131"),
+            "positions": ["Becomes 'I' on Uppercase (GitHub-style exploit)"],
+            "severity": "crit",
+            "badge": "BYPASS"
+        }
+
+    return flags
+
+def analyze_domain_heuristics(token: str):
+    """
+    [TYPOSQUATTING] Detects structural lures in Domain/Filename tokens.
+    Checks for: Pseudo-delimiters, Double Extensions, and RTLO injection.
+    """
+    # 1. Scope: Only analyze tokens that look like paths/domains
+    # (Must contain a dot, slash, or look like a file)
+    if "." not in token and "/" not in token and "\\" not in token:
+        return None
+
+    risks = []
+    score = 0
+    
+    # --- A. PSEUDO-DELIMITERS (The "Fake Dot" Attack) ---
+    # Characters that look like '.' but aren't U+002E
+    FAKE_DOTS = {
+        0x2024: "One Dot Leader",
+        0x2025: "Two Dot Leader", 
+        0x2026: "Ellipsis",
+        0x3002: "Ideographic Full Stop",
+        0xFF0E: "Fullwidth Full Stop",
+        0x0589: "Armenian Full Stop",
+        0x06D4: "Arabic Full Stop"
+    }
+    
+    fake_dot_found = []
+    for char in token:
+        cp = ord(char)
+        if cp in FAKE_DOTS:
+            fake_dot_found.append(FAKE_DOTS[cp])
+            
+    if fake_dot_found:
+        risks.append(f"Pseudo-Delimiters ({', '.join(set(fake_dot_found))})")
+        score += 80 # Critical: This is almost always malicious in a domain context
+
+    # --- B. DOUBLE EXTENSIONS (The "PDF.EXE" Attack) ---
+    # Logic: Look for [suspicious_ext] + . + [executable_ext]
+    # Simple regex-free heuristic
+    lower_tok = token.lower()
+    
+    # Common safe-looking decoys
+    decoys = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".txt", ".mp4"}
+    # Dangerous payloads
+    payloads = {".exe", ".vbs", ".bat", ".cmd", ".sh", ".js", ".jar", ".scr", ".com"}
+    
+    # Iterate to find patterns like 'document.pdf.exe'
+    for payload in payloads:
+        if lower_tok.endswith(payload):
+            # Check what comes BEFORE the payload
+            prefix = lower_tok[: -len(payload)]
+            for decoy in decoys:
+                if prefix.endswith(decoy):
+                    risks.append(f"Double Extension Lure ({decoy}{payload})")
+                    score += 90 # Critical
+                    break
+    
+    # --- C. RTLO INJECTION (Filename Spoofing) ---
+    # Check for Bidi overrides specifically near extension dots
+    # (e.g. "cod\u202Efdp.exe" -> "codexe.pdf")
+    if "\u202E" in token or "\u202D" in token: # RLO or LRO
+        # If Bidi exists and we have a dot, it's highly suspect
+        if "." in token:
+            risks.append("Bidi Arrears (Extension Spoofing Risk)")
+            score += 100 # Critical
+
+    if risks:
+        return {"desc": ", ".join(risks), "risk": score}
+    
+    return None
+
+# F. Verification & Statistics
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
@@ -3488,7 +5154,7 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
 
     # 2. Sequence Analysis
-    import difflib
+
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
     match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
     
@@ -3662,501 +5328,1561 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         "lens_html": lens_html
     }
 
-# ==========================================
-# [MODULE 3] DOMAIN & TYPOSQUATTING RADAR
-# ==========================================
-
-def analyze_domain_heuristics(token: str):
+def compute_statistical_profile(t: str):
     """
-    [TYPOSQUATTING] Detects structural lures in Domain/Filename tokens.
-    Checks for: Pseudo-delimiters, Double Extensions, and RTLO injection.
+    Stage 1.5 'Chemistry': local statistical properties.
+    ULTIMATE VERSION: Combines Sparklines, Detailed Layout Cards, Expanded Tokens,
+    Honest Fingerprint, and ASCII/Payload metrics.
     """
-    # 1. Scope: Only analyze tokens that look like paths/domains
-    # (Must contain a dot, slash, or look like a file)
-    if "." not in token and "/" not in token and "\\" not in token:
-        return None
-
-    risks = []
-    score = 0
-    
-    # --- A. PSEUDO-DELIMITERS (The "Fake Dot" Attack) ---
-    # Characters that look like '.' but aren't U+002E
-    FAKE_DOTS = {
-        0x2024: "One Dot Leader",
-        0x2025: "Two Dot Leader", 
-        0x2026: "Ellipsis",
-        0x3002: "Ideographic Full Stop",
-        0xFF0E: "Fullwidth Full Stop",
-        0x0589: "Armenian Full Stop",
-        0x06D4: "Arabic Full Stop"
+    stats = {
+        "entropy": 0.0, "entropy_n": 0, "entropy_norm": 0.0, "entropy_conf": "unknown",
+        "ttr": 0.0, "ttr_segmented": None,
+        "total_tokens": 0, "unique_tokens": 0, "top_tokens": [], "top_shares": {"top1": 0.0, "top3": 0.0},
+        "top_chars": [],
+        "char_dist": {"letters": 0.0, "digits": 0.0, "ws": 0.0, "sym": 0.0},
+        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0, "median": 0, "empty": 0, "sparkline": ""},
+        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0, "is_valid": False, "v_count": 0, "c_count": 0},
+        "ascii_density": 0.0,
+        "payloads": []
     }
     
-    fake_dot_found = []
+    if not t: return stats
+
+    # 1. Entropy & ASCII Density
+    try:
+        utf8_bytes = t.encode("utf-8", errors="replace")
+        total_bytes = len(utf8_bytes)
+        stats["entropy_n"] = total_bytes
+        if total_bytes > 0:
+            byte_counts = Counter(utf8_bytes)
+            entropy = 0.0
+            for count in byte_counts.values():
+                p = count / total_bytes
+                entropy -= p * math.log2(p)
+            stats["entropy"] = round(max(0.0, min(8.0, entropy)), 2)
+            
+            k = max(1, len(byte_counts))
+            h_max = min(8.0, math.log2(k)) if k > 1 else 0.0
+            stats["entropy_norm"] = round(entropy / h_max, 3) if h_max > 0 else 0.0
+            
+            if total_bytes < 128: stats["entropy_conf"] = "low"
+            elif total_bytes < 1024: stats["entropy_conf"] = "medium"
+            else: stats["entropy_conf"] = "high"
+
+            ascii_bytes = sum(1 for b in utf8_bytes if b <= 0x7F)
+            stats["ascii_density"] = round((ascii_bytes / total_bytes) * 100, 1)
+    except: pass
+
+    try:
+        raw_tokens = t.split()
+        
+        # Payload Heuristics (Base64 / Hex)
+        payload_candidates = []
+        # Base64: A-Z, a-z, 0-9, +, / (and URL-safe - _)
+        b64_pattern = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
+        hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
+        # [NEW] Charcode: 5+ CSV integers (e.g. 65,66,67...)
+        char_pattern = re.compile(r'^(\d{2,3},){5,}\d{2,3}$')
+        # [NEW] Percent: 5+ encoded bytes (e.g. %20%41...)
+        perc_pattern = re.compile(r'^(%[0-9A-Fa-f]{2}){5,}$')
+        
+        for tok in raw_tokens:
+            # Lowered threshold to 14 to catch short %XX runs (5*3=15 chars)
+            if len(tok) > 14:
+                p_type = None
+                if b64_pattern.match(tok): p_type = "Base64"
+                elif hex_pattern.match(tok) and len(tok) % 2 == 0: p_type = "Hex"
+                elif char_pattern.match(tok): p_type = "Charcode"
+                elif perc_pattern.match(tok): p_type = "URL-Enc"
+                
+                if p_type:
+                    # Calculate Local Entropy for this specific token
+                    # This distinguishes "padding" from "encrypted data"
+                    b_counts = Counter(tok)
+                    p_ent = 0.0
+                    for count in b_counts.values():
+                        p = count / len(tok)
+                        p_ent -= p * math.log2(p)
+                    
+                    payload_candidates.append({
+                        "type": p_type, 
+                        "token": tok[:32] + "..." if len(tok)>32 else tok, 
+                        "len": len(tok),
+                        "entropy": round(p_ent, 2)
+                    })
+
+        if payload_candidates: stats["payloads"] = payload_candidates[:5]
+
+        # Normalized Tokens
+        tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
+        stats["total_tokens"] = len(tokens)
+        if stats["total_tokens"] > 0:
+            unique_tokens = set(tokens)
+            stats["unique_tokens"] = len(unique_tokens)
+            stats["ttr"] = round(len(unique_tokens) / stats["total_tokens"], 3)
+
+            token_counts = Counter(tokens)
+            # FETCH 12 TOKENS FOR UI
+            top_n_tokens = token_counts.most_common(12) 
+
+            if top_n_tokens:
+                stats["top_shares"]["top1"] = round((top_n_tokens[0][1] / stats["total_tokens"]) * 100, 1)
+                top3_sum = sum(c for _, c in top_n_tokens[:3])
+                stats["top_shares"]["top3"] = round((top3_sum / stats["total_tokens"]) * 100, 1)
+
+                structured_tokens = []
+                for tok, count in top_n_tokens:
+                    share = (count / stats["total_tokens"]) * 100
+                    structured_tokens.append({"token": tok, "count": count, "share": round(share, 1)})
+                stats["top_tokens"] = structured_tokens
+
+            seg_size = 50
+            if stats["total_tokens"] >= seg_size * 2:
+                seg_ttrs = []
+                for i in range(0, len(tokens), seg_size):
+                    seg = tokens[i : i + seg_size]
+                    if len(seg) < seg_size // 2: continue
+                    seg_ttrs.append(len(set(seg)) / len(seg))
+                if seg_ttrs:
+                    stats["ttr_segmented"] = round(sum(seg_ttrs) / len(seg_ttrs), 3)
+    except: pass
+
+    # 3. Honest Fingerprint
+    try:
+        total_chars = len(t)
+        if total_chars > 0:
+            char_counts = Counter(t)
+            valid_chars = {}
+            for ch, cnt in char_counts.items():
+                cp = ord(ch)
+                if cp > 0x20 or cp in (0x20, 0x09, 0x0A):
+                    valid_chars[ch] = cnt
+            
+            if valid_chars:
+                top_chars = sorted(valid_chars.items(), key=lambda x: x[1], reverse=True)[:5]
+                structured_chars = []
+                for ch, count in top_chars:
+                    share = (count / total_chars) * 100
+                    cat = "Other"
+                    if ch.isalpha(): cat = "Let"
+                    elif ch.isdigit(): cat = "Num"
+                    elif unicodedata.category(ch).startswith("P"): cat = "Punct"
+                    elif ch.isspace(): cat = "WS"
+                    structured_chars.append({"char": ch, "count": count, "share": round(share, 1), "cat": cat})
+                stats["top_chars"] = structured_chars
+
+            l_count = sum(1 for c in t if c.isalpha())
+            n_count = sum(1 for c in t if c.isdigit())
+            ws_count = sum(1 for c in t if c.isspace())
+            sym_count = max(0, total_chars - l_count - n_count - ws_count)
+            stats["char_dist"] = {
+                "letters": round((l_count / total_chars) * 100, 1),
+                "digits": round((n_count / total_chars) * 100, 1),
+                "ws": round((ws_count / total_chars) * 100, 1),
+                "sym": round((sym_count / total_chars) * 100, 1)
+            }
+    except: pass
+
+    # 4. Layout Physics (STRICT VISUAL SPLIT + SPARKLINE)
+    try:
+        normalized_t = t.replace('\r\n', '\n').replace('\r', '\n')
+        lines = normalized_t.split('\n')
+        if len(lines) > 1 and lines[-1] == '': lines.pop()
+        
+        n = len(lines)
+        stats["line_stats"]["count"] = n
+        
+        if n > 0:
+            line_lens = [len(line) for line in lines]
+            sorted_lens = sorted(line_lens)
+            
+            stats["line_stats"]["min"] = sorted_lens[0]
+            stats["line_stats"]["max"] = sorted_lens[-1]
+            stats["line_stats"]["avg"] = round(sum(line_lens) / n, 1)
+            stats["line_stats"]["empty"] = sum(1 for l in line_lens if l == 0)
+            
+            # Helper for percentiles (Pure Python, no deps)
+            def get_perc(p, d):
+                pos = p * (len(d) - 1)
+                lower = int(pos)
+                upper = lower + 1
+                if upper >= len(d): return d[-1]
+                weight = pos - lower
+                return int(round(d[lower] * (1 - weight) + d[upper] * weight))
+
+            stats["line_stats"]["p25"] = get_perc(0.25, sorted_lens)
+            stats["line_stats"]["median"] = get_perc(0.50, sorted_lens)
+            stats["line_stats"]["p50"] = stats["line_stats"]["median"] # Alias
+            stats["line_stats"]["p75"] = get_perc(0.75, sorted_lens)
+            stats["line_stats"]["p90"] = get_perc(0.90, sorted_lens)
+            
+            # --- MASS DISTRIBUTION MAP (Stacked Bar Data) ---
+            total_mass = sum(line_lens)
+            if total_mass == 0: total_mass = 1
+            
+            layout_map = []
+            target_segments = 60 
+            
+            if n <= target_segments:
+                for i, length in enumerate(line_lens):
+                    pct = (length / total_mass) * 100
+                    col = "#3b82f6" if i % 2 == 0 else "#93c5fd" 
+                    if length == 0: col = "#e2e8f0" 
+                    layout_map.append({"w": pct, "c": col})
+            else:
+                chunk_size = n / target_segments
+                for i in range(target_segments):
+                    s = int(i * chunk_size)
+                    e = int((i + 1) * chunk_size)
+                    chunk = line_lens[s:e]
+                    mass = sum(chunk)
+                    pct = (mass / total_mass) * 100
+                    col = "#3b82f6" if i % 2 == 0 else "#93c5fd"
+                    if mass == 0: col = "#e2e8f0"
+                    layout_map.append({"w": pct, "c": col})
+            
+            stats["line_stats"]["layout_map"] = layout_map
+    except Exception as e:
+        print(f"Layout Calc Error: {e}")
+
+    # 5. Phonotactics (8-Point Analysis)
+    try:
+        # Filter for just the letters to analyze phonemes
+        ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
+        letter_count = len(ascii_letters)
+        
+        # Gate: Need enough data to be meaningful
+        if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
+            vowels = set("aeiou")
+            v_count = sum(1 for c in ascii_letters if c in vowels)
+            c_count = letter_count - v_count
+            
+            # 1. Bits Per Phoneme (Letter Entropy)
+            # H = -Sum(p * log2(p)) for the letter stream
+            l_counts = Counter(ascii_letters)
+            l_ent = 0.0
+            for cnt in l_counts.values():
+                p = cnt / letter_count
+                l_ent -= p * math.log2(p)
+            
+            # 2. Heuristic Frequency Scoring (Simulated N-Grams)
+            # Top English frequencies (Approximate)
+            top_uni = set("etaoinshrdlu") # ~80% of English
+            top_bi = {"th", "he", "in", "er", "an", "re", "nd", "at", "on", "nt", "ha", "es", "st", "en", "ed", "to", "it", "ou", "ea", "hi"}
+            top_tri = {"the", "and", "ing", "ent", "ion", "her", "for", "tha", "nth", "int", "ere", "tio", "ter", "est", "ers", "ati", "hat", "ate", "all", "eth"}
+            
+            # Unigram Score: Density of High-Freq Letters
+            uni_hits = sum(1 for c in ascii_letters if c in top_uni)
+            uni_score = (uni_hits / letter_count) * 100
+            
+            # Bigram/Trigram Generation
+            letter_str = "".join(ascii_letters)
+            
+            # Bigram Score
+            bi_hits = 0
+            if letter_count >= 2:
+                total_bi = letter_count - 1
+                for i in range(total_bi):
+                    if letter_str[i:i+2] in top_bi: bi_hits += 1
+                bi_score = (bi_hits / total_bi) * 100
+            else:
+                bi_score = 0.0
+
+            # Trigram Score
+            tri_hits = 0
+            if letter_count >= 3:
+                total_tri = letter_count - 2
+                for i in range(total_tri):
+                    if letter_str[i:i+3] in top_tri: tri_hits += 1
+                tri_score = (tri_hits / total_tri) * 100
+            else:
+                tri_score = 0.0
+
+            stats["phonotactics"].update({
+                "vowel_ratio": round(v_count / letter_count, 2),
+                "count": letter_count,
+                "is_valid": True,
+                "v_count": v_count,
+                "c_count": c_count,
+                "bits_per_phoneme": round(l_ent, 2),
+                "uni_score": round(uni_score, 1),
+                "bi_score": round(bi_score, 1),
+                "tri_score": round(tri_score, 1)
+            })
+            
+            r = stats["phonotactics"]["vowel_ratio"]
+            if 0.30 <= r <= 0.50: stats["phonotactics"]["status"] = "Balanced"
+            elif r < 0.20: stats["phonotactics"]["status"] = "Vowel-Poor"
+            elif r > 0.60: stats["phonotactics"]["status"] = "Vowel-Heavy"
+            else: stats["phonotactics"]["status"] = "Typical"
+    except Exception as e: 
+        print(f"Phono Error: {e}")
+        pass
+
+    return stats
+
+def analyze_trojan_context(token: str):
+    """
+    [TROJAN SOURCE] Checks for Bidi controls near code syntax.
+    """
+    has_bidi = False
     for char in token:
         cp = ord(char)
-        if cp in FAKE_DOTS:
-            fake_dot_found.append(FAKE_DOTS[cp])
+        if cp < 1114112 and (INVIS_TABLE[cp] & INVIS_BIDI_CONTROL):
+            has_bidi = True
+            break
             
-    if fake_dot_found:
-        risks.append(f"Pseudo-Delimiters ({', '.join(set(fake_dot_found))})")
-        score += 80 # Critical: This is almost always malicious in a domain context
-
-    # --- B. DOUBLE EXTENSIONS (The "PDF.EXE" Attack) ---
-    # Logic: Look for [suspicious_ext] + . + [executable_ext]
-    # Simple regex-free heuristic
-    lower_tok = token.lower()
+    if not has_bidi: return None
     
-    # Common safe-looking decoys
-    decoys = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".txt", ".mp4"}
-    # Dangerous payloads
-    payloads = {".exe", ".vbs", ".bat", ".cmd", ".sh", ".js", ".jar", ".scr", ".com"}
+    # Check for code-like syntax chars
+    code_syntax = {'"', "'", ';', '{', '}', '/', '*', '#'}
+    is_code_adjacent = any(c in code_syntax for c in token)
     
-    # Iterate to find patterns like 'document.pdf.exe'
-    for payload in payloads:
-        if lower_tok.endswith(payload):
-            # Check what comes BEFORE the payload
-            prefix = lower_tok[: -len(payload)]
-            for decoy in decoys:
-                if prefix.endswith(decoy):
-                    risks.append(f"Double Extension Lure ({decoy}{payload})")
-                    score += 90 # Critical
-                    break
-    
-    # --- C. RTLO INJECTION (Filename Spoofing) ---
-    # Check for Bidi overrides specifically near extension dots
-    # (e.g. "cod\u202Efdp.exe" -> "codexe.pdf")
-    if "\u202E" in token or "\u202D" in token: # RLO or LRO
-        # If Bidi exists and we have a dot, it's highly suspect
-        if "." in token:
-            risks.append("Bidi Arrears (Extension Spoofing Risk)")
-            score += 100 # Critical
+    if is_code_adjacent:
+        return {"desc": "Bidi Control near Syntax (Trojan Risk)", "risk": 100}
+    return {"desc": "Bidi Control present", "risk": 60}
 
-    if risks:
-        return {"desc": ", ".join(risks), "risk": score}
-    
-    return None
-
-def _find_in_ranges(cp: int, store_key: str):
-    """Generic range finder using bisect."""
-    import bisect
-    store = DATA_STORES[store_key]
-    starts_list = store["starts"]
-    
-    if not starts_list:
-        return None
-    
-    i = bisect.bisect_right(starts_list, cp) - 1
-    if i >= 0 and cp <= store["ends"][i]:
-        return store["ranges"][i][2] # Return the value
-    return None
-
-def _get_char_script_id(char, cp: int):
-    """Helper for the RLE engine. Returns a single string ID for a char's script."""
-    # 1. Check ScriptExtensions first (for '·', '(', etc.)
-    script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-    if script_ext_val:
-        # 'Latn Grek' becomes one "state"
-        return f"Script-Ext: {script_ext_val}"
-
-    # 2. Fall back to primary Script property (using our new data store)
-    script_val = _find_in_ranges(cp, "Scripts")
-    if script_val:
-        return f"Script: {script_val}"
-
-    return "Script: Unknown"
-
-def _parse_intentional(txt: str):
-    """Parses intentional.txt into a set of frozenset pairs."""
-    store = DATA_STORES["IntentionalPairs"]
-    store.clear()
-    count = 0
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
-            continue
-        
-        parts = line.split(';', 1)
-        if len(parts) < 2:
-            continue
-            
-        try:
-            cp1_hex = parts[0].strip()
-            cp2_hex_list = parts[1].strip().split() # Can be one or more
-            
-            cp1 = int(cp1_hex, 16)
-            for cp2_hex in cp2_hex_list:
-                cp2 = int(cp2_hex, 16)
-                # Store as a frozenset so {A, B} is the same as {B, A}
-                pair = frozenset([cp1, cp2])
-                store.add(pair)
-                count += 1
-        except Exception:
-            pass # Ignore malformed lines
-    print(f"Loaded {count} intentional pairs.")
-    # Convert to frozenset for immutability after loading
-    DATA_STORES["IntentionalPairs"] = frozenset(store)
-
-# --- 1. IDNA2008 PARSER (Strict RFC 5892) ---
-def _parse_idna2008(txt: str):
+def analyze_confusion_density(token: str, confusables_map: dict):
     """
-    Parses Idna2008.txt (RFC 5892).
-    Stores: PVALID, CONTEXTJ, CONTEXTO, DISALLOWED, UNASSIGNED.
+    [CONFUSION DENSITY] Calculates per-token ambiguity using UTS #39 data.
     """
-    store = DATA_STORES["Idna2008"] = {}
-    for line in txt.splitlines():
-        if '#' in line: line = line.split('#')[0]
-        if not line.strip(): continue
-        parts = [p.strip() for p in line.split(';')]
-        if len(parts) < 2: continue
-        
-        code_range = parts[0]
-        category = parts[1].strip()
-        
-        if '..' in code_range:
-            start, end = map(lambda x: int(x, 16), code_range.split('..'))
-        else:
-            start = end = int(code_range, 16)
-            
-        for cp in range(start, end + 1):
-            store[cp] = category
-
-# --- 2. UTS #46 PARSER (Compatibility & NV8) ---
-def _parse_idna_mapping(txt: str):
-    """
-    Parses UTS #46 IdnaMappingTable.txt.
-    Stores Status, Mappings, NV8/XV8 flags.
-    """
-    store = DATA_STORES["IdnaMap"] = {
-        "deviation": set(), "ignored": set(), "disallowed": set(), 
-        "mapped": set(), "nv8": set(), "xv8": set()
-    }
+    if not token or not confusables_map: return None
     
-    for line in txt.splitlines():
-        # Parsing 4-column format: Code; Status; Mapping; IDNA2008_Status
-        raw_line = line.split('#')[0]
-        if not raw_line.strip(): continue
-        
-        parts = [p.strip() for p in raw_line.split(';')]
-        if len(parts) < 2: continue
-        
-        code_range = parts[0]
-        status = parts[1].strip()
-        
-        # Check for NV8/XV8 in column 4 (index 3)
-        idna08_status = parts[3] if len(parts) > 3 else ""
-        is_nv8 = "NV8" in idna08_status
-        is_xv8 = "XV8" in idna08_status
-        
-        if '..' in code_range:
-            start, end = map(lambda x: int(x, 16), code_range.split('..'))
-        else:
-            start = end = int(code_range, 16)
-            
-        target_set = store.get(status)
-        if target_set is not None:
-            for cp in range(start, end + 1):
-                target_set.add(cp)
-                if is_nv8: store["nv8"].add(cp)
-                if is_xv8: store["xv8"].add(cp)
-
-async def load_unicode_data():
-
-    # --- USE THE GLOBAL LOCK ---
-    global LOADING_LOCK
+    confusable_count = 0
+    effective_len = 0
     
-    # 1. Check if another process is already loading
-    if LOADING_LOCK:
-        print("LOG: Loading locked. Skipping concurrent execution.")
-        return
-
-    # 2. Check if data is already fully loaded (from a previous completed run)
-    if "Blocks" in DATA_STORES and isinstance(DATA_STORES["Blocks"], frozenset):
-        print("LOG: Data already loaded. Skipping re-initialization.")
-        return
-
-    # 3. Lock the door immediately
-    LOADING_LOCK = True
-    
-    """Fetches, parses, and then triggers a UI update."""
-    global LOADING_STATE
-    
-    async def fetch_file(filename):
-        try:
-            # Use "./" prefix for all files (no subdirectories)
-            response = await pyfetch(f"./{filename}")
-            if response.ok:
-                return await response.string()
-            else:
-                print(f"Failed to load {filename}: {response.status}")
-                return None
-        except Exception as e:
-            print(f"Error loading {filename}: {e}")
-            return None
-
-    LOADING_STATE = "LOADING"
-    render_status(f"Loading Unicode data files...")
-    print("Unicode data loading started.")
-    
-    try:
-        # --- MODIFIED (Feature 2 Expanded) ---
-        files_to_fetch = [
-            "Blocks.txt", "DerivedAge.txt", "IdentifierType.txt", "IdentifierStatus.txt", "intentional.txt",
-            "confusables.txt", "StandardizedVariants.txt", "ScriptExtensions.txt", 
-            "LineBreak.txt", "PropList.txt", "DerivedCoreProperties.txt",
-            "Scripts.txt",
-            "emoji-variation-sequences.txt",
-            "WordBreakProperty.txt",
-            "SentenceBreakProperty.txt",
-            "GraphemeBreakProperty.txt",
-            "DoNotEmit.txt",
-            "DerivedCombiningClass.txt",
-            "DerivedDecompositionType.txt",
-            "DerivedBinaryProperties.txt",
-            "DerivedNumericType.txt",
-            "EastAsianWidth.txt",
-            "VerticalOrientation.txt",
-            "BidiBrackets.txt",
-            "BidiMirroring.txt",
-            "DerivedNormalizationProps.txt",
-            "CompositionExclusions.txt",
-            "emoji-sequences.txt",
-            "emoji-zwj-sequences.txt",
-            "emoji-data.txt",
-            "emoji-test.txt",
-            "inverse_confusables.json",
-            "ascii_confusables.json",
-            "IdnaMappingTable.txt",
-            "Idna2008.txt"
-        ]
-        results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
-    
-        # --- MODIFIED (Feature 2 Expanded) ---
-        (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_txt, variants_txt, 
-         script_ext_txt, linebreak_txt, proplist_txt, derivedcore_txt, 
-         scripts_txt, emoji_variants_txt, word_break_txt, 
-         sentence_break_txt, grapheme_break_txt, donotemit_txt, ccc_txt, 
-         decomp_type_txt, derived_binary_txt, num_type_txt, 
-         ea_width_txt, vert_orient_txt, bidi_brackets_txt,
-         bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt, 
-         inverse_json, ascii_json, idna_map_txt, idna_2008_txt) = results
-    
-        # Parse each file
-        if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
-        if age_txt: _parse_and_store_ranges(age_txt, "Age")
-        if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
-        if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
-        if intentional_txt: _parse_intentional(intentional_txt)
-        if confusables_txt:
-            # Parse Confusables with Type Preservation (Forensic Upgrade)
-            # Format: Code ; Target ; Type # Comment
-            # We strictly need the 'Type' (MA, ML, SA, SL) for the new Intel Engine.
-            temp_map = {}
-            lines = confusables_txt.split('\n')
-            for line in lines:
-                # 1. Strip comments first to ensure clean parsing
-                if '#' in line:
-                    line = line.split('#')[0]
+    for char in token:
+        cp = ord(char)
+        # Filter out common punctuation to avoid noise
+        if not unicodedata.category(char).startswith('P'):
+            effective_len += 1
+            # Check map
+            if cp in confusables_map:
+                # Retrieve mapping
+                val = confusables_map[cp]
+                target = val[0] if isinstance(val, tuple) else val
                 
-                if line.strip():
-                    parts = line.split(';')
-                    if len(parts) >= 3:
-                        src = int(parts[0].strip(), 16)
-                        
-                        # Parse target sequence
-                        tgt_hex = parts[1].strip().split()
-                        tgt = "".join([chr(int(x, 16)) for x in tgt_hex])
-                        
-                        # Parse Type (MA, ML, SA, SL)
-                        tag = parts[2].strip()
-                        
-                        # Store as tuple: (target_string, tag_type)
-                        # This enables the "Smart Skeleton" logic
-                        temp_map[src] = (tgt, tag)
-                        
-            DATA_STORES["Confusables"] = temp_map
-            print(f"Loaded {len(temp_map)} Confusable mappings with Forensic Types.")
+                # If it maps to something DIFFERENT, it's ambiguous
+                if target != char:
+                    confusable_count += 1
 
-        # --- Load Forensic JSONs ---
-        if inverse_json:
-            DATA_STORES["InverseConfusables"] = json.loads(inverse_json)
-            print(f"Loaded Inverse Confusables map.")
+    if effective_len == 0: return None
+    
+    density = confusable_count / effective_len
+    
+    if density > 0.0:
+        risk = int(density * 100)
+        # Boost risk for high density
+        if density > 0.5: risk = min(100, risk + 20)
+        
+        return {
+            "desc": f"Confusion Density: {density:.0%}",
+            "density": density,
+            "risk": risk
+        }
+    return None
 
-        if ascii_json:
-            # Update the global ASCII_CONFUSABLES set with rigorous data
-            # We assume ascii_json is a list of integers
-            loaded_ascii = set(json.loads(ascii_json))
-            global ASCII_CONFUSABLES
-            ASCII_CONFUSABLES = loaded_ascii
-            print(f"Loaded {len(ASCII_CONFUSABLES)} high-risk ASCII homoglyphs.")
-        
-        # --- Feature 1 Logic (FROZENSET Fix, Reversed) ---
-        std_base_set = set()
-        std_selector_set = set()
-        emoji_base_set = set()
-        
-        if variants_txt: 
-            std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
+def analyze_zalgo_load(token: str):
+    """
+    [ZALGO] Checks for Diacritic Overload.
+    FIX: Ignores Variation Selectors (VS15/VS16) to avoid flagging Emoji as Zalgo.
+    """
+    mark_count = 0
+    base_count = 0
+    max_stack = 0
+    current_stack = 0
+    
+    for char in token:
+        cp = ord(char)
+        # Exclude Variation Selectors from "Mark" count for Zalgo purposes
+        if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
+            continue
+            
+        if unicodedata.category(char).startswith('M'):
+            mark_count += 1
+            current_stack += 1
         else:
-            print("--- WARNING: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
+            base_count += 1
+            max_stack = max(max_stack, current_stack)
+            current_stack = 0
+    max_stack = max(max_stack, current_stack)
+    
+    ratio = mark_count / max(1, base_count)
+    
+    if max_stack >= 4 or ratio > 2.0:
+        return {"desc": f"Diacritic Overload (Max Stack: {max_stack})", "risk": 80}
+    elif max_stack >= 2 or ratio > 0.5:
+        return {"desc": "Heavy Diacritics", "risk": 40}
+        
+    return None
+
+def analyze_case_anomalies(token: str):
+    """
+    [CASE ANOMALY] Detects suspicious casing (PayPaI).
+    """
+    if len(token) < 3: return None
+    
+    # 1. Mixed Case at End (PayPaI)
+    if token[:-1].islower() and token[-1].isupper():
+        return {"desc": "Suspicious End-Capitalization", "risk": 40}
+        
+    # 2. Random Upper in Lower (payPa1)
+    # Heuristic: Mostly lower with 1 isolated upper in middle
+    uppers = sum(1 for c in token if c.isupper())
+    lowers = sum(1 for c in token if c.islower())
+    
+    if lowers > 2 and uppers == 1 and not token[0].isupper():
+        return {"desc": "Suspicious Mid-Capitalization", "risk": 40}
+        
+    return None
+
+def detect_invisible_patterns(t: str):
+    """
+    [STEGANOGRAPHY] Global scanner for repeating invisible sequences.
+    """
+    if not t: return None
+    invis_seq = []
+    for char in t:
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        if mask & INVIS_ANY_MASK:
+            if mask & INVIS_ZERO_WIDTH_SPACING: tag = "ZW"
+            elif mask & INVIS_JOIN_CONTROL: tag = "JN"
+            elif mask & INVIS_TAG: tag = "TG"
+            elif mask & INVIS_BIDI_CONTROL: tag = "BD"
+            elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): tag = "VS"
+            else: tag = "?? "
+            invis_seq.append(tag)
             
-        if emoji_variants_txt: 
-            emoji_base_set = _parse_emoji_variants(emoji_variants_txt)
+    if len(invis_seq) < 4: return None
+    
+    patterns = collections.Counter()
+    n = len(invis_seq)
+    for k in [2, 3]:
+        for i in range(n - k + 1):
+            gram = tuple(invis_seq[i : i + k])
+            patterns[gram] += 1
+            
+    suspects = []
+    for gram, count in patterns.items():
+        if count > 2 and (count * len(gram) > n * 0.4):
+            pat_str = "-".join(gram)
+            suspects.append(f"{pat_str} (x{count})")
+            
+    if suspects:
+        return {
+            "verdict": "Structured Invisible Pattern",
+            "detail": ", ".join(suspects),
+            "risk": "Steganography / Watermark",
+            "score": 75
+        }
+    return None
+
+def analyze_adversarial_tokens(t: str):
+    """
+    The Core Engine for Stage 1.1 "Adversarial Intelligence".
+    Tokenizes text and performs per-token forensic extraction.
+    
+    ULTIMATE VERSION (Syntax-Safe):
+    1. Uses Manual Tokenization (char.isspace) to avoid Regex escape issues.
+    2. Performs deep forensic enrichment (Skeletons, Scripts, ID Profile).
+    """
+    if not t: return {"tokens": [], "collisions": [], "stats": {}}
+
+    # --- 1. Forensic Tokenization (Greedy / Whitespace-Based) ---
+    # [FIX] Replaced Regex with Manual Loop to eliminate "invalid escape sequence" errors.
+    # This splits purely on Unicode Whitespace while preserving all internal characters
+    # (including invisible joiners/format controls) as a single token.
+    
+    raw_tokens = []
+    current_start = -1
+    
+    for i, char in enumerate(t):
+        is_ws = char.isspace()
+        
+        if not is_ws:
+            # If we are not in a token, start one
+            if current_start == -1:
+                current_start = i
         else:
-            print("--- WARNING: emoji-variation-sequences.txt SKIPPED (file was empty or failed to load)")
-        
-        # 1. Create a new, temporary combined set, starting with the emoji set
-        combined_base_set = emoji_base_set.union(std_base_set)
-        
-        # 2. Store it as an IMMUTABLE frozenset
-        DATA_STORES["VariantBase"] = frozenset(combined_base_set)
-        DATA_STORES["VariantSelectors"] = frozenset(std_selector_set) # Make this one immutable too
-        
-        # --- End Feature 1 Logic ---
+            # If we were in a token, close it
+            if current_start != -1:
+                clean_text = t[current_start:i].strip("()[]{}<>\"',;!|")
+                
+                if clean_text:
+                    # Calculate real offsets after strip
+                    raw_chunk = t[current_start:i]
+                    offset = raw_chunk.find(clean_text)
+                    real_start = current_start + offset
+                    
+                    raw_tokens.append({
+                        "text": clean_text,
+                        "start": real_start,
+                        "end": real_start + len(clean_text)
+                    })
+                
+                current_start = -1
 
-        # --- NEW (Phase 1: Emoji Bugfix - Optimized) ---
-        # Build the RGI Sequence Set from Tiers 1-3
-        set_zwj = set()
-        set_non_zwj = set()
-        set_variations = set()
+    # Flush final token if string didn't end with whitespace
+    if current_start != -1:
+        clean_text = t[current_start:].strip("()[]{}<>\"',;!|")
         
-        if emoji_zwj_seq_txt:
-            set_zwj = _parse_emoji_zwj_sequences(emoji_zwj_seq_txt)
-        
-        if emoji_seq_txt:
-            set_non_zwj = _parse_emoji_sequences(emoji_seq_txt)
+        if clean_text:
+            raw_chunk = t[current_start:]
+            offset = raw_chunk.find(clean_text)
+            real_start = current_start + offset
             
-        if emoji_variants_txt:
-            # We re-use the file we already loaded for variants
-            set_variations = _parse_emoji_variation_sequences(emoji_variants_txt)
-            
-        # Combine all sequences into one master set
-        combined_rgi_sequences = set_zwj.union(set_non_zwj).union(set_variations)
-        
-        # --- THIS IS THE OPTIMIZATION ---
-        # Store as a set (fast membership) + max length (for sliding window)
-        DATA_STORES["RGISequenceSet"] = combined_rgi_sequences
-        DATA_STORES["RGISequenceMaxLen"] = max((len(s) for s in combined_rgi_sequences), default=0)
-        # --- END OPTIMIZATION ---
-        
-        # Store the sorted list (optional, but good for debugging)
-        DATA_STORES["RGISequenceList"] = sorted(
-            list(combined_rgi_sequences),
-            key=len,
-            reverse=True
-        )
-        
-        print(
-            f"--- Emoji Engine: Created RGISequenceSet with "
-            f"{len(DATA_STORES['RGISequenceSet'])} total sequences; "
-            f"max length = {DATA_STORES['RGISequenceMaxLen']}."
-        )
-        # --- END (Phase 1: Emoji Bugfix) ---
+            raw_tokens.append({
+                "text": clean_text,
+                "start": real_start,
+                "end": real_start + len(clean_text)
+            })
 
-        # --- NEW (Phase 2: Emoji Powerhouse) ---
-        # Load single-char properties from emoji-data.txt
-        if emoji_data_txt:
-            emoji_prop_map = _define_emoji_property_map()
-            _parse_property_file(emoji_data_txt, emoji_prop_map)
+    enriched_tokens = []
+    skeleton_map = collections.defaultdict(list) # skeleton -> [token_indices]
+
+    # --- 2. Enrichment Loop ---
+    for idx, raw in enumerate(raw_tokens):
+        txt = raw["text"]
         
-        # Load qualification status for sequences
-        if emoji_test_txt:
-            DATA_STORES["EmojiQualificationMap"] = _parse_emoji_test(emoji_test_txt)
+        # A. Classification (Email, Domain, Identifier, Word)
+        kind = _classify_token_kind(txt)
+        
+        # B. Scripts (Set of scripts used in token)
+        scripts = _get_script_set(txt)
+        
+        # C. Identifier Profile (UAX #31 Status/Type)
+        id_profile = _get_identifier_profile(txt)
+        
+        # D. Skeleton Generation & Metadata
+        # We need return_events=True to calculate Confusable Density
+        skel, skel_events = _generate_uts39_skeleton(txt, return_events=True)
+        
+        # E. Confusable Analysis (Local Density)
+        confusable_count = skel_events.get('confusables_mapped', 0)
+        confusable_density = 0
+        if len(txt) > 0:
+            confusable_density = round(confusable_count / len(txt), 2)
+            
+        # F. Invisible/Hidden Check (Local Count)
+        invis_count = 0
+        for char in txt:
+            # Use O(1) Lookup Table
+            if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
+                invis_count += 1
+                
+        # G. Mixed Script Check
+        # Filter out "safe" scripts (Common/Inherited) to find true mixing
+        major_scripts = {s for s in scripts if s not in ("Common", "Inherited", "Unknown")}
+        is_mixed_script = len(major_scripts) > 1
+
+        # Build Feature Vector (Consumed by _evaluate_adversarial_risk)
+        token_data = {
+            "id": idx,
+            "text": txt,
+            "span": (raw["start"], raw["end"]),
+            "kind": kind,
+            "scripts": sorted(list(major_scripts)),
+            "is_mixed": is_mixed_script,
+            "skeleton": skel,
+            "id_status": id_profile["status"],
+            "id_types": sorted(list(id_profile["types"])),
+            "confusables": {
+                "count": confusable_count,
+                "density": confusable_density,
+                "mappings": skel_events.get('mappings', []) 
+            },
+            "invisibles": invis_count,
+            "risk": "LOW", # Will be updated by Block 2 (Risk Engine)
+            "triggers": [] # Will be populated by Block 2
+        }
+        
+        enriched_tokens.append(token_data)
+        
+        # Map for collision detection (Homograph Radar)
+        # Only map tokens > 1 char to avoid noise
+        if len(txt) > 1:
+            skeleton_map[skel].append(idx)
+
+    # Return intermediate data structure
+    return {
+        "tokens": enriched_tokens,
+        "skeleton_map": skeleton_map
+    }
+
+def analyze_signal_processor_state(data):
+    """
+    Forensic State Machine v5.2 (Fixed Data Structures & Cross-Script Logic).
+    Standardizes all facets to dictionaries to prevent NameError.
+    """
+    
+    # --- 1. THREAT DEFINITIONS ---
+    RISK_WEIGHTS = {
+        "INVISIBLE": 2.0,
+        "NON_ASCII": 0.5,
+        "BIDI": 4.0,             
+        "ZALGO_HEAVY": 3.0,      
+        "ZALGO_LIGHT": 0.5,      
+        "LAYOUT_CONTROL": 1.5,   
+        "CONFUSABLE_CROSS": 3.0, 
+        "CONFUSABLE_SAME": 0.0,  
+    }
+
+    # --- 2. RAW SENSORS & CONTEXT ---
+    
+    cp_hex = data.get('cp_hex_base', '').replace('U+', '')
+    try:
+        cp = int(cp_hex, 16)
+    except:
+        cp = 0
+    
+    script = data.get('script', 'Common')
+    raw_confusable = bool(data.get('confusable'))
+    is_ascii = data.get('ascii', 'N/A') != 'N/A'
+
+    # Check the global set we loaded from JSON
+    is_ascii_confusable = (cp in ASCII_CONFUSABLES)
+    
+    # [FIX] Cross-Script requires the source to NOT be Common/Inherited.
+    # Em Dash (Common) -> Hyphen (Common) is NOT a cross-script threat.
+    is_common_script = script in ("Common", "Inherited")
+    is_cross_script_confusable = raw_confusable and not is_ascii and not is_common_script
+    
+    stack_msg = data.get('stack_msg') or ""
+    mark_count = 0
+    if 'components' in data:
+        for c in data['components']:
+            if not c['is_base']: mark_count += 1
+            
+    zalgo_threshold = 2 if script in ('Latin', 'Common') else 4
+    is_heavy_zalgo = "Heavy" in stack_msg or mark_count > zalgo_threshold
+    is_light_mark = mark_count > 0 and not is_heavy_zalgo
+    
+    is_invisible = data.get('is_invisible', False)
+    bidi_val = data.get('bidi')
+    is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
+    
+    cat = data.get('category', 'N/A')
+    is_layout_control = cat in ('Format', 'Space Separator') and not is_bidi_control and not is_invisible and not is_ascii
+
+    # --- 3. FACET STATE CALCULATOR ---
+
+    # Check for Hard Corruption
+    is_corruption = (cp == 0xFFFD or cp == 0x0000 or cat == 'Cs')
+    
+    current_score = 0.0
+    reasons = []
+
+    # A. VISIBILITY (Constructs 'vis' dict)
+    if is_invisible:
+        if is_bidi_control:
+             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Control Char"}
         else:
-            DATA_STORES["EmojiQualificationMap"] = {}
-        # --- END (Phase 2: Emoji Powerhouse) ---
+             current_score += RISK_WEIGHTS["INVISIBLE"]
+             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
+             reasons.append("Invisible Character")
+    elif is_corruption:
+        # Explicit Corruption Handling
+        current_score += 4.0 # Instant Critical
+        vis = {"state": "CORRUPT", "class": "risk-fail", "icon": "eye_off", "detail": "Data Loss"}
+        reasons.append("Data Corruption")
+    elif not is_ascii:
+        current_score += RISK_WEIGHTS["NON_ASCII"]
+        vis = {"state": "EXTENDED", "class": "risk-info", "icon": "eye", "detail": "Unicode Range"}
+    else:
+        vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
+
+    # B. STRUCTURE (Constructs 'struct' dict)
+    if is_bidi_control:
+        current_score += RISK_WEIGHTS["BIDI"]
+        struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
+        reasons.append("Directional Control")
+    elif is_heavy_zalgo:
+        current_score += RISK_WEIGHTS["ZALGO_HEAVY"]
+        struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
+        reasons.append("Excessive Marks")
+    elif is_light_mark:
+        current_score += RISK_WEIGHTS["ZALGO_LIGHT"]
+        struct = {"state": "MODIFIED", "class": "risk-info", "icon": "cube", "detail": "Combining Marks"}
+    elif is_layout_control:
+        current_score += RISK_WEIGHTS["LAYOUT_CONTROL"]
+        struct = {"state": "LAYOUT", "class": "risk-warn", "icon": "cube", "detail": "Format Control"}
+    else:
+        struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
+
+    # C. IDENTITY (Calculates vars, then constructs 'ident' dict)
+    ident_state = "UNIQUE"
+    ident_class = "risk-pass"
+    ident_icon = "fingerprint"
+    ident_detail = "No Lookalikes"
+
+    lookalikes = DATA_STORES.get("InverseConfusables", {}).get(str(cp), [])
+    lookalike_count = len(lookalikes)
+
+    if is_cross_script_confusable:
+        current_score += RISK_WEIGHTS["CONFUSABLE_CROSS"]
+        ident_state = "AMBIGUOUS"
+        ident_class = "risk-warn"
+        ident_icon = "clone"
+        detail_text = f"{lookalike_count} Lookalikes" if lookalike_count > 0 else "Cross-Script Risk"
+        ident_detail = detail_text
+        reasons.append("Confusable Identity")
         
-        if script_ext_txt: _parse_script_extensions(script_ext_txt)
-        if linebreak_txt: _parse_and_store_ranges(linebreak_txt, "LineBreak")
-        if scripts_txt: _parse_and_store_ranges(scripts_txt, "Scripts")
+    elif is_ascii_confusable or (raw_confusable and is_common_script): 
+        # [FIX] Common/Inherited confusions (like Em Dash) fall here (Note/Blue), not Warn/Orange
+        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
+        ident_state = "NOTE"
+        ident_class = "risk-info"
+        ident_icon = "fingerprint"
+        ident_detail = f"{lookalike_count} Lookalikes"
         
-        # --- NEW (Feature 2 Expanded) ---
-        if word_break_txt: _parse_and_store_ranges(word_break_txt, "WordBreak")
-        if sentence_break_txt: _parse_and_store_ranges(sentence_break_txt, "SentenceBreak")
-        if grapheme_break_txt: _parse_and_store_ranges(grapheme_break_txt, "GraphemeBreak")
+    elif lookalike_count > 0:
+        ident_state = "NOTE"
+        ident_class = "risk-info"
+        ident_detail = f"{lookalike_count} Lookalikes"
 
-        # --- NEW (Feature 3) ---
-        if donotemit_txt: _parse_donotemit(donotemit_txt)
+    # Wrap Identity into a dict to match the others
+    ident = {
+        "state": ident_state,
+        "class": ident_class,
+        "icon": ident_icon,
+        "detail": ident_detail
+    }
 
-        # New ones
-        if ccc_txt: _parse_and_store_ranges(ccc_txt, "CombiningClass")
-        if decomp_type_txt: _parse_and_store_ranges(decomp_type_txt, "DecompositionType")
-        if num_type_txt: _parse_and_store_ranges(num_type_txt, "NumericType")
+    # --- 4. VERDICT LEVEL MAPPING ---
+    
+    level = 0
+    label = "BASELINE"
+    header_class = "header-baseline"
+    icon = "shield_ok"
+    footer_label = "ANALYSIS"
+    footer_text = "Standard Composition"
+    footer_class = "footer-neutral"
 
-        if ea_width_txt: _parse_and_store_ranges(ea_width_txt, "EastAsianWidth")
-        if vert_orient_txt: _parse_and_store_ranges(vert_orient_txt, "VerticalOrientation")
-        if bidi_brackets_txt: _parse_bidi_brackets(bidi_brackets_txt)
-        if bidi_mirroring_txt: _parse_bidi_mirroring(bidi_mirroring_txt)
-        if comp_ex_txt: _parse_composition_exclusions(comp_ex_txt)
+    if 0.5 <= current_score < 1.5:
+        level = 1
+        label = "NON-STD"
+        header_class = "header-complex"
+        icon = "shield_ok"
+        footer_label = "NOTE"
+        footer_text = "Extended Unicode / Marks"
+        footer_class = "footer-info"
         
-        # Use the multi-property parser for DerivedBinaryProperties.txt
-        if derived_binary_txt:
-            _parse_property_file(derived_binary_txt, {
-                "Bidi_Mirrored": "BidiMirrored",
-                "Logical_Order_Exception": "LogicalOrderException"
-                # We can add more properties here later
-            })
-
-        # Parse DerivedNormalizationProps.txt
-        if norm_props_txt:
-            _parse_property_file(norm_props_txt, {
-                "Changes_When_NFKC_Casefolded": "ChangesWhenNFKCCasefolded"
-                # This file also contains Changes_When_Casemapped, etc.
-                # We can add more properties here later as needed.
-            })
+    elif 1.5 <= current_score < 3.0:
+        level = 2
+        label = "ANOMALOUS"
+        header_class = "header-anomalous"
+        icon = "shield_warn"
+        footer_label = "DETECTED"
+        footer_class = "footer-warn"
         
-        if proplist_txt:
-            _parse_property_file(proplist_txt, {
-                "Bidi_Control": "BidiControl",
-                "Join_Control": "JoinControl",
-                "Extender": "Extender",
-                "White_Space": "WhiteSpace",
-                "Deprecated": "Deprecated",
-                "Dash": "Dash",
-                "Quotation_Mark": "QuotationMark",
-                "Terminal_Punctuation": "TerminalPunctuation",
-                "Sentence_Terminal": "SentenceTerminal",
-                "Variation_Selector": "VariationSelector",
-                "Bidi_Mirrored": "BidiMirrored"
-            })
+    elif 3.0 <= current_score < 4.0:
+        level = 3
+        label = "SUSPICIOUS"
+        header_class = "header-suspicious"
+        icon = "shield_warn"
+        footer_label = "DETECTED"
+        footer_class = "footer-warn"
+        
+    elif current_score >= 4.0:
+        level = 4
+        label = "CRITICAL"
+        header_class = "header-critical"
+        icon = "octagon_crit"
+        footer_label = "DETECTED"
+        footer_class = "footer-crit"
 
-        # ---: Create the bucket dynamically ---
-        if derivedcore_txt:
-            # 1. Initialize the new bucket
-            DATA_STORES["DefaultIgnorable"] = {"ranges": [], "starts": [], "ends": []}
+    # --- 5. HARD OVERRIDES ---
+    if is_bidi_control and level < 3:
+        level = 3
+        label = "SUSPICIOUS"
+        header_class = "header-suspicious"
+        icon = "shield_warn"
+        footer_class = "footer-warn"
+
+    # HARD OVERRIDE FOR CORRUPTION
+    if is_corruption:
+        level = 4
+        label = "CRITICAL"
+        header_class = "header-critical"
+        icon = "octagon_crit"
+        footer_label = "FATAL"
+        footer_text = "Data Integrity Failure"
+        footer_class = "footer-crit"
+
+    if reasons:
+        footer_text = ", ".join(reasons)
+    elif level == 0 and is_ascii_confusable:
+        footer_label = "NOTE"
+        footer_text = "Common Lookalike (Safe)"
+
+    return {
+        "level": level,
+        "level_text": f"LEVEL {level}",
+        "verdict_text": label,
+        "header_class": header_class,
+        "icon_key": icon,
+        "facets": [vis, struct, ident], # Pass the dicts directly
+        "footer_label": footer_label,
+        "footer_text": footer_text,
+        "footer_class": footer_class
+    }
+
+def compute_whitespace_topology(t):
+    """
+    Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
+    Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
+    """
+    
+    ws_stats = collections.Counter()
+    
+    # State tracking for CRLF
+    prev_was_cr = False
+    
+    # Flags for Verdict
+    has_lf = False
+    has_cr = False
+    has_crlf = False
+    has_nel = False
+    has_ls_ps = False
+
+    for ch in t:
+        # --- A. Newline State Machine ---
+        if ch == '\n':
+            if prev_was_cr:
+                ws_stats['CRLF (Windows)'] += 1
+                has_crlf = True
+                prev_was_cr = False # Consumed
+            else:
+                ws_stats['LF (Unix)'] += 1
+                has_lf = True
+        elif ch == '\r':
+            if prev_was_cr: # Double CR case (CR + CR)
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+            prev_was_cr = True # Defer count until next char check
+        elif ch == '\u0085':
+            ws_stats['NEL (Next Line)'] += 1
+            has_nel = True
+            prev_was_cr = False
+        elif ch == '\u2028':
+            ws_stats['LS (Line Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        elif ch == '\u2029':
+            ws_stats['PS (Para Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        else:
+            # Not a newline, but check if we have a dangling CR pending
+            if prev_was_cr:
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+                prev_was_cr = False
             
-            # 2. Map the file properties
-            _parse_property_file(derivedcore_txt, {
-                # Map the specific property name to our new bucket key
-                "Default_Ignorable_Code_Point": "DefaultIgnorable",
-                "Other_Default_Ignorable_Code_Point": "OtherDefaultIgnorable",
-                "Alphabetic": "Alphabetic", 
-                "Logical_Order_Exception": "LogicalOrderException"
+            # --- B. Whitespace Classification ---
+            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
+            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
+            elif ch == '\t': ws_stats['TAB'] += 1
+            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
+            elif ud.category(ch) == 'Zs':
+                name = ud.name(ch, 'UNKNOWN SPACE')
+                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
+
+    # Final check for trailing CR
+    if prev_was_cr:
+        ws_stats['CR (Legacy Mac)'] += 1
+        has_cr = True
+
+    # --- C. Heuristic Alerts ---
+    alerts = []
+    
+    # 1. Mixed Line Endings
+    newline_types = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
+    if newline_types > 1:
+        alerts.append("⚠️ Mixed Line Endings (Consistency Failure)")
+    
+    # 2. Mixed Spacing (Phishing Vector)
+    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
+        alerts.append("⚠️ Mixed Spacing (ASCII + NBSP)")
+        
+    if has_nel or has_ls_ps:
+        alerts.append("ℹ️ Unicode Newlines (NEL/LS/PS) Detected")
+
+    # --- D. Render ---
+    rows = ""
+    for k, v in ws_stats.most_common():
+        rows += f"<tr><td>{k}</td><td style='text-align:right; font-family:monospace;'>{v}</td></tr>"
+        
+    if not rows: rows = "<tr><td colspan='2' style='color:#999'>No whitespace detected.</td></tr>"
+    
+    alert_html = ""
+    if alerts:
+        alert_html = f"<div style='color:#b02a37; font-size:0.85em; margin-bottom:8px; font-weight:bold;'>{'<br>'.join(alerts)}</div>"
+
+    html = f"""
+    <div class="ws-topology-card" style="margin-top:1rem; border:1px solid #dee2e6; padding:10px; border-radius:4px; background:#f8f9fa;">
+        <h4 style="margin:0 0 8px 0; font-size:0.9rem; color:#495057;">Whitespace & Line Ending Topology</h4>
+        {alert_html}
+        <table style="width:100%; font-size:0.85rem;">
+            {rows}
+        </table>
+    </div>
+    """
+    return html
+
+# ===============================================
+# BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
+# ===============================================
+
+def audit_stage1_5_signals(signals):
+    """
+    [STAGE 1.5] Structural Profiler Engine.
+    Converts raw forensic signals into high-fidelity structural flags.
+    Focus: Observable Phenomena (Physics), not just Intent (Policy).
+    """
+    flags = {}
+    
+    # 1. Aggregate Signals by Type
+    sig_map = {}
+    for s in signals:
+        t = s['type']
+        if t not in sig_map: sig_map[t] = []
+        sig_map[t].append(s)
+
+    # --- 1. FRACTURE TOPOLOGY (Tokenization Physics) ---
+    # Phenomenon: Non-standard characters embedded within alphanumeric tokens.
+    if "TOKEN_FRACTURE" in sig_map:
+        count = len(sig_map["TOKEN_FRACTURE"])
+        
+        # Analyze the 'Agent' distribution
+        agents = collections.Counter()
+        contexts = set()
+        
+        for s in sig_map["TOKEN_FRACTURE"]:
+            agents[s.get('agent_type', 'Unknown')] += 1
+            contexts.add(s.get('context_script', 'Unknown'))
+            
+        # Detailed Breakdown string
+        breakdown = ", ".join([f"{k}: {v}" for k, v in agents.items()])
+        
+        key = f"CRITICAL: Token Fracture Topology ({breakdown})"
+        flags[key] = {
+            "count": count,
+            "positions": [f"(Scripts: {', '.join(contexts)})"],
+            "severity": "crit",
+            "badge": "STRUCT"
+        }
+
+    # --- 2. VARIATION SELECTOR TOPOLOGY (Sequence Physics) ---
+    # Phenomenon: VS characters appearing in non-standard clusters or isolation.
+    
+    # A. Orphaned VS (No Base)
+    if "VS_BARE" in sig_map:
+        bare_count = sum(s['count'] for s in sig_map["VS_BARE"])
+        key = f"SUSPICIOUS: Orphaned Variation Selectors ({bare_count})"
+        flags[key] = {
+            "count": bare_count,
+            "positions": ["(VS codepoint without valid base - Rendering Artifact)"],
+            "severity": "warn",
+            "badge": "SYNTAX"
+        }
+
+    # B. Redundant Clustering (The "Run" Metric)
+    if "VS_CLUSTER" in sig_map:
+        # Get the worst offender
+        max_len = max(s['max_len'] for s in sig_map["VS_CLUSTER"])
+        count = len(sig_map["VS_CLUSTER"])
+        
+        # Grading: >1 is technically redundant. >3 is structurally anomalous.
+        if max_len >= 4:
+            sev = "crit"
+            badge = "DENSITY"
+            label = f"CRITICAL: High-Density VS Sequence (Len: {max_len})"
+        else:
+            sev = "warn"
+            badge = "REDUNDANT"
+            label = f"HIGH: Redundant VS Sequence (Len: {max_len})"
+        
+        flags[label] = {
+            "count": count,
+            "positions": ["(Multiple VS per base char - Information Density Risk)"],
+            "severity": sev,
+            "badge": badge
+        }
+
+    # --- 3. PLANE 14 ANALYSIS (Hidden Channel Physics) ---
+    # Phenomenon: Presence of Deprecated Tag Characters (U+E00xx).
+    
+    # A. Decoded Payload (High Fidelity)
+    if "TAG_PAYLOAD" in sig_map:
+        for s in sig_map["TAG_PAYLOAD"]:
+            p_len = s['payload_len']
+            preview = s['preview']
+            
+            key = f"CRITICAL: Plane 14 Tag Payload ({p_len} chars)"
+            flags[key] = {
+                "count": 1,
+                "positions": [f"Reconstructed: '{_escape_html(preview)}'"],
+                "severity": "crit",
+                "badge": "CHANNEL"
+            }
+            
+    # B. Raw Count (Fallback)
+    elif "TAG_SEQUENCE" in sig_map:
+        total_tags = sum(s['count'] for s in sig_map["TAG_SEQUENCE"])
+        key = f"CRITICAL: Plane 14 Tag Characters ({total_tags})"
+        flags[key] = {
+            "count": total_tags,
+            "positions": ["(Deprecated Format Characters Detected)"],
+            "severity": "crit",
+            "badge": "DEPRECATED"
+        }
+
+    # --- 4. DELIMITER MASKING (Visual/Logical Gap) ---
+    # Phenomenon: Non-Standard Spacing adjacent to File Extension Syntax.
+    if "MASKED_EXTENSION" in sig_map:
+        count = len(sig_map["MASKED_EXTENSION"])
+        key = "CRITICAL: Deceptive Delimiter Spacing"
+        flags[key] = {
+            "count": count,
+            "positions": ["(Non-Standard Space preceding '.' operator)"],
+            "severity": "crit",
+            "badge": "MASKING"
+        }
+
+    # --- 5. INJECTION SIGNATURES (Syntax Physics) ---
+    
+    # A. ANSI Sequences
+    if "ANSI_SEQUENCE" in sig_map:
+        total_ansi = sum(s['count'] for s in sig_map["ANSI_SEQUENCE"])
+        key = f"HIGH: ANSI Control Sequences ({total_ansi})"
+        flags[key] = {
+            "count": total_ansi,
+            "positions": ["(Terminal Emulation Controls Detected)"],
+            "severity": "crit",
+            "badge": "CONTROL"
+        }
+
+    # B. Imperative Syntax (Override)
+    has_override = "IMPERATIVE_OVERRIDE" in sig_map
+    has_tool = "TOOL_CHAIN_PATTERN" in sig_map
+    
+    if has_override and has_tool:
+        key = "CRITICAL: Imperative Tool-Use Sequence"
+        flags[key] = {
+            "count": 1,
+            "positions": ["(Syntax: 'Ignore' + 'Use Tool' pattern)"],
+            "severity": "crit",
+            "badge": "SYNTAX"
+        }
+    elif has_override:
+        key = "HIGH: Imperative Override Syntax"
+        flags[key] = {
+            "count": 1,
+            "positions": ["(Syntax: Directive to ignore instructions)"],
+            "severity": "warn",
+            "badge": "SEMANTIC"
+        }
+
+    # --- 6. DOMAIN STRUCTURE (IDN Physics) ---
+    
+    # A. Pseudo-Delimiters
+    if "PSEUDO_DELIMITER" in sig_map:
+        artifacts = []
+        for s in sig_map["PSEUDO_DELIMITER"]:
+            artifacts.extend(s['artifacts'])
+        
+        key = "CRITICAL: Homoglyph Delimiters"
+        flags[key] = {
+            "count": len(artifacts),
+            "positions": list(set(artifacts)),
+            "severity": "crit",
+            "badge": "SYNTAX"
+        }
+
+    # B. Script Mixing
+    if "DOMAIN_MIXED_SCRIPTS" in sig_map:
+        for s in sig_map["DOMAIN_MIXED_SCRIPTS"]:
+            scripts = s['scripts']
+            label = s['label']
+            
+            # Profiling Logic: Is this a high-entropy mix?
+            is_complex = "Latin" in scripts and ("Cyrillic" in scripts or "Greek" in scripts)
+            sev = "crit" if is_complex else "warn"
+            badge = "COMPLEX" if is_complex else "MIXED"
+            
+            key = f"CRITICAL: Multi-Script Label ({', '.join(scripts)})" if is_complex else f"SUSPICIOUS: Mixed-Script Label"
+            
+            flags[key] = {
+                "count": 1,
+                "positions": [f"Label: '{label}'"],
+                "severity": sev,
+                "badge": badge
+            }
+            
+    # C. Skeleton Collision
+    if "DOMAIN_SKELETON_MATCH_ASCII" in sig_map:
+        key = "HIGH: Skeleton Collision (ASCII)"
+        flags[key] = {
+            "count": len(sig_map["DOMAIN_SKELETON_MATCH_ASCII"]),
+            "positions": ["(Non-ASCII text normalizes to valid ASCII string)"],
+            "severity": "warn",
+            "badge": "COLLISION"
+        }
+
+    # --- 7. APPLICATION CONTEXT (Lure Physics) ---
+    
+    # A. Markdown Exfiltration
+    if "MARKDOWN_EXFIL" in sig_map:
+        count = sum(s['count'] for s in sig_map["MARKDOWN_EXFIL"])
+        key = "HIGH: Remote Image Inclusion (Markdown)"
+        flags[key] = {
+            "count": count,
+            "positions": ["(External resource loading pattern)"],
+            "severity": "warn",
+            "badge": "REMOTE"
+        }
+
+    # B. Chat Template Injection
+    if "CHAT_TEMPLATE_INJ" in sig_map:
+        headers = []
+        for s in sig_map["CHAT_TEMPLATE_INJ"]:
+            headers.extend(s['headers'])
+        unique = list(set(headers))
+        
+        key = f"CRITICAL: Chat Template Tokens ({len(unique)})"
+        flags[key] = {
+            "count": len(unique),
+            "positions": [f"Tokens: {', '.join(unique)}"],
+            "severity": "crit",
+            "badge": "STRUCT"
+        }
+
+    # C. Memory Directives
+    if "MEMORY_POISON" in sig_map:
+        keywords = []
+        for s in sig_map["MEMORY_POISON"]:
+            keywords.extend(s['keywords'])
+            
+        key = "HIGH: Persistence Directives"
+        flags[key] = {
+            "count": len(keywords),
+            "positions": [f"(Keywords: {', '.join(list(set(keywords))[:3])}...)"],
+            "severity": "crit",
+            "badge": "SEMANTIC"
+        }
+
+    return {"flags": flags}
+
+def _evaluate_adversarial_risk(intermediate_data):
+    """
+    Block 2: The Risk Engine (Robust Version).
+    Restores R11 Safety Net and implements Precision Fracture Scanning.
+    """
+    tokens = intermediate_data["tokens"]
+    skeleton_map = intermediate_data["skeleton_map"]
+    
+    # --- A. Detect Skeleton Collisions ---
+    collisions = []
+    collision_skeletons = set()
+    for skel, indices in skeleton_map.items():
+        unique_texts = set(tokens[i]["text"] for i in indices)
+        if len(unique_texts) > 1:
+            collision_skeletons.add(skel)
+            collisions.append({
+                "skeleton": skel,
+                "variants": list(unique_texts),
+                "indices": indices,
+                "risk": "CRITICAL"
             })
 
-        # --- IDNA Parsers ---
-        if idna_map_txt: _parse_idna_mapping(idna_map_txt)
-        if idna_2008_txt: _parse_idna2008(idna_2008_txt)
+    # --- B. Per-Token Risk Assessment ---
+    risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
+    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0}
+    targets = [] 
+
+    for token in tokens:
+        risk_level = 0 
+        triggers = []
+        token_topology_hits = set()
+        detailed_stack = [] # Explicit visual stack
         
-        # --- Add Manual Security Overrides ---
-        _add_manual_data_overrides()    
+        t_str = token["text"]
         
-        # --- NEW: Build Forensic Bitmask Table ---
-        # This must happen AFTER all parsing is done
-        build_invis_table()
+        # --- Rule 0: Fracture Scanner (Precision Mode) ---
+        if len(t_str) > 2:
+            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
+            for fc in t_str:
+                f_cp = ord(fc)
+                f_is_alnum = fc.isalnum()
+                f_is_agent = False
+                
+                # Check for Forensic Fracture Agent
+                if f_cp < 1114112:
+                    mask = INVIS_TABLE[f_cp]
+                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
+                        f_is_agent = True
+                    # Emoji check: Must be Emoji AND Not Alphanumeric
+                    elif not f_is_alnum and (_find_in_ranges(f_cp, "Emoji") or _find_in_ranges(f_cp, "Extended_Pictographic")):
+                        f_is_agent = True
+
+                if f_state == 0:
+                    if f_is_alnum: f_state = 1
+                elif f_state == 1:
+                    if f_is_agent: f_state = 2 # Found Agent
+                    elif not f_is_alnum: f_state = 0 # Reset
+                elif f_state == 2:
+                    if f_is_alnum:
+                        # TRIGGER: Alpha -> Agent -> Alpha
+                        risk_level = max(risk_level, 3)
+                        desc = "R99: Token Fracture (Mid-Token Injection)"
+                        triggers.append(desc)
+                        token_topology_hits.add("OBFUSCATION")
+                        detailed_stack.append({"lvl": "CRITICAL", "type": "OBFUSCATION", "desc": desc})
+                        break
+                    elif not f_is_agent:
+                        f_state = 0 # Reset
+
+        # --- Rule 1: Skeleton Collisions ---
+        if token["skeleton"] in collision_skeletons:
+            risk_level = max(risk_level, 3)
+            desc = "R30: Skeleton Collision (Homograph)"
+            triggers.append(desc)
+            token_topology_hits.add("HOMOGLYPH")
+            detailed_stack.append({"lvl": "CRITICAL", "type": "HOMOGLYPH", "desc": desc})
+
+        # --- Rule 2: Script Mixing ---
+        if token["is_mixed"]:
+            if token["kind"] in ("domain", "identifier", "email"):
+                risk_level = max(risk_level, 2)
+                desc = "R10: Mixed Scripts in ID/Domain"
+                lvl_tag = "HIGH"
+            else:
+                risk_level = max(risk_level, 1)
+                desc = "R01: Mixed Scripts"
+                lvl_tag = "MED"
+            triggers.append(desc)
+            token_topology_hits.add("SPOOFING")
+            detailed_stack.append({"lvl": lvl_tag, "type": "SPOOFING", "desc": desc})
+
+        # --- Rule 3: Confusables ---
+        if token["confusables"]["density"] > 0.5:
+            risk_level = max(risk_level, 1)
+            desc = "R02: High Confusable Density"
+            triggers.append(desc)
+            token_topology_hits.add("SPOOFING")
+            detailed_stack.append({"lvl": "MED", "type": "SPOOFING", "desc": desc})
+            
+        # --- Rule 4: Identifier Status (Restored Safety Net) ---
+        if token["id_status"] in ("Restricted", "Disallowed"):
+            # SAFETY NET: Restricted is always at least HIGH risk
+            risk_level = max(risk_level, 2)
+            desc = f"R11: Identifier Status ({token['id_status']})"
+            triggers.append(desc)
+            token_topology_hits.add("PROTOCOL")
+            detailed_stack.append({"lvl": "HIGH", "type": "PROTOCOL", "desc": desc})
+
+        # --- Rule 5: Hidden Channels & Bidi ---
+        if token["invisibles"] > 0:
+            has_bidi = False
+            for char in t_str:
+                if INVIS_TABLE[ord(char)] & INVIS_BIDI_CONTROL:
+                    has_bidi = True
+                    break
+            
+            if has_bidi:
+                risk_level = max(risk_level, 3)
+                desc = "R12: Bidi Control in Token"
+                lvl_tag = "CRITICAL"
+                top_tag = "INJECTION"
+            else:
+                risk_level = max(risk_level, 2)
+                desc = "R03: Hidden Characters"
+                lvl_tag = "HIGH"
+                top_tag = "OBFUSCATION"
+                
+            triggers.append(desc)
+            token_topology_hits.add(top_tag)
+            detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
+
+        # Map numeric level to string
+        final_risk = "LOW"
+        if risk_level == 3: final_risk = "CRITICAL"
+        elif risk_level == 2: final_risk = "HIGH"
+        elif risk_level == 1: final_risk = "MED"
         
-        # --- NEW: Run Paranoid Self-Tests ---
-        run_self_tests()
+        token["risk"] = final_risk
+        token["triggers"] = triggers
+        risk_stats[final_risk] += 1
+
+        for hit in token_topology_hits:
+            topology[hit] += 1
+            
+        if risk_level >= 2:
+            targets.append({
+                "token": t_str,
+                "verdict": triggers[0] if triggers else "High Risk",
+                "stack": detailed_stack, # Use the explicitly built stack
+                "score": risk_level * 25,
+                "b64": "N/A", "hex": "N/A" 
+            })
+
+    return {
+        "tokens": tokens,
+        "collisions": collisions,
+        "topology": topology,
+        "targets": targets,
+        "stats": {
+            "total": len(tokens),
+            "identifiers": sum(1 for t in tokens if t["kind"] == "identifier"),
+            "domains": sum(1 for t in tokens if t["kind"] == "domain"),
+            "high_risk": risk_stats["HIGH"] + risk_stats["CRITICAL"],
+            "collisions": len(collisions)
+        }
+    }
+
+def compute_integrity_score(inputs):
+    """
+    The Integrity Auditor.
+    Calculates Data Health & Structural Entropy.
+    Formula: Score = Base + (Count * Multiplier)
+    """
+    ledger = []
+    
+    def add_entry(vector, count, severity, base, mult):
+        if count <= 0: return
+        # Density Formula
+        points = base + (count * mult)
+        # Round to 1 decimal for neatness, or int if preferred
+        points = int(round(points))
+        ledger.append({
+            "vector": vector,
+            "count": count,
+            "severity": severity,
+            "points": points
+        })
+
+    # --- 1. FATAL (Data Death) ---
+    add_entry("Data Corruption (U+FFFD)", inputs.get("fffd", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
+    add_entry("Broken Encoding (Surrogates)", inputs.get("surrogate", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
+    add_entry("Binary Injection (Null Bytes)", inputs.get("nul", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
+    
+    # --- 2. FRACTURE (Structural Breaks) ---
+    # Logic Gate: If Bidi structure is broken, we flag it here.
+    bidi_broken = inputs.get("bidi_broken_count", 0)
+    has_bidi_fracture = False
+    if bidi_broken > 0:
+        has_bidi_fracture = True
+        add_entry("Structural Fracture (Bidi)", bidi_broken, "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
+
+    add_entry("Broken Keycap Sequence", inputs.get("broken_keycap", 0), "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
+    add_entry("Marks on Non-Visual Base", inputs.get("hidden_marks", 0), "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
+
+    # --- 3. RISK (Protocol Violations) ---
+    add_entry("Plane 14 Tags", inputs.get("tags", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
+    add_entry("Noncharacters", inputs.get("nonchar", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
+    add_entry("Invalid Variation Selectors", inputs.get("invalid_vs", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
+    add_entry("Do-Not-Emit Characters", inputs.get("donotemit", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
+    
+    # Logic Gate: Cluster Containment
+    # We charge for the cluster, not the atoms inside, to avoid double-counting generic invisibles
+    cluster_len = inputs.get("max_cluster_len", 0)
+    if cluster_len > 4:
+        # Treat massive clusters as a RISK/FRACTURE hybrid
+        add_entry(f"Massive Invisible Cluster (Max={cluster_len})", 1, "RISK", INT_BASE_RISK, INT_MULT_RISK)
+
+    # --- 4. DECAY (Hygiene) ---
+    add_entry("Internal BOM", inputs.get("bom", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    add_entry("Private Use Area (PUA)", inputs.get("pua", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    add_entry("Legacy Control Chars", inputs.get("legacy_ctrl", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    add_entry("Deceptive Spaces", inputs.get("dec_space", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    
+    if inputs.get("not_nfc"):
+        add_entry("Normalization Drift (Not NFC)", 1, "DECAY", 1, 0) # Fixed low cost
+
+    # Logic Gate: Exclusive Diagnosis for Bidi
+    # If we have a Fracture, we don't charge for "Bidi Controls Present" in the Hygiene tier.
+    if not has_bidi_fracture:
+        add_entry("Bidi Controls Present", inputs.get("bidi_present", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+
+    # --- SCORE & VERDICT ---
+    total_score = sum(item["points"] for item in ledger)
+    
+    verdict = "HEALTHY"
+    severity_class = "ok"
+    
+    if total_score >= 70:
+        verdict = "CORRUPT"
+        severity_class = "crit"
+    elif total_score >= 40:
+        verdict = "FRACTURED"
+        severity_class = "crit"
+    elif total_score >= 20:
+        verdict = "RISKY"
+        severity_class = "warn"
+    elif total_score >= 1:
+        verdict = "DECAYING"
+        severity_class = "warn"
+
+    return {
+        "score": total_score,
+        "verdict": verdict,
+        "severity_class": severity_class,
+        "ledger": ledger
+    }
+
+def compute_threat_score(inputs):
+    """
+    The Threat Auditor (Maximal Forensic Logic).
+    Calculates Weaponization & Malice with Context-Aware Weighting.
+    
+    Principles:
+    1. Clean Room: Strictly excludes 'Rot' (Integrity issues).
+    2. Zero-Redundancy: Prevents double-counting of related vectors.
+    3. Multi-Vector Boost: Increases score if attacks span multiple pillars.
+    """
+    ledger = []
+    
+    def add_entry(vector, points, category):
+        ledger.append({"vector": vector, "points": int(points), "category": category})
+
+    # --- PILLAR 1: EXECUTION (Target: Machine / Compiler) ---
+    # Severity: FATAL. One hit here is usually enough to Weaponize.
+    
+    has_execution_threat = False
+    
+    # [NEW] WAF / Payload Heuristics (Module 4)
+    # The WAF Simulator returns a raw risk score (0-100). We trust it.
+    waf_score = inputs.get("waf_score", 0)
+    if waf_score > 0:
+        add_entry(f"Payload Detected (WAF Pattern)", waf_score, "EXECUTION")
+        has_execution_threat = True
+
+    # [NEW] Normalization Injection (Syntax Predator)
+    # This is a confirmed CVE vector (U+FF07 -> '). 
+    norm_inj_count = inputs.get("norm_injection_count", 0)
+    if norm_inj_count > 0:
+        # High base penalty + density charge
+        pts = THR_BASE_EXECUTION + (norm_inj_count * 5)
+        add_entry(f"Normalization-Activated Injection (x{norm_inj_count})", pts, "EXECUTION")
+        has_execution_threat = True
+
+    # [NEW] Logic Bypass / Case Collision (Shapeshifter)
+    # Detects Dotless-i / Long-S attacks on logic
+    logic_bypass_count = inputs.get("logic_bypass_count", 0)
+    if logic_bypass_count > 0:
+        add_entry("Logic Bypass Vector (Case Collision)", THR_BASE_EXECUTION, "EXECUTION")
+        has_execution_threat = True
+
+    # Trojan Source (Bidi Syntax Attack)
+    # Critical distinction: Must be Override/Embedding, not just Isolates.
+    if inputs.get("malicious_bidi"):
+        add_entry("Trojan Source (Malicious Bidi)", THR_BASE_EXECUTION, "EXECUTION")
+        has_execution_threat = True
         
-        LOADING_STATE = "READY"
-        print("Unicode data loaded successfully.")
-        render_status("Ready.")
-        update_all() # Re-render with ready state
+    # Syntax Spoofing (Unicode 17.0)
+    # Variation Selector attached to operators/syntax (e.g. `+` + VS1)
+    if inputs.get("suspicious_syntax_vs"):
+        add_entry("Syntax Spoofing (VS on Operator)", THR_BASE_EXECUTION, "EXECUTION")
+        has_execution_threat = True
+
+    # --- PILLAR 2: SPOOFING (Target: Human / ID) ---
+    # Severity: HIGH. Can lead to Phishing or Identity Theft.
+    
+    # Cross-Script Homoglyphs (The Classic)
+    drift_cross = inputs.get("drift_cross_script", 0)
+    if drift_cross > 0:
+        # Saturation Logic: 
+        # Base (25) + 1pt per char, capped at +25 extra. 
+        # Prevents 1000 homoglyphs from scoring 1000 points.
+        density_bonus = min(drift_cross, 25) * THR_MULT_SPOOFING
+        total_pts = THR_BASE_SPOOFING + density_bonus
+        add_entry(f"Cross-Script Homoglyphs ({drift_cross})", total_pts, "SPOOFING")
+
+    # Mixed Scripts (Ontology Check)
+    mix_class = inputs.get("script_mix_class", "")
+    if "Highly Mixed" in mix_class:
+        # If we already have Homoglyphs, this is redundant context, but valid.
+        # We charge a lower 'Obfuscation' fee if purely structural.
+        add_entry(mix_class, THR_BASE_OBFUSCATION, "SPOOFING")
+    elif "Mixed Scripts (Base)" in mix_class:
+        add_entry(mix_class, THR_BASE_SUSPICIOUS, "SUSPICIOUS")
+
+    # --- PILLAR 3: OBFUSCATION (Target: Filter / Scanner) ---
+    # Severity: MEDIUM/HIGH. Used to hide payloads or bypass AI safety.
+    
+    # Massive Clusters (Invisible Walls)
+    cluster_len = inputs.get("max_invis_run", 0)
+    cluster_count = inputs.get("invis_cluster_count", 0)
+    rgi_count = inputs.get("rgi_count", 0)
+    
+    # Smart Filter: Is this just broken Emoji glue?
+    is_likely_emoji_glue = (rgi_count > 0 and cluster_len <= 2 and cluster_count <= (rgi_count * 3))
+    
+    if cluster_len > 4:
+        # Logic: Massive contiguous run is almost certainly malicious/stego
+        add_entry(f"Massive Invisible Cluster (len={cluster_len})", THR_BASE_OBFUSCATION, "OBFUSCATION")
+    elif cluster_count > 0 and not is_likely_emoji_glue:
+         # If not Emoji glue and not Trojan Source (already charged), charge for Obfuscation
+         if not inputs.get("malicious_bidi"):
+             pts = THR_BASE_OBFUSCATION + min(cluster_count, 10) * THR_MULT_OBFUSCATION
+             add_entry(f"Invisible Clusters ({cluster_count})", pts, "OBFUSCATION")
+
+    # Plane 14 Tags (Steganography / AI Jailbreak)
+    tags = inputs.get("tags_count", 0)
+    if tags > 0:
+        # Tags are illegal in almost all protocols. High penalty.
+        add_entry(f"Plane 14 Tags ({tags})", THR_BASE_OBFUSCATION + 10, "OBFUSCATION")
+
+    # Forced Presentation (VS15/VS16 Abuse)
+    forced_pres = inputs.get("forced_pres_count", 0)
+    if forced_pres > 0:
+        add_entry(f"Forced Presentation (VS15/VS16)", 5, "SUSPICIOUS") # Low, often just artifacts
         
-    except Exception as e:
-        LOADING_STATE = "FAILED"
-        print(f"CRITICAL: Unicode data loading failed. Error: {e}")
-        # ---: Remove 'is_error=True' ---
-        render_status("Error: Failed to load Unicode data. Please refresh.")
+    # --- 4. SUSPICIOUS CONTEXT (Tier 4) ---
+    # Unclosed Bidi (Sloppy) - Only charge if we didn't charge for Malicious Bidi
+    if inputs.get("has_unclosed_bidi") and not inputs.get("malicious_bidi"):
+        add_entry("Unclosed Bidi Sequence", THR_BASE_SUSPICIOUS, "SUSPICIOUS")
+
+    # --- 5. SCORE SYNTHESIS ---
+    total_score = sum(item["points"] for item in ledger)
+    
+    # Multi-Vector Boost (The "Smart" Logic)
+    # If we have Execution AND Spoofing/Obfuscation, it's a coordinated attack.
+    categories = {item["category"] for item in ledger}
+    if "EXECUTION" in categories and len(categories) > 1:
+        boost = 10
+        total_score += boost
+        add_entry("Multi-Vector Correlation (Execution + Other)", boost, "CORRELATION")
+
+    # --- VERDICT DETERMINATION ---
+    verdict = "CLEAN"
+    severity_class = "ok"
+    
+    if total_score >= 40:
+        verdict = "WEAPONIZED"
+        severity_class = "crit"
+    elif total_score >= 15:
+        verdict = "HIGH RISK"
+        severity_class = "crit" # High Risk is functionally critical
+    elif total_score >= 1:
+        verdict = "SUSPICIOUS"
+        severity_class = "warn"
+
+    return {
+        "score": total_score,
+        "verdict": verdict,
+        "severity_class": severity_class,
+        "ledger": ledger,
+        "noise": inputs.get("noise_list", []) 
+    }
+
+# ===============================================
+# BLOCK 8. ORCHESTRATION (CONTROLLER)
+# ===============================================
+
+# Basic & Shape Orchestrators
 
 def compute_emoji_analysis(text: str) -> dict:
     """
@@ -4355,133 +7081,6 @@ def compute_emoji_analysis(text: str) -> dict:
         "emoji_list": emoji_details_list
     }
 
-def _parse_script_extensions(txt: str):
-    """Custom parser for ScriptExtensions.txt (which uses ';')."""
-    store_key = "ScriptExtensions"
-    store = DATA_STORES[store_key]
-    store["ranges"].clear()
-    store["starts"].clear()
-    store["ends"].clear()
-
-    ranges_list = []
-    for raw in txt.splitlines():
-        # 1. Remove comments
-        line = raw.split('#', 1)[0]
-        # 2. Find the semicolon
-        parts = line.split(';', 1)
-
-        if len(parts) < 2:
-            continue # Not a data line
-
-        code_range = parts[0].strip()
-        value = parts[1].strip()
-
-        if not value or not code_range:
-            continue
-
-        if '..' in code_range:
-            a, b = code_range.split('..', 1)
-            ranges_list.append((int(a, 16), int(b, 16), value))
-        else:
-            cp = int(code_range, 16)
-            ranges_list.append((cp, cp, value))
-
-    ranges_list.sort()
-
-    for s, e, v in ranges_list:
-        store["ranges"].append((s, e, v))
-        store["starts"].append(s)
-        store["ends"].append(e)
-
-    print(f"Loaded {len(ranges_list)} ranges for {store_key}.")
-
-def _parse_property_file(txt: str, property_map: dict):
-    """
-    Generic parser for property files like PropList.txt.
-    It iterates a file once and sorts properties into *multiple* DATA_STORES buckets based on the property_map.
-    
-    property_map = {"FilePropertyName": "DataStoreKey"}
-    """
-    # A temp dict to hold lists of ranges before sorting
-    temp_ranges = {store_key: [] for store_key in property_map.values()}
-    
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line: continue
-        
-        parts = line.split(';', 1)
-        if len(parts) < 2: continue
-        
-        code_range, prop_name = parts[0].strip(), parts[1].strip()
-        
-        # Check if this is one of the properties we're looking for
-        if prop_name in property_map:
-            store_key = property_map[prop_name]
-            
-            try:
-                if '..' in code_range:
-                    a, b = code_range.split('..', 1)
-                    temp_ranges[store_key].append((int(a, 16), int(b, 16), prop_name))
-                else:
-                    cp = int(code_range, 16)
-                    temp_ranges[store_key].append((cp, cp, prop_name))
-            except Exception:
-                pass # Ignore malformed lines
-    
-    # Now, populate the real DATA_STORES
-    for store_key, ranges_list in temp_ranges.items():
-        if not ranges_list: continue
-        
-        store = DATA_STORES[store_key]
-        store["ranges"].clear()
-        store["starts"].clear()
-        store["ends"].clear()
-        
-        ranges_list.sort()
-        
-        for s, e, v in ranges_list:
-            store["ranges"].append((s, e, v))
-            store["starts"].append(s)
-            store["ends"].append(e)
-        
-        print(f"Loaded {len(ranges_list)} ranges for {store_key} from property file.")
-
-# ---
-# 3. COMPUTATION FUNCTIONS
-# ---
-
-def _find_matches_with_indices(regex_key: str, text: str):
-    """Uses matchAll to find all matches and their indices."""
-    regex = REGEX_MATCHER.get(regex_key)
-    if not regex:
-        return [], 0
-    
-    try:
-        matches_iter = window.String.prototype.matchAll.call(text, regex)
-        matches = window.Array.from_(matches_iter)
-        # Use segmenter-aware indices for \p{RGI_Emoji}
-        if regex_key == "RGI Emoji":
-            indices = [m.index for m in matches]
-        else:
-            # For code-point based regex, we must use JS-style indices
-            indices = [m.index for m in matches]
-        return indices, len(indices)
-    except Exception as e:
-        print(f"Error in _find_matches_with_indices for {regex_key}: {e}")
-        return [], 0
-
-def _compute_storage_metrics(t: str, supplementary_count: int):
-    """
-    Helper to calculate the Physical and Runtime dimensions of the text.
-    Centralizes the 'encode' logic to ensure consistency.
-    """
-    return {
-        "UTF-16 Units": len(t.encode('utf-16-le')) // 2, # JS/Java .length
-        "UTF-8 Bytes": len(t.encode('utf-8')),           # Disk/Network size
-        "Astral Count": supplementary_count              # Re-use existing loop count
-    }
-
-# Note the new argument: emoji_counts
 def compute_code_point_stats(t: str, emoji_counts: dict):
     """Module 1 (Code Point): Runs the 3-Tier analysis."""
 
@@ -5060,413 +7659,473 @@ def compute_verticalorientation_analysis(t: str):
             
     return counters
 
-def compute_statistical_profile(t: str):
-    """
-    Stage 1.5 'Chemistry': local statistical properties.
-    ULTIMATE VERSION: Combines Sparklines, Detailed Layout Cards, Expanded Tokens,
-    Honest Fingerprint, and ASCII/Payload metrics.
-    """
-    stats = {
-        "entropy": 0.0, "entropy_n": 0, "entropy_norm": 0.0, "entropy_conf": "unknown",
-        "ttr": 0.0, "ttr_segmented": None,
-        "total_tokens": 0, "unique_tokens": 0, "top_tokens": [], "top_shares": {"top1": 0.0, "top3": 0.0},
-        "top_chars": [],
-        "char_dist": {"letters": 0.0, "digits": 0.0, "ws": 0.0, "sym": 0.0},
-        "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0, "median": 0, "empty": 0, "sparkline": ""},
-        "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0, "is_valid": False, "v_count": 0, "c_count": 0},
-        "ascii_density": 0.0,
-        "payloads": []
-    }
-    
-    if not t: return stats
+def compute_provenance_stats(t: str):
+    """Module 2.D: Runs UAX #44 and Deep Scan analysis (with positions)."""
 
-    # 1. Entropy & ASCII Density
-    try:
-        utf8_bytes = t.encode("utf-8", errors="replace")
-        total_bytes = len(utf8_bytes)
-        stats["entropy_n"] = total_bytes
-        if total_bytes > 0:
-            byte_counts = Counter(utf8_bytes)
-            entropy = 0.0
-            for count in byte_counts.values():
-                p = count / total_bytes
-                entropy -= p * math.log2(p)
-            stats["entropy"] = round(max(0.0, min(8.0, entropy)), 2)
-            
-            k = max(1, len(byte_counts))
-            h_max = min(8.0, math.log2(k)) if k > 1 else 0.0
-            stats["entropy_norm"] = round(entropy / h_max, 3) if h_max > 0 else 0.0
-            
-            if total_bytes < 128: stats["entropy_conf"] = "low"
-            elif total_bytes < 1024: stats["entropy_conf"] = "medium"
-            else: stats["entropy_conf"] = "high"
-
-            ascii_bytes = sum(1 for b in utf8_bytes if b <= 0x7F)
-            stats["ascii_density"] = round((ascii_bytes / total_bytes) * 100, 1)
-    except: pass
-
-    try:
-        raw_tokens = t.split()
-        
-        # Payload Heuristics (Base64 / Hex)
-        payload_candidates = []
-        # Base64: A-Z, a-z, 0-9, +, / (and URL-safe - _)
-        b64_pattern = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
-        hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
-        # [NEW] Charcode: 5+ CSV integers (e.g. 65,66,67...)
-        char_pattern = re.compile(r'^(\d{2,3},){5,}\d{2,3}$')
-        # [NEW] Percent: 5+ encoded bytes (e.g. %20%41...)
-        perc_pattern = re.compile(r'^(%[0-9A-Fa-f]{2}){5,}$')
-        
-        for tok in raw_tokens:
-            # Lowered threshold to 14 to catch short %XX runs (5*3=15 chars)
-            if len(tok) > 14:
-                p_type = None
-                if b64_pattern.match(tok): p_type = "Base64"
-                elif hex_pattern.match(tok) and len(tok) % 2 == 0: p_type = "Hex"
-                elif char_pattern.match(tok): p_type = "Charcode"
-                elif perc_pattern.match(tok): p_type = "URL-Enc"
-                
-                if p_type:
-                    # Calculate Local Entropy for this specific token
-                    # This distinguishes "padding" from "encrypted data"
-                    b_counts = Counter(tok)
-                    p_ent = 0.0
-                    for count in b_counts.values():
-                        p = count / len(tok)
-                        p_ent -= p * math.log2(p)
-                    
-                    payload_candidates.append({
-                        "type": p_type, 
-                        "token": tok[:32] + "..." if len(tok)>32 else tok, 
-                        "len": len(tok),
-                        "entropy": round(p_ent, 2)
-                    })
-
-        if payload_candidates: stats["payloads"] = payload_candidates[:5]
-
-        # Normalized Tokens
-        tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
-        stats["total_tokens"] = len(tokens)
-        if stats["total_tokens"] > 0:
-            unique_tokens = set(tokens)
-            stats["unique_tokens"] = len(unique_tokens)
-            stats["ttr"] = round(len(unique_tokens) / stats["total_tokens"], 3)
-
-            token_counts = Counter(tokens)
-            # FETCH 12 TOKENS FOR UI
-            top_n_tokens = token_counts.most_common(12) 
-
-            if top_n_tokens:
-                stats["top_shares"]["top1"] = round((top_n_tokens[0][1] / stats["total_tokens"]) * 100, 1)
-                top3_sum = sum(c for _, c in top_n_tokens[:3])
-                stats["top_shares"]["top3"] = round((top3_sum / stats["total_tokens"]) * 100, 1)
-
-                structured_tokens = []
-                for tok, count in top_n_tokens:
-                    share = (count / stats["total_tokens"]) * 100
-                    structured_tokens.append({"token": tok, "count": count, "share": round(share, 1)})
-                stats["top_tokens"] = structured_tokens
-
-            seg_size = 50
-            if stats["total_tokens"] >= seg_size * 2:
-                seg_ttrs = []
-                for i in range(0, len(tokens), seg_size):
-                    seg = tokens[i : i + seg_size]
-                    if len(seg) < seg_size // 2: continue
-                    seg_ttrs.append(len(set(seg)) / len(seg))
-                if seg_ttrs:
-                    stats["ttr_segmented"] = round(sum(seg_ttrs) / len(seg_ttrs), 3)
-    except: pass
-
-    # 3. Honest Fingerprint
-    try:
-        total_chars = len(t)
-        if total_chars > 0:
-            char_counts = Counter(t)
-            valid_chars = {}
-            for ch, cnt in char_counts.items():
-                cp = ord(ch)
-                if cp > 0x20 or cp in (0x20, 0x09, 0x0A):
-                    valid_chars[ch] = cnt
-            
-            if valid_chars:
-                top_chars = sorted(valid_chars.items(), key=lambda x: x[1], reverse=True)[:5]
-                structured_chars = []
-                for ch, count in top_chars:
-                    share = (count / total_chars) * 100
-                    cat = "Other"
-                    if ch.isalpha(): cat = "Let"
-                    elif ch.isdigit(): cat = "Num"
-                    elif unicodedata.category(ch).startswith("P"): cat = "Punct"
-                    elif ch.isspace(): cat = "WS"
-                    structured_chars.append({"char": ch, "count": count, "share": round(share, 1), "cat": cat})
-                stats["top_chars"] = structured_chars
-
-            l_count = sum(1 for c in t if c.isalpha())
-            n_count = sum(1 for c in t if c.isdigit())
-            ws_count = sum(1 for c in t if c.isspace())
-            sym_count = max(0, total_chars - l_count - n_count - ws_count)
-            stats["char_dist"] = {
-                "letters": round((l_count / total_chars) * 100, 1),
-                "digits": round((n_count / total_chars) * 100, 1),
-                "ws": round((ws_count / total_chars) * 100, 1),
-                "sym": round((sym_count / total_chars) * 100, 1)
-            }
-    except: pass
-
-    # 4. Layout Physics (STRICT VISUAL SPLIT + SPARKLINE)
-    try:
-        normalized_t = t.replace('\r\n', '\n').replace('\r', '\n')
-        lines = normalized_t.split('\n')
-        if len(lines) > 1 and lines[-1] == '': lines.pop()
-        
-        n = len(lines)
-        stats["line_stats"]["count"] = n
-        
-        if n > 0:
-            line_lens = [len(line) for line in lines]
-            sorted_lens = sorted(line_lens)
-            
-            stats["line_stats"]["min"] = sorted_lens[0]
-            stats["line_stats"]["max"] = sorted_lens[-1]
-            stats["line_stats"]["avg"] = round(sum(line_lens) / n, 1)
-            stats["line_stats"]["empty"] = sum(1 for l in line_lens if l == 0)
-            
-            # Helper for percentiles (Pure Python, no deps)
-            def get_perc(p, d):
-                pos = p * (len(d) - 1)
-                lower = int(pos)
-                upper = lower + 1
-                if upper >= len(d): return d[-1]
-                weight = pos - lower
-                return int(round(d[lower] * (1 - weight) + d[upper] * weight))
-
-            stats["line_stats"]["p25"] = get_perc(0.25, sorted_lens)
-            stats["line_stats"]["median"] = get_perc(0.50, sorted_lens)
-            stats["line_stats"]["p50"] = stats["line_stats"]["median"] # Alias
-            stats["line_stats"]["p75"] = get_perc(0.75, sorted_lens)
-            stats["line_stats"]["p90"] = get_perc(0.90, sorted_lens)
-            
-            # --- MASS DISTRIBUTION MAP (Stacked Bar Data) ---
-            total_mass = sum(line_lens)
-            if total_mass == 0: total_mass = 1
-            
-            layout_map = []
-            target_segments = 60 
-            
-            if n <= target_segments:
-                for i, length in enumerate(line_lens):
-                    pct = (length / total_mass) * 100
-                    col = "#3b82f6" if i % 2 == 0 else "#93c5fd" 
-                    if length == 0: col = "#e2e8f0" 
-                    layout_map.append({"w": pct, "c": col})
-            else:
-                chunk_size = n / target_segments
-                for i in range(target_segments):
-                    s = int(i * chunk_size)
-                    e = int((i + 1) * chunk_size)
-                    chunk = line_lens[s:e]
-                    mass = sum(chunk)
-                    pct = (mass / total_mass) * 100
-                    col = "#3b82f6" if i % 2 == 0 else "#93c5fd"
-                    if mass == 0: col = "#e2e8f0"
-                    layout_map.append({"w": pct, "c": col})
-            
-            stats["line_stats"]["layout_map"] = layout_map
-    except Exception as e:
-        print(f"Layout Calc Error: {e}")
-
-    # 5. Phonotactics (8-Point Analysis)
-    try:
-        # Filter for just the letters to analyze phonemes
-        ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
-        letter_count = len(ascii_letters)
-        
-        # Gate: Need enough data to be meaningful
-        if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
-            vowels = set("aeiou")
-            v_count = sum(1 for c in ascii_letters if c in vowels)
-            c_count = letter_count - v_count
-            
-            # 1. Bits Per Phoneme (Letter Entropy)
-            # H = -Sum(p * log2(p)) for the letter stream
-            l_counts = Counter(ascii_letters)
-            l_ent = 0.0
-            for cnt in l_counts.values():
-                p = cnt / letter_count
-                l_ent -= p * math.log2(p)
-            
-            # 2. Heuristic Frequency Scoring (Simulated N-Grams)
-            # Top English frequencies (Approximate)
-            top_uni = set("etaoinshrdlu") # ~80% of English
-            top_bi = {"th", "he", "in", "er", "an", "re", "nd", "at", "on", "nt", "ha", "es", "st", "en", "ed", "to", "it", "ou", "ea", "hi"}
-            top_tri = {"the", "and", "ing", "ent", "ion", "her", "for", "tha", "nth", "int", "ere", "tio", "ter", "est", "ers", "ati", "hat", "ate", "all", "eth"}
-            
-            # Unigram Score: Density of High-Freq Letters
-            uni_hits = sum(1 for c in ascii_letters if c in top_uni)
-            uni_score = (uni_hits / letter_count) * 100
-            
-            # Bigram/Trigram Generation
-            letter_str = "".join(ascii_letters)
-            
-            # Bigram Score
-            bi_hits = 0
-            if letter_count >= 2:
-                total_bi = letter_count - 1
-                for i in range(total_bi):
-                    if letter_str[i:i+2] in top_bi: bi_hits += 1
-                bi_score = (bi_hits / total_bi) * 100
-            else:
-                bi_score = 0.0
-
-            # Trigram Score
-            tri_hits = 0
-            if letter_count >= 3:
-                total_tri = letter_count - 2
-                for i in range(total_tri):
-                    if letter_str[i:i+3] in top_tri: tri_hits += 1
-                tri_score = (tri_hits / total_tri) * 100
-            else:
-                tri_score = 0.0
-
-            stats["phonotactics"].update({
-                "vowel_ratio": round(v_count / letter_count, 2),
-                "count": letter_count,
-                "is_valid": True,
-                "v_count": v_count,
-                "c_count": c_count,
-                "bits_per_phoneme": round(l_ent, 2),
-                "uni_score": round(uni_score, 1),
-                "bi_score": round(bi_score, 1),
-                "tri_score": round(tri_score, 1)
-            })
-            
-            r = stats["phonotactics"]["vowel_ratio"]
-            if 0.30 <= r <= 0.50: stats["phonotactics"]["status"] = "Balanced"
-            elif r < 0.20: stats["phonotactics"]["status"] = "Vowel-Poor"
-            elif r > 0.60: stats["phonotactics"]["status"] = "Vowel-Heavy"
-            else: stats["phonotactics"]["status"] = "Typical"
-    except Exception as e: 
-        print(f"Phono Error: {e}")
-        pass
-
-    return stats
-
-def _get_codepoint_properties(t: str):
-    """
-    A fast, single-pass helper to get the UAX properties needed for Stage 2.
-    This iterates by code point, not grapheme.
-    """
+    # 1. Deep Scan Stats (if data is loaded)
     if LOADING_STATE != "READY":
-        return [], []
+        return {} # Return empty if data isn't ready
 
-    word_break_props = []
-    sentence_break_props = []
+    numeric_total_value = 0
+    number_script_zeros = set()
+    final_stats = {} # This will now hold the dicts
+
+    # Helper to add to our new structure
+    def _add_stat(key, index):
+        if key not in final_stats:
+            final_stats[key] = {'count': 0, 'positions': []}
+        final_stats[key]['count'] += 1
+        final_stats[key]['positions'].append(f"#{index}")
+
+    # We loop char-by-char with index
+    js_array = window.Array.from_(t)
+    for i, char in enumerate(js_array):
+        cp = ord(char)
+
+        # --- Script and Script-Extension ---
+        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
+        if script_ext_val:
+            scripts = script_ext_val.split()
+            for script in scripts:
+                _add_stat(f"Script-Ext: {script}", i)
+        else:
+            script_val = _find_in_ranges(cp, "Scripts")
+            if script_val:
+                _add_stat(f"Script: {script_val}", i)
+
+        # --- Block, Age, Type ---
+        block_name = _find_in_ranges(cp, "Blocks")
+        if block_name:
+            _add_stat(f"Block: {block_name}", i)
+
+        age = _find_in_ranges(cp, "Age")
+        if age:
+            _add_stat(f"Age: {age}", i)
+
+        num_type = _find_in_ranges(cp, "NumericType")
+        if num_type:
+            _add_stat(f"Numeric Type: {num_type}", i)
+
+        # --- Numeric Properties (Non-positional) ---
+        try:
+            value = unicodedata.numeric(char)
+            numeric_total_value += value
+            gc = unicodedata.category(char)
+            if gc == "Nd":
+                zero_code_point = ord(char) - int(value)
+                number_script_zeros.add(zero_code_point)
+        except (ValueError, TypeError):
+            pass
+
+    # --- Add the non-positional stats (which don't need 'positions') ---
+    if numeric_total_value > 0:
+        final_stats["Total Numeric Value"] = {
+            'count': round(numeric_total_value, 4), 
+            'positions': ["(N/A)"]
+        }
+    if len(number_script_zeros) > 1:
+        final_stats["Mixed-Number Systems"] = {
+            'count': len(number_script_zeros), 
+            'positions': ["(N/A)"]
+        }
+
+    return final_stats
+
+# Advanced Orchestrators
+
+def compute_adversarial_metrics(t: str):
+    """
+    Adversarial Engine v10 (Consolidated & Paper-Aligned).
+    Integrates: Ghost, Fracture, Stutter, and Jailbreak Styles.
+    """
+    if not t: 
+        return {
+            "findings": [], "top_tokens": [], "targets": [],
+            "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0}
+        }
+
+    # --- 1. Setup ---
+    tokens = tokenize_forensic(t) 
+    confusables_map = DATA_STORES.get("Confusables", {})
     
-    # We must iterate by code point (char)
+    findings = []
+    top_tokens = []
+    
+    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0, "SEMANTIC": 0, "OBFUSCATION": 0 }
+    SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
+
+    # --- 2. Global Analyzers (State 1.5) ---
+    
+    # A. Visual Redaction (Ghost)
+    ghost = analyze_visual_redaction(t)
+    if ghost:
+        findings.append({
+            'family': '[GHOST]', 'desc': f"{ghost['count']} Deletion Characters",
+            'token': 'GLOBAL', 'severity': 'crit'
+        })
+        topology["HIDDEN"] += 1
+
+    # B. Syntax Fracture (Sandwich)
+    frac = analyze_syntax_fracture_enhanced(t)
+    if frac:
+        findings.append({
+            'family': '[FRACTURE]', 'desc': f"{frac['count']} Token Fractures",
+            'token': 'GLOBAL', 'severity': 'crit'
+        })
+        topology["OBFUSCATION"] += 1
+
+    # C. Jailbreak Styles (Evasion Alphabets)
+    style = analyze_jailbreak_styles(t)
+    if style:
+        sev = 'crit' if style['risk'] >= 80 else 'warn'
+        findings.append({
+            'family': f"[{style['verdict']}]", 'desc': style['desc'],
+            'token': 'GLOBAL', 'severity': sev
+        })
+        t_type = style.get('type', 'OBFUSCATION')
+        topology[t_type] = topology.get(t_type, 0) + 1
+
+    # D. Symbol Flood (SSTA)
+    flood = analyze_symbol_flood(t)
+    if flood:
+        findings.append({
+            'family': f"[{flood['verdict']}]", 'desc': flood['desc'],
+            'token': 'GLOBAL', 'severity': 'crit' if flood['risk'] > 50 else 'warn'
+        })
+        # Safe update (Fixes KeyError risk)
+        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
+
+    # E. Punctuation Skew (SSTA - Replacement)
+    skew = analyze_punctuation_skew(t)
+    if skew:
+        findings.append({
+            'family': f"[{skew['verdict']}]", 'desc': skew['desc'],
+            'token': 'GLOBAL', 'severity': 'warn'
+        })
+        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
+
+    # F. Token Fragmentation (Charmer)
+    frag = analyze_token_fragmentation_v2(tokens)
+    if frag:
+        sev = 'crit' if frag['risk'] > 80 else 'warn'
+        findings.append({
+            'family': f"[{frag['verdict']}]", 'desc': frag['desc'],
+            'token': 'GLOBAL', 'severity': sev
+        })
+        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
+
+    # --- 3. Token Loop ---
+    
+    # Legacy Script logic for Restriction Badge
+    scripts_found = set()
+    has_math_spoof = False
     for char in t:
         cp = ord(char)
-        
-        # 1. Get Word Break Property
-        wb_prop = _find_in_ranges(cp, "WordBreak")
-        word_break_props.append(wb_prop if wb_prop else "Other")
-        
-        # 2. Get Sentence Break Property
-        sb_prop = _find_in_ranges(cp, "SentenceBreak")
-        sentence_break_props.append(sb_prop if sb_prop else "Other")
-
-    return word_break_props, sentence_break_props
-
-def compute_integrity_score(inputs):
-    """
-    The Integrity Auditor.
-    Calculates Data Health & Structural Entropy.
-    Formula: Score = Base + (Count * Multiplier)
-    """
-    ledger = []
+        sc = _find_in_ranges(cp, "Scripts")
+        blk = _find_in_ranges(cp, "Blocks")
+        if blk == "Mathematical Alphanumeric Symbols": has_math_spoof = True
+        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts_found.add(sc)
     
-    def add_entry(vector, count, severity, base, mult):
-        if count <= 0: return
-        # Density Formula
-        points = base + (count * mult)
-        # Round to 1 decimal for neatness, or int if preferred
-        points = int(round(points))
-        ledger.append({
-            "vector": vector,
-            "count": count,
-            "severity": severity,
-            "points": points
+    restriction = "UNRESTRICTED"
+    badge_class = "intel-badge-danger"
+    count = len(scripts_found)
+    if has_math_spoof: restriction = "SPOOFING (MATH)"
+    elif count == 0:
+        if all(ord(c) < 128 for c in t): restriction, badge_class = "ASCII-ONLY", "intel-badge-safe"
+        else: restriction, badge_class = "SINGLE SCRIPT", "intel-badge-safe"
+    elif count == 1: restriction, badge_class = f"SINGLE ({list(scripts_found)[0]})", "intel-badge-safe"
+    else: restriction, badge_class = "MIXED SCRIPTS", "intel-badge-warn"
+
+    # Main Loop
+    for tok_obj in tokens:
+        # Defensive Extraction
+        if isinstance(tok_obj, dict):
+            token_text = tok_obj.get('token', '')
+        else:
+            token_text = str(tok_obj)
+
+        if not token_text.strip(): continue
+        
+        token_score = 0
+        token_reasons = []
+        token_families = set()
+        threat_stack = [] 
+
+        is_domain_candidate = is_plausible_domain_candidate(token_text)
+
+        # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
+        # Detects: Alpha -> Agent -> Alpha (e.g. "sens😎itive")
+        fracture_risk = 0
+        fracture_desc = ""
+        
+        if len(token_text) > 2:
+            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
+            SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
+            
+            for char in token_text:
+                cp = ord(char)
+                is_alnum = char.isalnum()
+                is_safe = char in SAFE_PUNCT
+                f_is_agent = False
+                
+                if cp < 1114112:
+                    mask = INVIS_TABLE[cp]
+                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
+                        f_is_agent = True
+                    # Hardened Emoji Check
+                    elif not is_alnum and (_find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic")):
+                        f_is_agent = True
+
+                if f_state == 0:
+                    if is_alnum: f_state = 1
+                elif f_state == 1:
+                    if not is_alnum and not is_safe:
+                        if f_is_agent: f_state = 2
+                    elif not is_alnum and is_safe:
+                        f_state = 0
+                elif f_state == 2:
+                    if is_alnum:
+                        fracture_risk = 90
+                        fracture_desc = "Token Fracture (Mid-Token Injection)"
+                        break
+                    elif is_safe:
+                        f_state = 0
+
+        if fracture_risk > 0:
+            threat_stack.insert(0, { "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
+            token_score += 90
+            token_families.add("OBFUSCATION")
+
+        # [NEW] Lexical Stutter (Unicode Evil)
+        # Logic: Check for exact doubling (e.g. "adminadmin")
+        if len(token_text) >= 6:
+            mid = len(token_text) // 2
+            if token_text[:mid] == token_text[mid:]:
+                desc = "Lexical Stutter (Doubling)"
+                threat_stack.append({"lvl": "MED", "type": "OBFUSCATION", "desc": desc})
+                token_score += 30
+                token_families.add("OBFUSCATION")
+
+        # [CONTEXT]
+        lure = analyze_context_lure(token_text)
+        if lure:
+            token_score += lure['risk']
+            token_reasons.append(lure['desc'])
+            token_families.add("CONTEXT")
+            threat_stack.append({ "lvl": "MED", "type": "CONTEXT", "desc": lure['desc'] })
+
+        # [TYPOSQUATTING & IDNA]
+        if is_domain_candidate:
+            domain_risk = analyze_domain_heuristics(token_text)
+            if domain_risk:
+                token_score += domain_risk['risk']
+                token_reasons.append(domain_risk['desc'])
+                token_families.add("SPOOFING") 
+                threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
+
+            if '.' in token_text or 'xn--' in token_text:
+                labels = token_text.split('.')
+                for label in labels:
+                    if not label: continue
+                    idna_findings = analyze_idna_label(label)
+                    if idna_findings:
+                        for f in idna_findings:
+                            cat = "INJECTION"
+                            if f['type'] == "GHOST": cat = "HIDDEN"
+                            elif f['type'] == "AMBIGUITY": cat = "AMBIGUITY"
+                            elif f['type'] == "COMPAT": cat = "SYNTAX"
+                            elif f['type'] == "INVALID": cat = "SPOOFING"
+                            
+                            risk_adder = 0
+                            if f['lvl'] == "CRIT": risk_adder = 50
+                            elif f['lvl'] == "HIGH": risk_adder = 30
+                            elif f['lvl'] == "MED": risk_adder = 10
+                            token_score += risk_adder
+                            
+                            threat_stack.append({ "lvl": f['lvl'], "type": cat, "desc": f['desc'] })
+                            if cat == "HIDDEN": token_families.add("OBFUSCATION")
+                            elif cat == "SPOOFING": token_families.add("SPOOFING")
+                            elif cat == "AMBIGUITY": token_families.add("HOMOGLYPH")
+                            elif cat == "SYNTAX": token_families.add("INJECTION")
+                            else: token_families.add("INJECTION")
+
+        # [SCRIPT]
+        r_lbl, r_score = analyze_restriction_level(token_text)
+        if r_score > 0:
+            if "CONTEXT" in token_families and r_score < 50: pass 
+            else:
+                token_score += r_score
+                token_reasons.append(r_lbl)
+                token_families.add("SCRIPT")
+                lvl = "CRIT" if r_score > 80 else "HIGH"
+                threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
+            
+        # [HOMOGLYPH]
+        conf_data = analyze_confusion_density(token_text, confusables_map)
+        if conf_data:
+            if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
+                conf_data['risk'] = min(100, conf_data['risk'] + 20)
+                conf_data['desc'] += " (Start-Char)"
+            token_score += conf_data['risk']
+            token_reasons.append(conf_data['desc'])
+            token_families.add("HOMOGLYPH")
+            lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
+            threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
+
+        # [SPOOFING]
+        sore = analyze_class_consistency(token_text)
+        if sore:
+            token_score += sore['risk']
+            token_reasons.append(sore['desc'])
+            token_families.add("SPOOFING")
+            threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
+            
+        # [OBFUSCATION]
+        norm = analyze_normalization_hazard_advanced(token_text)
+        if norm:
+            token_score += norm['risk']
+            token_reasons.append(norm['desc'])
+            token_families.add("OBFUSCATION")
+            threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
+        
+        # [PERTURBATION]
+        pert = analyze_structural_perturbation(token_text)
+        if pert:
+            token_score += pert['risk']
+            token_reasons.append(pert['desc'])
+            token_families.add("PERTURBATION")
+            is_bidi = "Bidi" in pert['desc']
+            p_type = "INJECTION" if is_bidi else "HIDDEN"
+            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
+
+        # [TROJAN]
+        trojan = analyze_trojan_context(token_text)
+        if trojan:
+            token_score += trojan['risk']
+            token_reasons.append(trojan['desc'])
+            token_families.add("TROJAN")
+            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
+            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
+
+        # [IDNA Compression]
+        idna_comp = analyze_idna_compression(token_text)
+        if idna_comp:
+            threat_stack.append(idna_comp)
+            token_families.add("SPOOFING")
+            token_score += 50
+
+        # --- Aggregation ---
+        if token_score > 0 or threat_stack:
+            pillars_seen = set()
+            for item in threat_stack:
+                t_type = item['type']
+                if t_type not in pillars_seen:
+                    topology[t_type] = topology.get(t_type, 0) + 1
+                    pillars_seen.add(t_type)
+
+            fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
+            sev = 'ok'
+            if token_score >= 80: sev = 'crit'
+            elif token_score >= 40: sev = 'warn'
+            
+            if not token_score and threat_stack: token_score = 10 
+            
+            findings.append({
+                'family': fam_str, 'desc': ", ".join(token_reasons),
+                'token': token_text, 'severity': sev
+            })
+            
+            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
+            
+            try: b64 = base64.b64encode(token_text.encode("utf-8")).decode("ascii")
+            except: b64 = "Error"
+            hex_v = "".join(f"\\x{b:02X}" for b in token_text.encode("utf-8"))
+            
+            primary_verdict = "Unknown Risk"
+            if threat_stack:
+                primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
+
+            top_tokens.append({
+                'token': token_text, 'score': min(100, token_score),
+                'reasons': token_reasons, 'families': list(token_families),
+                'stack': threat_stack, 'verdict': primary_verdict,
+                'b64': b64, 'hex': hex_v
+            })
+
+    # Global Stego Check (Final)
+    stego_report = detect_invisible_patterns(t)
+    if stego_report:
+        findings.append({
+            'family': '[STEGO]', 'desc': stego_report['detail'],
+            'token': 'GLOBAL', 'severity': 'warn'
         })
+        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
 
-    # --- 1. FATAL (Data Death) ---
-    add_entry("Data Corruption (U+FFFD)", inputs.get("fffd", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
-    add_entry("Broken Encoding (Surrogates)", inputs.get("surrogate", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
-    add_entry("Binary Injection (Null Bytes)", inputs.get("nul", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
-    
-    # --- 2. FRACTURE (Structural Breaks) ---
-    # Logic Gate: If Bidi structure is broken, we flag it here.
-    bidi_broken = inputs.get("bidi_broken_count", 0)
-    has_bidi_fracture = False
-    if bidi_broken > 0:
-        has_bidi_fracture = True
-        add_entry("Structural Fracture (Bidi)", bidi_broken, "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
-
-    add_entry("Broken Keycap Sequence", inputs.get("broken_keycap", 0), "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
-    add_entry("Marks on Non-Visual Base", inputs.get("hidden_marks", 0), "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
-
-    # --- 3. RISK (Protocol Violations) ---
-    add_entry("Plane 14 Tags", inputs.get("tags", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
-    add_entry("Noncharacters", inputs.get("nonchar", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
-    add_entry("Invalid Variation Selectors", inputs.get("invalid_vs", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
-    add_entry("Do-Not-Emit Characters", inputs.get("donotemit", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
-    
-    # Logic Gate: Cluster Containment
-    # We charge for the cluster, not the atoms inside, to avoid double-counting generic invisibles
-    cluster_len = inputs.get("max_cluster_len", 0)
-    if cluster_len > 4:
-        # Treat massive clusters as a RISK/FRACTURE hybrid
-        add_entry(f"Massive Invisible Cluster (Max={cluster_len})", 1, "RISK", INT_BASE_RISK, INT_MULT_RISK)
-
-    # --- 4. DECAY (Hygiene) ---
-    add_entry("Internal BOM", inputs.get("bom", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
-    add_entry("Private Use Area (PUA)", inputs.get("pua", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
-    add_entry("Legacy Control Chars", inputs.get("legacy_ctrl", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
-    add_entry("Deceptive Spaces", inputs.get("dec_space", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
-    
-    if inputs.get("not_nfc"):
-        add_entry("Normalization Drift (Not NFC)", 1, "DECAY", 1, 0) # Fixed low cost
-
-    # Logic Gate: Exclusive Diagnosis for Bidi
-    # If we have a Fracture, we don't charge for "Bidi Controls Present" in the Hygiene tier.
-    if not has_bidi_fracture:
-        add_entry("Bidi Controls Present", inputs.get("bidi_present", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
-
-    # --- SCORE & VERDICT ---
-    total_score = sum(item["points"] for item in ledger)
-    
-    verdict = "HEALTHY"
-    severity_class = "ok"
-    
-    if total_score >= 70:
-        verdict = "CORRUPT"
-        severity_class = "crit"
-    elif total_score >= 40:
-        verdict = "FRACTURED"
-        severity_class = "crit"
-    elif total_score >= 20:
-        verdict = "RISKY"
-        severity_class = "warn"
-    elif total_score >= 1:
-        verdict = "DECAYING"
-        severity_class = "warn"
+    top_tokens.sort(key=lambda x: x['score'], reverse=True)
+    max_token_score = max(t['score'] for t in top_tokens) if top_tokens else 0
+        
+    unique_findings = []
+    seen_hashes = set()
+    for f in findings:
+        h = f"{f['token']}:{f['family']}"
+        if h not in seen_hashes:
+            unique_findings.append(f)
+            seen_hashes.add(h)
 
     return {
-        "score": total_score,
-        "verdict": verdict,
-        "severity_class": severity_class,
-        "ledger": ledger
+        "findings": unique_findings, "top_tokens": top_tokens[:3],
+        "topology": topology, "restriction": restriction,
+        "badge_class": badge_class, "targets": top_tokens, 
+        "stego": stego_report, "max_risk": max_token_score 
     }
+
+def compute_stage1_5_forensics(text):
+    """
+    [STAGE 1.5] Orchestrator.
+    Runs the Sidecar Engines and feeds the Auditor.
+    Updated to include VS Topology, Tag Decoding, and Extension Masking.
+    """
+    all_signals = []
+    
+    # 1. Scan Global Injection Patterns (Existing)
+    all_signals.extend(scan_injection_vectors(text))
+    # Scan Contextual Lures (Markdown/Chat/Memory) (Existing)
+    all_signals.extend(scan_contextual_lures(text))
+    
+    # 2. [NEW] Global Structural Scans
+    # A. Variation Selector Topology
+    vs_metrics, vs_signals = scan_vs_topology(text)
+    all_signals.extend(vs_signals)
+    
+    # B. Tag Payload Decoding
+    tag_payload = decode_tag_payload(text)
+    if tag_payload:
+        all_signals.append(tag_payload)
+        
+    # C. Delimiter Masking (Extension Hiding)
+    all_signals.extend(scan_delimiter_masking(text))
+
+    # 3. Token-Level Scans
+    # We use the existing forensic tokenizer helper
+    tokens = tokenize_forensic(text)
+    
+    for tok_obj in tokens:
+        # Defensive extraction (handle dict vs str legacy)
+        if isinstance(tok_obj, dict):
+            t_str = tok_obj.get('token', '')
+        else:
+            t_str = str(tok_obj)
+            
+        if not t_str: continue
+        
+        # A. Fracture Scan (Uses the Upgraded Function from Block 2)
+        all_signals.extend(scan_token_fracture_safe(t_str))
+        
+        # B. Domain Scan (Existing)
+        all_signals.extend(scan_domain_structure_v2(t_str))
+
+    # 4. Audit Signals
+    return audit_stage1_5_signals(all_signals)
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict, grapheme_stats: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
@@ -5830,3057 +8489,6 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     rows.extend(struct_rows)
 
     return rows, audit_result
-
-
-def compute_provenance_stats(t: str):
-    """Module 2.D: Runs UAX #44 and Deep Scan analysis (with positions)."""
-
-    # 1. Deep Scan Stats (if data is loaded)
-    if LOADING_STATE != "READY":
-        return {} # Return empty if data isn't ready
-
-    numeric_total_value = 0
-    number_script_zeros = set()
-    final_stats = {} # This will now hold the dicts
-
-    # Helper to add to our new structure
-    def _add_stat(key, index):
-        if key not in final_stats:
-            final_stats[key] = {'count': 0, 'positions': []}
-        final_stats[key]['count'] += 1
-        final_stats[key]['positions'].append(f"#{index}")
-
-    # We loop char-by-char with index
-    js_array = window.Array.from_(t)
-    for i, char in enumerate(js_array):
-        cp = ord(char)
-
-        # --- Script and Script-Extension ---
-        script_ext_val = _find_in_ranges(cp, "ScriptExtensions")
-        if script_ext_val:
-            scripts = script_ext_val.split()
-            for script in scripts:
-                _add_stat(f"Script-Ext: {script}", i)
-        else:
-            script_val = _find_in_ranges(cp, "Scripts")
-            if script_val:
-                _add_stat(f"Script: {script_val}", i)
-
-        # --- Block, Age, Type ---
-        block_name = _find_in_ranges(cp, "Blocks")
-        if block_name:
-            _add_stat(f"Block: {block_name}", i)
-
-        age = _find_in_ranges(cp, "Age")
-        if age:
-            _add_stat(f"Age: {age}", i)
-
-        num_type = _find_in_ranges(cp, "NumericType")
-        if num_type:
-            _add_stat(f"Numeric Type: {num_type}", i)
-
-        # --- Numeric Properties (Non-positional) ---
-        try:
-            value = unicodedata.numeric(char)
-            numeric_total_value += value
-            gc = unicodedata.category(char)
-            if gc == "Nd":
-                zero_code_point = ord(char) - int(value)
-                number_script_zeros.add(zero_code_point)
-        except (ValueError, TypeError):
-            pass
-
-    # --- Add the non-positional stats (which don't need 'positions') ---
-    if numeric_total_value > 0:
-        final_stats["Total Numeric Value"] = {
-            'count': round(numeric_total_value, 4), 
-            'positions': ["(N/A)"]
-        }
-    if len(number_script_zeros) > 1:
-        final_stats["Mixed-Number Systems"] = {
-            'count': len(number_script_zeros), 
-            'positions': ["(N/A)"]
-        }
-
-    return final_stats
-
-
-def _generate_uts39_skeleton(t: str, return_events=False):
-    """
-    Generates the UTS #39 'Skeleton' following the full forensic pipeline.
-    
-    Args:
-        t (str): Input string.
-        return_events (bool): If True, returns (skeleton, events_dict). 
-                              If False, returns just skeleton string (Backward Compat).
-    """
-    if LOADING_STATE != "READY" or not t:
-        return ("", {}) if return_events else ""
-        
-    events = {
-        "confusables_mapped": 0,
-        "ignorables_stripped": 0,
-        "mappings": []
-    }
-
-    # 1. NFKC (Compatibility)
-    # Collapses fullwidth (Ａ->A) and ligatures (ﬁ->fi)
-    try:
-        s1 = unicodedata2.normalize("NFKC", t)
-    except:
-        s1 = unicodedata.normalize("NFKC", t)
-
-    # 2. Casefold (Identity)
-    # Collapses case distinctions (A->a)
-    s2 = s1.casefold()
-
-    # 3. Map Confusables (Visual) + Track Events
-    confusables_map = DATA_STORES.get("Confusables", {})
-    mapped_chars = []
-    
-    for char in s2:
-        cp = ord(char)
-        if cp in confusables_map:
-            # Found a mapping!
-            val = confusables_map[cp]
-            
-            # DEFENSIVE UNPACKING: Handles both old (str) and new (tuple) formats
-            if isinstance(val, tuple):
-                tgt, tag = val
-            else:
-                tgt = val
-                tag = "UNK" # Fallback for legacy data
-            
-            mapped_chars.append(tgt)
-            
-            # Log the event
-            events["confusables_mapped"] += 1
-            events["mappings"].append({
-                "char": char,
-                "hex": f"{cp:04X}",
-                "map_to": tgt,
-                "type": tag # MA, ML, etc.
-            })
-        else:
-            mapped_chars.append(char)
-        
-    s3 = "".join(mapped_chars)
-
-    # 4. Strip Default Ignorables & Bidi (Structure) + Track Events
-    # UTS #39 requires stripping these to see the "Visual Bone Structure"
-    filtered_chars = []
-    for char in s3:
-        cp = ord(char)
-        is_ignorable = False
-        
-        # O(1) Bitmask Check
-        if cp < 0x110000:
-             if (INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_CRITICAL_CONTROL)):
-                 is_ignorable = True
-        
-        if not is_ignorable:
-            filtered_chars.append(char)
-        else:
-            events["ignorables_stripped"] += 1
-            
-    s4 = "".join(filtered_chars)
-
-    # 5. NFD Normalization (Canonical Final Form)
-    try:
-        final_skel = unicodedata2.normalize("NFD", s4)
-    except:
-        final_skel = unicodedata.normalize("NFD", s4)
-        
-    if return_events:
-        return final_skel, events
-        
-    return final_skel
-
-def _escape_html(s: str):
-    """Escapes basic HTML characters including quotes for attribute safety."""
-    s = s.replace("&", "&amp;")
-    s = s.replace("<", "&lt;")
-    s = s.replace(">", "&gt;")
-    s = s.replace('"', "&quot;")
-    return s
-
-def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
-    """
-    Helper to build the <span class="confusable" title="...">...</span> HTML.
-    This logic is extracted from the original compute_threat_analysis loop.
-    """
-    try:
-        skeleton_char_str = confusables_map[cp]
-        skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
-        skeleton_cp = ord(skeleton_char_str[0])
-        source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
-        target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
-
-        if (source_script != target_script and 
-            target_script != "Common" and 
-            source_script != "Unknown"):
-            risk_label = f"{source_script}–{target_script} Confusable"
-        else:
-            risk_label = f"{source_script} Confusable"
-
-        title = (
-            f"Appears as: '{char}' (U+{cp:04X})\n"
-            f"Script: {source_script}\n"
-            f"Maps to: '{skeleton_char_str}' ({skeleton_cp_hex})\n"
-            f"Risk: {risk_label}"
-        )
-        return (
-            f'<span class="confusable" title="{_escape_html(title)}">'
-            f"{_escape_html(char)}</span>"
-        )
-    except Exception:
-        # Failsafe
-        return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
-
-
-def _escape_for_js(s: str) -> str:
-    """
-    Sanitizes a string for safe insertion into a JS single-quoted string literal.
-    Escapes backslashes, quotes, newlines, and dangerous HTML-like sequences.
-    """
-    # 1. Backslash must be first to avoid double-escaping
-    s = s.replace("\\", "\\\\")
-    # 2. Escape quotes
-    s = s.replace("'", "\\'")
-    s = s.replace('"', '\\"')
-    # 3. Escape whitespace control chars
-    s = s.replace("\n", "\\n")
-    s = s.replace("\r", "\\r")
-    # 4. Defensive: Break potentially dangerous tags if they somehow sneaked in
-    s = s.replace("</", "<\\/")
-    return s
-
-def tokenize_forensic(text: str):
-    """
-    Forensic Tokenizer (Adversarial Hardened).
-    Splits on whitespace but treats Invisible/Format characters as PAYLOADS.
-    Returns list of DICTIONARIES.
-    """
-    tokens = []
-    if not text: return tokens
-    
-    # Python's .split() breaks on whitespace (Zs, Cc whitespace)
-    raw_chunks = text.split()
-    
-    current_start = 0
-    for chunk in raw_chunks:
-        # Calculate real index (approximation for locating)
-        idx = text.find(chunk, current_start)
-        if idx == -1: idx = current_start # Fallback
-        current_start = idx + len(chunk)
-        
-        # Strip outer "Open/Close" delimiters to isolate the Identifier
-        clean = chunk.strip("()[]{}<>\"',;!|")
-        
-        if clean:
-            tokens.append({
-                'token': clean,
-                'raw_chunk': chunk,
-                'start': idx,
-                'end': idx + len(chunk),
-                'kind': 'word' # Default kind
-            })
-            
-    return tokens
-
-# --- ADVERSARIAL METRICS ENGINE (DEEP FORENSICS) ---
-
-def _get_broad_category(char):
-    """Helper: Maps char to broad Forensic Class (Letter, Number, Symbol, Punct)."""
-    cat = unicodedata.category(char)
-    if cat.startswith('L'): return 'L'
-    if cat.startswith('N'): return 'N'
-    if cat.startswith('P'): return 'P'
-    if cat.startswith('S'): return 'S'
-    if cat.startswith('M'): return 'M' # Mark
-    return 'O' # Other
-
-def analyze_class_consistency(token: str):
-    """
-    [SORE THUMB] Scans for singleton anomalies (e.g. 'paypa1' -> LLLLLN).
-    """
-    if len(token) < 2: return None
-    
-    runs = []
-    current_cat = None
-    current_len = 0
-    
-    for char in token:
-        cat = _get_broad_category(char)
-        if cat == 'M' and current_cat: continue # Absorb marks
-        
-        if cat != current_cat:
-            if current_cat: runs.append({'cat': current_cat, 'len': current_len})
-            current_cat = cat; current_len = 1
-        else:
-            current_len += 1
-    if current_cat: runs.append({'cat': current_cat, 'len': current_len})
-    
-    counts = {}
-    for r in runs: counts[r['cat']] = counts.get(r['cat'], 0) + r['len']
-    if not counts: return None
-    dominant_cat = max(counts, key=counts.get)
-    
-    anomalies = []
-    for i, r in enumerate(runs):
-        # Sore Thumb Rule: Length=1, Not Dominant, Flanked by Dominant
-        if r['len'] == 1 and r['cat'] != dominant_cat and r['cat'] in ('L', 'N'):
-            if i > 0 and runs[i-1]['cat'] == dominant_cat and runs[i-1]['len'] >= 2:
-                anomalies.append(f"Suspicious {r['cat']} in {dominant_cat}-run")
-                
-    if anomalies:
-        return {"desc": ", ".join(anomalies), "risk": 50}
-    return None
-
-def analyze_restriction_level(token: str):
-    """
-    [SCRIPT MIXING] UTS #39 Restriction Level Classifier.
-    """
-    scripts = set()
-    for char in token:
-        cp = ord(char)
-        sc = _find_in_ranges(cp, "Scripts")
-        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts.add(sc)
-            
-    if not scripts:
-        if all(ord(c) < 128 for c in token): return "Highly Restrictive (ASCII)", 0
-        return "Single Script (Common)", 0
-    if len(scripts) == 1: return f"Single Script ({list(scripts)[0]})", 0
-        
-    s_list = sorted(list(scripts))
-    has_latin = "Latin" in scripts
-    has_cyr_greek = "Cyrillic" in scripts or "Greek" in scripts
-    
-    if has_latin and has_cyr_greek:
-        return f"Minimally Restrictive ({', '.join(s_list)})", 90 # Critical
-        
-    return f"Mixed Scripts ({', '.join(s_list)})", 60 # Warning
-
-def analyze_normalization_hazards(t: str):
-    """
-    [SYNTAX PREDATOR]
-    Detects characters that are SAFE in Raw state but become DANGEROUS SYNTAX
-    after NFKC/NFKD normalization (e.g. U+FF07 'FULLWIDTH APOSTROPHE' -> ').
-    """
-    hazards = {}
-    
-    # Optimization: Only scan if text contains non-ASCII (potential transformers)
-    if all(ord(c) < 128 for c in t):
-        return hazards
-
-    for i, char in enumerate(t):
-        # Optimization: Skip if char is already dangerous in raw form (not a hidden attack)
-        if char in HAZARD_ALL:
-            continue
-            
-        # 1. Normalize
-        try:
-            nfkc = unicodedata.normalize("NFKC", char)
-            nfkd = unicodedata.normalize("NFKD", char)
-        except: continue
-        
-        # 2. Check for Syntax Injection
-        # We check both forms because some filters use NFD (decomposition)
-        transformed_chars = set(nfkc) | set(nfkd)
-        
-        detected_vectors = []
-        
-        # Check SQL
-        if not (HAZARD_SQL & {char}) and (HAZARD_SQL & transformed_chars):
-            detected_vectors.append("SQL")
-            
-        # Check HTML/XSS
-        if not (HAZARD_HTML & {char}) and (HAZARD_HTML & transformed_chars):
-            detected_vectors.append("HTML")
-            
-        # Check System/Path
-        if not (HAZARD_SYSTEM & {char}) and (HAZARD_SYSTEM & transformed_chars):
-            detected_vectors.append("SYSTEM")
-            
-        if detected_vectors:
-            # Build the report key
-            vec_str = "/".join(detected_vectors)
-            key = f"CRITICAL: Normalization-Activated {vec_str} Injection"
-            
-            if key not in hazards:
-                hazards[key] = {
-                    "count": 0,
-                    "positions": [],
-                    "severity": "crit",
-                    "badge": "INJECTION"
-                }
-            
-            hazards[key]["count"] += 1
-            # Limit position tracking to avoid UI lag on massive attacks
-            if hazards[key]["count"] <= 10:
-                target = list(transformed_chars & HAZARD_ALL)[0]
-                hazards[key]["positions"].append(f"#{i} (U+{ord(char):04X} &rarr; '{target}')")
-
-    return hazards
-
-def analyze_normalization_hazard_advanced(token: str):
-    """
-    [SHAPESHIFTING] Checks NFC (Binary) and NFKC_Casefold (Visual).
-    Detects tokens that are unstable under normalization (Adversarial Evasion).
-    """
-    hazards = []
-    score = 0
-    
-    # 1. NFC Hazard (Binary Instability)
-    # Detects things like "Ghost Characters" that vanish or merge
-    try:
-        nfc = unicodedata.normalize("NFC", token)
-        if token != nfc:
-            if len(token) != len(nfc):
-                hazards.append("NFC Length Change (Ghost/Hollow)")
-                score += 40
-            else:
-                hazards.append("NFC Binary Drift")
-                score += 20
-    except: pass
-
-    # 2. NFKC_Casefold Hazard (Compatibility/Visual Instability)
-    # Uses the app's robust 'normalize_extended' to catch Enclosed Alphanumerics
-    try:
-        # Simulate NFKC_CF: Normalize NFKC then Casefold
-        nfkc = normalize_extended(token)
-        nfkc_cf = nfkc.casefold()
-        
-        # Compare against normalized raw
-        raw_cf = token.casefold()
-        
-        if nfkc_cf != raw_cf:
-             hazards.append("NFKC-CF Visual Drift")
-             score += 30
-    except: pass
-
-    if hazards:
-        return {"desc": ", ".join(hazards), "risk": score}
-    return None
-
-def analyze_structural_perturbation(token: str):
-    """
-    [BROKEN WORD] Detects non-standard separators inside a token.
-    FIXED: Returns accurate labels (Bidi, ZWSP, Joiner, Tag, Invisible).
-    """
-    perturbations = 0
-    types = set()
-    
-    for char in token:
-        cp = ord(char)
-        if cp == 0xFE0F or cp == 0xFE0E: continue # Ignore VS
-            
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        if mask & INVIS_ANY_MASK:
-            perturbations += 1
-            
-            # Precise labeling based on bitmask
-            if mask & INVIS_BIDI_CONTROL: types.add("Bidi")
-            elif mask & INVIS_ZERO_WIDTH_SPACING: types.add("ZWSP") # Includes BOM
-            elif mask & INVIS_JOIN_CONTROL: types.add("Joiner")
-            elif mask & INVIS_TAG: types.add("Tag")
-            elif mask & INVIS_SOFT_HYPHEN: types.add("SHY") # Explicit SHY
-            elif cp == 0x0000: types.add("Null") # Explicit NUL
-            else: types.add("Invisible")
-            
-    if perturbations > 0:
-        # Sort for deterministic output
-        type_list = sorted(list(types))
-        score = 40 + (perturbations * 10)
-        return {"desc": f"Perturbation ({perturbations}x {', '.join(type_list)})", "risk": min(100, score)}
-    return None
-
-def analyze_context_lure(token: str):
-    """
-    [CONTEXT] Detects Phishing/Auth Keywords and Syntax Lures.
-    Reclassifies 'Login:' and '//' from SPOOFING to CONTEXT.
-    """
-    # 1. Syntax Lures (//, https://, www)
-    if token in ("//", "https://", "http://", "www", "ftp://"):
-        return {"desc": "High-Risk URL Syntax", "risk": 20, "type": "CONTEXT"}
-        
-    # 2. Auth Keywords (Case insensitive)
-    t_lower = token.lower().strip(":")
-    keywords = {"login", "signin", "password", "admin", "verify", "secure", "account", "update", "confirm"}
-    if t_lower in keywords:
-        return {"desc": "Authentication Keyword (Phishing Lure)", "risk": 30, "type": "CONTEXT"}
-        
-    return None
-
-def is_plausible_domain_candidate(token: str) -> bool:
-    """
-    Forensic Gate v2: Strict Structural Filter.
-    Rejects binary blobs, file paths, and random prose.
-    """
-    if len(token) > 253 or len(token) < 3: return False
-    
-    # 1. Critical Exclusion (Data Corruption)
-    for char in token:
-        cp = ord(char)
-        if cp == 0 or cp == 0xFFFD: return False
-        if 0xFDD0 <= cp <= 0xFDEF: return False
-        if (cp & 0xFFFF) >= 0xFFFE: return False
-        
-    # 2. Structural Shape (Must look like a domain)
-    has_dot = '.' in token
-    looks_puny = token.lower().startswith("xn--")
-    
-    # If no dot and not punycode, it's just a word, not a domain.
-    if not has_dot and not looks_puny:
-        return False
-        
-    # 3. ASCII Sanity (If purely ASCII, must use domain alphabet)
-    if token.isascii():
-        # Allow only: Alphanumeric, Dot, Hyphen
-        # Reject: Slash, Backslash, Brackets, etc.
-        for c in token:
-            if not (c.isalnum() or c in ".-"):
-                return False
-                
-    return True
-
-# ==========================================
-# [MODULE 6] SCIENTIFIC THREAT INTELLIGENCE
-# ==========================================
-
-def analyze_symbol_flood(t: str):
-    """
-    [PAPER 3: SSTA] Detects 'Symbol Cascade' attacks.
-    Attackers flood text with 'charged' punctuation (e.g. '......') 
-    to bias model sentiment/classification without changing words.
-    """
-    if not t: return None
-    
-    # 1. Symbol Density Check
-    # Count visible punctuation/symbols (excluding spaces)
-    sym_count = sum(1 for c in t if not c.isalnum() and not c.isspace())
-    density = sym_count / len(t)
-    
-    # 2. Cascade Detection (Run-Length Encoding for Symbols)
-    max_run = 0
-    max_char = ''
-    current_run = 0
-    prev_char = ''
-    
-    for char in t:
-        if not char.isalnum() and not char.isspace():
-            if char == prev_char:
-                current_run += 1
-            else:
-                current_run = 1
-            
-            if current_run > max_run:
-                max_run = current_run
-                max_char = char
-        else:
-            current_run = 0
-        prev_char = char
-        
-    # Thresholds based on SSTA Paper (Cascades often > 8 chars)
-    if max_run >= 8:
-        risk = 40
-        if max_run > 20: risk = 80 # Critical flood
-        
-        return {
-            "type": "CASCADE", 
-            "desc": f"Symbol Flood: '{max_char}' x{max_run}", 
-            "risk": risk,
-            "verdict": "SEMANTIC BIAS"
-        }
-        
-    # High density of non-repeating symbols is also suspicious (Replacement Attack)
-    if len(t) > 20 and density > 0.25:
-        return {
-            "type": "ANOMALY",
-            "desc": f"High Symbol Density ({int(density*100)}%)",
-            "risk": 30,
-            "verdict": "OBFUSCATION"
-        }
-        
-    return None
-
-def analyze_math_spoofing(t: str):
-    """
-    [PAPER 1: Special-Char] Detects Mathematical Alphanumeric spoofing.
-    Attackers replace 'Hello' with '𝐇𝐞𝐥𝐥𝐨' (U+1D400 block) to bypass 
-    tokenizers and safety filters.
-    """
-    # Range: U+1D400 (Math Bold A) to U+1D7FF (Math Monospace digits)
-    math_hits = 0
-    for char in t:
-        cp = ord(char)
-        if 0x1D400 <= cp <= 0x1D7FF:
-            math_hits += 1
-            
-    if math_hits > 0:
-        # If it looks like a word (multiple math chars), it's a spoof
-        if math_hits >= 3:
-            return {
-                "type": "SPOOFING",
-                "desc": f"Math Alphanumeric Spoof ({math_hits} chars)",
-                "risk": 75, # High risk as this is a known jailbreak vector
-                "verdict": "FILTER BYPASS"
-            }
-    return None
-
-
-
-def analyze_token_fragmentation(tokens: list):
-    """
-    [PAPER 2: Charmer] Unified Fragmentation Detector.
-    Combines three layers of detection:
-    1. TARGETED: Re-assembly of high-value threat keywords (Risk 90-100).
-    2. LOCAL: Contiguous runs of micro-tokens (Risk 60+).
-    3. GLOBAL: Statistical density of micro-tokens (Risk 50).
-    """
-    if not tokens: return None
-    
-    # --- LAYER 1: Targeted Re-Assembly (Highest Fidelity) ---
-    reassembly_hits = check_reassembly(tokens)
-    if reassembly_hits:
-        # Calculate Risk based on category severity
-        desc_str = ", ".join(reassembly_hits)
-        risk = 90
-        if "[EXECUTION]" in desc_str or "[INJECTION]" in desc_str:
-            risk = 100
-            
-        return {
-            "type": "FRAGMENTATION",
-            "desc": f"Fragmented Threat Words: {desc_str}",
-            "risk": risk,
-            "verdict": "EVASION (TARGETED)"
-        }
-
-    # --- LAYER 2: Local Contiguity (Heuristic) ---
-    # Detects "s e c u r i t y" even if not in our dictionary
-    max_micro_run = 0
-    current_micro_run = 0
-    
-    # --- LAYER 3: Global Statistics (Thermodynamic) ---
-    # Detects "l a z y s p a c i n g" across the whole file
-    micro_tokens_count = 0
-    total_alnum = 0
-    
-    for tok in tokens:
-        t_str = tok['token']
-        if t_str.isalnum():
-            total_alnum += 1
-            
-            # Check if it's a micro-token (len 1-2)
-            if len(t_str) <= 2:
-                current_micro_run += 1
-                micro_tokens_count += 1
-            else:
-                max_micro_run = max(max_micro_run, current_micro_run)
-                current_micro_run = 0
-                
-    # Catch trailing run
-    max_micro_run = max(max_micro_run, current_micro_run)
-    
-    # Evaluate Layer 2 (Local Run)
-    # A run of 4+ micro-tokens is statistically unlikely in prose (e.g., "a b c d")
-    if max_micro_run >= 4:
-         return {
-            "type": "OBFUSCATION",
-            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
-            "risk": 50 + (max_micro_run * 5), # Scales up quickly with length
-            "verdict": "TOKENIZER CONFUSION"
-        }
-
-    # Evaluate Layer 3 (Global Density)
-    # Only apply if we have enough tokens to be statistically significant
-    if total_alnum > 10:
-        ratio = micro_tokens_count / total_alnum
-        if ratio > 0.5:
-            return {
-                "type": "ANOMALY",
-                "desc": f"High Micro-Token Density ({int(ratio*100)}% of text)",
-                "risk": 45,
-                "verdict": "GLOBAL FRAGMENTATION"
-            }
-            
-    return None
-
-
-# --- FORENSIC THREAT VOCABULARY (Seed List) ---
-# Derived from SecLists, FuzzDB, and LLM Jailbreak research.
-# Used to detect re-assembled fragmentation attacks (e.g. "s h e l l").
-
-THREAT_VOCAB = {
-    "EXECUTION": {
-        "sh", "bash", "zsh", "ksh", "cmd", "powershell", "pwsh", "shell", "webshell",
-        "python", "python3", "php", "perl", "ruby", "node", "java", "javac", "dotnet",
-        "system", "exec", "execute", "spawn", "eval", "compile", "popen", "subprocess",
-        "runtime", "processbuilder", "nc", "netcat", "telnet", "ssh", "sftp", 
-        "curl", "wget", "invoke-webrequest", "iex", "iwr"
-    },
-    "AUTH": {
-        "admin", "administrator", "root", "sudo", "user", "username", "login", "logon",
-        "signin", "signup", "password", "passwd", "passphrase", "pin", "token", 
-        "access_token", "refresh_token", "apikey", "secret", "client_secret", 
-        "session", "sessionid", "cookie", "jwt", "bearer", "credential", "auth"
-    },
-    "INJECTION": {
-        "script", "javascript", "alert", "onerror", "onclick", "onload", "iframe", 
-        "document.cookie", "innerhtml", "select", "insert", "update", "delete", 
-        "drop", "truncate", "union", "load_file", "xp_cmdshell"
-    },
-    "JAILBREAK": {
-        "ignore", "previous", "instructions", "forget", "override", "bypass", 
-        "developer", "mode", "uncensored", "dan", "jailbreak", "guidelines",
-        "constraints", "ethical", "rules"
-    },
-    "SYSTEM": {
-        "bin", "sbin", "usr", "var", "tmp", "etc", "passwd", "shadow", "hosts",
-        "boot", "ini", "cfg", "config", "registry", "regedit"
-    }
-}
-
-# Flatten for O(1) lookup
-ALL_THREAT_TERMS = set().union(*THREAT_VOCAB.values())
-
-def check_reassembly(tokens: list):
-    """
-    [PAPER 2: Charmer - Deep Logic]
-    Attempts to 're-glue' fragmented micro-tokens to see if they form 
-    high-value threat words from the Forensic Vocabulary.
-    """
-    micro_run = []
-    findings = []
-    
-    for tok in tokens:
-        t_str = tok['token']
-        
-        # Collect micro-tokens (len 1-2) - e.g. "s" "h" "e" "ll"
-        if t_str.isalnum() and len(t_str) <= 2:
-            micro_run.append(t_str)
-        else:
-            # Process accumulated run
-            if len(micro_run) >= 3:
-                reassembled = "".join(micro_run).lower()
-                
-                # 1. Exact Match Check
-                if reassembled in ALL_THREAT_TERMS:
-                    # Identify Category
-                    cat = "UNKNOWN"
-                    for c, terms in THREAT_VOCAB.items():
-                        if reassembled in terms:
-                            cat = c
-                            break
-                    findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
-                    
-                # 2. Substring Heuristic (for longer re-assembled chunks)
-                # e.g. "c m d . e x e" -> "cmd.exe" contains "cmd"
-                else:
-                     for term in ALL_THREAT_TERMS:
-                         if len(term) > 3 and term in reassembled:
-                              findings.append(f"[SUSPICIOUS] ...{' '.join(micro_run)}... -> contains '{term}'")
-                              break
-
-            micro_run = []
-            
-    # Flush final run
-    if len(micro_run) >= 3:
-        reassembled = "".join(micro_run).lower()
-        if reassembled in ALL_THREAT_TERMS:
-            cat = "UNKNOWN"
-            for c, terms in THREAT_VOCAB.items():
-                if reassembled in terms:
-                    cat = c
-                    break
-            findings.append(f"[{cat}] {' '.join(micro_run)} -> '{reassembled}'")
-            
-    return findings
-
-
-def analyze_invisible_fragmentation(t: str):
-    """
-    [PAPER 1: Special-Char] Detects 'Invisible Sandwich' attacks.
-    Unlike generic invisibles, this looks for invisibles embedded BETWEEN
-    alphanumeric characters (e.g. 'k<ZWSP>ill'), which specifically 
-    shatters LLM tokenization.
-    """
-    if len(t) < 3: return None
-    
-    # Scan internal characters only (indices 1 to len-2)
-    for i in range(1, len(t) - 1):
-        cp = ord(t[i])
-        
-        # Check using O(1) Lookup
-        is_invis = False
-        if cp < 1114112:
-            mask = INVIS_TABLE[cp]
-            # We care about Spacing, Format, and Joiners for fragmentation
-            if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_SOFT_HYPHEN | INVIS_DEFAULT_IGNORABLE):
-                is_invis = True
-        
-        if is_invis:
-            # The "Sandwich" Check
-            prev_char = t[i-1]
-            next_char = t[i+1]
-            
-            if prev_char.isalnum() and next_char.isalnum():
-                # We found an invisible breaking a word
-                return {
-                    "type": "FRAGMENTATION",
-                    "desc": "Invisible Tokenizer Split (Safety Bypass)",
-                    "risk": 95, # Critical: This is almost always malicious
-                    "verdict": "JAILBREAK VECTOR"
-                }
-    return None
-
-def analyze_visual_redaction(t: str):
-    """
-    [PAPER: Bad Characters] Visual Deletion Engine ('Ghost' Scanner).
-    Detects characters that modify cursor position (BS, DEL) to hide content.
-    """
-    findings = []
-    # BS (0x08), DEL (0x7F) are the primary visual erasers.
-    # CR (0x0D) overwrites line start.
-    REDACTION_SET = {0x0008, 0x007F, 0x000D}
-    
-    for i, char in enumerate(t):
-        cp = ord(char)
-        if cp in REDACTION_SET:
-            name = "BACKSPACE" if cp == 0x0008 else ("DELETE" if cp == 0x7F else "CARRIAGE RETURN")
-            findings.append(f"#{i} ({name})")
-            
-    if findings:
-        return {
-            "label": "CRITICAL: Visual Redaction (Ghost Chars)",
-            "count": len(findings),
-            "positions": findings,
-            "severity": "crit",
-            "badge": "GHOST"
-        }
-    return None
-
-def analyze_syntax_fracture_enhanced(t: str):
-    """
-    [PAPER: Emoji Survey] Enhanced Fracture Scanner (v2).
-    Detects 'Sandwich Attacks' where an alphanumeric run is split by
-    Emojis, Invisibles, or Tags.
-    """
-    if len(t) < 3: return None
-
-    fractures = []
-    
-    # Inline Agent Check
-    def is_fracture_agent(cp):
-        if cp >= 1114112: return False
-        mask = INVIS_TABLE[cp]
-        if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL | INVIS_SOFT_HYPHEN):
-            return True
-        # Check for Emoji ranges
-        if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"):
-            return True
-        return False
-
-    # Scan for [Alpha] -> [Agent] -> [Alpha]
-    for i in range(1, len(t) - 1):
-        mid_char = t[i]
-        cp_mid = ord(mid_char)
-        
-        if mid_char.isalnum() or mid_char.isspace():
-            continue
-            
-        if is_fracture_agent(cp_mid):
-            prev_char = t[i-1]
-            next_char = t[i+1]
-            
-            if prev_char.isalnum() and next_char.isalnum():
-                fractures.append(f"#{i} (U+{cp_mid:04X} splits token)")
-
-    if fractures:
-        return {
-            "label": "CRITICAL: Syntax Fracture (Token Evasion)",
-            "count": len(fractures),
-            "positions": fractures,
-            "severity": "crit", 
-            "badge": "JAILBREAK"
-        }
-    return None
-
-def analyze_jailbreak_styles(t: str):
-    """
-    [PAPER: Impact of Non-Standard Unicode] Evasion Alphabet Detector.
-    Detects usage of specific Unicode blocks proved to bypass LLM safety filters.
-    """
-    if not t: return None
-    
-    hits = {"MATH": 0, "ENCLOSED": 0, "BRAILLE": 0, "TAGS": 0}
-    
-    for char in t:
-        cp = ord(char)
-        if 0x1D400 <= cp <= 0x1D7FF: hits["MATH"] += 1
-        elif (0x2460 <= cp <= 0x24FF) or (0x1F100 <= cp <= 0x1F1FF): hits["ENCLOSED"] += 1
-        elif 0x2800 <= cp <= 0x28FF: hits["BRAILLE"] += 1
-        elif 0xE0000 <= cp <= 0xE007F: hits["TAGS"] += 1
-
-    if hits["TAGS"] > 0:
-        return {"type": "INJECTION", "desc": f"Unicode Tags (x{hits['TAGS']})", "risk": 95, "verdict": "JAILBREAK (TAGS)"}
-    if hits["MATH"] > 3:
-        return {"type": "SPOOFING", "desc": f"Math Alphanumerics (x{hits['MATH']})", "risk": 80, "verdict": "JAILBREAK (MATH)"}
-    if hits["ENCLOSED"] > 3:
-        return {"type": "OBFUSCATION", "desc": f"Enclosed Alphanumerics (x{hits['ENCLOSED']})", "risk": 60, "verdict": "EVASION (STYLE)"}
-    if hits["BRAILLE"] > 3:
-         return {"type": "OBFUSCATION", "desc": f"Braille Patterns (x{hits['BRAILLE']})", "risk": 70, "verdict": "EVASION (BRAILLE)"}
-
-    return None
-
-def analyze_normalization_inflation(t: str):
-    """
-    [PAPER: Fun with Unicode] Normalization Bomb Detector.
-    Detects single characters that expand significantly (DoS vector).
-    """
-    flags = {}
-    findings = []
-    
-    # Threshold: If a single char expands to > 10 chars, it's a bomb.
-    BOMB_THRESHOLD = 10 
-    
-    for i, char in enumerate(t):
-        # Optimization: Only check complex scripts (skip ASCII)
-        if ord(char) < 128: continue
-            
-        try:
-            nfkc = unicodedata.normalize("NFKC", char)
-            if len(nfkc) >= BOMB_THRESHOLD:
-                # Special Label for the famous U+FDFA
-                label = "Arabic Ligature (U+FDFA)" if ord(char) == 0xFDFA else f"U+{ord(char):04X}"
-                findings.append(f"#{i} ({label} expands to {len(nfkc)} chars)")
-        except: pass
-            
-    if findings:
-        flags["RISK: Normalization Inflation (DoS Vector)"] = {
-            "count": len(findings),
-            "positions": findings,
-            "severity": "warn",
-            "badge": "DOS"
-        }
-    return flags
-
-def analyze_idna_compression(token: str):
-    """
-    [PAPER: Fun with Unicode] IDNA Compression Detector.
-    Detects characters that map to multi-char ASCII strings in IDNA.
-    """
-    # Scope: Only analyze domain-like tokens
-    if not token or '.' not in token: return None
-    
-    # Heuristic: Check for non-ASCII chars that normalize to ASCII sequences
-    # e.g. U+33C5 (㏅) -> "cd"
-    suspicious = []
-    
-    for char in token:
-        if ord(char) > 127:
-            try:
-                norm = unicodedata.normalize("NFKC", char)
-                # If it expands to 2+ chars AND becomes pure ASCII
-                if len(norm) > 1 and norm.isascii():
-                    suspicious.append(f"U+{ord(char):04X}→'{norm}'")
-            except: pass
-            
-    if suspicious:
-        return {
-            "lvl": "HIGH",
-            "type": "SPOOFING", 
-            "desc": f"IDNA Compression ({', '.join(suspicious)})"
-        }
-    return None
-
-def analyze_punctuation_skew(t: str):
-    """
-    [PAPER 3: SSTA] Replacement Attack Detector.
-    Analyzes ratio of 'Grammatical' vs 'Charged' punctuation.
-    """
-    grammatical = {'.', ',', ';', ':', '"', "'", '?', '!', '-', '(', ')'}
-    charged = {'~', '_', '^', '|', '{', '}', '[', ']', '<', '>', '@', '*', '#', '$', '%', '`', '\\', '/'}
-    
-    gram_count = sum(1 for c in t if c in grammatical)
-    charged_count = sum(1 for c in t if c in charged)
-    total = gram_count + charged_count
-    
-    if total > 5 and charged_count > 3:
-        ratio = charged_count / total
-        if ratio > 0.70:
-            return {
-                "type": "SKEW",
-                "desc": f"Abnormal Punctuation ({int(ratio*100)}% Charged Symbols)",
-                "risk": 45,
-                "verdict": "REPLACEMENT ATTACK"
-            }
-    return None
-
-def analyze_token_fragmentation_v2(tokens: list):
-    """
-    [PAPER 2: Charmer] Deep Fragmentation Engine.
-    Checks for re-assembly (Charmer) and contiguous micro-runs.
-    Robust against 'string vs dict' token types.
-    """
-    if not tokens: return None
-    
-    # 1. Charmer Re-Assembly Check (High Fidelity)
-    # Safe check ensures we don't crash if helper is missing
-    if 'check_reassembly' in globals():
-        reassembly_hits = check_reassembly(tokens)
-        if reassembly_hits:
-            desc_str = ", ".join(reassembly_hits)
-            # Critical risk for Exec/Injection keywords, High for others
-            risk = 100 if ("[EXECUTION]" in desc_str or "[INJECTION]" in desc_str) else 90
-            
-            return {
-                "type": "FRAGMENTATION",
-                "desc": f"Fragmented Threat Words: {desc_str}",
-                "risk": risk,
-                "verdict": "TOKENIZER EVASION"
-            }
-
-    # 2. Contiguous Micro-Run Check (Heuristic)
-    max_micro_run = 0
-    current_micro_run = 0
-    
-    for tok_obj in tokens:
-        # DEFENSIVE EXTRACTION: Prevents "string indices must be integers" error
-        if isinstance(tok_obj, dict):
-            txt = tok_obj.get('token', '')
-        else:
-            txt = str(tok_obj)
-        
-        if txt.isalnum() and len(txt) <= 2:
-            current_micro_run += 1
-        else:
-            max_micro_run = max(max_micro_run, current_micro_run)
-            current_micro_run = 0
-            
-    # Capture trailing run
-    max_micro_run = max(max_micro_run, current_micro_run)
-    
-    if max_micro_run >= 4:
-         return {
-            "type": "OBFUSCATION",
-            "desc": f"Token Fragmentation (Run of {max_micro_run} micro-tokens)",
-            "risk": 60,
-            "verdict": "TOKENIZER CONFUSION"
-        }
-
-    return None
-
-def compute_adversarial_metrics(t: str):
-    """
-    Adversarial Engine v10 (Consolidated & Paper-Aligned).
-    Integrates: Ghost, Fracture, Stutter, and Jailbreak Styles.
-    """
-    if not t: 
-        return {
-            "findings": [], "top_tokens": [], "targets": [],
-            "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0}
-        }
-
-    # --- 1. Setup ---
-    tokens = tokenize_forensic(t) 
-    confusables_map = DATA_STORES.get("Confusables", {})
-    
-    findings = []
-    top_tokens = []
-    
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0, "INJECTION": 0, "SEMANTIC": 0, "OBFUSCATION": 0 }
-    SEVERITY_MAP = { "CRIT": 3, "HIGH": 2, "MED": 1, "LOW": 0 }
-
-    # --- 2. Global Analyzers (State 1.5) ---
-    
-    # A. Visual Redaction (Ghost)
-    ghost = analyze_visual_redaction(t)
-    if ghost:
-        findings.append({
-            'family': '[GHOST]', 'desc': f"{ghost['count']} Deletion Characters",
-            'token': 'GLOBAL', 'severity': 'crit'
-        })
-        topology["HIDDEN"] += 1
-
-    # B. Syntax Fracture (Sandwich)
-    frac = analyze_syntax_fracture_enhanced(t)
-    if frac:
-        findings.append({
-            'family': '[FRACTURE]', 'desc': f"{frac['count']} Token Fractures",
-            'token': 'GLOBAL', 'severity': 'crit'
-        })
-        topology["OBFUSCATION"] += 1
-
-    # C. Jailbreak Styles (Evasion Alphabets)
-    style = analyze_jailbreak_styles(t)
-    if style:
-        sev = 'crit' if style['risk'] >= 80 else 'warn'
-        findings.append({
-            'family': f"[{style['verdict']}]", 'desc': style['desc'],
-            'token': 'GLOBAL', 'severity': sev
-        })
-        t_type = style.get('type', 'OBFUSCATION')
-        topology[t_type] = topology.get(t_type, 0) + 1
-
-    # D. Symbol Flood (SSTA)
-    flood = analyze_symbol_flood(t)
-    if flood:
-        findings.append({
-            'family': f"[{flood['verdict']}]", 'desc': flood['desc'],
-            'token': 'GLOBAL', 'severity': 'crit' if flood['risk'] > 50 else 'warn'
-        })
-        # Safe update (Fixes KeyError risk)
-        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
-
-    # E. Punctuation Skew (SSTA - Replacement)
-    skew = analyze_punctuation_skew(t)
-    if skew:
-        findings.append({
-            'family': f"[{skew['verdict']}]", 'desc': skew['desc'],
-            'token': 'GLOBAL', 'severity': 'warn'
-        })
-        topology["SEMANTIC"] = topology.get("SEMANTIC", 0) + 1
-
-    # F. Token Fragmentation (Charmer)
-    frag = analyze_token_fragmentation_v2(tokens)
-    if frag:
-        sev = 'crit' if frag['risk'] > 80 else 'warn'
-        findings.append({
-            'family': f"[{frag['verdict']}]", 'desc': frag['desc'],
-            'token': 'GLOBAL', 'severity': sev
-        })
-        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
-
-    # --- 3. Token Loop ---
-    
-    # Legacy Script logic for Restriction Badge
-    scripts_found = set()
-    has_math_spoof = False
-    for char in t:
-        cp = ord(char)
-        sc = _find_in_ranges(cp, "Scripts")
-        blk = _find_in_ranges(cp, "Blocks")
-        if blk == "Mathematical Alphanumeric Symbols": has_math_spoof = True
-        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts_found.add(sc)
-    
-    restriction = "UNRESTRICTED"
-    badge_class = "intel-badge-danger"
-    count = len(scripts_found)
-    if has_math_spoof: restriction = "SPOOFING (MATH)"
-    elif count == 0:
-        if all(ord(c) < 128 for c in t): restriction, badge_class = "ASCII-ONLY", "intel-badge-safe"
-        else: restriction, badge_class = "SINGLE SCRIPT", "intel-badge-safe"
-    elif count == 1: restriction, badge_class = f"SINGLE ({list(scripts_found)[0]})", "intel-badge-safe"
-    else: restriction, badge_class = "MIXED SCRIPTS", "intel-badge-warn"
-
-    # Main Loop
-    for tok_obj in tokens:
-        # Defensive Extraction
-        if isinstance(tok_obj, dict):
-            token_text = tok_obj.get('token', '')
-        else:
-            token_text = str(tok_obj)
-
-        if not token_text.strip(): continue
-        
-        token_score = 0
-        token_reasons = []
-        token_families = set()
-        threat_stack = [] 
-
-        is_domain_candidate = is_plausible_domain_candidate(token_text)
-
-        # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
-        # Detects: Alpha -> Agent -> Alpha (e.g. "sens😎itive")
-        fracture_risk = 0
-        fracture_desc = ""
-        
-        if len(token_text) > 2:
-            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
-            SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
-            
-            for char in token_text:
-                cp = ord(char)
-                is_alnum = char.isalnum()
-                is_safe = char in SAFE_PUNCT
-                f_is_agent = False
-                
-                if cp < 1114112:
-                    mask = INVIS_TABLE[cp]
-                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
-                        f_is_agent = True
-                    # Hardened Emoji Check
-                    elif not is_alnum and (_find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic")):
-                        f_is_agent = True
-
-                if f_state == 0:
-                    if is_alnum: f_state = 1
-                elif f_state == 1:
-                    if not is_alnum and not is_safe:
-                        if f_is_agent: f_state = 2
-                    elif not is_alnum and is_safe:
-                        f_state = 0
-                elif f_state == 2:
-                    if is_alnum:
-                        fracture_risk = 90
-                        fracture_desc = "Token Fracture (Mid-Token Injection)"
-                        break
-                    elif is_safe:
-                        f_state = 0
-
-        if fracture_risk > 0:
-            threat_stack.insert(0, { "lvl": "CRIT", "type": "OBFUSCATION", "desc": fracture_desc })
-            token_score += 90
-            token_families.add("OBFUSCATION")
-
-        # [NEW] Lexical Stutter (Unicode Evil)
-        # Logic: Check for exact doubling (e.g. "adminadmin")
-        if len(token_text) >= 6:
-            mid = len(token_text) // 2
-            if token_text[:mid] == token_text[mid:]:
-                desc = "Lexical Stutter (Doubling)"
-                threat_stack.append({"lvl": "MED", "type": "OBFUSCATION", "desc": desc})
-                token_score += 30
-                token_families.add("OBFUSCATION")
-
-        # [CONTEXT]
-        lure = analyze_context_lure(token_text)
-        if lure:
-            token_score += lure['risk']
-            token_reasons.append(lure['desc'])
-            token_families.add("CONTEXT")
-            threat_stack.append({ "lvl": "MED", "type": "CONTEXT", "desc": lure['desc'] })
-
-        # [TYPOSQUATTING & IDNA]
-        if is_domain_candidate:
-            domain_risk = analyze_domain_heuristics(token_text)
-            if domain_risk:
-                token_score += domain_risk['risk']
-                token_reasons.append(domain_risk['desc'])
-                token_families.add("SPOOFING") 
-                threat_stack.append({ "lvl": "HIGH", "type": "SPOOFING", "desc": domain_risk['desc'] })
-
-            if '.' in token_text or 'xn--' in token_text:
-                labels = token_text.split('.')
-                for label in labels:
-                    if not label: continue
-                    idna_findings = analyze_idna_label(label)
-                    if idna_findings:
-                        for f in idna_findings:
-                            cat = "INJECTION"
-                            if f['type'] == "GHOST": cat = "HIDDEN"
-                            elif f['type'] == "AMBIGUITY": cat = "AMBIGUITY"
-                            elif f['type'] == "COMPAT": cat = "SYNTAX"
-                            elif f['type'] == "INVALID": cat = "SPOOFING"
-                            
-                            risk_adder = 0
-                            if f['lvl'] == "CRIT": risk_adder = 50
-                            elif f['lvl'] == "HIGH": risk_adder = 30
-                            elif f['lvl'] == "MED": risk_adder = 10
-                            token_score += risk_adder
-                            
-                            threat_stack.append({ "lvl": f['lvl'], "type": cat, "desc": f['desc'] })
-                            if cat == "HIDDEN": token_families.add("OBFUSCATION")
-                            elif cat == "SPOOFING": token_families.add("SPOOFING")
-                            elif cat == "AMBIGUITY": token_families.add("HOMOGLYPH")
-                            elif cat == "SYNTAX": token_families.add("INJECTION")
-                            else: token_families.add("INJECTION")
-
-        # [SCRIPT]
-        r_lbl, r_score = analyze_restriction_level(token_text)
-        if r_score > 0:
-            if "CONTEXT" in token_families and r_score < 50: pass 
-            else:
-                token_score += r_score
-                token_reasons.append(r_lbl)
-                token_families.add("SCRIPT")
-                lvl = "CRIT" if r_score > 80 else "HIGH"
-                threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
-            
-        # [HOMOGLYPH]
-        conf_data = analyze_confusion_density(token_text, confusables_map)
-        if conf_data:
-            if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
-                conf_data['risk'] = min(100, conf_data['risk'] + 20)
-                conf_data['desc'] += " (Start-Char)"
-            token_score += conf_data['risk']
-            token_reasons.append(conf_data['desc'])
-            token_families.add("HOMOGLYPH")
-            lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
-            threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
-
-        # [SPOOFING]
-        sore = analyze_class_consistency(token_text)
-        if sore:
-            token_score += sore['risk']
-            token_reasons.append(sore['desc'])
-            token_families.add("SPOOFING")
-            threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
-            
-        # [OBFUSCATION]
-        norm = analyze_normalization_hazard_advanced(token_text)
-        if norm:
-            token_score += norm['risk']
-            token_reasons.append(norm['desc'])
-            token_families.add("OBFUSCATION")
-            threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
-        
-        # [PERTURBATION]
-        pert = analyze_structural_perturbation(token_text)
-        if pert:
-            token_score += pert['risk']
-            token_reasons.append(pert['desc'])
-            token_families.add("PERTURBATION")
-            is_bidi = "Bidi" in pert['desc']
-            p_type = "INJECTION" if is_bidi else "HIDDEN"
-            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
-
-        # [TROJAN]
-        trojan = analyze_trojan_context(token_text)
-        if trojan:
-            token_score += trojan['risk']
-            token_reasons.append(trojan['desc'])
-            token_families.add("TROJAN")
-            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
-
-        # [IDNA Compression]
-        idna_comp = analyze_idna_compression(token_text)
-        if idna_comp:
-            threat_stack.append(idna_comp)
-            token_families.add("SPOOFING")
-            token_score += 50
-
-        # --- Aggregation ---
-        if token_score > 0 or threat_stack:
-            pillars_seen = set()
-            for item in threat_stack:
-                t_type = item['type']
-                if t_type not in pillars_seen:
-                    topology[t_type] = topology.get(t_type, 0) + 1
-                    pillars_seen.add(t_type)
-
-            fam_str = " ".join([f"[{f}]" for f in sorted(token_families)])
-            sev = 'ok'
-            if token_score >= 80: sev = 'crit'
-            elif token_score >= 40: sev = 'warn'
-            
-            if not token_score and threat_stack: token_score = 10 
-            
-            findings.append({
-                'family': fam_str, 'desc': ", ".join(token_reasons),
-                'token': token_text, 'severity': sev
-            })
-            
-            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
-            
-            try: b64 = base64.b64encode(token_text.encode("utf-8")).decode("ascii")
-            except: b64 = "Error"
-            hex_v = "".join(f"\\x{b:02X}" for b in token_text.encode("utf-8"))
-            
-            primary_verdict = "Unknown Risk"
-            if threat_stack:
-                primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
-
-            top_tokens.append({
-                'token': token_text, 'score': min(100, token_score),
-                'reasons': token_reasons, 'families': list(token_families),
-                'stack': threat_stack, 'verdict': primary_verdict,
-                'b64': b64, 'hex': hex_v
-            })
-
-    # Global Stego Check (Final)
-    stego_report = detect_invisible_patterns(t)
-    if stego_report:
-        findings.append({
-            'family': '[STEGO]', 'desc': stego_report['detail'],
-            'token': 'GLOBAL', 'severity': 'warn'
-        })
-        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
-
-    top_tokens.sort(key=lambda x: x['score'], reverse=True)
-    max_token_score = max(t['score'] for t in top_tokens) if top_tokens else 0
-        
-    unique_findings = []
-    seen_hashes = set()
-    for f in findings:
-        h = f"{f['token']}:{f['family']}"
-        if h not in seen_hashes:
-            unique_findings.append(f)
-            seen_hashes.add(h)
-
-    return {
-        "findings": unique_findings, "top_tokens": top_tokens[:3],
-        "topology": topology, "restriction": restriction,
-        "badge_class": badge_class, "targets": top_tokens, 
-        "stego": stego_report, "max_risk": max_token_score 
-    }
-
-def analyze_trojan_context(token: str):
-    """
-    [TROJAN SOURCE] Checks for Bidi controls near code syntax.
-    """
-    has_bidi = False
-    for char in token:
-        cp = ord(char)
-        if cp < 1114112 and (INVIS_TABLE[cp] & INVIS_BIDI_CONTROL):
-            has_bidi = True
-            break
-            
-    if not has_bidi: return None
-    
-    # Check for code-like syntax chars
-    code_syntax = {'"', "'", ';', '{', '}', '/', '*', '#'}
-    is_code_adjacent = any(c in code_syntax for c in token)
-    
-    if is_code_adjacent:
-        return {"desc": "Bidi Control near Syntax (Trojan Risk)", "risk": 100}
-    return {"desc": "Bidi Control present", "risk": 60}
-
-def analyze_confusion_density(token: str, confusables_map: dict):
-    """
-    [CONFUSION DENSITY] Calculates per-token ambiguity using UTS #39 data.
-    """
-    if not token or not confusables_map: return None
-    
-    confusable_count = 0
-    effective_len = 0
-    
-    for char in token:
-        cp = ord(char)
-        # Filter out common punctuation to avoid noise
-        if not unicodedata.category(char).startswith('P'):
-            effective_len += 1
-            # Check map
-            if cp in confusables_map:
-                # Retrieve mapping
-                val = confusables_map[cp]
-                target = val[0] if isinstance(val, tuple) else val
-                
-                # If it maps to something DIFFERENT, it's ambiguous
-                if target != char:
-                    confusable_count += 1
-
-    if effective_len == 0: return None
-    
-    density = confusable_count / effective_len
-    
-    if density > 0.0:
-        risk = int(density * 100)
-        # Boost risk for high density
-        if density > 0.5: risk = min(100, risk + 20)
-        
-        return {
-            "desc": f"Confusion Density: {density:.0%}",
-            "density": density,
-            "risk": risk
-        }
-    return None
-
-def analyze_zalgo_load(token: str):
-    """
-    [ZALGO] Checks for Diacritic Overload.
-    FIX: Ignores Variation Selectors (VS15/VS16) to avoid flagging Emoji as Zalgo.
-    """
-    mark_count = 0
-    base_count = 0
-    max_stack = 0
-    current_stack = 0
-    
-    for char in token:
-        cp = ord(char)
-        # Exclude Variation Selectors from "Mark" count for Zalgo purposes
-        if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
-            continue
-            
-        if unicodedata.category(char).startswith('M'):
-            mark_count += 1
-            current_stack += 1
-        else:
-            base_count += 1
-            max_stack = max(max_stack, current_stack)
-            current_stack = 0
-    max_stack = max(max_stack, current_stack)
-    
-    ratio = mark_count / max(1, base_count)
-    
-    if max_stack >= 4 or ratio > 2.0:
-        return {"desc": f"Diacritic Overload (Max Stack: {max_stack})", "risk": 80}
-    elif max_stack >= 2 or ratio > 0.5:
-        return {"desc": "Heavy Diacritics", "risk": 40}
-        
-    return None
-
-def analyze_case_anomalies(token: str):
-    """
-    [CASE ANOMALY] Detects suspicious casing (PayPaI).
-    """
-    if len(token) < 3: return None
-    
-    # 1. Mixed Case at End (PayPaI)
-    if token[:-1].islower() and token[-1].isupper():
-        return {"desc": "Suspicious End-Capitalization", "risk": 40}
-        
-    # 2. Random Upper in Lower (payPa1)
-    # Heuristic: Mostly lower with 1 isolated upper in middle
-    uppers = sum(1 for c in token if c.isupper())
-    lowers = sum(1 for c in token if c.islower())
-    
-    if lowers > 2 and uppers == 1 and not token[0].isupper():
-        return {"desc": "Suspicious Mid-Capitalization", "risk": 40}
-        
-    return None
-
-def detect_invisible_patterns(t: str):
-    """
-    [STEGANOGRAPHY] Global scanner for repeating invisible sequences.
-    """
-    if not t: return None
-    invis_seq = []
-    for char in t:
-        cp = ord(char)
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        if mask & INVIS_ANY_MASK:
-            if mask & INVIS_ZERO_WIDTH_SPACING: tag = "ZW"
-            elif mask & INVIS_JOIN_CONTROL: tag = "JN"
-            elif mask & INVIS_TAG: tag = "TG"
-            elif mask & INVIS_BIDI_CONTROL: tag = "BD"
-            elif mask & (INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG): tag = "VS"
-            else: tag = "?? "
-            invis_seq.append(tag)
-            
-    if len(invis_seq) < 4: return None
-    
-    import collections
-    patterns = collections.Counter()
-    n = len(invis_seq)
-    for k in [2, 3]:
-        for i in range(n - k + 1):
-            gram = tuple(invis_seq[i : i + k])
-            patterns[gram] += 1
-            
-    suspects = []
-    for gram, count in patterns.items():
-        if count > 2 and (count * len(gram) > n * 0.4):
-            pat_str = "-".join(gram)
-            suspects.append(f"{pat_str} (x{count})")
-            
-    if suspects:
-        return {
-            "verdict": "Structured Invisible Pattern",
-            "detail": ", ".join(suspects),
-            "risk": "Steganography / Watermark",
-            "score": 75
-        }
-    return None
-
-
-def compute_adversarial_profile(t: str, script_stats: dict) -> dict:
-    """
-    Hybrid Canonical Engine (v5 - Explicit Typing).
-    Removes indirection to guarantee Topology counters match Stack data.
-    """
-    if not t: return None
-
-    # --- 1. Global Restriction Level ---
-    scripts_found = set()
-    for key in script_stats.keys():
-        if key.startswith("Script:"):
-            s = key.replace("Script: ", "").strip()
-            if s not in ("Common", "Inherited", "Unknown"):
-                scripts_found.add(s)
-
-    restriction = "UNRESTRICTED"
-    badge_class = "intel-badge-danger"
-    count = len(scripts_found)
-    
-    if count == 0:
-        if all(ord(c) < 128 for c in t):
-            restriction = "ASCII-ONLY"
-            badge_class = "intel-badge-safe"
-        else:
-            restriction = "SINGLE SCRIPT (COMMON)"
-            badge_class = "intel-badge-safe"
-    elif count == 1:
-        restriction = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
-        badge_class = "intel-badge-safe"
-    elif count == 2:
-        cjk = {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
-        if "Latin" in scripts_found and any(s in cjk for s in scripts_found):
-             restriction = "HIGHLY RESTRICTIVE"
-             badge_class = "intel-badge-safe"
-        elif "Latin" in scripts_found and ("Greek" in scripts_found or "Cyrillic" in scripts_found):
-             restriction = "MINIMALLY RESTRICTIVE"
-             badge_class = "intel-badge-danger"
-        else:
-             restriction = "MINIMALLY RESTRICTIVE"
-             badge_class = "intel-badge-warn"
-    else:
-        restriction = "UNRESTRICTED"
-        badge_class = "intel-badge-danger"
-
-    # --- 2. Initialize Data ---
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
-    targets = []
-    SEVERITY_MAP = { "CRIT": 4, "HIGH": 3, "MED": 2, "LOW": 1 }
-    
-    confusables_map = DATA_STORES.get("Confusables", {})
-    tokens = tokenize_forensic(t)
-    import base64
-    import math
-
-    # --- 3. Token Loop ---
-    for tok_obj in tokens:
-        token = tok_obj['token']
-        threat_stack = [] 
-
-        # A. Restriction (SPOOFING)
-        rest_label, rest_risk = analyze_restriction_level(token)
-        if rest_risk != "safe":
-            lvl = "CRIT" if rest_risk == "crit" else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": rest_label })
-
-        # B. Class Consistency (AMBIGUITY)
-        sore = analyze_class_consistency(token)
-        if sore:
-            threat_stack.append({ "lvl": "CRIT", "type": "AMBIGUITY", "desc": sore['desc'] })
-
-        # C. Confusion Density (AMBIGUITY)
-        conf_data = analyze_confusion_density(token, confusables_map)
-        if conf_data:
-            lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
-            threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
-
-        # D. Normalization Hazard (HIDDEN)
-        norm = analyze_normalization_hazard_advanced(token)
-        if norm:
-            threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
-
-        # E. Structural Perturbation (SYNTAX / HIDDEN)
-        pert = analyze_structural_perturbation(token)
-        if pert:
-            # Direct text check for Bidi
-            is_bidi = "Bidi" in pert['desc'] or "bidi" in pert['desc'].lower()
-            p_type = "SYNTAX" if is_bidi else "HIDDEN"
-            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
-
-        # F. Trojan Context (SYNTAX)
-        trojan = analyze_trojan_context(token)
-        if trojan:
-            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
-            
-        # G. Zalgo (HIDDEN)
-        zalgo = analyze_zalgo_load(token)
-        if zalgo:
-            lvl = "HIGH" if zalgo['risk'] >= 80 else "MED"
-            threat_stack.append({ "lvl": lvl, "type": "HIDDEN", "desc": zalgo['desc'] })
-            
-        # H. Case Anomaly (SPOOFING)
-        case_anom = analyze_case_anomalies(token)
-        if case_anom:
-            threat_stack.append({ "lvl": "MED", "type": "SPOOFING", "desc": case_anom['desc'] })
-
-        # I. IDNA PROTOCOL LENS (Label-Centric)
-        # We only analyze tokens that look like domains (contain dot or xn--)
-        if '.' in token or 'xn--' in token:
-            # 1. Split into Labels (UTS #46 Step 3)
-            # Note: We split by '.' only. Full UTS #46 mapping handles 3002 etc., 
-            # but for Stage 1 heuristic, '.' is sufficient for tokenization.
-            labels = token.split('.')
-            
-            for label in labels:
-                if not label: continue # Skip empty labels
-                
-                # Analyze Label
-                label_findings = analyze_idna_label(label)
-                
-                if label_findings:
-                    for f in label_findings:
-                        threat_stack.append({
-                            "lvl": f['lvl'],
-                            "type": "INJECTION" if f['type'] in ("GHOST", "AMBIGUITY") else "SPOOFING",
-                            "desc": f['desc']
-                        })
-
-        # --- Aggregate Token ---
-        if threat_stack:
-            # 1. Unique Pillar Counting
-            pillars_seen = set()
-            for item in threat_stack:
-                t_type = item['type']
-                if t_type not in pillars_seen:
-                    # Direct dictionary update with safety default
-                    topology[t_type] = topology.get(t_type, 0) + 1
-                    pillars_seen.add(t_type)
-
-            # 2. Sort by Severity
-            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
-            
-            # 3. Verdict
-            primary = threat_stack[0]
-            verdict = f"{primary['type']} ({primary['lvl']})"
-            
-            # 4. Score
-            raw_score = sum(SEVERITY_MAP.get(x['lvl'], 0) for x in threat_stack)
-            score = int(100 * (1 - math.exp(-0.25 * raw_score)))
-            
-            # 5. Vectors
-            try:
-                b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
-            except: b64 = "Error"
-            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
-            
-            targets.append({
-                "token": token,
-                "verdict": verdict,
-                "stack": threat_stack,
-                "b64": b64,
-                "hex": hex_v,
-                "score": score
-            })
-
-    # Sort
-    targets.sort(key=lambda x: x['score'], reverse=True)
-
-    # --- 4. Global Stego ---
-    stego = detect_invisible_patterns(t)
-    if stego:
-        topology["HIDDEN"] = topology.get("HIDDEN", 0) + 1
-        stego["verdict"] = "Hidden Pattern (Global)"
-
-    return {
-        "restriction": restriction,
-        "badge_class": badge_class,
-        "topology": topology,
-        "targets": targets,
-        "stego": stego
-    }
-
-def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
-    """
-    The Skeleton Overlay (X-Ray).
-    Renders a vertical alignment of 'Raw' vs 'Skeleton' for suspicious clusters.
-    Replaces the linear stream with a comparative 'DNA alignment' view.
-    """
-    if not t or not threat_indices: return ""
-
-    js_array = window.Array.from_(t)
-    text_len = len(js_array)
-    
-    # --- 1. CLUSTERING (Sparse View Logic) ---
-    sorted_threats = sorted(list(threat_indices))
-    clusters = []
-    MERGE_DIST = 40 # Context window
-    
-    if sorted_threats:
-        current_cluster = [sorted_threats[0]]
-        for i in range(1, len(sorted_threats)):
-            if sorted_threats[i] - sorted_threats[i-1] <= MERGE_DIST:
-                current_cluster.append(sorted_threats[i])
-            else:
-                clusters.append(current_cluster)
-                current_cluster = [sorted_threats[i]]
-        clusters.append(current_cluster)
-
-    # --- 2. RENDER CLUSTERS ---
-    html_parts = []
-    
-    for idx, clust in enumerate(clusters):
-        start_idx = clust[0]
-        end_idx = clust[-1]
-        
-        # Context padding
-        ctx_start = max(0, start_idx - 8)
-        ctx_end = min(text_len, end_idx + 9)
-        
-        # Build the Alignment Strip
-        strip_html = []
-        
-        for i in range(ctx_start, ctx_end):
-            char = js_array[i]
-            cp = ord(char)
-            
-            # --- ADVERSARIAL ALIGNMENT LOGIC ---
-            # 1. Get Skeleton Target
-            # Handle the tuple format from data loader: (target, type)
-            val = confusables_map.get(cp)
-            if val:
-                skel_target = val[0] if isinstance(val, tuple) else val
-            else:
-                skel_target = char
-                
-            # 2. Check for "Drift" (Attack Signal)
-            # If Raw != Skeleton, it's a visual spoof point.
-            # EXCEPTION: Ignore Case Drift (A -> a) to reduce noise.
-            is_drift = (char != skel_target) and (char.lower() != skel_target)
-            
-            # 3. Check for Invisibles (Obfuscation Signal)
-            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-            is_invis = bool(mask & INVIS_ANY_MASK)
-            
-            # 4. Construct CSS Classes
-            col_class = "xray-col"
-            if is_invis:
-                col_class += " xray-void" # Collapsed or dimmed
-                skel_target = "∅"       # Explicitly show nullification
-            elif is_drift:
-                col_class += " xray-drift" # Red highlight
-            
-            # 5. Visual Safe-Guards
-            # Escape HTML to prevent injection from the text itself
-            vis_top = _escape_html(char)
-            vis_bot = _escape_html(skel_target)
-            
-            # Handle Control Pictures for unprintables
-            if cp in INVISIBLE_MAPPING:
-                vis_top = f"<span class='x-tag'>{INVISIBLE_MAPPING[cp]}</span>"
-            elif is_invis:
-                vis_top = "<span class='x-tag'>[HID]</span>"
-            
-            # 6. Render Column
-            strip_html.append(f"""
-            <div class="{col_class}" title="U+{cp:04X} &rarr; {vis_bot}">
-                <div class="x-raw">{vis_top}</div>
-                <div class="x-skel">{vis_bot}</div>
-            </div>
-            """)
-            
-        # Cluster Card Wrapper
-        html_parts.append(f"""
-        <div class="xray-cluster">
-            <div class="xray-meta">Context #{idx+1}</div>
-            <div class="xray-strip">
-                {"".join(strip_html)}
-            </div>
-        </div>
-        """)
-
-    if not html_parts: return ""
-    
-    return f"""
-    <div class="xray-container">
-        <div class="xray-legend-bar">
-            <span class="xl-item"><span class="xl-dot dot-red"></span> Visual Drift</span>
-            <span class="xl-item"><span class="xl-dot dot-gray"></span> Hidden/Stripped</span>
-        </div>
-        {"".join(html_parts)}
-    </div>
-    """
-
-def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
-    """
-    Forensic X-Ray Engine v9.0 (The Ultimate Restoration).
-    - Features: Bidi Grouping (x8), Rich Script Tags (Cyr->Lat), Detailed Tooltips.
-    - Style: Classic Stream (Cards/Stacks).
-    """
-    if not t: return ""
-    
-    all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
-    if not all_threats: return ""
-
-    js_array = window.Array.from_(t)
-    text_len = len(js_array)
-    
-    # 1. Clustering
-    clusters = []
-    MERGE_DIST = 40 
-    if all_threats:
-        current_cluster = [all_threats[0]]
-        for i in range(1, len(all_threats)):
-            if all_threats[i] - all_threats[i-1] <= MERGE_DIST:
-                current_cluster.append(all_threats[i])
-            else:
-                clusters.append(current_cluster)
-                current_cluster = [all_threats[i]]
-        clusters.append(current_cluster)
-
-    cluster_html_list = []
-    total_exec = 0; total_spoof = 0; total_obfus = 0
-    prev_end = 0
-    
-    for idx, clust in enumerate(clusters):
-        cluster_id = f"cluster-{idx}"
-        
-        # Stats
-        c_exec = 0; c_spoof = 0; c_obfus = 0
-        for p in clust:
-            if p in bidi_indices: c_exec += 1; total_exec += 1
-            if p in confusable_indices: c_spoof += 1; total_spoof += 1
-            if p in invisible_indices: c_obfus += 1; total_obfus += 1
-
-        cluster_badges = []
-        if c_exec > 0: cluster_badges.append(f'<span class="cluster-badge badge-bidi">{c_exec} EXECUTION</span>')
-        if c_spoof > 0: cluster_badges.append(f'<span class="cluster-badge badge-spoof">{c_spoof} SPOOF</span>')
-        if c_obfus > 0: cluster_badges.append(f'<span class="cluster-badge badge-invis">{c_obfus} OBFUSCATE</span>')
-
-        start_idx = clust[0]; end_idx = clust[-1]
-        ctx_start = max(0, start_idx - 10)
-        ctx_end = min(text_len, end_idx + 11)
-        
-        if ctx_start > prev_end:
-            gap = ctx_start - prev_end
-            if gap > 0:
-                cluster_html_list.append(f'<div class="xray-spacer">[ ... {gap} safe characters omitted from this slice ... ]</div>')
-        
-        cluster_html_parts = []
-        safe_string_parts = []
-        
-        i = ctx_start
-        while i < ctx_end:
-            char = js_array[i]
-            cp = ord(char)
-            
-            # Safe String
-            if i in invisible_indices or i in bidi_indices: pass 
-            elif i in confusable_indices:
-                skel = confusables_map.get(cp, char)
-                safe_string_parts.append(skel)
-            else:
-                safe_string_parts.append(char)
-
-            char_vis = _escape_html(char)
-            if char == '\n': char_vis = '<span class="xray-control">↵</span>'
-            elif char == '\r': char_vis = '<span class="xray-control">↵</span>'
-            elif char == '\t': char_vis = '<span class="xray-control">⇥</span>'
-            
-            safe_wrapper = f'<span class="xray-safe">{char_vis}</span>'
-
-            # 1. BIDI Grouping
-            if i in bidi_indices:
-                run_len = 1
-                lookahead = i + 1
-                while lookahead < ctx_end and lookahead in bidi_indices:
-                    run_len += 1
-                    lookahead += 1
-                
-                label = f"&times;{run_len}" if run_len > 1 else "&harr;"
-                title = f"{run_len} Bidi Controls (Execution Risk)"
-                
-                marker = (
-                    f'<span class="xray-stack stack-bidi" tabindex="0" title="{title}">'
-                    f'<span class="xray-top" style="color:#d97706;">{label}</span>'
-                    f'<span class="xray-bot">BIDI</span></span>'
-                )
-                cluster_html_parts.append(marker)
-                i += run_len
-                continue
-
-            # 2. INVISIBLE Grouping
-            elif i in invisible_indices:
-                run_len = 1
-                lookahead = i + 1
-                while lookahead < ctx_end and lookahead in invisible_indices and lookahead not in bidi_indices:
-                    run_len += 1
-                    lookahead += 1
-                
-                label = f"×{run_len}" if run_len > 1 else "&bull;"
-                title = f"{run_len} Hidden Characters" if run_len > 1 else "Hidden Character"
-                
-                marker = (
-                    f'<span class="xray-stack stack-invis" tabindex="0" title="{title}">'
-                    f'<span class="xray-top">{label}</span>'
-                    f'<span class="xray-bot">HID</span></span>'
-                )
-                cluster_html_parts.append(marker)
-                i += run_len
-                continue
-
-            # 3. SPOOFING (Rich Restoration)
-            elif i in confusable_indices:
-                skel = confusables_map.get(cp, "?")
-                disp_skel = skel[0] if skel else "?"
-                
-                # Script Tag Logic
-                script_tag = ""
-                src_sc = "Unknown"; dst_sc = "Unknown"
-                try:
-                    src_sc = _find_in_ranges(cp, "Scripts") or "Com"
-                    dst_sc = _find_in_ranges(ord(skel[0]), "Scripts") or "Com" if skel else "Com"
-                    if src_sc != dst_sc and src_sc not in ("Common", "Inherited") and dst_sc not in ("Common", "Inherited"):
-                        s_abbr = src_sc[:3]; d_abbr = dst_sc[:3]
-                        script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
-                except: pass
-
-                # Rich Tooltip
-                safe_cp_display = f"U+{ord(skel[0]):04X}" if skel else "?"
-                title_safe = (
-                    f"Spoofing Risk&#10;"
-                    f"Raw: {_escape_html(char)} (U+{cp:04X}, {src_sc})&#10;"
-                    f"Safe: {_escape_html(skel)} ({safe_cp_display}, {dst_sc})"
-                )
-                
-                stack = (
-                    f'<span class="xray-stack stack-spoof" tabindex="0" title="{title_safe}">'
-                    f'<span class="xray-top">{_escape_html(char)}</span>'
-                    f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
-                    f'{script_tag}'
-                    f'</span>'
-                )
-                cluster_html_parts.append(stack)
-                i += 1
-            
-            else:
-                cluster_html_parts.append(safe_wrapper)
-                i += 1
-
-        safe_str_js = _escape_for_js("".join(safe_string_parts))
-        safe_str_attr = _escape_html(safe_str_js)
-        
-        card = f"""
-        <div class="cluster-card" id="{cluster_id}">
-            <div class="cluster-header">
-                <div class="cluster-meta">
-                    <span class="cluster-id">#{idx + 1}</span>
-                    {"".join(cluster_badges)}
-                </div>
-                <button class="safe-copy-btn" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">Copy Safe Slice</button>
-            </div>
-            <div class="cluster-body">{"".join(cluster_html_parts)}</div>
-        </div>
-        """
-        cluster_html_list.append(card)
-        prev_end = ctx_end
-
-    # Summary
-    summary_parts = []
-    def make_badge(count, label, color_class):
-        return f'<span class="{color_class}"><strong>{count}</strong> {label}</span>' if count else ""
-
-    if total_exec: summary_parts.append(make_badge(total_exec, "Execution", "stat-exec"))
-    if total_spoof: summary_parts.append(make_badge(total_spoof, "Spoofing", "stat-spoof"))
-    if total_obfus: summary_parts.append(make_badge(total_obfus, "Obfuscation", "stat-obfus"))
-    
-    summary_text = ", ".join(summary_parts)
-    
-    legend_html = (
-        '<div class="xray-legend">'
-        '<span class="xray-legend-item"><span class="xray-dot dot-bidi"></span><strong>EXECUTION:</strong> Bidi/Control (BIDI)</span>'
-        '<span class="xray-legend-item"><span class="xray-dot dot-spoof"></span><strong>SPOOFING:</strong> Homoglyphs (SPOOF)</span>'
-        '<span class="xray-legend-item"><span class="xray-dot dot-invis"></span><strong>OBFUSCATION:</strong> Hidden/Zero-Width (HID)</span>'
-        '</div>'
-    )
-
-    return "".join([
-        f'<div class="xray-summary-bar">',
-        f'<span class="xray-summary-title">Forensic Scan:</span>',
-        f'{summary_text} across <strong>{len(clusters)}</strong> active clusters.',
-        f'</div>',
-        '<div class="xray-stream-wrapper">',
-        "".join(cluster_html_list),
-        '</div>',
-        legend_html
-    ])
-
-
-def _generate_uts39_skeleton_metrics(t: str):
-    """
-    Generates the skeleton AND granular drift metrics deterministically.
-    Returns: (skeleton_string, metrics_dict)
-    """
-    if LOADING_STATE != "READY":
-        return "", {}
-        
-    confusables_map = DATA_STORES.get("Confusables", {})
-    
-    mapped_chars = []
-    metrics = {
-        "total_drift": 0,
-        "drift_ascii": 0,        # Safe-ish (1 -> l)
-        "drift_cross_script": 0, # Dangerous (Cyrillic a -> Latin a)
-        "drift_other": 0         # Neutral (Accents, etc.)
-    }
-    
-    for char in t:
-        cp = ord(char)
-        val = confusables_map.get(cp)
-        
-        # [FIX] Handle Tuples
-        skeleton_char_str = None
-        if val:
-            if isinstance(val, tuple):
-                skeleton_char_str = val[0]
-            else:
-                skeleton_char_str = val
-        
-        if skeleton_char_str:
-            mapped_chars.append(skeleton_char_str)
-            metrics["total_drift"] += 1
-            
-            # 1. ASCII Drift
-            if cp < 128 and all(ord(c) < 128 for c in skeleton_char_str):
-                metrics["drift_ascii"] += 1
-            # 2. Cross-Script Drift
-            else:
-                input_script = _find_in_ranges(cp, "Scripts")
-                target_is_latin = any(_find_in_ranges(ord(c), "Scripts") == "Latin" for c in skeleton_char_str)
-                if input_script not in ("Latin", "Common", "Inherited") and target_is_latin:
-                    metrics["drift_cross_script"] += 1
-                else:
-                    metrics["drift_other"] += 1
-        else:
-            mapped_chars.append(char)
-            
-    return "".join(mapped_chars), metrics
-
-def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
-    """
-    Determines forensic drift using Metadata Proofs.
-    Robustly handles missing metadata for backward compatibility.
-    """
-    # 1. Calculate Standard Equality Deltas
-    changed_nfkc = (raw != nfkc)
-    changed_casefold = (nfkc != nfkc_cf)
-    string_diff_skeleton = (nfkc_cf != skeleton) # Fallback check
-    
-    # 2. Safe Event Unpacking (Back-Compat)
-    if skel_events is None:
-        skel_events = {'confusables_mapped': 0, 'ignorables_stripped': 0}
-        
-    # 3. Use Metadata for Advanced Deltas
-    has_visual_mappings = skel_events.get('confusables_mapped', 0) > 0
-    has_structure_strip = skel_events.get('ignorables_stripped', 0) > 0
-    
-    # Fallback: If string changed but no events recorded (Legacy Mode), assume Visual
-    if string_diff_skeleton and not has_visual_mappings and not has_structure_strip:
-        has_visual_mappings = True
-
-    drift_profile = {
-        "format": False,
-        "identity": False,
-        "visual": False,
-        "structure": False,
-        "verdict": "Stable (No Drift)",
-        "class": "drift-clean",
-        "score": 0,
-        "events": skel_events # Pass through for UI
-    }
-    
-    if not (changed_nfkc or changed_casefold or has_visual_mappings or has_structure_strip or string_diff_skeleton):
-        return drift_profile
-
-    # --- PRIORITY 1: Visual Drift (Homoglyphs) ---
-    if has_visual_mappings:
-        drift_profile["visual"] = True
-        drift_profile["format"] = changed_nfkc
-        drift_profile["identity"] = changed_casefold
-        
-        count = skel_events.get('confusables_mapped', 0)
-        count_str = f"{count} " if count > 0 else ""
-        drift_profile["verdict"] = f"Visual Drift ({count_str}Homoglyphs Mapped)"
-        drift_profile["class"] = "drift-alert"
-        drift_profile["score"] = 3
-        return drift_profile
-
-    # --- PRIORITY 2: Structure Drift (Invisible Stripping) ---
-    if has_structure_strip:
-        drift_profile["structure"] = True
-        drift_profile["format"] = changed_nfkc
-        
-        count = skel_events.get('ignorables_stripped', 0)
-        drift_profile["verdict"] = f"Structure Drift ({count} Hidden Chars Stripped)"
-        drift_profile["class"] = "drift-alert" # High risk because usually malicious
-        drift_profile["score"] = 2
-        return drift_profile
-
-    # --- PRIORITY 3: Identity Drift ---
-    if changed_casefold:
-        drift_profile["identity"] = True
-        drift_profile["format"] = changed_nfkc
-        drift_profile["verdict"] = "Identity Drift (Case Differences)"
-        drift_profile["class"] = "drift-warn"
-        drift_profile["score"] = 1
-        return drift_profile
-
-    # --- PRIORITY 4: Format Drift ---
-    if changed_nfkc:
-        drift_profile["format"] = True
-        drift_profile["verdict"] = "Format Drift (Compatibility / Width)"
-        drift_profile["class"] = "drift-warn"
-        drift_profile["score"] = 1
-        return drift_profile
-        
-    return drift_profile
-
-def analyze_idna_label(label: str):
-    """
-    Label-Centric Analyzer (Top-Tier).
-    Handles Punycode decoding, IDNA2008 Categories, and UTS #46 Statuses.
-    Refined V3: Explicitly whitelists ASCII A-Z to prevent noise.
-    Added V4: Forward Punycode Prediction (Wire Format).
-    """
-    findings = []
-
-    # Prevent binary blobs from entering the IDNA engine, regardless of caller.
-    for char in label:
-        cp = ord(char)
-        if cp == 0 or cp == 0xFFFD or (0xFDD0 <= cp <= 0xFDEF) or (cp & 0xFFFF) >= 0xFFFE:
-            return []
-    
-    # 1. PUNYCODE INTELLIGENCE
-    analysis_target = label
-    is_punycode = label.lower().startswith("xn--")
-    
-    if is_punycode:
-        # DECODING (Punycode -> Unicode)
-        try:
-            payload = label[4:] # Strip 'xn--'
-            decoded = payload.encode('ascii').decode('punycode')
-            analysis_target = decoded
-            findings.append({
-                "type": "INFO", "lvl": "LOW",
-                "desc": f"Punycode Decodes to: '{decoded}'"
-            })
-        except Exception:
-            return [{
-                "type": "CRITICAL", "lvl": "CRIT",
-                "desc": "Invalid Punycode Label (Decoding Failed)"
-            }]
-    else:
-        # [NEW] ENCODING (Unicode -> Punycode / Wire Format)
-        # If the label contains non-ASCII, show how it looks on the wire.
-        if not label.isascii():
-            try:
-                # We use the 'idna' codec to simulate browser behavior
-                encoded_wire = label.encode('idna').decode('ascii')
-                if encoded_wire.startswith("xn--"):
-                    findings.append({
-                        "type": "WIRE", "lvl": "MED",
-                        "desc": f"Wire Format: '{encoded_wire}'"
-                    })
-            except: pass
-
-    # 2. DUAL-LENS ANALYSIS (On the Decoded/Raw Unicode Label)
-    idna46 = DATA_STORES.get("IdnaMap", {})
-    idna2008 = DATA_STORES.get("Idna2008", {})
-    
-    for char in analysis_target:
-        cp = ord(char)
-        
-        # Whitelist ASCII Alphanumeric
-        # IDNA2008 technically disallows uppercase A-Z (must be mapped to lower),
-        # but flagging them as "Strict Violation" is forensic noise.
-        # We ignore A-Z, a-z, 0-9, and Hyphen.
-        if (0x41 <= cp <= 0x5A) or (0x61 <= cp <= 0x7A) or (0x30 <= cp <= 0x39) or cp == 0x2D:
-            continue
-
-        # --- A. IDNA2008 (Strict Lens) ---
-        cat08 = idna2008.get(cp, "UNASSIGNED")
-        
-        if cat08 in ("DISALLOWED", "UNASSIGNED"):
-            findings.append({
-                "type": "INVALID", "lvl": "HIGH", 
-                "desc": f"IDNA2008 Strict Violation: U+{cp:04X} ({cat08})"
-            })
-        elif cat08 == "CONTEXTJ":
-            findings.append({
-                "type": "CONTEXT", "lvl": "MED", 
-                "desc": f"Context-Dependent Joiner (CONTEXTJ): U+{cp:04X} (Unverified)"
-            })
-        elif cat08 == "CONTEXTO":
-            findings.append({
-                "type": "CONTEXT", "lvl": "MED", 
-                "desc": f"Context-Dependent Char (CONTEXTO): U+{cp:04X} (Unverified)"
-            })
-
-        # --- B. UTS #46 (Compatibility Lens) ---
-        if cp in idna46["deviation"]:
-             findings.append({
-                 "type": "AMBIGUITY", "lvl": "HIGH", 
-                 "desc": f"UTS #46 Deviation: U+{cp:04X} (Legacy/Modern Mismatch)"
-             })
-        elif cp in idna46["ignored"]:
-             findings.append({
-                 "type": "GHOST", "lvl": "HIGH", 
-                 "desc": f"UTS #46 Ignored: U+{cp:04X} (Vanishes in DNS)"
-             })
-        elif cp in idna46["nv8"]:
-             findings.append({
-                 "type": "COMPAT", "lvl": "MED", 
-                 "desc": f"IDNA2008 Excluded (NV8): U+{cp:04X} (Protocol Gap)"
-             })
-        elif cp in idna46["xv8"]:
-             findings.append({
-                 "type": "COMPAT", "lvl": "MED", 
-                 "desc": f"IDNA2008 Version Mismatch (XV8): U+{cp:04X}"
-             })
-            
-    return findings
-
-# ==========================================
-# [MODULE 4] RECURSIVE DE-OBFUSCATION & WAF SIMULATOR
-# ==========================================
-
-def recursive_deobfuscate(text: str, depth=0, max_depth=5):
-    """
-    Recursively strips encoding layers (URL -> HTML -> Base64 -> Escapes -> SQL CHAR).
-    Returns: (final_decoded_text, list_of_layers_found)
-    """
-    if depth >= max_depth or not text:
-        return text, []
-
-    layers = []
-    current = text
-    
-    # 1. URL Decoding (Look for %XX)
-    if "%" in current:
-        try:
-            decoded = urllib.parse.unquote(current)
-            if decoded != current:
-                current = decoded
-                layers.append("URL-Encoded")
-        except: pass
-
-    # 2. HTML Entity Decoding (Look for &...;)
-    if "&" in current and ";" in current:
-        try:
-            decoded = html.unescape(current)
-            if decoded != current:
-                current = decoded
-                layers.append("HTML-Entity")
-        except: pass
-
-    # 3. Unicode/Hex/Octal Escapes (\uXXXX, \xXX, \NNN)
-    if "\\" in current:
-        try:
-            # A. Try Standard Python Decode
-            # This handles \u0041, \x41, and some octal
-            decoded = current.encode('utf-8').decode('unicode_escape')
-            if decoded != current:
-                current = decoded
-                layers.append("Escape-Sequence")
-            
-            # B. Explicit Octal Pattern (e.g. \141\142) if Python missed it
-            # Matches \1 to \7 followed by two digits
-            octal_pattern = re.compile(r'\\([0-7]{1,3})')
-            if octal_pattern.search(current):
-                def oct_sub(match):
-                    try: return chr(int(match.group(1), 8))
-                    except: return match.group(0)
-                
-                decoded_oct = octal_pattern.sub(oct_sub, current)
-                if decoded_oct != current:
-                    current = decoded_oct
-                    if "Escape-Sequence" not in layers: layers.append("Octal-Escapes")
-        except: pass
-
-    # 4. SQL CHAR() De-obfuscation (The "Concat" Pattern)
-    # Matches: CHAR(83) or CHAR(0x53), optionally joined by + or || or spaces
-    # Regex: CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)
-    sql_pattern = re.compile(r'CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)', re.IGNORECASE)
-    if "CHAR" in current.upper():
-        def sql_sub(match):
-            val = match.group(1)
-            try:
-                # Handle Hex (0x...) or Decimal
-                code = int(val, 16) if val.lower().startswith("0x") else int(val)
-                return chr(code)
-            except: return match.group(0)
-            
-        # We also need to strip the '+' concatenation if present between CHARs
-        # Simplified approach: Replace CHAR(...) -> X, then cleanup artifacts? 
-        # Better: decode in place.
-        decoded_sql = sql_pattern.sub(sql_sub, current)
-        
-        if decoded_sql != current:
-            # Cleanup SQL concatenation noise (e.g., 'S'+'E'+'L' -> 'SEL')
-            # This is a heuristic cleanup for '+' and '||' between decoded chars
-            # Ideally, the user sees "S+E+L+E+C+T", which is readable enough to flag.
-            current = decoded_sql
-            layers.append("SQL-CHAR")
-
-    # 5. Base64 Heuristic (The False Positive Hazard)
-    # Logic: Must be > 16 chars, valid B64 charsets, and decode to meaningful text
-    if len(current) > 16 and re.match(r'^[A-Za-z0-9+/=]+$', current.strip()):
-        try:
-            # Add padding if missing
-            pad = len(current) % 4
-            if pad: current += "=" * (4 - pad)
-            
-            b_data = base64.b64decode(current, validate=True)
-            decoded_utf8 = b_data.decode('utf-8')
-            
-            # Entropy check: > 70% printable
-            printable = sum(1 for c in decoded_utf8 if c.isprintable())
-            if printable / len(decoded_utf8) > 0.7:
-                current = decoded_utf8
-                layers.append("Base64")
-        except: pass
-
-    # Recursion Step
-    if layers:
-        next_text, next_layers = recursive_deobfuscate(current, depth + 1, max_depth)
-        return next_text, layers + next_layers
-    
-    return current, []
-
-def analyze_waf_policy(text: str):
-    """
-    Simulates a hardened WAF (SiteMinder/Broadcom style).
-    Checks the 'Naked' (De-obfuscated) string for forbidden artifacts.
-    """
-    alerts = []
-    score = 0
-    
-    # 1. Critical Injection Vectors (SiteMinder BadCssChars)
-    # < > ' " ( ) ; +
-    xss_vectors = []
-    if "<" in text or ">" in text: xss_vectors.append("HTML Tag (< >)")
-    if "javascript:" in text.lower(): xss_vectors.append("JS Scheme")
-    if "onerror" in text.lower() or "onload" in text.lower(): xss_vectors.append("Event Handler")
-    
-    if xss_vectors:
-        alerts.append(f"XSS Injection ({', '.join(xss_vectors)})")
-        score += 40
-
-    # 2. Path Traversal (SiteMinder BadUrlChars)
-    # .. // \ %00
-    traversal = []
-    if "../" in text or "..\\" in text: traversal.append("Dir Traversal (..)")
-    if "//" in text and "http" not in text: traversal.append("Double Slash (//)")
-    if "\x00" in text: traversal.append("Null Byte Injection")
-    
-    if traversal:
-        alerts.append(f"Path Traversal ({', '.join(traversal)})")
-        score += 50
-
-    # 3. SQL Injection Heuristics (Broadcom BadQueryChars)
-    sqli_keywords = ["union select", "information_schema", "drop table", "1=1", "--"]
-    lower_t = text.lower()
-    for kw in sqli_keywords:
-        if kw in lower_t:
-            alerts.append(f"SQL Injection ({kw})")
-            score += 45
-            break # One is enough
-
-    return alerts, score
-
-def analyze_code_masquerade(text: str, script_stats: dict):
-    """
-    Detects 'Solders' style malware: Valid Code structure using Alien Scripts.
-    Heuristic: High-Density Non-Latin Identifiers + Code Syntax.
-    """
-    # 1. Check for Code Syntax ( { } ; function var const => )
-    code_syntax_chars = { '{', '}', ';', '(', ')', '[', ']', '=', '+', '>' }
-    syntax_hits = sum(1 for c in text if c in code_syntax_chars)
-    
-    # Needs a minimum syntax density to be considered "Code"
-    if len(text) < 50 or (syntax_hits / len(text)) < 0.05:
-        return None
-
-    # 2. Check Script Usage (from Module 2.D stats)
-    # If we have significant non-Latin/non-Common script usage
-    # but the text is structured like code, it's suspicious.
-    
-    suspicious_scripts = []
-    for key in script_stats:
-        if "Latin" not in key and "Common" not in key and "Inherited" not in key:
-            # Check if this script makes up a significant portion of the text
-            # (We approximate using the 'count' from stats)
-            count = script_stats[key].get('count', 0)
-            if count > 10: # Threshold for relevance
-                suspicious_scripts.append(key.replace("Script: ", ""))
-
-    # 3. Dynamic Execution Sinks (The 'eval' equivalent)
-    # Check for "constructor" access patterns or "eval"
-    has_sinks = False
-    if 'constructor' in text or 'eval(' in text or 'Function(' in text:
-        has_sinks = True
-
-    if suspicious_scripts and (has_sinks or syntax_hits > 20):
-        scripts_str = ", ".join(suspicious_scripts)
-        return {
-            "verdict": "Obfuscated Code",
-            "detail": f"Code Syntax + Alien Identifiers ({scripts_str})",
-            "risk": "High (Solders-style malware)",
-            "score": 85
-        }
-    
-    return None
-
-
-# ==========================================
-# [MODULE 5] PREDICTIVE ATTACK SIMULATOR (Post-Clipboard)
-# ==========================================
-
-def analyze_anti_sanitization(t: str):
-    """
-    Detects specific characters known to bypass standard filters
-    before normalizing into dangerous payloads.
-    Source: AppCheck / OWASP / 7ASecurity Research.
-    """
-    flags = {}
-    
-    # 1. SQL Injection Vectors (Normalization Exploits)
-    # U+FF07 (Fullwidth Apostrophe) -> ' (0x27)
-    if "\uff07" in t:
-        flags["CRITICAL: SQL Injection Vector (U+FF07)"] = {
-            "count": t.count("\uff07"),
-            "positions": ["Becomes ' (Apostrophe) under NFKC/NFKD"],
-            "severity": "crit",
-            "badge": "SQLi"
-        }
-
-    # 2. XSS Vectors (Normalization Exploits)
-    # U+FE64 (Small Less-Than) -> < (0x3C)
-    # U+FF1C (Fullwidth Less-Than) -> < (0x3C)
-    # U+FF1E (Fullwidth Greater-Than) -> > (0x3E)
-    xss_norm_chars = {
-        "\ufe64": "Small <", "\uff1c": "Fullwidth <", "\uff1e": "Fullwidth >"
-    }
-    found_xss = [name for char, name in xss_norm_chars.items() if char in t]
-    if found_xss:
-        flags[f"CRITICAL: XSS Bypass Vector ({', '.join(found_xss)})"] = {
-            "count": sum(t.count(c) for c in xss_norm_chars if c in t),
-            "positions": ["Normalizes to HTML syntax (< >)"],
-            "severity": "crit",
-            "badge": "XSS"
-        }
-
-    # 3. Source Code Obfuscation
-    # U+00A0 (NBSP) often breaks parsers expecting 0x20
-    if "\u00a0" in t:
-        flags["RISK: Source Code Obfuscation (NBSP)"] = {
-            "count": t.count("\u00a0"),
-            "positions": ["Non-Breaking Space (Breaks Parsers)"],
-            "severity": "warn",
-            "badge": "SYNTAX"
-        }
-        
-    # 4. Polyglot Canaries (Probing Tools)
-    # U+0212A (Kelvin Sign) -> 'K'
-    if "\u212a" in t:
-        flags["SUSPICIOUS: Polyglot Canary (Kelvin Sign)"] = {
-            "count": t.count("\u212a"),
-            "positions": ["Used to probe normalization (Becomes 'K')"],
-            "severity": "warn",
-            "badge": "PROBE"
-        }
-
-    # 5. [NEW] Structural Mutation (Overlay Attacks)
-    # U+0338 (Combining Long Solidus Overlay) on Syntax Chars
-    # Research Vector: '>' + U+0338 = '≯' (Masks the tag closer)
-    if "\u0338" in t:
-        syntax_targets = {'<', '>', '/', "'", '"', ';', '=', '-'}
-        mutation_hits = 0
-        
-        # Iterate to find U+0338 applied to syntax
-        for i, char in enumerate(t):
-            if char == "\u0338" and i > 0:
-                prev = t[i-1]
-                if prev in syntax_targets:
-                    mutation_hits += 1
-                    
-        if mutation_hits > 0:
-            flags["CRITICAL: Structural Mutation (Overlay Masking)"] = {
-                "count": mutation_hits,
-                "positions": ["Syntax characters masked by U+0338 (e.g. ≯)"],
-                "severity": "crit",
-                "badge": "MASKING"
-            }
-
-    return flags
-
-def analyze_case_collisions(t: str):
-    """
-    Simulates Upper/Lower case transformations to detect
-    buffer overflows and logic bypasses (e.g. GitHub Dotless i).
-    """
-    flags = {}
-    
-    # 1. Length Expansion (Buffer Overflow Risk)
-    # Classic Example: 'ß' (len 1) -> 'SS' (len 2)
-    t_upper = t.upper()
-    if len(t) != len(t_upper):
-        diff = len(t_upper) - len(t)
-        flags["DANGER: Case Mapping Expansion"] = {
-            "count": 1,
-            "positions": [f"String grows by {diff} chars on Uppercase (Buffer Overflow Risk)"],
-            "severity": "crit",
-            "badge": "OVERFLOW"
-        }
-
-    # 2. WAF/Logic Bypass Vectors
-    # Long S (ſ) -> S
-    if "\u017f" in t:
-        flags["CRITICAL: WAF Bypass Vector (Long S)"] = {
-            "count": t.count("\u017f"),
-            "positions": ["Becomes 'S' on Uppercase (Shadows Keywords)"],
-            "severity": "crit",
-            "badge": "BYPASS"
-        }
-    
-    # Dotless i (ı) -> I (or I -> i depending on locale, but dotless i is the main vector)
-    if "\u0131" in t:
-        flags["CRITICAL: Logic Bypass Vector (Dotless i)"] = {
-            "count": t.count("\u0131"),
-            "positions": ["Becomes 'I' on Uppercase (GitHub-style exploit)"],
-            "severity": "crit",
-            "badge": "BYPASS"
-        }
-
-    return flags
-
-def render_predictive_normalizer(t: str):
-    """
-    Generates a Comparative Table showing the future state of the text
-    under all 4 Unicode Normalization Forms.
-    """
-    if not t: return ""
-    
-    # Limit processing for performance (first 100 chars sufficient for diagnostic)
-    sample = t[:100]
-    
-    forms = {
-        "NFC": unicodedata.normalize("NFC", sample),
-        "NFD": unicodedata.normalize("NFD", sample),
-        "NFKC": unicodedata.normalize("NFKC", sample),
-        "NFKD": unicodedata.normalize("NFKD", sample)
-    }
-    
-    # Check for changes
-    changes = {k: (v != sample) for k, v in forms.items()}
-    
-    if not any(changes.values()):
-        return "" # No visual report needed if stable
-
-    rows = []
-    for form, val in forms.items():
-        is_changed = changes[form]
-        
-        # Highlight dangerous changes
-        # (Simple heuristic: length change or ascii shift)
-        row_class = "pred-row"
-        if is_changed:
-            row_class += " pred-changed"
-            # Check for high-risk injections in the result
-            if any(c in val for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"]):
-                row_class += " pred-danger"
-        
-        val_display = _escape_html(val)
-        # Visualizing changes (simple diff style)
-        if is_changed:
-            val_display = f"<strong>{val_display}</strong>"
-            
-        rows.append(f"""
-        <tr class="{row_class}">
-            <td class="pred-form">{form}</td>
-            <td class="pred-val">{val_display}</td>
-            <td class="pred-len">{len(val)}</td>
-        </tr>
-        """)
-
-    return f"""
-    <div class="predictive-wrapper">
-        <div class="pred-header">🔮 Predictive Normalization (Future State)</div>
-        <table class="pred-table">
-            <thead>
-                <tr>
-                    <th>Form</th>
-                    <th>Result (Preview)</th>
-                    <th>Len</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(rows)}
-            </tbody>
-        </table>
-        <div class="pred-footer">
-            <strong>Analysis:</strong> Text mutates under normalization. 
-            <span class="pred-danger-text">Red rows</span> indicate potential injection artifacts appearing after processing.
-        </div>
-    </div>
-    """
-
-# -------------------------------------------------------------------------
-# [MODULE 4] ADVERSARIAL TOKEN INTELLIGENCE (Block 1: Tokenizer & Extractor)
-# -------------------------------------------------------------------------
-
-def _get_script_set(token: str) -> set:
-    """Returns the set of unique Scripts used in the token."""
-    scripts = set()
-    for char in token:
-        cp = ord(char)
-        # 1. Try ScriptExtensions first (Handles common/inherited chars that morph)
-        sc_ext = _find_in_ranges(cp, "ScriptExtensions")
-        if sc_ext:
-            # ScriptExtensions returns space-separated list e.g. "Latn Grek"
-            scripts.update(sc_ext.split())
-        else:
-            # 2. Fallback to base Script
-            sc = _find_in_ranges(cp, "Scripts")
-            if sc and sc not in ("Common", "Inherited"):
-                scripts.add(sc)
-            elif sc == "Common" and 0x30 <= cp <= 0x39:
-                # Digits are often Common but functionally behave as the surrounding script
-                # We don't add them to avoid polluting the set with "Common"
-                pass
-    return scripts
-
-def _get_identifier_profile(token: str) -> dict:
-    """
-    Checks UAX #31 Identifier Status and Type.
-    Returns: { 'status': 'Allowed'|'Restricted'|'Disallowed', 'types': {Set of types} }
-    """
-    # Defaults
-    profile = {
-        "status": "Allowed", 
-        "types": set(),
-        "banned_chars": [] 
-    }
-    
-    overall_status_priority = 0 # 0=Allowed, 1=Restricted, 2=Disallowed
-    
-    for char in token:
-        cp = ord(char)
-        
-        # Check Status
-        # Note: Data loader maps IdentifierStatus ranges. 
-        # Usually: "Allowed" is implicit if not Restricted? 
-        # Actually, UAX31 usually defines 'Allowed' ranges. 
-        # We assume if found in "Restricted" list it is restricted.
-        status_val = _find_in_ranges(cp, "IdentifierStatus")
-        
-        if status_val == "Restricted":
-            overall_status_priority = max(overall_status_priority, 1)
-            profile["banned_chars"].append(char)
-        
-        # Check Type (Technical, Recommended, Obsolete, etc.)
-        type_val = _find_in_ranges(cp, "IdentifierType")
-        if type_val:
-            profile["types"].add(type_val)
-            if type_val in ("Not_Recommended", "Deprecated", "Not_XID", "Obsolete"):
-                overall_status_priority = max(overall_status_priority, 1)
-
-    if overall_status_priority == 1: profile["status"] = "Restricted"
-    if overall_status_priority == 2: profile["status"] = "Disallowed"
-    
-    return profile
-
-def _classify_token_kind(token: str) -> str:
-    """
-    Heuristic classification of token type.
-    """
-    if "@" in token: return "email"
-    if "." in token and not token.startswith(".") and not token.endswith("."):
-        # Rudimentary domain check: looks like parts separated by dots
-        # Refine: check if TLD part is > 1 char
-        parts = token.split(".")
-        if all(len(p) > 0 for p in parts) and len(parts[-1]) >= 2:
-            return "domain"
-    
-    # Check if purely alphanumeric (plus _)
-    # We use a broad regex for "Identifier-like"
-    if re.match(r'^[\w]+$', token): 
-        return "identifier"
-        
-    return "word"
-
-def analyze_adversarial_tokens(t: str):
-    """
-    The Core Engine for Stage 1.1 "Adversarial Intelligence".
-    Tokenizes text and performs per-token forensic extraction.
-    
-    ULTIMATE VERSION (Syntax-Safe):
-    1. Uses Manual Tokenization (char.isspace) to avoid Regex escape issues.
-    2. Performs deep forensic enrichment (Skeletons, Scripts, ID Profile).
-    """
-    if not t: return {"tokens": [], "collisions": [], "stats": {}}
-
-    # --- 1. Forensic Tokenization (Greedy / Whitespace-Based) ---
-    # [FIX] Replaced Regex with Manual Loop to eliminate "invalid escape sequence" errors.
-    # This splits purely on Unicode Whitespace while preserving all internal characters
-    # (including invisible joiners/format controls) as a single token.
-    
-    raw_tokens = []
-    current_start = -1
-    
-    for i, char in enumerate(t):
-        is_ws = char.isspace()
-        
-        if not is_ws:
-            # If we are not in a token, start one
-            if current_start == -1:
-                current_start = i
-        else:
-            # If we were in a token, close it
-            if current_start != -1:
-                clean_text = t[current_start:i].strip("()[]{}<>\"',;!|")
-                
-                if clean_text:
-                    # Calculate real offsets after strip
-                    raw_chunk = t[current_start:i]
-                    offset = raw_chunk.find(clean_text)
-                    real_start = current_start + offset
-                    
-                    raw_tokens.append({
-                        "text": clean_text,
-                        "start": real_start,
-                        "end": real_start + len(clean_text)
-                    })
-                
-                current_start = -1
-
-    # Flush final token if string didn't end with whitespace
-    if current_start != -1:
-        clean_text = t[current_start:].strip("()[]{}<>\"',;!|")
-        
-        if clean_text:
-            raw_chunk = t[current_start:]
-            offset = raw_chunk.find(clean_text)
-            real_start = current_start + offset
-            
-            raw_tokens.append({
-                "text": clean_text,
-                "start": real_start,
-                "end": real_start + len(clean_text)
-            })
-
-    enriched_tokens = []
-    skeleton_map = collections.defaultdict(list) # skeleton -> [token_indices]
-
-    # --- 2. Enrichment Loop ---
-    for idx, raw in enumerate(raw_tokens):
-        txt = raw["text"]
-        
-        # A. Classification (Email, Domain, Identifier, Word)
-        kind = _classify_token_kind(txt)
-        
-        # B. Scripts (Set of scripts used in token)
-        scripts = _get_script_set(txt)
-        
-        # C. Identifier Profile (UAX #31 Status/Type)
-        id_profile = _get_identifier_profile(txt)
-        
-        # D. Skeleton Generation & Metadata
-        # We need return_events=True to calculate Confusable Density
-        skel, skel_events = _generate_uts39_skeleton(txt, return_events=True)
-        
-        # E. Confusable Analysis (Local Density)
-        confusable_count = skel_events.get('confusables_mapped', 0)
-        confusable_density = 0
-        if len(txt) > 0:
-            confusable_density = round(confusable_count / len(txt), 2)
-            
-        # F. Invisible/Hidden Check (Local Count)
-        invis_count = 0
-        for char in txt:
-            # Use O(1) Lookup Table
-            if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
-                invis_count += 1
-                
-        # G. Mixed Script Check
-        # Filter out "safe" scripts (Common/Inherited) to find true mixing
-        major_scripts = {s for s in scripts if s not in ("Common", "Inherited", "Unknown")}
-        is_mixed_script = len(major_scripts) > 1
-
-        # Build Feature Vector (Consumed by _evaluate_adversarial_risk)
-        token_data = {
-            "id": idx,
-            "text": txt,
-            "span": (raw["start"], raw["end"]),
-            "kind": kind,
-            "scripts": sorted(list(major_scripts)),
-            "is_mixed": is_mixed_script,
-            "skeleton": skel,
-            "id_status": id_profile["status"],
-            "id_types": sorted(list(id_profile["types"])),
-            "confusables": {
-                "count": confusable_count,
-                "density": confusable_density,
-                "mappings": skel_events.get('mappings', []) 
-            },
-            "invisibles": invis_count,
-            "risk": "LOW", # Will be updated by Block 2 (Risk Engine)
-            "triggers": [] # Will be populated by Block 2
-        }
-        
-        enriched_tokens.append(token_data)
-        
-        # Map for collision detection (Homograph Radar)
-        # Only map tokens > 1 char to avoid noise
-        if len(txt) > 1:
-            skeleton_map[skel].append(idx)
-
-    # Return intermediate data structure
-    return {
-        "tokens": enriched_tokens,
-        "skeleton_map": skeleton_map
-    }
-
-# -------------------------------------------------------------------------
-# [MODULE 4] ADVERSARIAL TOKEN INTELLIGENCE (Block 2: Risk Engine)
-# -------------------------------------------------------------------------
-
-def _evaluate_adversarial_risk(intermediate_data):
-    """
-    Block 2: The Risk Engine (Robust Version).
-    Restores R11 Safety Net and implements Precision Fracture Scanning.
-    """
-    tokens = intermediate_data["tokens"]
-    skeleton_map = intermediate_data["skeleton_map"]
-    
-    # --- A. Detect Skeleton Collisions ---
-    collisions = []
-    collision_skeletons = set()
-    for skel, indices in skeleton_map.items():
-        unique_texts = set(tokens[i]["text"] for i in indices)
-        if len(unique_texts) > 1:
-            collision_skeletons.add(skel)
-            collisions.append({
-                "skeleton": skel,
-                "variants": list(unique_texts),
-                "indices": indices,
-                "risk": "CRITICAL"
-            })
-
-    # --- B. Per-Token Risk Assessment ---
-    risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
-    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0}
-    targets = [] 
-
-    for token in tokens:
-        risk_level = 0 
-        triggers = []
-        token_topology_hits = set()
-        detailed_stack = [] # Explicit visual stack
-        
-        t_str = token["text"]
-        
-        # --- Rule 0: Fracture Scanner (Precision Mode) ---
-        if len(t_str) > 2:
-            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
-            for fc in t_str:
-                f_cp = ord(fc)
-                f_is_alnum = fc.isalnum()
-                f_is_agent = False
-                
-                # Check for Forensic Fracture Agent
-                if f_cp < 1114112:
-                    mask = INVIS_TABLE[f_cp]
-                    if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
-                        f_is_agent = True
-                    # Emoji check: Must be Emoji AND Not Alphanumeric
-                    elif not f_is_alnum and (_find_in_ranges(f_cp, "Emoji") or _find_in_ranges(f_cp, "Extended_Pictographic")):
-                        f_is_agent = True
-
-                if f_state == 0:
-                    if f_is_alnum: f_state = 1
-                elif f_state == 1:
-                    if f_is_agent: f_state = 2 # Found Agent
-                    elif not f_is_alnum: f_state = 0 # Reset
-                elif f_state == 2:
-                    if f_is_alnum:
-                        # TRIGGER: Alpha -> Agent -> Alpha
-                        risk_level = max(risk_level, 3)
-                        desc = "R99: Token Fracture (Mid-Token Injection)"
-                        triggers.append(desc)
-                        token_topology_hits.add("OBFUSCATION")
-                        detailed_stack.append({"lvl": "CRITICAL", "type": "OBFUSCATION", "desc": desc})
-                        break
-                    elif not f_is_agent:
-                        f_state = 0 # Reset
-
-        # --- Rule 1: Skeleton Collisions ---
-        if token["skeleton"] in collision_skeletons:
-            risk_level = max(risk_level, 3)
-            desc = "R30: Skeleton Collision (Homograph)"
-            triggers.append(desc)
-            token_topology_hits.add("HOMOGLYPH")
-            detailed_stack.append({"lvl": "CRITICAL", "type": "HOMOGLYPH", "desc": desc})
-
-        # --- Rule 2: Script Mixing ---
-        if token["is_mixed"]:
-            if token["kind"] in ("domain", "identifier", "email"):
-                risk_level = max(risk_level, 2)
-                desc = "R10: Mixed Scripts in ID/Domain"
-                lvl_tag = "HIGH"
-            else:
-                risk_level = max(risk_level, 1)
-                desc = "R01: Mixed Scripts"
-                lvl_tag = "MED"
-            triggers.append(desc)
-            token_topology_hits.add("SPOOFING")
-            detailed_stack.append({"lvl": lvl_tag, "type": "SPOOFING", "desc": desc})
-
-        # --- Rule 3: Confusables ---
-        if token["confusables"]["density"] > 0.5:
-            risk_level = max(risk_level, 1)
-            desc = "R02: High Confusable Density"
-            triggers.append(desc)
-            token_topology_hits.add("SPOOFING")
-            detailed_stack.append({"lvl": "MED", "type": "SPOOFING", "desc": desc})
-            
-        # --- Rule 4: Identifier Status (Restored Safety Net) ---
-        if token["id_status"] in ("Restricted", "Disallowed"):
-            # SAFETY NET: Restricted is always at least HIGH risk
-            risk_level = max(risk_level, 2)
-            desc = f"R11: Identifier Status ({token['id_status']})"
-            triggers.append(desc)
-            token_topology_hits.add("PROTOCOL")
-            detailed_stack.append({"lvl": "HIGH", "type": "PROTOCOL", "desc": desc})
-
-        # --- Rule 5: Hidden Channels & Bidi ---
-        if token["invisibles"] > 0:
-            has_bidi = False
-            for char in t_str:
-                if INVIS_TABLE[ord(char)] & INVIS_BIDI_CONTROL:
-                    has_bidi = True
-                    break
-            
-            if has_bidi:
-                risk_level = max(risk_level, 3)
-                desc = "R12: Bidi Control in Token"
-                lvl_tag = "CRITICAL"
-                top_tag = "INJECTION"
-            else:
-                risk_level = max(risk_level, 2)
-                desc = "R03: Hidden Characters"
-                lvl_tag = "HIGH"
-                top_tag = "OBFUSCATION"
-                
-            triggers.append(desc)
-            token_topology_hits.add(top_tag)
-            detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
-
-        # Map numeric level to string
-        final_risk = "LOW"
-        if risk_level == 3: final_risk = "CRITICAL"
-        elif risk_level == 2: final_risk = "HIGH"
-        elif risk_level == 1: final_risk = "MED"
-        
-        token["risk"] = final_risk
-        token["triggers"] = triggers
-        risk_stats[final_risk] += 1
-
-        for hit in token_topology_hits:
-            topology[hit] += 1
-            
-        if risk_level >= 2:
-            targets.append({
-                "token": t_str,
-                "verdict": triggers[0] if triggers else "High Risk",
-                "stack": detailed_stack, # Use the explicitly built stack
-                "score": risk_level * 25,
-                "b64": "N/A", "hex": "N/A" 
-            })
-
-    return {
-        "tokens": tokens,
-        "collisions": collisions,
-        "topology": topology,
-        "targets": targets,
-        "stats": {
-            "total": len(tokens),
-            "identifiers": sum(1 for t in tokens if t["kind"] == "identifier"),
-            "domains": sum(1 for t in tokens if t["kind"] == "domain"),
-            "high_risk": risk_stats["HIGH"] + risk_stats["CRITICAL"],
-            "collisions": len(collisions)
-        }
-    }
-
-
 
 def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
@@ -9532,325 +9140,13 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         'adversarial': adversarial_data,
         'waf_score': waf_score
     }
-    
-def render_threat_analysis(threat_results, text_context=None):
-    """Renders the Group 3 Threat-Hunting results."""
-    
-    flags = threat_results.get('flags', {})
-    html_rows = []
-    threat_level_key = "Threat Level (Heuristic)"
-    
-    if threat_level_key in flags:
-        data = flags[threat_level_key]
-        badge = data.get("badge", "")
-        severity = data.get("severity", "ok")
-        
-        # Data from the Threat Auditor
-        ledger = data.get("ledger", [])
-        noise = data.get("noise", [])
-        
-        badge_class = f"integrity-badge integrity-badge-{severity}"
-        
-        # --- LEDGER GENERATION (3-Column) ---
-        ledger_html = ""
-        if ledger:
-            ledger_rows = ""
-            for item in ledger:
-                # Map Category to Severity Class
-                cat = item['category'].upper()
-                sev_class = "ok"
-                if cat in ("EXECUTION", "SPOOFING"):
-                    sev_class = "crit"
-                elif cat in ("OBFUSCATION"):
-                    sev_class = "warn"
-                elif cat in ("SUSPICIOUS", "SYNTAX"):
-                    sev_class = "warn"
-                
-                p_val = f"+{item['points']}"
-                
-                ledger_rows += (
-                    f"<tr>"
-                    f"<td>{item['vector']}</td>"
-                    f"<td><span class='integrity-badge integrity-badge-{sev_class}' style='font-size:0.7em'>{cat}</span></td>"
-                    f"<td class='score-val'>{p_val}</td>"
-                    f"</tr>"
-                )
-            
-            # Add Noise (Zero-score items)
-            if noise:
-                 for n in noise:
-                     ledger_rows += (
-                         f"<tr class='ledger-noise'>"
-                         f"<td>{n}</td>"
-                         f"<td><span class='integrity-badge integrity-badge-ok' style='font-size:0.7em'>NOISE</span></td>"
-                         f"<td class='score-val'>0</td>"
-                         f"</tr>"
-                     )
 
-            ledger_html = f"""
-            <details class="threat-ledger-details">
-                <summary>View Penalty Breakdown</summary>
-                <table class="threat-ledger-table">
-                    <thead><tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr></thead>
-                    <tbody>{ledger_rows}</tbody>
-                </table>
-            </details>
-            """
-        else:
-            ledger_html = "No active threats detected."
+# ===============================================
+# BLOCK 9. RENDERERS (THE VIEW)
+# ===============================================
 
-        row_html = (
-            f'<tr class="flag-row-{severity}" style="border-bottom: 2px solid var(--color-border);">'
-            f'<th scope="row" style="font-weight:700; font-size:1.05em;">{threat_level_key}</th>'
-            f'<td><span class="{badge_class}" style="font-size:0.9em;">{badge}</span></td>'
-            f'<td>{ledger_html}</td>'
-            f'</tr>'
-        )
-        html_rows.append(row_html)
-        
-        flags_copy = flags.copy()
-        del flags_copy[threat_level_key]
-        flags = flags_copy
-    
-    # Pass text_context to the matrix renderer
-    render_matrix_table(flags, "threat-report-body", has_positions=True, text_context=text_context)
-    
-    if html_rows:
-        existing_html = document.getElementById("threat-report-body").innerHTML
-        document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
+# Core UI Helpers
 
-    # Hashes
-    hashes = threat_results.get('hashes', {})
-    hash_html = []
-    if hashes:
-        for k, v in hashes.items():
-            hash_html.append(f'<tr><th scope="row">{k}</th><td>{v}</td></tr>')
-        document.getElementById("threat-hash-report-body").innerHTML = "".join(hash_html)
-    else:
-        document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
-
-    # HTML Report (PVR)
-    html_report = threat_results.get('html_report', "")
-    report_el = document.getElementById("confusable-diff-report")
-    
-    if html_report:
-        report_el.innerHTML = html_report
-    else:
-        drift_flag = flags.get("Flag: Skeleton Drift")
-        drift_count = drift_flag.get("count", 0) if drift_flag else 0
-        msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization." if drift_count > 0 else "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
-        report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
-    
-    # --- DRIFT REPORT LOGIC (Populates the "Analyzing..." section) ---
-    drift_details = document.getElementById("drift-report-details")
-    summary_header = document.getElementById("drift-summary-header")
-    
-    if drift_details and summary_header:
-        # Use 'threat_results', NOT 'results'
-        drift = threat_results.get('drift_info', {})
-        
-        # Safety: If analysis skipped/crashed, prevent UI freeze
-        if not drift:
-            drift = {'class': 'drift-alert', 'verdict': 'Data Missing'}
-            
-        states = threat_results.get('states', {})
-        s1_val = states.get('s1', 'N/A')
-        s4_val = states.get('s4', 'N/A')
-
-        # 1. Update the Side-by-Side Text
-        s1_el = document.getElementById("disp-state-1")
-        s4_el = document.getElementById("disp-state-4")
-        if s1_el: s1_el.textContent = s1_val
-        if s4_el: s4_el.textContent = s4_val
-        
-        # 2. Update Header Icon & Color
-        icon = "✅"
-        d_class = drift.get('class', 'drift-clean')
-        if d_class == "drift-alert": icon = "🚨"
-        elif d_class == "drift-warn": icon = "⚠️"
-        
-        verdict = drift.get("verdict", "Unknown")
-        summary_header.innerHTML = f'<span class="drift-status-icon">{icon}</span> <span class="drift-status-text">{verdict}</span>'
-        summary_header.className = f"drift-summary {d_class}"
-        
-        # 3. Auto-Expand if Threat
-        if d_class == "drift-clean":
-            drift_details.removeAttribute("open")
-        else:
-            drift_details.setAttribute("open", "true")
-    
-    banner_el = document.getElementById("threat-banner")
-    if banner_el: banner_el.setAttribute("hidden", "true")
-
-# -------------------------------------------------------------------------
-# [MODULE 4] ADVERSARIAL TOKEN INTELLIGENCE (Block 3: Renderer)
-# -------------------------------------------------------------------------
-
-def render_adversarial_dashboard(report):
-    """
-    Renders the 'Adversarial Intelligence' Profile.
-    Displays Skeleton Collisions and Per-Token Risk Analysis.
-    """
-    container = document.getElementById("adversarial-dashboard-body")
-    if not container: return
-
-    if not report or not report.get("tokens"):
-        container.innerHTML = '<div class="empty-state">No identifier-like tokens detected.</div>'
-        return
-
-    tokens = report["tokens"]
-    collisions = report["collisions"]
-    stats = report["stats"]
-
-    # --- Part A: The Metrics Bar ---
-    # We define a mini-dashboard for this specific profile
-    
-    # CSS helper for badges
-    def _get_risk_class(level):
-        if level == "CRITICAL": return "badge-crit"
-        if level == "HIGH": return "badge-high"
-        if level == "MED": return "badge-warn"
-        return "badge-ok"
-
-    html_parts = []
-
-    # 1. Summary Header
-    summary_html = f"""
-    <div class="adversarial-stats">
-        <div class="stat-box">
-            <span class="stat-label">Total Tokens</span>
-            <span class="stat-val">{stats['total']}</span>
-        </div>
-        <div class="stat-box">
-            <span class="stat-label">Identifiers</span>
-            <span class="stat-val">{stats['identifiers']}</span>
-        </div>
-        <div class="stat-box">
-            <span class="stat-label">Domains/IDs</span>
-            <span class="stat-val">{stats['domains']}</span>
-        </div>
-        <div class="stat-box {'stat-alarm' if stats['collisions'] > 0 else ''}">
-            <span class="stat-label">Collisions</span>
-            <span class="stat-val">{stats['collisions']}</span>
-        </div>
-        <div class="stat-box {'stat-alarm' if stats['high_risk'] > 0 else ''}">
-            <span class="stat-label">High Risk</span>
-            <span class="stat-val">{stats['high_risk']}</span>
-        </div>
-    </div>
-    """
-    html_parts.append(summary_html)
-
-    # --- 2. Skeleton Collisions (The Homograph Radar) ---
-    if collisions:
-        rows = []
-        for c in collisions:
-            # Format variants: "paypal" vs "pаypal"
-            variants_html = []
-            for idx in c["indices"]:
-                # Safety check for index out of bounds
-                if idx < len(tokens):
-                    tok = tokens[idx]
-                    # Bridge link to highlight the specific token
-                    click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({tok['span'][0]}, {tok['span'][1]});"
-                    variants_html.append(f'<a href="#" onclick="{click_js} return false;" class="variant-link">{_escape_html(tok["text"])}</a>')
-            
-            rows.append(f"""
-            <tr class="collision-row">
-                <td class="mono-cell">{_escape_html(c['skeleton'])}</td>
-                <td class="variant-cell">{' vs '.join(variants_html)}</td>
-                <td><span class="badge badge-crit">SPOOF DETECTED</span></td>
-            </tr>
-            """)
-        
-        html_parts.append(f"""
-        <div class="collision-section">
-            <h4 class="sub-header-crit">🚨 Skeleton Collisions (Active Homograph Vectors)</h4>
-            <table class="matrix collision-table">
-                <thead><tr><th>UTS #39 Skeleton</th><th>Conflicting Tokens (Variants)</th><th>Verdict</th></tr></thead>
-                <tbody>{''.join(rows)}</tbody>
-            </table>
-        </div>
-        """)
-
-    # --- 3. Token Risk Ledger (The Detail View) ---
-    # Filter: Show all High/Med, but limit Lows if there are too many
-    display_tokens = [t for t in tokens if t["risk"] in ("CRITICAL", "HIGH", "MED")]
-    low_tokens = [t for t in tokens if t["risk"] == "LOW"]
-    
-    # Simple pagination logic for "Low" risk noise
-    hidden_count = 0
-    if len(low_tokens) > 10:
-        display_tokens.extend(low_tokens[:10])
-        hidden_count = len(low_tokens) - 10
-    else:
-        display_tokens.extend(low_tokens)
-        
-    # Sort: Critical -> High -> Med -> Low
-    risk_order = {"CRITICAL": 0, "HIGH": 1, "MED": 2, "LOW": 3}
-    display_tokens.sort(key=lambda x: risk_order.get(x["risk"], 3))
-
-    if display_tokens:
-        token_rows = []
-        for t in display_tokens:
-            risk_cls = _get_risk_class(t["risk"])
-            
-            # Scripts pill
-            scripts_str = ", ".join(t["scripts"]) if t["scripts"] else "Common"
-            script_cls = "script-mixed" if t["is_mixed"] else "script-single"
-            
-            # Issues/Triggers
-            triggers_html = ""
-            if t["triggers"]:
-                triggers_html = "<br>".join([f"<span class='trigger-tag'>{rule}</span>" for rule in t["triggers"]])
-            elif t["kind"] == "identifier":
-                triggers_html = "<span class='trigger-tag-ok'>Standard Syntax</span>"
-            else:
-                triggers_html = "<span class='trigger-tag-neutral'>No Anomalies</span>"
-                
-            # Bridge Link
-            click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({t['span'][0]}, {t['span'][1]});"
-            
-            token_rows.append(f"""
-            <tr>
-                <td class="token-cell">
-                    <a href="#" onclick="{click_js} return false;" class="token-link">{_escape_html(t['text'])}</a>
-                    <div class="token-kind">{t['kind']}</div>
-                </td>
-                <td class="risk-cell"><span class="badge {risk_cls}">{t['risk']}</span></td>
-                <td class="script-cell"><span class="{script_cls}">{scripts_str}</span></td>
-                <td class="skel-cell">{_escape_html(t['skeleton'])}</td>
-                <td class="issue-cell">{triggers_html}</td>
-            </tr>
-            """)
-
-        html_parts.append(f"""
-        <div class="token-ledger">
-            <h4 class="sub-header">Token Risk Ledger</h4>
-            <table class="matrix token-table">
-                <thead>
-                    <tr>
-                        <th style="width:20%">Token</th>
-                        <th style="width:10%">Risk</th>
-                        <th style="width:15%">Scripts</th>
-                        <th style="width:20%">Skeleton</th>
-                        <th style="width:35%">Forensic Notes</th>
-                    </tr>
-                </thead>
-                <tbody>{''.join(token_rows)}</tbody>
-            </table>
-            {f'<div class="table-footer">... {hidden_count} low-risk tokens hidden ...</div>' if hidden_count > 0 else ''}
-        </div>
-        """)
-    else:
-        # Fallback if no tokens worth showing (rare, but good safety)
-        html_parts.append('<div class="empty-state">No significant identifiers found.</div>')
-
-    container.innerHTML = "".join(html_parts)
-
-# ---
-# 4. DOM RENDERER FUNCTIONS
-# ---
 def _create_position_link(val, text_context=None):
     """
     Helper: Transforms an index (int or '#123' string) into a clickable HTML link.
@@ -9895,7 +9191,60 @@ def _create_position_link(val, text_context=None):
 
     # Otherwise, return the text as-is
     return txt
+
+def _update_css_workbench_ui(verdict_key: str, summary: str, count: int, findings: list):
+    """
+    Handles all UI injection logic for the Metadata Workbench report panel.
+    """
+    # Mapping table for visual output
+    UI_MAP = {
+        "CRITICAL": {"title": "CSS THREAT DETECTED", "color": "#dc2626", "icon": "🚨"},
+        "CLEAN": {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": "✅"},
+        "NEUTRAL": {"title": "Awaiting Paste", "color": "#4b5563", "icon": "ⓘ"}
+    }
     
+    data = UI_MAP.get(verdict_key, UI_MAP["NEUTRAL"])
+    
+    # 1. Update Header and Summary
+    document.getElementById("css-verdict-title").textContent = data["title"]
+    document.getElementById("css-summary-text").textContent = summary
+    document.getElementById("css-finding-count").textContent = str(count)
+    
+    # 2. Update Visuals
+    verdict_box = document.getElementById("metadata-findings-report")
+    icon_box = document.getElementById("css-verdict-icon")
+    
+    verdict_box.style.borderLeftColor = data["color"]
+    icon_box.textContent = data["icon"]
+    
+    # 3. Update Findings List (Detailed)
+    list_el = document.getElementById("css-findings-list")
+    
+    if list_el:
+        list_el.innerHTML = ""
+        if findings:
+            details = document.getElementById("css-findings-details")
+            if details: details.open = True
+            
+            for f in findings:
+                li = document.createElement("li")
+                li.style.fontFamily = "monospace"
+                li.style.fontSize = "0.85rem"
+                
+                # Highlight Rule and Preview
+                rule_text = f.get('rule', 'UNKNOWN').toUpperCase()
+                
+                # Use standard black/white for text, but color the rule
+                li.innerHTML = (
+                    f'<span style="color:{data["color"]}; font-weight:700;">{rule_text}</span>'
+                    f': "{f["content_preview"]}"'
+                )
+                list_el.appendChild(li)
+        else:
+             # Ensure the accordion is closed if clean
+            details = document.getElementById("css-findings-details")
+            if details: details.open = false
+
 def render_status(message):
     """Updates the status line with text and CSS class."""
     status_line = document.getElementById("status-line")
@@ -9919,6 +9268,524 @@ def render_status(message):
         
         # Clear any old inline styles
         status_line.style.color = ""
+
+# General Profile Renderers
+
+def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
+    """Generates and injects HTML for standard stat cards."""
+    html = []
+    
+    REPERTOIRE_KEYS = {
+        "ASCII-Compatible", "Latin-1-Compatible", 
+        "BMP Coverage", "Supplementary Planes"
+    }
+    
+    keys_to_render = key_order if key_order else sorted(stats_dict.keys())
+    
+    for k in keys_to_render:
+        if k not in stats_dict or stats_dict[k] is None:
+            continue
+        
+        v = stats_dict[k]
+        
+        # --- RENDER PATH 1: New Repertoire Cards ---
+        if k in REPERTOIRE_KEYS:
+            count = v.get("count", 0)
+            if count > 0:
+                pct = v.get("pct", 0)
+                is_full = v.get("is_full", False)
+                
+                if k == "Supplementary Planes":
+                    badge_html = f'<div class="card-percentage">{pct}%</div>'
+                else:
+                    badge_html = (
+                        f'<div class="card-badge-full">Fully</div>'
+                        if is_full
+                        else f'<div class="card-percentage">{pct}%</div>'
+                    )
+                
+                html.append(
+                    f'<div class="card card-repertoire">'
+                    f'<strong>{k}</strong>'
+                    f'<div class="card-main-value">{count}</div>'
+                    f'{badge_html}'
+                    f'</div>'
+                )
+        
+        # --- RENDER PATH 2: Dict Cards ---
+        elif isinstance(v, dict):
+            count = v.get('count', 0)
+            if count > 0:
+                html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+
+        # --- RENDER PATH 2.5: High-Density Forensic Quad Cards ---
+        
+        # 1. VISUAL REALITY (Graphemes)
+        # 1. VISUAL REALITY (Graphemes)
+        elif k == "Total Graphemes":
+            icon = METRIC_ICONS["eye"]
+            
+            # Micro-Facts
+            avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
+            rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
+            
+            # [NEW] Retrieve Verdict
+            verdict = stats_dict.get("seg_verdict", "LOW")
+            badge_cls = stats_dict.get("seg_class", "badge-ok")
+            
+            # Scientifically Rigorous Tooltip
+            tooltip = (
+                "[ DEFINITION ]\n"
+                "User-perceived characters based on UAX #29 Extended Grapheme Clusters.\n"
+                "Represents the visual 'atomic' unit displayed to the user.\n\n"
+                "[ FORENSIC BENCHMARKS ]\n"
+                "• ~0.0 marks/graph: Standard Text (Latin/ASCII)\n"
+                "• >1.0 marks/graph: Heavy Diacritics or Zalgo\n"
+                "• >2.0 marks/graph: Rendering Stack Overflow Risk\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Mark Density: {avg_marks} marks per grapheme\n"
+                f"• RGI Emoji Sequences: {rgi_count}\n"
+                f"• Complexity: {verdict}"
+            )
+
+            html.append(
+                f'<div class="card metric-card" title="{tooltip}">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="metric-value">{v:,}</div>'
+                        f'<div class="metric-sub">Visual Units</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
+                        # [NEW] Injected Row
+                        f'<div class="fact-row">Complexity: <span class="badge {badge_cls}" style="font-size:0.7em;">{verdict}</span></div>'
+                    f'</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        # 2. LOGICAL REALITY (Code Points)
+        elif k == "Total Code Points":
+            icon = METRIC_ICONS["hash"]
+            
+            # Forensic Composition Data
+            total_marks = stats_dict.get("Total Combining Marks", 0)
+            mark_pct = 0
+            if v > 0:
+                mark_pct = (total_marks / v) * 100
+            
+            # Scientifically Rigorous Tooltip
+            tooltip = (
+                "[ DEFINITION ]\n"
+                "Total count of Unicode Scalar Values (0x0000-0x10FFFF).\n"
+                "The fundamental logical unit before encoding or rendering.\n\n"
+                "[ FORENSIC BENCHMARKS ]\n"
+                "• < 5% Marks: Standard Prose\n"
+                "• > 15% Marks: Heavy Modification / Complex Scripts\n"
+                "• High % with Low Graphemes: Invisible/Zalgo Attack\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Combining Marks: {total_marks} ({mark_pct:.1f}% of total cp)\n"
+                f"• Base Density: 1 Logical Atom = 1 Code Point"
+            )
+
+            html.append(
+                f'<div class="card metric-card" title="{tooltip}">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="metric-value">{v:,}</div>'
+                        f'<div class="metric-sub">Unicode Scalars</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Combining Marks: <strong>{total_marks}</strong></div>'
+                        f'<div class="fact-row">Density: <strong>{mark_pct:.1f}%</strong></div>'
+                    f'</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        # 3. RUNTIME REALITY (UTF-16)
+        elif k == "UTF-16 Units":
+            icon = METRIC_ICONS["code"]
+            astral = stats_dict.get("Astral Count", 0)
+            cp_count = stats_dict.get("Total Code Points", 1)
+            
+            # Micro-Facts
+            overhead = v - cp_count
+            
+            # Styles
+            val_class = "metric-value-warn" if astral > 0 else "metric-value"
+            
+            # Scientifically Rigorous Tooltip
+            tooltip = (
+                "[ DEFINITION ]\n"
+                "16-bit Code Unit count (used by Java/JS/C# string.length).\n"
+                "Characters > U+FFFF require 2 units (Surrogate Pair).\n\n"
+                "[ FORENSIC BENCHMARKS ]\n"
+                "• +0 Overhead: BMP Only (Basic Multilingual Plane)\n"
+                "• >0 Overhead: Contains Astral Characters (Emoji/Historic)\n"
+                "• Risk: Buffer overflows if length calculated by CP vs Unit.\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Astral Code Points: {astral}\n"
+                f"• Surrogate Overhead: +{overhead} units vs cp count"
+            )
+            
+            html.append(
+                f'<div class="card metric-card" title="{tooltip}">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="{val_class}">{v:,}</div>'
+                        f'<div class="metric-sub">JS/Java Length</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Astral: <strong>{astral}</strong></div>'
+                        f'<div class="fact-row">Overhead: <strong>+{overhead}</strong></div>'
+                    f'</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        # 4. PHYSICAL REALITY (UTF-8)
+        elif k == "UTF-8 Bytes":
+            icon = METRIC_ICONS["save"]
+            cp_count = stats_dict.get("Total Code Points", 1)
+            
+            # Micro-Facts
+            bpc = v / cp_count if cp_count > 0 else 0
+            
+            # [NEW] Get ASCII Stats for Context
+            ascii_data = stats_dict.get("ASCII-Compatible", {})
+            ascii_pct = ascii_data.get("pct", 0) if ascii_data else 0
+            
+            # Scientifically Rigorous Tooltip
+            tooltip = (
+                "[ DEFINITION ]\n"
+                "Physical storage size in bytes (Network/Disk/DB).\n"
+                "Variable width encoding: 1 to 4 bytes per Code Point.\n\n"
+                "[ FORENSIC BENCHMARKS (Density) ]\n"
+                "• 1.0 b/cp: Pure ASCII (Legacy Safe)\n"
+                "• ~2.0 b/cp: Latin-1 / Greek / Cyrillic / Arabic\n"
+                "• >3.0 b/cp: CJK / Emoji / Mathematical Symbols\n\n"
+                "[ THIS SAMPLE ]\n"
+                f"• Storage Density: {bpc:.2f} bytes per cp\n"
+                f"• ASCII Payload: {ascii_pct}% of code points"
+            )
+
+            html.append(
+                f'<div class="card metric-card" title="{tooltip}">'
+                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
+                f'<div class="metric-body">'
+                    f'<div class="metric-main">'
+                        f'<div class="metric-value">{v:,}</div>'
+                        f'<div class="metric-sub">Storage Size</div>'
+                    f'</div>'
+                    f'<div class="metric-facts">'
+                        f'<div class="fact-row">Density: <strong>{bpc:.1f}</strong> b/cp</div>'
+                        f'<div class="fact-row">ASCII: <strong>{ascii_pct}%</strong></div>'
+                    f'</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        # Skip Astral Count (it's consumed by UTF-16 card)
+        elif k == "Astral Count":
+            continue
+        # [NEW] Specific Renderer for Zalgo Verdict in Detail Cards
+        elif k == "Avg. Marks per Grapheme":
+            verdict = stats_dict.get("seg_verdict", "")
+            badge_cls = stats_dict.get("seg_class", "")
+            
+            badge_html = ""
+            if verdict:
+                # Add the badge below the number
+                badge_html = f'<div style="margin-top:6px;"><span class="badge {badge_cls}">{verdict}</span></div>'
+            
+            html.append(f'<div class="card"><strong>{k}</strong><div>{v}</div>{badge_html}</div>')
+        # --- RENDER PATH 3: Simple Cards ---
+        elif isinstance(v, (int, float)):
+            count = v
+            # Only force "Total" metrics to show if 0. Emoji/Whitespace will now hide if 0.
+            if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
+                html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+        
+    final_html = "".join(html) if html else "<p class='placeholder-text'>No data.</p>"
+
+    if return_html:
+        return final_html
+
+    if element_id:
+        element = document.getElementById(element_id)
+        if element:
+            element.innerHTML = final_html
+
+def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
+    """Renders the side-by-side Code Point vs. Grapheme table."""
+    html = []
+    all_keys = sorted(set(cp_stats.keys()) | set(gr_stats.keys()))
+    
+    for key in all_keys:
+        cp_val = cp_stats.get(key, 0)
+        gr_val = gr_stats.get(key, 0)
+        
+        if cp_val > 0 or gr_val > 0:
+            label = aliases.get(key, key) if aliases else key
+            html.append(
+                f'<tr><th scope="row">{label}</th><td>{cp_val}</td><td>{gr_val}</td></tr>'
+            )
+            
+    element = document.getElementById(element_id)
+    if element:
+        element.innerHTML = "".join(html)
+
+def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None, text_context=None):
+    """Renders a generic 'Matrix of Facts' table."""
+    html = []
+    sorted_keys = sorted(stats_dict.keys())
+    
+    for key in sorted_keys:
+        data = stats_dict[key]
+        if not data: continue
+            
+        label = aliases.get(key, key) if aliases else key
+        
+        # --- RENDER PATH 1: Standard `has_positions` flags ---
+        if has_positions:
+            count = data.get('count', 0)
+            if count == 0: continue
+            
+            row_class = ""
+            if key in ("Flag: NUL (U+0000)", "Flag: Replacement Char (U+FFFD)", "Surrogates (Broken)"):
+                row_class = "flag-row-critical"
+            
+            count_html = str(count)
+            if 'pct' in data: count_html = f"{count} ({data['pct']}%)"
+            
+            # [ACTIVE UPDATE] Linkify Positions with Context
+            raw_positions = data.get('positions', [])
+            # PASS text_context HERE
+            position_list = [_create_position_link(p, text_context) for p in raw_positions]
+
+            if len(position_list) > 5:
+                visible = ", ".join(position_list[:5])
+                hidden = ", ".join(position_list[5:])
+                pos_html = (
+                    f'<details style="cursor: pointer;">'
+                    f'<summary>{visible} ... ({len(position_list)} total)</summary>'
+                    f'<div style="padding-top: 8px; user-select: all;">{hidden}</div>'
+                    f'</details>'
+                )
+            else:
+                pos_html = ", ".join(position_list)
+            
+            html.append(f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{pos_html}</td></tr>')
+        
+        # --- RENDER PATH 2: Simple 2-column ---
+        else:
+            count = data
+            if count == 0: continue
+            html.append(f'<tr><th scope="row">{label}</th><td>{count}</td></tr>')
+            
+    element = document.getElementById(element_id)
+    if element:
+        element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
+
+def render_ccc_table(stats_dict, element_id):
+    """Renders the 3-column Canonical Combining Class table."""
+    html = []
+    element = document.getElementById(element_id)
+    if not element: return
+
+    sorted_keys = sorted(stats_dict.keys())
+    
+    if not sorted_keys:
+        element.innerHTML = "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
+        return
+
+    for key in sorted_keys:
+        count = stats_dict[key]
+        if count == 0:
+            continue
+        
+        class_num = key.split('=')[-1]
+        description = CCC_ALIASES.get(class_num, "N/A")
+        
+        html.append(
+            f'<tr>'
+            f'<th scope="row">{key}</th>'
+            f'<td>{count}</td>'
+            f'<td style="color: var(--color-text-muted); font-weight: normal; font-family: var(--font-sans);">{description}</td>'
+            f'</tr>'
+        )
+    
+    element.innerHTML = "".join(html)
+
+def render_toc_counts(counts):
+    """
+    Updates the counts in the sticky Table of Contents.
+    Hardened to prevent crashes if an HTML element is missing.
+    """
+    def update_id(el_id, val):
+        el = document.getElementById(el_id)
+        if el: 
+            el.innerText = f"({val})"
+
+    update_id("toc-dual-count", counts.get('dual', 0))
+    update_id("toc-shape-count", counts.get('shape', 0))
+    update_id("toc-integrity-count", counts.get('integrity', 0))
+    update_id("toc-prov-count", counts.get('prov', 0))
+    update_id("toc-emoji-count", counts.get('emoji', 0))
+    update_id("toc-threat-count", counts.get('threat', 0))
+    update_id("toc-atlas-count", counts.get('atlas', 0))
+    update_id("toc-stat-count", counts.get('stat', 0))
+
+# Deep Forensic Renderers
+
+def render_integrity_matrix(rows, text_context=None):
+    """Renders the forensic integrity matrix with Nested Ledger and Pinned Headers."""
+    tbody = document.getElementById("integrity-matrix-body")
+    tbody.innerHTML = ""
+    
+    INTEGRITY_KEY = "Integrity Level (Heuristic)"
+    DECODE_KEY = "Decode Health Grade"
+    
+    # [FIX] Sorting Logic: Pin Decode Health (000) and Integrity Level (001) to top
+    def sort_key(r):
+        lbl = r["label"]
+        if lbl == DECODE_KEY: return "000"
+        if lbl == INTEGRITY_KEY: return "001"
+        return lbl
+        
+    sorted_rows = sorted(rows, key=sort_key)
+    
+    for row in sorted_rows:
+        tr = document.createElement("tr")
+        
+        # --- HEADER ROWS (Score & Health) ---
+        if row["label"] in (INTEGRITY_KEY, DECODE_KEY):
+            tr.className = f"flag-row-{row['severity']}"
+            tr.style.borderBottom = "2px solid var(--color-border)"
+            
+            th = document.createElement("th")
+            th.textContent = row["label"]
+            th.scope = "row"
+            th.style.fontWeight = "700"
+            th.style.fontSize = "1.05em"
+            
+            td_badge = document.createElement("td")
+            span = document.createElement("span")
+            span.className = f"integrity-badge integrity-badge-{row['severity']}"
+            span.style.fontSize = "0.9em"
+            span.textContent = row["badge"]
+            td_badge.appendChild(span)
+            
+            td_ledger = document.createElement("td")
+            
+            # Handle Ledger (Integrity Level only)
+            ledger_data = row.get("ledger", [])
+            if ledger_data:
+                details = document.createElement("details")
+                details.className = "threat-ledger-details"
+                summary = document.createElement("summary")
+                summary.textContent = "View Penalty Breakdown"
+                details.appendChild(summary)
+                
+                table = document.createElement("table")
+                table.className = "integrity-ledger-table"
+                
+                thead = document.createElement("thead")
+                thead.innerHTML = "<tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr>"
+                table.appendChild(thead)
+                
+                tbody_inner = document.createElement("tbody")
+                for item in ledger_data:
+                    tr_inner = document.createElement("tr")
+                    td_vec = document.createElement("td")
+                    td_vec.textContent = item["vector"]
+                    if item["count"] > 1: td_vec.textContent += f" (x{item['count']})"
+                    
+                    td_sev = document.createElement("td")
+                    span_sev = document.createElement("span")
+                    sev_map = {"FATAL": "crit", "FRACTURE": "crit", "RISK": "warn", "DECAY": "ok"}
+                    css_class = sev_map.get(item["severity"], "ok")
+                    span_sev.className = f"integrity-badge integrity-badge-{css_class}"
+                    span_sev.style.fontSize = "0.7em"
+                    span_sev.textContent = item["severity"]
+                    td_sev.appendChild(span_sev)
+                    
+                    td_pts = document.createElement("td")
+                    td_pts.className = "score-val"
+                    td_pts.textContent = f"+{item['points']}"
+                    
+                    tr_inner.appendChild(td_vec)
+                    tr_inner.appendChild(td_sev)
+                    tr_inner.appendChild(td_pts)
+                    tbody_inner.appendChild(tr_inner)
+                
+                table.appendChild(tbody_inner)
+                details.appendChild(table)
+                td_ledger.appendChild(details)
+            elif row["label"] == DECODE_KEY:
+                # [NEW] Description for Decode Health
+                if row['severity'] == 'ok':
+                    td_ledger.textContent = "No encoding artifacts detected."
+                else:
+                    td_ledger.innerHTML = "<strong>Artifacts Found:</strong> See flags below for details."
+            else:
+                td_ledger.textContent = "Structure is Pristine."
+            
+            tr.appendChild(th)
+            tr.appendChild(td_badge)
+            tr.appendChild(td_ledger)
+            
+        else:
+            # --- STANDARD ROW ---
+            if row["severity"] == "crit": tr.classList.add("flag-row-critical")
+            
+            th = document.createElement("th")
+            th.textContent = row["label"]
+            th.scope = "row"
+            
+            td_count = document.createElement("td")
+            if row["badge"] and row["badge"] != "OK": 
+                if row["count"] > 0:
+                     td_count.appendChild(document.createTextNode(f"{row['count']} "))
+                span = document.createElement("span")
+                span.className = f"integrity-badge integrity-badge-{row['severity']}"
+                span.textContent = row["badge"]
+                td_count.appendChild(span)
+            else:
+                td_count.textContent = str(row["count"])
+                if "pct" in row: td_count.textContent += f" ({row['pct']}%)"
+
+            td_pos = document.createElement("td")
+            raw_positions = row.get("positions", [])
+            
+            if raw_positions:
+                # --- INDEXING PATCH: Manual HTML injection for Positions ---
+                pos_links = [_create_position_link(p, text_context) for p in raw_positions]
+                
+                if len(pos_links) > 5:
+                     visible = ", ".join(pos_links[:5])
+                     hidden = ", ".join(pos_links[5:])
+                     details_html = (
+                        f'<details style="cursor: pointer;">'
+                        f'<summary>{visible} ... ({len(pos_links)} total)</summary>'
+                        f'<div style="padding-top: 8px; user-select: all;">{hidden}</div>'
+                        f'</details>'
+                     )
+                     td_pos.innerHTML = details_html
+                else:
+                     td_pos.innerHTML = ", ".join(pos_links)
+            else:
+                td_pos.textContent = "—"
+            
+            tr.appendChild(th)
+            tr.appendChild(td_count)
+            tr.appendChild(td_pos)
+
+        tbody.appendChild(tr)
 
 def render_emoji_qualification_table(emoji_list, text_context=None):
     """
@@ -10045,13 +9912,40 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     
     element.innerHTML = "".join(html) + legend_html
 
+def render_emoji_summary(emoji_counts, emoji_list):
+    """
+    Render a detailed summary line using the new granular counters from the Cluster Ledger.
+    Format: Emoji Units: 5 (RGI: 4 – atomic 4, sequences 0; Non-RGI: 1)
+    """
+    summary_el = document.getElementById("emoji-summary")
+    if not summary_el: return
+
+    total_rgi = emoji_counts.get("rgi_total", 0)
+    rgi_atom = emoji_counts.get("rgi_atomic", 0)
+    rgi_complex = emoji_counts.get("rgi_sequence", 0)
+    non_rgi = emoji_counts.get("non_rgi_total", 0)
+    comp_leaked = emoji_counts.get("components_leaked", 0)
+    
+    total_units = emoji_counts.get("total_emoji_units", 0)
+    
+    text = (
+        f"Emoji Units: {total_units} ("
+        f"RGI: {total_rgi} — atomic {rgi_atom}, sequences {rgi_complex}; "
+        f"Non-RGI: {non_rgi}"
+    )
+    
+    if comp_leaked > 0:
+        text += f"; Components Leaked: {comp_leaked}"
+        
+    text += ")"
+    
+    summary_el.innerText = text
+
 def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     Renders the 'Invisible Atlas' - A forensic-grade legend of all hidden characters.
     Features: 4-Tier Legality, Smart Symbol Decoding, Risk-Based Sorting, and Aggregated Summary.
     """
-    import unicodedata as ud
-    import collections
 
     if not invisible_counts:
         return '<div class="empty-state">No invisible characters detected.</div>', ""
@@ -10250,203 +10144,617 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         
     return table_html, total_inv
 
-def compute_whitespace_topology(t):
+@create_proxy
+def render_forensic_hud(t, stats):
     """
-    Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
-    Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
+    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
     """
+    container = document.getElementById("forensic-hud")
+    if not container: return 
+    if t is None: t = ""
     
-    import unicodedata as ud
-    
-    ws_stats = collections.Counter()
-    
-    # State tracking for CRLF
-    prev_was_cr = False
-    
-    # Flags for Verdict
-    has_lf = False
-    has_cr = False
-    has_crlf = False
-    has_nel = False
-    has_ls_ps = False
+    emoji_counts = stats.get("emoji_counts", {})
 
-    for ch in t:
-        # --- A. Newline State Machine ---
-        if ch == '\n':
-            if prev_was_cr:
-                ws_stats['CRLF (Windows)'] += 1
-                has_crlf = True
-                prev_was_cr = False # Consumed
-            else:
-                ws_stats['LF (Unix)'] += 1
-                has_lf = True
-        elif ch == '\r':
-            if prev_was_cr: # Double CR case (CR + CR)
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-            prev_was_cr = True # Defer count until next char check
-        elif ch == '\u0085':
-            ws_stats['NEL (Next Line)'] += 1
-            has_nel = True
-            prev_was_cr = False
-        elif ch == '\u2028':
-            ws_stats['LS (Line Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        elif ch == '\u2029':
-            ws_stats['PS (Para Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
+    # --- INTERACTION HELPER ---
+    def get_interaction(val, key, severity="warn"):
+        """Checks registry and returns CSS class and onclick attribute."""
+        try:
+            if float(val) <= 0: return "", ""
+        except: return "", ""
+        
+        has_hits = False
+        target_key = key
+        
+        if key == "integrity":
+            # Aggregator check
+            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "integrity_agg"
+                has_hits = True
+        elif key == "threat":
+            # Aggregator check
+            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
+                target_key = "threat_agg"
+                has_hits = True
         else:
-            # Not a newline, but check if we have a dangling CR pending
-            if prev_was_cr:
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-                prev_was_cr = False
+            # Direct check
+            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
+                has_hits = True
+                
+        if has_hits:
+            cls = " hud-interactive"
+            if severity == "crit": cls += " hud-interactive-crit"
+            elif severity == "warn": cls += " hud-interactive-risk"
             
-            # --- B. Whitespace Classification ---
-            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
-            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
-            elif ch == '\t': ws_stats['TAB'] += 1
-            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
-            elif ud.category(ch) == 'Zs':
-                name = ud.name(ch, 'UNKNOWN SPACE')
-                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
+            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
+            return cls, attr
+            
+        return "", ""
 
-    # Final check for trailing CR
-    if prev_was_cr:
-        ws_stats['CR (Legacy Mac)'] += 1
-        has_cr = True
-
-    # --- C. Heuristic Alerts ---
-    alerts = []
-    
-    # 1. Mixed Line Endings
-    newline_types = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
-    if newline_types > 1:
-        alerts.append("⚠️ Mixed Line Endings (Consistency Failure)")
-    
-    # 2. Mixed Spacing (Phishing Vector)
-    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
-        alerts.append("⚠️ Mixed Spacing (ASCII + NBSP)")
+    # --- HELPER: Cell Builder ---
+    def render_cell(sci_title, 
+                    label_1, val_1, class_1,
+                    label_2, val_2, class_2,
+                    d1="", m1="", r1="",
+                    d2="", m2="", r2="",
+                    reg_key_2=None, risk_2="warn"): # New Args
         
-    if has_nel or has_ls_ps:
-        alerts.append("ℹ️ Unicode Newlines (NEL/LS/PS) Detected")
-
-    # --- D. Render ---
-    rows = ""
-    for k, v in ws_stats.most_common():
-        rows += f"<tr><td>{k}</td><td style='text-align:right; font-family:monospace;'>{v}</td></tr>"
+        def esc(s): return s.replace('"', '&quot;')
         
-    if not rows: rows = "<tr><td colspan='2' style='color:#999'>No whitespace detected.</td></tr>"
-    
-    alert_html = ""
-    if alerts:
-        alert_html = f"<div style='color:#b02a37; font-size:0.85em; margin-bottom:8px; font-weight:bold;'>{'<br>'.join(alerts)}</div>"
+        # Check for interaction on Value 2 (Secondary Metric)
+        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
 
-    html = f"""
-    <div class="ws-topology-card" style="margin-top:1rem; border:1px solid #dee2e6; padding:10px; border-radius:4px; background:#f8f9fa;">
-        <h4 style="margin:0 0 8px 0; font-size:0.9rem; color:#495057;">Whitespace & Line Ending Topology</h4>
-        {alert_html}
-        <table style="width:100%; font-size:0.85rem;">
-            {rows}
-        </table>
-    </div>
-    """
-    return html
+        return f"""
+        <div class="hud-col" 
+             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
+             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
+             
+            <div class="hud-row-sci">{sci_title}</div>
+            
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_1}</div>
+                <div class="hud-val {class_1}">{val_1}</div>
+            </div>
+            
+            <div class="hud-metric-divider"></div>
 
-    # ---------------------------------------------------------
-    # 2. SORTING & AGGREGATION
-    # ---------------------------------------------------------
-    # Sort by Risk (Rank 0=Fatal) -> Then by Count (Desc)
-    processed_rows.sort(key=lambda x: (x["rank"], -x["count"]))
-    
-    # Build Summary Bar HTML
-    summary_parts = []
-    
-    # Define summary badge colors mapping
-    agg_styles = {
-        "FATAL": "atlas-badge-crit", "ILLEGAL": "atlas-badge-crit", 
-        "RISKY": "atlas-badge-high", "RESTRICTED": "atlas-badge-high",
-        "SCRIPT": "atlas-badge-warn", "BENIGN": "atlas-badge-ok", "OTHER": "atlas-badge-neutral"
-    }
-    
-    # Order of summary pills
-    summary_order = ["FATAL", "ILLEGAL", "RISKY", "RESTRICTED", "SCRIPT", "BENIGN", "OTHER"]
-    
-    for key in summary_order:
-        if category_agg[key] > 0:
-            summary_parts.append(
-                f'<div class="atlas-sum-metric">'
-                f'<span class="atlas-badge {agg_styles[key]}">{key}</span>'
-                f'<span class="sum-val">{category_agg[key]}</span>'
-                f'</div>'
-            )
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_2}</div>
+                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
+            </div>
 
-    total_inv = sum(invisible_counts.values())
-    unique_inv = len(invisible_counts)
-    
-    summary_html = f"""
-        <div class="atlas-summary-bar">
-            <div class="atlas-sum-metric main"><span class="sum-total-label">TOTAL</span> <span class="sum-val">{total_inv}</span></div>
-            <div class="atlas-sep"></div>
-            {''.join(summary_parts)}
         </div>
-    """
-    
-    # ---------------------------------------------------------
-    # 3. FINAL ASSEMBLY
-    # ---------------------------------------------------------
-    table_html = f"""
-        {summary_html}
-        <table class="atlas-table">
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th>Forensic Legality</th>
-                    <th>Count</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(row["html"] for row in processed_rows)}
-            </tbody>
-        </table>
-    """
-    
-    return table_html, total_inv
+        """
 
-def render_emoji_summary(emoji_counts, emoji_list):
-    """
-    Render a detailed summary line using the new granular counters from the Cluster Ledger.
-    Format: Emoji Units: 5 (RGI: 4 – atomic 4, sequences 0; Non-RGI: 1)
-    """
-    summary_el = document.getElementById("emoji-summary")
-    if not summary_el: return
+    # --- COLOR LOGIC ---
+    def color_neutral(val):
+        try: return "txt-muted" if float(val) == 0 else "txt-normal"
+        except: return "txt-normal"
 
-    total_rgi = emoji_counts.get("rgi_total", 0)
-    rgi_atom = emoji_counts.get("rgi_atomic", 0)
-    rgi_complex = emoji_counts.get("rgi_sequence", 0)
-    non_rgi = emoji_counts.get("non_rgi_total", 0)
-    comp_leaked = emoji_counts.get("components_leaked", 0)
+    def color_clean(val):
+        try: return "txt-clean" if float(val) == 0 else "txt-warn"
+        except: return "txt-normal"
+
+    def color_risk(val):
+        try: return "txt-good" if float(val) == 0 else "txt-warn"
+        except: return "txt-normal"
+
+    # --- 0. PRE-CALC ---
+    uax_word = 0
+    uax_sent = 0
+    try:
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
+    except: pass
+
+    # --- 1. COLUMNS ---
+
+    # C0: ALPHANUMERIC
+    alpha_chars = sum(1 for c in t if c.isalnum())
+    alpha_runs = 0
+    in_run = False
+    for c in t:
+        if c.isalnum():
+            if not in_run:
+                alpha_runs += 1
+                in_run = True
+        else:
+            in_run = False
+
+    c0 = render_cell(
+        "ALPHANUMERIC", 
+        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
+        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
+        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
+        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
+    )
+
+    # C1: LEXICAL MASS
+    L = stats.get('major_stats', {}).get("L (Letter)", 0)
+    N = stats.get('major_stats', {}).get("N (Number)", 0)
+    vu = (L + N) / 5.0
+    c1 = render_cell(
+        "LEXICAL MASS", 
+        "UNITS", f"{vu:.1f}", color_neutral(vu),
+        "WORDS", str(uax_word), color_neutral(uax_word),
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
+        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
+
+    # C2: SEGMENTATION
+    seg_est = vu / 20.0
+    c2 = render_cell(
+        "SEGMENTATION", 
+        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
+        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
+        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
+
+    # C3: WHITESPACE (Interactive)
+    std_set = {0x20, 0x09, 0x0A, 0x0D}
+    std_inv = sum(1 for c in t if ord(c) in std_set)
+    flags = stats.get('forensic_flags', {})
+    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
-    total_units = emoji_counts.get("total_emoji_units", 0)
+    c3 = render_cell(
+        "WHITESPACE", 
+        "ASCII WS", str(std_inv), color_neutral(std_inv),
+        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
+        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
+        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+        reg_key_2="ws_nonstd" # LINK
+    )
+
+    # C4: DELIMITERS (Interactive)
+    cnt_p_ascii = 0
+    cnt_p_comfort = 0
+    cnt_p_exotic = 0
     
-    text = (
-        f"Emoji Units: {total_units} ("
-        f"RGI: {total_rgi} — atomic {rgi_atom}, sequences {rgi_complex}; "
-        f"Non-RGI: {non_rgi}"
+    for c in t:
+        if unicodedata.category(c).startswith('P'):
+            cp = ord(c)
+            if cp <= 0x7F:
+                cnt_p_ascii += 1
+            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F):
+                cnt_p_comfort += 1
+            else:
+                cnt_p_exotic += 1
+
+    if cnt_p_comfort > 0:
+        c4_label = "TYPOGRAPHIC"
+        c4_val = cnt_p_ascii + cnt_p_comfort
+        c4_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
+        c4_ref = "Scope: ASCII+Common"
+    else:
+        c4_label = "ASCII"
+        c4_val = cnt_p_ascii
+        c4_desc = "Standard ASCII punctuation characters."
+        c4_ref = "Scope: ASCII"
+
+    c4 = render_cell(
+        "DELIMITERS", 
+        c4_label, str(c4_val), color_neutral(c4_val),
+        "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
+        d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
+        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+        reg_key_2="punc_exotic" # LINK
+    )
+
+    # C5: SYMBOLS (Interactive)
+    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
+    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
+    
+    c5_label = "EXTENDED"
+    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
+    if cnt_s_ext == 0 and cnt_s_exotic == 0:
+        c5_label = "KEYBOARD"
+        c5_desc = "Standard ASCII keyboard symbols."
+
+    c5 = render_cell(
+        "SYMBOLS", 
+        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
+        "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
+        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
+        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+        reg_key_2="sym_exotic" # LINK
+    )
+
+    # C6: HYBRIDS (Interactive)
+    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
+    
+    c6 = render_cell(
+        "HYBRIDS", 
+        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
+        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
+        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
+        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+        reg_key_2="emoji_hybrid" # LINK
+    )
+
+    # C7: EMOJI (Interactive)
+    rgi_total = emoji_counts.get("rgi_total", 0)
+    abnormal = emoji_counts.get("emoji_irregular", 0)
+    
+    c7 = render_cell(
+        "EMOJI", 
+        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
+        "IRREGULAR", str(abnormal), color_clean(abnormal),
+        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
+        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+        reg_key_2="emoji_irregular" # LINK
+    )
+
+    # C8: INTEGRITY (Interactive Aggregator)
+    int_res = stats.get('integrity', {})
+    int_v = int_res.get('verdict', 'INTACT')
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    int_issues = (
+        len(HUD_HIT_REGISTRY.get("int_fatal", [])) +
+        len(HUD_HIT_REGISTRY.get("int_fracture", [])) +
+        len(HUD_HIT_REGISTRY.get("int_risk", [])) +
+        len(HUD_HIT_REGISTRY.get("int_decay", []))
     )
     
-    if comp_leaked > 0:
-        text += f"; Components Leaked: {comp_leaked}"
-        
-    text += ")"
+    if int_issues == 0: int_v = "INTACT"
     
-    summary_el.innerText = text
+    v_cls = "txt-safe"
+    if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
+    elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
+    
+    # Determine risk color for the count button
+    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
 
+    c8 = render_cell(
+        "INTEGRITY", 
+        "STATUS", int_v, v_cls,
+        "ISSUES", str(int_issues), color_risk(int_issues),
+        d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
+        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Registry Hits)", r2="Data Health",
+        reg_key_2="integrity", risk_2=risk_level # LINK
+    )
+
+    # C9: THREAT (Interactive Aggregator)
+    thr_res = stats.get('threat', {})
+    thr_v = thr_res.get('verdict', 'CLEAR')
+    
+    # [FIX] Count actual registry hits, not ledger rows
+    thr_sigs = (
+        len(HUD_HIT_REGISTRY.get("thr_execution", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_spoofing", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_obfuscation", [])) +
+        len(HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    )
+    
+    if thr_sigs == 0: thr_v = "CLEAR"
+
+    t_cls = "txt-safe"
+    risk_level_thr = "warn"
+    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: 
+        t_cls = "txt-crit"
+        risk_level_thr = "crit"
+    elif "SUSPICIOUS" in thr_v: 
+        t_cls = "txt-warn"
+
+    c9 = render_cell(
+        "THREAT", 
+        "STATUS", thr_v, t_cls,
+        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
+        d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
+        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Registry Hits)", r2="Attack Vectors",
+        reg_key_2="threat", risk_2=risk_level_thr # LINK
+    )
+
+    # --- ASSEMBLY ---
+    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
+
+def render_encoding_footprint(t: str):
+    """
+    Forensic Signal Engine v12.1 (Detail Upgrade):
+    Now reports specific unique characters (Glyph, U+, Legacy Hex) with clickable positions.
+    """
+    integrity_container = document.getElementById("encoding-integrity")
+    provenance_container = document.getElementById("encoding-provenance")
+    synthesis_container = document.getElementById("encoding-synthesis")
+    
+    if not integrity_container or not provenance_container: return
+    if not t:
+        integrity_container.innerHTML = ""
+        provenance_container.innerHTML = ""
+        if synthesis_container: synthesis_container.innerHTML = ""
+        return
+
+    total_chars = len(t)
+    # We need indices for the detail report, so we'll iterate properly below.
+    # Quick check for signal existence:
+    has_signal = any(ord(c) >= 128 for c in t)
+    
+    # --- 1. EXCLUSIVITY & DETAIL TRACKING ---
+    legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
+    # Store full details: label -> list of {char, cp, idx, bytes_hex}
+    exclusive_details = {item[0]: [] for item in legacy_codecs}
+    
+    total_non_ascii = 0
+    non_ascii_chars = [] # Keep for signal strength calc
+
+    if has_signal:
+        for i, char in enumerate(t):
+            if ord(char) < 128: continue
+            
+            total_non_ascii += 1
+            non_ascii_chars.append(char)
+            
+            supported_by = []
+            valid_encodings = [] # Stores (label, bytes)
+            
+            for label, codec, _ in legacy_codecs:
+                try:
+                    enc_bytes = char.encode(codec)
+                    supported_by.append(label)
+                    valid_encodings.append((label, enc_bytes))
+                except UnicodeEncodeError:
+                    pass
+            
+            # If exactly one legacy codec supports this character, it's a Unique Signal
+            if len(supported_by) == 1:
+                target_label = supported_by[0]
+                target_bytes = valid_encodings[0][1]
+                hex_str = " ".join(f"{b:02X}" for b in target_bytes)
+                
+                exclusive_details[target_label].append({
+                    'char': char,
+                    'cp': ord(char),
+                    'idx': i,
+                    'bytes': hex_str
+                })
+
+    # --- 2. RENDER LOOP ---
+    integrity_html = []
+    provenance_data = []
+    utf_broken = False
+    
+    for label, codec, tooltip in FORENSIC_ENCODINGS:
+        try:
+            # Calc Total Compatibility (T)
+            try:
+                t.encode(codec)
+                valid_count = total_chars
+            except UnicodeEncodeError:
+                valid_bytes = t.encode(codec, 'ignore')
+                valid_s = valid_bytes.decode(codec)
+                valid_count = len(valid_s)
+            pct_total = (valid_count / total_chars) * 100
+            
+            # Calc Signal Strength (S)
+            signal_strength = 0.0
+            if "utf" in codec:
+                signal_strength = pct_total
+                if pct_total < 100: utf_broken = True
+            elif has_signal:
+                # Reconstruct non-ascii string for bulk check
+                non_ascii_str = "".join(non_ascii_chars)
+                try:
+                    non_ascii_str.encode(codec)
+                    valid_signal = total_non_ascii
+                except:
+                    valid_b = non_ascii_str.encode(codec, 'ignore')
+                    valid_s = valid_b.decode(codec)
+                    valid_signal = len(valid_s)
+                signal_strength = (valid_signal / total_non_ascii) * 100
+            
+            # Retrieve details count
+            uniq_hits = len(exclusive_details.get(label, []))
+            
+            # --- VISUAL STATUS LOGIC ---
+            status_cls = ""
+            val_primary = ""
+            val_secondary = ""
+            
+            if "utf" in codec:
+                # Modern Anchors
+                status_cls = "status-safe" if valid_count == total_chars else "status-dead"
+                val_primary = "100%" if valid_count == total_chars else f"{pct_total:.1f}%"
+                
+                it_lines = [f"[{label}] {tooltip}"]
+                if valid_count == total_chars:
+                    it_lines.append("• Status: VALID (100% Integrity)")
+                else:
+                    it_lines.append("• Status: CORRUPT / MALFORMED")
+                
+                integrity_html.append(f"""
+                    <div class="enc-cell" title="{chr(10).join(it_lines)}">
+                        <div class="enc-label">{label}</div>
+                        <div class="enc-val-primary {status_cls}">{val_primary}</div>
+                    </div>
+                """)
+            else:
+                # Legacy Filters
+                report_lines = [f"[{label}] {tooltip}"]
+                
+                if not has_signal:
+                    # ASCII MODE: All legacy encodings are Compatible (Green)
+                    status_cls = "status-safe"
+                    val_primary = "100%"
+                    val_secondary = "ASCII"
+                    
+                    report_lines.append(f"• Compatibility: 100.0% of this ASCII-only text.")
+                    report_lines.append("• Status: Safe. Can be saved without data loss.")
+                    report_lines.append("• Forensic Value: Null (ASCII is universal).")
+                    
+                else:
+                    # MIXED MODE: Show Signal (S)
+                    if signal_strength == 100.0:
+                        status_cls = "status-uniq" if uniq_hits > 0 else "status-safe"
+                    elif valid_count == 0:
+                        status_cls = "status-dead" # Gray
+                    else:
+                        status_cls = "status-risk" # Orange
+                    
+                    val_primary = f"S:{signal_strength:.0f}%"
+                    val_secondary = f"C:{pct_total:.0f}%"
+                    
+                    report_lines.append(f"• Signal Strength: {signal_strength:.1f}% of non-ASCII characters.")
+                    report_lines.append(f"• Compatibility: {pct_total:.1f}% of this text fits this encoding.")
+                    
+                    if uniq_hits > 0:
+                        report_lines.append(f"\n◈ UNIQUE MATCH: Sole supporter of {uniq_hits} specific character(s).")
+                    elif signal_strength == 100.0:
+                        report_lines.append("• Assessment: Strong candidate (fully explains foreign characters).")
+                    elif signal_strength == 0.0:
+                        report_lines.append("• Assessment: Irrelevant (Explains 0% of foreign chars).")
+                    else:
+                        report_lines.append("• Assessment: Partial / Data Loss Risk (Mojibake).")
+
+                # ASCII Cell Override (Blue Baseline)
+                if label == "ASCII" and has_signal:
+                    val_primary = "BASELINE"
+                    status_cls = "status-baseline" # BLUE
+                    val_secondary = ""
+                    
+                    report_lines = [f"[{label}] {tooltip}"]
+                    report_lines.append(f"• Signal Strength: 0.0% (Non-ASCII)")
+                    report_lines.append(f"• Compatibility: {pct_total:.1f}% (ASCII subset only)")
+                    report_lines.append("• Forensic Role: Baseline only. Always safe, but not an encoding candidate.")
+
+                lbl_display = label + (' ◈' if uniq_hits > 0 else '')
+                full_tooltip = "\n".join(report_lines)
+                
+                provenance_data.append({
+                    'html': f"""
+                        <div class="enc-cell" title="{full_tooltip}">
+                            <div class="enc-label">{lbl_display}</div>
+                            <div class="enc-metrics">
+                                <span class="enc-val-primary {status_cls}">{val_primary}</span>
+                                <span class="enc-val-secondary">{val_secondary}</span>
+                            </div>
+                        </div>
+                    """,
+                    'signal': signal_strength, 'total': pct_total, 'unique': uniq_hits, 'label': label
+                })
+
+        except Exception: pass
+
+    # --- 3. VISIBILITY & SORTING ---
+    provenance_data.sort(key=lambda x: (-x['unique'], -x['signal'], -x['total'], x['label']))
+    
+    # Uni-Only Column
+    legacy_codecs_list = [item[1] for item in legacy_codecs]
+    unsupported_chars = []
+    for char in t:
+        if ord(char) < 128: continue
+        supported = False
+        for l_codec in legacy_codecs_list:
+            try:
+                char.encode(l_codec); supported=True; break
+            except: continue
+        if not supported: unsupported_chars.append(char)
+    
+    unsupported_count = len(unsupported_chars)
+    other_pct = (unsupported_count / total_chars) * 100
+    
+    other_style = "status-dead"
+    other_tooltip = "All characters fit within tracked legacy encodings."
+    if unsupported_count > 0:
+        other_style = "status-modern"
+        breakdown = {"Emoji": 0, "Math": 0, "Private": 0, "Other": 0}
+        for ch in unsupported_chars:
+            cat = unicodedata.category(ch)
+            cp = ord(ch)
+            if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"): breakdown["Emoji"] += 1
+            elif cat == "Sm": breakdown["Math"] += 1
+            elif cat in ("Co", "Cn"): breakdown["Private"] += 1
+            else: breakdown["Other"] += 1
+        bd_str = "\n".join([f"• {k}: {v}" for k,v in breakdown.items() if v > 0])
+        other_tooltip = f"[UNI-ONLY] Beyond Legacy\n• Requires Unicode: {unsupported_count} char(s) cannot be saved as ANSI.\n Breakdown:\n{bd_str}"
+
+    integrity_html.append(f"""
+        <div class="enc-cell enc-cell-other" title="{other_tooltip}">
+            <div class="enc-label">UNI-ONLY</div>
+            <div class="enc-metrics" style="flex-direction: column; gap: 0;">
+                <span class="enc-val-primary {other_style}">{other_pct:.1f}%</span>
+                <span class="enc-val-secondary" style="font-size: 0.6rem;">{unsupported_count} chars</span>
+            </div>
+        </div>
+    """)
+
+    # Render Provenance
+    prov_html = []
+    hidden_count = 0
+    for item in provenance_data:
+        label = item['label']; sig = item['signal']; uniq = item['unique']
+        is_visible = True
+        
+        if has_signal:
+            if sig == 0 and uniq == 0: is_visible = False
+        else:
+            if len(prov_html) >= 6: is_visible = False
+        if label == "ASCII": is_visible = True
+        
+        html_str = item['html']
+        if not is_visible:
+            html_str = html_str.replace('class="enc-cell"', 'class="enc-cell enc-hidden"')
+            hidden_count += 1
+        prov_html.append(html_str)
+
+    if hidden_count > 0:
+        prov_html.append(f"""
+            <div class="enc-expand-btn" onclick="document.querySelectorAll('.enc-hidden').forEach(e => e.classList.remove('enc-hidden')); this.style.display='none';">
+                <span>+{hidden_count}</span><span>More</span>
+            </div>
+        """)
+
+    integrity_container.innerHTML = "".join(integrity_html)
+    provenance_container.innerHTML = "".join(prov_html)
+
+    # --- 4. SYNTHESIS ---
+    if synthesis_container:
+        badge_class = "syn-universal"; badge_text = "ANALYSIS"; summary_text = ""
+        perfect_candidates = [d['label'] for d in provenance_data if d['signal'] == 100.0]
+        
+        if utf_broken:
+            badge_class = "syn-critical"; badge_text = "CORRUPT DATA"
+            summary_text = "Text contains <strong>invalid Unicode sequences</strong> (lone surrogates)."
+        elif other_pct > 0:
+            badge_class = "syn-modern"; badge_text = "REQUIRES UNICODE"
+            summary_text = f"Text contains <strong>{unsupported_count} character(s)</strong> (e.g. Emoji, Math) that <strong>cannot be saved as ANSI</strong>."
+        elif not has_signal:
+            badge_class = "syn-universal"; badge_text = "UNIVERSAL ASCII"
+            summary_text = "Text is <strong>100% 7-bit ASCII</strong>. Compatible with all systems."
+        elif any(len(v) > 0 for v in exclusive_details.values()):
+            # Find best match (label with highest unique count)
+            best_label = max(exclusive_details, key=lambda k: len(exclusive_details[k]))
+            hits = exclusive_details[best_label]
+            count = len(hits)
+            
+            badge_class = "syn-match"; badge_text = f"UNIQUE SIGNAL: {best_label}"
+            
+            # Build Detailed Breakdown
+            details = []
+            for h in hits[:5]: # Top 5 to avoid bloat
+                # Create clickable link using the bridge function
+                pos_link = _create_position_link(h['idx'], t)
+                char_disp = _escape_html(h['char'])
+                details.append(f"<strong>{char_disp}</strong> (U+{h['cp']:04X} &rarr; {h['bytes']}) at {pos_link}")
+            
+            details_str = ", ".join(details)
+            if count > 5:
+                details_str += f", and {count - 5} more"
+            
+            summary_text = f"Contains <strong>{count} unique character(s)</strong> specific to <strong>{best_label}</strong>: {details_str}."
+            
+        elif perfect_candidates:
+            candidates = ", ".join(perfect_candidates[:3])
+            badge_class = "syn-universal"; badge_text = "AMBIGUOUS LEGACY"
+            summary_text = f"Non-ASCII characters are fully compatible with multiple encodings (<strong>{candidates}</strong>)."
+        else:
+            badge_class = "syn-critical"; badge_text = "MIXED / MOJIBAKE"
+            summary_text = "Does not fit any single legacy encoding. Likely a mix of sources."
+
+        synthesis_container.innerHTML = f"""
+            <div class="syn-badge {badge_class}">{badge_text}</div>
+            <div class="syn-text">{summary_text}</div>
+        """
 def render_statistical_profile(stats):
     """
     Renders the Statistical & Lexical Profile (Group 2.F).
@@ -10859,1371 +11167,706 @@ def render_statistical_profile(stats):
         div.innerHTML = console_html
         parent_details.appendChild(div)
 
-@create_proxy
-def py_get_stat_report_text():
+# Adversarial & Threat Renderers
+
+def render_predictive_normalizer(t: str):
     """
-    Generates a rich, structured plaintext report of the Statistical Profile.
-    (Hardened Version: Catches errors to prevent UI freeze)
+    Generates a Comparative Table showing the future state of the text
+    under all 4 Unicode Normalization Forms.
     """
-    try:
-        el = document.getElementById("text-input")
-        if not el or not el.value: return ""
-        
-        t = el.value
-        # Safety: Handle if compute_statistical_profile fails
-        try:
-            stats = compute_statistical_profile(t)
-        except Exception as e:
-            return f"Error in computation: {e}"
-
-        if not stats: return ""
-        
-        lines = []
-        lines.append("[ Statistical & Lexical Profile ]")
-        
-        # 1. Thermodynamics & Density
-        ent = stats.get("entropy", 0.0)
-        ent_norm = stats.get("entropy_norm", 0.0)
-        n = stats.get("entropy_n", 0)
-        ascii_dens = stats.get("ascii_density", 0.0)
-        
-        # Updated Logic to match UI
-        status_txt = "Unknown"
-        if n < 64: status_txt = "Insufficient Data"
-        elif ent > 6.3: status_txt = "High Density (Compressed / Encrypted)"
-        elif ent > 4.8: status_txt = "Complex Structure (Code / Binary / Obfuscated)"
-        elif ent > 3.5: status_txt = "Natural Language (Standard Text)"
-        else: status_txt = "Low Entropy (Repetitive / Sparse)"
-        
-        lines.append("")
-        lines.append("[ THERMODYNAMICS ]")
-        lines.append(f"  Entropy: {ent:.2f} bits/byte (Saturation: {int(ent_norm*100)}%)")
-        lines.append(f"  Context: {status_txt}")
-        lines.append(f"  Storage: {n} bytes (ASCII: {ascii_dens}%)")
-        
-        # 2. Payloads
-        payloads = stats.get("payloads", [])
-        if payloads:
-            lines.append("")
-            lines.append(f"[ ! HEURISTIC PAYLOADS DETECTED ({len(payloads)}) ]")
-            for p in payloads:
-                 lines.append(f"  - {p.get('type','UNK')}: '{p.get('token','?')}' (H={p.get('entropy',0)})")
-        
-        # 3. Lexical Density
-        ttr = stats.get("ttr", 0.0)
-        uniq = stats.get("unique_tokens", 0)
-        tot = stats.get("total_tokens", 0)
-        ttr_seg = stats.get("ttr_segmented")
-        seg_str = f" | Seg-TTR: {ttr_seg:.2f}" if ttr_seg else ""
-        
-        lines.append("")
-        lines.append("[ LEXICAL DENSITY ]")
-        lines.append(f"  TTR:     {ttr:.2f} ({uniq}/{tot} tokens){seg_str}")
-
-        # 4. Top Tokens (Restored)
-        top_toks = stats.get("top_tokens", [])
-        if top_toks:
-            lines.append("")
-            lines.append("[ TOP TOKENS ]")
-            token_strs = []
-            for t in top_toks[:5]: # Limit to top 5
-                token_strs.append(f"{t['token']} ({t['share']}%)")
-            lines.append("  " + " | ".join(token_strs))
-        
-        # 5. Fingerprint (Category Dist)
-        cd = stats.get("char_dist", {})
-        l = cd.get('letters', 0)
-        n_dig = cd.get('digits', 0)
-        s = cd.get('sym', 0)
-        w = cd.get('ws', 0)
-        
-        lines.append("")
-        lines.append("[ FREQ. FINGERPRINT ]")
-        lines.append(f"  Dist:    L:{l}% | N:{n_dig}% | S:{s}% | WS:{w}%")
-        
-        # 6. Layout Physics
-        ls = stats.get("line_stats", {})
-        count = ls.get("count", 0)
-        if count > 0:
-            lines.append("")
-            lines.append("[ LAYOUT PHYSICS ]")
-            lines.append(f"  Lines:   {count} (Empty: {ls.get('empty', 0)})")
-            # Safe access with defaults
-            p25 = ls.get('p25', '-')
-            p75 = ls.get('p75', '-')
-            lines.append(f"  Widths:  Min:{ls.get('min',0)}  P25:{p25}  Med:{ls.get('median',0)}  P75:{p75}  Max:{ls.get('max',0)}")
-            lines.append(f"  Average: {ls.get('avg',0)}")
-
-        # 7. Phonotactics
-        ph = stats.get("phonotactics", {})
-        if ph.get("is_valid", False):
-            lines.append("")
-            lines.append("[ ASCII PHONOTACTICS ]")
-            lines.append(f"  V/C Ratio:   {ph.get('vowel_ratio', 0)}")
-            lines.append(f"  Balance:     Vowels: {ph.get('v_count', 0)} | Consonants: {ph.get('c_count', 0)}")
-            lines.append(f"  Letter Dens: {ph.get('count', 0)} chars")
-            lines.append(f"  Entropy:     {ph.get('bits_per_phoneme', 0)} bits/phoneme")
-            lines.append(f"  Scoring:     Uni:{ph.get('uni_score',0)}% | Bi:{ph.get('bi_score',0)}% | Tri:{ph.get('tri_score',0)}%")
-
-        return "\n".join(lines)
+    if not t: return ""
     
-    except Exception as e:
-        return f"Error generating stats report: {str(e)}"
-
-# Expose to JS (Critical)
-window.py_get_stat_report_text = py_get_stat_report_text
-
-
-def render_cards(stats_dict, element_id=None, key_order=None, return_html=False):
-    """Generates and injects HTML for standard stat cards."""
-    html = []
+    # Limit processing for performance (first 100 chars sufficient for diagnostic)
+    sample = t[:100]
     
-    REPERTOIRE_KEYS = {
-        "ASCII-Compatible", "Latin-1-Compatible", 
-        "BMP Coverage", "Supplementary Planes"
+    forms = {
+        "NFC": unicodedata.normalize("NFC", sample),
+        "NFD": unicodedata.normalize("NFD", sample),
+        "NFKC": unicodedata.normalize("NFKC", sample),
+        "NFKD": unicodedata.normalize("NFKD", sample)
     }
     
-    keys_to_render = key_order if key_order else sorted(stats_dict.keys())
+    # Check for changes
+    changes = {k: (v != sample) for k, v in forms.items()}
     
-    for k in keys_to_render:
-        if k not in stats_dict or stats_dict[k] is None:
-            continue
+    if not any(changes.values()):
+        return "" # No visual report needed if stable
+
+    rows = []
+    for form, val in forms.items():
+        is_changed = changes[form]
         
-        v = stats_dict[k]
+        # Highlight dangerous changes
+        # (Simple heuristic: length change or ascii shift)
+        row_class = "pred-row"
+        if is_changed:
+            row_class += " pred-changed"
+            # Check for high-risk injections in the result
+            if any(c in val for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"]):
+                row_class += " pred-danger"
         
-        # --- RENDER PATH 1: New Repertoire Cards ---
-        if k in REPERTOIRE_KEYS:
-            count = v.get("count", 0)
-            if count > 0:
-                pct = v.get("pct", 0)
-                is_full = v.get("is_full", False)
+        val_display = _escape_html(val)
+        # Visualizing changes (simple diff style)
+        if is_changed:
+            val_display = f"<strong>{val_display}</strong>"
+            
+        rows.append(f"""
+        <tr class="{row_class}">
+            <td class="pred-form">{form}</td>
+            <td class="pred-val">{val_display}</td>
+            <td class="pred-len">{len(val)}</td>
+        </tr>
+        """)
+
+    return f"""
+    <div class="predictive-wrapper">
+        <div class="pred-header">🔮 Predictive Normalization (Future State)</div>
+        <table class="pred-table">
+            <thead>
+                <tr>
+                    <th>Form</th>
+                    <th>Result (Preview)</th>
+                    <th>Len</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        <div class="pred-footer">
+            <strong>Analysis:</strong> Text mutates under normalization. 
+            <span class="pred-danger-text">Red rows</span> indicate potential injection artifacts appearing after processing.
+        </div>
+    </div>
+    """
+
+def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
+    """
+    The Skeleton Overlay (X-Ray).
+    Renders a vertical alignment of 'Raw' vs 'Skeleton' for suspicious clusters.
+    Replaces the linear stream with a comparative 'DNA alignment' view.
+    """
+    if not t or not threat_indices: return ""
+
+    js_array = window.Array.from_(t)
+    text_len = len(js_array)
+    
+    # --- 1. CLUSTERING (Sparse View Logic) ---
+    sorted_threats = sorted(list(threat_indices))
+    clusters = []
+    MERGE_DIST = 40 # Context window
+    
+    if sorted_threats:
+        current_cluster = [sorted_threats[0]]
+        for i in range(1, len(sorted_threats)):
+            if sorted_threats[i] - sorted_threats[i-1] <= MERGE_DIST:
+                current_cluster.append(sorted_threats[i])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [sorted_threats[i]]
+        clusters.append(current_cluster)
+
+    # --- 2. RENDER CLUSTERS ---
+    html_parts = []
+    
+    for idx, clust in enumerate(clusters):
+        start_idx = clust[0]
+        end_idx = clust[-1]
+        
+        # Context padding
+        ctx_start = max(0, start_idx - 8)
+        ctx_end = min(text_len, end_idx + 9)
+        
+        # Build the Alignment Strip
+        strip_html = []
+        
+        for i in range(ctx_start, ctx_end):
+            char = js_array[i]
+            cp = ord(char)
+            
+            # --- ADVERSARIAL ALIGNMENT LOGIC ---
+            # 1. Get Skeleton Target
+            # Handle the tuple format from data loader: (target, type)
+            val = confusables_map.get(cp)
+            if val:
+                skel_target = val[0] if isinstance(val, tuple) else val
+            else:
+                skel_target = char
                 
-                if k == "Supplementary Planes":
-                    badge_html = f'<div class="card-percentage">{pct}%</div>'
-                else:
-                    badge_html = (
-                        f'<div class="card-badge-full">Fully</div>'
-                        if is_full
-                        else f'<div class="card-percentage">{pct}%</div>'
-                    )
+            # 2. Check for "Drift" (Attack Signal)
+            # If Raw != Skeleton, it's a visual spoof point.
+            # EXCEPTION: Ignore Case Drift (A -> a) to reduce noise.
+            is_drift = (char != skel_target) and (char.lower() != skel_target)
+            
+            # 3. Check for Invisibles (Obfuscation Signal)
+            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+            is_invis = bool(mask & INVIS_ANY_MASK)
+            
+            # 4. Construct CSS Classes
+            col_class = "xray-col"
+            if is_invis:
+                col_class += " xray-void" # Collapsed or dimmed
+                skel_target = "∅"       # Explicitly show nullification
+            elif is_drift:
+                col_class += " xray-drift" # Red highlight
+            
+            # 5. Visual Safe-Guards
+            # Escape HTML to prevent injection from the text itself
+            vis_top = _escape_html(char)
+            vis_bot = _escape_html(skel_target)
+            
+            # Handle Control Pictures for unprintables
+            if cp in INVISIBLE_MAPPING:
+                vis_top = f"<span class='x-tag'>{INVISIBLE_MAPPING[cp]}</span>"
+            elif is_invis:
+                vis_top = "<span class='x-tag'>[HID]</span>"
+            
+            # 6. Render Column
+            strip_html.append(f"""
+            <div class="{col_class}" title="U+{cp:04X} &rarr; {vis_bot}">
+                <div class="x-raw">{vis_top}</div>
+                <div class="x-skel">{vis_bot}</div>
+            </div>
+            """)
+            
+        # Cluster Card Wrapper
+        html_parts.append(f"""
+        <div class="xray-cluster">
+            <div class="xray-meta">Context #{idx+1}</div>
+            <div class="xray-strip">
+                {"".join(strip_html)}
+            </div>
+        </div>
+        """)
+
+    if not html_parts: return ""
+    
+    return f"""
+    <div class="xray-container">
+        <div class="xray-legend-bar">
+            <span class="xl-item"><span class="xl-dot dot-red"></span> Visual Drift</span>
+            <span class="xl-item"><span class="xl-dot dot-gray"></span> Hidden/Stripped</span>
+        </div>
+        {"".join(html_parts)}
+    </div>
+    """
+
+def _render_forensic_diff_stream(t: str, confusable_indices: set, invisible_indices: set, bidi_indices: set, confusables_map: dict) -> str:
+    """
+    Forensic X-Ray Engine v9.0 (The Ultimate Restoration).
+    - Features: Bidi Grouping (x8), Rich Script Tags (Cyr->Lat), Detailed Tooltips.
+    - Style: Classic Stream (Cards/Stacks).
+    """
+    if not t: return ""
+    
+    all_threats = sorted(list(confusable_indices | invisible_indices | bidi_indices))
+    if not all_threats: return ""
+
+    js_array = window.Array.from_(t)
+    text_len = len(js_array)
+    
+    # 1. Clustering
+    clusters = []
+    MERGE_DIST = 40 
+    if all_threats:
+        current_cluster = [all_threats[0]]
+        for i in range(1, len(all_threats)):
+            if all_threats[i] - all_threats[i-1] <= MERGE_DIST:
+                current_cluster.append(all_threats[i])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [all_threats[i]]
+        clusters.append(current_cluster)
+
+    cluster_html_list = []
+    total_exec = 0; total_spoof = 0; total_obfus = 0
+    prev_end = 0
+    
+    for idx, clust in enumerate(clusters):
+        cluster_id = f"cluster-{idx}"
+        
+        # Stats
+        c_exec = 0; c_spoof = 0; c_obfus = 0
+        for p in clust:
+            if p in bidi_indices: c_exec += 1; total_exec += 1
+            if p in confusable_indices: c_spoof += 1; total_spoof += 1
+            if p in invisible_indices: c_obfus += 1; total_obfus += 1
+
+        cluster_badges = []
+        if c_exec > 0: cluster_badges.append(f'<span class="cluster-badge badge-bidi">{c_exec} EXECUTION</span>')
+        if c_spoof > 0: cluster_badges.append(f'<span class="cluster-badge badge-spoof">{c_spoof} SPOOF</span>')
+        if c_obfus > 0: cluster_badges.append(f'<span class="cluster-badge badge-invis">{c_obfus} OBFUSCATE</span>')
+
+        start_idx = clust[0]; end_idx = clust[-1]
+        ctx_start = max(0, start_idx - 10)
+        ctx_end = min(text_len, end_idx + 11)
+        
+        if ctx_start > prev_end:
+            gap = ctx_start - prev_end
+            if gap > 0:
+                cluster_html_list.append(f'<div class="xray-spacer">[ ... {gap} safe characters omitted from this slice ... ]</div>')
+        
+        cluster_html_parts = []
+        safe_string_parts = []
+        
+        i = ctx_start
+        while i < ctx_end:
+            char = js_array[i]
+            cp = ord(char)
+            
+            # Safe String
+            if i in invisible_indices or i in bidi_indices: pass 
+            elif i in confusable_indices:
+                skel = confusables_map.get(cp, char)
+                safe_string_parts.append(skel)
+            else:
+                safe_string_parts.append(char)
+
+            char_vis = _escape_html(char)
+            if char == '\n': char_vis = '<span class="xray-control">↵</span>'
+            elif char == '\r': char_vis = '<span class="xray-control">↵</span>'
+            elif char == '\t': char_vis = '<span class="xray-control">⇥</span>'
+            
+            safe_wrapper = f'<span class="xray-safe">{char_vis}</span>'
+
+            # 1. BIDI Grouping
+            if i in bidi_indices:
+                run_len = 1
+                lookahead = i + 1
+                while lookahead < ctx_end and lookahead in bidi_indices:
+                    run_len += 1
+                    lookahead += 1
                 
-                html.append(
-                    f'<div class="card card-repertoire">'
-                    f'<strong>{k}</strong>'
-                    f'<div class="card-main-value">{count}</div>'
-                    f'{badge_html}'
-                    f'</div>'
+                label = f"&times;{run_len}" if run_len > 1 else "&harr;"
+                title = f"{run_len} Bidi Controls (Execution Risk)"
+                
+                marker = (
+                    f'<span class="xray-stack stack-bidi" tabindex="0" title="{title}">'
+                    f'<span class="xray-top" style="color:#d97706;">{label}</span>'
+                    f'<span class="xray-bot">BIDI</span></span>'
                 )
-        
-        # --- RENDER PATH 2: Dict Cards ---
-        elif isinstance(v, dict):
-            count = v.get('count', 0)
-            if count > 0:
-                html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
+                cluster_html_parts.append(marker)
+                i += run_len
+                continue
 
-        # --- RENDER PATH 2.5: High-Density Forensic Quad Cards ---
-        
-        # 1. VISUAL REALITY (Graphemes)
-        # 1. VISUAL REALITY (Graphemes)
-        elif k == "Total Graphemes":
-            icon = METRIC_ICONS["eye"]
-            
-            # Micro-Facts
-            avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
-            rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
-            
-            # [NEW] Retrieve Verdict
-            verdict = stats_dict.get("seg_verdict", "LOW")
-            badge_cls = stats_dict.get("seg_class", "badge-ok")
-            
-            # Scientifically Rigorous Tooltip
-            tooltip = (
-                "[ DEFINITION ]\n"
-                "User-perceived characters based on UAX #29 Extended Grapheme Clusters.\n"
-                "Represents the visual 'atomic' unit displayed to the user.\n\n"
-                "[ FORENSIC BENCHMARKS ]\n"
-                "• ~0.0 marks/graph: Standard Text (Latin/ASCII)\n"
-                "• >1.0 marks/graph: Heavy Diacritics or Zalgo\n"
-                "• >2.0 marks/graph: Rendering Stack Overflow Risk\n\n"
-                "[ THIS SAMPLE ]\n"
-                f"• Mark Density: {avg_marks} marks per grapheme\n"
-                f"• RGI Emoji Sequences: {rgi_count}\n"
-                f"• Complexity: {verdict}"
-            )
-
-            html.append(
-                f'<div class="card metric-card" title="{tooltip}">'
-                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-body">'
-                    f'<div class="metric-main">'
-                        f'<div class="metric-value">{v:,}</div>'
-                        f'<div class="metric-sub">Visual Units</div>'
-                    f'</div>'
-                    f'<div class="metric-facts">'
-                        f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
-                        # [NEW] Injected Row
-                        f'<div class="fact-row">Complexity: <span class="badge {badge_cls}" style="font-size:0.7em;">{verdict}</span></div>'
-                    f'</div>'
-                f'</div>'
-                f'</div>'
-            )
-
-        # 2. LOGICAL REALITY (Code Points)
-        elif k == "Total Code Points":
-            icon = METRIC_ICONS["hash"]
-            
-            # Forensic Composition Data
-            total_marks = stats_dict.get("Total Combining Marks", 0)
-            mark_pct = 0
-            if v > 0:
-                mark_pct = (total_marks / v) * 100
-            
-            # Scientifically Rigorous Tooltip
-            tooltip = (
-                "[ DEFINITION ]\n"
-                "Total count of Unicode Scalar Values (0x0000-0x10FFFF).\n"
-                "The fundamental logical unit before encoding or rendering.\n\n"
-                "[ FORENSIC BENCHMARKS ]\n"
-                "• < 5% Marks: Standard Prose\n"
-                "• > 15% Marks: Heavy Modification / Complex Scripts\n"
-                "• High % with Low Graphemes: Invisible/Zalgo Attack\n\n"
-                "[ THIS SAMPLE ]\n"
-                f"• Combining Marks: {total_marks} ({mark_pct:.1f}% of total cp)\n"
-                f"• Base Density: 1 Logical Atom = 1 Code Point"
-            )
-
-            html.append(
-                f'<div class="card metric-card" title="{tooltip}">'
-                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-body">'
-                    f'<div class="metric-main">'
-                        f'<div class="metric-value">{v:,}</div>'
-                        f'<div class="metric-sub">Unicode Scalars</div>'
-                    f'</div>'
-                    f'<div class="metric-facts">'
-                        f'<div class="fact-row">Combining Marks: <strong>{total_marks}</strong></div>'
-                        f'<div class="fact-row">Density: <strong>{mark_pct:.1f}%</strong></div>'
-                    f'</div>'
-                f'</div>'
-                f'</div>'
-            )
-
-        # 3. RUNTIME REALITY (UTF-16)
-        elif k == "UTF-16 Units":
-            icon = METRIC_ICONS["code"]
-            astral = stats_dict.get("Astral Count", 0)
-            cp_count = stats_dict.get("Total Code Points", 1)
-            
-            # Micro-Facts
-            overhead = v - cp_count
-            
-            # Styles
-            val_class = "metric-value-warn" if astral > 0 else "metric-value"
-            
-            # Scientifically Rigorous Tooltip
-            tooltip = (
-                "[ DEFINITION ]\n"
-                "16-bit Code Unit count (used by Java/JS/C# string.length).\n"
-                "Characters > U+FFFF require 2 units (Surrogate Pair).\n\n"
-                "[ FORENSIC BENCHMARKS ]\n"
-                "• +0 Overhead: BMP Only (Basic Multilingual Plane)\n"
-                "• >0 Overhead: Contains Astral Characters (Emoji/Historic)\n"
-                "• Risk: Buffer overflows if length calculated by CP vs Unit.\n\n"
-                "[ THIS SAMPLE ]\n"
-                f"• Astral Code Points: {astral}\n"
-                f"• Surrogate Overhead: +{overhead} units vs cp count"
-            )
-            
-            html.append(
-                f'<div class="card metric-card" title="{tooltip}">'
-                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-body">'
-                    f'<div class="metric-main">'
-                        f'<div class="{val_class}">{v:,}</div>'
-                        f'<div class="metric-sub">JS/Java Length</div>'
-                    f'</div>'
-                    f'<div class="metric-facts">'
-                        f'<div class="fact-row">Astral: <strong>{astral}</strong></div>'
-                        f'<div class="fact-row">Overhead: <strong>+{overhead}</strong></div>'
-                    f'</div>'
-                f'</div>'
-                f'</div>'
-            )
-
-        # 4. PHYSICAL REALITY (UTF-8)
-        elif k == "UTF-8 Bytes":
-            icon = METRIC_ICONS["save"]
-            cp_count = stats_dict.get("Total Code Points", 1)
-            
-            # Micro-Facts
-            bpc = v / cp_count if cp_count > 0 else 0
-            
-            # [NEW] Get ASCII Stats for Context
-            ascii_data = stats_dict.get("ASCII-Compatible", {})
-            ascii_pct = ascii_data.get("pct", 0) if ascii_data else 0
-            
-            # Scientifically Rigorous Tooltip
-            tooltip = (
-                "[ DEFINITION ]\n"
-                "Physical storage size in bytes (Network/Disk/DB).\n"
-                "Variable width encoding: 1 to 4 bytes per Code Point.\n\n"
-                "[ FORENSIC BENCHMARKS (Density) ]\n"
-                "• 1.0 b/cp: Pure ASCII (Legacy Safe)\n"
-                "• ~2.0 b/cp: Latin-1 / Greek / Cyrillic / Arabic\n"
-                "• >3.0 b/cp: CJK / Emoji / Mathematical Symbols\n\n"
-                "[ THIS SAMPLE ]\n"
-                f"• Storage Density: {bpc:.2f} bytes per cp\n"
-                f"• ASCII Payload: {ascii_pct}% of code points"
-            )
-
-            html.append(
-                f'<div class="card metric-card" title="{tooltip}">'
-                f'<div class="card-header"><span class="card-icon">{icon}</span> {k}</div>'
-                f'<div class="metric-body">'
-                    f'<div class="metric-main">'
-                        f'<div class="metric-value">{v:,}</div>'
-                        f'<div class="metric-sub">Storage Size</div>'
-                    f'</div>'
-                    f'<div class="metric-facts">'
-                        f'<div class="fact-row">Density: <strong>{bpc:.1f}</strong> b/cp</div>'
-                        f'<div class="fact-row">ASCII: <strong>{ascii_pct}%</strong></div>'
-                    f'</div>'
-                f'</div>'
-                f'</div>'
-            )
-
-        # Skip Astral Count (it's consumed by UTF-16 card)
-        elif k == "Astral Count":
-            continue
-        # [NEW] Specific Renderer for Zalgo Verdict in Detail Cards
-        elif k == "Avg. Marks per Grapheme":
-            verdict = stats_dict.get("seg_verdict", "")
-            badge_cls = stats_dict.get("seg_class", "")
-            
-            badge_html = ""
-            if verdict:
-                # Add the badge below the number
-                badge_html = f'<div style="margin-top:6px;"><span class="badge {badge_cls}">{verdict}</span></div>'
-            
-            html.append(f'<div class="card"><strong>{k}</strong><div>{v}</div>{badge_html}</div>')
-        # --- RENDER PATH 3: Simple Cards ---
-        elif isinstance(v, (int, float)):
-            count = v
-            # Only force "Total" metrics to show if 0. Emoji/Whitespace will now hide if 0.
-            if count > 0 or (k in ["Total Graphemes", "Total Code Points"]):
-                html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
-        
-    final_html = "".join(html) if html else "<p class='placeholder-text'>No data.</p>"
-
-    if return_html:
-        return final_html
-
-    if element_id:
-        element = document.getElementById(element_id)
-        if element:
-            element.innerHTML = final_html
-
-def render_parallel_table(cp_stats, gr_stats, element_id, aliases=None):
-    """Renders the side-by-side Code Point vs. Grapheme table."""
-    html = []
-    all_keys = sorted(set(cp_stats.keys()) | set(gr_stats.keys()))
-    
-    for key in all_keys:
-        cp_val = cp_stats.get(key, 0)
-        gr_val = gr_stats.get(key, 0)
-        
-        if cp_val > 0 or gr_val > 0:
-            label = aliases.get(key, key) if aliases else key
-            html.append(
-                f'<tr><th scope="row">{label}</th><td>{cp_val}</td><td>{gr_val}</td></tr>'
-            )
-            
-    element = document.getElementById(element_id)
-    if element:
-        element.innerHTML = "".join(html)
-
-def render_matrix_table(stats_dict, element_id, has_positions=False, aliases=None, text_context=None):
-    """Renders a generic 'Matrix of Facts' table."""
-    html = []
-    sorted_keys = sorted(stats_dict.keys())
-    
-    for key in sorted_keys:
-        data = stats_dict[key]
-        if not data: continue
-            
-        label = aliases.get(key, key) if aliases else key
-        
-        # --- RENDER PATH 1: Standard `has_positions` flags ---
-        if has_positions:
-            count = data.get('count', 0)
-            if count == 0: continue
-            
-            row_class = ""
-            if key in ("Flag: NUL (U+0000)", "Flag: Replacement Char (U+FFFD)", "Surrogates (Broken)"):
-                row_class = "flag-row-critical"
-            
-            count_html = str(count)
-            if 'pct' in data: count_html = f"{count} ({data['pct']}%)"
-            
-            # [ACTIVE UPDATE] Linkify Positions with Context
-            raw_positions = data.get('positions', [])
-            # PASS text_context HERE
-            position_list = [_create_position_link(p, text_context) for p in raw_positions]
-
-            if len(position_list) > 5:
-                visible = ", ".join(position_list[:5])
-                hidden = ", ".join(position_list[5:])
-                pos_html = (
-                    f'<details style="cursor: pointer;">'
-                    f'<summary>{visible} ... ({len(position_list)} total)</summary>'
-                    f'<div style="padding-top: 8px; user-select: all;">{hidden}</div>'
-                    f'</details>'
+            # 2. INVISIBLE Grouping
+            elif i in invisible_indices:
+                run_len = 1
+                lookahead = i + 1
+                while lookahead < ctx_end and lookahead in invisible_indices and lookahead not in bidi_indices:
+                    run_len += 1
+                    lookahead += 1
+                
+                label = f"×{run_len}" if run_len > 1 else "&bull;"
+                title = f"{run_len} Hidden Characters" if run_len > 1 else "Hidden Character"
+                
+                marker = (
+                    f'<span class="xray-stack stack-invis" tabindex="0" title="{title}">'
+                    f'<span class="xray-top">{label}</span>'
+                    f'<span class="xray-bot">HID</span></span>'
                 )
-            else:
-                pos_html = ", ".join(position_list)
-            
-            html.append(f'<tr class="{row_class}"><th scope="row">{label}</th><td>{count_html}</td><td>{pos_html}</td></tr>')
-        
-        # --- RENDER PATH 2: Simple 2-column ---
-        else:
-            count = data
-            if count == 0: continue
-            html.append(f'<tr><th scope="row">{label}</th><td>{count}</td></tr>')
-            
-    element = document.getElementById(element_id)
-    if element:
-        element.innerHTML = "".join(html) if html else "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
-        
-def render_integrity_matrix(rows, text_context=None):
-    """Renders the forensic integrity matrix with Nested Ledger and Pinned Headers."""
-    tbody = document.getElementById("integrity-matrix-body")
-    tbody.innerHTML = ""
-    
-    INTEGRITY_KEY = "Integrity Level (Heuristic)"
-    DECODE_KEY = "Decode Health Grade"
-    
-    # [FIX] Sorting Logic: Pin Decode Health (000) and Integrity Level (001) to top
-    def sort_key(r):
-        lbl = r["label"]
-        if lbl == DECODE_KEY: return "000"
-        if lbl == INTEGRITY_KEY: return "001"
-        return lbl
-        
-    sorted_rows = sorted(rows, key=sort_key)
-    
-    for row in sorted_rows:
-        tr = document.createElement("tr")
-        
-        # --- HEADER ROWS (Score & Health) ---
-        if row["label"] in (INTEGRITY_KEY, DECODE_KEY):
-            tr.className = f"flag-row-{row['severity']}"
-            tr.style.borderBottom = "2px solid var(--color-border)"
-            
-            th = document.createElement("th")
-            th.textContent = row["label"]
-            th.scope = "row"
-            th.style.fontWeight = "700"
-            th.style.fontSize = "1.05em"
-            
-            td_badge = document.createElement("td")
-            span = document.createElement("span")
-            span.className = f"integrity-badge integrity-badge-{row['severity']}"
-            span.style.fontSize = "0.9em"
-            span.textContent = row["badge"]
-            td_badge.appendChild(span)
-            
-            td_ledger = document.createElement("td")
-            
-            # Handle Ledger (Integrity Level only)
-            ledger_data = row.get("ledger", [])
-            if ledger_data:
-                details = document.createElement("details")
-                details.className = "threat-ledger-details"
-                summary = document.createElement("summary")
-                summary.textContent = "View Penalty Breakdown"
-                details.appendChild(summary)
-                
-                table = document.createElement("table")
-                table.className = "integrity-ledger-table"
-                
-                thead = document.createElement("thead")
-                thead.innerHTML = "<tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr>"
-                table.appendChild(thead)
-                
-                tbody_inner = document.createElement("tbody")
-                for item in ledger_data:
-                    tr_inner = document.createElement("tr")
-                    td_vec = document.createElement("td")
-                    td_vec.textContent = item["vector"]
-                    if item["count"] > 1: td_vec.textContent += f" (x{item['count']})"
-                    
-                    td_sev = document.createElement("td")
-                    span_sev = document.createElement("span")
-                    sev_map = {"FATAL": "crit", "FRACTURE": "crit", "RISK": "warn", "DECAY": "ok"}
-                    css_class = sev_map.get(item["severity"], "ok")
-                    span_sev.className = f"integrity-badge integrity-badge-{css_class}"
-                    span_sev.style.fontSize = "0.7em"
-                    span_sev.textContent = item["severity"]
-                    td_sev.appendChild(span_sev)
-                    
-                    td_pts = document.createElement("td")
-                    td_pts.className = "score-val"
-                    td_pts.textContent = f"+{item['points']}"
-                    
-                    tr_inner.appendChild(td_vec)
-                    tr_inner.appendChild(td_sev)
-                    tr_inner.appendChild(td_pts)
-                    tbody_inner.appendChild(tr_inner)
-                
-                table.appendChild(tbody_inner)
-                details.appendChild(table)
-                td_ledger.appendChild(details)
-            elif row["label"] == DECODE_KEY:
-                # [NEW] Description for Decode Health
-                if row['severity'] == 'ok':
-                    td_ledger.textContent = "No encoding artifacts detected."
-                else:
-                    td_ledger.innerHTML = "<strong>Artifacts Found:</strong> See flags below for details."
-            else:
-                td_ledger.textContent = "Structure is Pristine."
-            
-            tr.appendChild(th)
-            tr.appendChild(td_badge)
-            tr.appendChild(td_ledger)
-            
-        else:
-            # --- STANDARD ROW ---
-            if row["severity"] == "crit": tr.classList.add("flag-row-critical")
-            
-            th = document.createElement("th")
-            th.textContent = row["label"]
-            th.scope = "row"
-            
-            td_count = document.createElement("td")
-            if row["badge"] and row["badge"] != "OK": 
-                if row["count"] > 0:
-                     td_count.appendChild(document.createTextNode(f"{row['count']} "))
-                span = document.createElement("span")
-                span.className = f"integrity-badge integrity-badge-{row['severity']}"
-                span.textContent = row["badge"]
-                td_count.appendChild(span)
-            else:
-                td_count.textContent = str(row["count"])
-                if "pct" in row: td_count.textContent += f" ({row['pct']}%)"
+                cluster_html_parts.append(marker)
+                i += run_len
+                continue
 
-            td_pos = document.createElement("td")
-            raw_positions = row.get("positions", [])
-            
-            if raw_positions:
-                # --- INDEXING PATCH: Manual HTML injection for Positions ---
-                pos_links = [_create_position_link(p, text_context) for p in raw_positions]
+            # 3. SPOOFING (Rich Restoration)
+            elif i in confusable_indices:
+                skel = confusables_map.get(cp, "?")
+                disp_skel = skel[0] if skel else "?"
                 
-                if len(pos_links) > 5:
-                     visible = ", ".join(pos_links[:5])
-                     hidden = ", ".join(pos_links[5:])
-                     details_html = (
-                        f'<details style="cursor: pointer;">'
-                        f'<summary>{visible} ... ({len(pos_links)} total)</summary>'
-                        f'<div style="padding-top: 8px; user-select: all;">{hidden}</div>'
-                        f'</details>'
-                     )
-                     td_pos.innerHTML = details_html
-                else:
-                     td_pos.innerHTML = ", ".join(pos_links)
-            else:
-                td_pos.textContent = "—"
+                # Script Tag Logic
+                script_tag = ""
+                src_sc = "Unknown"; dst_sc = "Unknown"
+                try:
+                    src_sc = _find_in_ranges(cp, "Scripts") or "Com"
+                    dst_sc = _find_in_ranges(ord(skel[0]), "Scripts") or "Com" if skel else "Com"
+                    if src_sc != dst_sc and src_sc not in ("Common", "Inherited") and dst_sc not in ("Common", "Inherited"):
+                        s_abbr = src_sc[:3]; d_abbr = dst_sc[:3]
+                        script_tag = f'<span class="xray-script-tag">{s_abbr}&rarr;{d_abbr}</span>'
+                except: pass
+
+                # Rich Tooltip
+                safe_cp_display = f"U+{ord(skel[0]):04X}" if skel else "?"
+                title_safe = (
+                    f"Spoofing Risk&#10;"
+                    f"Raw: {_escape_html(char)} (U+{cp:04X}, {src_sc})&#10;"
+                    f"Safe: {_escape_html(skel)} ({safe_cp_display}, {dst_sc})"
+                )
+                
+                stack = (
+                    f'<span class="xray-stack stack-spoof" tabindex="0" title="{title_safe}">'
+                    f'<span class="xray-top">{_escape_html(char)}</span>'
+                    f'<span class="xray-bot">{_escape_html(disp_skel)}</span>'
+                    f'{script_tag}'
+                    f'</span>'
+                )
+                cluster_html_parts.append(stack)
+                i += 1
             
-            tr.appendChild(th)
-            tr.appendChild(td_count)
-            tr.appendChild(td_pos)
+            else:
+                cluster_html_parts.append(safe_wrapper)
+                i += 1
 
-        tbody.appendChild(tr)
+        safe_str_js = _escape_for_js("".join(safe_string_parts))
+        safe_str_attr = _escape_html(safe_str_js)
+        
+        card = f"""
+        <div class="cluster-card" id="{cluster_id}">
+            <div class="cluster-header">
+                <div class="cluster-meta">
+                    <span class="cluster-id">#{idx + 1}</span>
+                    {"".join(cluster_badges)}
+                </div>
+                <button class="safe-copy-btn" onclick="window.TEXTTICS_COPY_SAFE('{safe_str_attr}', this)">Copy Safe Slice</button>
+            </div>
+            <div class="cluster-body">{"".join(cluster_html_parts)}</div>
+        </div>
+        """
+        cluster_html_list.append(card)
+        prev_end = ctx_end
 
-def render_ccc_table(stats_dict, element_id):
-    """Renders the 3-column Canonical Combining Class table."""
-    html = []
-    element = document.getElementById(element_id)
-    if not element: return
+    # Summary
+    summary_parts = []
+    def make_badge(count, label, color_class):
+        return f'<span class="{color_class}"><strong>{count}</strong> {label}</span>' if count else ""
 
-    sorted_keys = sorted(stats_dict.keys())
+    if total_exec: summary_parts.append(make_badge(total_exec, "Execution", "stat-exec"))
+    if total_spoof: summary_parts.append(make_badge(total_spoof, "Spoofing", "stat-spoof"))
+    if total_obfus: summary_parts.append(make_badge(total_obfus, "Obfuscation", "stat-obfus"))
     
-    if not sorted_keys:
-        element.innerHTML = "<tr><td colspan='3' class='placeholder-text'>No data.</td></tr>"
+    summary_text = ", ".join(summary_parts)
+    
+    legend_html = (
+        '<div class="xray-legend">'
+        '<span class="xray-legend-item"><span class="xray-dot dot-bidi"></span><strong>EXECUTION:</strong> Bidi/Control (BIDI)</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-spoof"></span><strong>SPOOFING:</strong> Homoglyphs (SPOOF)</span>'
+        '<span class="xray-legend-item"><span class="xray-dot dot-invis"></span><strong>OBFUSCATION:</strong> Hidden/Zero-Width (HID)</span>'
+        '</div>'
+    )
+
+    return "".join([
+        f'<div class="xray-summary-bar">',
+        f'<span class="xray-summary-title">Forensic Scan:</span>',
+        f'{summary_text} across <strong>{len(clusters)}</strong> active clusters.',
+        f'</div>',
+        '<div class="xray-stream-wrapper">',
+        "".join(cluster_html_list),
+        '</div>',
+        legend_html
+    ])
+
+def render_adversarial_dashboard(report):
+    """
+    Renders the 'Adversarial Intelligence' Profile.
+    Displays Skeleton Collisions and Per-Token Risk Analysis.
+    """
+    container = document.getElementById("adversarial-dashboard-body")
+    if not container: return
+
+    if not report or not report.get("tokens"):
+        container.innerHTML = '<div class="empty-state">No identifier-like tokens detected.</div>'
         return
 
-    for key in sorted_keys:
-        count = stats_dict[key]
-        if count == 0:
-            continue
+    tokens = report["tokens"]
+    collisions = report["collisions"]
+    stats = report["stats"]
+
+    # --- Part A: The Metrics Bar ---
+    # We define a mini-dashboard for this specific profile
+    
+    # CSS helper for badges
+    def _get_risk_class(level):
+        if level == "CRITICAL": return "badge-crit"
+        if level == "HIGH": return "badge-high"
+        if level == "MED": return "badge-warn"
+        return "badge-ok"
+
+    html_parts = []
+
+    # 1. Summary Header
+    summary_html = f"""
+    <div class="adversarial-stats">
+        <div class="stat-box">
+            <span class="stat-label">Total Tokens</span>
+            <span class="stat-val">{stats['total']}</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Identifiers</span>
+            <span class="stat-val">{stats['identifiers']}</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-label">Domains/IDs</span>
+            <span class="stat-val">{stats['domains']}</span>
+        </div>
+        <div class="stat-box {'stat-alarm' if stats['collisions'] > 0 else ''}">
+            <span class="stat-label">Collisions</span>
+            <span class="stat-val">{stats['collisions']}</span>
+        </div>
+        <div class="stat-box {'stat-alarm' if stats['high_risk'] > 0 else ''}">
+            <span class="stat-label">High Risk</span>
+            <span class="stat-val">{stats['high_risk']}</span>
+        </div>
+    </div>
+    """
+    html_parts.append(summary_html)
+
+    # --- 2. Skeleton Collisions (The Homograph Radar) ---
+    if collisions:
+        rows = []
+        for c in collisions:
+            # Format variants: "paypal" vs "pаypal"
+            variants_html = []
+            for idx in c["indices"]:
+                # Safety check for index out of bounds
+                if idx < len(tokens):
+                    tok = tokens[idx]
+                    # Bridge link to highlight the specific token
+                    click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({tok['span'][0]}, {tok['span'][1]});"
+                    variants_html.append(f'<a href="#" onclick="{click_js} return false;" class="variant-link">{_escape_html(tok["text"])}</a>')
+            
+            rows.append(f"""
+            <tr class="collision-row">
+                <td class="mono-cell">{_escape_html(c['skeleton'])}</td>
+                <td class="variant-cell">{' vs '.join(variants_html)}</td>
+                <td><span class="badge badge-crit">SPOOF DETECTED</span></td>
+            </tr>
+            """)
         
-        class_num = key.split('=')[-1]
-        description = CCC_ALIASES.get(class_num, "N/A")
+        html_parts.append(f"""
+        <div class="collision-section">
+            <h4 class="sub-header-crit">🚨 Skeleton Collisions (Active Homograph Vectors)</h4>
+            <table class="matrix collision-table">
+                <thead><tr><th>UTS #39 Skeleton</th><th>Conflicting Tokens (Variants)</th><th>Verdict</th></tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+        </div>
+        """)
+
+    # --- 3. Token Risk Ledger (The Detail View) ---
+    # Filter: Show all High/Med, but limit Lows if there are too many
+    display_tokens = [t for t in tokens if t["risk"] in ("CRITICAL", "HIGH", "MED")]
+    low_tokens = [t for t in tokens if t["risk"] == "LOW"]
+    
+    # Simple pagination logic for "Low" risk noise
+    hidden_count = 0
+    if len(low_tokens) > 10:
+        display_tokens.extend(low_tokens[:10])
+        hidden_count = len(low_tokens) - 10
+    else:
+        display_tokens.extend(low_tokens)
         
-        html.append(
-            f'<tr>'
-            f'<th scope="row">{key}</th>'
-            f'<td>{count}</td>'
-            f'<td style="color: var(--color-text-muted); font-weight: normal; font-family: var(--font-sans);">{description}</td>'
+    # Sort: Critical -> High -> Med -> Low
+    risk_order = {"CRITICAL": 0, "HIGH": 1, "MED": 2, "LOW": 3}
+    display_tokens.sort(key=lambda x: risk_order.get(x["risk"], 3))
+
+    if display_tokens:
+        token_rows = []
+        for t in display_tokens:
+            risk_cls = _get_risk_class(t["risk"])
+            
+            # Scripts pill
+            scripts_str = ", ".join(t["scripts"]) if t["scripts"] else "Common"
+            script_cls = "script-mixed" if t["is_mixed"] else "script-single"
+            
+            # Issues/Triggers
+            triggers_html = ""
+            if t["triggers"]:
+                triggers_html = "<br>".join([f"<span class='trigger-tag'>{rule}</span>" for rule in t["triggers"]])
+            elif t["kind"] == "identifier":
+                triggers_html = "<span class='trigger-tag-ok'>Standard Syntax</span>"
+            else:
+                triggers_html = "<span class='trigger-tag-neutral'>No Anomalies</span>"
+                
+            # Bridge Link
+            click_js = f"window.opener.TEXTTICS_HIGHLIGHT_SEGMENT({t['span'][0]}, {t['span'][1]});"
+            
+            token_rows.append(f"""
+            <tr>
+                <td class="token-cell">
+                    <a href="#" onclick="{click_js} return false;" class="token-link">{_escape_html(t['text'])}</a>
+                    <div class="token-kind">{t['kind']}</div>
+                </td>
+                <td class="risk-cell"><span class="badge {risk_cls}">{t['risk']}</span></td>
+                <td class="script-cell"><span class="{script_cls}">{scripts_str}</span></td>
+                <td class="skel-cell">{_escape_html(t['skeleton'])}</td>
+                <td class="issue-cell">{triggers_html}</td>
+            </tr>
+            """)
+
+        html_parts.append(f"""
+        <div class="token-ledger">
+            <h4 class="sub-header">Token Risk Ledger</h4>
+            <table class="matrix token-table">
+                <thead>
+                    <tr>
+                        <th style="width:20%">Token</th>
+                        <th style="width:10%">Risk</th>
+                        <th style="width:15%">Scripts</th>
+                        <th style="width:20%">Skeleton</th>
+                        <th style="width:35%">Forensic Notes</th>
+                    </tr>
+                </thead>
+                <tbody>{''.join(token_rows)}</tbody>
+            </table>
+            {f'<div class="table-footer">... {hidden_count} low-risk tokens hidden ...</div>' if hidden_count > 0 else ''}
+        </div>
+        """)
+    else:
+        # Fallback if no tokens worth showing (rare, but good safety)
+        html_parts.append('<div class="empty-state">No significant identifiers found.</div>')
+
+    container.innerHTML = "".join(html_parts)
+
+def render_threat_analysis(threat_results, text_context=None):
+    """Renders the Group 3 Threat-Hunting results."""
+    
+    flags = threat_results.get('flags', {})
+    html_rows = []
+    threat_level_key = "Threat Level (Heuristic)"
+    
+    if threat_level_key in flags:
+        data = flags[threat_level_key]
+        badge = data.get("badge", "")
+        severity = data.get("severity", "ok")
+        
+        # Data from the Threat Auditor
+        ledger = data.get("ledger", [])
+        noise = data.get("noise", [])
+        
+        badge_class = f"integrity-badge integrity-badge-{severity}"
+        
+        # --- LEDGER GENERATION (3-Column) ---
+        ledger_html = ""
+        if ledger:
+            ledger_rows = ""
+            for item in ledger:
+                # Map Category to Severity Class
+                cat = item['category'].upper()
+                sev_class = "ok"
+                if cat in ("EXECUTION", "SPOOFING"):
+                    sev_class = "crit"
+                elif cat in ("OBFUSCATION"):
+                    sev_class = "warn"
+                elif cat in ("SUSPICIOUS", "SYNTAX"):
+                    sev_class = "warn"
+                
+                p_val = f"+{item['points']}"
+                
+                ledger_rows += (
+                    f"<tr>"
+                    f"<td>{item['vector']}</td>"
+                    f"<td><span class='integrity-badge integrity-badge-{sev_class}' style='font-size:0.7em'>{cat}</span></td>"
+                    f"<td class='score-val'>{p_val}</td>"
+                    f"</tr>"
+                )
+            
+            # Add Noise (Zero-score items)
+            if noise:
+                 for n in noise:
+                     ledger_rows += (
+                         f"<tr class='ledger-noise'>"
+                         f"<td>{n}</td>"
+                         f"<td><span class='integrity-badge integrity-badge-ok' style='font-size:0.7em'>NOISE</span></td>"
+                         f"<td class='score-val'>0</td>"
+                         f"</tr>"
+                     )
+
+            ledger_html = f"""
+            <details class="threat-ledger-details">
+                <summary>View Penalty Breakdown</summary>
+                <table class="threat-ledger-table">
+                    <thead><tr><th>Vector</th><th>Severity</th><th>Penalty</th></tr></thead>
+                    <tbody>{ledger_rows}</tbody>
+                </table>
+            </details>
+            """
+        else:
+            ledger_html = "No active threats detected."
+
+        row_html = (
+            f'<tr class="flag-row-{severity}" style="border-bottom: 2px solid var(--color-border);">'
+            f'<th scope="row" style="font-weight:700; font-size:1.05em;">{threat_level_key}</th>'
+            f'<td><span class="{badge_class}" style="font-size:0.9em;">{badge}</span></td>'
+            f'<td>{ledger_html}</td>'
             f'</tr>'
         )
-    
-    element.innerHTML = "".join(html)
-
-def render_toc_counts(counts):
-    """
-    Updates the counts in the sticky Table of Contents.
-    Hardened to prevent crashes if an HTML element is missing.
-    """
-    def update_id(el_id, val):
-        el = document.getElementById(el_id)
-        if el: 
-            el.innerText = f"({val})"
-
-    update_id("toc-dual-count", counts.get('dual', 0))
-    update_id("toc-shape-count", counts.get('shape', 0))
-    update_id("toc-integrity-count", counts.get('integrity', 0))
-    update_id("toc-prov-count", counts.get('prov', 0))
-    update_id("toc-emoji-count", counts.get('emoji', 0))
-    update_id("toc-threat-count", counts.get('threat', 0))
-    update_id("toc-atlas-count", counts.get('atlas', 0))
-    update_id("toc-stat-count", counts.get('stat', 0))
-
-
-# --- INSPECTOR HELPERS (FORENSIC V3) ---
-
-def _get_single_char_skeleton(s: str) -> str:
-    """
-    Generates the UTS #39 skeleton for a single character context.
-    Reuses the global Confusables map to ensure consistency with Threat Engine.
-    """
-    confusables_map = DATA_STORES.get("Confusables", {})
-    res = []
-    for char in s:
-        cp = ord(char)
-        val = confusables_map.get(cp)
+        html_rows.append(row_html)
         
-        if val:
-            # DEFENSIVE: Handle New Tuple Format (tgt, tag) vs Legacy String
-            if isinstance(val, tuple):
-                mapped = val[0] # Extract the skeleton string
-            else:
-                mapped = val    # Legacy fallback
+        flags_copy = flags.copy()
+        del flags_copy[threat_level_key]
+        flags = flags_copy
+    
+    # Pass text_context to the matrix renderer
+    render_matrix_table(flags, "threat-report-body", has_positions=True, text_context=text_context)
+    
+    if html_rows:
+        existing_html = document.getElementById("threat-report-body").innerHTML
+        document.getElementById("threat-report-body").innerHTML = "".join(html_rows) + existing_html
+
+    # Hashes
+    hashes = threat_results.get('hashes', {})
+    hash_html = []
+    if hashes:
+        for k, v in hashes.items():
+            hash_html.append(f'<tr><th scope="row">{k}</th><td>{v}</td></tr>')
+        document.getElementById("threat-hash-report-body").innerHTML = "".join(hash_html)
+    else:
+        document.getElementById("threat-hash-report-body").innerHTML = '<tr><td colspan="2" class="placeholder-text">No data.</td></tr>'
+
+    # HTML Report (PVR)
+    html_report = threat_results.get('html_report', "")
+    report_el = document.getElementById("confusable-diff-report")
+    
+    if html_report:
+        report_el.innerHTML = html_report
+    else:
+        drift_flag = flags.get("Flag: Skeleton Drift")
+        drift_count = drift_flag.get("count", 0) if drift_flag else 0
+        msg = "No lookalike confusables; differences come from invisibles, format controls, or normalization." if drift_count > 0 else "No confusable runs detected; raw, NFKC, and skeleton are effectively aligned."
+        report_el.innerHTML = f'<p class="placeholder-text">{msg}</p>'
+    
+    # --- DRIFT REPORT LOGIC (Populates the "Analyzing..." section) ---
+    drift_details = document.getElementById("drift-report-details")
+    summary_header = document.getElementById("drift-summary-header")
+    
+    if drift_details and summary_header:
+        # Use 'threat_results', NOT 'results'
+        drift = threat_results.get('drift_info', {})
+        
+        # Safety: If analysis skipped/crashed, prevent UI freeze
+        if not drift:
+            drift = {'class': 'drift-alert', 'verdict': 'Data Missing'}
+            
+        states = threat_results.get('states', {})
+        s1_val = states.get('s1', 'N/A')
+        s4_val = states.get('s4', 'N/A')
+
+        # 1. Update the Side-by-Side Text
+        s1_el = document.getElementById("disp-state-1")
+        s4_el = document.getElementById("disp-state-4")
+        if s1_el: s1_el.textContent = s1_val
+        if s4_el: s4_el.textContent = s4_val
+        
+        # 2. Update Header Icon & Color
+        icon = "✅"
+        d_class = drift.get('class', 'drift-clean')
+        if d_class == "drift-alert": icon = "🚨"
+        elif d_class == "drift-warn": icon = "⚠️"
+        
+        verdict = drift.get("verdict", "Unknown")
+        summary_header.innerHTML = f'<span class="drift-status-icon">{icon}</span> <span class="drift-status-text">{verdict}</span>'
+        summary_header.className = f"drift-summary {d_class}"
+        
+        # 3. Auto-Expand if Threat
+        if d_class == "drift-clean":
+            drift_details.removeAttribute("open")
         else:
-            mapped = char       # No mapping exists
-            
-        res.append(mapped)
-    return "".join(res)
-
-def _classify_macro_type(cp, cat, id_status, mask):
-    """
-    Determines the 'Macro-Type' for the Forensic HUD.
-    Refined V3 Logic: strict separation of Rot, Syntax, and Threat.
-    """
-    is_ascii = (cp <= 0x7F)
-
-    # 0. DATA ROT (Corruption / Integrity Failures)
-    # Cn (Unassigned), Cs (Surrogate), Co (Private Use)
-    # Add FFFD and NUL to the definition of ROT
-    if cat in ('Cn', 'Cs', 'Co') or cp == 0xFFFD or cp == 0x0000: 
-        return "ROT"
-
-    # 1. TRUE THREATS (Active Attack Vectors)
-    # Must mask specifically to Bidi, High-Risk Invisibles, or Tags
-    if mask & (INVIS_BIDI_CONTROL | INVIS_HIGH_RISK_MASK): 
-        return "THREAT"
-
-    # 2. FORMAT / CONTROL (Context-Dependent)
-    # Cf (Format) that isn't high-risk. E.g. ZWNJ in Persian is fine.
-    if cat == 'Cf': 
-        return "COMPLEX"
-
-    # 3. COMPLEX (Rich Text)
-    # Combining Marks (Mn, Mc, Me)
-    if cat.startswith('M'): 
-        return "COMPLEX"
+            drift_details.setAttribute("open", "true")
     
-    # 4. WHITESPACE (Structural)
-    if cat.startswith('Z'):
-        return "SYNTAX"
+    banner_el = document.getElementById("threat-banner")
+    if banner_el: banner_el.setAttribute("hidden", "true")
 
-    # 5. STANDARD (Safe Atoms)
-    # ASCII Letters/Digits.
-    if is_ascii and cat in ('Ll', 'Lu', 'Nd'): 
-        return "STANDARD"
-
-    # 6. SYNTAX (Technical/Punctuation)
-    # ASCII Punctuation/Symbols.
-    if is_ascii and cat.startswith(('P', 'S')):
-        return "SYNTAX"
-
-    # 7. LEGACY / EXTENDED (Everything Else)
-    # Extended Latin, Emoji, Symbols, non-ASCII punctuation.
-    return "LEGACY"
-
-def _get_ghost_chain(char: str):
-    """
-    Returns the Quad-State Ghost Chain if meaningful normalization occurs.
-    Filters out simple ASCII case changes to reduce noise.
-    """
-    raw = char
-    nfkc = normalize_extended(raw)
-    casefold = nfkc.casefold()
-    
-    # Use the consistent skeleton logic
-    skeleton = _get_single_char_skeleton(casefold)
-
-    # NOISE FILTER: Ignore simple ASCII case changes (A -> a)
-    def is_boring_change(a, b):
-        return a == b or (len(a) == 1 and len(b) == 1 and ord(a) < 128 and ord(b) < 128 and a.lower() == b.lower())
-
-    # If raw matches skeleton (ignoring case), it's boring
-    if is_boring_change(raw, nfkc) and is_boring_change(nfkc, casefold) and is_boring_change(casefold, skeleton):
-        return None
-
-    # VISUALIZE ERASURE: If char disappears, show ∅
-    return {
-        "raw": raw,
-        "nfkc": nfkc if nfkc else "∅",
-        "casefold": casefold if casefold else "∅",
-        "skeleton": skeleton if skeleton else "∅"
-    }
-
-def _compute_cluster_identity(cluster_str, base_char_data):
-    """
-    Forensic Cluster Aggregator (Pro Grade).
-    Implements TR-51 Emoji Semantics, UAX #9 Strong Bidi, and UAX #31 Script logic.
-    """
-    # 1. Atomic Shortcut
-    if len(cluster_str) == 1:
-        return {
-            "type_label": "CATEGORY (Gc)",
-            "type_val": f"{base_char_data['category_full']} ({base_char_data['category_short']})",
-            "block_val": base_char_data['block'],
-            "script_val": base_char_data['script'],
-            "bidi_val": base_char_data['bidi'],
-            "age_val": base_char_data['age'],
-            "is_cluster": False,
-            "cluster_mask": INVIS_TABLE[ord(cluster_str)] if ord(cluster_str) < 1114112 else 0,
-            "max_risk_cat": base_char_data['category_short']
-        }
-
-    # 2. Molecular Aggregation
-    blocks = set()
-    scripts = set()
-    bidi_strong = set() # Strong types only (L, R, AL)
-    ages = []
-    
-    cluster_mask = 0
-    risk_cats = set()
-    
-    mark_count = 0
-    
-    for char in cluster_str:
-        cp = ord(char)
-        
-        # A. Harvest Data
-        blk = _find_in_ranges(cp, "Blocks") or "No_Block"
-        scr = _find_in_ranges(cp, "Scripts") or "Common"
-        bid = unicodedata.bidirectional(char)
-        cat = unicodedata.category(char)
-        age_str = _find_in_ranges(cp, "Age") or "0.0"
-        
-        # B. Accumulate
-        blocks.add(blk)
-        
-        # UAX #31: Ignore Common/Inherited for script mixing
-        if scr not in ("Common", "Inherited"):
-            scripts.add(scr)
-            
-        # UAX #9: Track only Strong Bidi Types
-        if bid in ("L", "R", "AL"):
-            bidi_strong.add(bid)
-            
-        try: ages.append(float(age_str))
-        except: pass
-        
-        # C. Risk Tracking
-        if cp < 1114112:
-             cluster_mask |= INVIS_TABLE[cp]
-        risk_cats.add(cat)
-        
-        if cat.startswith("M"): mark_count += 1
-
-    # --- SYNTHESIZE TRUTH ---
-
-    # 1. Emoji Semantics (TR-51)
-    # Check against pre-loaded RGI sets (if available)
-    rgi_set = DATA_STORES.get("RGISequenceSet", set())
-    
-    # Default Type
-    if mark_count > 0:
-        type_label = "COMPOSITION"
-        type_val = f"Base + {mark_count} Marks"
-    else:
-        type_label = "SEQUENCE"
-        type_val = f"{len(cluster_str)} Code Points"
-
-    # Specific Overrides
-    if cluster_str in rgi_set:
-        type_label = "EMOJI SEQUENCE"
-        # Distinguish types if possible, or just label RGI
-        if "\u20E3" in cluster_str: type_val = "Keycap Sequence" # Keycap
-        elif "\u200D" in cluster_str: type_val = "ZWJ Sequence"   # ZWJ
-        elif len(cluster_str) == 2 and 0x1F1E6 <= ord(cluster_str[0]) <= 0x1F1FF: type_val = "Flag Sequence" # RI
-        else: type_val = "RGI (Valid)"
-
-    # 2. Block Truth
-    # Prioritize the Base Block, but flag mixture
-    base_block = base_char_data['block']
-    other_blocks = blocks - {base_block}
-    if not other_blocks:
-        block_display = base_block
-    else:
-        # Explicitly label as 'Block(s)' to distinguish from character count
-        count = len(other_blocks)
-        suffix = "Block" if count == 1 else "Blocks"
-        block_display = f"{base_block} + {count} {suffix}"
-
-    # 3. Script Truth (Clean)
-    if not scripts:
-        script_display = "Common / Inherited"
-    elif len(scripts) == 1:
-        script_display = list(scripts)[0]
-    else:
-        script_display = f"Mixed ({', '.join(sorted(scripts))})"
-
-    # 4. Bidi Truth (Strong)
-    if not bidi_strong:
-        bidi_display = base_char_data['bidi'] # Fallback to base (likely Neutral/Weak)
-    elif len(bidi_strong) == 1:
-        bidi_display = list(bidi_strong)[0]
-    else:
-        bidi_display = "Mixed Strong Direction" # Real risk
-
-    # 5. Age Range
-    if ages:
-        min_age = min(ages)
-        max_age = max(ages)
-        age_display = f"{min_age} – {max_age}" if min_age != max_age else str(max_age)
-    else:
-        age_display = "1.1"
-
-    # 6. Max Risk Category (for Macro-Classification)
-    # Precedence: Rot > Control > Mark > Standard
-    max_risk_cat = "Ll" # Default safe
-    if any(c in ("Cn", "Cs", "Co") for c in risk_cats): max_risk_cat = "Cn"
-    elif any(c == "Cf" for c in risk_cats): max_risk_cat = "Cf"
-    elif any(c.startswith("M") for c in risk_cats): max_risk_cat = "Mn"
-    
-    return {
-        "type_label": type_label,
-        "type_val": type_val,
-        "block_val": block_display,
-        "script_val": script_display,
-        "bidi_val": bidi_display,
-        "age_val": age_display,
-        "is_cluster": True,
-        "cluster_mask": cluster_mask,
-        "max_risk_cat": max_risk_cat
-    }
-
-# ---
-# 5. MAIN ORCHESTRATOR
-# ---
-   
-@create_proxy
-def inspect_character(event):
-    """
-    Forensic Inspector v3.1: Selection-Aware.
-    Now allows inspection even when text is highlighted/selected (e.g., by the Invisible Finder).
-    """
-    try:
-        text_input = document.getElementById("text-input")
-        if text_input.classList.contains("reveal-active"):
-            render_inspector_panel({"error": "Inspection Paused (Reveal Active)"})
-            return
-
-        dom_pos = text_input.selectionStart
-        
-        # [REMOVED BLOCKER] 
-        # Previously, we returned here if selectionStart != selectionEnd.
-        # We removed that check so the Inspector works when the Highlighter selects a char.
-
-        # Handle Newline normalization mismatch (Windows \r\n vs \n)
-        text = str(text_input.value)
-        if not text:
-            render_inspector_panel(None)
-            return
-        
-        # 1. Map DOM Index to Python Index
-        python_idx = 0
-        utf16_accum = 0
-        found_sync = False
-        
-        for i, ch in enumerate(text):
-            if utf16_accum == dom_pos:
-                python_idx = i
-                found_sync = True
-                break
-            
-            # Logic: Is this a surrogate pair? (2 units) or BMP (1 unit)
-            step = 2 if ord(ch) > 0xFFFF else 1
-            utf16_accum += step
-            
-            if utf16_accum > dom_pos:
-                # We landed inside a character (rare, but possible with surrogates)
-                python_idx = i
-                found_sync = True
-                break
-        
-        if not found_sync and utf16_accum == dom_pos:
-             render_inspector_panel(None) # End of string
-             return
-
-        # 2. Localized Segmentation
-        start_search = max(0, python_idx - 50)
-        end_search = min(len(text), python_idx + 50)
-        local_text = text[start_search:end_search]
-        
-        local_target_idx = python_idx - start_search
-        
-        segments_iter = GRAPHEME_SEGMENTER.segment(local_text)
-        
-        target_cluster = None
-        prev_cluster = None
-        next_cluster = None
-        
-        current_local_idx = 0
-        
-        for seg in segments_iter:
-            seg_str = str(seg.segment)
-            seg_len = len(seg_str)
-            seg_end = current_local_idx + seg_len
-            
-            # Check containment relative to local window
-            if current_local_idx <= local_target_idx < seg_end:
-                target_cluster = seg_str
-                # Continue to get next_cluster
-                current_local_idx = seg_end
-                continue
-            
-            if target_cluster is not None:
-                next_cluster = seg_str
-                break
-            
-            prev_cluster = seg_str
-            current_local_idx = seg_end
-
-        # Fallback
-        if not target_cluster:
-            target_cluster = text[python_idx]
-            
-        # 3. Analyze the Cluster
-        base_char = target_cluster[0]
-        cp_base = ord(base_char)
-        
-        cat_short = unicodedata.category(base_char)
-        base_char_data = {
-            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
-            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
-            "category_full": ALIASES.get(cat_short, "N/A"),
-            "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(base_char),
-            "age": _find_in_ranges(cp_base, "Age") or "N/A"
-        }
-
-        cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
-
-        comp_cat = cluster_identity["max_risk_cat"]
-        comp_mask = cluster_identity["cluster_mask"]
-        
-        if comp_cat in ("Cn", "Co", "Cs", "Cf"):
-            id_status = "Restricted"
-        else:
-            id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
-            
-        id_type = _find_in_ranges(cp_base, "IdentifierType")
-            
-        macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
-        ghosts = _get_ghost_chain(base_char)
-        
-        bidi_short = unicodedata.bidirectional(base_char)
-        wb_prop = _find_in_ranges(cp_base, "WordBreak") or "Other"
-        lb_prop = _find_in_ranges(cp_base, "LineBreak") or "Unknown"
-        gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
-        gb_prop = gb_val if gb_val else "Base (Other)"
-        
-        inv_map = DATA_STORES.get("InverseConfusables", {})
-        raw_lookalikes = inv_map.get(str(cp_base), [])
-        
-        lookalikes_data = []
-        for item in raw_lookalikes:
-            try:
-                if isinstance(item, int):
-                    cp = item
-                else:
-                    clean = str(item).replace("U+", "").strip()
-                    cp = int(clean, 16)
-                
-                char = chr(cp)
-                script = _find_in_ranges(cp, "Scripts") or "Common"
-                block = _find_in_ranges(cp, "Blocks") or "Unknown Block"
-                
-                lookalikes_data.append({
-                    "cp": f"U+{cp:04X}",
-                    "glyph": char,
-                    "script": script,
-                    "block": block,
-                    "name": unicodedata.name(char, "UNKNOWN CHARACTER")
-                })
-            except Exception:
-                continue
-        
-        components = []
-        zalgo_score = 0
-        for ch in target_cluster:
-            cat = unicodedata.category(ch)
-            name = unicodedata.name(ch, "Unknown")
-            ccc = unicodedata.combining(ch)
-            is_mark = cat.startswith('M')
-            if is_mark: zalgo_score += 1
-            
-            components.append({
-                'hex': f"U+{ord(ch):04X}", 
-                'name': name, 
-                'cat': cat, 
-                'ccc': ccc,
-                'is_base': not is_mark
-            })
-
-        utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
-        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
-        utf32_hex = f"{cp_base:08X}"
-        
-        def try_enc(enc_name):
-            try:
-                return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
-            except UnicodeEncodeError:
-                return "N/A"
-
-        ascii_val = try_enc("ascii")
-        latin1_val = try_enc("latin-1")
-        cp1252_val = try_enc("cp1252")
-        url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
-        
-        # --- NEW: EXPLOIT & OBFUSCATION ENCODINGS ---
-        import base64
-        
-        # 1. Base64 (Standard Payload Wrapper)
-        try:
-            b64_val = base64.b64encode(target_cluster.encode("utf-8")).decode("ascii")
-        except:
-            b64_val = "Error"
-
-        # 2. Shellcode / Hex Escapes (\xHH)
-        shell_val = "".join(f"\\x{b:02X}" for b in target_cluster.encode("utf-8"))
-
-        # 3. Octal Escapes (\NNN)
-        octal_val = "".join(f"\\{b:03o}" for b in target_cluster.encode("utf-8"))
-
-        # 4. HTML Entity Variants (Decimal vs Hex)
-        if target_cluster.isalnum():
-            html_dec_val = target_cluster
-            html_hex_val = target_cluster
-        else:
-            html_dec_val = "".join(f"&#{ord(c)};" for c in target_cluster)
-            html_hex_val = "".join(f"&#x{ord(c):X};" for c in target_cluster)
-
-        # 5. ES6 / CSS Unicode (\u{...})
-        es6_val = "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster)
-        
-        # 6. Python/Old JS
-        code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
-
-        confusable_msg = None
-        
-        if ghosts:
-             skel_val = ghosts['skeleton']
-             if skel_val != base_char and skel_val != base_char.casefold():
-                 confusable_msg = f"Base maps to: '{skel_val}'"
-
-        stack_msg = None
-        if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
-
-        data = {
-            "python_idx": python_idx,
-            "cluster_glyph": target_cluster,
-            "prev_glyph": prev_cluster,
-            "next_glyph": next_cluster,
-            "cp_hex_base": f"U+{cp_base:04X}",
-            "name_base": unicodedata.name(base_char, "No Name Found"),
-            "is_cluster": cluster_identity["is_cluster"],
-            "type_label": cluster_identity["type_label"],
-            "type_val":   cluster_identity["type_val"],
-            "block":      cluster_identity["block_val"],
-            "script":     cluster_identity["script_val"],
-            "bidi":       cluster_identity["bidi_val"],
-            "age":        cluster_identity["age_val"],
-            "category_full": base_char_data['category_full'],
-            "category_short": base_char_data['category_short'],
-            "id_status": id_status,
-            "id_type": id_type,
-            "macro_type": macro_type,
-            "ghosts": ghosts,
-            "is_ascii": (cp_base <= 0x7F),
-            "lookalikes_data": lookalikes_data,
-            "line_break": lb_prop,
-            "word_break": wb_prop,
-            "grapheme_break": gb_prop,
-            
-            # --- Forensic Encodings ---
-            "utf8": utf8_hex, 
-            "utf16": utf16_hex, 
-            "utf32": utf32_hex,
-            "ascii": ascii_val, 
-            "latin1": latin1_val, 
-            "cp1252": cp1252_val,
-            # --- Exploit Vectors ---
-            "url": url_enc, 
-            "code": code_enc,
-            "base64": b64_val,
-            "shell": shell_val,
-            "octal": octal_val,
-            "html_dec": html_dec_val,
-            "html_hex": html_hex_val,
-            "es6": es6_val,
-            
-            "confusable": confusable_msg,
-            "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
-            "stack_msg": stack_msg,
-            "components": components
-        }
-        
-        render_inspector_panel(data)
-
-    except Exception as e:
-        print(f"Inspector Error: {e}")
-        render_inspector_panel({"error": str(e)})
-        
-
-def analyze_signal_processor_state(data):
-    """
-    Forensic State Machine v5.2 (Fixed Data Structures & Cross-Script Logic).
-    Standardizes all facets to dictionaries to prevent NameError.
-    """
-    
-    # --- 1. THREAT DEFINITIONS ---
-    RISK_WEIGHTS = {
-        "INVISIBLE": 2.0,
-        "NON_ASCII": 0.5,
-        "BIDI": 4.0,             
-        "ZALGO_HEAVY": 3.0,      
-        "ZALGO_LIGHT": 0.5,      
-        "LAYOUT_CONTROL": 1.5,   
-        "CONFUSABLE_CROSS": 3.0, 
-        "CONFUSABLE_SAME": 0.0,  
-    }
-
-    # --- 2. RAW SENSORS & CONTEXT ---
-    
-    cp_hex = data.get('cp_hex_base', '').replace('U+', '')
-    try:
-        cp = int(cp_hex, 16)
-    except:
-        cp = 0
-    
-    script = data.get('script', 'Common')
-    raw_confusable = bool(data.get('confusable'))
-    is_ascii = data.get('ascii', 'N/A') != 'N/A'
-
-    # Check the global set we loaded from JSON
-    is_ascii_confusable = (cp in ASCII_CONFUSABLES)
-    
-    # [FIX] Cross-Script requires the source to NOT be Common/Inherited.
-    # Em Dash (Common) -> Hyphen (Common) is NOT a cross-script threat.
-    is_common_script = script in ("Common", "Inherited")
-    is_cross_script_confusable = raw_confusable and not is_ascii and not is_common_script
-    
-    stack_msg = data.get('stack_msg') or ""
-    mark_count = 0
-    if 'components' in data:
-        for c in data['components']:
-            if not c['is_base']: mark_count += 1
-            
-    zalgo_threshold = 2 if script in ('Latin', 'Common') else 4
-    is_heavy_zalgo = "Heavy" in stack_msg or mark_count > zalgo_threshold
-    is_light_mark = mark_count > 0 and not is_heavy_zalgo
-    
-    is_invisible = data.get('is_invisible', False)
-    bidi_val = data.get('bidi')
-    is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
-    
-    cat = data.get('category', 'N/A')
-    is_layout_control = cat in ('Format', 'Space Separator') and not is_bidi_control and not is_invisible and not is_ascii
-
-    # --- 3. FACET STATE CALCULATOR ---
-
-    # Check for Hard Corruption
-    is_corruption = (cp == 0xFFFD or cp == 0x0000 or cat == 'Cs')
-    
-    current_score = 0.0
-    reasons = []
-
-    # A. VISIBILITY (Constructs 'vis' dict)
-    if is_invisible:
-        if is_bidi_control:
-             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Control Char"}
-        else:
-             current_score += RISK_WEIGHTS["INVISIBLE"]
-             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
-             reasons.append("Invisible Character")
-    elif is_corruption:
-        # Explicit Corruption Handling
-        current_score += 4.0 # Instant Critical
-        vis = {"state": "CORRUPT", "class": "risk-fail", "icon": "eye_off", "detail": "Data Loss"}
-        reasons.append("Data Corruption")
-    elif not is_ascii:
-        current_score += RISK_WEIGHTS["NON_ASCII"]
-        vis = {"state": "EXTENDED", "class": "risk-info", "icon": "eye", "detail": "Unicode Range"}
-    else:
-        vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
-
-    # B. STRUCTURE (Constructs 'struct' dict)
-    if is_bidi_control:
-        current_score += RISK_WEIGHTS["BIDI"]
-        struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
-        reasons.append("Directional Control")
-    elif is_heavy_zalgo:
-        current_score += RISK_WEIGHTS["ZALGO_HEAVY"]
-        struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
-        reasons.append("Excessive Marks")
-    elif is_light_mark:
-        current_score += RISK_WEIGHTS["ZALGO_LIGHT"]
-        struct = {"state": "MODIFIED", "class": "risk-info", "icon": "cube", "detail": "Combining Marks"}
-    elif is_layout_control:
-        current_score += RISK_WEIGHTS["LAYOUT_CONTROL"]
-        struct = {"state": "LAYOUT", "class": "risk-warn", "icon": "cube", "detail": "Format Control"}
-    else:
-        struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
-
-    # C. IDENTITY (Calculates vars, then constructs 'ident' dict)
-    ident_state = "UNIQUE"
-    ident_class = "risk-pass"
-    ident_icon = "fingerprint"
-    ident_detail = "No Lookalikes"
-
-    lookalikes = DATA_STORES.get("InverseConfusables", {}).get(str(cp), [])
-    lookalike_count = len(lookalikes)
-
-    if is_cross_script_confusable:
-        current_score += RISK_WEIGHTS["CONFUSABLE_CROSS"]
-        ident_state = "AMBIGUOUS"
-        ident_class = "risk-warn"
-        ident_icon = "clone"
-        detail_text = f"{lookalike_count} Lookalikes" if lookalike_count > 0 else "Cross-Script Risk"
-        ident_detail = detail_text
-        reasons.append("Confusable Identity")
-        
-    elif is_ascii_confusable or (raw_confusable and is_common_script): 
-        # [FIX] Common/Inherited confusions (like Em Dash) fall here (Note/Blue), not Warn/Orange
-        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
-        ident_state = "NOTE"
-        ident_class = "risk-info"
-        ident_icon = "fingerprint"
-        ident_detail = f"{lookalike_count} Lookalikes"
-        
-    elif lookalike_count > 0:
-        ident_state = "NOTE"
-        ident_class = "risk-info"
-        ident_detail = f"{lookalike_count} Lookalikes"
-
-    # Wrap Identity into a dict to match the others
-    ident = {
-        "state": ident_state,
-        "class": ident_class,
-        "icon": ident_icon,
-        "detail": ident_detail
-    }
-
-    # --- 4. VERDICT LEVEL MAPPING ---
-    
-    level = 0
-    label = "BASELINE"
-    header_class = "header-baseline"
-    icon = "shield_ok"
-    footer_label = "ANALYSIS"
-    footer_text = "Standard Composition"
-    footer_class = "footer-neutral"
-
-    if 0.5 <= current_score < 1.5:
-        level = 1
-        label = "NON-STD"
-        header_class = "header-complex"
-        icon = "shield_ok"
-        footer_label = "NOTE"
-        footer_text = "Extended Unicode / Marks"
-        footer_class = "footer-info"
-        
-    elif 1.5 <= current_score < 3.0:
-        level = 2
-        label = "ANOMALOUS"
-        header_class = "header-anomalous"
-        icon = "shield_warn"
-        footer_label = "DETECTED"
-        footer_class = "footer-warn"
-        
-    elif 3.0 <= current_score < 4.0:
-        level = 3
-        label = "SUSPICIOUS"
-        header_class = "header-suspicious"
-        icon = "shield_warn"
-        footer_label = "DETECTED"
-        footer_class = "footer-warn"
-        
-    elif current_score >= 4.0:
-        level = 4
-        label = "CRITICAL"
-        header_class = "header-critical"
-        icon = "octagon_crit"
-        footer_label = "DETECTED"
-        footer_class = "footer-crit"
-
-    # --- 5. HARD OVERRIDES ---
-    if is_bidi_control and level < 3:
-        level = 3
-        label = "SUSPICIOUS"
-        header_class = "header-suspicious"
-        icon = "shield_warn"
-        footer_class = "footer-warn"
-
-    # HARD OVERRIDE FOR CORRUPTION
-    if is_corruption:
-        level = 4
-        label = "CRITICAL"
-        header_class = "header-critical"
-        icon = "octagon_crit"
-        footer_label = "FATAL"
-        footer_text = "Data Integrity Failure"
-        footer_class = "footer-crit"
-
-    if reasons:
-        footer_text = ", ".join(reasons)
-    elif level == 0 and is_ascii_confusable:
-        footer_label = "NOTE"
-        footer_text = "Common Lookalike (Safe)"
-
-    return {
-        "level": level,
-        "level_text": f"LEVEL {level}",
-        "verdict_text": label,
-        "header_class": header_class,
-        "icon_key": icon,
-        "facets": [vis, struct, ident], # Pass the dicts directly
-        "footer_label": footer_label,
-        "footer_text": footer_text,
-        "footer_class": footer_class
-    }
-
+# The Inspector
 
 def render_inspector_panel(data):
     """
@@ -12621,176 +12264,6 @@ def render_inspector_panel(data):
     except Exception:
         pass
 
-def analyze_intel_profile(t, threat_flags, script_stats):
-    """
-    The Intel Engine (UTS #39 Inspired / UTS #55).
-    Determines Restriction Level and classifies Homoglyph Topology.
-    Implements Multi-Vector Threat Stacking with STRICT SEVERITY SORTING.
-    """
-    if not t: return None
-
-    # --- 1. Restriction Level Engine (UTS #39 Heuristic) ---
-    scripts_found = set()
-    for key in script_stats.keys():
-        if key.startswith("Script:"):
-            s = key.replace("Script: ", "").strip()
-            if s not in ("Common", "Inherited", "Unknown"):
-                scripts_found.add(s)
-
-    restriction_level = "UNRESTRICTED"
-    badge_class = "intel-badge-danger"
-    
-    count = len(scripts_found)
-    
-    if count == 0:
-        if all(ord(c) < 128 for c in t):
-            restriction_level = "ASCII-ONLY"
-            badge_class = "intel-badge-safe"
-        else:
-            restriction_level = "SINGLE SCRIPT (COMMON)"
-            badge_class = "intel-badge-safe"
-    elif count == 1:
-        restriction_level = f"SINGLE SCRIPT ({list(scripts_found)[0].upper()})"
-        badge_class = "intel-badge-safe"
-    elif count == 2:
-        cjk = {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
-        if "Latin" in scripts_found and any(s in cjk for s in scripts_found):
-             restriction_level = "HIGHLY RESTRICTIVE"
-             badge_class = "intel-badge-safe"
-        elif "Latin" in scripts_found and ("Greek" in scripts_found or "Cyrillic" in scripts_found):
-             restriction_level = "MINIMALLY RESTRICTIVE"
-             badge_class = "intel-badge-danger"
-        else:
-             restriction_level = "MINIMALLY RESTRICTIVE"
-             badge_class = "intel-badge-warn"
-    else:
-        restriction_level = "UNRESTRICTED"
-        badge_class = "intel-badge-danger"
-
-    # --- 2. Topology Classifier ---
-    topology = { "AMBIGUITY": 0, "SPOOFING": 0, "SYNTAX": 0, "HIDDEN": 0 }
-    
-    # --- 3. Token Exploit Generator ---
-    import base64
-    import re
-    
-    # GREEDY TOKENIZER (V3): Whitespace split to capture symbols/controls
-    raw_tokens = t.split()
-    
-    targets = []
-    processed_tokens = 0
-    
-    # Severity Weights for Sorting (Higher = Top of Stack)
-    SEVERITY_MAP = {
-        "CRIT": 3,
-        "HIGH": 2,
-        "MED": 1,
-        "LOW": 0
-    }
-    
-    for token in raw_tokens:
-        if len(token) < 2: continue
-        processed_tokens += 1
-        if processed_tokens > 200: break 
-        
-        # --- Multi-Vector Analysis ---
-        threat_stack = [] 
-        
-        t_scripts = set()
-        t_invis = False
-        t_bidi = False
-        
-        for char in token:
-            cp = ord(char)
-            # Script
-            sc = _find_in_ranges(cp, "Scripts")
-            if sc and sc not in ("Common", "Inherited"): t_scripts.add(sc)
-            # Invis
-            if INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_JOIN_CONTROL): t_invis = True
-            # Bidi
-            if INVIS_TABLE[cp] & INVIS_BIDI_CONTROL: t_bidi = True
-            
-        skeleton = _generate_uts39_skeleton(token)
-        if not skeleton: skeleton = token
-        
-        # --- Build The Hierarchy ---
-        
-        # Level 1: Execution (Syntax)
-        if t_bidi:
-            threat_stack.append({
-                "lvl": "CRIT", 
-                "type": "SYNTAX", 
-                "desc": "Bidi Control / Execution Risk"
-            })
-            topology["SYNTAX"] += 1
-            
-        # Level 2: Obfuscation (Hidden)
-        if t_invis:
-            threat_stack.append({
-                "lvl": "HIGH", 
-                "type": "HIDDEN", 
-                "desc": "Invisible / Format Control"
-            })
-            topology["HIDDEN"] += 1
-            
-        # Level 3: Spoofing (Structure)
-        if len(t_scripts) > 1:
-            is_risky_mix = "Latin" in t_scripts and ("Cyrillic" in t_scripts or "Greek" in t_scripts)
-            severity = "CRIT" if is_risky_mix else "HIGH"
-            threat_stack.append({
-                "lvl": severity, 
-                "type": "SPOOFING", 
-                "desc": f"Mixed Script ({', '.join(t_scripts)})"
-            })
-            topology["SPOOFING"] += 1
-
-        # Level 4: Spoofing (Visual/Homoglyph)
-        if skeleton != token:
-            is_token_ascii = all(ord(c) < 128 for c in token)
-            is_skel_ascii = all(ord(c) < 128 for c in skeleton)
-            
-            if not is_token_ascii and is_skel_ascii:
-                 threat_stack.append({
-                    "lvl": "MED", 
-                    "type": "SPOOFING", 
-                    "desc": "Cross-Script Homoglyph"
-                 })
-                 topology["SPOOFING"] += 1
-            else:
-                 topology["AMBIGUITY"] += 1
-
-        # --- Decision: Is this a High Value Target? ---
-        if threat_stack:
-            # FIX: STRICT SORT BY SEVERITY
-            # This ensures CRIT always appears before HIGH, regardless of detection order.
-            threat_stack.sort(key=lambda x: SEVERITY_MAP.get(x['lvl'], 0), reverse=True)
-            
-            try:
-                b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
-            except: b64 = "Error"
-            
-            hex_v = "".join(f"\\x{b:02X}" for b in token.encode("utf-8"))
-            
-            # Now index 0 is guaranteed to be the highest severity threat
-            primary_verdict = f"{threat_stack[0]['type']} ({threat_stack[0]['lvl']})"
-            
-            targets.append({
-                "token": token,
-                "verdict": primary_verdict,
-                "stack": threat_stack,
-                "b64": b64,
-                "hex": hex_v
-            })
-            
-            if len(targets) >= 15: break
-
-    return {
-        "restriction": restriction_level,
-        "badge_class": badge_class,
-        "topology": topology,
-        "targets": targets
-    }
-
 def render_adversarial_dashboard(adv_data: dict):
     """
     Renders the 'Suspicion Dashboard' (Adversarial Forensics).
@@ -12931,490 +12404,13 @@ def render_adversarial_dashboard(adv_data: dict):
         else:
             target_body.innerHTML = "".join(html_rows)
 
-def compute_threat_score(inputs):
-    """
-    The Threat Auditor (Maximal Forensic Logic).
-    Calculates Weaponization & Malice with Context-Aware Weighting.
-    
-    Principles:
-    1. Clean Room: Strictly excludes 'Rot' (Integrity issues).
-    2. Zero-Redundancy: Prevents double-counting of related vectors.
-    3. Multi-Vector Boost: Increases score if attacks span multiple pillars.
-    """
-    ledger = []
-    
-    def add_entry(vector, points, category):
-        ledger.append({"vector": vector, "points": int(points), "category": category})
+# ===============================================
+# BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
+# ===============================================
 
-    # --- PILLAR 1: EXECUTION (Target: Machine / Compiler) ---
-    # Severity: FATAL. One hit here is usually enough to Weaponize.
-    
-    has_execution_threat = False
-    
-    # [NEW] WAF / Payload Heuristics (Module 4)
-    # The WAF Simulator returns a raw risk score (0-100). We trust it.
-    waf_score = inputs.get("waf_score", 0)
-    if waf_score > 0:
-        add_entry(f"Payload Detected (WAF Pattern)", waf_score, "EXECUTION")
-        has_execution_threat = True
+# State Updaters
 
-    # [NEW] Normalization Injection (Syntax Predator)
-    # This is a confirmed CVE vector (U+FF07 -> '). 
-    norm_inj_count = inputs.get("norm_injection_count", 0)
-    if norm_inj_count > 0:
-        # High base penalty + density charge
-        pts = THR_BASE_EXECUTION + (norm_inj_count * 5)
-        add_entry(f"Normalization-Activated Injection (x{norm_inj_count})", pts, "EXECUTION")
-        has_execution_threat = True
-
-    # [NEW] Logic Bypass / Case Collision (Shapeshifter)
-    # Detects Dotless-i / Long-S attacks on logic
-    logic_bypass_count = inputs.get("logic_bypass_count", 0)
-    if logic_bypass_count > 0:
-        add_entry("Logic Bypass Vector (Case Collision)", THR_BASE_EXECUTION, "EXECUTION")
-        has_execution_threat = True
-
-    # Trojan Source (Bidi Syntax Attack)
-    # Critical distinction: Must be Override/Embedding, not just Isolates.
-    if inputs.get("malicious_bidi"):
-        add_entry("Trojan Source (Malicious Bidi)", THR_BASE_EXECUTION, "EXECUTION")
-        has_execution_threat = True
-        
-    # Syntax Spoofing (Unicode 17.0)
-    # Variation Selector attached to operators/syntax (e.g. `+` + VS1)
-    if inputs.get("suspicious_syntax_vs"):
-        add_entry("Syntax Spoofing (VS on Operator)", THR_BASE_EXECUTION, "EXECUTION")
-        has_execution_threat = True
-
-    # --- PILLAR 2: SPOOFING (Target: Human / ID) ---
-    # Severity: HIGH. Can lead to Phishing or Identity Theft.
-    
-    # Cross-Script Homoglyphs (The Classic)
-    drift_cross = inputs.get("drift_cross_script", 0)
-    if drift_cross > 0:
-        # Saturation Logic: 
-        # Base (25) + 1pt per char, capped at +25 extra. 
-        # Prevents 1000 homoglyphs from scoring 1000 points.
-        density_bonus = min(drift_cross, 25) * THR_MULT_SPOOFING
-        total_pts = THR_BASE_SPOOFING + density_bonus
-        add_entry(f"Cross-Script Homoglyphs ({drift_cross})", total_pts, "SPOOFING")
-
-    # Mixed Scripts (Ontology Check)
-    mix_class = inputs.get("script_mix_class", "")
-    if "Highly Mixed" in mix_class:
-        # If we already have Homoglyphs, this is redundant context, but valid.
-        # We charge a lower 'Obfuscation' fee if purely structural.
-        add_entry(mix_class, THR_BASE_OBFUSCATION, "SPOOFING")
-    elif "Mixed Scripts (Base)" in mix_class:
-        add_entry(mix_class, THR_BASE_SUSPICIOUS, "SUSPICIOUS")
-
-    # --- PILLAR 3: OBFUSCATION (Target: Filter / Scanner) ---
-    # Severity: MEDIUM/HIGH. Used to hide payloads or bypass AI safety.
-    
-    # Massive Clusters (Invisible Walls)
-    cluster_len = inputs.get("max_invis_run", 0)
-    cluster_count = inputs.get("invis_cluster_count", 0)
-    rgi_count = inputs.get("rgi_count", 0)
-    
-    # Smart Filter: Is this just broken Emoji glue?
-    is_likely_emoji_glue = (rgi_count > 0 and cluster_len <= 2 and cluster_count <= (rgi_count * 3))
-    
-    if cluster_len > 4:
-        # Logic: Massive contiguous run is almost certainly malicious/stego
-        add_entry(f"Massive Invisible Cluster (len={cluster_len})", THR_BASE_OBFUSCATION, "OBFUSCATION")
-    elif cluster_count > 0 and not is_likely_emoji_glue:
-         # If not Emoji glue and not Trojan Source (already charged), charge for Obfuscation
-         if not inputs.get("malicious_bidi"):
-             pts = THR_BASE_OBFUSCATION + min(cluster_count, 10) * THR_MULT_OBFUSCATION
-             add_entry(f"Invisible Clusters ({cluster_count})", pts, "OBFUSCATION")
-
-    # Plane 14 Tags (Steganography / AI Jailbreak)
-    tags = inputs.get("tags_count", 0)
-    if tags > 0:
-        # Tags are illegal in almost all protocols. High penalty.
-        add_entry(f"Plane 14 Tags ({tags})", THR_BASE_OBFUSCATION + 10, "OBFUSCATION")
-
-    # Forced Presentation (VS15/VS16 Abuse)
-    forced_pres = inputs.get("forced_pres_count", 0)
-    if forced_pres > 0:
-        add_entry(f"Forced Presentation (VS15/VS16)", 5, "SUSPICIOUS") # Low, often just artifacts
-        
-    # --- 4. SUSPICIOUS CONTEXT (Tier 4) ---
-    # Unclosed Bidi (Sloppy) - Only charge if we didn't charge for Malicious Bidi
-    if inputs.get("has_unclosed_bidi") and not inputs.get("malicious_bidi"):
-        add_entry("Unclosed Bidi Sequence", THR_BASE_SUSPICIOUS, "SUSPICIOUS")
-
-    # --- 5. SCORE SYNTHESIS ---
-    total_score = sum(item["points"] for item in ledger)
-    
-    # Multi-Vector Boost (The "Smart" Logic)
-    # If we have Execution AND Spoofing/Obfuscation, it's a coordinated attack.
-    categories = {item["category"] for item in ledger}
-    if "EXECUTION" in categories and len(categories) > 1:
-        boost = 10
-        total_score += boost
-        add_entry("Multi-Vector Correlation (Execution + Other)", boost, "CORRELATION")
-
-    # --- VERDICT DETERMINATION ---
-    verdict = "CLEAN"
-    severity_class = "ok"
-    
-    if total_score >= 40:
-        verdict = "WEAPONIZED"
-        severity_class = "crit"
-    elif total_score >= 15:
-        verdict = "HIGH RISK"
-        severity_class = "crit" # High Risk is functionally critical
-    elif total_score >= 1:
-        verdict = "SUSPICIOUS"
-        severity_class = "warn"
-
-    return {
-        "score": total_score,
-        "verdict": verdict,
-        "severity_class": severity_class,
-        "ledger": ledger,
-        "noise": inputs.get("noise_list", []) 
-    }
-
-def render_encoding_footprint(t: str):
-    """
-    Forensic Signal Engine v12.1 (Detail Upgrade):
-    Now reports specific unique characters (Glyph, U+, Legacy Hex) with clickable positions.
-    """
-    integrity_container = document.getElementById("encoding-integrity")
-    provenance_container = document.getElementById("encoding-provenance")
-    synthesis_container = document.getElementById("encoding-synthesis")
-    
-    if not integrity_container or not provenance_container: return
-    if not t:
-        integrity_container.innerHTML = ""
-        provenance_container.innerHTML = ""
-        if synthesis_container: synthesis_container.innerHTML = ""
-        return
-
-    total_chars = len(t)
-    # We need indices for the detail report, so we'll iterate properly below.
-    # Quick check for signal existence:
-    has_signal = any(ord(c) >= 128 for c in t)
-    
-    # --- 1. EXCLUSIVITY & DETAIL TRACKING ---
-    legacy_codecs = [item for item in FORENSIC_ENCODINGS if "utf" not in item[1]]
-    # Store full details: label -> list of {char, cp, idx, bytes_hex}
-    exclusive_details = {item[0]: [] for item in legacy_codecs}
-    
-    total_non_ascii = 0
-    non_ascii_chars = [] # Keep for signal strength calc
-
-    if has_signal:
-        for i, char in enumerate(t):
-            if ord(char) < 128: continue
-            
-            total_non_ascii += 1
-            non_ascii_chars.append(char)
-            
-            supported_by = []
-            valid_encodings = [] # Stores (label, bytes)
-            
-            for label, codec, _ in legacy_codecs:
-                try:
-                    enc_bytes = char.encode(codec)
-                    supported_by.append(label)
-                    valid_encodings.append((label, enc_bytes))
-                except UnicodeEncodeError:
-                    pass
-            
-            # If exactly one legacy codec supports this character, it's a Unique Signal
-            if len(supported_by) == 1:
-                target_label = supported_by[0]
-                target_bytes = valid_encodings[0][1]
-                hex_str = " ".join(f"{b:02X}" for b in target_bytes)
-                
-                exclusive_details[target_label].append({
-                    'char': char,
-                    'cp': ord(char),
-                    'idx': i,
-                    'bytes': hex_str
-                })
-
-    # --- 2. RENDER LOOP ---
-    integrity_html = []
-    provenance_data = []
-    utf_broken = False
-    
-    for label, codec, tooltip in FORENSIC_ENCODINGS:
-        try:
-            # Calc Total Compatibility (T)
-            try:
-                t.encode(codec)
-                valid_count = total_chars
-            except UnicodeEncodeError:
-                valid_bytes = t.encode(codec, 'ignore')
-                valid_s = valid_bytes.decode(codec)
-                valid_count = len(valid_s)
-            pct_total = (valid_count / total_chars) * 100
-            
-            # Calc Signal Strength (S)
-            signal_strength = 0.0
-            if "utf" in codec:
-                signal_strength = pct_total
-                if pct_total < 100: utf_broken = True
-            elif has_signal:
-                # Reconstruct non-ascii string for bulk check
-                non_ascii_str = "".join(non_ascii_chars)
-                try:
-                    non_ascii_str.encode(codec)
-                    valid_signal = total_non_ascii
-                except:
-                    valid_b = non_ascii_str.encode(codec, 'ignore')
-                    valid_s = valid_b.decode(codec)
-                    valid_signal = len(valid_s)
-                signal_strength = (valid_signal / total_non_ascii) * 100
-            
-            # Retrieve details count
-            uniq_hits = len(exclusive_details.get(label, []))
-            
-            # --- VISUAL STATUS LOGIC ---
-            status_cls = ""
-            val_primary = ""
-            val_secondary = ""
-            
-            if "utf" in codec:
-                # Modern Anchors
-                status_cls = "status-safe" if valid_count == total_chars else "status-dead"
-                val_primary = "100%" if valid_count == total_chars else f"{pct_total:.1f}%"
-                
-                it_lines = [f"[{label}] {tooltip}"]
-                if valid_count == total_chars:
-                    it_lines.append("• Status: VALID (100% Integrity)")
-                else:
-                    it_lines.append("• Status: CORRUPT / MALFORMED")
-                
-                integrity_html.append(f"""
-                    <div class="enc-cell" title="{chr(10).join(it_lines)}">
-                        <div class="enc-label">{label}</div>
-                        <div class="enc-val-primary {status_cls}">{val_primary}</div>
-                    </div>
-                """)
-            else:
-                # Legacy Filters
-                report_lines = [f"[{label}] {tooltip}"]
-                
-                if not has_signal:
-                    # ASCII MODE: All legacy encodings are Compatible (Green)
-                    status_cls = "status-safe"
-                    val_primary = "100%"
-                    val_secondary = "ASCII"
-                    
-                    report_lines.append(f"• Compatibility: 100.0% of this ASCII-only text.")
-                    report_lines.append("• Status: Safe. Can be saved without data loss.")
-                    report_lines.append("• Forensic Value: Null (ASCII is universal).")
-                    
-                else:
-                    # MIXED MODE: Show Signal (S)
-                    if signal_strength == 100.0:
-                        status_cls = "status-uniq" if uniq_hits > 0 else "status-safe"
-                    elif valid_count == 0:
-                        status_cls = "status-dead" # Gray
-                    else:
-                        status_cls = "status-risk" # Orange
-                    
-                    val_primary = f"S:{signal_strength:.0f}%"
-                    val_secondary = f"C:{pct_total:.0f}%"
-                    
-                    report_lines.append(f"• Signal Strength: {signal_strength:.1f}% of non-ASCII characters.")
-                    report_lines.append(f"• Compatibility: {pct_total:.1f}% of this text fits this encoding.")
-                    
-                    if uniq_hits > 0:
-                        report_lines.append(f"\n◈ UNIQUE MATCH: Sole supporter of {uniq_hits} specific character(s).")
-                    elif signal_strength == 100.0:
-                        report_lines.append("• Assessment: Strong candidate (fully explains foreign characters).")
-                    elif signal_strength == 0.0:
-                        report_lines.append("• Assessment: Irrelevant (Explains 0% of foreign chars).")
-                    else:
-                        report_lines.append("• Assessment: Partial / Data Loss Risk (Mojibake).")
-
-                # ASCII Cell Override (Blue Baseline)
-                if label == "ASCII" and has_signal:
-                    val_primary = "BASELINE"
-                    status_cls = "status-baseline" # BLUE
-                    val_secondary = ""
-                    
-                    report_lines = [f"[{label}] {tooltip}"]
-                    report_lines.append(f"• Signal Strength: 0.0% (Non-ASCII)")
-                    report_lines.append(f"• Compatibility: {pct_total:.1f}% (ASCII subset only)")
-                    report_lines.append("• Forensic Role: Baseline only. Always safe, but not an encoding candidate.")
-
-                lbl_display = label + (' ◈' if uniq_hits > 0 else '')
-                full_tooltip = "\n".join(report_lines)
-                
-                provenance_data.append({
-                    'html': f"""
-                        <div class="enc-cell" title="{full_tooltip}">
-                            <div class="enc-label">{lbl_display}</div>
-                            <div class="enc-metrics">
-                                <span class="enc-val-primary {status_cls}">{val_primary}</span>
-                                <span class="enc-val-secondary">{val_secondary}</span>
-                            </div>
-                        </div>
-                    """,
-                    'signal': signal_strength, 'total': pct_total, 'unique': uniq_hits, 'label': label
-                })
-
-        except Exception: pass
-
-    # --- 3. VISIBILITY & SORTING ---
-    provenance_data.sort(key=lambda x: (-x['unique'], -x['signal'], -x['total'], x['label']))
-    
-    # Uni-Only Column
-    legacy_codecs_list = [item[1] for item in legacy_codecs]
-    unsupported_chars = []
-    for char in t:
-        if ord(char) < 128: continue
-        supported = False
-        for l_codec in legacy_codecs_list:
-            try:
-                char.encode(l_codec); supported=True; break
-            except: continue
-        if not supported: unsupported_chars.append(char)
-    
-    unsupported_count = len(unsupported_chars)
-    other_pct = (unsupported_count / total_chars) * 100
-    
-    other_style = "status-dead"
-    other_tooltip = "All characters fit within tracked legacy encodings."
-    if unsupported_count > 0:
-        other_style = "status-modern"
-        breakdown = {"Emoji": 0, "Math": 0, "Private": 0, "Other": 0}
-        for ch in unsupported_chars:
-            cat = unicodedata.category(ch)
-            cp = ord(ch)
-            if _find_in_ranges(cp, "Emoji") or _find_in_ranges(cp, "Extended_Pictographic"): breakdown["Emoji"] += 1
-            elif cat == "Sm": breakdown["Math"] += 1
-            elif cat in ("Co", "Cn"): breakdown["Private"] += 1
-            else: breakdown["Other"] += 1
-        bd_str = "\n".join([f"• {k}: {v}" for k,v in breakdown.items() if v > 0])
-        other_tooltip = f"[UNI-ONLY] Beyond Legacy\n• Requires Unicode: {unsupported_count} char(s) cannot be saved as ANSI.\n Breakdown:\n{bd_str}"
-
-    integrity_html.append(f"""
-        <div class="enc-cell enc-cell-other" title="{other_tooltip}">
-            <div class="enc-label">UNI-ONLY</div>
-            <div class="enc-metrics" style="flex-direction: column; gap: 0;">
-                <span class="enc-val-primary {other_style}">{other_pct:.1f}%</span>
-                <span class="enc-val-secondary" style="font-size: 0.6rem;">{unsupported_count} chars</span>
-            </div>
-        </div>
-    """)
-
-    # Render Provenance
-    prov_html = []
-    hidden_count = 0
-    for item in provenance_data:
-        label = item['label']; sig = item['signal']; uniq = item['unique']
-        is_visible = True
-        
-        if has_signal:
-            if sig == 0 and uniq == 0: is_visible = False
-        else:
-            if len(prov_html) >= 6: is_visible = False
-        if label == "ASCII": is_visible = True
-        
-        html_str = item['html']
-        if not is_visible:
-            html_str = html_str.replace('class="enc-cell"', 'class="enc-cell enc-hidden"')
-            hidden_count += 1
-        prov_html.append(html_str)
-
-    if hidden_count > 0:
-        prov_html.append(f"""
-            <div class="enc-expand-btn" onclick="document.querySelectorAll('.enc-hidden').forEach(e => e.classList.remove('enc-hidden')); this.style.display='none';">
-                <span>+{hidden_count}</span><span>More</span>
-            </div>
-        """)
-
-    integrity_container.innerHTML = "".join(integrity_html)
-    provenance_container.innerHTML = "".join(prov_html)
-
-    # --- 4. SYNTHESIS ---
-    if synthesis_container:
-        badge_class = "syn-universal"; badge_text = "ANALYSIS"; summary_text = ""
-        perfect_candidates = [d['label'] for d in provenance_data if d['signal'] == 100.0]
-        
-        if utf_broken:
-            badge_class = "syn-critical"; badge_text = "CORRUPT DATA"
-            summary_text = "Text contains <strong>invalid Unicode sequences</strong> (lone surrogates)."
-        elif other_pct > 0:
-            badge_class = "syn-modern"; badge_text = "REQUIRES UNICODE"
-            summary_text = f"Text contains <strong>{unsupported_count} character(s)</strong> (e.g. Emoji, Math) that <strong>cannot be saved as ANSI</strong>."
-        elif not has_signal:
-            badge_class = "syn-universal"; badge_text = "UNIVERSAL ASCII"
-            summary_text = "Text is <strong>100% 7-bit ASCII</strong>. Compatible with all systems."
-        elif any(len(v) > 0 for v in exclusive_details.values()):
-            # Find best match (label with highest unique count)
-            best_label = max(exclusive_details, key=lambda k: len(exclusive_details[k]))
-            hits = exclusive_details[best_label]
-            count = len(hits)
-            
-            badge_class = "syn-match"; badge_text = f"UNIQUE SIGNAL: {best_label}"
-            
-            # Build Detailed Breakdown
-            details = []
-            for h in hits[:5]: # Top 5 to avoid bloat
-                # Create clickable link using the bridge function
-                pos_link = _create_position_link(h['idx'], t)
-                char_disp = _escape_html(h['char'])
-                details.append(f"<strong>{char_disp}</strong> (U+{h['cp']:04X} &rarr; {h['bytes']}) at {pos_link}")
-            
-            details_str = ", ".join(details)
-            if count > 5:
-                details_str += f", and {count - 5} more"
-            
-            summary_text = f"Contains <strong>{count} unique character(s)</strong> specific to <strong>{best_label}</strong>: {details_str}."
-            
-        elif perfect_candidates:
-            candidates = ", ".join(perfect_candidates[:3])
-            badge_class = "syn-universal"; badge_text = "AMBIGUOUS LEGACY"
-            summary_text = f"Non-ASCII characters are fully compatible with multiple encodings (<strong>{candidates}</strong>)."
-        else:
-            badge_class = "syn-critical"; badge_text = "MIXED / MOJIBAKE"
-            summary_text = "Does not fit any single legacy encoding. Likely a mix of sources."
-
-        synthesis_container.innerHTML = f"""
-            <div class="syn-badge {badge_class}">{badge_text}</div>
-            <div class="syn-text">{summary_text}</div>
-        """
-
-# ---
-# 6. MAIN ORCHESTRATOR
-# ---
-
-# Ensure registry exists at module level
-if 'HUD_HIT_REGISTRY' not in globals():
-    HUD_HIT_REGISTRY = {}
-
-def _register_hit(key: str, start: int, end: int, label: str):
-    """Helper to append a hit to the global registry."""
-    if key not in HUD_HIT_REGISTRY:
-        HUD_HIT_REGISTRY[key] = []
-    HUD_HIT_REGISTRY[key].append((start, end, label))
-
-def _dom_to_logical(t: str, dom_idx: int) -> int:
-    """
-    Converts a DOM UTF-16 index to a Python Logical Code Point index.
-    """
-    if not t: return 0
-    
-    logical_idx = 0
-    utf16_acc = 0
-    
-    for char in t:
-        if utf16_acc >= dom_idx:
-            return logical_idx
-        utf16_acc += (2 if ord(char) > 0xFFFF else 1)
-        logical_idx += 1
-        
-    return logical_idx
-
+@create_proxy
 def populate_hud_registry(t: str):
     """Populates simple metric buckets for the HUD Stepper."""
     js_array = window.Array.from_(t)
@@ -13438,7 +12434,6 @@ def populate_hud_registry(t: str):
         if cat.startswith('P'):
             if not (cp <= 0xFF or (0x2000 <= cp <= 0x206F)):
                 _register_hit("punc_exotic", i, i+1, f"Exotic Punct (U+{cp:04X})")
-
 
 @create_proxy
 def update_all(event=None):
@@ -13909,481 +12904,6 @@ def update_all(event=None):
         print(f"Error packaging data for Stage 2: {e}")
 
 @create_proxy
-def sanitize_text(profile_type):
-    """
-    Forensic Remediation Engine.
-    Profiles:
-      - 'strict': Nukes ALL characters matching INVIS_ANY_MASK.
-      - 'smart': Removes 'Artifacts' (ZWSP, LRM) but PRESERVES structural ZWJ/VS for Emojis.
-    """
-    el = document.getElementById("text-input")
-    if not el or not el.value: return
-    
-    raw_text = el.value
-    new_chars = []
-    removed_count = 0
-    
-    # [Smart Profile Logic]
-    # We need to know which ZWJs are "load-bearing" (part of valid emojis).
-    # We re-run a quick analysis to find RGI sequences if in smart mode.
-    valid_emoji_indices = set()
-    if profile_type == 'smart':
-        # Reuse the centralized Emoji Engine logic
-        # We scan for RGI sequences and whitelist their internal indices
-        report = compute_emoji_analysis(raw_text)
-        emoji_list = report.get("emoji_list", [])
-        for item in emoji_list:
-            # If it's a sequence, mark its internal positions as protected
-            if item['kind'] == 'emoji-sequence' and item['rgi']:
-                start = item['index']
-                length = len(item['sequence'])
-                for k in range(start, start + length):
-                    valid_emoji_indices.add(k)
-
-    for i, char in enumerate(raw_text):
-        cp = ord(char)
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        should_remove = False
-        
-        if mask & INVIS_ANY_MASK:
-            # 1. STRICT MODE: Destroy everything invisible
-            if profile_type == 'strict':
-                should_remove = True
-                
-            # 2. SMART MODE: Targeted remediation
-            elif profile_type == 'smart':
-                # ALWAYS remove High-Risk Artifacts (ZWSP, Bidi, Tags)
-                if cp in (0x200B, 0x200E, 0x200F, 0x202A, 0x202B, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069):
-                    should_remove = True
-                # Remove deprecated/zombie controls
-                elif 0x206A <= cp <= 0x206F:
-                    should_remove = True
-                # Remove Plane 14 Tags
-                elif mask & INVIS_TAG:
-                    should_remove = True
-                
-                # PROTECT Structural Glue (ZWJ/VS) only if inside a valid Emoji
-                # [FIXED] Now includes VS15 (0xFE0E) in protection list
-                elif cp in (0x200D, 0xFE0F, 0xFE0E):
-                    if i not in valid_emoji_indices:
-                        should_remove = True
-                        
-        if not should_remove:
-            new_chars.append(char)
-        else:
-            removed_count += 1
-            
-    if removed_count > 0:
-        el.value = "".join(new_chars)
-        # Trigger full re-analysis
-        update_all(None)
-        
-        # Feedback
-        status_line = document.getElementById("status-line")
-        if status_line:
-            status_line.innerText = f"Sanitized {removed_count} particle(s) using '{profile_type.upper()}' profile."
-            status_line.className = "status-ready"
-
-# Expose the sanitizer to the UI
-window.TEXTTICS_SANITIZE = sanitize_text
-
-@create_proxy
-def reveal_invisibles(event=None):
-    """
-    TRANSFORM MODE (btn-reveal): 
-    Replaces invisible characters with visible tags (e.g. [ZWSP]).
-    Toggle: Click again to Revert.
-    """
-    el = document.getElementById("text-input")
-    details_line = document.getElementById("reveal-details")
-    reveal_btn = document.getElementById("btn-reveal")
-    reveal2_btn = document.getElementById("btn-reveal2")
-    
-    if not el or not el.value: return
-
-    # --- 1. REVERT LOGIC (Obfuscate Back) ---
-    if el.getAttribute("data-revealed") == "true":
-        original = el.getAttribute("data-original")
-        if original: el.value = original
-        
-        el.removeAttribute("data-revealed")
-        el.removeAttribute("data-original")
-        el.classList.remove("reveal-active")
-        
-        if reveal_btn: 
-            reveal_btn.innerHTML = "Transform Non-Standard Invisibles &#x21C4;"
-        
-        # Reset UI
-        update_all(None)
-        return
-
-    # --- 2. TRANSFORM LOGIC ---
-    raw_text = el.value
-    new_chars = []
-    total_replaced = 0
-    
-    for char in raw_text:
-        cp = ord(char)
-        replacement = None
-        
-        # [Phase 1] Explicit Space Visualization
-        # We map standard ASCII Space (0x20) to a Middle Dot (·) 
-        # This reveals double-spaces and trailing whitespace deterministically.
-        if cp == 0x0020:
-            replacement = "\u00B7" # · (Middle Dot)
-            
-        elif cp in INVISIBLE_MAPPING:
-            replacement = INVISIBLE_MAPPING[cp]
-        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
-            vs_offset = 1 if cp <= 0xFE0F else 17
-            base = 0xFE00 if cp <= 0xFE0F else 0xE0100
-            replacement = f"[VS{cp - base + vs_offset}]"
-        elif 0xE0000 <= cp <= 0xE007F:
-             replacement = f"[TAG:U+{cp:04X}]"
-             
-        if replacement:
-            new_chars.append(replacement)
-            total_replaced += 1
-        else:
-            new_chars.append(char)
-            
-    if total_replaced > 0:
-        # Save state
-        el.setAttribute("data-original", raw_text)
-        el.setAttribute("data-revealed", "true")
-        el.value = "".join(new_chars)
-        el.classList.add("reveal-active")
-        
-        # Toggle Button Text
-        if reveal_btn: 
-            reveal_btn.style.display = "flex"
-            reveal_btn.innerHTML = "Revert to Original &#x21A9;"
-            
-        if reveal2_btn: reveal2_btn.style.display = "flex"
-        
-        # Update RIGHT Status (Left remains "Input: Ready")
-        details_line.className = "status-details success"
-        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
-        details_line.innerHTML = f"Non-Standard Invisibles:&nbsp;{total_replaced}&nbsp;Deobfuscated&nbsp;{icon_eye}"
-
-@create_proxy
-def highlight_specific_char(target_cp_val):
-    """
-    Atlas Action: Finds and selects the next occurrence of a specific code point.
-    Args:
-        target_cp_val: Integer code point (passed from JS)
-    """
-    el = document.getElementById("text-input")
-    if not el or not el.value: return
-    
-    # Ensure input is int (JS passes numbers, but safety first)
-    try:
-        target_cp = int(target_cp_val)
-    except:
-        return
-
-    text = str(el.value)
-    
-    # 1. Map all occurrences of this specific char
-    ranges = []
-    current_utf16_idx = 0
-    
-    for char in text:
-        cp = ord(char)
-        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
-        
-        if cp == target_cp:
-            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
-            
-        current_utf16_idx += char_len
-
-    count = len(ranges)
-    if count == 0: return
-
-    # 2. Find NEXT relative to cursor
-    current_end_pos = el.selectionEnd
-    target_range = None
-    target_idx = 1
-    
-    for i, r in enumerate(ranges):
-        if r[0] >= current_end_pos:
-            target_range = r
-            target_idx = i + 1
-            break
-            
-    # Wrap-around
-    if target_range is None:
-        target_range = ranges[0]
-        target_idx = 1
-            
-    # 3. Select
-    el.blur()
-    el.focus()
-    el.setSelectionRange(target_range[0], target_range[1])
-    
-    # 4. Feedback (Reusing the NSI status line for consistency)
-    details_line = document.getElementById("reveal-details")
-    if details_line:
-        details_line.className = "status-details warn"
-        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-        hex_disp = f"U+{target_cp:04X}"
-        details_line.innerHTML = f"<strong>Atlas Finder ({hex_disp}):</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
-        
-    # 5. Trigger Inspector to show details for this char
-    inspect_character(None)
-
-# Expose to JS
-window.TEXTTICS_HIGHLIGHT_CHAR = highlight_specific_char
-
-@create_proxy
-def reveal2_invisibles(event=None):
-    """
-    HIGHLIGHT MODE (btn-reveal2): 
-    Step-through finder. Selects the NEXT invisible character relative to cursor.
-    UPDATED: Now correctly syncs with the Inspector Panel.
-    """
-    el = document.getElementById("text-input")
-    details_line = document.getElementById("reveal-details")
-    
-    if not el or not el.value: return
-    
-    text = str(el.value)
-    ranges = []
-    current_utf16_idx = 0
-    
-    # 1. Map all invisible positions
-    for char in text:
-        cp = ord(char)
-        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
-        
-        is_target = False
-        if cp in INVISIBLE_MAPPING: is_target = True
-        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: is_target = True
-        elif 0xE0000 <= cp <= 0xE007F: is_target = True
-            
-        if is_target:
-            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
-            
-        current_utf16_idx += char_len
-
-    count = len(ranges)
-    if count == 0: return
-
-    # 2. Find the NEXT target relative to the END of the current selection.
-    current_end_pos = el.selectionEnd
-    
-    target_range = None
-    target_idx = 1
-    
-    # Scan for the first range that starts AFTER (or at) the current cursor end
-    for i, r in enumerate(ranges):
-        if r[0] >= current_end_pos:
-            target_range = r
-            target_idx = i + 1
-            break
-            
-    # 3. Wrap-around Logic (Infinite Cycle)
-    if target_range is None:
-        target_range = ranges[0]
-        target_idx = 1
-            
-    # 4. Execute Selection
-    el.blur()
-    el.focus()
-    el.setSelectionRange(target_range[0], target_range[1])
-    
-    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
-    # We manually call the inspector logic to update the bottom panel immediately.
-    # We pass None because the function doesn't actually use the event argument.
-    inspect_character(None)
-    
-    # 5. Feedback
-    if details_line:
-        details_line.className = "status-details warn"
-        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
-        
-        # Get hex code for display
-        try:
-            raw_idx = 0
-            acc = 0
-            for j, char in enumerate(text):
-                slen = 2 if ord(char) > 0xFFFF else 1
-                if acc == target_range[0]:
-                    raw_idx = j
-                    break
-                acc += slen
-            
-            char_code = f"U+{ord(text[raw_idx]):04X}"
-        except:
-            char_code = "INVISIBLE"
-
-        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
-
-# The Bridge
-window.cycle_hud_metric = cycle_hud_metric
-
-@create_proxy
-def find_next_sequence(target_str):
-    """
-    Statistical Navigator.
-    Finds and selects the next occurrence of a text sequence (case-insensitive).
-    """
-    el = document.getElementById("text-input")
-    if not el or not el.value or not target_str: return
-    
-    t = str(el.value)
-    t_lower = t.lower()
-    target_lower = str(target_str).lower()
-    
-    # Start searching from AFTER the current selection
-    start_pos = el.selectionEnd
-    
-    # 1. Find next occurrence
-    idx = t_lower.find(target_lower, start_pos)
-    
-    # 2. Wrap around if not found
-    if idx == -1:
-        idx = t_lower.find(target_lower)
-        
-    if idx != -1:
-        # 3. Calculate UTF-16 DOM indices for selection
-        dom_start = 0
-        utf16_acc = 0
-        
-        # Fast-forward to the match index
-        # We need to sum the UTF-16 lengths of all chars BEFORE the match
-        for i in range(idx):
-            char = t[i]
-            utf16_acc += (2 if ord(char) > 0xFFFF else 1)
-        dom_start = utf16_acc
-        
-        # Calculate length of the matched string in UTF-16
-        match_str = t[idx : idx + len(target_str)]
-        dom_len = sum(2 if ord(c) > 0xFFFF else 1 for c in match_str)
-        
-        # 4. Select
-        el.focus()
-        el.setSelectionRange(dom_start, dom_start + dom_len)
-        
-        # 5. Feedback
-        status = document.getElementById("reveal-details")
-        if status:
-            status.className = "status-details status-hud-active"
-            status.innerHTML = f"<strong>Finding:</strong> '{_escape_html(target_str)}'"
-
-# Expose to JS
-window.TEXTTICS_FIND_SEQ = find_next_sequence
-
-# ==========================================
-# 7. FORENSIC WORKBENCH UTILITIES (Restored)
-# ==========================================
-
-@create_proxy
-def py_get_code_snippet(lang):
-    """
-    Generates a safe, escaped string literal of the current input 
-    for use in Python or JavaScript source code.
-    """
-    el = document.getElementById("text-input")
-    if not el or not el.value: return ""
-    
-    t = el.value
-    output = ""
-    
-    # Forensic escaping: We want ASCII-safe output.
-    # Logic: Escape anything non-printable, non-ASCII, or quote-breaking.
-    
-    if lang == 'python':
-        escaped = ""
-        for char in t:
-            cp = ord(char)
-            # Escape non-ascii, controls, quotes, and backslashes
-            if cp < 32 or cp > 126 or cp == 0x5C or cp == 0x22 or cp == 0x27:
-                if cp <= 0xFFFF:
-                    escaped += f"\\u{cp:04x}"
-                else:
-                    escaped += f"\\U{cp:08x}"
-            else:
-                escaped += char
-        output = f's = "{escaped}"'
-        
-    elif lang == 'javascript':
-        escaped = ""
-        for char in t:
-            cp = ord(char)
-            if cp < 32 or cp > 126 or cp == 0x5C or cp == 0x22 or cp == 0x27:
-                if cp <= 0xFFFF:
-                    escaped += f"\\u{cp:04x}"
-                else:
-                    escaped += f"\\u{{{cp:x}}}" # ES6 format for astral planes
-            else:
-                escaped += char
-        output = f'const s = "{escaped}";'
-        
-    return output
-
-@create_proxy
-def py_generate_evidence():
-    """
-    Generates a full JSON forensic artifact and triggers a browser download.
-    Re-runs analysis to ensure the snapshot is authoritative.
-    """
-    el = document.getElementById("text-input")
-    if not el or not el.value: return
-    
-    t = el.value
-    timestamp = window.Date.new().toISOString()
-    
-    # Re-run key analysis to get fresh data
-    emoji_report = compute_emoji_analysis(t)
-    threat_results = compute_threat_analysis(t, script_run_stats)
-    
-    # Calculate SHA-256 for Chain of Custody
-    sha256 = hashlib.sha256(t.encode('utf-8')).hexdigest()
-    
-    evidence = {
-        "meta": {
-            "tool": "Text...tics Stage 1",
-            "timestamp": timestamp,
-            "version": "Forensic-v1.0"
-        },
-        "artifact": {
-            "length_codepoints": len(t),
-            "sha256": sha256,
-            "raw_text": t
-        },
-        "analysis_snapshot": {
-            "flags": list(threat_results.get('flags', {}).keys()),
-            "emoji_counts": emoji_report.get('counts', {}),
-            "hashes": threat_results.get('hashes', {}),
-            "normalization_states": {
-                "nfkc": threat_results.get('states', {}).get('s2', ''),
-                "skeleton": threat_results.get('states', {}).get('s4', '')
-            }
-        }
-    }
-    
-    # Convert to JSON
-    json_str = json.dumps(evidence, indent=2, ensure_ascii=False)
-    
-    # Trigger Download via JS Blob
-    blob = window.Blob.new([json_str], {type: "application/json"})
-    url = window.URL.createObjectURL(blob)
-    
-    a = document.createElement("a")
-    a.href = url
-    a.download = f"forensic_artifact_{sha256[:8]}.json"
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
-
-# Expose to JS Bridge
-window.py_get_code_snippet = py_get_code_snippet
-window.py_generate_evidence = py_generate_evidence
-
-# --- [NEW] Verification Bench Event Logic ---
-@create_proxy
 def update_verification(event):
     """
     Forensic Renderer V8 (Context Aware).
@@ -14493,6 +13013,1053 @@ def update_verification(event):
         verdict_display.className = "verdict-box" 
         verdict_display.classList.add(res["css_class"])
 
+# Interaction Handlers
+
+@create_proxy
+def inspect_character(event):
+    """
+    Forensic Inspector v3.1: Selection-Aware.
+    Now allows inspection even when text is highlighted/selected (e.g., by the Invisible Finder).
+    """
+    try:
+        text_input = document.getElementById("text-input")
+        if text_input.classList.contains("reveal-active"):
+            render_inspector_panel({"error": "Inspection Paused (Reveal Active)"})
+            return
+
+        dom_pos = text_input.selectionStart
+        
+        # [REMOVED BLOCKER] 
+        # Previously, we returned here if selectionStart != selectionEnd.
+        # We removed that check so the Inspector works when the Highlighter selects a char.
+
+        # Handle Newline normalization mismatch (Windows \r\n vs \n)
+        text = str(text_input.value)
+        if not text:
+            render_inspector_panel(None)
+            return
+        
+        # 1. Map DOM Index to Python Index
+        python_idx = 0
+        utf16_accum = 0
+        found_sync = False
+        
+        for i, ch in enumerate(text):
+            if utf16_accum == dom_pos:
+                python_idx = i
+                found_sync = True
+                break
+            
+            # Logic: Is this a surrogate pair? (2 units) or BMP (1 unit)
+            step = 2 if ord(ch) > 0xFFFF else 1
+            utf16_accum += step
+            
+            if utf16_accum > dom_pos:
+                # We landed inside a character (rare, but possible with surrogates)
+                python_idx = i
+                found_sync = True
+                break
+        
+        if not found_sync and utf16_accum == dom_pos:
+             render_inspector_panel(None) # End of string
+             return
+
+        # 2. Localized Segmentation
+        start_search = max(0, python_idx - 50)
+        end_search = min(len(text), python_idx + 50)
+        local_text = text[start_search:end_search]
+        
+        local_target_idx = python_idx - start_search
+        
+        segments_iter = GRAPHEME_SEGMENTER.segment(local_text)
+        
+        target_cluster = None
+        prev_cluster = None
+        next_cluster = None
+        
+        current_local_idx = 0
+        
+        for seg in segments_iter:
+            seg_str = str(seg.segment)
+            seg_len = len(seg_str)
+            seg_end = current_local_idx + seg_len
+            
+            # Check containment relative to local window
+            if current_local_idx <= local_target_idx < seg_end:
+                target_cluster = seg_str
+                # Continue to get next_cluster
+                current_local_idx = seg_end
+                continue
+            
+            if target_cluster is not None:
+                next_cluster = seg_str
+                break
+            
+            prev_cluster = seg_str
+            current_local_idx = seg_end
+
+        # Fallback
+        if not target_cluster:
+            target_cluster = text[python_idx]
+            
+        # 3. Analyze the Cluster
+        base_char = target_cluster[0]
+        cp_base = ord(base_char)
+        
+        cat_short = unicodedata.category(base_char)
+        base_char_data = {
+            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
+            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
+            "category_full": ALIASES.get(cat_short, "N/A"),
+            "category_short": cat_short,
+            "bidi": unicodedata.bidirectional(base_char),
+            "age": _find_in_ranges(cp_base, "Age") or "N/A"
+        }
+
+        cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
+
+        comp_cat = cluster_identity["max_risk_cat"]
+        comp_mask = cluster_identity["cluster_mask"]
+        
+        if comp_cat in ("Cn", "Co", "Cs", "Cf"):
+            id_status = "Restricted"
+        else:
+            id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
+            
+        id_type = _find_in_ranges(cp_base, "IdentifierType")
+            
+        macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
+        ghosts = _get_ghost_chain(base_char)
+        
+        bidi_short = unicodedata.bidirectional(base_char)
+        wb_prop = _find_in_ranges(cp_base, "WordBreak") or "Other"
+        lb_prop = _find_in_ranges(cp_base, "LineBreak") or "Unknown"
+        gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
+        gb_prop = gb_val if gb_val else "Base (Other)"
+        
+        inv_map = DATA_STORES.get("InverseConfusables", {})
+        raw_lookalikes = inv_map.get(str(cp_base), [])
+        
+        lookalikes_data = []
+        for item in raw_lookalikes:
+            try:
+                if isinstance(item, int):
+                    cp = item
+                else:
+                    clean = str(item).replace("U+", "").strip()
+                    cp = int(clean, 16)
+                
+                char = chr(cp)
+                script = _find_in_ranges(cp, "Scripts") or "Common"
+                block = _find_in_ranges(cp, "Blocks") or "Unknown Block"
+                
+                lookalikes_data.append({
+                    "cp": f"U+{cp:04X}",
+                    "glyph": char,
+                    "script": script,
+                    "block": block,
+                    "name": unicodedata.name(char, "UNKNOWN CHARACTER")
+                })
+            except Exception:
+                continue
+        
+        components = []
+        zalgo_score = 0
+        for ch in target_cluster:
+            cat = unicodedata.category(ch)
+            name = unicodedata.name(ch, "Unknown")
+            ccc = unicodedata.combining(ch)
+            is_mark = cat.startswith('M')
+            if is_mark: zalgo_score += 1
+            
+            components.append({
+                'hex': f"U+{ord(ch):04X}", 
+                'name': name, 
+                'cat': cat, 
+                'ccc': ccc,
+                'is_base': not is_mark
+            })
+
+        utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
+        utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
+        utf32_hex = f"{cp_base:08X}"
+        
+        def try_enc(enc_name):
+            try:
+                return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
+            except UnicodeEncodeError:
+                return "N/A"
+
+        ascii_val = try_enc("ascii")
+        latin1_val = try_enc("latin-1")
+        cp1252_val = try_enc("cp1252")
+        url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
+        
+        # --- NEW: EXPLOIT & OBFUSCATION ENCODINGS ---
+        # 1. Base64 (Standard Payload Wrapper)
+        try:
+            b64_val = base64.b64encode(target_cluster.encode("utf-8")).decode("ascii")
+        except:
+            b64_val = "Error"
+
+        # 2. Shellcode / Hex Escapes (\xHH)
+        shell_val = "".join(f"\\x{b:02X}" for b in target_cluster.encode("utf-8"))
+
+        # 3. Octal Escapes (\NNN)
+        octal_val = "".join(f"\\{b:03o}" for b in target_cluster.encode("utf-8"))
+
+        # 4. HTML Entity Variants (Decimal vs Hex)
+        if target_cluster.isalnum():
+            html_dec_val = target_cluster
+            html_hex_val = target_cluster
+        else:
+            html_dec_val = "".join(f"&#{ord(c)};" for c in target_cluster)
+            html_hex_val = "".join(f"&#x{ord(c):X};" for c in target_cluster)
+
+        # 5. ES6 / CSS Unicode (\u{...})
+        es6_val = "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster)
+        
+        # 6. Python/Old JS
+        code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
+
+        confusable_msg = None
+        
+        if ghosts:
+             skel_val = ghosts['skeleton']
+             if skel_val != base_char and skel_val != base_char.casefold():
+                 confusable_msg = f"Base maps to: '{skel_val}'"
+
+        stack_msg = None
+        if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
+
+        data = {
+            "python_idx": python_idx,
+            "cluster_glyph": target_cluster,
+            "prev_glyph": prev_cluster,
+            "next_glyph": next_cluster,
+            "cp_hex_base": f"U+{cp_base:04X}",
+            "name_base": unicodedata.name(base_char, "No Name Found"),
+            "is_cluster": cluster_identity["is_cluster"],
+            "type_label": cluster_identity["type_label"],
+            "type_val":   cluster_identity["type_val"],
+            "block":      cluster_identity["block_val"],
+            "script":     cluster_identity["script_val"],
+            "bidi":       cluster_identity["bidi_val"],
+            "age":        cluster_identity["age_val"],
+            "category_full": base_char_data['category_full'],
+            "category_short": base_char_data['category_short'],
+            "id_status": id_status,
+            "id_type": id_type,
+            "macro_type": macro_type,
+            "ghosts": ghosts,
+            "is_ascii": (cp_base <= 0x7F),
+            "lookalikes_data": lookalikes_data,
+            "line_break": lb_prop,
+            "word_break": wb_prop,
+            "grapheme_break": gb_prop,
+            
+            # --- Forensic Encodings ---
+            "utf8": utf8_hex, 
+            "utf16": utf16_hex, 
+            "utf32": utf32_hex,
+            "ascii": ascii_val, 
+            "latin1": latin1_val, 
+            "cp1252": cp1252_val,
+            # --- Exploit Vectors ---
+            "url": url_enc, 
+            "code": code_enc,
+            "base64": b64_val,
+            "shell": shell_val,
+            "octal": octal_val,
+            "html_dec": html_dec_val,
+            "html_hex": html_hex_val,
+            "es6": es6_val,
+            
+            "confusable": confusable_msg,
+            "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
+            "stack_msg": stack_msg,
+            "components": components
+        }
+        
+        render_inspector_panel(data)
+
+    except Exception as e:
+        print(f"Inspector Error: {e}")
+        render_inspector_panel({"error": str(e)})
+
+@create_proxy
+def cycle_hud_metric(metric_key, current_dom_pos):
+    """
+    Stateless stepper. Finds the next range after current_dom_pos.
+    Updates the LEFT-SIDE HUD Status bar.
+    """
+    el = document.getElementById("text-input")
+    if not el: return
+    
+    # Force conversion to Python string to ensure 'enumerate' yields chars, not ints.
+    t = str(el.value)
+    
+    # 1. Map DOM Position to Logical Index (Pure Python)
+    current_logical = 0
+    if t:
+        utf16_acc = 0
+        for i, char in enumerate(t):
+            if utf16_acc >= current_dom_pos:
+                current_logical = i
+                break
+            # Robust check: ensure char is a string before ord()
+            # (The str() cast above guarantees this, but this is the logic)
+            utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        else:
+            current_logical = len(t)
+
+    # 2. Define Human-Readable Labels
+    labels = {
+        "integrity_agg": "Integrity Issues",
+        "threat_agg": "Threat Signals",
+        "ws_nonstd": "Non-Std Whitespace",
+        "punc_exotic": "Exotic Delimiters",
+        "sym_exotic": "Exotic Symbols",
+        "emoji_hybrid": "Hybrid Emoji",
+        "emoji_irregular": "Irregular Emoji"
+    }
+    category_label = labels.get(metric_key, "Forensic Metric")
+
+    # 3. Resolve targets (With Deduplication)
+    raw_targets = []
+    if metric_key == "integrity_agg":
+        raw_targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
+                       HUD_HIT_REGISTRY.get("int_fracture", []) +
+                       HUD_HIT_REGISTRY.get("int_risk", []) +
+                       HUD_HIT_REGISTRY.get("int_decay", []))
+    elif metric_key == "threat_agg":
+        raw_targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
+                       HUD_HIT_REGISTRY.get("thr_spoofing", []) +
+                       HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
+                       HUD_HIT_REGISTRY.get("thr_suspicious", []))
+    else:
+        raw_targets = HUD_HIT_REGISTRY.get(metric_key, [])
+
+    if not raw_targets: return
+
+    # [DEDUPLICATION LOGIC]
+    # Filter out duplicate start indices to prevent "double jumping" on the same character.
+    targets = []
+    seen_starts = set()
+    
+    # Sort first to ensure consistent order
+    raw_targets.sort(key=lambda x: x[0])
+    
+    for hit in raw_targets:
+        start_idx = hit[0]
+        if start_idx not in seen_starts:
+            targets.append(hit)
+            seen_starts.add(start_idx)
+
+    # 4. Find Next
+    next_hit = targets[0]
+    hit_index = 1
+    
+    for i, hit in enumerate(targets):
+        if hit[0] >= current_logical:
+            next_hit = hit
+            hit_index = i + 1
+            break
+
+    # 5. Execute Highlight
+    if metric_key == "threat_agg":
+        # [DEBUG HOOK]
+        if TEXTTICS_DEBUG_THREAT_BRIDGE:
+            _debug_threat_bridge(t, next_hit)
+        # PURE PYTHON DOM CALCULATION
+        log_start = next_hit[0]
+        log_end = next_hit[1]
+        
+        dom_start = -1
+        dom_end = -1
+        
+        acc = 0
+        # Iterate the Python string (t is guaranteed str now)
+        for i, char in enumerate(t):
+            if i == log_start: dom_start = acc
+            if i == log_end: dom_end = acc; break 
+            
+            acc += (2 if ord(char) > 0xFFFF else 1)
+        
+        if dom_end == -1 and log_end >= len(t): 
+            dom_end = acc
+        
+        if dom_start != -1:
+            el.focus()
+            el.setSelectionRange(dom_start, dom_end)
+        
+    else:
+        # [LEGACY PATH]
+        window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+
+    # 6. Feedback UI
+    icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+
+    status_msg = f"<strong>{category_label} Highlighter:</strong>&nbsp;#{hit_index} of {len(targets)}"
+    
+    hud_status = document.getElementById("hud-stepper-status")
+    if hud_status:
+        hud_status.className = "status-details status-hud-active"
+        hud_status.style.display = "inline-flex"
+        hud_status.innerHTML = f"{status_msg}{icon_loc}"
+    
+    # 7. Update Inspector
+    inspect_character(None)
+
+@create_proxy
+def highlight_specific_char(target_cp_val):
+    """
+    Atlas Action: Finds and selects the next occurrence of a specific code point.
+    Args:
+        target_cp_val: Integer code point (passed from JS)
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    # Ensure input is int (JS passes numbers, but safety first)
+    try:
+        target_cp = int(target_cp_val)
+    except:
+        return
+
+    text = str(el.value)
+    
+    # 1. Map all occurrences of this specific char
+    ranges = []
+    current_utf16_idx = 0
+    
+    for char in text:
+        cp = ord(char)
+        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
+        
+        if cp == target_cp:
+            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
+            
+        current_utf16_idx += char_len
+
+    count = len(ranges)
+    if count == 0: return
+
+    # 2. Find NEXT relative to cursor
+    current_end_pos = el.selectionEnd
+    target_range = None
+    target_idx = 1
+    
+    for i, r in enumerate(ranges):
+        if r[0] >= current_end_pos:
+            target_range = r
+            target_idx = i + 1
+            break
+            
+    # Wrap-around
+    if target_range is None:
+        target_range = ranges[0]
+        target_idx = 1
+            
+    # 3. Select
+    el.blur()
+    el.focus()
+    el.setSelectionRange(target_range[0], target_range[1])
+    
+    # 4. Feedback (Reusing the NSI status line for consistency)
+    details_line = document.getElementById("reveal-details")
+    if details_line:
+        details_line.className = "status-details warn"
+        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+        hex_disp = f"U+{target_cp:04X}"
+        details_line.innerHTML = f"<strong>Atlas Finder ({hex_disp}):</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
+        
+    # 5. Trigger Inspector to show details for this char
+    inspect_character(None)
+
+@create_proxy
+def find_next_sequence(target_str):
+    """
+    Statistical Navigator.
+    Finds and selects the next occurrence of a text sequence (case-insensitive).
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value or not target_str: return
+    
+    t = str(el.value)
+    t_lower = t.lower()
+    target_lower = str(target_str).lower()
+    
+    # Start searching from AFTER the current selection
+    start_pos = el.selectionEnd
+    
+    # 1. Find next occurrence
+    idx = t_lower.find(target_lower, start_pos)
+    
+    # 2. Wrap around if not found
+    if idx == -1:
+        idx = t_lower.find(target_lower)
+        
+    if idx != -1:
+        # 3. Calculate UTF-16 DOM indices for selection
+        dom_start = 0
+        utf16_acc = 0
+        
+        # Fast-forward to the match index
+        # We need to sum the UTF-16 lengths of all chars BEFORE the match
+        for i in range(idx):
+            char = t[i]
+            utf16_acc += (2 if ord(char) > 0xFFFF else 1)
+        dom_start = utf16_acc
+        
+        # Calculate length of the matched string in UTF-16
+        match_str = t[idx : idx + len(target_str)]
+        dom_len = sum(2 if ord(c) > 0xFFFF else 1 for c in match_str)
+        
+        # 4. Select
+        el.focus()
+        el.setSelectionRange(dom_start, dom_start + dom_len)
+        
+        # 5. Feedback
+        status = document.getElementById("reveal-details")
+        if status:
+            status.className = "status-details status-hud-active"
+            status.innerHTML = f"<strong>Finding:</strong> '{_escape_html(target_str)}'"
+
+# Transformation & Tools
+
+@create_proxy
+def reveal_invisibles(event=None):
+    """
+    TRANSFORM MODE (btn-reveal): 
+    Replaces invisible characters with visible tags (e.g. [ZWSP]).
+    Toggle: Click again to Revert.
+    """
+    el = document.getElementById("text-input")
+    details_line = document.getElementById("reveal-details")
+    reveal_btn = document.getElementById("btn-reveal")
+    reveal2_btn = document.getElementById("btn-reveal2")
+    
+    if not el or not el.value: return
+
+    # --- 1. REVERT LOGIC (Obfuscate Back) ---
+    if el.getAttribute("data-revealed") == "true":
+        original = el.getAttribute("data-original")
+        if original: el.value = original
+        
+        el.removeAttribute("data-revealed")
+        el.removeAttribute("data-original")
+        el.classList.remove("reveal-active")
+        
+        if reveal_btn: 
+            reveal_btn.innerHTML = "Transform Non-Standard Invisibles &#x21C4;"
+        
+        # Reset UI
+        update_all(None)
+        return
+
+    # --- 2. TRANSFORM LOGIC ---
+    raw_text = el.value
+    new_chars = []
+    total_replaced = 0
+    
+    for char in raw_text:
+        cp = ord(char)
+        replacement = None
+        
+        # [Phase 1] Explicit Space Visualization
+        # We map standard ASCII Space (0x20) to a Middle Dot (·) 
+        # This reveals double-spaces and trailing whitespace deterministically.
+        if cp == 0x0020:
+            replacement = "\u00B7" # · (Middle Dot)
+            
+        elif cp in INVISIBLE_MAPPING:
+            replacement = INVISIBLE_MAPPING[cp]
+        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
+            vs_offset = 1 if cp <= 0xFE0F else 17
+            base = 0xFE00 if cp <= 0xFE0F else 0xE0100
+            replacement = f"[VS{cp - base + vs_offset}]"
+        elif 0xE0000 <= cp <= 0xE007F:
+             replacement = f"[TAG:U+{cp:04X}]"
+             
+        if replacement:
+            new_chars.append(replacement)
+            total_replaced += 1
+        else:
+            new_chars.append(char)
+            
+    if total_replaced > 0:
+        # Save state
+        el.setAttribute("data-original", raw_text)
+        el.setAttribute("data-revealed", "true")
+        el.value = "".join(new_chars)
+        el.classList.add("reveal-active")
+        
+        # Toggle Button Text
+        if reveal_btn: 
+            reveal_btn.style.display = "flex"
+            reveal_btn.innerHTML = "Revert to Original &#x21A9;"
+            
+        if reveal2_btn: reveal2_btn.style.display = "flex"
+        
+        # Update RIGHT Status (Left remains "Input: Ready")
+        details_line.className = "status-details success"
+        icon_eye = """<svg style="display:inline-block; vertical-align:middle; margin-left:4px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>"""
+        details_line.innerHTML = f"Non-Standard Invisibles:&nbsp;{total_replaced}&nbsp;Deobfuscated&nbsp;{icon_eye}"
+
+@create_proxy
+def reveal2_invisibles(event=None):
+    """
+    HIGHLIGHT MODE (btn-reveal2): 
+    Step-through finder. Selects the NEXT invisible character relative to cursor.
+    UPDATED: Now correctly syncs with the Inspector Panel.
+    """
+    el = document.getElementById("text-input")
+    details_line = document.getElementById("reveal-details")
+    
+    if not el or not el.value: return
+    
+    text = str(el.value)
+    ranges = []
+    current_utf16_idx = 0
+    
+    # 1. Map all invisible positions
+    for char in text:
+        cp = ord(char)
+        char_len = 2 if cp > 0xFFFF else 1 # UTF-16 Length
+        
+        is_target = False
+        if cp in INVISIBLE_MAPPING: is_target = True
+        elif 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF: is_target = True
+        elif 0xE0000 <= cp <= 0xE007F: is_target = True
+            
+        if is_target:
+            ranges.append((current_utf16_idx, current_utf16_idx + char_len))
+            
+        current_utf16_idx += char_len
+
+    count = len(ranges)
+    if count == 0: return
+
+    # 2. Find the NEXT target relative to the END of the current selection.
+    current_end_pos = el.selectionEnd
+    
+    target_range = None
+    target_idx = 1
+    
+    # Scan for the first range that starts AFTER (or at) the current cursor end
+    for i, r in enumerate(ranges):
+        if r[0] >= current_end_pos:
+            target_range = r
+            target_idx = i + 1
+            break
+            
+    # 3. Wrap-around Logic (Infinite Cycle)
+    if target_range is None:
+        target_range = ranges[0]
+        target_idx = 1
+            
+    # 4. Execute Selection
+    el.blur()
+    el.focus()
+    el.setSelectionRange(target_range[0], target_range[1])
+    
+    # --- SYNC FIX: WAKE UP THE INSPECTOR --- (we can use {char_code} in NSI status bar if we need explicit Unicode)
+    # We manually call the inspector logic to update the bottom panel immediately.
+    # We pass None because the function doesn't actually use the event argument.
+    inspect_character(None)
+    
+    # 5. Feedback
+    if details_line:
+        details_line.className = "status-details warn"
+        icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-right:6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
+        
+        # Get hex code for display
+        try:
+            raw_idx = 0
+            acc = 0
+            for j, char in enumerate(text):
+                slen = 2 if ord(char) > 0xFFFF else 1
+                if acc == target_range[0]:
+                    raw_idx = j
+                    break
+                acc += slen
+            
+            char_code = f"U+{ord(text[raw_idx]):04X}"
+        except:
+            char_code = "INVISIBLE"
+
+        details_line.innerHTML = f"<strong>NSI Highlighter:</strong>&nbsp;#{target_idx}&nbsp;of&nbsp;{count}&nbsp;{icon_loc}"
+
+@create_proxy
+def sanitize_text(profile_type):
+    """
+    Forensic Remediation Engine.
+    Profiles:
+      - 'strict': Nukes ALL characters matching INVIS_ANY_MASK.
+      - 'smart': Removes 'Artifacts' (ZWSP, LRM) but PRESERVES structural ZWJ/VS for Emojis.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    raw_text = el.value
+    new_chars = []
+    removed_count = 0
+    
+    # [Smart Profile Logic]
+    # We need to know which ZWJs are "load-bearing" (part of valid emojis).
+    # We re-run a quick analysis to find RGI sequences if in smart mode.
+    valid_emoji_indices = set()
+    if profile_type == 'smart':
+        # Reuse the centralized Emoji Engine logic
+        # We scan for RGI sequences and whitelist their internal indices
+        report = compute_emoji_analysis(raw_text)
+        emoji_list = report.get("emoji_list", [])
+        for item in emoji_list:
+            # If it's a sequence, mark its internal positions as protected
+            if item['kind'] == 'emoji-sequence' and item['rgi']:
+                start = item['index']
+                length = len(item['sequence'])
+                for k in range(start, start + length):
+                    valid_emoji_indices.add(k)
+
+    for i, char in enumerate(raw_text):
+        cp = ord(char)
+        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+        should_remove = False
+        
+        if mask & INVIS_ANY_MASK:
+            # 1. STRICT MODE: Destroy everything invisible
+            if profile_type == 'strict':
+                should_remove = True
+                
+            # 2. SMART MODE: Targeted remediation
+            elif profile_type == 'smart':
+                # ALWAYS remove High-Risk Artifacts (ZWSP, Bidi, Tags)
+                if cp in (0x200B, 0x200E, 0x200F, 0x202A, 0x202B, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069):
+                    should_remove = True
+                # Remove deprecated/zombie controls
+                elif 0x206A <= cp <= 0x206F:
+                    should_remove = True
+                # Remove Plane 14 Tags
+                elif mask & INVIS_TAG:
+                    should_remove = True
+                
+                # PROTECT Structural Glue (ZWJ/VS) only if inside a valid Emoji
+                # [FIXED] Now includes VS15 (0xFE0E) in protection list
+                elif cp in (0x200D, 0xFE0F, 0xFE0E):
+                    if i not in valid_emoji_indices:
+                        should_remove = True
+                        
+        if not should_remove:
+            new_chars.append(char)
+        else:
+            removed_count += 1
+            
+    if removed_count > 0:
+        el.value = "".join(new_chars)
+        # Trigger full re-analysis
+        update_all(None)
+        
+        # Feedback
+        status_line = document.getElementById("status-line")
+        if status_line:
+            status_line.innerText = f"Sanitized {removed_count} particle(s) using '{profile_type.upper()}' profile."
+            status_line.className = "status-ready"
+
+@create_proxy
+def analyze_html_metadata(raw_html_string: str):
+    """
+    [STAGE 1.5] METADATA WORKBENCH ANALYZER (Updated v2.0)
+    Scans raw HTML clipboard content for CSS-based obfuscation.
+    Injects the verdict directly into the Metadata Workbench UI section.
+    """
+    if not raw_html_string:
+        # Clear UI if input is empty
+        _update_css_workbench_ui("NEUTRAL", "Awaiting input...", 0, None)
+        return []
+        
+    findings = []
+    
+    # Check for empty paste (sometimes raw_html is just boilerplate from the editor)
+    if not raw_html_string.strip() or len(raw_html_string.strip()) < 10:
+        _update_css_workbench_ui("NEUTRAL", "No significant HTML source found in paste.", 0, None)
+        return []
+
+    # FIX 1: STYLE_CONTENT_PATTERN must be a raw string.
+    STYLE_CONTENT_PATTERN = re.compile(
+        r'<(\w+)\s+[^>]*?style\s*=\s*["\'](.*?)["\'][^>]*?>(.*?)</\1>',
+        re.IGNORECASE | re.DOTALL
+    )
+
+    # --- CRITICAL STYLE DEFINITIONS (FIXED WITH 'r') ---
+    CRITICAL_STYLE_RULES = [
+        r"visibility:\s*hidden",
+        r"display:\s*none",
+        r"opacity:\s*0",
+        r"position:\s*absolute;\s*left:\s*-?\d{3,}px"
+    ]
+    
+    CRITICAL_CONTRAST_RULES = [
+        r"color:\s*white;\s*background:\s*white",
+        r"color:\s*#fff;\s*background:\s*#fff"
+    ]
+
+    # --- 1. Scan for Hiding (Visibility, Position) and Contrast ---
+    
+    for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
+        tag, style_attr, content = match.groups()
+        
+        # 2. Normalize the style attribute (remove all whitespace)
+        # This speeds up searching significantly
+        normalized_style = style_attr.lower().replace(" ", "")
+        
+        rule_hit = ""
+        
+        # Check for ABOLUTE hiding rules
+        for rule in CRITICAL_STYLE_RULES:
+            if re.search(rule, normalized_style):
+                rule_hit = rule.split(":")[0] 
+                break
+        
+        # Check for low-contrast rules
+        if not rule_hit:
+            for rule in CRITICAL_CONTRAST_RULES:
+                if re.search(rule, normalized_style):
+                    rule_hit = "low-contrast"
+                    break
+
+        if rule_hit:
+            # We found a definitive hiding technique
+            findings.append({
+                "type": "CSS_OBFUSCATION",
+                "rule": rule_hit,
+                "content_preview": content.strip()[:50] + "...", # Preview of hidden text
+                "desc": f"Text hidden via {rule_hit} style in <{tag}> tag."
+            })
+    
+    # --- 3. UI Update and Reporting ---
+    
+    if findings:
+        _update_css_workbench_ui("CRITICAL", "CSS Obfuscation detected in pasted HTML.", len(findings), findings)
+    else:
+        _update_css_workbench_ui("CLEAN", "No CSS Obfuscation detected in HTML payload.", 0, None)
+
+    return findings
+
+# Export & Utility Bridges
+
+@create_proxy
+def py_get_code_snippet(lang):
+    """
+    Generates a safe, escaped string literal of the current input 
+    for use in Python or JavaScript source code.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return ""
+    
+    t = el.value
+    output = ""
+    
+    # Forensic escaping: We want ASCII-safe output.
+    # Logic: Escape anything non-printable, non-ASCII, or quote-breaking.
+    
+    if lang == 'python':
+        escaped = ""
+        for char in t:
+            cp = ord(char)
+            # Escape non-ascii, controls, quotes, and backslashes
+            if cp < 32 or cp > 126 or cp == 0x5C or cp == 0x22 or cp == 0x27:
+                if cp <= 0xFFFF:
+                    escaped += f"\\u{cp:04x}"
+                else:
+                    escaped += f"\\U{cp:08x}"
+            else:
+                escaped += char
+        output = f's = "{escaped}"'
+        
+    elif lang == 'javascript':
+        escaped = ""
+        for char in t:
+            cp = ord(char)
+            if cp < 32 or cp > 126 or cp == 0x5C or cp == 0x22 or cp == 0x27:
+                if cp <= 0xFFFF:
+                    escaped += f"\\u{cp:04x}"
+                else:
+                    escaped += f"\\u{{{cp:x}}}" # ES6 format for astral planes
+            else:
+                escaped += char
+        output = f'const s = "{escaped}";'
+        
+    return output
+
+@create_proxy
+def py_generate_evidence():
+    """
+    Generates a full JSON forensic artifact and triggers a browser download.
+    Re-runs analysis to ensure the snapshot is authoritative.
+    """
+    el = document.getElementById("text-input")
+    if not el or not el.value: return
+    
+    t = el.value
+    timestamp = window.Date.new().toISOString()
+    
+    # Re-run key analysis to get fresh data
+    emoji_report = compute_emoji_analysis(t)
+    threat_results = compute_threat_analysis(t, script_run_stats)
+    
+    # Calculate SHA-256 for Chain of Custody
+    sha256 = hashlib.sha256(t.encode('utf-8')).hexdigest()
+    
+    evidence = {
+        "meta": {
+            "tool": "Text...tics Stage 1",
+            "timestamp": timestamp,
+            "version": "Forensic-v1.0"
+        },
+        "artifact": {
+            "length_codepoints": len(t),
+            "sha256": sha256,
+            "raw_text": t
+        },
+        "analysis_snapshot": {
+            "flags": list(threat_results.get('flags', {}).keys()),
+            "emoji_counts": emoji_report.get('counts', {}),
+            "hashes": threat_results.get('hashes', {}),
+            "normalization_states": {
+                "nfkc": threat_results.get('states', {}).get('s2', ''),
+                "skeleton": threat_results.get('states', {}).get('s4', '')
+            }
+        }
+    }
+    
+    # Convert to JSON
+    json_str = json.dumps(evidence, indent=2, ensure_ascii=False)
+    
+    # Trigger Download via JS Blob
+    blob = window.Blob.new([json_str], {type: "application/json"})
+    url = window.URL.createObjectURL(blob)
+    
+    a = document.createElement("a")
+    a.href = url
+    a.download = f"forensic_artifact_{sha256[:8]}.json"
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+
+@create_proxy
+def py_get_stat_report_text():
+    """
+    Generates a rich, structured plaintext report of the Statistical Profile.
+    (Hardened Version: Catches errors to prevent UI freeze)
+    """
+    try:
+        el = document.getElementById("text-input")
+        if not el or not el.value: return ""
+        
+        t = el.value
+        # Safety: Handle if compute_statistical_profile fails
+        try:
+            stats = compute_statistical_profile(t)
+        except Exception as e:
+            return f"Error in computation: {e}"
+
+        if not stats: return ""
+        
+        lines = []
+        lines.append("[ Statistical & Lexical Profile ]")
+        
+        # 1. Thermodynamics & Density
+        ent = stats.get("entropy", 0.0)
+        ent_norm = stats.get("entropy_norm", 0.0)
+        n = stats.get("entropy_n", 0)
+        ascii_dens = stats.get("ascii_density", 0.0)
+        
+        # Updated Logic to match UI
+        status_txt = "Unknown"
+        if n < 64: status_txt = "Insufficient Data"
+        elif ent > 6.3: status_txt = "High Density (Compressed / Encrypted)"
+        elif ent > 4.8: status_txt = "Complex Structure (Code / Binary / Obfuscated)"
+        elif ent > 3.5: status_txt = "Natural Language (Standard Text)"
+        else: status_txt = "Low Entropy (Repetitive / Sparse)"
+        
+        lines.append("")
+        lines.append("[ THERMODYNAMICS ]")
+        lines.append(f"  Entropy: {ent:.2f} bits/byte (Saturation: {int(ent_norm*100)}%)")
+        lines.append(f"  Context: {status_txt}")
+        lines.append(f"  Storage: {n} bytes (ASCII: {ascii_dens}%)")
+        
+        # 2. Payloads
+        payloads = stats.get("payloads", [])
+        if payloads:
+            lines.append("")
+            lines.append(f"[ ! HEURISTIC PAYLOADS DETECTED ({len(payloads)}) ]")
+            for p in payloads:
+                 lines.append(f"  - {p.get('type','UNK')}: '{p.get('token','?')}' (H={p.get('entropy',0)})")
+        
+        # 3. Lexical Density
+        ttr = stats.get("ttr", 0.0)
+        uniq = stats.get("unique_tokens", 0)
+        tot = stats.get("total_tokens", 0)
+        ttr_seg = stats.get("ttr_segmented")
+        seg_str = f" | Seg-TTR: {ttr_seg:.2f}" if ttr_seg else ""
+        
+        lines.append("")
+        lines.append("[ LEXICAL DENSITY ]")
+        lines.append(f"  TTR:     {ttr:.2f} ({uniq}/{tot} tokens){seg_str}")
+
+        # 4. Top Tokens (Restored)
+        top_toks = stats.get("top_tokens", [])
+        if top_toks:
+            lines.append("")
+            lines.append("[ TOP TOKENS ]")
+            token_strs = []
+            for t in top_toks[:5]: # Limit to top 5
+                token_strs.append(f"{t['token']} ({t['share']}%)")
+            lines.append("  " + " | ".join(token_strs))
+        
+        # 5. Fingerprint (Category Dist)
+        cd = stats.get("char_dist", {})
+        l = cd.get('letters', 0)
+        n_dig = cd.get('digits', 0)
+        s = cd.get('sym', 0)
+        w = cd.get('ws', 0)
+        
+        lines.append("")
+        lines.append("[ FREQ. FINGERPRINT ]")
+        lines.append(f"  Dist:    L:{l}% | N:{n_dig}% | S:{s}% | WS:{w}%")
+        
+        # 6. Layout Physics
+        ls = stats.get("line_stats", {})
+        count = ls.get("count", 0)
+        if count > 0:
+            lines.append("")
+            lines.append("[ LAYOUT PHYSICS ]")
+            lines.append(f"  Lines:   {count} (Empty: {ls.get('empty', 0)})")
+            # Safe access with defaults
+            p25 = ls.get('p25', '-')
+            p75 = ls.get('p75', '-')
+            lines.append(f"  Widths:  Min:{ls.get('min',0)}  P25:{p25}  Med:{ls.get('median',0)}  P75:{p75}  Max:{ls.get('max',0)}")
+            lines.append(f"  Average: {ls.get('avg',0)}")
+
+        # 7. Phonotactics
+        ph = stats.get("phonotactics", {})
+        if ph.get("is_valid", False):
+            lines.append("")
+            lines.append("[ ASCII PHONOTACTICS ]")
+            lines.append(f"  V/C Ratio:   {ph.get('vowel_ratio', 0)}")
+            lines.append(f"  Balance:     Vowels: {ph.get('v_count', 0)} | Consonants: {ph.get('c_count', 0)}")
+            lines.append(f"  Letter Dens: {ph.get('count', 0)} chars")
+            lines.append(f"  Entropy:     {ph.get('bits_per_phoneme', 0)} bits/phoneme")
+            lines.append(f"  Scoring:     Uni:{ph.get('uni_score',0)}% | Bi:{ph.get('bi_score',0)}% | Tri:{ph.get('tri_score',0)}%")
+
+        return "\n".join(lines)
+    
+    except Exception as e:
+        return f"Error generating stats report: {str(e)}"
+
 # --- AUTOMATIC INJECTION: FDD0 Noncharacters ---
 # Range U+FDD0 to U+FDEF are process-internal noncharacters.
 # They indicate internal memory leaks or fuzzing attacks.
@@ -14500,55 +14067,80 @@ def update_verification(event):
 for i in range(0xFDD0, 0xFDF0):
     INVISIBLE_MAPPING[i] = f"[NON:{i-0xFDD0:02X}]"
 
-# ---
-# 6. INITIALIZATION
-# ---
+# --- JS EXPORTS ---
+window.TEXTTICS_SANITIZE = sanitize_text
+window.TEXTTICS_HIGHLIGHT_CHAR = highlight_specific_char
+window.cycle_hud_metric = cycle_hud_metric
+window.TEXTTICS_FIND_SEQ = find_next_sequence
+window.py_get_code_snippet = py_get_code_snippet
+window.py_generate_evidence = py_generate_evidence
+window.py_get_stat_report_text = py_get_stat_report_text
+window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)
+
+# Programmatically inject the full range of ASCII-Mapped Tags (Plane 14)
+# Range: U+E0020 (Tag Space) to U+E007E (Tag Tilde)
+# This converts U+E0041 to "[TAG:A]", U+E0030 to "[TAG:0]", etc.
+for ascii_val in range(0x20, 0x7F):
+    tag_cp = 0xE0000 + ascii_val
+    if ascii_val == 0x20:
+         INVISIBLE_MAPPING[tag_cp] = "[TAG:SP]" # Explicit Space
+    else:
+         INVISIBLE_MAPPING[tag_cp] = f"[TAG:{chr(ascii_val)}]"
+
+# ===============================================
+# BLOCK 11. INITIALIZATION (BOOTLOADER)
+# ===============================================
 
 async def main():
     """Main entry point: Loads data, then hooks the input."""
     
-    # --- FIX 1: Get element first ---
+    # --- Get element first ---
     text_input_element = document.getElementById("text-input")
     
     # Start loading the external data and wait for it to finish.
     await load_unicode_data()
     
-    # --- FIX 2: Bind listener *after* await ---
-    text_input_element.addEventListener("input", update_all)
+    # --- Bind listener *after* await ---
+    if text_input_element:
+        text_input_element.addEventListener("input", update_all)
     
-    # --- NEW: Hook the Inspector Panel ---
+    # --- Hook the Inspector Panel ---
     document.addEventListener("selectionchange", create_proxy(inspect_character))
 
     # Update verification bench when selection changes (for Scope Selection)
     document.addEventListener("selectionchange", update_verification)
 
-    # --- NEW: Hook the Reveal Buttons ---
+    # --- Hook the Reveal Buttons ---
     reveal_btn = document.getElementById("btn-reveal")
     if reveal_btn:
-        # Ensure we bind to the correct function name 'reveal_invisibles'
-        # (Make sure the function 'reveal_invisibles' is actually defined above!)
         reveal_btn.addEventListener("click", reveal_invisibles)
         
-    reveal2_btn = document.getElementById("btn-reveal2") # [NEW]
+    reveal2_btn = document.getElementById("btn-reveal2")
     if reveal2_btn:
-        # Ensure we bind to the correct function name 'reveal2_invisibles'
         reveal2_btn.addEventListener("click", reveal2_invisibles)
 
-    # [NEW] Expose the HTML Metadata Analyzer to JavaScript
+    # Expose the HTML Metadata Analyzer to JavaScript
+    # Note: We use the global keyword to ensure we reference the function defined in Block 10
     global analyze_html_metadata
-    window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)
-    print("Metadata Analyzer (CSS Scan) exposed to JavaScript.")
+    try:
+        window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)
+        print("Metadata Analyzer (CSS Scan) exposed to JavaScript.")
+    except Exception as e:
+        print(f"Warning: Could not expose metadata analyzer: {e}")
 
-    # --- [NEW] Hook the Verification Bench ---
+    # --- Hook the Verification Bench ---
     trusted_input = document.getElementById("trusted-input")
     if trusted_input:
         trusted_input.addEventListener("input", update_verification)
         # Also re-run verification if main input changes (to keep verdict in sync)
-        text_input_element.addEventListener("input", update_verification)
+        if text_input_element:
+            text_input_element.addEventListener("input", update_verification)
     
-    # --- FIX 3: Un-gate the UI ---
-    text_input_element.disabled = False
-    text_input_element.placeholder = "Paste or type here..."
+    # --- Un-gate the UI ---
+    if text_input_element:
+        text_input_element.disabled = False
+        text_input_element.placeholder = "Paste or type here..."
+        
     print("Text...tics is ready.")
 
 # Start the main asynchronous task
