@@ -5869,3 +5869,17 @@ details.profile-section > summary:hover::marker {
     word-break: break-word;         /* Break long words if needed */
     padding-right: 12px;            /* Add spacing between cols */
 }
+
+/* FORCE LEFT ALIGNMENT for all Ledger Rows */
+.hud-detail-right {
+    justify-content: flex-start !important;
+    text-align: left !important;
+    width: 100%; /* Ensure it fills space */
+}
+
+/* Ensure chips don't float weirdly */
+.hud-chip {
+    margin-right: 8px;
+    margin-bottom: 4px;
+    float: none !important; /* Prevent float behavior */
+}
