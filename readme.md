@@ -1844,3 +1844,48 @@ We performed a "Red Team" audit against external threat intelligence (AWS Securi
 * **Unicode Tag Smuggling:** Covered by the **Protocol Smuggler** engine.
 * **Homoglyph Phishing:** Covered by the **Skeleton Drift** metric.
 * **Invisible NMT Attacks:** Covered by the **Fracture Scanner** and **Ghost Scanner** (Visual Redaction).
+
+---
+
+## 🛡️ Addendum #10: The "Adversarial Physics" Upgrade (Stage 1.5)
+
+**Session Goal:** To bridge the gap between **Stage 1** (Structural Profiling) and **Stage 2** (Semantic Analysis) by implementing a **Stage 1.5 "Adversarial Physics" Layer**. This update integrates actionable intelligence from eight seminal security papers (including *Mandiant*, *Emoji Attack*, and *Imperceptible Jailbreaking*) to detect structural weaponization without crossing into semantic interpretation.
+
+### 1. Architecture: The Sensor/Policy Split
+We enforced a strict separation of concerns to maintain the tool's determinism while increasing its forensic sensitivity.
+
+* **The Sidecar Sensors (Block 1):** Pure logic engines that measure physical phenomena (e.g., "A run of 5 Variation Selectors exists"). They return raw metrics, not verdicts.
+* **The Threat Auditor (Block 4):** A policy engine that interprets these metrics. It decides that "5 Variation Selectors" = **CRITICAL: Steganography Risk**, whereas "1 Variation Selector" = **CLEAN**.
+* **Impact:** This adheres strictly to **ADR-006 (Dual-Ledger)**, ensuring that the tool remains a neutral instrument of measurement rather than a biased "content filter."
+
+### 2. New Forensic Capabilities (The "Physics Engines")
+
+We implemented four specific detection engines based on confirmed "In-the-Wild" attack vectors.
+
+#### A. The "Fracture" Scanner (Source: *Emoji Attack*)
+* **The Threat:** Attackers insert characters inside words (e.g., `b🔥omb` or `vio<ZWSP>lent`) to shatter tokenizer boundaries (BPE/SentencePiece), allowing harmful tokens to bypass safety filters.
+* **The Upgrade:** We upgraded the fracture logic to recognize **Emojis** as "Fracture Agents" alongside invisible characters.
+* **The "Persian Defense":** To prevent false positives, we implemented a script-aware whitelist. The engine explicitly ignores `ZWJ`/`ZWNJ` fractures if the surrounding context is a complex script (Arabic, Syriac, N'Ko), preserving valid orthography while catching Latin evasion attempts.
+
+#### B. The Variation Selector (VS) Topology Engine (Source: *Imperceptible Jailbreaking*)
+* **The Threat:** Using runs of invisible Variation Selectors (`U+FE0F` repeated 10x) to hide payloads or shift embedding vectors without altering visual rendering.
+* **The Logic:** The engine now tracks **VS Clusters**.
+    * **Length > 1:** Flagged as **Redundant** (Structurally unnecessary).
+    * **Length > 4:** Flagged as **CRITICAL: High-Density Sequence** (Likely Steganography).
+    * **Bare VS:** Flagged as **Artifact/Fuzzing** (VS without a valid base).
+
+#### C. The Delimiter Masking Engine (Source: *Mandiant: Text-to-Malware*)
+* **The Threat:** Using "Deceptive Spaces" that render as blank but are technically Symbols (not Separators) to mask file extensions (e.g., `malware.mp4[U+2800].exe`).
+* **The Logic:** We mapped `U+2800` (Braille Pattern Blank) to a new `MASK_SUSPICIOUS_SPACE` bitmask. The engine scans for the pattern `[Suspicious Space] + [Dot] + [AlphaExtension]`.
+* **Verdict:** Triggers **CRITICAL: Malware Extension Masking**.
+
+#### D. The Tag Payload Decoder (Source: *Bypassing Guardrails*)
+* **The Threat:** Hiding readable instructions inside Plane 14 Tag Characters (`U+E0000` block).
+* **The Logic:** We implemented a decoder that shifts Tag Codepoints back to ASCII (`Tag 'A'` $\to$ `'A'`).
+* **Verdict:** If a payload is reconstructed, it triggers **CRITICAL: Hidden Tag Payload**, displaying the decoded text in the forensic report.
+
+### 3. Scope Discipline (What We Rejected)
+To preserve the "Post-Clipboard" philosophy, we explicitly **rejected** semantic features suggested by the research papers, such as "Lexical Rarity Scores" or "Dictionary Definition Detection." These belong in Stage 2. Stage 1.5 remains strictly focused on the **physics** of the text string.
+
+### 4. Validation
+The system has been verified against the `b🔥omb` (Token Fracture) and `malware.mp4⠀.exe` (Extension Masking) vectors, correctly identifying them as **CRITICAL** threats in the Dashboard while maintaining a **CLEAN** verdict for standard text.
