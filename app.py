@@ -6975,17 +6975,10 @@ def compute_anomaly_score(stats):
 
 def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
     """
-    The Master Auditor.
-    Orchestrates the 4-Column "Verdict Bar" for the HUD.
-    Does NOT recalculate Integrity or Threat; it restructures them.
-    
-    Args:
-        inputs: Dictionary of forensic counters (from compute_forensic_stats)
-        stats_inputs: Dictionary of statistical metrics (Entropy, etc.)
-        stage1_5_data: Output from _evaluate_adversarial_risk
-        threat_output: Output from compute_threat_score
+    The Master Auditor (V2 - Expanded Data).
+    Now passes full ledgers to the HUD for the 'Sprawl' layout.
     """
-    # 1. INTEGRITY (Pass-through + Decode Status)
+    # 1. INTEGRITY
     integrity = compute_integrity_score(inputs)
     
     decode_status = "OK"
@@ -6994,24 +6987,20 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
     elif inputs.get("surrogate", 0) > 0:
         decode_status = "WARNING"
     
-    # 2. THREAT (Pass-through + Paranoia Peak)
-    # We use the existing Threat Score which is Execution+Injection+Obfuscation
-    # Paranoia Peak comes from Stage 1.5 Targets
+    # 2. THREAT
     targets = stage1_5_data.get("targets", [])
     peak_score = 0
     if targets:
         peak_score = max(t["score"] for t in targets)
 
-    # 3. AUTHENTICITY (Derived)
-    # Robust lookup for ledger (handles both direct score and nested report objects)
+    # 3. AUTHENTICITY
     t_ledger = threat_output.get("ledger", []) 
     if not t_ledger:
-        # Fallback: Try to find ledger in nested report structure
         t_ledger = threat_output.get("flags", {}).get("Threat Level (Heuristic)", {}).get("ledger", [])
 
     auth = compute_authenticity_score(inputs, t_ledger, stage1_5_data)
     
-    # 4. ANOMALY (Physics)
+    # 4. ANOMALY
     anomaly = compute_anomaly_score(stats_inputs)
     
     return {
@@ -7020,26 +7009,30 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
             "score": integrity["score"],
             "severity": integrity["severity_class"],
             "decode_status": decode_status,
-            "issues": len(integrity["ledger"])
+            "issues": len(integrity["ledger"]),
+            "ledger": integrity["ledger"]
         },
         "authenticity": {
             "verdict": auth["verdict"],
             "score": auth["score"],
             "severity": auth["severity_class"],
-            "vector_count": auth["vector_count"]
+            "vector_count": auth["vector_count"],
+            "vectors": auth["vectors"]
         },
         "threat": {
             "verdict": threat_output["verdict"],
             "score": threat_output["score"],
             "severity": threat_output["severity_class"],
             "peak_score": peak_score,
-            "signals": len(threat_output["ledger"])
+            "signals": len(threat_output["ledger"]),
+            "ledger": threat_output["ledger"]
         },
         "anomaly": {
             "verdict": anomaly["verdict"],
             "score": anomaly["score"],
             "severity": anomaly["severity_class"],
-            "entropy": anomaly["val"]
+            "entropy": anomaly["val"],
+            "vectors": anomaly["vectors"]
         }
     }
 
@@ -12572,8 +12565,9 @@ def render_adversarial_dashboard(adv_data: dict):
 @create_proxy
 def render_forensic_hud_v2(t, stats):
     """
-    [NEW] Forensic Matrix V2 (The 3+1 Architecture).
-    Safe parallel implementation. Targets the same #forensic-hud container.
+    Forensic HUD V2 (The 'Sprawl' 5-Row Layout).
+    Row 1: 8-Column Metric Header.
+    Rows 2-5: Detailed Ledger Rows for deep context.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -12582,27 +12576,13 @@ def render_forensic_hud_v2(t, stats):
     emoji_counts = stats.get("emoji_counts", {})
     master_ledgers = stats.get("master_ledgers", {}) 
 
-    # --- HELPER: Interaction Bridge ---
-    def get_int(val, key, severity="warn"):
-        # Helper to attach click handlers to registry keys
-        try:
-            if float(val) <= 0: return "", ""
-        except: return "", ""
-        
-        target_key = key
-        # Map master ledger keys to registry keys
-        if key == "integrity": target_key = "integrity_agg"
-        elif key == "threat": target_key = "threat_agg"
-        
-        cls = " hud-interactive"
-        if severity == "crit": cls += " hud-interactive-crit"
-        elif severity == "warn": cls += " hud-interactive-risk"
-        attr = f'onclick="window.hud_jump(\'{target_key}\')"'
-        return cls, attr
+    # --- HELPERS ---
+    def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
+    def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
 
-    # --- HELPER: Standard Cell Builder (Legacy Row) ---
-    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, reg_key_2=None, risk_2="warn"):
-        int_cls, int_attr = get_int(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
+    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, reg_key=None):
+        int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"' if reg_key and float(val_2) > 0 else ""
+        int_cls = " hud-interactive" if reg_key and float(val_2) > 0 else ""
         return f"""
         <div class="hud-col">
             <div class="hud-metric-group">
@@ -12617,104 +12597,85 @@ def render_forensic_hud_v2(t, stats):
         </div>
         """
 
-    # --- HELPER: Hero Verdict Cell (The New Row) ---
-    def r_verdict(title, verdict, score, severity, sub_label, sub_val, sub_risk, icon, reg_key=None):
-        bg = f"v-bg-{severity}" 
-        txt = f"v-text-{severity}"
-        int_cls, int_attr = get_int(sub_val, reg_key, sub_risk) if reg_key else ("", "")
+    def r_ledger_row(title, icon, data, type_key):
+        """Generates the wide detailed rows (2-5)."""
+        sev = data.get("severity", "ok")
+        score = data.get("score", 0)
+        verdict = data.get("verdict", "UNKNOWN")
         
+        # Build the detail chips
+        chips = []
+        
+        # EXTRACT DETAILS based on type
+        items = []
+        if type_key == "integrity":
+            # Integrity Ledger: [{'vector':..., 'points':...}]
+            for i in data.get("ledger", []):
+                items.append(f"{i['vector']} (+{i['points']})")
+        elif type_key == "threat":
+            # Threat Ledger: [{'vector':..., 'points':...}]
+            for i in data.get("ledger", []):
+                items.append(f"{i['vector']} (+{i['points']})")
+        elif type_key == "authenticity":
+            # Vectors list: ["Vector string"]
+            items = data.get("vectors", [])
+        elif type_key == "anomaly":
+            # Vectors list: ["Vector string"]
+            items = data.get("vectors", [])
+
+        # Render Chips
+        if not items:
+            chips.append(f'<span class="hud-chip chip-dim">No active signals.</span>')
+        else:
+            for item in items[:5]: # Limit to 5 to prevent blowout
+                chips.append(f'<span class="hud-chip chip-{sev}">{item}</span>')
+            if len(items) > 5:
+                chips.append(f'<span class="hud-chip chip-dim">+{len(items)-5} more...</span>')
+
         return f"""
-        <div class="hud-verdict-card {bg}">
-            <div class="v-header">
-                <span class="v-icon">{icon}</span>
-                <span class="v-title">{title}</span>
+        <div class="hud-detail-row border-{sev}">
+            <div class="hud-detail-left bg-{sev}">
+                <div class="h-icon">{icon}</div>
+                <div class="h-meta">
+                    <div class="h-title">{title}</div>
+                    <div class="h-verdict">{verdict}</div>
+                    <div class="h-score">Score: {score}</div>
+                </div>
             </div>
-            <div class="v-main">
-                <div class="v-verdict {txt}">{verdict}</div>
-                <div class="v-score">Score: {score}</div>
-            </div>
-            <div class="v-footer">
-                <div class="v-sub-label">{sub_label}</div>
-                <div class="v-sub-val {int_cls}" {int_attr}>{sub_val}</div>
+            <div class="hud-detail-right">
+                {''.join(chips)}
             </div>
         </div>
         """
 
-    # --- COLOR LOGIC ---
-    def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
-    def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
-
-    # --- ROW 1: VOLUMETRICS (3 COLS) ---
-    # C0: Alphanumeric
+    # --- ROW 1: THE COUNTS (Merged 8-Column Grid) ---
+    # Volumetrics
     alpha = sum(1 for c in t if c.isalnum())
-    runs = 0
-    in_r = False
+    runs = 0; in_r = False
     for c in t:
         if c.isalnum():
             if not in_r: runs += 1; in_r = True
         else: in_r = False
     
-    # C1: Mass
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
-    
-    # C2: Segmentation
     uax_sent = 0
     try:
         c = window.TEXTTICS_CALC_UAX_COUNTS(t)
         if c[0] != -1: uax_sent = c[1]
     except: pass
 
-    row1_html = f"""
-    <div class="hud-grid-row-1">
-        {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs))}
-        {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu))}
-        {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent))}
-    </div>
-    """
-
-    # --- ROW 2: VERDICT BAR (4 COLS) ---
-    # Integrity
-    i_d = master_ledgers.get("integrity", {})
-    c_int = r_verdict("INTEGRITY", i_d.get("verdict", "UNKNOWN"), i_d.get("score", 0), i_d.get("severity", "ok"),
-                      "Issues Found", i_d.get("issues", 0), "crit" if i_d.get("severity")=="crit" else "warn", "🛡️", "integrity")
+    # Structure
+    std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
+    non_std = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
-    # Authenticity
-    a_d = master_ledgers.get("authenticity", {})
-    c_auth = r_verdict("AUTHENTICITY", a_d.get("verdict", "SAFE"), a_d.get("score", 0), a_d.get("severity", "ok"),
-                       "Spoof Vectors", a_d.get("vector_count", 0), "crit", "🎭", "threat")
-    
-    # Threat
-    t_d = master_ledgers.get("threat", {})
-    c_thr = r_verdict("THREAT", t_d.get("verdict", "CLEAN"), t_d.get("score", 0), t_d.get("severity", "ok"),
-                      "Active Signals", t_d.get("signals", 0), "crit", "💣", "threat")
-    
-    # Anomaly
-    n_d = master_ledgers.get("anomaly", {})
-    c_ano = r_verdict("ANOMALY", n_d.get("verdict", "NORMAL"), n_d.get("score", 0), n_d.get("severity", "ok"),
-                      "Entropy", f"{n_d.get('entropy', 0):.2f}", "warn", "📉", None)
-
-    row2_html = f"""
-    <div class="hud-verdict-row">
-        {c_int}{c_auth}{c_thr}{c_ano}
-    </div>
-    """
-
-    # --- ROW 3: STRUCTURE (5 COLS) ---
-    std_set = {0x20, 0x09, 0x0A, 0x0D}
-    std_inv = sum(1 for c in t if ord(c) in std_set)
-    flags = stats.get('forensic_flags', {})
-    non_std = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    
-    # Delimiters
     p_ascii = 0; p_exotic = 0
     for c in t:
         if unicodedata.category(c).startswith('P'):
             if ord(c) <= 0x7F: p_ascii += 1
             else: p_exotic += 1
             
-    # Symbols/Emoji
     s_ext = emoji_counts.get("text_symbols_extended", 0)
     s_exo = emoji_counts.get("text_symbols_exotic", 0)
     h_pict = emoji_counts.get("hybrid_pictographs", 0)
@@ -12722,8 +12683,11 @@ def render_forensic_hud_v2(t, stats):
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
 
-    row3_html = f"""
-    <div class="hud-grid-row-2">
+    row1_html = f"""
+    <div class="hud-grid-row-1">
+        {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs))}
+        {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu))}
+        {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent))}
         {r_cell("ASCII WS", std_inv, c_neut(std_inv), "NON-STD", non_std, c_safe(non_std), "ws_nonstd")}
         {r_cell("ASCII PUNC", p_ascii, c_neut(p_ascii), "EXOTIC", p_exotic, c_safe(p_exotic), "punc_exotic")}
         {r_cell("EXTENDED", s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo), "sym_exotic")}
@@ -12732,7 +12696,14 @@ def render_forensic_hud_v2(t, stats):
     </div>
     """
 
-    container.innerHTML = row1_html + row2_html + row3_html
+    # --- ROWS 2-5: THE LEDGER ROWS ---
+    rows_html = ""
+    rows_html += r_ledger_row("INTEGRITY", "🛡️", master_ledgers.get("integrity",{}), "integrity")
+    rows_html += r_ledger_row("AUTHENTICITY", "🎭", master_ledgers.get("authenticity",{}), "authenticity")
+    rows_html += r_ledger_row("THREAT", "💣", master_ledgers.get("threat",{}), "threat")
+    rows_html += r_ledger_row("ANOMALY", "📉", master_ledgers.get("anomaly",{}), "anomaly")
+
+    container.innerHTML = row1_html + rows_html
 
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
