@@ -12918,12 +12918,15 @@ def update_all(event=None):
     forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
     forensic_map = {row['label']: row for row in forensic_rows}
 
+    # Reconstruct inputs for the Integrity Auditor from the map
+    def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
+
     # 2. THE MASTER AUDITOR (New Logic from Block 7)
     master_ledgers = audit_master_ledgers(
         inputs=integrity_inputs, 
         stats_inputs=stat_profile, 
         stage1_5_data=stage1_5_data, 
-        threat_output=threat_data
+        threat_output=threat_results
     )
     
     # Provenance
