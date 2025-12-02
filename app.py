@@ -12918,8 +12918,28 @@ def update_all(event=None):
     forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
     forensic_map = {row['label']: row for row in forensic_rows}
 
-    # Reconstruct inputs for the Integrity Auditor from the map
+    # Reconstruct the inputs dict needed by the Auditor from the UI map
     def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
+    
+    integrity_inputs = {
+        "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
+        "surrogate": _get_f_count("Surrogates (Broken)"),
+        "nul": _get_f_count("Flag: NUL (U+0000)"),
+        "bidi_broken_count": _get_f_count("Flag: Unclosed Bidi Sequence") + _get_f_count("Flag: Unmatched PDF/PDI"),
+        "broken_keycap": _get_f_count("Flag: Broken Keycap Sequence"),
+        "hidden_marks": _get_f_count("Flag: Marks on Non-Visual Base"),
+        "tags": _get_f_count("Flag: Unicode Tags (Plane 14)"),
+        "nonchar": _get_f_count("Noncharacter"),
+        "invalid_vs": _get_f_count("Flag: Invalid Variation Selector"),
+        "donotemit": _get_f_count("Prop: Discouraged (DoNotEmit)"),
+        "max_cluster_len": _get_f_count("Max Invisible Run Length"),
+        "bom": _get_f_count("Flag: Internal BOM (U+FEFF)"),
+        "pua": _get_f_count("Flag: Private Use Area (PUA)"),
+        "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
+        "dec_space": _get_f_count("Deceptive Spaces"),
+        "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
+        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
+    }
 
     # 2. THE MASTER AUDITOR (New Logic from Block 7)
     master_ledgers = audit_master_ledgers(
