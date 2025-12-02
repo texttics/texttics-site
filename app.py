@@ -10306,17 +10306,28 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
 def render_forensic_hud(t, stats):
     """
     Renders the 'Forensic Matrix' (Unified V2 Layout).
-    This fixes the default view to match the 'Sprawl' grid layout.
+    UPDATED: Handles "Waiting" (Gray) state and forces Status Line update.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
+    
+    # 1. Detect Empty/Initial State
+    is_initial = (t is None) or (len(t) == 0)
     if t is None: t = ""
     
     emoji_counts = stats.get("emoji_counts", {})
-    # Use empty dicts if master_ledgers aren't calculated yet (initial state)
     master_ledgers = stats.get("master_ledgers", {}) 
 
-    # --- FORENSIC ICON SET (SVG PATHS) - Shared with V2 ---
+    # --- FIX: FORCE STATUS LINE UPDATE ---
+    # This ensures the status line is never empty, even if the previous write failed
+    try:
+        status_msg = "Ready. Waiting for input..." if is_initial else f"Analysis complete. Length: {len(t)}"
+        # We target the inner content to preserve the label if it exists, 
+        # or just write to the main ID if that's how your HTML is set up.
+        Element("status-line").write(f"STATUS: {status_msg}") 
+    except: pass
+
+    # --- FORENSIC ICON SET (SVG PATHS) ---
     VERDICT_ICONS = {
         "integrity": (
             '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>'
@@ -10343,7 +10354,6 @@ def render_forensic_hud(t, stats):
         )
     }
 
-    # --- HELPERS ---
     def get_svg(key):
         paths = VERDICT_ICONS.get(key, "")
         return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
@@ -10351,12 +10361,12 @@ def render_forensic_hud(t, stats):
     def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
     def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
 
-    # Unified Cell Renderer (Matching V2 CSS)
+    # Unified Cell Renderer
     def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, reg_key=None):
-        # Only make interactive if there is a value
         int_attr = ""
         int_cls = ""
-        if reg_key and float(val_2) > 0:
+        # Disable interaction in initial state
+        if not is_initial and reg_key and float(val_2) > 0:
              int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
              int_cls = " hud-interactive"
         
@@ -10376,34 +10386,47 @@ def render_forensic_hud(t, stats):
 
     # Unified Ledger Row Renderer (Hero Rows)
     def r_ledger_row(title, type_key, data):
-        # Default to safe/empty if data is missing (Initial State)
-        sev = data.get("severity", "ok")
-        score = data.get("score", 0)
-        verdict = data.get("verdict", "INTACT" if type_key == "integrity" else "CLEAR")
+        # 1. Determine State (Waiting vs Active)
+        if is_initial:
+            sev = "neutral"  # Maps to Gray CSS
+            score = 0
+            verdict = "WAITING"
+            items = []
+            click_attr = "" # No clicking in empty state
+            title_attr = "Waiting for input..."
+        else:
+            sev = data.get("severity", "ok")
+            score = data.get("score", 0)
+            verdict = data.get("verdict", "INTACT" if type_key == "integrity" else "CLEAR")
+            
+            # Setup interaction
+            target_ids = {
+                "integrity": "integrity-matrix-body",
+                "threat": "threat-report-body",
+                "authenticity": "adversarial-dashboard-body",
+                "anomaly": "statistical-profile-body"
+            }
+            t_id = target_ids.get(type_key)
+            click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
+            title_attr = "Click to view detailed table"
+            
+            # Extract items
+            items = []
+            if type_key in ["integrity", "threat"]:
+                for i in data.get("ledger", []):
+                    items.append(f"{i['vector']} (+{i['points']})")
+            elif type_key in ["authenticity", "anomaly"]:
+                items = data.get("vectors", [])
+
+        # 2. Render Icon & Chips
         icon_svg = get_svg(type_key)
         
-        # Safe interaction call using the new JS helper
-        target_ids = {
-            "integrity": "integrity-matrix-body",
-            "threat": "threat-report-body",
-            "authenticity": "adversarial-dashboard-body",
-            "anomaly": "statistical-profile-body"
-        }
-        t_id = target_ids.get(type_key)
-        click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
-
-        # Default chip for empty state
-        chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
-        
-        # If we have actual ledger items, render them (Active State)
-        items = []
-        if type_key in ["integrity", "threat"]:
-            for i in data.get("ledger", []):
-                items.append(f"{i['vector']} (+{i['points']})")
-        elif type_key in ["authenticity", "anomaly"]:
-            items = data.get("vectors", [])
-            
-        if items:
+        chips_html = ""
+        if is_initial:
+            chips_html = '<span class="hud-chip chip-dim">System Ready</span>'
+        elif not items:
+            chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
+        else:
             chips = []
             for item in items[:6]:
                 chips.append(f'<span class="hud-chip chip-{sev}">{item}</span>')
@@ -10412,7 +10435,7 @@ def render_forensic_hud(t, stats):
             chips_html = "".join(chips)
 
         return f"""
-        <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table">
+        <div class="hud-detail-row border-{sev}" {click_attr} title="{title_attr}">
             <div class="hud-detail-left bg-{sev}">
                 <div class="h-icon-box text-{sev}">{icon_svg}</div>
                 <div class="h-meta">
@@ -10427,7 +10450,8 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- ROW 1: THE COUNTS (Merged 8-Column Grid) ---
+    # --- ROW 1: METRICS ---
+    # In initial state, these are all zero
     alpha = sum(1 for c in t if c.isalnum())
     runs = 0; in_r = False
     for c in t:
@@ -10445,7 +10469,6 @@ def render_forensic_hud(t, stats):
         if c[0] != -1: uax_sent = c[1]
     except: pass
 
-    # Structure Metrics
     std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
     non_std = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
@@ -10476,7 +10499,7 @@ def render_forensic_hud(t, stats):
     </div>
     """
 
-    # --- ROWS 2-5: THE LEDGER ROWS ---
+    # --- ROWS 2-5: LEDGER ROWS ---
     rows_html = ""
     rows_html += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}))
     rows_html += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}))
