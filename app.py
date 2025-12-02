@@ -169,113 +169,136 @@ TAG_BLOCK_END = 0xE007F
 @create_proxy
 def analyze_html_metadata(raw_html_string: str):
     """
-    Scans raw HTML clipboard content for CSS-based obfuscation and hiding techniques.
-    Source: External Security Research (CSS Filtering/Low Contrast Attacks).
-    
-    Args:
-        raw_html_string: The raw HTML content received directly from the clipboard.
-    
-    Returns:
-        A list of findings dictionaries.
+    [STAGE 1.5] METADATA WORKBENCH ANALYZER (Updated v2.0)
+    Scans raw HTML clipboard content for CSS-based obfuscation.
+    Injects the verdict directly into the Metadata Workbench UI section.
     """
     if not raw_html_string:
+        # Clear UI if input is empty
+        _update_css_workbench_ui("NEUTRAL", "Awaiting input...", 0, None)
         return []
         
     findings = []
-
-    # Regex flags: DOTALL (s) to match newlines/CR, IGNORECASE (i)
-    # This pattern targets: <tag ... style="[ATTRIBUTES]">HIDDEN TEXT</tag>
-    # It captures (1) the style attribute and (2) the content.
-    # Note: Regex parsing of arbitrary HTML is fragile, but sufficient for simple malicious injection targets.
     
-    # Pattern explanation: 
-    #   <(\w+)\s+[^>]*?: Finds the opening tag.
-    #   style\s*=\s*['"](.*?)['"]?: Captures the full style attribute (Group 1).
-    #   >(.*?)</\1>: Captures the content (Group 2), matching against the closing tag.
+    # Check for empty paste (sometimes raw_html is just boilerplate from the editor)
+    if not raw_html_string.strip() or len(raw_html_string.strip()) < 10:
+        _update_css_workbench_ui("NEUTRAL", "No significant HTML source found in paste.", 0, None)
+        return []
+
+    # FIX 1: STYLE_CONTENT_PATTERN must be a raw string.
     STYLE_CONTENT_PATTERN = re.compile(
         r'<(\w+)\s+[^>]*?style\s*=\s*["\'](.*?)["\'][^>]*?>(.*?)</\1>',
         re.IGNORECASE | re.DOTALL
     )
 
-    # --- CRITICAL STYLE DEFINITIONS ---
-    # We use simpler strings because the regex above extracts the full attribute value.
+    # --- CRITICAL STYLE DEFINITIONS (FIXED WITH 'r') ---
     CRITICAL_STYLE_RULES = [
         r"visibility:\s*hidden",
         r"display:\s*none",
         r"opacity:\s*0",
-        r"position:\s*absolute;\s*left:\s*-?\d{3,}px" # Matches left: -9999px etc.
+        r"position:\s*absolute;\s*left:\s*-?\d{3,}px"
     ]
     
     CRITICAL_CONTRAST_RULES = [
-        # Note: Must use a single space or no space, as the attribute extraction is raw
-        r"color:\s*white;\s*background:\s*white", # Explicit white-on-white
-        r"color:\s*#fff;\s*background:\s*#fff"    # Explicit hex-on-hex
+        r"color:\s*white;\s*background:\s*white",
+        r"color:\s*#fff;\s*background:\s*#fff"
     ]
 
-    # --- 1. Scan for Absolute Hiding (Visibility, Opacity, Position) ---
+    # --- 1. Scan for Hiding (Visibility, Position) and Contrast ---
     
     for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
         tag, style_attr, content = match.groups()
         
-        # Normalize the style attribute for easier searching (remove all whitespace)
+        # 2. Normalize the style attribute (remove all whitespace)
+        # This speeds up searching significantly
         normalized_style = style_attr.lower().replace(" ", "")
         
-        # Check for absolute hiding rules
-        is_hidden = False
         rule_hit = ""
         
+        # Check for ABOLUTE hiding rules
         for rule in CRITICAL_STYLE_RULES:
-            if rule in normalized_style: # Since rule is already pre-normalized, direct search is fast.
-                is_hidden = True
-                rule_hit = rule.split(":")[0] # e.g., 'visibility'
+            if re.search(rule, normalized_style):
+                rule_hit = rule.split(":")[0] 
                 break
+        
+        # Check for low-contrast rules
+        if not rule_hit:
+            for rule in CRITICAL_CONTRAST_RULES:
+                if re.search(rule, normalized_style):
+                    rule_hit = "low-contrast"
+                    break
 
-        if is_hidden:
+        if rule_hit:
             # We found a definitive hiding technique
             findings.append({
-                "type": "CSS_ABSOLUTE_HIDE",
+                "type": "CSS_OBFUSCATION",
                 "rule": rule_hit,
-                "content_preview": content.strip()[:50] + "...",
+                "content_preview": content.strip()[:50] + "...", # Preview of hidden text
                 "desc": f"Text hidden via {rule_hit} style in <{tag}> tag."
             })
-            
-    # --- 2. Scan for Low-Contrast Hiding (Requires content check) ---
     
-    for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
-        tag, style_attr, content = match.groups()
-        normalized_style = style_attr.lower().replace(" ", "")
-        
-        is_low_contrast = False
-        
-        for rule in CRITICAL_CONTRAST_RULES:
-            if rule in normalized_style:
-                is_low_contrast = True
-                rule_hit = "low-contrast"
-                break
-
-        if is_low_contrast:
-            findings.append({
-                "type": "CSS_LOW_CONTRAST",
-                "rule": "color:white/background:white",
-                "content_preview": content.strip()[:50] + "...",
-                "desc": f"Text hidden via explicit low-contrast style in <{tag}> tag."
-            })
-            
-    # NOTE: Since the current PyScript context does not have a mechanism
-    # to store global state based on Python functions (only JavaScript properties),
-    # we simulate the "reporting" by returning the findings.
+    # --- 3. UI Update and Reporting ---
     
-    # In a real app.py integration, this would push a flag list to the Threat Auditor.
     if findings:
-        print(f"[{len(findings)} CSS OBFUSCATION FINDING(S) DETECTED]")
+        _update_css_workbench_ui("CRITICAL", "CSS Obfuscation detected in pasted HTML.", len(findings), findings)
     else:
-        print("[No CSS Obfuscation detected in HTML payload]")
+        _update_css_workbench_ui("CLEAN", "No CSS Obfuscation detected in HTML payload.", 0, None)
 
     return findings
 
-# NOTE: This function needs to be exposed to JavaScript via PyScript's 'create_proxy'.
-# You would need to add 'window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)'
-# in your main app.py execution block.
+# --- NEW HELPER: DOM INJECTION ---
+def _update_css_workbench_ui(verdict_key: str, summary: str, count: int, findings: list):
+    """
+    Handles all UI injection logic for the Metadata Workbench report panel.
+    """
+    # Mapping table for visual output
+    UI_MAP = {
+        "CRITICAL": {"title": "CSS THREAT DETECTED", "color": "#dc2626", "icon": "🚨"},
+        "CLEAN": {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": "✅"},
+        "NEUTRAL": {"title": "Awaiting Paste", "color": "#4b5563", "icon": "ⓘ"}
+    }
+    
+    data = UI_MAP.get(verdict_key, UI_MAP["NEUTRAL"])
+    
+    # 1. Update Header and Summary
+    document.getElementById("css-verdict-title").textContent = data["title"]
+    document.getElementById("css-summary-text").textContent = summary
+    document.getElementById("css-finding-count").textContent = str(count)
+    
+    # 2. Update Visuals
+    verdict_box = document.getElementById("metadata-findings-report")
+    icon_box = document.getElementById("css-verdict-icon")
+    
+    verdict_box.style.borderLeftColor = data["color"]
+    icon_box.textContent = data["icon"]
+    
+    # 3. Update Findings List (Detailed)
+    list_el = document.getElementById("css-findings-list")
+    
+    if list_el:
+        list_el.innerHTML = ""
+        if findings:
+            details = document.getElementById("css-findings-details")
+            if details: details.open = True
+            
+            for f in findings:
+                li = document.createElement("li")
+                li.style.fontFamily = "monospace"
+                li.style.fontSize = "0.85rem"
+                
+                # Highlight Rule and Preview
+                rule_text = f.get('rule', 'UNKNOWN').toUpperCase()
+                
+                # Use standard black/white for text, but color the rule
+                li.innerHTML = (
+                    f'<span style="color:{data["color"]}; font-weight:700;">{rule_text}</span>'
+                    f': "{f["content_preview"]}"'
+                )
+                list_el.appendChild(li)
+        else:
+             # Ensure the accordion is closed if clean
+            details = document.getElementById("css-findings-details")
+            if details: details.open = false
 
 # ==========================================
 # [STAGE 1.5] NEW SIDECAR ENGINES (Block 1)
