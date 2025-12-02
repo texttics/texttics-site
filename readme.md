@@ -1889,14 +1889,14 @@ To preserve the "Post-Clipboard" philosophy, we explicitly **rejected** semantic
 
 ### 4. Validation
 The system has been verified against the `b🔥omb` (Token Fracture) and `malware.mp4⠀.exe` (Extension Masking) vectors, correctly identifying them as **CRITICAL** threats in the Dashboard while maintaining a **CLEAN** verdict for standard text.
-[cite_start]This component addresses the limitation of any "Post-Clipboard" analyzer: the deliberate loss of styling metadata[cite: 2288, 2289].
+This component addresses the limitation of any "Post-Clipboard" analyzer: the deliberate loss of styling metadata[cite: 2288, 2289].
 
 
 #### 5. Metadata Workbench & CSS Stealth Detector
 
-[cite_start]This component addresses the primary limitation of any "Post-Clipboard" analyzer: the deliberate loss of styling metadata[cite: 2288, 2289].
+This component addresses the primary limitation of any "Post-Clipboard" analyzer: the deliberate loss of styling metadata[cite: 2288, 2289].
 
-* [cite_start]**The Flaw in Plain Text:** While the main input successfully analyzes the character-level payload for the LLM (the **structural threat**), it deliberately strips CSS formatting[cite: 2288, 2289]. [cite_start]This could allow attackers to camouflage large payloads of malicious text using visual styles (e.g., white text on a white background or `visibility: hidden`)[cite: 5195].
-* [cite_start]**The Architecture (Dual-Input):** We implemented a dedicated, opt-in `contenteditable` **Metadata Workbench** input mode that captures the raw `text/html` string directly from the clipboard[cite: 2288, 2289]. This preserves the original visual context.
-* [cite_start]**The Analysis:** A new Python engine (`analyze_html_metadata`) scans this raw HTML string for **CSS Obfuscation** signatures, including `visibility: hidden`, `opacity: 0`, off-screen positioning, and explicit white-on-white low-contrast rules[cite: 5195].
+* **The Flaw in Plain Text:** While the main input successfully analyzes the character-level payload for the LLM (the **structural threat**), it deliberately strips CSS formatting[cite: 2288, 2289]. This could allow attackers to camouflage large payloads of malicious text using visual styles (e.g., white text on a white background or `visibility: hidden`)[cite: 5195].
+* **The Architecture (Dual-Input):** We implemented a dedicated, opt-in `contenteditable` **Metadata Workbench** input mode that captures the raw `text/html` string directly from the clipboard[cite: 2288, 2289]. This preserves the original visual context.
+* **The Analysis:** A new Python engine (`analyze_html_metadata`) scans this raw HTML string for **CSS Obfuscation** signatures, including `visibility: hidden`, `opacity: 0`, off-screen positioning, and explicit white-on-white low-contrast rules[cite: 5195].
 * **Forensic Correlation:** This module functions as a **complementary tool**. It confirms *how* the text was visually hidden on the source website, validating the findings already present in the main Structural Integrity Profile.
