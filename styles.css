@@ -5659,146 +5659,162 @@ details.profile-section > summary:hover::marker {
 .v-bg-ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
 .v-text-ok { color: #15803d; }
 
-/* =========================================
-   HUD V2 LAYOUT (The 3+1 Architecture)
-   ========================================= */
+/* ==========================================================================
+   FORENSIC HUD V2 ("The Sprawl")
+   Target ID: #forensic-hud
+   ========================================================================== */
 
-/* --- The Main Grid Structure --- */
+#forensic-hud {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 24px;
+    font-family: var(--font-sans);
+}
 
-/* Row 1: Volumetrics (3 Columns) */
+/* --- ROW 1: THE COUNTS (Merged 8-Column Grid) --- */
 .hud-grid-row-1 {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-/* Row 2: The Verdict Bar (4 Columns) */
-.hud-verdict-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 12px;
-}
-
-/* Row 3: Structure (5 Columns) */
-.hud-grid-row-2 {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 8px;
-}
-
-/* --- Component: Verdict Card --- */
-.hud-verdict-card {
-    background-color: var(--color-bg); /* Fallback */
+    /* 8 Columns: 3 Volumetric + 5 Structural */
+    grid-template-columns: repeat(8, 1fr); 
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
     border-radius: 6px;
-    padding: 10px 12px;
-    border: 1px solid transparent;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    height: 94px; /* Fixed height for alignment */
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.v-header {
+/* --- ROWS 2-5: LEDGER ROWS (Detail View) --- */
+.hud-detail-row {
+    display: flex;
+    align-items: stretch;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+    min-height: 70px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: transform 0.1s ease;
+}
+
+/* LEFT: The Verdict Header (Fixed Width) */
+.hud-detail-left {
+    flex: 0 0 180px; /* Fixed width for alignment */
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    opacity: 0.85;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
-    padding-bottom: 6px;
-    margin-bottom: 4px;
+    padding: 0 16px;
+    gap: 12px;
+    border-right: 1px solid rgba(0,0,0,0.05);
 }
 
-.v-icon {
-    font-size: 1.1em;
-    line-height: 1;
-}
+.h-icon { font-size: 1.5rem; }
 
-.v-main {
-    flex-grow: 1;
+.h-meta {
     display: flex;
     flex-direction: column;
-    justify-content: center;
 }
 
-.v-verdict {
-    font-size: 1.25rem; /* Large Hero Text */
+.h-title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: rgba(0,0,0,0.5);
+    letter-spacing: 0.05em;
+    margin-bottom: 2px;
+}
+
+.h-verdict {
+    font-size: 1rem;
     font-weight: 800;
     font-family: var(--font-mono);
     line-height: 1.1;
-    letter-spacing: -0.02em;
+    text-transform: uppercase;
 }
 
-.v-score {
+.h-score {
     font-size: 0.7rem;
-    opacity: 0.7;
-    margin-top: 2px;
     font-family: var(--font-mono);
+    opacity: 0.7;
 }
 
-.v-footer {
-    margin-top: auto;
+/* RIGHT: The Chip Container */
+.hud-detail-right {
+    flex: 1;
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 8px 16px;
+    gap: 8px;
+    background-color: #ffffff;
+}
+
+/* --- CHIPS (The Data) --- */
+.hud-chip {
+    display: inline-flex;
     align-items: center;
     font-size: 0.75rem;
-    background: rgba(255,255,255,0.4);
-    margin: 0 -12px -10px -12px; /* Bleed to edges */
-    padding: 6px 12px;
-    border-top: 1px solid rgba(0,0,0,0.05);
-    border-radius: 0 0 6px 6px;
-}
-
-.v-sub-label {
-    color: var(--color-text-muted);
-    font-size: 0.7rem;
     font-weight: 600;
-}
-
-.v-sub-val {
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    white-space: nowrap;
     font-family: var(--font-mono);
-    font-weight: 700;
 }
 
-/* --- Severity Themes (Colors) --- */
-
-/* CRITICAL (Red) */
-.v-bg-crit { 
-    background-color: #fef2f2; 
-    border-color: #fecaca; 
-    color: #991b1b; 
+.chip-dim {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+    font-style: italic;
+    font-family: var(--font-sans);
 }
-.v-text-crit { color: #dc2626; }
 
-/* WARNING (Amber/Orange) */
-.v-bg-warn { 
-    background-color: #fffbeb; 
-    border-color: #fde68a; 
-    color: #92400e; 
+.chip-ok {
+    background-color: #f0fdf4;
+    color: #166534;
+    border-color: #bbf7d0;
 }
-.v-text-warn { color: #d97706; }
 
-/* OK/SAFE (Green) */
-.v-bg-ok { 
-    background-color: #f0fdf4; 
-    border-color: #bbf7d0; 
-    color: #166534; 
+.chip-warn {
+    background-color: #fffbeb;
+    color: #b45309;
+    border-color: #fde68a;
 }
-.v-text-ok { color: #15803d; }
 
-/* Interactive Hover States */
-.hud-interactive {
-    cursor: pointer;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    text-decoration-thickness: 1px;
+.chip-crit {
+    background-color: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
 }
-.hud-interactive:hover {
-    filter: brightness(0.9);
+
+/* --- THEMES (Row Colors) --- */
+/* Critical */
+.bg-crit { background-color: #fef2f2; color: #991b1b; }
+.border-crit { border-left: 4px solid #ef4444; }
+
+/* Warning */
+.bg-warn { background-color: #fffbeb; color: #92400e; }
+.border-warn { border-left: 4px solid #f59e0b; }
+
+/* OK */
+.bg-ok { background-color: #f0fdf4; color: #166534; }
+.border-ok { border-left: 4px solid #10b981; }
+
+/* --- RESPONSIVE --- */
+@media (max-width: 1200px) {
+    .hud-grid-row-1 {
+        grid-template-columns: repeat(4, 1fr); /* Break to 2 rows of 4 */
+    }
+}
+
+@media (max-width: 768px) {
+    .hud-detail-row {
+        flex-direction: column;
+    }
+    .hud-detail-left {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #f3f4f6;
+        padding: 10px;
+    }
 }
