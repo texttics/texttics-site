@@ -1346,92 +1346,6 @@ Stage 2: Heatmap Row Classes
   margin: 0 !important; 
 }
 
-/* --- LEFT STATUS (Input: Ready) --- */
-#status-line {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 12px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
-}
-
-#status-line.status-loading {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  border-color: #e5e7eb;
-}
-
-#status-line.status-ready {
-  background-color: #f0fdf4; 
-  border-color: #bbf7d0;     
-  color: #000000;            
-}
-
-#status-line.status-revealed {
-  background-color: #ffffff;
-  color: #2563eb; 
-  border-color: #60a5fa;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
-}
-
-/* --- RIGHT STATUS (Forensic Pill) --- */
-.status-details {
-  display: inline-flex;
-  align-items: center;
-  
-  /* FIXED: REMOVED margin-right: 1rem; */
-  margin: 0; 
-  
-  padding: 2px 12px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  border: 1px solid transparent;
-  
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.3s ease;
-}
-
-.status-details.clean {
-  opacity: 1;
-  visibility: visible;
-  background-color: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #000000; 
-}
-
-.status-details.warn {
-  opacity: 1;
-  visibility: visible;
-  background-color: #fffbeb;
-  color: #000000;
-  border-color: #fcd34d;
-}
-
-.status-details.success {
-  opacity: 1;
-  visibility: visible;
-  background-color: #ecfdf5;
-  color: #047857;
-  border-color: #6ee7b7;
-}
-
-/* --- ICON RESTORATION (The Fix) --- */
-/* This targets the SVG inside the pills to restore Color & Gap */
-#status-line.status-ready svg,
-.status-details.clean svg {
-  stroke: #15803d !important;   /* Force Green Color */
-  stroke-width: 3;
-  margin-left: 8px !important;  /* Force 8px Gap */
-  margin-right: 0 !important;
-}
-
 /* --- Repertoire Card Styling --- */
 
 .card.card-repertoire {
@@ -5858,14 +5772,66 @@ details.profile-section > summary:hover::marker {
 .text-neutral { color: #6b7280; } /* Dark gray text */
 .text-neutral svg { stroke: #9ca3af; } /* Muted icon stroke */
 
-/* --- FIX: STATUS LINE VISIBILITY --- */
+/* ==========================================================================
+   STATUS LINE (Consolidated Logic)
+   Merges the visual "Pill" design with forced visibility for the Waiting state.
+   ========================================================================== */
+
 #status-line {
-    display: block !important;
+    /* Layout: Restore the Pill Shape */
+    display: inline-flex !important; 
+    align-items: center;
+    padding: 4px 16px; /* Slightly taller for better readability */
+    border-radius: 999px;
+    margin-top: 8px; /* Keep the spacing from your fix */
+
+    /* Typography */
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    font-weight: 600;
+
+    /* VISIBILITY: Force it to show even if no specific class is added yet */
     opacity: 1 !important;
     visibility: visible !important;
-    min-height: 20px;
-    color: #374151; /* Force dark text color */
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    margin-top: 8px;
+    min-height: 28px;
+    
+    /* DEFAULT THEME (The "Waiting" Grey State) */
+    background-color: #f9fafb; /* Light Gray */
+    border: 1px solid #e5e7eb; /* Gray Border */
+    color: #374151;            /* Dark Gray Text */
+    
+    transition: all 0.2s ease;
+}
+
+/* --- STATES (Overrides default gray) --- */
+
+/* Ready / Success (Green) */
+#status-line.status-ready {
+    background-color: #f0fdf4; 
+    border-color: #bbf7d0;      
+    color: #166534; /* Darker green for contrast */           
+}
+
+/* Loading / Processing (Muted) */
+#status-line.status-loading {
+    background-color: #f3f4f6;
+    color: #6b7280;
+    border-color: #d1d5db;
+}
+
+/* Revealed / Action (Blue) */
+#status-line.status-revealed {
+    background-color: #eff6ff;
+    color: #1e40af; 
+    border-color: #bfdbfe;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.1);
+}
+
+/* --- ICON HANDLING --- */
+/* Ensures SVGs inside the status line align correctly */
+#status-line svg {
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    stroke-width: 2.5px;
 }
