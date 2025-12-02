@@ -12918,6 +12918,14 @@ def update_all(event=None):
     forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
     forensic_map = {row['label']: row for row in forensic_rows}
 
+    # 2. THE MASTER AUDITOR (New Logic from Block 7)
+    master_ledgers = audit_master_ledgers(
+        inputs=integrity_inputs, 
+        stats_inputs=stat_profile, 
+        stage1_5_data=stage1_5_data, 
+        threat_output=threat_data
+    )
+    
     # Provenance
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
@@ -13197,10 +13205,11 @@ def update_all(event=None):
         "script_mix": script_mix_class,
         "is_ascii": is_ascii_safe,
         "nsm_level": nsm_stats["level"],
-        "drift": skel_metrics.get("total_drift", 0)
+        "drift": skel_metrics.get("total_drift", 0),
+        "master_ledgers": master_ledgers
     }
     
-    render_forensic_hud(t, hud_stats)
+    render_forensic_hud_v2(t, hud_stats)
 
     # --- NEW: Render Encoding Strip ---
     render_encoding_footprint(t)
