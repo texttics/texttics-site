@@ -10377,77 +10377,62 @@ def render_forensic_hud(t, stats):
 
     # Unified Ledger Row Renderer (Hero Rows) - WITH METADATA
     def r_ledger_row(title, type_key, data):
-        # 1. Define the Forensic Context (The "Intellectual" Layer)
+        sev = data.get("severity", "ok")
+        score = data.get("score", 0)
+        verdict = data.get("verdict", "INTACT" if type_key == "integrity" else "CLEAR")
+        
+        target_ids = {"integrity": "integrity-matrix-body", "threat": "threat-report-body", "authenticity": "adversarial-dashboard-body", "anomaly": "statistical-profile-body"}
+        t_id = target_ids.get(type_key)
+        click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
+        
+        items = []
+        if type_key in ["integrity", "threat"]:
+            for i in data.get("ledger", []): items.append(f"{i['vector']} (+{i['points']})")
+        elif type_key in ["authenticity", "anomaly"]:
+            items = data.get("vectors", [])
+
+        # Define Forensic Metadata
         meta = {
             "integrity": {
-                "d1": "Measures the physical health of the data stream. Penalties applied for data corruption (U+FFFD), broken encoding (surrogates), and binary injection (NULLs).",
-                "m1": "Base Score + Density Penalty",
-                "r1": "Std: Unicode Core Spec",
-                "d2": "High scores indicate a file that is technically broken, truncated, or dangerous to parsers regardless of content.",
-                "m2": "Auditor: Integrity",
-                "r2": "Scope: Physical Rot"
+                "d1": "Measures physical health. Penalties for corruption (FFFD), broken encoding, and binary injection.",
+                "m1": "Base Score + Density Penalty", "r1": "Std: Core Spec",
+                "d2": "High scores indicate broken or dangerous files regardless of content.",
+                "m2": "Auditor: Integrity", "r2": "Scope: Rot"
             },
             "authenticity": {
-                "d1": "Verifies the identity claims of the text. Penalties applied for Homoglyphs (Cyrillic vs Latin), Mixed-Script Spoofing, and IDNA protocol violations.",
-                "m1": "UTS #39 Skeleton / Script Mixing",
-                "r1": "Std: UTS #39 & #46",
-                "d2": "High scores indicate an attempt to impersonate a trusted domain, user, or file extension (e.g. Phishing).",
-                "m2": "Auditor: Authenticity",
-                "r2": "Scope: Identity"
+                "d1": "Verifies identity. Penalties for Homoglyphs, Mixed-Script Spoofing, and IDNA violations.",
+                "m1": "UTS #39 Skeleton", "r1": "Std: UTS #39",
+                "d2": "High scores indicate an attempt to impersonate a trusted domain or user.",
+                "m2": "Auditor: Authenticity", "r2": "Scope: Identity"
             },
             "threat": {
-                "d1": "Detects active weaponization and malicious intent. Penalties applied for Execution Vectors (Bidi), Injection (ANSI/Tags), and Evasion (Token Fractures).",
-                "m1": "Pattern Matching + Behavior Analysis",
-                "r1": "Ref: Trojan Source / TRAPDOC",
-                "d2": "High scores indicate a confirmed exploit payload designed to execute code or bypass filters.",
-                "m2": "Auditor: Threat",
-                "r2": "Scope: Malice"
+                "d1": "Detects weaponization. Penalties for Bidi Execution, ANSI Injection, and Token Evasion.",
+                "m1": "Adversarial Patterns", "r1": "Ref: Trojan Source",
+                "d2": "High scores indicate a confirmed exploit payload.",
+                "m2": "Auditor: Threat", "r2": "Scope: Malice"
             },
             "anomaly": {
-                "d1": "Analyzes the statistical physics of the text. Measures Entropy, Character Distribution, and Zalgo Density.",
-                "m1": "Shannon Entropy / Mark Density",
-                "r1": "Heuristic Analysis",
-                "d2": "High scores indicate unnatural, machine-generated, or obfuscated content without specific exploit signatures.",
-                "m2": "Auditor: Anomaly",
-                "r2": "Scope: Physics"
+                "d1": "Analyzes physics. Measures Entropy, Character Distribution, and Zalgo Density.",
+                "m1": "Shannon Entropy", "r1": "Heuristic",
+                "d2": "High scores indicate unnatural or obfuscated content.",
+                "m2": "Auditor: Anomaly", "r2": "Scope: Physics"
             }
         }
-
-        # 2. Get Logic State
-        if is_initial:
-            sev, score, verdict, items, click_attr, title_attr = "neutral", 0, "WAITING", [], "", "Waiting for input..."
-        else:
-            sev = data.get("severity", "ok")
-            score = data.get("score", 0)
-            verdict = data.get("verdict", "INTACT" if type_key == "integrity" else "CLEAR")
-            
-            target_ids = {"integrity": "integrity-matrix-body", "threat": "threat-report-body", "authenticity": "adversarial-dashboard-body", "anomaly": "statistical-profile-body"}
-            t_id = target_ids.get(type_key)
-            click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
-            title_attr = "Click to view detailed table"
-            
-            items = []
-            if type_key in ["integrity", "threat"]:
-                for i in data.get("ledger", []): items.append(f"{i['vector']} (+{i['points']})")
-            elif type_key in ["authenticity", "anomaly"]:
-                items = data.get("vectors", [])
-
-        # 3. Build Metadata Attributes
         m = meta.get(type_key, {})
-        data_attrs = f'data-l1="{esc(title)} STATUS" data-d1="{esc(m.get("d1",""))}" data-m1="{esc(m.get("m1",""))}" data-r1="{esc(m.get("r1",""))}" data-l2="IMPACT" data-d2="{esc(m.get("d2",""))}" data-m2="{esc(m.get("m2",""))}" data-r2="{esc(m.get("r2",""))}"'
+        
+        # FIX: Explicitly label the columns for the Console
+        data_attrs = f'data-l1="{esc(title)} STATUS" data-d1="{esc(m.get("d1",""))}" data-m1="{esc(m.get("m1",""))}" data-r1="{esc(m.get("r1",""))}" data-l2="IMPACT ANALYSIS" data-d2="{esc(m.get("d2",""))}" data-m2="{esc(m.get("m2",""))}" data-r2="{esc(m.get("r2",""))}"'
 
         icon_svg = get_svg(type_key)
         
-        if is_initial: chips_html = '<span class="hud-chip chip-dim">System Ready</span>'
-        elif not items: chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
+        if not items: chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
         else:
             chips = [f'<span class="hud-chip chip-{sev}">{item}</span>' for item in items[:6]]
             if len(items) > 6: chips.append(f'<span class="hud-chip chip-dim">+{len(items)-6} more...</span>')
             chips_html = "".join(chips)
 
-        # 4. Return HTML with Data Attributes
         return f"""
-        <div class="hud-detail-row border-{sev}" {click_attr} title="{title_attr}" {data_attrs}>
+        <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table" {data_attrs}>
             <div class="hud-detail-left bg-{sev}">
                 <div class="h-icon-box text-{sev}">{icon_svg}</div>
                 <div class="h-meta">
