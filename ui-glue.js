@@ -280,49 +280,56 @@ document.addEventListener('DOMContentLoaded', () => {
     sDef: ""
   };
 
+  // --- UPDATED HOVER LISTENER (Supports Grid & Hero Rows) ---
   if (hudContainer && pDef) {
     
     hudContainer.addEventListener('mouseover', (e) => {
-      // FIX: Look for EITHER a standard column OR a detail row
+      // 1. Find target (works for dynamically inserted content via Python)
       const target = e.target.closest('.hud-col, .hud-detail-row');
       
       if (target) {
-        // Populate Primary
+        // 2. Extract Data
         const l1 = target.getAttribute('data-l1');
-        if (l1) pKey.textContent = l1 + ":"; 
+        const d1 = target.getAttribute('data-d1');
         
-        pDef.textContent = target.getAttribute('data-d1') || "";
-        pLogic.textContent = target.getAttribute('data-m1') || "";
-        pStd.textContent = target.getAttribute('data-r1') || "";
+        // 3. Update Console ONLY if data exists (prevents flickering)
+        if (l1) {
+            // Primary Row
+            pKey.textContent = l1 + ":"; 
+            pDef.textContent = d1 || "";
+            pLogic.textContent = target.getAttribute('data-m1') || "";
+            pStd.textContent = target.getAttribute('data-r1') || "";
 
-        // Populate Secondary (Only if it exists)
-        const l2 = target.getAttribute('data-l2');
-        if (l2) {
-             sKey.textContent = l2 + ":";
-             sDef.textContent = target.getAttribute('data-d2') || "";
-             sLogic.textContent = target.getAttribute('data-m2') || "";
-             sStd.textContent = target.getAttribute('data-r2') || "";
-             // Ensure the secondary row is visible if you have CSS hiding empty ones
-             document.getElementById('c-s-row').style.display = 'flex';
-        } else {
-             // If the row only has 1 metric (like the Ledger rows), clear the second line
-             sKey.textContent = "";
-             sDef.textContent = "";
-             sLogic.textContent = "";
-             sStd.textContent = "";
+            // Secondary Row (Optional)
+            const l2 = target.getAttribute('data-l2');
+            if (l2) {
+                 sKey.textContent = l2 + ":";
+                 sDef.textContent = target.getAttribute('data-d2') || "";
+                 sLogic.textContent = target.getAttribute('data-m2') || "";
+                 sStd.textContent = target.getAttribute('data-r2') || "";
+                 // Force visibility if hidden
+                 const sRow = document.getElementById('c-s-row');
+                 if(sRow) sRow.style.display = 'flex';
+            } else {
+                 // Clean up secondary if not present
+                 sKey.textContent = "";
+                 sDef.textContent = "";
+                 sLogic.textContent = "";
+                 sStd.textContent = "";
+            }
         }
       }
     });
 
+    // 4. Reset on Mouseout (Global container exit)
     hudContainer.addEventListener('mouseout', (e) => {
+       // Only reset if we actually leave the HUD container entirely
        if (!e.relatedTarget || !hudContainer.contains(e.relatedTarget)) {
-          // Reset Primary
           pKey.textContent = defaults.pKey;
           pDef.textContent = defaults.pDef;
           pLogic.textContent = "";
           pStd.textContent = "";
           
-          // Reset Secondary
           sKey.textContent = defaults.sKey;
           sDef.textContent = defaults.sDef;
           sLogic.textContent = "";
