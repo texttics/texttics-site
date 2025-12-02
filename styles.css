@@ -5759,11 +5759,7 @@ details.profile-section > summary:hover::marker {
         width: 100%;
         border-right: none;
         border-bottom: 1px solid #f3f4f6;
-        padding: 12px;
         flex: 0 0 auto;
-    }
-    .hud-detail-right {
-        padding: 12px;
     }
 }
 
