@@ -5571,3 +5571,90 @@ details.profile-section > summary:hover::marker {
     70% { border-color: #b91c1c; box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
     100% { border-color: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
 }
+
+/* --- NEW HUD V2 LAYOUT --- */
+
+/* Grid Structure */
+.hud-grid-row-1 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.hud-verdict-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* The 4-Column Layout */
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.hud-grid-row-2 {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+/* Verdict Card Styling */
+.hud-verdict-card {
+    border-radius: 6px;
+    padding: 10px 12px;
+    border: 1px solid;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 90px;
+}
+
+.v-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: 0.8;
+    letter-spacing: 0.05em;
+}
+
+.v-main {
+    margin-top: 4px;
+}
+
+.v-verdict {
+    font-size: 1.1rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1.2;
+}
+
+.v-score {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-top: 2px;
+}
+
+.v-footer {
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    padding-top: 6px;
+}
+
+.v-sub-val {
+    font-family: var(--font-mono);
+    font-weight: 700;
+}
+
+/* Severity Themes */
+.v-bg-crit { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.v-text-crit { color: #dc2626; }
+
+.v-bg-warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.v-text-warn { color: #d97706; }
+
+.v-bg-ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.v-text-ok { color: #15803d; }
