@@ -12941,13 +12941,6 @@ def update_all(event=None):
         "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
     }
 
-    # 2. THE MASTER AUDITOR (New Logic from Block 7)
-    master_ledgers = audit_master_ledgers(
-        inputs=integrity_inputs, 
-        stats_inputs=stat_profile, 
-        stage1_5_data=stage1_5_data, 
-        threat_output=threat_results
-    )
     
     # Provenance
     provenance_stats = compute_provenance_stats(t)
@@ -12958,8 +12951,19 @@ def update_all(event=None):
     # Threat (Populates Registry)
     threat_results = compute_threat_analysis(t, script_run_stats)
     window.latest_threat_data = threat_results
+
+    # Extract Stage 1.5 Data
+    stage1_5_data = threat_results.get('adversarial', {})
+
+    # THE MASTER AUDITOR (New Logic from Block 7)
+    master_ledgers = audit_master_ledgers(
+        inputs=integrity_inputs, 
+        stats_inputs=stat_profile, 
+        stage1_5_data=stage1_5_data, 
+        threat_output=threat_results
+    )
     
-    # --- 3. Prepare Data for Renderers ---
+    # --- Prepare Data for Renderers ---
     
     # 2.A Cards
     meta_cards = {
