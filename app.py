@@ -10305,307 +10305,185 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Renders the 'Forensic Matrix' V25 (Interactive Stepper Edition).
+    Renders the 'Forensic Matrix' (Unified V2 Layout).
+    This fixes the default view to match the 'Sprawl' grid layout.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     if t is None: t = ""
     
     emoji_counts = stats.get("emoji_counts", {})
+    # Use empty dicts if master_ledgers aren't calculated yet (initial state)
+    master_ledgers = stats.get("master_ledgers", {}) 
 
-    # --- INTERACTION HELPER ---
-    def get_interaction(val, key, severity="warn"):
-        """Checks registry and returns CSS class and onclick attribute."""
-        try:
-            if float(val) <= 0: return "", ""
-        except: return "", ""
-        
-        has_hits = False
-        target_key = key
-        
-        if key == "integrity":
-            # Aggregator check
-            if any(k.startswith("int_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "integrity_agg"
-                has_hits = True
-        elif key == "threat":
-            # Aggregator check
-            if any(k.startswith("thr_") and HUD_HIT_REGISTRY.get(k) for k in HUD_HIT_REGISTRY):
-                target_key = "threat_agg"
-                has_hits = True
-        else:
-            # Direct check
-            if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
-                has_hits = True
-                
-        if has_hits:
-            cls = " hud-interactive"
-            if severity == "crit": cls += " hud-interactive-crit"
-            elif severity == "warn": cls += " hud-interactive-risk"
-            
-            attr = f'onclick="window.hud_jump(\'{target_key}\')"'
-            return cls, attr
-            
-        return "", ""
+    # --- FORENSIC ICON SET (SVG PATHS) - Shared with V2 ---
+    VERDICT_ICONS = {
+        "integrity": (
+            '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>'
+            '<path d="M9 12l2 2 4-4"></path>'
+        ),
+        "authenticity": (
+            '<path d="M2 10c0-4 4-6 9-6s9 2 9 6"></path>'
+            '<path d="M12 2c0 3-2 6-2 9"></path>'
+            '<path d="M19 10c0 4-3 7-7 7"></path>'
+            '<path d="M7 15C4 15 2 12 2 10"></path>'
+            '<circle cx="15.5" cy="9.5" r="1.5"></circle>'
+            '<circle cx="8.5" cy="9.5" r="1.5"></circle>'
+        ),
+        "threat": (
+            '<circle cx="12" cy="12" r="10"></circle>'
+            '<line x1="22" y1="12" x2="18" y2="12"></line>'
+            '<line x1="6" y1="12" x2="2" y2="12"></line>'
+            '<line x1="12" y1="6" x2="12" y2="2"></line>'
+            '<line x1="12" y1="22" x2="12" y2="18"></line>'
+            '<circle cx="12" cy="12" r="2" fill="currentColor"></circle>'
+        ),
+        "anomaly": (
+            '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>'
+        )
+    }
 
-    # --- HELPER: Cell Builder ---
-    def render_cell(sci_title, 
-                    label_1, val_1, class_1,
-                    label_2, val_2, class_2,
-                    d1="", m1="", r1="",
-                    d2="", m2="", r2="",
-                    reg_key_2=None, risk_2="warn"): # New Args
-        
-        def esc(s): return s.replace('"', '&quot;')
-        
-        # Check for interaction on Value 2 (Secondary Metric)
-        int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
+    # --- HELPERS ---
+    def get_svg(key):
+        paths = VERDICT_ICONS.get(key, "")
+        return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
 
+    def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
+    def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
+
+    # Unified Cell Renderer (Matching V2 CSS)
+    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, reg_key=None):
+        # Only make interactive if there is a value
+        int_attr = ""
+        int_cls = ""
+        if reg_key and float(val_2) > 0:
+             int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
+             int_cls = " hud-interactive"
+        
         return f"""
-        <div class="hud-col" 
-             data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
-             data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
-             
-            <div class="hud-row-sci">{sci_title}</div>
-            
+        <div class="hud-col">
             <div class="hud-metric-group">
                 <div class="hud-label">{label_1}</div>
                 <div class="hud-val {class_1}">{val_1}</div>
             </div>
-            
             <div class="hud-metric-divider"></div>
-
             <div class="hud-metric-group">
                 <div class="hud-label">{label_2}</div>
                 <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
             </div>
-
         </div>
         """
 
-    # --- COLOR LOGIC ---
-    def color_neutral(val):
-        try: return "txt-muted" if float(val) == 0 else "txt-normal"
-        except: return "txt-normal"
+    # Unified Ledger Row Renderer (Hero Rows)
+    def r_ledger_row(title, type_key, data):
+        # Default to safe/empty if data is missing (Initial State)
+        sev = data.get("severity", "ok")
+        score = data.get("score", 0)
+        verdict = data.get("verdict", "INTACT" if type_key == "integrity" else "CLEAR")
+        icon_svg = get_svg(type_key)
+        
+        # Safe interaction call using the new JS helper
+        target_ids = {
+            "integrity": "integrity-matrix-body",
+            "threat": "threat-report-body",
+            "authenticity": "adversarial-dashboard-body",
+            "anomaly": "statistical-profile-body"
+        }
+        t_id = target_ids.get(type_key)
+        click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
-    def color_clean(val):
-        try: return "txt-clean" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
+        # Default chip for empty state
+        chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
+        
+        # If we have actual ledger items, render them (Active State)
+        items = []
+        if type_key in ["integrity", "threat"]:
+            for i in data.get("ledger", []):
+                items.append(f"{i['vector']} (+{i['points']})")
+        elif type_key in ["authenticity", "anomaly"]:
+            items = data.get("vectors", [])
+            
+        if items:
+            chips = []
+            for item in items[:6]:
+                chips.append(f'<span class="hud-chip chip-{sev}">{item}</span>')
+            if len(items) > 6:
+                chips.append(f'<span class="hud-chip chip-dim">+{len(items)-6} more...</span>')
+            chips_html = "".join(chips)
 
-    def color_risk(val):
-        try: return "txt-good" if float(val) == 0 else "txt-warn"
-        except: return "txt-normal"
+        return f"""
+        <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table">
+            <div class="hud-detail-left bg-{sev}">
+                <div class="h-icon-box text-{sev}">{icon_svg}</div>
+                <div class="h-meta">
+                    <div class="h-title text-{sev}">{title}</div>
+                    <div class="h-verdict text-{sev}">{verdict}</div>
+                    <div class="h-score text-{sev}">Score: {score}</div>
+                </div>
+            </div>
+            <div class="hud-detail-right">
+                {chips_html}
+            </div>
+        </div>
+        """
 
-    # --- 0. PRE-CALC ---
-    uax_word = 0
-    uax_sent = 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
-
-    # --- 1. COLUMNS ---
-
-    # C0: ALPHANUMERIC
-    alpha_chars = sum(1 for c in t if c.isalnum())
-    alpha_runs = 0
-    in_run = False
+    # --- ROW 1: THE COUNTS (Merged 8-Column Grid) ---
+    alpha = sum(1 for c in t if c.isalnum())
+    runs = 0; in_r = False
     for c in t:
         if c.isalnum():
-            if not in_run:
-                alpha_runs += 1
-                in_run = True
-        else:
-            in_run = False
-
-    c0 = render_cell(
-        "ALPHANUMERIC", 
-        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
-        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
-        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
-        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
-    )
-
-    # C1: LEXICAL MASS
+            if not in_r: runs += 1; in_r = True
+        else: in_r = False
+    
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
-    c1 = render_cell(
-        "LEXICAL MASS", 
-        "UNITS", f"{vu:.1f}", color_neutral(vu),
-        "WORDS", str(uax_word), color_neutral(uax_word),
-        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
-        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
-    )
-
-    # C2: SEGMENTATION
-    seg_est = vu / 20.0
-    c2 = render_cell(
-        "SEGMENTATION", 
-        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
-        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
-        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
-    )
-
-    # C3: WHITESPACE (Interactive)
-    std_set = {0x20, 0x09, 0x0A, 0x0D}
-    std_inv = sum(1 for c in t if ord(c) in std_set)
-    flags = stats.get('forensic_flags', {})
-    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
-    c3 = render_cell(
-        "WHITESPACE", 
-        "ASCII WS", str(std_inv), color_neutral(std_inv),
-        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
-        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
-        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
-        reg_key_2="ws_nonstd" # LINK
-    )
+    uax_sent = 0
+    try:
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_sent = c[1]
+    except: pass
 
-    # C4: DELIMITERS (Interactive)
-    cnt_p_ascii = 0
-    cnt_p_comfort = 0
-    cnt_p_exotic = 0
+    # Structure Metrics
+    std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
+    non_std = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
+    p_ascii = 0; p_exotic = 0
     for c in t:
         if unicodedata.category(c).startswith('P'):
-            cp = ord(c)
-            if cp <= 0x7F:
-                cnt_p_ascii += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F):
-                cnt_p_comfort += 1
-            else:
-                cnt_p_exotic += 1
+            if ord(c) <= 0x7F: p_ascii += 1
+            else: p_exotic += 1
+            
+    s_ext = emoji_counts.get("text_symbols_extended", 0)
+    s_exo = emoji_counts.get("text_symbols_exotic", 0)
+    h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    h_amb = emoji_counts.get("hybrid_ambiguous", 0)
+    rgi = emoji_counts.get("rgi_total", 0)
+    irr = emoji_counts.get("emoji_irregular", 0)
 
-    if cnt_p_comfort > 0:
-        c4_label = "TYPOGRAPHIC"
-        c4_val = cnt_p_ascii + cnt_p_comfort
-        c4_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
-        c4_ref = "Scope: ASCII+Common"
-    else:
-        c4_label = "ASCII"
-        c4_val = cnt_p_ascii
-        c4_desc = "Standard ASCII punctuation characters."
-        c4_ref = "Scope: ASCII"
+    # Build Grid Row
+    row1_html = f"""
+    <div class="hud-grid-row-1">
+        {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs))}
+        {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu))}
+        {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent))}
+        {r_cell("ASCII WS", std_inv, c_neut(std_inv), "NON-STD", non_std, c_safe(non_std), "ws_nonstd")}
+        {r_cell("ASCII PUNC", p_ascii, c_neut(p_ascii), "EXOTIC", p_exotic, c_safe(p_exotic), "punc_exotic")}
+        {r_cell("EXTENDED", s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo), "sym_exotic")}
+        {r_cell("PICTOGRAPH", h_pict, c_neut(h_pict), "AMBIGUOUS", h_amb, c_safe(h_amb), "emoji_hybrid")}
+        {r_cell("RGI SEQS", rgi, c_neut(rgi), "IRREGULAR", irr, c_safe(irr), "emoji_irregular")}
+    </div>
+    """
 
-    c4 = render_cell(
-        "DELIMITERS", 
-        c4_label, str(c4_val), color_neutral(c4_val),
-        "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
-        d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
-        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
-        reg_key_2="punc_exotic" # LINK
-    )
+    # --- ROWS 2-5: THE LEDGER ROWS ---
+    rows_html = ""
+    rows_html += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}))
+    rows_html += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}))
+    rows_html += r_ledger_row("THREAT", "threat", master_ledgers.get("threat",{}))
+    rows_html += r_ledger_row("ANOMALY", "anomaly", master_ledgers.get("anomaly",{}))
 
-    # C5: SYMBOLS (Interactive)
-    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
-    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
-    
-    c5_label = "EXTENDED"
-    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
-    if cnt_s_ext == 0 and cnt_s_exotic == 0:
-        c5_label = "KEYBOARD"
-        c5_desc = "Standard ASCII keyboard symbols."
-
-    c5 = render_cell(
-        "SYMBOLS", 
-        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
-        "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
-        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
-        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
-        reg_key_2="sym_exotic" # LINK
-    )
-
-    # C6: HYBRIDS (Interactive)
-    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
-    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
-    
-    c6 = render_cell(
-        "HYBRIDS", 
-        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
-        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
-        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
-        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
-        reg_key_2="emoji_hybrid" # LINK
-    )
-
-    # C7: EMOJI (Interactive)
-    rgi_total = emoji_counts.get("rgi_total", 0)
-    abnormal = emoji_counts.get("emoji_irregular", 0)
-    
-    c7 = render_cell(
-        "EMOJI", 
-        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
-        "IRREGULAR", str(abnormal), color_clean(abnormal),
-        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
-        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
-        reg_key_2="emoji_irregular" # LINK
-    )
-
-    # C8: INTEGRITY (Interactive Aggregator)
-    int_res = stats.get('integrity', {})
-    int_v = int_res.get('verdict', 'INTACT')
-    
-    # [FIX] Count actual registry hits, not ledger rows
-    int_issues = (
-        len(HUD_HIT_REGISTRY.get("int_fatal", [])) +
-        len(HUD_HIT_REGISTRY.get("int_fracture", [])) +
-        len(HUD_HIT_REGISTRY.get("int_risk", [])) +
-        len(HUD_HIT_REGISTRY.get("int_decay", []))
-    )
-    
-    if int_issues == 0: int_v = "INTACT"
-    
-    v_cls = "txt-safe"
-    if int_v in ("CORRUPT", "FRACTURED"): v_cls = "txt-crit"
-    elif int_v in ("RISKY", "DECAYING"): v_cls = "txt-warn"
-    
-    # Determine risk color for the count button
-    risk_level = "crit" if int_v in ("CORRUPT", "FRACTURED") else "warn"
-
-    c8 = render_cell(
-        "INTEGRITY", 
-        "STATUS", int_v, v_cls,
-        "ISSUES", str(int_issues), color_risk(int_issues),
-        d1="Structural soundness and encoding health.", m1="Audit Score", r1="Auditor: Integrity",
-        d2="Count of integrity findings (errors + anomalies). Click to cycle.", m2="Count(Registry Hits)", r2="Data Health",
-        reg_key_2="integrity", risk_2=risk_level # LINK
-    )
-
-    # C9: THREAT (Interactive Aggregator)
-    thr_res = stats.get('threat', {})
-    thr_v = thr_res.get('verdict', 'CLEAR')
-    
-    # [FIX] Count actual registry hits, not ledger rows
-    thr_sigs = (
-        len(HUD_HIT_REGISTRY.get("thr_execution", [])) +
-        len(HUD_HIT_REGISTRY.get("thr_spoofing", [])) +
-        len(HUD_HIT_REGISTRY.get("thr_obfuscation", [])) +
-        len(HUD_HIT_REGISTRY.get("thr_suspicious", []))
-    )
-    
-    if thr_sigs == 0: thr_v = "CLEAR"
-
-    t_cls = "txt-safe"
-    risk_level_thr = "warn"
-    if "WEAPONIZED" in thr_v or "HIGH" in thr_v: 
-        t_cls = "txt-crit"
-        risk_level_thr = "crit"
-    elif "SUSPICIOUS" in thr_v: 
-        t_cls = "txt-warn"
-
-    c9 = render_cell(
-        "THREAT", 
-        "STATUS", thr_v, t_cls,
-        "SIGNALS", str(thr_sigs), color_risk(thr_sigs),
-        d1="Assessment of text-level exploit or spoofing risk.", m1="Threat Score", r1="Auditor: Threat",
-        d2="Patterns linked to Unicode spoofing and control-flow tricks. Click to cycle.", m2="Count(Registry Hits)", r2="Attack Vectors",
-        reg_key_2="threat", risk_2=risk_level_thr # LINK
-    )
-
-    # --- ASSEMBLY ---
-    container.innerHTML = "".join([c0, c1, c2, c3, c4, c5, c6, c7, c8, c9])
+    container.innerHTML = row1_html + rows_html
 
 def render_encoding_footprint(t: str):
     """
