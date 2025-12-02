@@ -12682,15 +12682,44 @@ def render_forensic_hud_v2(t, stats):
 
     row1_html = f"""
     <div class="hud-grid-row-1">
-        {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs))}
-        {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu))}
-        {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent))}
-        {r_cell("ASCII WS", std_inv, c_neut(std_inv), "NON-STD", non_std, c_safe(non_std), "ws_nonstd")}
-        {r_cell("ASCII PUNC", p_ascii, c_neut(p_ascii), "EXOTIC", p_exotic, c_safe(p_exotic), "punc_exotic")}
-        {r_cell("EXTENDED", s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo), "sym_exotic")}
-        {r_cell("PICTOGRAPH", h_pict, c_neut(h_pict), "AMBIGUOUS", h_amb, c_safe(h_amb), "emoji_hybrid")}
-        {r_cell("RGI SEQS", rgi, c_neut(rgi), "IRREGULAR", irr, c_safe(irr), "emoji_irregular")}
+        {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs),
+                d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
+                d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+")}
+        
+        {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu),
+                d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
+                d2="Structural units derived directly from Lexical Mass.", m2="VU / 20.0", r2="Def: 1 Block = 20 VU")}
+        
+        {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent),
+                d1="Linguistic sentence count via UAX #29 segmentation.", m1="Intl.Segmenter", r1="Std: UAX #29",
+                d2="Average characters per sentence.", m2="Total / Sentences", r2="Complexity")}
+        
+        {r_cell("ASCII WS", std_inv, c_neut(std_inv), "NON-STD", non_std, c_safe(non_std), 
+                d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
+                d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+                reg_key="ws_nonstd")}
+        
+        {r_cell("ASCII PUNC", p_ascii, c_neut(p_ascii), "EXOTIC", p_exotic, c_safe(p_exotic),
+                d1="Standard ASCII + Common Typography (Smart Quotes, Dashes).", m1="Scope: ASCII+Common", r1="Punctuation",
+                d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+                reg_key="punc_exotic")}
+        
+        {r_cell("EXTENDED", s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo),
+                d1="Technical symbols (Math, Currency, Latin-1) excluding Emoji.", m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
+                d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+                reg_key="sym_exotic")}
+        
+        {r_cell("PICTOGRAPH", h_pict, c_neut(h_pict), "AMBIGUOUS", h_amb, c_safe(h_amb),
+                d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC", r1="Class: Atom",
+                d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+                reg_key="emoji_hybrid")}
+        
+        {r_cell("RGI SEQS", rgi, c_neut(rgi), "IRREGULAR", irr, c_safe(irr),
+                d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
+                d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+                reg_key="emoji_irregular")}
     </div>
+    """
     """
 
     # --- ROWS 2-5: THE LEDGER ROWS ---
