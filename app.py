@@ -14510,6 +14510,11 @@ async def main():
         # Ensure we bind to the correct function name 'reveal2_invisibles'
         reveal2_btn.addEventListener("click", reveal2_invisibles)
 
+    # [NEW] Expose the HTML Metadata Analyzer to JavaScript
+    global analyze_html_metadata
+    window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)
+    print("Metadata Analyzer (CSS Scan) exposed to JavaScript.")
+
     # --- [NEW] Hook the Verification Bench ---
     trusted_input = document.getElementById("trusted-input")
     if trusted_input:
