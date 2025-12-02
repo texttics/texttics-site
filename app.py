@@ -14126,15 +14126,6 @@ async def main():
     if reveal2_btn:
         reveal2_btn.addEventListener("click", reveal2_invisibles)
 
-    # Expose the HTML Metadata Analyzer to JavaScript
-    # Note: We use the global keyword to ensure we reference the function defined in Block 10
-    global analyze_html_metadata
-    try:
-        window.py_analyze_html_metadata = create_proxy(analyze_html_metadata)
-        print("Metadata Analyzer (CSS Scan) exposed to JavaScript.")
-    except Exception as e:
-        print(f"Warning: Could not expose metadata analyzer: {e}")
-
     # --- Hook the Verification Bench ---
     trusted_input = document.getElementById("trusted-input")
     if trusted_input:
