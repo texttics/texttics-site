@@ -1391,6 +1391,32 @@ window.hud_jump = (key) => {
   }
 };
 
+/**
+ * Helper to open <details> elements before scrolling.
+ * Used by the Forensic HUD v2 interaction logic to expand sections automatically.
+ */
+window.hud_jump_to_details = function(targetId) {
+    const element = document.getElementById(targetId);
+    
+    if (!element) {
+        console.warn("Target element not found:", targetId);
+        return;
+    }
+
+    // 1. Find if this element is inside a <details> tag (e.g., collapsed section)
+    const parentDetails = element.closest('details');
+    
+    // 2. If it is, FORCE it open
+    if (parentDetails) {
+        parentDetails.open = true;
+    }
+
+    // 3. Wait a tiny tick for the browser to render the expansion, then scroll
+    setTimeout(() => {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 10);
+};
+
 // ==========================================
 // 12. SAFE COPY BRIDGE (From Python)
 // ==========================================
