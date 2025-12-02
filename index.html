@@ -67,6 +67,13 @@
         </li>
 
         <li>
+          <a href="#metadata-workbench-profile">
+            <span class="jump-list-title">Metadata Workbench</span>
+            <span class="jump-list-subtitle">HTML/CSS Receiver</span>
+          </a>
+        </li>
+
+        <li>
           <a href="#verification-bench">
             <span class="jump-list-title">Verification Bench</span>
             <span class="jump-list-subtitle">Zero-Trust Comparator</span>
@@ -155,17 +162,6 @@
           </div>
             </div>
       </section>
-
- <section id="metadata-workbench-container" aria-labelledby="metadata-workbench-title" style="margin-top: 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: #fff; padding: 16px; display: none;">
-    <h3 id="metadata-workbench-title" class="subsection-title" style="margin-top: 0; margin-bottom: 0.5rem; color: #4b5563;">Metadata Workbench (HTML/CSS Receiver)</h3>
-    <p style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 0.75rem;">
-        Paste formatted text here to analyze hidden CSS properties (e.g., color, visibility). This bypasses standard text purification.
-    </p>
-    <div id="metadata-input" contenteditable="true" aria-label="Rich Text Paste Area"
-         style="min-height: 120px; border: 1px dashed #d1d5db; padding: 10px; font-family: var(--font-sans); font-size: 1rem; color: #111827; background-color: #f8fafc;">
-        Click here and paste formatted text (Ctrl+V)...
-    </div>
-  </section>
       
       <details class="profile-section" id="actions-panel-wrapper">
           <summary><h2 class="section-title">Actions</h2></summary>
@@ -332,6 +328,39 @@
                  Click within the text input. Properties will be shown for the character immediately to the right of the cursor.
              </div>
           </div>
+</details>
+
+<details class="fingerprint-section profile-section" id="metadata-workbench-profile" aria-labelledby="metadata-workbench-title">
+    <summary>
+        <h2 id="metadata-workbench-title" class="section-title">Metadata Workbench</h2>
+    </summary>
+    
+    <div class="bench-container" style="padding: 1rem; border-top: 1px solid var(--color-border);">
+        <div class="bench-input-group" style="margin-bottom: 1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.5rem;">
+                <label style="font-size:0.85rem; color:var(--color-text-muted); font-family:var(--font-mono);">
+                    Source Analysis Scope:
+                </label>
+            </div>
+            <p style="font-size: 0.85rem; color: #4b5563; margin-bottom: 0.75rem;">
+                Paste formatted text here to analyze hidden CSS properties (e.g., color, visibility). This input retains HTML metadata.
+            </p>
+            <div id="metadata-input" contenteditable="true" aria-label="Rich Text Paste Area"
+                 style="min-height: 150px; border: 1px dashed #d1d5db; padding: 10px; font-family: var(--font-sans); font-size: 1rem; color: #111827; background-color: #f8fafc; overflow-y: auto;">
+                Click here and paste formatted text (Ctrl+V)...
+            </div>
+        </div>
+        
+        <div id="metadata-findings-report" class="verdict-box" style="display: none; border-left: 4px solid #7c3aed;">
+            <div style="padding: 12px 16px;">
+                <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: #7c3aed;">
+                    CSS OBfUSCATION FINDINGS
+                </div>
+                <ul id="metadata-findings-list" style="list-style: none; padding-left: 0; margin-top: 8px;">
+                    </ul>
+            </div>
+        </div>
+    </div>
 </details>
 
   <details class="profile-section" id="verification-bench">
