@@ -12913,8 +12913,8 @@ def update_all(event=None):
     eaw_run_stats = compute_eastasianwidth_analysis(t)
     vo_run_stats = compute_verticalorientation_analysis(t)
 
-    # Integrity (Populates Registry)
-    # [UPDATED] Passing grapheme_forensics for NFC data
+    # Integrity Analysis (Populates Registry)
+    # Passing grapheme_forensics for NFC data
     forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
     forensic_map = {row['label']: row for row in forensic_rows}
 
@@ -12942,13 +12942,14 @@ def update_all(event=None):
     }
 
     
-    # Provenance
+    # Provenance & Scripts (Required for Threat Analysis)
     provenance_stats = compute_provenance_stats(t)
     script_run_stats = compute_script_run_analysis(t)
 
+    # Statistical Profile (Required for Anomaly Ledger)
     stat_profile = compute_statistical_profile(t)
 
-    # Threat (Populates Registry)
+    # Threat Analysis (Populates Registry; Required for Threat Ledger)
     threat_results = compute_threat_analysis(t, script_run_stats)
     window.latest_threat_data = threat_results
 
