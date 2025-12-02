@@ -5851,3 +5851,21 @@ details.profile-section > summary:hover::marker {
         padding: 12px;
     }
 }
+
+/* --- THEME: NEUTRAL (The "Waiting" Regime) --- */
+.bg-neutral { background-color: #f9fafb; } /* Very light gray */
+.border-neutral { border-left: 4px solid #d1d5db; } /* Gray border */
+.text-neutral { color: #6b7280; } /* Dark gray text */
+.text-neutral svg { stroke: #9ca3af; } /* Muted icon stroke */
+
+/* --- FIX: STATUS LINE VISIBILITY --- */
+#status-line {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    min-height: 20px;
+    color: #374151; /* Force dark text color */
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    margin-top: 8px;
+}
