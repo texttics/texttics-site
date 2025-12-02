@@ -10345,18 +10345,20 @@ def render_forensic_hud(t, stats):
     def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
     def esc(s): return s.replace('"', '&quot;')
 
-    # --- CELL RENDERER (With Metadata Injection) ---
+    # --- HELPER: Cell Builder (Updated for Metadata) ---
     def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, 
-               d1="", m1="", r1="", d2="", m2="", r2="", 
-               reg_key=None):
+               d1="", m1="", r1="", d2="", m2="", r2="", # ADD THESE ARGS
+               reg_key=None): 
+        
+        def esc(s): return s.replace('"', '&quot;')
         
         int_attr = ""
         int_cls = ""
-        if not is_initial and reg_key and float(val_2) > 0:
+        if reg_key and float(val_2) > 0:
              int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
              int_cls = " hud-interactive"
         
-        # INJECT DATA ATTRIBUTES FOR HOVER CONSOLE
+        # INJECT METADATA ATTRIBUTES HERE
         data_attrs = f'data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}" data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}"'
 
         return f"""
