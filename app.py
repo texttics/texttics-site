@@ -12675,8 +12675,13 @@ def render_forensic_hud_v2(t, stats):
             "authenticity": "adversarial-dashboard-body",
             "anomaly": "statistical-profile-body"
         }
+        
         target_id = row_id_map.get(type_key)
-        click_attr = f'onclick="document.getElementById(\'{target_id}\').scrollIntoView({{behavior: \'smooth\'}})"'
+        
+        if target_id:
+            click_attr = f'onclick="window.hud_jump_to_details(\'{target_id}\')"'
+        else:
+            click_attr = ""
 
         return f"""
         <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table">
