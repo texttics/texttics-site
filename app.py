@@ -1829,7 +1829,7 @@ def build_invis_table():
 
 def run_self_tests():
     """
-    PARANOID MODE: Verify that INVIS_TABLE bitmasks strictly match the UCD data.
+    MODE: Verify that INVIS_TABLE bitmasks strictly match the UCD data.
     This runs once at startup. If it fails, it prints critical warnings to the console.
     """
     print("--- Running Forensic Self-Tests ---")
@@ -2182,7 +2182,7 @@ async def load_unicode_data():
         # This must happen AFTER all parsing is done
         build_invis_table()
         
-        # --- NEW: Run Paranoid Self-Tests ---
+        # --- NEW: Run Self-Tests ---
         run_self_tests()
         
         LOADING_STATE = "READY"
@@ -2195,6 +2195,10 @@ async def load_unicode_data():
         print(f"CRITICAL: Unicode data loading failed. Error: {e}")
         # ---: Remove 'is_error=True' ---
         render_status("Error: Failed to load Unicode data. Please refresh.")
+    
+    finally:
+        # RELEASE THE LOCK so we can retry if needed
+        LOADING_LOCK = False
 
 # ===============================================
 # BLOCK 5. HELPER UTILITIES & TRANSFORMS
