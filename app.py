@@ -6885,6 +6885,158 @@ def compute_threat_score(inputs):
         "noise": inputs.get("noise_list", []) 
     }
 
+# BLOCK 7 EXTENSION: THE MASTER AUDITORS
+
+def compute_authenticity_score(inputs, threat_ledger, stage1_5_data):
+    """
+    The Authenticity Auditor (Identity / Spoofing).
+    Derives its score from Threat Ledger (Spoofing category),
+    Stage 1.5 Topology (Homoglyphs), and IDNA inputs.
+    """
+    score = 0
+    vectors = []
+    
+    # 1. Extract Spoofing vectors from the main Threat calculation
+    # This ensures consistency with the detailed list
+    for entry in threat_ledger:
+        if entry["category"] == "SPOOFING":
+            score += entry["points"]
+            vectors.append(entry["vector"])
+            
+    # 2. Add IDNA violations (if not already covered)
+    idna_violations = inputs.get("idna_violations", 0)
+    if idna_violations > 0:
+        score += 20
+        vectors.append(f"IDNA Violations ({idna_violations})")
+        
+    # 3. Add Stage 1.5 Topology (Homoglyphs)
+    # The 'topology' dict counts hits for 'HOMOGLYPH'
+    topology = stage1_5_data.get("topology", {})
+    homoglyphs = topology.get("HOMOGLYPH", 0)
+    if homoglyphs > 0:
+        # We don't double count if it's already in threat_ledger, 
+        # but Stage 1.5 adds precision for Skeleton Collisions
+        score += (homoglyphs * 10)
+        vectors.append(f"Skeleton Collisions ({homoglyphs})")
+
+    verdict = "SAFE"
+    severity = "ok"
+    # Thresholds aligned with Authenticity concerns
+    if score >= 30: verdict, severity = "SPOOFED", "crit"
+    elif score >= 1: verdict, severity = "SUSPECT", "warn"
+    
+    return {
+        "score": score,
+        "verdict": verdict,
+        "severity_class": severity,
+        "vector_count": len(vectors),
+        "vectors": vectors
+    }
+
+def compute_anomaly_score(stats):
+    """
+    The Anomaly Auditor (Complexity / Physics).
+    Analyzes Entropy, Zalgo, and Structural Weirdness.
+    """
+    score = 0
+    vectors = []
+    
+    # 1. Entropy (Physics)
+    entropy = stats.get('shannon_entropy', 0.0)
+    # 6.5 bits/char is the standard threshold for "non-natural"
+    if entropy > 6.5:
+        score += 40
+        vectors.append(f"High Entropy ({entropy:.2f})")
+    elif entropy > 5.8:
+        score += 20
+        vectors.append(f"Elevated Entropy ({entropy:.2f})")
+        
+    # 2. Zalgo (Structure)
+    zalgo = stats.get('avg_marks_per_grapheme', 0.0)
+    if zalgo > 2.0:
+        score += 30
+        vectors.append(f"High Mark Density ({zalgo:.2f})")
+        
+    # 3. Rare Blocks / Weirdness (Optional inputs if available)
+    # (Future expansion: check block diversity)
+
+    verdict = "NORMAL"
+    severity = "ok"
+    if score >= 40: verdict, severity = "ANOMALOUS", "crit"
+    elif score >= 20: verdict, severity = "COMPLEX", "warn"
+    
+    return {
+        "score": score,
+        "verdict": verdict,
+        "severity_class": severity,
+        "vectors": vectors,
+        "val": entropy
+    }
+
+def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
+    """
+    The Master Auditor.
+    Orchestrates the 4-Column "Verdict Bar" for the HUD.
+    Does NOT recalculate Integrity or Threat; it restructures them.
+    
+    Args:
+        inputs: Dictionary of forensic counters (from compute_forensic_stats)
+        stats_inputs: Dictionary of statistical metrics (Entropy, etc.)
+        stage1_5_data: Output from _evaluate_adversarial_risk
+        threat_output: Output from compute_threat_score
+    """
+    # 1. INTEGRITY (Pass-through + Decode Status)
+    integrity = compute_integrity_score(inputs)
+    
+    decode_status = "OK"
+    if inputs.get("fffd", 0) > 0 or inputs.get("nul", 0) > 0:
+        decode_status = "CRITICAL"
+    elif inputs.get("surrogate", 0) > 0:
+        decode_status = "WARNING"
+    
+    # 2. THREAT (Pass-through + Paranoia Peak)
+    # We use the existing Threat Score which is Execution+Injection+Obfuscation
+    # Paranoia Peak comes from Stage 1.5 Targets
+    targets = stage1_5_data.get("targets", [])
+    peak_score = 0
+    if targets:
+        peak_score = max(t["score"] for t in targets)
+
+    # 3. AUTHENTICITY (Derived)
+    auth = compute_authenticity_score(inputs, threat_output["ledger"], stage1_5_data)
+    
+    # 4. ANOMALY (Physics)
+    anomaly = compute_anomaly_score(stats_inputs)
+    
+    return {
+        "integrity": {
+            "verdict": integrity["verdict"],
+            "score": integrity["score"],
+            "severity": integrity["severity_class"],
+            "decode_status": decode_status,
+            "issues": len(integrity["ledger"])
+        },
+        "authenticity": {
+            "verdict": auth["verdict"],
+            "score": auth["score"],
+            "severity": auth["severity_class"],
+            "vector_count": auth["vector_count"]
+        },
+        "threat": {
+            "verdict": threat_output["verdict"],
+            "score": threat_output["score"],
+            "severity": threat_output["severity_class"],
+            "peak_score": peak_score,
+            "signals": len(threat_output["ledger"])
+        },
+        "anomaly": {
+            "verdict": anomaly["verdict"],
+            "score": anomaly["score"],
+            "severity": anomaly["severity_class"],
+            "entropy": anomaly["val"]
+        }
+    }
+
 # ===============================================
 # BLOCK 8. ORCHESTRATION (CONTROLLER)
 # ===============================================
@@ -12410,6 +12562,171 @@ def render_adversarial_dashboard(adv_data: dict):
             target_body.innerHTML = '<div class="placeholder-text" style="padding:12px;">No adversarial anomalies detected.</div>'
         else:
             target_body.innerHTML = "".join(html_rows)
+
+@create_proxy
+def render_forensic_hud_v2(t, stats):
+    """
+    [NEW] Forensic Matrix V2 (The 3+1 Architecture).
+    Safe parallel implementation. Targets the same #forensic-hud container.
+    """
+    container = document.getElementById("forensic-hud")
+    if not container: return 
+    if t is None: t = ""
+    
+    emoji_counts = stats.get("emoji_counts", {})
+    master_ledgers = stats.get("master_ledgers", {}) 
+
+    # --- HELPER: Interaction Bridge ---
+    def get_int(val, key, severity="warn"):
+        # Helper to attach click handlers to registry keys
+        try:
+            if float(val) <= 0: return "", ""
+        except: return "", ""
+        
+        target_key = key
+        # Map master ledger keys to registry keys
+        if key == "integrity": target_key = "integrity_agg"
+        elif key == "threat": target_key = "threat_agg"
+        
+        cls = " hud-interactive"
+        if severity == "crit": cls += " hud-interactive-crit"
+        elif severity == "warn": cls += " hud-interactive-risk"
+        attr = f'onclick="window.hud_jump(\'{target_key}\')"'
+        return cls, attr
+
+    # --- HELPER: Standard Cell Builder (Legacy Row) ---
+    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, reg_key_2=None, risk_2="warn"):
+        int_cls, int_attr = get_int(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
+        return f"""
+        <div class="hud-col">
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_1}</div>
+                <div class="hud-val {class_1}">{val_1}</div>
+            </div>
+            <div class="hud-metric-divider"></div>
+            <div class="hud-metric-group">
+                <div class="hud-label">{label_2}</div>
+                <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
+            </div>
+        </div>
+        """
+
+    # --- HELPER: Hero Verdict Cell (The New Row) ---
+    def r_verdict(title, verdict, score, severity, sub_label, sub_val, sub_risk, icon, reg_key=None):
+        bg = f"v-bg-{severity}" 
+        txt = f"v-text-{severity}"
+        int_cls, int_attr = get_int(sub_val, reg_key, sub_risk) if reg_key else ("", "")
+        
+        return f"""
+        <div class="hud-verdict-card {bg}">
+            <div class="v-header">
+                <span class="v-icon">{icon}</span>
+                <span class="v-title">{title}</span>
+            </div>
+            <div class="v-main">
+                <div class="v-verdict {txt}">{verdict}</div>
+                <div class="v-score">Score: {score}</div>
+            </div>
+            <div class="v-footer">
+                <div class="v-sub-label">{sub_label}</div>
+                <div class="v-sub-val {int_cls}" {int_attr}>{sub_val}</div>
+            </div>
+        </div>
+        """
+
+    # --- COLOR LOGIC ---
+    def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
+    def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
+
+    # --- ROW 1: VOLUMETRICS (3 COLS) ---
+    # C0: Alphanumeric
+    alpha = sum(1 for c in t if c.isalnum())
+    runs = 0
+    in_r = False
+    for c in t:
+        if c.isalnum():
+            if not in_r: runs += 1; in_r = True
+        else: in_r = False
+    
+    # C1: Mass
+    L = stats.get('major_stats', {}).get("L (Letter)", 0)
+    N = stats.get('major_stats', {}).get("N (Number)", 0)
+    vu = (L + N) / 5.0
+    
+    # C2: Segmentation
+    uax_sent = 0
+    try:
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_sent = c[1]
+    except: pass
+
+    row1_html = f"""
+    <div class="hud-grid-row-1">
+        {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs))}
+        {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu))}
+        {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent))}
+    </div>
+    """
+
+    # --- ROW 2: VERDICT BAR (4 COLS) ---
+    # Integrity
+    i_d = master_ledgers.get("integrity", {})
+    c_int = r_verdict("INTEGRITY", i_d.get("verdict", "UNKNOWN"), i_d.get("score", 0), i_d.get("severity", "ok"),
+                      "Issues Found", i_d.get("issues", 0), "crit" if i_d.get("severity")=="crit" else "warn", "🛡️", "integrity")
+    
+    # Authenticity
+    a_d = master_ledgers.get("authenticity", {})
+    c_auth = r_verdict("AUTHENTICITY", a_d.get("verdict", "SAFE"), a_d.get("score", 0), a_d.get("severity", "ok"),
+                       "Spoof Vectors", a_d.get("vector_count", 0), "crit", "🎭", "threat")
+    
+    # Threat
+    t_d = master_ledgers.get("threat", {})
+    c_thr = r_verdict("THREAT", t_d.get("verdict", "CLEAN"), t_d.get("score", 0), t_d.get("severity", "ok"),
+                      "Active Signals", t_d.get("signals", 0), "crit", "💣", "threat")
+    
+    # Anomaly
+    n_d = master_ledgers.get("anomaly", {})
+    c_ano = r_verdict("ANOMALY", n_d.get("verdict", "NORMAL"), n_d.get("score", 0), n_d.get("severity", "ok"),
+                      "Entropy", f"{n_d.get('entropy', 0):.2f}", "warn", "📉", None)
+
+    row2_html = f"""
+    <div class="hud-verdict-row">
+        {c_int}{c_auth}{c_thr}{c_ano}
+    </div>
+    """
+
+    # --- ROW 3: STRUCTURE (5 COLS) ---
+    std_set = {0x20, 0x09, 0x0A, 0x0D}
+    std_inv = sum(1 for c in t if ord(c) in std_set)
+    flags = stats.get('forensic_flags', {})
+    non_std = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    
+    # Delimiters
+    p_ascii = 0; p_exotic = 0
+    for c in t:
+        if unicodedata.category(c).startswith('P'):
+            if ord(c) <= 0x7F: p_ascii += 1
+            else: p_exotic += 1
+            
+    # Symbols/Emoji
+    s_ext = emoji_counts.get("text_symbols_extended", 0)
+    s_exo = emoji_counts.get("text_symbols_exotic", 0)
+    h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    h_amb = emoji_counts.get("hybrid_ambiguous", 0)
+    rgi = emoji_counts.get("rgi_total", 0)
+    irr = emoji_counts.get("emoji_irregular", 0)
+
+    row3_html = f"""
+    <div class="hud-grid-row-2">
+        {r_cell("ASCII WS", std_inv, c_neut(std_inv), "NON-STD", non_std, c_safe(non_std), "ws_nonstd")}
+        {r_cell("ASCII PUNC", p_ascii, c_neut(p_ascii), "EXOTIC", p_exotic, c_safe(p_exotic), "punc_exotic")}
+        {r_cell("EXTENDED", s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo), "sym_exotic")}
+        {r_cell("PICTOGRAPH", h_pict, c_neut(h_pict), "AMBIGUOUS", h_amb, c_safe(h_amb), "emoji_hybrid")}
+        {r_cell("RGI SEQS", rgi, c_neut(rgi), "IRREGULAR", irr, c_safe(irr), "emoji_irregular")}
+    </div>
+    """
+
+    container.innerHTML = row1_html + row2_html + row3_html
 
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
