@@ -12511,9 +12511,8 @@ def render_adversarial_dashboard(adv_data: dict):
 @create_proxy
 def render_forensic_hud_v2(t, stats):
     """
-    Forensic HUD V2 (The 'Sprawl' 5-Row Layout).
-    Row 1: 8-Column Metric Header.
-    Rows 2-5: Detailed Ledger Rows using Vector Icons.
+    Renders the 'Forensic Matrix' V2 (Active Analysis Mode).
+    FIXED: r_cell definition now matches the metadata arguments.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -12524,48 +12523,38 @@ def render_forensic_hud_v2(t, stats):
 
     # --- FORENSIC ICON SET (SVG PATHS) ---
     VERDICT_ICONS = {
-        "integrity": (
-            # Shield with Checkmark
-            '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>'
-            '<path d="M9 12l2 2 4-4"></path>'
-        ),
-        "authenticity": (
-            # Theatre Masks (Geometric)
-            '<path d="M2 10c0-4 4-6 9-6s9 2 9 6"></path>'
-            '<path d="M12 2c0 3-2 6-2 9"></path>'
-            '<path d="M19 10c0 4-3 7-7 7"></path>'
-            '<path d="M7 15C4 15 2 12 2 10"></path>'
-            '<circle cx="15.5" cy="9.5" r="1.5"></circle>'
-            '<circle cx="8.5" cy="9.5" r="1.5"></circle>'
-        ),
-        "threat": (
-            # Crosshair / Target
-            '<circle cx="12" cy="12" r="10"></circle>'
-            '<line x1="22" y1="12" x2="18" y2="12"></line>'
-            '<line x1="6" y1="12" x2="2" y2="12"></line>'
-            '<line x1="12" y1="6" x2="12" y2="2"></line>'
-            '<line x1="12" y1="22" x2="12" y2="18"></line>'
-            '<circle cx="12" cy="12" r="2" fill="currentColor"></circle>'
-        ),
-        "anomaly": (
-            # Glitch Waveform / Activity Pulse
-            '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>'
-        )
+        "integrity": ('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path>'),
+        "authenticity": ('<path d="M2 10c0-4 4-6 9-6s9 2 9 6"></path><path d="M12 2c0 3-2 6-2 9"></path><path d="M19 10c0 4-3 7-7 7"></path><path d="M7 15C4 15 2 12 2 10"></path><circle cx="15.5" cy="9.5" r="1.5"></circle><circle cx="8.5" cy="9.5" r="1.5"></circle>'),
+        "threat": ('<circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line><circle cx="12" cy="12" r="2" fill="currentColor"></circle>'),
+        "anomaly": ('<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>')
     }
 
     # --- HELPERS ---
     def get_svg(key):
-        paths = VERDICT_ICONS.get(key, "")
-        return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{paths}</svg>'
+        return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{VERDICT_ICONS.get(key, "")}</svg>'
 
     def c_neut(v): return "txt-muted" if float(v) == 0 else "txt-normal"
     def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
+    def esc(s): return s.replace('"', '&quot;')
 
-    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, reg_key=None):
-        int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"' if reg_key and float(val_2) > 0 else ""
-        int_cls = " hud-interactive" if reg_key and float(val_2) > 0 else ""
+    # --- CELL RENDERER (THE FIX IS HERE) ---
+    # This definition MUST include d1, m1, r1, etc. to match the calls below.
+    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, 
+               d1="", m1="", r1="", d2="", m2="", r2="", 
+               reg_key=None):
+        
+        int_attr = ""
+        int_cls = ""
+        # Only interactive if value > 0
+        if reg_key and float(val_2) > 0:
+             int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
+             int_cls = " hud-interactive"
+        
+        # Inject metadata for the JS Console
+        data_attrs = f'data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}" data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}"'
+
         return f"""
-        <div class="hud-col">
+        <div class="hud-col" {data_attrs}>
             <div class="hud-metric-group">
                 <div class="hud-label">{label_1}</div>
                 <div class="hud-val {class_1}">{val_1}</div>
@@ -12578,59 +12567,62 @@ def render_forensic_hud_v2(t, stats):
         </div>
         """
 
+    # --- LEDGER ROW RENDERER (Hero Rows) ---
     def r_ledger_row(title, type_key, data):
-        """Generates the wide detailed rows (2-5) using SVGs."""
         sev = data.get("severity", "ok")
         score = data.get("score", 0)
-        verdict = data.get("verdict", "UNKNOWN")
+        verdict = data.get("verdict", "INTACT" if type_key == "integrity" else "CLEAR")
+        
+        target_ids = {"integrity": "integrity-matrix-body", "threat": "threat-report-body", "authenticity": "adversarial-dashboard-body", "anomaly": "statistical-profile-body"}
+        t_id = target_ids.get(type_key)
+        click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
+        
+        items = []
+        if type_key in ["integrity", "threat"]:
+            for i in data.get("ledger", []): items.append(f"{i['vector']} (+{i['points']})")
+        elif type_key in ["authenticity", "anomaly"]:
+            items = data.get("vectors", [])
+
+        # Define Metadata for Hero Rows
+        meta = {
+            "integrity": {
+                "d1": "Measures physical health. Penalties for corruption (FFFD), broken encoding, and binary injection.",
+                "m1": "Base Score + Density Penalty", "r1": "Std: Core Spec",
+                "d2": "High scores indicate broken or dangerous files regardless of content.",
+                "m2": "Auditor: Integrity", "r2": "Scope: Rot"
+            },
+            "authenticity": {
+                "d1": "Verifies identity. Penalties for Homoglyphs, Mixed-Script Spoofing, and IDNA violations.",
+                "m1": "UTS #39 Skeleton", "r1": "Std: UTS #39",
+                "d2": "High scores indicate an attempt to impersonate a trusted domain or user.",
+                "m2": "Auditor: Authenticity", "r2": "Scope: Identity"
+            },
+            "threat": {
+                "d1": "Detects weaponization. Penalties for Bidi Execution, ANSI Injection, and Token Evasion.",
+                "m1": "Adversarial Patterns", "r1": "Ref: Trojan Source",
+                "d2": "High scores indicate a confirmed exploit payload.",
+                "m2": "Auditor: Threat", "r2": "Scope: Malice"
+            },
+            "anomaly": {
+                "d1": "Analyzes physics. Measures Entropy, Character Distribution, and Zalgo Density.",
+                "m1": "Shannon Entropy", "r1": "Heuristic",
+                "d2": "High scores indicate unnatural or obfuscated content.",
+                "m2": "Auditor: Anomaly", "r2": "Scope: Physics"
+            }
+        }
+        m = meta.get(type_key, {})
+        data_attrs = f'data-l1="{esc(title)} STATUS" data-d1="{esc(m.get("d1",""))}" data-m1="{esc(m.get("m1",""))}" data-r1="{esc(m.get("r1",""))}" data-l2="IMPACT" data-d2="{esc(m.get("d2",""))}" data-m2="{esc(m.get("m2",""))}" data-r2="{esc(m.get("r2",""))}"'
+
         icon_svg = get_svg(type_key)
         
-        # Build the detail chips
-        chips = []
-        items = []
-        
-        # EXTRACT DETAILS based on type
-        if type_key == "integrity":
-            # Integrity Ledger: [{'vector':..., 'points':...}]
-            for i in data.get("ledger", []):
-                items.append(f"{i['vector']} (+{i['points']})")
-        elif type_key == "threat":
-            # Threat Ledger: [{'vector':..., 'points':...}]
-            for i in data.get("ledger", []):
-                items.append(f"{i['vector']} (+{i['points']})")
-        elif type_key == "authenticity":
-            # Vectors list: ["Vector string"]
-            items = data.get("vectors", [])
-        elif type_key == "anomaly":
-            # Vectors list: ["Vector string"]
-            items = data.get("vectors", [])
-
-        # Render Chips
-        if not items:
-            chips.append(f'<span class="hud-chip chip-dim">No active signals.</span>')
+        if not items: chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
         else:
-            for item in items[:6]: # Limit to 6 to prevent blowout
-                chips.append(f'<span class="hud-chip chip-{sev}">{item}</span>')
-            if len(items) > 6:
-                chips.append(f'<span class="hud-chip chip-dim">+{len(items)-6} more...</span>')
-
-        # Interaction for jumping to details
-        row_id_map = {
-            "integrity": "integrity-matrix-body",
-            "threat": "threat-report-body", 
-            "authenticity": "adversarial-dashboard-body",
-            "anomaly": "statistical-profile-body"
-        }
-        
-        target_id = row_id_map.get(type_key)
-        
-        if target_id:
-            click_attr = f'onclick="window.hud_jump_to_details(\'{target_id}\')"'
-        else:
-            click_attr = ""
+            chips = [f'<span class="hud-chip chip-{sev}">{item}</span>' for item in items[:6]]
+            if len(items) > 6: chips.append(f'<span class="hud-chip chip-dim">+{len(items)-6} more...</span>')
+            chips_html = "".join(chips)
 
         return f"""
-        <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table">
+        <div class="hud-detail-row border-{sev}" {click_attr} title="Click to view detailed table" {data_attrs}>
             <div class="hud-detail-left bg-{sev}">
                 <div class="h-icon-box text-{sev}">{icon_svg}</div>
                 <div class="h-meta">
@@ -12639,14 +12631,11 @@ def render_forensic_hud_v2(t, stats):
                     <div class="h-score text-{sev}">Score: {score}</div>
                 </div>
             </div>
-            <div class="hud-detail-right">
-                {''.join(chips)}
-            </div>
+            <div class="hud-detail-right">{chips_html}</div>
         </div>
         """
 
-    # --- ROW 1: THE COUNTS (Merged 8-Column Grid) ---
-    # Volumetrics
+    # --- ROW 1: METRICS CALCULATION ---
     alpha = sum(1 for c in t if c.isalnum())
     runs = 0; in_r = False
     for c in t:
@@ -12657,29 +12646,38 @@ def render_forensic_hud_v2(t, stats):
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
+    
     uax_sent = 0
     try:
         c = window.TEXTTICS_CALC_UAX_COUNTS(t)
         if c[0] != -1: uax_sent = c[1]
     except: pass
 
-    # Structure
     std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
     non_std = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
-    p_ascii = 0; p_exotic = 0
+    cnt_p_ascii = 0; cnt_p_exotic = 0; cnt_p_comfort = 0
     for c in t:
         if unicodedata.category(c).startswith('P'):
-            if ord(c) <= 0x7F: p_ascii += 1
-            else: p_exotic += 1
-            
+            cp = ord(c)
+            if cp <= 0x7F: cnt_p_ascii += 1
+            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F): cnt_p_comfort += 1
+            else: cnt_p_exotic += 1
+    
+    c4_label = "TYPOGRAPHIC" if cnt_p_comfort > 0 else "ASCII PUNC"
+    c4_val = cnt_p_ascii + cnt_p_comfort
+    
     s_ext = emoji_counts.get("text_symbols_extended", 0)
     s_exo = emoji_counts.get("text_symbols_exotic", 0)
+    
+    c5_label = "KEYBOARD" if s_ext == 0 and s_exo == 0 else "EXTENDED"
+
     h_pict = emoji_counts.get("hybrid_pictographs", 0)
     h_amb = emoji_counts.get("hybrid_ambiguous", 0)
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
 
+    # --- ROW 1: RENDER WITH METADATA ---
     row1_html = f"""
     <div class="hud-grid-row-1">
         {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs),
@@ -12699,12 +12697,12 @@ def render_forensic_hud_v2(t, stats):
                 d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
                 reg_key="ws_nonstd")}
         
-        {r_cell("ASCII PUNC", p_ascii, c_neut(p_ascii), "EXOTIC", p_exotic, c_safe(p_exotic),
+        {r_cell(c4_label, c4_val, c_neut(c4_val), "EXOTIC", cnt_p_exotic, c_safe(cnt_p_exotic),
                 d1="Standard ASCII + Common Typography (Smart Quotes, Dashes).", m1="Scope: ASCII+Common", r1="Punctuation",
                 d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
                 reg_key="punc_exotic")}
         
-        {r_cell("EXTENDED", s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo),
+        {r_cell(c5_label, s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo),
                 d1="Technical symbols (Math, Currency, Latin-1) excluding Emoji.", m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
                 d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
                 reg_key="sym_exotic")}
@@ -12721,7 +12719,7 @@ def render_forensic_hud_v2(t, stats):
     </div>
     """
 
-    # --- ROWS 2-5: THE LEDGER ROWS ---
+    # --- ROWS 2-5: LEDGER ROWS ---
     rows_html = ""
     rows_html += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}))
     rows_html += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}))
