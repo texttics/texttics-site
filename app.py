@@ -7003,7 +7003,13 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
         peak_score = max(t["score"] for t in targets)
 
     # 3. AUTHENTICITY (Derived)
-    auth = compute_authenticity_score(inputs, threat_output["ledger"], stage1_5_data)
+    # Robust lookup for ledger (handles both direct score and nested report objects)
+    t_ledger = threat_output.get("ledger", []) 
+    if not t_ledger:
+        # Fallback: Try to find ledger in nested report structure
+        t_ledger = threat_output.get("flags", {}).get("Threat Level (Heuristic)", {}).get("ledger", [])
+
+    auth = compute_authenticity_score(inputs, t_ledger, stage1_5_data)
     
     # 4. ANOMALY (Physics)
     anomaly = compute_anomaly_score(stats_inputs)
@@ -13001,7 +13007,7 @@ def update_all(event=None):
         inputs=integrity_inputs, 
         stats_inputs=stat_profile, 
         stage1_5_data=stage1_5_data, 
-        threat_output=threat_results
+        threat_output=final_score
     )
     
     # --- Prepare Data for Renderers ---
