@@ -1899,3 +1899,28 @@ This component addresses the primary limitation of any "Post-Clipboard" analyzer
 * **The Architecture (Dual-Input):** We implemented a dedicated, opt-in `contenteditable` **Metadata Workbench** input mode that captures the raw `text/html` string directly from the clipboard. This preserves the original visual context.
 * **The Analysis:** A new Python engine (`analyze_html_metadata`) scans this raw HTML string for **CSS Obfuscation** signatures, including `visibility: hidden`, `opacity: 0`, off-screen positioning, and explicit white-on-white low-contrast rules.
 * **Forensic Correlation:** This module functions as a **complementary tool**. It confirms *how* the text was visually hidden on the source website, validating the findings already present in the main Structural Integrity Profile.
+
+---
+
+### 🛡️ Update: The "Quad-Ledger" HUD & Master Auditor (Stage 1.5 Finalization)
+
+**Session Goal:** To transition the application's top-level reporting from a binary model (Integrity vs. Threat) to a professional-grade **"3+1" Risk Architecture** aligned with modern SIEM/CVSS standards. We separated "Malice" (Execution) from "Identity" (Spoofing) and "Complexity" (Anomaly).
+
+#### 1. Architecture: The Master Auditor (Block 7)
+We implemented a new orchestration layer in **Block 7** (`audit_master_ledgers`) that reorganizes forensic signals into four orthogonal axes without altering the underlying physics engines.
+* **Integrity:** Data health, decoding reliability, and structural rot (Absorbed "Decode Health").
+* **Authenticity (New):** Dedicated to Identity verification. Aggregates IDNA violations, Skeleton Drifts, and Mixed-Script spoofing.
+* **Threat:** Focused strictly on Weaponization (Execution, Injection, malicious Obfuscation).
+* **Anomaly (New):** A "Physics" ledger measuring Entropy, Zalgo density, and structural weirdness.
+
+#### 2. UI/UX: The "Verdict Bar" (Block 9 & CSS)
+We replaced the linear metric list with a high-density **Verdict Bar**.
+* **Renderer:** Implemented `render_forensic_hud_v2` as a parallel function to safely supersede the legacy display.
+* **Visuals:** Added a CSS Grid architecture (`.hud-verdict-row`) supporting "Hero Cards" with distinct color themes (Red/Critical, Amber/Warning, Green/Safe) and interactive drill-down values.
+
+#### 3. Logic Hardening: The Data Flow Repair (Block 10)
+We resolved a critical dependency cycle in the `update_all` orchestrator.
+* **The Bug:** The `audit_master_ledgers` function required a calculated `ledger` object (from `compute_threat_score`) but was receiving the raw `threat_results` report, causing a `KeyError`.
+* **The Fix:** We refactored `update_all` to explicitly calculate `final_score` (inputs + logic) locally before passing it to the Master Auditor. This ensures the "Threat" column in the HUD matches the detailed "Threat-Hunting" profile exactly.
+
+**Result:** The tool now presents a holistic, multi-dimensional security posture (Physical Health, Identity Trust, Active Threat, Structural Anomaly) at a single glance.
