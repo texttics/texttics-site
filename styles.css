@@ -5658,3 +5658,147 @@ details.profile-section > summary:hover::marker {
 
 .v-bg-ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
 .v-text-ok { color: #15803d; }
+
+/* =========================================
+   HUD V2 LAYOUT (The 3+1 Architecture)
+   ========================================= */
+
+/* --- The Main Grid Structure --- */
+
+/* Row 1: Volumetrics (3 Columns) */
+.hud-grid-row-1 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+/* Row 2: The Verdict Bar (4 Columns) */
+.hud-verdict-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+/* Row 3: Structure (5 Columns) */
+.hud-grid-row-2 {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+/* --- Component: Verdict Card --- */
+.hud-verdict-card {
+    background-color: var(--color-bg); /* Fallback */
+    border-radius: 6px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 94px; /* Fixed height for alignment */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.v-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: 0.85;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+}
+
+.v-icon {
+    font-size: 1.1em;
+    line-height: 1;
+}
+
+.v-main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.v-verdict {
+    font-size: 1.25rem; /* Large Hero Text */
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+.v-score {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+}
+
+.v-footer {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    background: rgba(255,255,255,0.4);
+    margin: 0 -12px -10px -12px; /* Bleed to edges */
+    padding: 6px 12px;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    border-radius: 0 0 6px 6px;
+}
+
+.v-sub-label {
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.v-sub-val {
+    font-family: var(--font-mono);
+    font-weight: 700;
+}
+
+/* --- Severity Themes (Colors) --- */
+
+/* CRITICAL (Red) */
+.v-bg-crit { 
+    background-color: #fef2f2; 
+    border-color: #fecaca; 
+    color: #991b1b; 
+}
+.v-text-crit { color: #dc2626; }
+
+/* WARNING (Amber/Orange) */
+.v-bg-warn { 
+    background-color: #fffbeb; 
+    border-color: #fde68a; 
+    color: #92400e; 
+}
+.v-text-warn { color: #d97706; }
+
+/* OK/SAFE (Green) */
+.v-bg-ok { 
+    background-color: #f0fdf4; 
+    border-color: #bbf7d0; 
+    color: #166534; 
+}
+.v-text-ok { color: #15803d; }
+
+/* Interactive Hover States */
+.hud-interactive {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-thickness: 1px;
+}
+.hud-interactive:hover {
+    filter: brightness(0.9);
+}
