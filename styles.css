@@ -5693,39 +5693,59 @@ details.profile-section > summary:hover::marker {
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     overflow: hidden;
-    min-height: 70px;
+    min-height: 80px; /* Slightly taller for icons */
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    transition: transform 0.1s ease;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    cursor: alias; /* Suggests jumping to detail view */
+}
+
+.hud-detail-row:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.08);
 }
 
 /* LEFT: The Verdict Header (Fixed Width) */
 .hud-detail-left {
-    flex: 0 0 180px; /* Fixed width for alignment */
+    flex: 0 0 200px; /* Fixed width for alignment */
     display: flex;
     align-items: center;
     padding: 0 16px;
-    gap: 12px;
+    gap: 16px;
     border-right: 1px solid rgba(0,0,0,0.05);
 }
 
-.h-icon { font-size: 1.5rem; }
+/* Icon Container */
+.h-icon-box {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.h-icon-box svg {
+    width: 100%;
+    height: 100%;
+    stroke-width: 2px;
+}
 
 .h-meta {
     display: flex;
     flex-direction: column;
+    justify-content: center;
 }
 
 .h-title {
     font-size: 0.65rem;
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
-    color: rgba(0,0,0,0.5);
     letter-spacing: 0.05em;
     margin-bottom: 2px;
+    opacity: 0.8;
 }
 
 .h-verdict {
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 800;
     font-family: var(--font-mono);
     line-height: 1.1;
@@ -5736,6 +5756,7 @@ details.profile-section > summary:hover::marker {
     font-size: 0.7rem;
     font-family: var(--font-mono);
     opacity: 0.7;
+    margin-top: 2px;
 }
 
 /* RIGHT: The Chip Container */
@@ -5744,9 +5765,10 @@ details.profile-section > summary:hover::marker {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    padding: 8px 16px;
+    padding: 12px 16px;
     gap: 8px;
     background-color: #ffffff;
+    align-content: center; /* Center lines vertically */
 }
 
 /* --- CHIPS (The Data) --- */
@@ -5789,19 +5811,25 @@ details.profile-section > summary:hover::marker {
 
 /* --- THEMES (Row Colors) --- */
 /* Critical */
-.bg-crit { background-color: #fef2f2; color: #991b1b; }
+.bg-crit { background-color: #fef2f2; }
 .border-crit { border-left: 4px solid #ef4444; }
+.text-crit { color: #991b1b; }
+.text-crit svg { stroke: #ef4444; }
 
 /* Warning */
-.bg-warn { background-color: #fffbeb; color: #92400e; }
+.bg-warn { background-color: #fffbeb; }
 .border-warn { border-left: 4px solid #f59e0b; }
+.text-warn { color: #92400e; }
+.text-warn svg { stroke: #f59e0b; }
 
 /* OK */
-.bg-ok { background-color: #f0fdf4; color: #166534; }
+.bg-ok { background-color: #f0fdf4; }
 .border-ok { border-left: 4px solid #10b981; }
+.text-ok { color: #166534; }
+.text-ok svg { stroke: #10b981; }
 
 /* --- RESPONSIVE --- */
-@media (max-width: 1200px) {
+@media (max-width: 1300px) {
     .hud-grid-row-1 {
         grid-template-columns: repeat(4, 1fr); /* Break to 2 rows of 4 */
     }
@@ -5810,11 +5838,16 @@ details.profile-section > summary:hover::marker {
 @media (max-width: 768px) {
     .hud-detail-row {
         flex-direction: column;
+        height: auto;
     }
     .hud-detail-left {
         width: 100%;
         border-right: none;
         border-bottom: 1px solid #f3f4f6;
-        padding: 10px;
+        padding: 12px;
+        flex: 0 0 auto;
+    }
+    .hud-detail-right {
+        padding: 12px;
     }
 }
