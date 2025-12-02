@@ -283,23 +283,34 @@ document.addEventListener('DOMContentLoaded', () => {
   if (hudContainer && pDef) {
     
     hudContainer.addEventListener('mouseover', (e) => {
-      const col = e.target.closest('.hud-col');
-      if (col) {
+      // FIX: Look for EITHER a standard column OR a detail row
+      const target = e.target.closest('.hud-col, .hud-detail-row');
+      
+      if (target) {
         // Populate Primary
-        const l1 = col.getAttribute('data-l1');
-        if (l1) pKey.textContent = l1 + ":"; // Update Label
+        const l1 = target.getAttribute('data-l1');
+        if (l1) pKey.textContent = l1 + ":"; 
         
-        pDef.textContent = col.getAttribute('data-d1') || "";
-        pLogic.textContent = col.getAttribute('data-m1') || "";
-        pStd.textContent = col.getAttribute('data-r1') || "";
+        pDef.textContent = target.getAttribute('data-d1') || "";
+        pLogic.textContent = target.getAttribute('data-m1') || "";
+        pStd.textContent = target.getAttribute('data-r1') || "";
 
-        // Populate Secondary
-        const l2 = col.getAttribute('data-l2');
-        if (l2) sKey.textContent = l2 + ":"; // Update Label
-
-        sDef.textContent = col.getAttribute('data-d2') || "";
-        sLogic.textContent = col.getAttribute('data-m2') || "";
-        sStd.textContent = col.getAttribute('data-r2') || "";
+        // Populate Secondary (Only if it exists)
+        const l2 = target.getAttribute('data-l2');
+        if (l2) {
+             sKey.textContent = l2 + ":";
+             sDef.textContent = target.getAttribute('data-d2') || "";
+             sLogic.textContent = target.getAttribute('data-m2') || "";
+             sStd.textContent = target.getAttribute('data-r2') || "";
+             // Ensure the secondary row is visible if you have CSS hiding empty ones
+             document.getElementById('c-s-row').style.display = 'flex';
+        } else {
+             // If the row only has 1 metric (like the Ledger rows), clear the second line
+             sKey.textContent = "";
+             sDef.textContent = "";
+             sLogic.textContent = "";
+             sStd.textContent = "";
+        }
       }
     });
 
