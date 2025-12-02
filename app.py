@@ -10306,7 +10306,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
 def render_forensic_hud(t, stats):
     """
     Renders the 'Forensic Matrix' (Unified V2 Layout).
-    UPDATED: Restores 'Hover Console' data attributes.
+    FIXED: Uses standard DOM calls for Status Line to prevent silent failures.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -10318,11 +10318,17 @@ def render_forensic_hud(t, stats):
     emoji_counts = stats.get("emoji_counts", {})
     master_ledgers = stats.get("master_ledgers", {}) 
 
-    # --- STATUS LINE UPDATE ---
+    # --- FIX: ROBUST STATUS LINE UPDATE ---
+    # We use document.getElementById instead of Element() to ensure compatibility
     try:
-        status_msg = "Ready. Waiting for input..." if is_initial else f"Analysis complete. Length: {len(t)}"
-        Element("status-line").write(f"STATUS: {status_msg}") 
-    except: pass
+        status_el = document.getElementById("status-line")
+        if status_el:
+            msg = "Ready. Waiting for input..." if is_initial else f"Analysis complete. Length: {len(t)}"
+            status_el.textContent = f"STATUS: {msg}"
+            # Ensure it is visible via inline style in case CSS is lagging
+            status_el.style.opacity = "1"
+    except Exception as e:
+        print(f"Status update error: {e}")
 
     # --- FORENSIC ICON SET ---
     VERDICT_ICONS = {
@@ -10339,9 +10345,9 @@ def render_forensic_hud(t, stats):
     def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
     def esc(s): return s.replace('"', '&quot;')
 
-    # --- FIX 1: UPDATE CELL RENDERER TO ACCEPT & PRINT METADATA ---
+    # --- CELL RENDERER (With Metadata Injection) ---
     def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, 
-               d1="", m1="", r1="", d2="", m2="", r2="", # New Args for Console
+               d1="", m1="", r1="", d2="", m2="", r2="", 
                reg_key=None):
         
         int_attr = ""
@@ -10350,7 +10356,7 @@ def render_forensic_hud(t, stats):
              int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
              int_cls = " hud-interactive"
         
-        # Inject data attributes so ui-glue.js can read them on hover
+        # INJECT DATA ATTRIBUTES FOR HOVER CONSOLE
         data_attrs = f'data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}" data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}"'
 
         return f"""
@@ -10367,7 +10373,7 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # Unified Ledger Row Renderer
+    # --- LEDGER ROW RENDERER (Hero Rows) ---
     def r_ledger_row(title, type_key, data):
         if is_initial:
             sev, score, verdict, items, click_attr, title_attr = "neutral", 0, "WAITING", [], "", "Waiting for input..."
@@ -10452,7 +10458,7 @@ def render_forensic_hud(t, stats):
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
 
-    # --- FIX 2: RESTORE DEFINITIONS FOR HOVER CONSOLE ---
+    # --- ROW 1: RENDER WITH METADATA ---
     row1_html = f"""
     <div class="hud-grid-row-1">
         {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs),
