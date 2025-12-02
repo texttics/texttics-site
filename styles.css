@@ -5602,7 +5602,7 @@ details.profile-section > summary:hover::marker {
 /* --- ROWS 2-5: LEDGER ROWS (Detail View) --- */
 .hud-detail-row {
     display: flex;
-    align-items: stretch;
+    align-items: center;
     background: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 6px;
@@ -5868,4 +5868,17 @@ details.profile-section > summary:hover::marker {
     overflow: visible;              /* Show overflow */
     word-break: break-word;         /* Break long words if needed */
     padding-right: 12px;            /* Add spacing between cols */
+}
+
+/* --- STATUS BAR LAYOUT (Close the Gap) --- */
+/* Assuming the container ID is #status-bar-container or similar */
+/* If you don't know the ID, this generic selector targets the area */
+.status-bar-wrapper, 
+#status-line-container { 
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* FIX: Push everything Left (closes gap) */
+    gap: 16px; /* Define exact gap between Status Pill and Dropdown */
+    width: 100%;
+    margin-top: 8px;
 }
