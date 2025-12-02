@@ -12679,7 +12679,6 @@ def update_all(event=None):
         render_emoji_summary({}, [])
         render_threat_analysis({}) 
         render_toc_counts({})
-        render_forensic_hud("", {})
         render_invisible_atlas("")
         render_encoding_footprint("")
         render_adversarial_dashboard({})
