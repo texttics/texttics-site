@@ -10201,37 +10201,37 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         
         if char_code == 0x0000:
              tier_rank = 0
-             tier_badge = "🔴 FATAL (Null)"
+             tier_badge = "FATAL (Null)"
              tier_class = "atlas-badge-crit"
              category_agg["FATAL"] += count
         elif 0xE0000 <= char_code <= 0xE007F:
              tier_rank = 1
-             tier_badge = "🔴 Illegal (Tag)"
+             tier_badge = "Illegal (Tag)"
              tier_class = "atlas-badge-crit"
              category_agg["ILLEGAL"] += count
         elif char_code in TIER_2_RISKY:
             tier_rank = 2
-            tier_badge = "🟠 Risky (Bidi)"
+            tier_badge = "Risky (Bidi)"
             tier_class = "atlas-badge-high"
             category_agg["RISKY"] += count
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
             tier_rank = 3
-            tier_badge = "🟠 Restricted"
+            tier_badge = "Restricted"
             tier_class = "atlas-badge-high"
             category_agg["RESTRICTED"] += count
         elif char_code in TIER_1_SCRIPT or category_slug == "SELECTOR":
             tier_rank = 4
-            tier_badge = "🟡 Script/Emoji"
+            tier_badge = "Script/Emoji"
             tier_class = "atlas-badge-warn"
             category_agg["SCRIPT"] += count
         elif char_code in TIER_0_BENIGN or category_slug in ["TAB", "NEWLINE"]:
             tier_rank = 5
-            tier_badge = "✅ Typographic"
+            tier_badge = "Typographic"
             tier_class = "atlas-badge-ok"
             category_agg["BENIGN"] += count
         else:
             tier_rank = 6
-            tier_badge = "⚪ Format"
+            tier_badge = "Format"
             tier_class = "atlas-badge-neutral"
             category_agg["OTHER"] += count
 
@@ -10246,7 +10246,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
                 <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
                 <td class="count-col">{count}</td>
                 <td class="action-col">
-                    <button class="find-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})">Find</button>
+                    <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})">LOCATE</button>
                 </td>
             </tr>"""
         })
@@ -10274,18 +10274,15 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         if category_agg[key] > 0:
             summary_parts.append(
                 f'<div class="atlas-sum-metric">'
-                f'<span class="atlas-badge {agg_styles[key]}">{key}</span>'
-                f'<span class="sum-val">{category_agg[key]}</span>'
+                f'{key} <span class="sum-val">{category_agg[key]}</span>'
                 f'</div>'
             )
 
     total_inv = sum(invisible_counts.values())
-    unique_inv = len(invisible_counts)
     
     summary_html = f"""
         <div class="atlas-summary-bar">
-            <div class="atlas-sum-metric main"><span class="sum-total-label">TOTAL</span> <span class="sum-val">{total_inv}</span></div>
-            <div class="atlas-sep"></div>
+            <div class="atlas-sum-metric main">TOTAL <span class="sum-val">{total_inv}</span></div>
             {''.join(summary_parts)}
         </div>
     """
@@ -10294,22 +10291,24 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     # 3. FINAL ASSEMBLY
     # ---------------------------------------------------------
     table_html = f"""
-        {summary_html}
-        <table class="atlas-table">
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th>Forensic Legality</th>
-                    <th>Count</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(row["html"] for row in processed_rows)}
-            </tbody>
-        </table>
+        <div class="atlas-content">
+            {summary_html}
+            <table class="atlas-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Forensic Legality</th>
+                        <th>Count</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(row["html"] for row in processed_rows)}
+                </tbody>
+            </table>
+        </div>
     """
     
     # Use PyScript's document to find and update the element
