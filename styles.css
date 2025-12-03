@@ -5805,79 +5805,70 @@ details.profile-section > summary:hover::marker {
 }
 
 /* =========================================
-   INVISIBLE ATLAS (Forensic Legend v3.3)
+   INVISIBLE ATLAS (Forensic Legend v3.5)
    ========================================= */
 
-/* 1. Main Container - Changed to BLOCK to prevent flex-collapse */
+/* 1. Main Container (Block Layout to prevent collapse) */
 .atlas-content {
-  display: block; 
+  display: block; /* CRITICAL FIX: Stops flex squashing */
   width: 100%;
-  box-sizing: border-box; /* Critical for padding math */
-  background-color: var(--color-white);
-  border: 1px solid #cbd5e1; /* Slate-300 */
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
   border-radius: 6px;
-  overflow: hidden; /* Contains the children */
+  overflow: hidden;
   margin-top: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 /* 2. Description Row */
 .atlas-desc {
-  display: block;
-  width: 100%;
-  font-size: 0.85rem;
-  color: #475569; /* Slate-600 */
-  background-color: #f8fafc; /* Slate-50 */
   padding: 12px 20px;
-  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+  background-color: #f8fafc;
   border-bottom: 1px solid #e2e8f0;
+  margin: 0;
   line-height: 1.5;
 }
 
-/* 3. Summary Ribbon (The "Disappeared" Totals Fix) */
+/* 3. Summary Ribbon (The "Disappeared" Items) */
 .atlas-summary-bar {
   display: flex;
-  flex-direction: row;
+  flex-direction: row; /* Force Horizontal */
   align-items: center;
   width: 100%;
   background-color: #ffffff;
   border-bottom: 1px solid #e2e8f0;
-  height: 70px; /* Fixed height for consistency */
-  overflow-x: auto; /* Scrollable if too many metrics */
-  scrollbar-width: thin;
+  height: 70px;
+  overflow-x: auto; /* Scroll if needed */
 }
 
-/* The Individual Cards */
+/* Metric Cards */
 .atlas-sum-metric {
-  flex: 0 0 auto; /* CRITICAL: Prevents squashing! */
+  flex: 0 0 auto; /* CRITICAL FIX: Prevents shrinking */
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   height: 100%;
-  min-width: 100px; /* Force minimum width */
-  padding: 0 16px;
+  min-width: 90px; /* Force visibility */
+  padding: 0 15px;
   border-right: 1px solid #f1f5f9;
-  transition: background 0.2s;
 }
 
-.atlas-sum-metric:hover {
-  background-color: #f8fafc;
-}
-
-/* The Anchor (TOTAL) */
 .atlas-sum-metric.main {
-  background-color: #f1f5f9; /* Slight contrast */
+  background-color: #f8fafc;
   border-right: 2px solid #e2e8f0;
-  min-width: 120px;
+  min-width: 110px;
 }
 
 .sum-label {
   font-size: 0.65rem;
   font-weight: 800;
-  letter-spacing: 0.05em;
   color: #94a3b8;
+  letter-spacing: 0.05em;
   margin-bottom: 4px;
+  text-transform: uppercase;
 }
 
 .sum-val {
@@ -5888,47 +5879,41 @@ details.profile-section > summary:hover::marker {
 }
 
 /* Status Colors */
-.sum-val.crit { color: #dc2626; } /* Red-600 */
-.sum-val.warn { color: #d97706; } /* Amber-600 */
-.sum-val.safe { color: #059669; } /* Emerald-600 */
+.sum-val.crit { color: #dc2626; }
+.sum-val.warn { color: #d97706; }
+.sum-val.safe { color: #166534; }
 
 /* 4. The Data Table */
 .atlas-table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed; /* Strict column sizing */
+  table-layout: fixed; /* Respect column widths */
   font-size: 0.85rem;
 }
 
-/* Headers */
 .atlas-table th {
   background-color: #ffffff;
   color: #64748b;
   font-weight: 700;
   font-size: 0.7rem;
   text-transform: uppercase;
-  padding: 10px 16px;
+  padding: 10px 12px;
   border-bottom: 2px solid #e2e8f0;
   text-align: left;
 }
 
-/* Rows */
 .atlas-table td {
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
   height: 44px;
   color: #334155;
-  white-space: nowrap; /* Prevent messy wrapping */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.atlas-table tr:hover td {
-  background-color: #f8fafc;
-}
-
-/* 5. Components */
+/* Components */
 .atlas-glyph {
   font-family: var(--font-mono);
   font-size: 0.8rem;
@@ -5938,11 +5923,25 @@ details.profile-section > summary:hover::marker {
   padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
-  min-width: 24px;
+  min-width: 28px;
   text-align: center;
 }
 
-/* The Locate Button */
+.atlas-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+/* Badge Colors */
+.atlas-badge-neutral { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+.atlas-badge-ok      { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.atlas-badge-warn    { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.atlas-badge-high    { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
+.atlas-badge-crit    { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+
 .atlas-btn {
   display: inline-flex;
   align-items: center;
@@ -5951,18 +5950,13 @@ details.profile-section > summary:hover::marker {
   padding: 0 10px;
   font-size: 0.65rem;
   font-weight: 700;
-  color: #4f46e5; /* Indigo-600 */
-  background: #eef2ff; /* Indigo-50 */
+  color: #4f46e5;
+  background: #eef2ff;
   border: 1px solid #c7d2fe;
   border-radius: 4px;
   cursor: pointer;
   text-transform: uppercase;
-  transition: all 0.15s;
 }
-
 .atlas-btn:hover {
-  background: #4f46e5;
-  color: #ffffff;
-  border-color: #4338ca;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  background: #4f46e5; color: #ffffff; border-color: #4338ca;
 }
