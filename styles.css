@@ -5995,7 +5995,7 @@ details.profile-section > summary:hover::marker {
     align-items: center;          /* Centers them horizontally */
     justify-content: center;      /* Centers them vertically */
     min-width: 60px;              /* Ensures stable width */
-    padding: 0 12px;
+    padding: 3 12px;
     line-height: 2;               /* Tightens vertical spacing */
 }
 
