@@ -10118,8 +10118,8 @@ def render_emoji_summary(emoji_counts, emoji_list):
 
 def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
-    Renders the 'Invisible Atlas' - A forensic-grade legend of all hidden characters.
-    Features: Horizontal Summary Strip, Precise Bidi Tags, and Physical Property Analysis.
+    Renders the 'Invisible Atlas' (v3.0) - A forensic-grade instrument for hidden characters.
+    Architecture: 8-Column Layout + Policy Recommendation + Deep Bidi/NFKC Intelligence.
     """
 
     if not invisible_counts:
@@ -10131,29 +10131,43 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     processed_rows = []
     category_agg = collections.Counter()
     
-    # [FIX] Explicit C0/C1 Control Names (The "Unassigned" Fix)
+    # [FIX] Explicit C0/C1 Control Names
     C0_CONTROL_NAMES = {
         0x00: "NULL", 0x09: "CHARACTER TABULATION", 0x0A: "LINE FEED (LF)", 
-        0x0D: "CARRIAGE RETURN (CR)", 0x1B: "ESCAPE", 0x1F: "UNIT SEPARATOR",
-        0x85: "NEXT LINE (NEL)"
+        0x0B: "LINE TABULATION", 0x0C: "FORM FEED (FF)", 0x0D: "CARRIAGE RETURN (CR)", 
+        0x1B: "ESCAPE", 0x1F: "UNIT SEPARATOR", 0x85: "NEXT LINE (NEL)"
     }
 
-    # [FIX] Specific Bidi Mnemonics (The "Low-Res" Fix)
+    # [FIX] Specific Bidi Mnemonics
     BIDI_TAG_MAP = {
         0x202E: "[RLO]", 0x202D: "[LRO]", 0x202B: "[RLE]", 0x202A: "[LRE]",
         0x202C: "[PDF]", 0x2066: "[LRI]", 0x2067: "[RLI]", 0x2068: "[FSI]",
         0x2069: "[PDI]", 0x061C: "[ALM]", 0x200E: "[LRM]", 0x200F: "[RLM]"
     }
 
-    # [FIX] Forensic Tiering (Refined Risk Model)
-    # TIER 0: Truly Typographic (Safe)
-    TIER_0_TYPO = {0x00AD, 0x200B, 0x00A0} 
-    # TIER 1: Script/Emoji Glue (Contextual)
-    TIER_1_SCRIPT = {0x200C, 0x200D} 
-    # TIER 2: Format/Ambiguous (The "Ghost" Risk - Default Ignorables moved here)
-    TIER_2_FORMAT = {0x034F, 0x2060, 0x180E, 0xFEFF, 0xFFF9, 0xFFFA, 0xFFFB}
-    # TIER 3: Bidi Controls (Directional Risk)
-    TIER_3_BIDI = set(BIDI_TAG_MAP.keys())
+    # [FIX] Expanded Default Ignorable Set (Heuristic coverage of Unicode Prop)
+    # Includes: ZWSP, ZWJ/ZWNJ, CGJ, MVS, Tags, VS, Hangul Fillers, Deprecated Format
+    DEFAULT_IGNORABLE_SET = {
+        0x00AD, 0x034F, 0x180E, 0x200B, 0x200C, 0x200D, 0x2060, 0x2061, 0x2062, 0x2063,
+        0x2064, 0x2065, 0x3164, 0xFEFF, 0xFFA0, 0xFFF9, 0xFFFA, 0xFFFB
+    }
+
+    # [FIX] Forensic Tiering v3.0
+    # TIER 0: Standard Typography (Low Risk)
+    TIER_0_TYPO = {0x00A0, 0x00AD} # NBSP, SHY
+    # TIER 1: Layout & Whitespace (Structural)
+    TIER_1_LAYOUT = {0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x85}
+    # TIER 2: Script/Emoji Glue (Contextual)
+    TIER_2_SCRIPT = {0x200C, 0x200D} 
+    # TIER 3: Ghost / Format (High Evasion Risk)
+    TIER_3_GHOST = DEFAULT_IGNORABLE_SET | {0xFEFF}
+    # TIER 4: Non-Standard Spaces (Spoofing Risk)
+    # En Quad, Em Quad, Thin, Hair, Narrow NBSP, Medium Math, Ideographic
+    TIER_4_WEIRD_SPACE = {
+        0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000
+    }
+    # TIER 5: Bidi Controls (Directional Risk)
+    TIER_5_BIDI = set(BIDI_TAG_MAP.keys())
 
     for char_code, count in invisible_counts.items():
         char = chr(char_code)
@@ -10187,6 +10201,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
         elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
         elif char_code in BIDI_TAG_MAP: symbol = BIDI_TAG_MAP[char_code]; category_slug = "BIDI"
+        elif char_code in TIER_4_WEIRD_SPACE: symbol = "[SP:?]"; category_slug = "SPACE"
         elif 0x00 <= char_code <= 0x1F:
             symbol = f"[CTL:{char_code:02X}]"
             if char_code == 0x00: category_slug = "NULL"
@@ -10196,55 +10211,107 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         else:
             symbol = "[INV]"; category_slug = "FORMAT"
 
-        # --- Forensic Tiering & Badge Logic ---
+        # --- Forensic Tiering ---
         tier_rank = 99
         tier_badge = ""
         tier_class = ""
+        policy_action = "ALLOW"
+        policy_class = "prop-stable"
         
         if char_code == 0x0000:
              tier_rank = 0; tier_badge = "FATAL (NULL)"; tier_class = "atlas-badge-crit"; category_agg["FATAL"] += count
+             policy_action = "BLOCK"; policy_class = "prop-crit"
         elif 0xE0000 <= char_code <= 0xE007F:
-             # [FIX] Terminology: "Illegal" -> "Disallowed"
              tier_rank = 1; tier_badge = "DISALLOWED"; tier_class = "atlas-badge-crit"; category_agg["DISALLOWED"] += count
-        elif char_code in TIER_3_BIDI:
+             policy_action = "BLOCK"; policy_class = "prop-crit"
+        elif char_code in TIER_5_BIDI:
             tier_rank = 2; tier_badge = "RISKY (BIDI)"; tier_class = "atlas-badge-high"; category_agg["RISKY"] += count
+            policy_action = "REVIEW"; policy_class = "prop-warn"
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
             tier_rank = 3; tier_badge = "RESTRICTED"; tier_class = "atlas-badge-high"; category_agg["RESTRICTED"] += count
-        elif char_code in TIER_1_SCRIPT or category_slug == "SELECTOR":
+            policy_action = "REVIEW"; policy_class = "prop-warn"
+        elif char_code in TIER_2_SCRIPT or category_slug == "SELECTOR":
             tier_rank = 4; tier_badge = "SCRIPT/EMOJI"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT"] += count
-        elif char_code in TIER_2_FORMAT:
-            # [FIX] Moved CGJ/WJ/MVS here
-            tier_rank = 5; tier_badge = "FORMAT/GHOST"; tier_class = "atlas-badge-neutral"; category_agg["FORMAT"] += count
-        elif char_code in TIER_0_TYPO or category_slug in ["TAB", "NEWLINE"]:
-            tier_rank = 6; tier_badge = "TYPOGRAPHIC"; tier_class = "atlas-badge-ok"; category_agg["TYPO"] += count
+            policy_action = "CONTEXT"; policy_class = "prop-info"
+        elif char_code in TIER_3_GHOST:
+            tier_rank = 5; tier_badge = "GHOST/FORMAT"; tier_class = "atlas-badge-neutral"; category_agg["GHOST"] += count
+            policy_action = "REVIEW"; policy_class = "prop-ghost"
+        elif char_code in TIER_4_WEIRD_SPACE:
+            tier_rank = 6; tier_badge = "NON-STD SPACE"; tier_class = "atlas-badge-neutral"; category_agg["SPACES"] += count
+            policy_action = "NORM"; policy_class = "prop-info"
+        elif char_code in TIER_1_LAYOUT:
+            tier_rank = 7; tier_badge = "WHITESPACE"; tier_class = "atlas-badge-ok"; category_agg["LAYOUT"] += count
+            policy_action = "ALLOW"; policy_class = "prop-stable"
+        elif char_code in TIER_0_TYPO:
+            tier_rank = 8; tier_badge = "TYPOGRAPHIC"; tier_class = "atlas-badge-ok"; category_agg["TYPO"] += count
+            policy_action = "ALLOW"; policy_class = "prop-stable"
         else:
-            tier_rank = 7; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"; category_agg["OTHER"] += count
+            tier_rank = 9; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"; category_agg["OTHER"] += count
+            policy_action = "REVIEW"; policy_class = "prop-warn"
 
-        # --- Physical Properties Calculation (The New Column) ---
-        # 1. Width (Visual Physics)
+        # ---------------------------------------------------------
+        # 2. PHYSICAL PROPERTIES (The "Physics" Column)
+        # ---------------------------------------------------------
+        # A. Width Badge
         cat = ud.category(char)
         width_badge = ""
         if cat in ['Cf', 'Mn', 'Me', 'Cc'] or char_code == 0x200B:
-            width_badge = '<span class="prop-badge prop-zero" title="Zero Width">W:0</span>'
+            width_badge = '<span class="prop-badge prop-zero" title="Zero Width (Non-Printing)">W:0</span>'
         elif cat == 'Zs':
-            width_badge = '<span class="prop-badge prop-wide" title="Has Width">W:N</span>'
+            width_badge = '<span class="prop-badge prop-wide" title="Spacing Character">W:N</span>'
         
-        # 2. Normalization Stability (Shapeshifting)
+        # B. Category Badge (GC)
+        gc_badge = f'<span class="prop-badge prop-gc" title="General Category: {cat}">{cat}</span>'
+        
+        # C. Bidi Class Badge (New for V3)
+        bc_badge = ""
+        try:
+            bc = ud.bidirectional(char)
+            if bc:
+                bc_badge = f'<span class="prop-badge prop-gc" title="Bidi Class: {bc}">BC:{bc}</span>'
+        except: pass
+
+        physics_html = f'<div class="props-flex">{width_badge}{gc_badge}{bc_badge}</div>'
+
+        # ---------------------------------------------------------
+        # 3. STABILITY PROPERTIES (The "Shapeshifting" Column)
+        # ---------------------------------------------------------
+        # A. Normalization Badge
         nfkc_form = ud.normalize('NFKC', char)
         nfkc_badge = ""
         if nfkc_form == "":
-            nfkc_badge = '<span class="prop-badge prop-crit" title="Vanishes in NFKC">NFKC:VOID</span>'
+            nfkc_badge = '<span class="prop-badge prop-crit" title="NFKC: Removes Character">NFKC:VOID</span>'
         elif nfkc_form == " ":
-            nfkc_badge = '<span class="prop-badge prop-warn" title="Becomes Space in NFKC">NFKC:SP</span>'
+            nfkc_badge = '<span class="prop-badge prop-warn" title="NFKC: Maps to Space">NFKC:SP</span>'
         elif nfkc_form != char:
-             nfkc_badge = '<span class="prop-badge prop-info" title="Changes in NFKC">NFKC:MOD</span>'
+             # Deep Intelligence: Show target code points
+             target_hex = " ".join([f"{ord(c):04X}" for c in nfkc_form])
+             nfkc_badge = f'<span class="prop-badge prop-info" title="NFKC Maps to: {target_hex}">NFKC:MOD</span>'
+        else:
+             nfkc_badge = '<span class="prop-badge prop-stable" title="NFKC: Stable">NFKC:OK</span>'
 
-        # 3. Default Ignorable (Ghost Risk)
+        # B. Default Ignorable Badge
         di_badge = ""
-        # Heuristic check for known Default Ignorables (CGJ, WJ, MVS, Tags, VS)
-        if char_code in {0x034F, 0x2060, 0x180E, 0x200C, 0x200D} or 0xE0000 <= char_code <= 0xE007F or 0xFE00 <= char_code <= 0xFE0F:
-             di_badge = '<span class="prop-badge prop-ghost" title="Default Ignorable">DI:YES</span>'
+        # Improved Heuristic (Includes Range Checks)
+        is_di = (
+            char_code in DEFAULT_IGNORABLE_SET or
+            0xE0000 <= char_code <= 0xE007F or 
+            0xFE00 <= char_code <= 0xFE0F or
+            0x206A <= char_code <= 0x206F # Deprecated Format
+        )
+        if is_di:
+             di_badge = '<span class="prop-badge prop-ghost" title="Default Ignorable Code Point: YES">DI:YES</span>'
 
+        stability_html = f'<div class="props-flex">{di_badge}{nfkc_badge}</div>'
+        
+        # ---------------------------------------------------------
+        # 4. POLICY COLUMN (New for V3)
+        # ---------------------------------------------------------
+        policy_html = f'<span class="prop-badge {policy_class}" style="font-size:0.65rem;">{policy_action}</span>'
+
+        # ---------------------------------------------------------
+        # 5. ROW ASSEMBLY
+        # ---------------------------------------------------------
         processed_rows.append({
             "rank": tier_rank, "count": count,
             "html": f"""
@@ -10253,12 +10320,12 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
                 <td class="code-col">U+{char_code:04X}</td>
                 <td class="name-col" title="{name}">{name}</td>
                 <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
+                <td class="phys-col">{physics_html}</td>
+                <td class="stab-col">{stability_html}</td>
+                <td style="text-align:center;">{policy_html}</td>
                 <td class="count-col" style="font-family:var(--font-mono); font-weight:700;">{count}</td>
-                <td class="props-col">
-                    <div class="props-flex">
-                        {width_badge}{nfkc_badge}{di_badge}
-                        <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})" title="Locate in text">LOCATE</button>
-                    </div>
+                <td style="text-align:right;">
+                    <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})" title="Locate in text">LOCATE</button>
                 </td>
             </tr>"""
         })
@@ -10266,16 +10333,17 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     # Sort: Risk (Low Rank) -> Count (High to Low)
     processed_rows.sort(key=lambda x: (x["rank"], -x["count"]))
     
-    # --- Build Summary Ribbon (Horizontal) ---
+    # --- Build Summary Ribbon ---
     summary_parts = []
-    # Updated Summary Order based on new categories
-    summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT", "FORMAT", "TYPO", "OTHER"]
+    # V3 Summary Order: Granular Risk -> Structural -> Typography
+    summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT", "GHOST", "SPACES", "LAYOUT", "TYPO", "OTHER"]
     
     for key in summary_order:
         if category_agg[key] > 0:
             val_class = "safe"
             if key in ["FATAL", "DISALLOWED"]: val_class = "crit"
             elif key in ["RISKY", "RESTRICTED"]: val_class = "warn"
+            elif key in ["GHOST"]: val_class = "neutral" # Purple?
             
             summary_parts.append(
                 f'<div class="atlas-sum-metric">'
@@ -10298,22 +10366,25 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     
     desc_html = """
         <div class="atlas-desc">
-            A forensic-grade legend of all invisible, control, and format characters. 
-            <strong>Properties Key:</strong> W:0 (Zero Width), NFKC:VOID (Vanishes on Normalization), DI:YES (Default Ignorable).
+            Forensic analysis of invisible and control characters.
+            <strong>Legend:</strong> [W:0] Zero-Width, [BC:*] Bidi Class, [DI:YES] Default Ignorable, [NFKC:VOID] Vanishes.
         </div>
     """
 
-    # [FIX] Table Structure: Added 'Forensic Properties' Column
+    # [FIX] 9-Column Forensic Layout
     table_block = f"""
         <table class="atlas-table">
             <thead>
                 <tr>
-                    <th style="width: 80px; text-align: center;">Symbol</th>
-                    <th style="width: 80px;">Code</th>
+                    <th style="width: 70px; text-align: center;">Symbol</th>
+                    <th style="width: 70px;">Code</th>
                     <th>Name</th>
-                    <th style="width: 130px;">Forensic Legality</th>
-                    <th style="width: 60px; text-align: center;">Count</th>
-                    <th style="width: 200px;">Forensic Properties & Action</th>
+                    <th style="width: 110px;">Legality</th>
+                    <th style="width: 110px;">Physics</th>
+                    <th style="width: 100px;">Stability</th>
+                    <th style="width: 60px; text-align: center;">Policy</th>
+                    <th style="width: 50px; text-align: center;">Count</th>
+                    <th style="width: 70px; text-align: right;">Action</th>
                 </tr>
             </thead>
             <tbody>
