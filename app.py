@@ -12310,15 +12310,21 @@ def render_forensic_hud(t, stats):
         <div class="hud-col" 
              data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-m1="{esc(m1)}" data-r1="{esc(r1)}"
              data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-m2="{esc(m2)}" data-r2="{esc(r2)}">
+             
+            <div class="hud-row-sci">{sci_title}</div>
+            
             <div class="hud-metric-group">
                 <div class="hud-label">{label_1}</div>
                 <div class="hud-val {class_1}">{val_1}</div>
             </div>
+            
             <div class="hud-metric-divider"></div>
+
             <div class="hud-metric-group">
                 <div class="hud-label">{label_2}</div>
                 <div class="hud-val {class_2}{int_cls}" {int_attr}>{val_2}</div>
             </div>
+
         </div>
         """
 
