@@ -5911,6 +5911,7 @@ details.profile-section > summary:hover::marker {
   border-right: 1px solid #f1f5f9; /* Subtle column separator */
   text-align: left;
   white-space: nowrap;
+  flex-wrap: nowrap;
 }
 
 .atlas-table th:last-child {
@@ -5937,6 +5938,8 @@ details.profile-section > summary:hover::marker {
 .atlas-table td:nth-child(1) {
   text-align: center;
   background-color: #fcfcfc; /* Slight tint for ID column */
+  white-space: nowrap;
+  flex-wrap: nowrap;
 }
 
 /* Code Column (The Fix) */
@@ -5946,7 +5949,9 @@ details.profile-section > summary:hover::marker {
   color: #475569;
   font-size: 0.8rem;
   /* Ensure it doesn't wrap U+XXXX */
-  white-space: nowrap; 
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  text-align: center;
 }
 
 /* Name Column (The Taming) */
@@ -5954,11 +5959,12 @@ details.profile-section > summary:hover::marker {
   /* This combination forces the column to truncate instead of expanding */
   width: auto;
   white-space: nowrap;
-  overflow: hidden;
+  flex-wrap: nowrap;
   text-overflow: ellipsis;
   max-width: 1px; /* Magic hack to force table-cell truncation */
   color: #1e293b;
   font-weight: 500;
+  text-align: center;
 }
 
 /* Count Column */
@@ -5968,6 +5974,9 @@ details.profile-section > summary:hover::marker {
   font-weight: 700;
   color: #0f172a;
   background-color: #f8fafc;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  text-align: center;
 }
 
 /* 6. Forensic Badges & Properties */
@@ -5979,7 +5988,9 @@ details.profile-section > summary:hover::marker {
   align-items: center;
   justify-content: flex-start;
   gap: 6px;
-  flex-wrap: wrap; /* Allow wrapping on very narrow screens */
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  text-align: center;
 }
 
 .atlas-glyph {
@@ -5994,6 +6005,7 @@ details.profile-section > summary:hover::marker {
   min-width: 32px;
   text-align: center;
   font-weight: 600;
+  flex-wrap: nowrap;
 }
 
 .atlas-badge {
