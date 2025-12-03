@@ -5815,7 +5815,6 @@ details.profile-section > summary:hover::marker {
   background-color: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 8px; /* Softer corners */
-  overflow: hidden;
   margin-top: 1.5rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -5896,6 +5895,7 @@ details.profile-section > summary:hover::marker {
   border-spacing: 0;
   table-layout: fixed; /* CRITICAL: Enforces column widths */
   font-size: 0.85rem;
+
 }
 
 /* Header Styling */
@@ -5906,14 +5906,13 @@ details.profile-section > summary:hover::marker {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  padding: 12px 16px;
   border-bottom: 2px solid #e2e8f0;
   border-right: 1px solid #f1f5f9; /* Subtle column separator */
   vertical-align: middle;
   text-align: center;
   white-space: nowrap;
   flex-wrap: nowrap;
-  padding: 8px 8px;
+  padding: 4px 4px;
 }
 
 .atlas-table th:last-child {
@@ -5922,7 +5921,6 @@ details.profile-section > summary:hover::marker {
 
 /* Cell Styling */
 .atlas-table td {
-  padding: 8px 16px; /* Wider padding */
   border-bottom: 1px solid #f1f5f9;
   border-right: 1px solid #f8fafc; /* Very subtle separator */
   vertical-align: middle;
@@ -5931,7 +5929,7 @@ details.profile-section > summary:hover::marker {
   text-align: center;
   white-space: nowrap;
   flex-wrap: nowrap;
-  padding: 8px 8px;
+  padding: 4px 4px;
 }
 
 .atlas-table tr:hover td {
