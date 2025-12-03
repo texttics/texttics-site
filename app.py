@@ -12555,12 +12555,12 @@ def update_all(event=None):
     # --- RESET REGISTRY (SAFE METHOD) ---
     HUD_HIT_REGISTRY.clear()
 
-    # [IMMUTABLE REVEAL FIX]
+    # [IMMUTABLE REVEAL]
     t_input = document.getElementById("text-input")
     if t_input and t_input.classList.contains("reveal-active"):
         t_input.classList.remove("reveal-active")
     
-    # [NEW] RESET HUD STATUS BAR (Left Side)
+    # RESET HUD STATUS BAR (Left Side)
     hud_status = document.getElementById("hud-stepper-status")
     if hud_status:
         hud_status.style.display = "none"
@@ -12752,6 +12752,10 @@ def update_all(event=None):
     # Derived Metrics
     norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
     logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
+
+    # Zalgo & Anomaly Wiring
+    grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
+    nsm_stats = analyze_nsm_overload(grapheme_strings)
     
     # Zalgo / Noise Checks
     grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
@@ -12849,12 +12853,6 @@ def update_all(event=None):
     # Calculate counts for new engines
     # Retrieve flags from the results object (threat_flags is not local to this function)
     current_flags = threat_results.get('flags', {})
-    
-    # 1. Syntax Predator: Count keys starting with "Normalization-Activated"
-    norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
-    
-    # 2. Case Collision: Count keys related to Case Mapping/Bypass
-    logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
 
     score_inputs = {
         # [NEW] WIRING
