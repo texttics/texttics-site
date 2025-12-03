@@ -10934,7 +10934,57 @@ def render_statistical_profile(stats):
              "Measures the Vowel/Consonant rhythm of Latin letters. Natural English stabilizes ~40% vowels. Low ratio (<20%) indicates consonant-heavy machine code, Base64, or random keys. High ratio (>60%) indicates vowel-heavy padding or non-English structure.", 
              "Vowels / Total Letters", 
              "Natural: 0.35-0.50 | Machine: <0.20 | High: >0.60 | NOTE: ASCII Only. Not a language classifier.")))
+    # 8. Structural Anomalies (The "Participants" List)
+    z_parts = stats.get("zalgo_participants", [])
+    z_stats = stats.get("zalgo", {})
+    
+    if z_parts:
+        # 1. Metrics
+        max_marks = z_stats.get("max", 0)
+        
+        # 2. Build Interactive Chips
+        z_chips = []
+        
+        # SVG Definitions (Lab Instrument Style)
+        # Critical (Flame)
+        svg_crit = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3a1 1 0 0 1 .9 2.5z"></path></svg>'
+        # Warning (Triangle)
+        svg_warn = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+        # Invisible/Sneaky (Ghost/Alien)
+        svg_ghost = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"></path><path d="M15 10h.01"></path><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"></path></svg>'
+        # Default Cluster (Dotted Circle)
+        svg_base = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" stroke-dasharray="4 4"></circle><circle cx="12" cy="12" r="3"></circle></svg>'
 
+        for p in z_parts:
+            # Color coding by severity
+            border = "#e2e8f0"; bg = "#f8fafc"; txt = "#64748b"; icon_svg = svg_base
+            
+            if p['marks'] >= 10: # Critical
+                border = "#fecaca"; bg = "#fef2f2"; txt = "#dc2626"; icon_svg = svg_crit
+            elif p['marks'] >= 5: # High
+                border = "#fed7aa"; bg = "#fff7ed"; txt = "#9a3412"; icon_svg = svg_warn
+            elif p['type'] == "Invisible": # Sneaky
+                border = "#e9d5ff"; bg = "#faf5ff"; txt = "#7e22ce"; icon_svg = svg_ghost
+            
+            # Label: "Index 5 (16)"
+            lbl = f"Index {p['idx']} <b>({p['marks']} Marks)</b>"
+            
+            chip_html = (
+                f'<button onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({p["idx"]})"'
+                f' style="background:{bg}; border:1px solid {border}; color:{txt}; padding:2px 8px; '
+                f' border-radius:4px; margin:0 4px 4px 0; font-size:0.7rem; cursor:pointer; font-family:var(--font-mono); display:inline-flex; align-items:center; gap:6px;">'
+                f'{icon_svg} {lbl}</button>'
+            )
+            z_chips.append(chip_html)
+            
+        chips_container = f'<div style="display:flex; flex-wrap:wrap; width:100%;">{"".join(z_chips)}</div>'
+        
+        rows.append(make_row("Structural Anomalies", chips_container, "",
+            ("CLUSTER PHYSICS", 
+             f"List of grapheme clusters exceeding structural limits. Max Stack: {max_marks}. Visible clusters create 'Zalgo' noise. Invisible clusters (Ghost icon) indicate obfuscation or steganography.",
+             "Mark Density > 2",
+             "Participants sorted by stack height.")))
+             
     container.innerHTML = "".join(rows)
     # --- APPEND CONSOLE & LEGEND (Outside Table) ---
     # We find the parent details element to append this to the bottom
@@ -12791,9 +12841,30 @@ def update_all(event=None):
                 _register_hit("phys_zalgo", idx, idx + 1, "Excessive Combining Marks (Zalgo)")
             except: pass
 
-    # 4. Inject Zalgo into Stat Profile for the Auditor
-    # This is the "missing link" that turns the Anomaly row RED
+    # 4. Inject Zalgo & Detailed Participants into Stat Profile
+    # Extract specific "Participants" list for the UI
+    zalgo_participants = []
+    if nsm_stats["count"] > 0:
+        for i, g in enumerate(grapheme_list):
+            # Recalculate mark count locally to populate the list
+            # (Fast operation on pre-segmented list)
+            marks = sum(1 for c in g if unicodedata.category(c) == 'Mn')
+            if marks > 0 and (marks > 2 or (marks > 0 and len(g) > 1 and g[0].isspace())): # Matches Engine Logic
+                 # Determine type for label
+                p_type = "Invisible" if g[0].isspace() or unicodedata.category(g[0]) in ('Cf', 'Cc') else "Visible"
+                zalgo_participants.append({
+                    "idx": i, 
+                    "marks": marks, 
+                    "type": p_type,
+                    "char": g[0]
+                })
+    
+    # Sort by severity (Mark count)
+    zalgo_participants.sort(key=lambda x: x['marks'], reverse=True)
+    
+    # Inject into profile
     stat_profile['zalgo'] = nsm_stats
+    stat_profile['zalgo_participants'] = zalgo_participants
 
     # 5. Build Noise List for Threat Score
     noise_list = []
