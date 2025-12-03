@@ -13512,8 +13512,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             if utf16_acc >= current_dom_pos:
                 current_logical = i
                 break
-            # Robust check: ensure char is a string before ord()
-            # (The str() cast above guarantees this, but this is the logic)
             utf16_acc += (2 if ord(char) > 0xFFFF else 1)
         else:
             current_logical = len(t)
@@ -13522,6 +13520,8 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     labels = {
         "integrity_agg": "Integrity Issues",
         "threat_agg": "Threat Signals",
+        "authenticity_agg": "Authenticity Signals",
+        "anomaly_agg": "Anomaly Signals",
         "ws_nonstd": "Non-Std Whitespace",
         "punc_exotic": "Exotic Delimiters",
         "sym_exotic": "Exotic Symbols",
@@ -13530,23 +13530,25 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     }
     category_label = labels.get(metric_key, "Forensic Metric")
 
-    # 3. Resolve targets (With Deduplication)
+    # 3. Resolve targets (UPDATED TO MATCH HERO ROWS)
     raw_targets = []
     
-    # --- Aggregation Logic for Hero Rows ---
     if metric_key == "integrity_agg":
         for k in ["int_fatal", "int_fracture", "int_risk", "int_decay"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
     elif metric_key == "threat_agg":
-        for k in ["thr_execution", "thr_spoofing", "thr_obfuscation", "thr_suspicious"]:
+        # [FIX] STRICT SCOPE: Only Execution/Obfuscation. Matches Hero Count (47).
+        for k in ["thr_execution", "thr_obfuscation"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
     elif metric_key == "authenticity_agg":
-        for k in ["auth_spoof", "auth_mixed", "auth_idna", "auth_norm"]:
+        # [FIX] NEW AGGREGATOR: Spoofing/Mixed Scripts. Matches Hero Count (43).
+        for k in ["auth_spoof", "auth_mixed", "auth_idna", "thr_spoofing", "thr_suspicious"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
     elif metric_key == "anomaly_agg":
+        # [FIX] NEW AGGREGATOR: Physics/Entropy.
         for k in ["phys_entropy", "phys_zalgo", "phys_weird"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
@@ -13557,7 +13559,6 @@ def cycle_hud_metric(metric_key, current_dom_pos):
     if not raw_targets: return
 
     # [DEDUPLICATION LOGIC]
-    # Filter out duplicate start indices to prevent "double jumping" on the same character.
     targets = []
     seen_starts = set()
     
@@ -13581,35 +13582,30 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             break
 
     # 5. Execute Highlight
-    if metric_key == "threat_agg":
-        # [DEBUG HOOK]
-        if TEXTTICS_DEBUG_THREAT_BRIDGE:
-            _debug_threat_bridge(t, next_hit)
-        # PURE PYTHON DOM CALCULATION
-        log_start = next_hit[0]
-        log_end = next_hit[1]
+    # [DEBUG HOOK]
+    # if TEXTTICS_DEBUG_THREAT_BRIDGE: _debug_threat_bridge(t, next_hit)
+
+    # PURE PYTHON DOM CALCULATION
+    log_start = next_hit[0]
+    log_end = next_hit[1]
+    
+    dom_start = -1
+    dom_end = -1
+    
+    acc = 0
+    # Iterate the Python string (t is guaranteed str now)
+    for i, char in enumerate(t):
+        if i == log_start: dom_start = acc
+        if i == log_end: dom_end = acc; break 
         
-        dom_start = -1
-        dom_end = -1
-        
-        acc = 0
-        # Iterate the Python string (t is guaranteed str now)
-        for i, char in enumerate(t):
-            if i == log_start: dom_start = acc
-            if i == log_end: dom_end = acc; break 
-            
-            acc += (2 if ord(char) > 0xFFFF else 1)
-        
-        if dom_end == -1 and log_end >= len(t): 
-            dom_end = acc
-        
-        if dom_start != -1:
-            el.focus()
-            el.setSelectionRange(dom_start, dom_end)
-        
-    else:
-        # [LEGACY PATH]
-        window.TEXTTICS_HIGHLIGHT_RANGE(next_hit[0], next_hit[1])
+        acc += (2 if ord(char) > 0xFFFF else 1)
+    
+    if dom_end == -1 and log_end >= len(t): 
+        dom_end = acc
+    
+    if dom_start != -1:
+        el.focus()
+        el.setSelectionRange(dom_start, dom_end)
 
     # 6. Feedback UI
     icon_loc = """<svg style="display:inline-block; vertical-align:middle; margin-left:8px; opacity:0.8;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>"""
