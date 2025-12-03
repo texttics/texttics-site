@@ -12372,8 +12372,16 @@ def render_forensic_hud(t, stats):
     # --- COLOR LOGIC (Old Code) ---
     def color_neutral(val): return "txt-muted" if float(val) == 0 else "txt-normal"
     def color_clean(val): return "txt-clean" if float(val) == 0 else "txt-warn"
+
+    # --- 0. PRE-CALC ---
+    uax_word = 0
+    uax_sent = 0
+    try:
+        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
+        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
+    except: pass
     
-    # --- MATH (Copied EXACTLY from Old Code) ---
+    # --- MATH ---
     
     # C0: ALPHANUMERIC
     alpha_chars = sum(1 for c in t if c.isalnum())
