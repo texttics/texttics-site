@@ -12306,7 +12306,7 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- HERO ROW RENDERER (Smart Chips Update) ---
+    # --- HERO ROW RENDERER (Physics vs. Policy Update) ---
     def r_ledger_row(title, type_key, data, hit_count, agg_key):
         if is_initial:
             sev, score, verdict, items = "neutral", 0, "WAITING", []
@@ -12315,7 +12315,6 @@ def render_forensic_hud(t, stats):
             sev = data.get("severity", "ok")
             score = data.get("score", 0)
             verdict = data.get("verdict", "INTACT")
-            # Primary Source: The Auditor's Ledger (High Risk items)
             items = data.get("ledger", []) if "ledger" in data else data.get("vectors", [])
             
             target_ids = {
@@ -12327,11 +12326,18 @@ def render_forensic_hud(t, stats):
             t_id = target_ids.get(type_key)
             click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
-        # --- Interactive Counter Logic ---
+        # [UX] Dynamic Labeling for "Policy Score"
+        # "Risk" implies danger. "Defects" implies brokenness.
+        # This clarifies why a score can be 0 even if count > 0.
+        score_label = "Risk Score"
+        if type_key == "integrity": score_label = "Defect Score"
+        elif type_key == "anomaly": score_label = "Deviation"
+        
+        # --- Interactive Counter Logic (Physics) ---
         counter_html = '<span class="interactive-count">-</span>'
         if hit_count > 0:
             risk_cls = " crit" if sev in ("crit", "high", "danger") else ""
-            counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')" title="Cycle through {hit_count} unique positions">{hit_count}</span>'
+            counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')">{hit_count}</span>'
         elif not is_initial:
              counter_html = '<span class="interactive-count">0</span>'
 
@@ -12348,20 +12354,18 @@ def render_forensic_hud(t, stats):
 
         icon = get_svg(type_key)
         
-        # --- CHIPS LOGIC (The "Ghost Chip" Fix) ---
+        # --- CHIPS LOGIC (Clarified) ---
         chips = ""
         if is_initial: 
             chips = '<span class="hud-chip chip-dim">System Ready</span>'
         elif items:
-            # Case A: Policy Hits (Score > 0) -> Show Red/Orange Chips
+            # Case A: Active Threats (Policy > 0)
             c_list = [f'<span class="hud-chip chip-{sev}">{i["vector"] if isinstance(i, dict) else i}</span>' for i in items[:5]]
             chips = "".join(c_list)
         elif hit_count > 0:
-            # Case B: Physics Hits (Score 0) -> Show Neutral Chips based on Registry
-            # This logic inspects WHAT the hits are, even if they aren't threats
+            # Case B: Physics Detected, Policy Ignored
+            # [UX] Explicitly label these as "Benign" or "Noise" to explain the 0 Score
             ghost_labels = []
-            
-            # Define the sub-keys for this row (Mirroring calc_agg logic)
             if agg_key == "anomaly_agg":
                 if HUD_HIT_REGISTRY.get("phys_zalgo"): ghost_labels.append("Zalgo Clusters")
                 if HUD_HIT_REGISTRY.get("phys_entropy"): ghost_labels.append("High Entropy")
@@ -12373,15 +12377,17 @@ def render_forensic_hud(t, stats):
                 if HUD_HIT_REGISTRY.get("int_fracture"): ghost_labels.append("Fracture")
                 if HUD_HIT_REGISTRY.get("int_fatal"): ghost_labels.append("Corrupt Data")
             
-            # Default fallback if logic misses
-            if not ghost_labels: ghost_labels.append("Low-Risk Signals")
+            if not ghost_labels: ghost_labels.append("Signals")
 
-            # Render Neutral Chips
-            c_list = [f'<span class="hud-chip chip-neutral" style="opacity:0.75; border:1px solid #cbd5e1; color:#475569;">{label}</span>' for label in ghost_labels]
+            # Render Neutral Chips with "Benign" context
+            c_list = [f'<span class="hud-chip chip-neutral" style="opacity:0.75; border:1px solid #cbd5e1; color:#475569;">{label} (Benign)</span>' for label in ghost_labels]
             chips = "".join(c_list)
         else:
             chips = '<span class="hud-chip chip-dim">No active signals.</span>'
 
+        # [UX] The "Dual-Score" Visual Layout
+        # Left: Policy (Risk Score)
+        # Center: Physics (Signal Count)
         return f"""
         <div class="hud-detail-row border-{sev}" {click_attr} {data_attrs}>
             <div class="hud-detail-left bg-{sev}">
@@ -12389,11 +12395,12 @@ def render_forensic_hud(t, stats):
                 <div class="h-meta">
                     <div class="h-title text-{sev}">{title}</div>
                     <div class="h-verdict text-{sev}">{verdict}</div>
-                    <div class="h-score text-{sev}">Score: {score}</div>
+                    <div class="h-score text-{sev}" title="Policy Verdict (Calculated Impact)">{score_label}: {score}</div>
                 </div>
             </div>
-            <div class="hud-detail-center">
+            <div class="hud-detail-center" title="Physics Measurement (Raw Count)">
                 {counter_html}
+                <div style="font-size:0.6rem; color:#94a3b8; margin-top:-2px; font-weight:600; letter-spacing:0.5px;">SIGNALS</div>
             </div>
             <div class="hud-detail-right">{chips}</div>
         </div>
