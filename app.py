@@ -12377,92 +12377,140 @@ def render_forensic_hud(t, stats):
     
     # C0: ALPHANUMERIC
     alpha_chars = sum(1 for c in t if c.isalnum())
-    alpha_runs = 0; in_run = False
+    alpha_runs = 0
+    in_run = False
     for c in t:
         if c.isalnum():
-            if not in_run: alpha_runs += 1; in_run = True
-        else: in_run = False
-        
-    c0 = render_cell("LITERALS", "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
-                     "RUNS", str(alpha_runs), color_neutral(alpha_runs),
-                     d1="Count of Unicode alphanumeric characters.", m1="Logic: Count(Alnum)", r1="Base: Unicode L+N",
-                     d2="Contiguous runs of alphanumeric characters.", m2="Logic: Count(Runs)", r2="Pattern: Alnum+")
+            if not in_run:
+                alpha_runs += 1
+                in_run = True
+        else:
+            in_run = False
+
+    c0 = render_cell(
+        "ALPHANUMERIC", 
+        "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
+        "RUNS", str(alpha_runs), color_neutral(alpha_runs),
+        d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
+        d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+"
+    )
 
     # C1: LEXICAL MASS
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
-    uax_word = 0; uax_sent = 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
-    
-    c1 = render_cell("UNITS", "UNITS", f"{vu:.1f}", color_neutral(vu),
-                     "WORDS", str(uax_word), color_neutral(uax_word),
-                     d1="Normalized text mass.", m1="Calc: (L+N)/5.0", r1="Heuristic",
-                     d2="Linguistic word count.", m2="Calc: Intl.Segmenter", r2="Std: UAX #29")
+    c1 = render_cell(
+        "LEXICAL MASS", 
+        "UNITS", f"{vu:.1f}", color_neutral(vu),
+        "WORDS", str(uax_word), color_neutral(uax_word),
+        d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
+        d2="Linguistic word count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
 
     # C2: SEGMENTATION
     seg_est = vu / 20.0
-    c2 = render_cell("BLOCKS", "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
-                     "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-                     d1="Structural units estimate.", m1="Calc: VU/20.0", r1="Def: 1 Block=20VU",
-                     d2="Linguistic sentence count.", m2="Calc: Intl.Segmenter", r2="Std: UAX #29")
+    c2 = render_cell(
+        "SEGMENTATION", 
+        "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+        "SENTENCES", str(uax_sent), color_neutral(uax_sent),
+        d1="Structural units derived directly from Lexical Mass.", m1="VU / 20.0", r1="Def: 1 Block = 20 VU",
+        d2="Linguistic sentence count via UAX #29 segmentation.", m2="Intl.Segmenter", r2="Std: UAX #29"
+    )
 
-    # C3: WHITESPACE
-    std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
-    non_std_inv = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    c3 = render_cell("WS", "ASCII WS", str(std_inv), color_neutral(std_inv),
-                     "NON-STD", str(non_std_inv), color_clean(non_std_inv),
-                     d1="Basic layout characters.", m1="Class: Layout", r1="ASCII",
-                     d2="Invisible characters.", m2="Logic: ZWSP+Tags", r2="Risk: Obfuscation",
-                     reg_key_2="ws_nonstd")
+    # C3: WHITESPACE (Interactive)
+    std_set = {0x20, 0x09, 0x0A, 0x0D}
+    std_inv = sum(1 for c in t if ord(c) in std_set)
+    flags = stats.get('forensic_flags', {})
+    non_std_inv = flags.get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
+    
+    c3 = render_cell(
+        "WHITESPACE", 
+        "ASCII WS", str(std_inv), color_neutral(std_inv),
+        "NON-STD", str(non_std_inv), color_clean(non_std_inv),
+        d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
+        d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+        reg_key_2="ws_nonstd" # LINK
+    )
 
-    # C4: DELIMITERS
-    cnt_p_ascii = 0; cnt_p_exotic = 0; cnt_p_comfort = 0
+    # C4: DELIMITERS (Interactive)
+    cnt_p_ascii = 0
+    cnt_p_comfort = 0
+    cnt_p_exotic = 0
+    
     for c in t:
         if unicodedata.category(c).startswith('P'):
             cp = ord(c)
-            if cp <= 0x7F: cnt_p_ascii += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F): cnt_p_comfort += 1
-            else: cnt_p_exotic += 1
+            if cp <= 0x7F:
+                cnt_p_ascii += 1
+            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F):
+                cnt_p_comfort += 1
+            else:
+                cnt_p_exotic += 1
+
+    if cnt_p_comfort > 0:
+        c4_label = "TYPOGRAPHIC"
+        c4_val = cnt_p_ascii + cnt_p_comfort
+        c4_desc = "Standard ASCII + Common Typography (Smart Quotes, Dashes)."
+        c4_ref = "Scope: ASCII+Common"
+    else:
+        c4_label = "ASCII"
+        c4_val = cnt_p_ascii
+        c4_desc = "Standard ASCII punctuation characters."
+        c4_ref = "Scope: ASCII"
+
+    c4 = render_cell(
+        "DELIMITERS", 
+        c4_label, str(c4_val), color_neutral(c4_val),
+        "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
+        d1=c4_desc, m1="Count(P) in Whitelist", r1=c4_ref,
+        d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+        reg_key_2="punc_exotic" # LINK
+    )
+
+    # C5: SYMBOLS (Interactive)
+    cnt_s_ext = emoji_counts.get("text_symbols_extended", 0)
+    cnt_s_exotic = emoji_counts.get("text_symbols_exotic", 0)
     
-    c4_label = "TYPOGRAPHIC" if cnt_p_comfort > 0 else "ASCII PUNC"
-    c4_val = cnt_p_ascii + cnt_p_comfort
-    c4 = render_cell("PUNC", c4_label, str(c4_val), color_neutral(c4_val),
-                     "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
-                     d1="Standard Punctuation.", m1="Scope: Common", r1="Class: P",
-                     d2="Rare/Script Punctuation.", m2="Scope: Exotic", r2="Risk: Spoofing",
-                     reg_key_2="punc_exotic")
+    c5_label = "EXTENDED"
+    c5_desc = "Technical symbols (Math, Currency, Latin-1) excluding Emoji."
+    if cnt_s_ext == 0 and cnt_s_exotic == 0:
+        c5_label = "KEYBOARD"
+        c5_desc = "Standard ASCII keyboard symbols."
 
-    # C5: SYMBOLS
-    s_ext = emoji_counts.get("text_symbols_extended", 0)
-    s_exo = emoji_counts.get("text_symbols_exotic", 0)
-    c5_label = "KEYBOARD" if s_ext == 0 and s_exo == 0 else "EXTENDED"
-    c5 = render_cell("SYM", c5_label, str(s_ext), color_neutral(s_ext),
-                     "EXOTIC", str(s_exo), color_clean(s_exo),
-                     d1="Technical symbols.", m1="Class: Symbol", r1="Non-Emoji",
-                     d2="Rare symbols.", m2="Scope: Exotic", r2="Risk: Unknown",
-                     reg_key_2="sym_exotic")
+    c5 = render_cell(
+        "SYMBOLS", 
+        c5_label, str(cnt_s_ext), color_neutral(cnt_s_ext),
+        "EXOTIC", str(cnt_s_exotic), color_clean(cnt_s_exotic),
+        d1=c5_desc, m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
+        d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+        reg_key_2="sym_exotic" # LINK
+    )
 
-    # C6: HYBRIDS
-    h_pict = emoji_counts.get("hybrid_pictographs", 0)
-    h_amb = emoji_counts.get("hybrid_ambiguous", 0)
-    c6 = render_cell("HYBRID", "PICTOGRAPH", str(h_pict), color_neutral(h_pict),
-                     "AMBIGUOUS", str(h_amb), color_clean(h_amb),
-                     d1="Atomic Emoji.", m1="Kind: Atomic", r1="Class: Emoji",
-                     d2="Text-Default Emoji.", m2="Check: Emoji_Pres=No", r2="Risk: Render",
-                     reg_key_2="emoji_hybrid")
+    # C6: HYBRIDS (Interactive)
+    cnt_h_pict = emoji_counts.get("hybrid_pictographs", 0)
+    cnt_h_ambig = emoji_counts.get("hybrid_ambiguous", 0)
+    
+    c6 = render_cell(
+        "HYBRIDS", 
+        "PICTOGRAPHS", str(cnt_h_pict), color_neutral(cnt_h_pict),
+        "AMBIGUOUS", str(cnt_h_ambig), color_clean(cnt_h_ambig),
+        d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC & Base=Symbol", r1="Class: Atom",
+        d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+        reg_key_2="emoji_hybrid" # LINK
+    )
 
-    # C7: EMOJI
-    rgi = emoji_counts.get("rgi_total", 0)
-    irr = emoji_counts.get("emoji_irregular", 0)
-    c7 = render_cell("EMOJI", "RGI SEQS", str(rgi), color_neutral(rgi),
-                     "IRREGULAR", str(irr), color_clean(irr),
-                     d1="Valid Sequences.", m1="Std: UTS #51", r1="RGI",
-                     d2="Broken Sequences.", m2="Logic: Flags", r2="Risk: Render",
-                     reg_key_2="emoji_irregular")
+    # C7: EMOJI (Interactive)
+    rgi_total = emoji_counts.get("rgi_total", 0)
+    abnormal = emoji_counts.get("emoji_irregular", 0)
+    
+    c7 = render_cell(
+        "EMOJI", 
+        "RGI SEQS", str(rgi_total), color_neutral(rgi_total),
+        "IRREGULAR", str(abnormal), color_clean(abnormal),
+        d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
+        d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+        reg_key_2="emoji_irregular" # LINK
+    )
 
     # --- ASSEMBLY: Row 1 (Grid) + Row 2 (Hero) ---
     row1 = f'<div class="hud-grid-row-1">{c0}{c1}{c2}{c3}{c4}{c5}{c6}{c7}</div>'
