@@ -13043,6 +13043,18 @@ def update_all(event=None):
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
 
+    stats_package = {
+        "emoji_counts": emoji_results,
+        "major_stats": major_stats,
+        "forensic_flags": integrity_results.get("flags", {}),
+        "master_ledgers": master_ledgers,
+        # Convenience keys for direct access
+        "integrity": master_ledgers.get("integrity", {}),
+        "threat": master_ledgers.get("threat", {}),
+        "authenticity": master_ledgers.get("authenticity", {}),
+        "anomaly": master_ledgers.get("anomaly", {})
+    }
+
     render_forensic_hud(t, stats_package)
     
     # [NEW] Render Adversarial Dashboard 
