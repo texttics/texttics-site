@@ -12440,7 +12440,7 @@ def render_forensic_hud(t, stats):
                 <div class="h-meta">
                     <div class="h-title text-{sev}">{title}</div>
                     <div class="h-verdict text-{sev}">{verdict}</div>
-                    <div class="h-score text-{sev}" title="Policy Verdict (Calculated Impact)">{score_label}: {score}</div>
+                    <div class="h-score text-{sev}" style="font-weight:700; font-size:0.9rem; margin-top:2px;" title="Policy Verdict (Calculated Impact)">{score_label}: {score}</div>
                 </div>
             </div>
             <div class="hud-detail-center" title="Physics Measurement (Raw Count)">
