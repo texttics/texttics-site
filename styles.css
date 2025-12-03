@@ -5996,13 +5996,13 @@ details.profile-section > summary:hover::marker {
     justify-content: center;      /* Centers them vertically */
     min-width: 60px;              /* Ensures stable width */
     padding: 0 12px;
-    line-height: 1;               /* Tightens vertical spacing */
+    line-height: 2;               /* Tightens vertical spacing */
 }
 
 /* Ensure the counter number is big and block-like */
 .interactive-count {
     display: inline-block;
-    font-size: 1.5rem;            /* Adjust size as needed */
-    font-weight: 700;
-    margin-top: 2px;              /* Small gap between Label and Number */
+    font-size: 2rem;            /* Adjust size as needed */
+    font-weight: 800;
+    margin-top: 3px;              /* Small gap between Label and Number */
 }
