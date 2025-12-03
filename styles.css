@@ -5919,3 +5919,71 @@ details.profile-section > summary:hover::marker {
 .status-details.status-hud-active svg {
     color: #b45309;
 }
+
+/* =========================================
+   HERO ROW INTERACTIVE COUNTER (The Middle Pillar)
+   ========================================= */
+
+/* Update the Hero Row to support 3 columns */
+.hud-detail-row {
+    /* Existing styles remain... */
+    display: flex;
+    align-items: stretch; /* Ensure all cols are same height */
+    gap: 0; /* Remove gap, handle via padding/borders */
+}
+
+/* 1. Left (Header) - Existing, just ensuring sizing */
+.hud-detail-left {
+    flex: 0 0 190px; /* Fixed width */
+}
+
+/* 2. Center (The Interactive Counter) - NEW */
+.hud-detail-center {
+    flex: 0 0 70px; /* Fixed width for the number */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(0,0,0,0.05);
+    background-color: #ffffff;
+}
+
+/* The Clickable Number */
+.interactive-count {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #d1d5db; /* Default muted color */
+    cursor: default;
+    padding: 4px 12px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+/* Active State (Clickable) */
+.interactive-count.active {
+    cursor: pointer;
+    color: #d97706; /* Amber */
+    background-color: #fffbeb;
+    border: 1px solid #fcd34d;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.interactive-count.active:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    color: #b45309;
+    border-color: #f59e0b;
+}
+
+/* Critical Override */
+.interactive-count.active.crit {
+    color: #dc2626;
+    background-color: #fef2f2;
+    border-color: #fca5a5;
+}
+
+/* 3. Right (Chips) - Existing, ensure it takes remaining space */
+.hud-detail-right {
+    flex: 1;
+}
