@@ -12862,11 +12862,20 @@ def update_all(event=None):
         p_type = "Visible"
         severity = "low"
         
-        # Rule A: Heavy Stack (Visual Noise / Zalgo)
+        # Rule A: Visible Stacking (Zalgo / Complexity)
         if marks > 2: 
             is_anomaly = True
-            p_type = "Heavy Stack"
-            severity = "crit" if marks >= 10 else "warn"
+            
+            # --- NEW: Gradient Taxonomy ---
+            if marks <= 5:
+                p_type = "Dense Cluster"    # Tier 1: Linguistic Complexity / Glitch
+                severity = "warn"           # Amber
+            elif marks <= 15:
+                p_type = "Heavy Stack"      # Tier 2: Intentional Modification
+                severity = "crit" if marks >= 10 else "warn" # Red starts at 10
+            else:
+                p_type = "Zalgo Overload"   # Tier 3: Rendering DoS
+                severity = "crit"           # Red
             
         # Rule B: Invisible Stacking (Steganography / Watermarking)
         # Condition: Base is Space/Control/Format AND has marks attached
