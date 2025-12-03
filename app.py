@@ -10119,42 +10119,64 @@ def render_emoji_summary(emoji_counts, emoji_list):
 def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     Renders the 'Invisible Atlas' - A forensic-grade legend of all hidden characters.
-    Features: Horizontal Summary Strip, Non-Wrapping Headers, and Precise Alignment.
+    Features: Horizontal Summary Strip, Precise Bidi Tags, and Physical Property Analysis.
     """
 
     if not invisible_counts:
-        return '<div class="empty-state">No invisible characters detected.</div>', ""
+        return '<div class="empty-state">No invisible characters detected.</div>', 0
 
     # ---------------------------------------------------------
-    # 1. FORENSIC CLASSIFICATION LOGIC
+    # 1. FORENSIC CLASSIFICATION LOGIC & CONSTANTS
     # ---------------------------------------------------------
     processed_rows = []
     category_agg = collections.Counter()
     
-    # Classification Sets
-    TIER_0_BENIGN = {0x00AD, 0x200B, 0x2060, 0xFEFF, 0x034F, 0x200E, 0x200F} 
+    # [FIX] Explicit C0/C1 Control Names (The "Unassigned" Fix)
+    C0_CONTROL_NAMES = {
+        0x00: "NULL", 0x09: "CHARACTER TABULATION", 0x0A: "LINE FEED (LF)", 
+        0x0D: "CARRIAGE RETURN (CR)", 0x1B: "ESCAPE", 0x1F: "UNIT SEPARATOR",
+        0x85: "NEXT LINE (NEL)"
+    }
+
+    # [FIX] Specific Bidi Mnemonics (The "Low-Res" Fix)
+    BIDI_TAG_MAP = {
+        0x202E: "[RLO]", 0x202D: "[LRO]", 0x202B: "[RLE]", 0x202A: "[LRE]",
+        0x202C: "[PDF]", 0x2066: "[LRI]", 0x2067: "[RLI]", 0x2068: "[FSI]",
+        0x2069: "[PDI]", 0x061C: "[ALM]", 0x200E: "[LRM]", 0x200F: "[RLM]"
+    }
+
+    # [FIX] Forensic Tiering (Refined Risk Model)
+    # TIER 0: Truly Typographic (Safe)
+    TIER_0_TYPO = {0x00AD, 0x200B, 0x00A0} 
+    # TIER 1: Script/Emoji Glue (Contextual)
     TIER_1_SCRIPT = {0x200C, 0x200D} 
-    TIER_2_RISKY = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0x061C}
-    
+    # TIER 2: Format/Ambiguous (The "Ghost" Risk - Default Ignorables moved here)
+    TIER_2_FORMAT = {0x034F, 0x2060, 0x180E, 0xFEFF, 0xFFF9, 0xFFFA, 0xFFFB}
+    # TIER 3: Bidi Controls (Directional Risk)
+    TIER_3_BIDI = set(BIDI_TAG_MAP.keys())
+
     for char_code, count in invisible_counts.items():
         char = chr(char_code)
         
         # --- Name Resolution ---
         name = "Unknown"
-        try: name = ud.name(char)
-        except: 
-            if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
-            else: name = "UNASSIGNED / CONTROL"
+        if char_code in C0_CONTROL_NAMES:
+            name = C0_CONTROL_NAMES[char_code]
+        else:
+            try: name = ud.name(char)
+            except: 
+                if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
+                else: name = "UNASSIGNED / CONTROL"
 
-        # --- Visual Decoding ---
+        # --- Visual Decoding (Symbol) ---
         symbol = "."
         category_slug = "UNKNOWN"
         
         if 0xE0000 <= char_code <= 0xE007F:
             tag_char = chr(char_code - 0xE0000)
             if 0xE0020 <= char_code <= 0xE007E: symbol = f"[TAG:{tag_char}]"
-            elif char_code == 0xE007F: symbol = "[TAG:CANCEL]"
-            else: symbol = "[TAG:SPEC]"
+            elif char_code == 0xE007F: symbol = "[TAG:X]"
+            else: symbol = "[TAG:?]"
             category_slug = "TAG"
         elif 0xFE00 <= char_code <= 0xFE0F:
             symbol = f"[VS{char_code - 0xFE00 + 1}]"; category_slug = "SELECTOR"
@@ -10164,7 +10186,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         elif char_code == 0x200D: symbol = "[ZWJ]"; category_slug = "JOINER"
         elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
         elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
-        elif char_code in TIER_2_RISKY: symbol = "[BIDI]"; category_slug = "BIDI"
+        elif char_code in BIDI_TAG_MAP: symbol = BIDI_TAG_MAP[char_code]; category_slug = "BIDI"
         elif 0x00 <= char_code <= 0x1F:
             symbol = f"[CTL:{char_code:02X}]"
             if char_code == 0x00: category_slug = "NULL"
@@ -10174,25 +10196,54 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         else:
             symbol = "[INV]"; category_slug = "FORMAT"
 
-        # --- Forensic Tiering ---
+        # --- Forensic Tiering & Badge Logic ---
         tier_rank = 99
         tier_badge = ""
         tier_class = ""
         
         if char_code == 0x0000:
-             tier_rank = 0; tier_badge = "FATAL (Null)"; tier_class = "atlas-badge-crit"; category_agg["FATAL"] += count
+             tier_rank = 0; tier_badge = "FATAL (NULL)"; tier_class = "atlas-badge-crit"; category_agg["FATAL"] += count
         elif 0xE0000 <= char_code <= 0xE007F:
-             tier_rank = 1; tier_badge = "Illegal (Tag)"; tier_class = "atlas-badge-crit"; category_agg["ILLEGAL"] += count
-        elif char_code in TIER_2_RISKY:
-            tier_rank = 2; tier_badge = "Risky (Bidi)"; tier_class = "atlas-badge-high"; category_agg["RISKY"] += count
+             # [FIX] Terminology: "Illegal" -> "Disallowed"
+             tier_rank = 1; tier_badge = "DISALLOWED"; tier_class = "atlas-badge-crit"; category_agg["DISALLOWED"] += count
+        elif char_code in TIER_3_BIDI:
+            tier_rank = 2; tier_badge = "RISKY (BIDI)"; tier_class = "atlas-badge-high"; category_agg["RISKY"] += count
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
-            tier_rank = 3; tier_badge = "Restricted"; tier_class = "atlas-badge-high"; category_agg["RESTRICTED"] += count
+            tier_rank = 3; tier_badge = "RESTRICTED"; tier_class = "atlas-badge-high"; category_agg["RESTRICTED"] += count
         elif char_code in TIER_1_SCRIPT or category_slug == "SELECTOR":
-            tier_rank = 4; tier_badge = "Script/Emoji"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT"] += count
-        elif char_code in TIER_0_BENIGN or category_slug in ["TAB", "NEWLINE"]:
-            tier_rank = 5; tier_badge = "Typographic"; tier_class = "atlas-badge-ok"; category_agg["BENIGN"] += count
+            tier_rank = 4; tier_badge = "SCRIPT/EMOJI"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT"] += count
+        elif char_code in TIER_2_FORMAT:
+            # [FIX] Moved CGJ/WJ/MVS here
+            tier_rank = 5; tier_badge = "FORMAT/GHOST"; tier_class = "atlas-badge-neutral"; category_agg["FORMAT"] += count
+        elif char_code in TIER_0_TYPO or category_slug in ["TAB", "NEWLINE"]:
+            tier_rank = 6; tier_badge = "TYPOGRAPHIC"; tier_class = "atlas-badge-ok"; category_agg["TYPO"] += count
         else:
-            tier_rank = 6; tier_badge = "Format"; tier_class = "atlas-badge-neutral"; category_agg["OTHER"] += count
+            tier_rank = 7; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"; category_agg["OTHER"] += count
+
+        # --- Physical Properties Calculation (The New Column) ---
+        # 1. Width (Visual Physics)
+        cat = ud.category(char)
+        width_badge = ""
+        if cat in ['Cf', 'Mn', 'Me', 'Cc'] or char_code == 0x200B:
+            width_badge = '<span class="prop-badge prop-zero" title="Zero Width">W:0</span>'
+        elif cat == 'Zs':
+            width_badge = '<span class="prop-badge prop-wide" title="Has Width">W:N</span>'
+        
+        # 2. Normalization Stability (Shapeshifting)
+        nfkc_form = ud.normalize('NFKC', char)
+        nfkc_badge = ""
+        if nfkc_form == "":
+            nfkc_badge = '<span class="prop-badge prop-crit" title="Vanishes in NFKC">NFKC:VOID</span>'
+        elif nfkc_form == " ":
+            nfkc_badge = '<span class="prop-badge prop-warn" title="Becomes Space in NFKC">NFKC:SP</span>'
+        elif nfkc_form != char:
+             nfkc_badge = '<span class="prop-badge prop-info" title="Changes in NFKC">NFKC:MOD</span>'
+
+        # 3. Default Ignorable (Ghost Risk)
+        di_badge = ""
+        # Heuristic check for known Default Ignorables (CGJ, WJ, MVS, Tags, VS)
+        if char_code in {0x034F, 0x2060, 0x180E, 0x200C, 0x200D} or 0xE0000 <= char_code <= 0xE007F or 0xFE00 <= char_code <= 0xFE0F:
+             di_badge = '<span class="prop-badge prop-ghost" title="Default Ignorable">DI:YES</span>'
 
         processed_rows.append({
             "rank": tier_rank, "count": count,
@@ -10203,8 +10254,11 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
                 <td class="name-col" title="{name}">{name}</td>
                 <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
                 <td class="count-col" style="font-family:var(--font-mono); font-weight:700;">{count}</td>
-                <td style="text-align:right;">
-                    <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})">LOCATE</button>
+                <td class="props-col">
+                    <div class="props-flex">
+                        {width_badge}{nfkc_badge}{di_badge}
+                        <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})" title="Locate in text">LOCATE</button>
+                    </div>
                 </td>
             </tr>"""
         })
@@ -10214,13 +10268,13 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     
     # --- Build Summary Ribbon (Horizontal) ---
     summary_parts = []
-    summary_order = ["FATAL", "ILLEGAL", "RISKY", "RESTRICTED", "SCRIPT", "BENIGN", "OTHER"]
+    # Updated Summary Order based on new categories
+    summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT", "FORMAT", "TYPO", "OTHER"]
     
     for key in summary_order:
         if category_agg[key] > 0:
-            # Color logic for values
             val_class = "safe"
-            if key in ["FATAL", "ILLEGAL"]: val_class = "crit"
+            if key in ["FATAL", "DISALLOWED"]: val_class = "crit"
             elif key in ["RISKY", "RESTRICTED"]: val_class = "warn"
             
             summary_parts.append(
@@ -10232,7 +10286,6 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
 
     total_inv = sum(invisible_counts.values())
     
-    # Total Block (The Anchor)
     summary_html = f"""
         <div class="atlas-summary-bar">
             <div class="atlas-sum-metric main">
@@ -10243,32 +10296,14 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         </div>
     """
     
-    # ---------------------------------------------------------
-    # 3. FINAL ASSEMBLY (FIXED LAYOUT)
-    # ---------------------------------------------------------
-    
-    # [FIX] Define Description HTML (Fixes NameError)
     desc_html = """
         <div class="atlas-desc">
-            A definitive legend of all invisible, control, and format characters detected in the input. 
-            Click <strong>LOCATE</strong> to find specific instances.
+            A forensic-grade legend of all invisible, control, and format characters. 
+            <strong>Properties Key:</strong> W:0 (Zero Width), NFKC:VOID (Vanishes on Normalization), DI:YES (Default Ignorable).
         </div>
     """
 
-    # [FIX] Re-Assemble Summary Ribbon
-    # Ensure this variable exists in scope (it comes from the loop above)
-    summary_html = f"""
-        <div class="atlas-summary-bar">
-            <div class="atlas-sum-metric main">
-                <span class="sum-label">TOTAL</span>
-                <span class="sum-val">{total_inv}</span>
-            </div>
-            {''.join(summary_parts)}
-        </div>
-    """
-
-    # [FIX] Table Block with PIXEL WIDTHS (Fixes Header Smash)
-    # Replaced '1%' with '80px' to prevent collision
+    # [FIX] Table Structure: Added 'Forensic Properties' Column
     table_block = f"""
         <table class="atlas-table">
             <thead>
@@ -10276,9 +10311,9 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
                     <th style="width: 80px; text-align: center;">Symbol</th>
                     <th style="width: 80px;">Code</th>
                     <th>Name</th>
-                    <th style="width: 140px;">Forensic Legality</th>
+                    <th style="width: 130px;">Forensic Legality</th>
                     <th style="width: 60px; text-align: center;">Count</th>
-                    <th style="width: 80px; text-align: right;">Action</th>
+                    <th style="width: 200px;">Forensic Properties & Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -10287,7 +10322,6 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         </table>
     """
     
-    # Assemble the Container
     table_html = f"""
         <div class="atlas-content">
             {desc_html}
