@@ -12306,7 +12306,7 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- HERO ROW RENDERER (Updated with Middle Pillar) ---
+    # --- HERO ROW RENDERER (Smart Chips Update) ---
     def r_ledger_row(title, type_key, data, hit_count, agg_key):
         if is_initial:
             sev, score, verdict, items = "neutral", 0, "WAITING", []
@@ -12315,6 +12315,7 @@ def render_forensic_hud(t, stats):
             sev = data.get("severity", "ok")
             score = data.get("score", 0)
             verdict = data.get("verdict", "INTACT")
+            # Primary Source: The Auditor's Ledger (High Risk items)
             items = data.get("ledger", []) if "ledger" in data else data.get("vectors", [])
             
             target_ids = {
@@ -12324,14 +12325,12 @@ def render_forensic_hud(t, stats):
                 "anomaly": "statistical-profile-body"
             }
             t_id = target_ids.get(type_key)
-            # The row click jumps to details (Scroll)
             click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
         # --- Interactive Counter Logic ---
         counter_html = '<span class="interactive-count">-</span>'
         if hit_count > 0:
             risk_cls = " crit" if sev in ("crit", "high", "danger") else ""
-            # Number click -> Activate Stepper (Stop Propagation)
             counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')" title="Cycle through {hit_count} unique positions">{hit_count}</span>'
         elif not is_initial:
              counter_html = '<span class="interactive-count">0</span>'
@@ -12349,20 +12348,38 @@ def render_forensic_hud(t, stats):
 
         icon = get_svg(type_key)
         
-        # Chips Generation Logic
-        # Handles the "Physics vs Policy" gap (e.g., Counter > 0 but Score = 0)
+        # --- CHIPS LOGIC (The "Ghost Chip" Fix) ---
+        chips = ""
         if is_initial: 
             chips = '<span class="hud-chip chip-dim">System Ready</span>'
-        elif items: 
-            # Case A: Active Ledger Items (High Risk)
+        elif items:
+            # Case A: Policy Hits (Score > 0) -> Show Red/Orange Chips
             c_list = [f'<span class="hud-chip chip-{sev}">{i["vector"] if isinstance(i, dict) else i}</span>' for i in items[:5]]
             chips = "".join(c_list)
         elif hit_count > 0:
-            # Case B: Physics Detected, Policy Ignored (Neutral/Low Risk)
-            # This fixes the "7 vs No active signals" disconnect
-            chips = f'<span class="hud-chip chip-neutral" style="opacity:0.7; border:1px dashed currentColor;">{hit_count} Low-Risk Signals Detected</span>'
+            # Case B: Physics Hits (Score 0) -> Show Neutral Chips based on Registry
+            # This logic inspects WHAT the hits are, even if they aren't threats
+            ghost_labels = []
+            
+            # Define the sub-keys for this row (Mirroring calc_agg logic)
+            if agg_key == "anomaly_agg":
+                if HUD_HIT_REGISTRY.get("phys_zalgo"): ghost_labels.append("Zalgo Clusters")
+                if HUD_HIT_REGISTRY.get("phys_entropy"): ghost_labels.append("High Entropy")
+                if HUD_HIT_REGISTRY.get("phys_weird"): ghost_labels.append("Structural Noise")
+            elif agg_key == "authenticity_agg":
+                if HUD_HIT_REGISTRY.get("auth_spoof"): ghost_labels.append("Homoglyphs")
+                if HUD_HIT_REGISTRY.get("auth_mixed"): ghost_labels.append("Mixed Script")
+            elif agg_key == "integrity_agg":
+                if HUD_HIT_REGISTRY.get("int_fracture"): ghost_labels.append("Fracture")
+                if HUD_HIT_REGISTRY.get("int_fatal"): ghost_labels.append("Corrupt Data")
+            
+            # Default fallback if logic misses
+            if not ghost_labels: ghost_labels.append("Low-Risk Signals")
+
+            # Render Neutral Chips
+            c_list = [f'<span class="hud-chip chip-neutral" style="opacity:0.75; border:1px solid #cbd5e1; color:#475569;">{label}</span>' for label in ghost_labels]
+            chips = "".join(c_list)
         else:
-            # Case C: Clean
             chips = '<span class="hud-chip chip-dim">No active signals.</span>'
 
         return f"""
