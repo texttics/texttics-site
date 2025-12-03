@@ -3566,151 +3566,6 @@ details.profile-section > summary:hover::marker {
 }
 
 /* =========================================
-   INVISIBLE ATLAS (Forensic Legend)
-   ========================================= */
-
-.atlas-content {
-  padding: 16px;
-  background-color: var(--color-white);
-}
-
-.atlas-desc {
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
-/* The Table */
-.atlas-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-.atlas-table th {
-  background-color: #f8fafc; /* Slate-50 */
-  color: #64748b; /* Slate-500 */
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
-  padding: 8px 12px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.atlas-table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  vertical-align: middle;
-}
-
-/* Visual Glyphs (The "Pictures") */
-.atlas-glyph {
-  font-family: var(--font-mono);
-  font-size: 1.2rem;
-  background-color: #f1f5f9; /* Slate-100 */
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #0f172a; /* Slate-900 */
-  display: inline-block;
-  min-width: 1.5em;
-  text-align: center;
-}
-
-/* Text Tags like [ZWSP] */
-.atlas-tag {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #64748b; /* Slate-500 */
-  background-color: #f8fafc;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
-}
-
-/* Category Badges */
-.atlas-badge {
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.atlas-badge-neutral { background: #f3f4f6; color: #4b5563; }
-.atlas-badge-info    { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-.atlas-badge-warn    { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
-.atlas-badge-crit    { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-
-/* Action Button */
-.atlas-btn {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  font-size: 0.75rem;
-  padding: 2px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.atlas-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: #eff6ff;
-}
-
-/* --- Atlas Summary Bar --- */
-.atlas-summary-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px;
-  
-  background-color: #f8fafc; /* Slate-50 */
-  border: 1px solid #e2e8f0; /* Slate-200 */
-  border-radius: 6px;
-  
-  padding: 8px 12px;
-  margin-bottom: 16px;
-  font-family: var(--font-sans);
-  font-size: 0.8rem;
-}
-
-.atlas-sum-metric {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #64748b; /* Slate-500 */
-  font-weight: 600;
-}
-
-/* The Number Value */
-.sum-val {
-  color: #0f172a; /* Slate-900 */
-  font-family: var(--font-mono);
-  font-weight: 700;
-}
-
-/* Total Label specific style */
-.sum-total-label {
-  color: #334155;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 800;
-}
-
-/* Vertical Separator between metrics */
-.atlas-sep {
-  width: 1px;
-  height: 16px;
-  background-color: #cbd5e1;
-}
-
-/* =========================================
    SUSPICION DASHBOARD (Adversarial Forensics)
    ========================================= */
 
@@ -6008,4 +5863,183 @@ details.profile-section > summary:hover::marker {
     padding: 0 8px;               /* Horizontal padding inside the red box */
     line-height: 1.2;             /* Tighter height to prevent vertical bloat */
     border-radius: 4px;           /* Subtle rounding for the background */
+}
+
+/* =========================================
+   INVISIBLE ATLAS (Forensic Legend v2.0)
+   ========================================= */
+
+.atlas-content {
+  padding: 0; /* Remove padding to let table flush */
+  background-color: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* --- 1. The Summary Ribbon (Horizontal Data Strip) --- */
+.atlas-summary-bar {
+  display: flex;
+  flex-direction: row; /* FORCE HORIZONTAL */
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap; /* Allow clean wrapping on mobile */
+  
+  background-color: #f8fafc; /* Slate-50 */
+  border-bottom: 1px solid #e2e8f0; /* Slate-200 */
+  
+  padding: 10px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  min-height: 48px;
+}
+
+/* Individual Metrics */
+.atlas-sum-metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b; /* Slate-500 */
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  
+  /* Visual Separation */
+  padding-right: 12px;
+  border-right: 1px solid #e2e8f0;
+}
+
+.atlas-sum-metric:last-child {
+  border-right: none;
+}
+
+/* The "Main" Total Metric */
+.atlas-sum-metric.main {
+  color: #0f172a; /* Slate-900 */
+}
+
+/* The Value Number */
+.sum-val {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: #334155;
+  background-color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+}
+
+/* --- 2. The Forensic Table --- */
+.atlas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.atlas-table th {
+  background-color: #ffffff; 
+  color: #64748b; /* Slate-500 */
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  padding: 10px 16px;
+  border-bottom: 2px solid #f1f5f9;
+  text-align: left;
+  white-space: nowrap; /* PREVENT WRAPPING */
+}
+
+.atlas-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  color: #334155;
+}
+
+.atlas-table tr:hover td {
+  background-color: #f8fafc; /* Hover Highlight */
+}
+
+/* --- 3. Cell Components --- */
+
+/* The Glyph Box */
+.atlas-glyph {
+  font-family: var(--font-mono);
+  font-size: 0.9rem; /* Normalized size */
+  background-color: #f1f5f9; /* Slate-100 */
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #0f172a; /* Slate-900 */
+  display: inline-block;
+  min-width: 2.5em;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+/* Code Column */
+.code-col {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+/* Badge (Legality) */
+.atlas-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+}
+
+/* Themes matching the Quad-Ledger */
+.atlas-badge-neutral { background: #f3f4f6; color: #4b5563; border-color: #d1d5db; }
+.atlas-badge-ok      { background: #f0fdf4; color: #166534; border-color: #bbf7d0; } /* Typographic */
+.atlas-badge-warn    { background: #fffbeb; color: #b45309; border-color: #fcd34d; } /* Script/Emoji */
+.atlas-badge-high    { background: #fff7ed; color: #c2410c; border-color: #fdba74; } /* Risky/Bidi */
+.atlas-badge-crit    { background: #fef2f2; color: #991b1b; border-color: #fca5a5; } /* Illegal/Fatal */
+
+/* --- 4. The Action Button (Micro-Tool Style) --- */
+.atlas-btn {
+  /* Size & Shape */
+  height: 28px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  
+  /* Typography */
+  font-family: var(--font-sans);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  
+  /* Color Theme (Neutral -> Violet) */
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  
+  /* Interactive */
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.atlas-btn:hover {
+  border-color: #8b5cf6;       /* Violet-500 */
+  color: #7c3aed;              /* Violet-600 */
+  background-color: #f5f3ff;   /* Violet-50 */
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(124, 58, 237, 0.1);
+}
+
+.atlas-btn:active {
+  transform: translateY(0);
 }
