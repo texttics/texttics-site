@@ -5882,32 +5882,35 @@ details.profile-section > summary:hover::marker {
 /* --- 1. The Summary Ribbon (Horizontal Data Strip) --- */
 .atlas-summary-bar {
   display: flex;
+  flex-direction: row; /* Force Horizontal Flow */
   align-items: center;
-  width: 100%;
-  background-color: #f8fafc; /* Slate-50 */
+  width: 100%;         /* Ensure it spans the container */
+  background-color: #f8fafc;
   border-bottom: 1px solid #e2e8f0;
-  padding: 0; /* Padding is handled by cells */
+  padding: 0;
   min-height: 50px;
-  overflow-x: auto; /* Safety scroll for small screens */
+  overflow-x: auto;    /* Safety scroll */
   font-family: var(--font-sans);
 }
 
 /* Individual Metric Block */
 .atlas-sum-metric {
   display: flex;
-  flex-direction: column;
+  flex-direction: column; /* Stack Label on top of Value */
   justify-content: center;
   align-items: center;
-  /* CHANGED: Reduced padding and removed min-width to prevent bloat */
+  /* Reduced padding to prevent bloat, removed min-width */
   padding: 6px 16px; 
   border-right: 1px solid #e2e8f0;
   height: 50px;
+  flex: 0 0 auto; /* Do not grow or shrink */
 }
 
 /* The Anchor Metric (TOTAL) */
 .atlas-sum-metric.main {
   background-color: #ffffff;
-  border-right: 2px solid #e2e8f0; /* Stronger divider */
+  border-right: 2px solid #e2e8f0;
+  padding: 6px 20px;
 }
 
 /* Label (Top) */
