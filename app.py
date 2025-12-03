@@ -10244,28 +10244,52 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     
     # ---------------------------------------------------------
-    # 3. FINAL ASSEMBLY (GEOMETRY FIX)
+    # 3. FINAL ASSEMBLY (HIERARCHICAL FIX)
     # ---------------------------------------------------------
-    # Inline styles enforce the "Lab Instrument" grid:
-    # Symbol: 1% (Shrink to fit) | Name: Absorbs Space | Others: Fixed
+    # Row 1: Description
+    desc_html = """
+        <p class="atlas-desc">
+            A definitive legend of all invisible, control, and format characters detected in the input.
+            Click <strong>LOCATE</strong> to find/locate specific instances.
+        </p>
+    """
+    
+    # Row 2: Summary Cards (The Ribbon)
+    summary_html = f"""
+        <div class="atlas-summary-bar">
+            <div class="atlas-sum-metric main">
+                <span class="sum-label">TOTAL</span>
+                <span class="sum-val">{total_inv}</span>
+            </div>
+            {''.join(summary_parts)}
+        </div>
+    """
+    
+    # Row 3: The Table
+    table_block = f"""
+        <table class="atlas-table">
+            <thead>
+                <tr>
+                    <th style="width: 1%; white-space: nowrap; text-align: center; padding-left: 12px;">Symbol</th>
+                    <th style="width: 85px;">Code</th>
+                    <th>Name</th>
+                    <th style="width: 140px;">Forensic Legality</th>
+                    <th style="width: 60px; text-align: center;">Count</th>
+                    <th style="width: 80px; text-align: right; padding-right: 16px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(row["html"] for row in processed_rows)}
+            </tbody>
+        </table>
+    """
+    
+    # Assemble the Container
     table_html = f"""
         <div class="atlas-content">
+            {desc_html}
             {summary_html}
-            <table class="atlas-table">
-                <thead>
-                    <tr>
-                        <th style="width: 1%; white-space: nowrap; text-align: center; padding-left: 12px;">Symbol</th>
-                        <th style="width: 85px;">Code</th>
-                        <th>Name</th>
-                        <th style="width: 140px;">Forensic Legality</th>
-                        <th style="width: 60px; text-align: center;">Count</th>
-                        <th style="width: 80px; text-align: right; padding-right: 16px;">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {''.join(row["html"] for row in processed_rows)}
-                </tbody>
-            </table>
+            {table_block}
         </div>
     """
     
