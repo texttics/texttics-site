@@ -6004,5 +6004,8 @@ details.profile-section > summary:hover::marker {
     display: inline-block;
     font-size: 1.5rem;            /* Adjust size as needed */
     font-weight: 800;
-    margin-top: 2px;              /* Small gap between Label and Number */
+    margin-top: 4px;              /* Push it down slightly from the label */
+    padding: 0 8px;               /* Horizontal padding inside the red box */
+    line-height: 1.2;             /* Tighter height to prevent vertical bloat */
+    border-radius: 4px;           /* Subtle rounding for the background */
 }
