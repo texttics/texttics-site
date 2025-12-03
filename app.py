@@ -12334,14 +12334,15 @@ def render_forensic_hud(t, stats):
             '<path d="M14 15l2 2 3-4"></path>'
         ),
 
-        # Threat (Crosshair - Open Sight)
-        # Metaphor: Target / Weaponization (Cleaner look)
+        # Threat (Tactical Double Target - V6)
+        # Metaphor: Weapon System Lock-on (Precision)
         "threat": (
-            '<circle cx="12" cy="12" r="9"></circle>'
-            '<line x1="12" y1="3" x2="12" y2="6"></line>'
-            '<line x1="12" y1="18" x2="12" y2="21"></line>'
-            '<line x1="3" y1="12" x2="6" y2="12"></line>'
-            '<line x1="18" y1="12" x2="21" y2="12"></line>'
+            '<circle cx="12" cy="12" r="8"></circle>'       # Outer Ring
+            '<circle cx="12" cy="12" r="3.5"></circle>'     # Inner Ring (Lock)
+            '<line x1="12" y1="2" x2="12" y2="5"></line>'   # Top Tick
+            '<line x1="12" y1="19" x2="12" y2="22"></line>' # Bottom Tick
+            '<line x1="2" y1="12" x2="5" y2="12"></line>'   # Left Tick
+            '<line x1="19" y1="12" x2="22" y2="12"></line>' # Right Tick
         ),
 
         # Anomaly (Histogram + Outlier)
