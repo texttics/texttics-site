@@ -1933,3 +1933,57 @@ The Head-Up Display has been re-architected into a **Split-Data System**.
     1.  **Python Layer:** The `render_forensic_hud` function now generates **Atomic Attributes**. It sends `data-k1="LOGIC"` and `data-v1="Entropy"` as separate signals.
     2.  **JavaScript Layer:** The `ui-glue.js` bridge reads these attributes separately and injects them into distinct DOM spans (`.console-key` and `.console-val`).
     3.  **Result:** Zero visual gaps. If a Key is missing, the CSS grid collapses cleanly. If present, it aligns perfectly to the 50px grid line.
+
+🆕 New Section: Group 2.F: Forensic Chemistry (Thermodynamics & Lexical)
+This module analyzes the "texture" and information density of the text, answering the question: "Is this natural language, machine code, or encrypted data?"
+
+Thermodynamics (Shannon Entropy):
+
+Calculates the bit-density of the UTF-8 byte stream.
+
+Forensic Ranges: <3.0 (Sparse/Repetitive), 4.5 (Natural Text), >6.5 (Encrypted/Compressed).
+
+Visuals: A gradient density bar indicating the "Saturation" of the information content.
+
+Lexical Density (Forensic TTR):
+
+Measures vocabulary richness using Type-Token Ratio.
+
+Forensic Value: Detects "Bot-like" repetition (<0.20) vs. "UUID/Hash" density (>0.90).
+
+Layout Physics (Topology):
+
+Sparkline Mass Map: A visual heatmap showing the density of line lengths from start to end. instantly reveals hidden payloads (e.g., a massive base64 blob at the end of a log file).
+
+7-Point Distribution: Min, Mean, Median, P75, P90, Max statistics for line lengths.
+
+ASCII Phonotactics:
+
+Analyzes the Vowel/Consonant ratio of Latin text to detect Machine Code (Ratio < 0.20) vs. Natural Language (~0.40).
+
+Structural Anomalies (The Roster):
+
+A dedicated list of every cluster violating physical structure limits.
+
+Visual Classification: Differentiates between Visible Zalgo (🔥) and Invisible/Steganographic Stacks (👻).
+
+🛠️ Update: The Quad-Ledger HUD (Heads-Up Display)
+The dashboard has been re-architected to enforce a strict "Physics vs. Policy" separation.
+
+The 4 Axes of Risk:
+
+Integrity: Data health (Rot, Corruption, Encoding Errors).
+
+Authenticity: Identity verification (Spoofing, Homoglyphs).
+
+Threat: Active weaponization (Execution, Injection).
+
+Anomaly: Structural physics (Entropy, Zalgo).
+
+The "Two-Number" System:
+
+Center Counter (Signals): The raw Physics Count. How many anomalies exist? (e.g., "7 Zalgo Clusters").
+
+Left Score (Risk/Deviation): The Policy Verdict. Does this matter? (e.g., "Score: 0 (Benign)" if the clusters are small).
+
+Interactive Navigation: Clicking the Signal Count triggers the Forensic Stepper, instantly scrolling to and highlighting specific anomalies in the text.
