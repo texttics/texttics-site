@@ -10119,7 +10119,7 @@ def render_emoji_summary(emoji_counts, emoji_list):
 def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     Renders the 'Invisible Atlas' - A forensic-grade legend of all hidden characters.
-    Features: 4-Tier Legality, Smart Symbol Decoding, Risk-Based Sorting, and Aggregated Summary.
+    Features: Horizontal Summary Strip, Non-Wrapping Headers, and Precise Alignment.
     """
 
     if not invisible_counts:
@@ -10129,179 +10129,133 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     # 1. FORENSIC CLASSIFICATION LOGIC
     # ---------------------------------------------------------
     processed_rows = []
-    category_agg = collections.Counter() # For the summary bar
+    category_agg = collections.Counter()
     
-    # Tier 0: Benign Typographic (Gray) - Standard formatting
+    # Classification Sets
     TIER_0_BENIGN = {0x00AD, 0x200B, 0x2060, 0xFEFF, 0x034F, 0x200E, 0x200F} 
-    # Tier 1: Script/Emoji Context (Yellow) - Necessary glue
     TIER_1_SCRIPT = {0x200C, 0x200D} 
-    # Tier 2: Risky/Bidi (Orange) - Explicit overrides
     TIER_2_RISKY = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0x061C}
     
     for char_code, count in invisible_counts.items():
         char = chr(char_code)
         
-        # --- A. Name Resolution ---
+        # --- Name Resolution ---
         name = "Unknown"
         try: name = ud.name(char)
         except: 
             if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
             else: name = "UNASSIGNED / CONTROL"
 
-        # --- B. Smart Visual & Category Decoding ---
+        # --- Visual Decoding ---
         symbol = "."
         category_slug = "UNKNOWN"
         
-        # Tags (Plane 14)
         if 0xE0000 <= char_code <= 0xE007F:
             tag_char = chr(char_code - 0xE0000)
-            if 0xE0020 <= char_code <= 0xE007E:
-                symbol = f"[TAG:{tag_char}]"
-            elif char_code == 0xE007F:
-                symbol = "[TAG:CANCEL]"
-            else:
-                symbol = "[TAG:SPEC]"
+            if 0xE0020 <= char_code <= 0xE007E: symbol = f"[TAG:{tag_char}]"
+            elif char_code == 0xE007F: symbol = "[TAG:CANCEL]"
+            else: symbol = "[TAG:SPEC]"
             category_slug = "TAG"
-
-        # Variation Selectors
         elif 0xFE00 <= char_code <= 0xFE0F:
-            symbol = f"[VS{char_code - 0xFE00 + 1}]"
-            category_slug = "SELECTOR"
+            symbol = f"[VS{char_code - 0xFE00 + 1}]"; category_slug = "SELECTOR"
         elif 0xE0100 <= char_code <= 0xE01EF:
-            symbol = f"[VS{char_code - 0xE0100 + 17}]"
-            category_slug = "SELECTOR"
-            
-        # Common Invisibles
+            symbol = f"[VS{char_code - 0xE0100 + 17}]"; category_slug = "SELECTOR"
         elif char_code == 0x200B: symbol = "[ZWSP]"; category_slug = "ZW-SPACE"
         elif char_code == 0x200D: symbol = "[ZWJ]"; category_slug = "JOINER"
         elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
         elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
-        
-        # Bidi
-        elif char_code in TIER_2_RISKY:
-            symbol = "[BIDI]"
-            category_slug = "BIDI"
-            
-        # C0 Controls
+        elif char_code in TIER_2_RISKY: symbol = "[BIDI]"; category_slug = "BIDI"
         elif 0x00 <= char_code <= 0x1F:
             symbol = f"[CTL:{char_code:02X}]"
             if char_code == 0x00: category_slug = "NULL"
             elif char_code == 0x09: category_slug = "TAB"
             elif char_code in [0x0A, 0x0D]: category_slug = "NEWLINE"
             else: category_slug = "CONTROL"
-            
         else:
-            symbol = "[INV]"
-            category_slug = "FORMAT"
+            symbol = "[INV]"; category_slug = "FORMAT"
 
-        # --- C. Forensic Legality Tiering ---
-        tier_rank = 99 # Lower is worse (for sorting)
+        # --- Forensic Tiering ---
+        tier_rank = 99
         tier_badge = ""
         tier_class = ""
         
         if char_code == 0x0000:
-             tier_rank = 0
-             tier_badge = "FATAL (Null)"
-             tier_class = "atlas-badge-crit"
-             category_agg["FATAL"] += count
+             tier_rank = 0; tier_badge = "FATAL (Null)"; tier_class = "atlas-badge-crit"; category_agg["FATAL"] += count
         elif 0xE0000 <= char_code <= 0xE007F:
-             tier_rank = 1
-             tier_badge = "Illegal (Tag)"
-             tier_class = "atlas-badge-crit"
-             category_agg["ILLEGAL"] += count
+             tier_rank = 1; tier_badge = "Illegal (Tag)"; tier_class = "atlas-badge-crit"; category_agg["ILLEGAL"] += count
         elif char_code in TIER_2_RISKY:
-            tier_rank = 2
-            tier_badge = "Risky (Bidi)"
-            tier_class = "atlas-badge-high"
-            category_agg["RISKY"] += count
+            tier_rank = 2; tier_badge = "Risky (Bidi)"; tier_class = "atlas-badge-high"; category_agg["RISKY"] += count
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
-            tier_rank = 3
-            tier_badge = "Restricted"
-            tier_class = "atlas-badge-high"
-            category_agg["RESTRICTED"] += count
+            tier_rank = 3; tier_badge = "Restricted"; tier_class = "atlas-badge-high"; category_agg["RESTRICTED"] += count
         elif char_code in TIER_1_SCRIPT or category_slug == "SELECTOR":
-            tier_rank = 4
-            tier_badge = "Script/Emoji"
-            tier_class = "atlas-badge-warn"
-            category_agg["SCRIPT"] += count
+            tier_rank = 4; tier_badge = "Script/Emoji"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT"] += count
         elif char_code in TIER_0_BENIGN or category_slug in ["TAB", "NEWLINE"]:
-            tier_rank = 5
-            tier_badge = "Typographic"
-            tier_class = "atlas-badge-ok"
-            category_agg["BENIGN"] += count
+            tier_rank = 5; tier_badge = "Typographic"; tier_class = "atlas-badge-ok"; category_agg["BENIGN"] += count
         else:
-            tier_rank = 6
-            tier_badge = "Format"
-            tier_class = "atlas-badge-neutral"
-            category_agg["OTHER"] += count
+            tier_rank = 6; tier_badge = "Format"; tier_class = "atlas-badge-neutral"; category_agg["OTHER"] += count
 
         processed_rows.append({
-            "rank": tier_rank,
-            "count": count,
+            "rank": tier_rank, "count": count,
             "html": f"""
             <tr>
-                <td class="symbol-col"><span class="atlas-glyph">{symbol}</span></td>
+                <td style="text-align:center;"><span class="atlas-glyph">{symbol}</span></td>
                 <td class="code-col">U+{char_code:04X}</td>
                 <td class="name-col" title="{name}">{name}</td>
                 <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
-                <td class="count-col">{count}</td>
-                <td class="action-col">
+                <td class="count-col" style="font-family:var(--font-mono); font-weight:700;">{count}</td>
+                <td style="text-align:right;">
                     <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})">LOCATE</button>
                 </td>
             </tr>"""
         })
 
-    # ---------------------------------------------------------
-    # 2. SORTING & AGGREGATION
-    # ---------------------------------------------------------
-    # Sort by Risk (Rank 0=Fatal) -> Then by Count (Desc)
+    # Sort: Risk (Low Rank) -> Count (High to Low)
     processed_rows.sort(key=lambda x: (x["rank"], -x["count"]))
     
-    # Build Summary Bar HTML
+    # --- Build Summary Ribbon (Horizontal) ---
     summary_parts = []
-    
-    # Define summary badge colors mapping
-    agg_styles = {
-        "FATAL": "atlas-badge-crit", "ILLEGAL": "atlas-badge-crit", 
-        "RISKY": "atlas-badge-high", "RESTRICTED": "atlas-badge-high",
-        "SCRIPT": "atlas-badge-warn", "BENIGN": "atlas-badge-ok", "OTHER": "atlas-badge-neutral"
-    }
-    
-    # Order of summary pills
     summary_order = ["FATAL", "ILLEGAL", "RISKY", "RESTRICTED", "SCRIPT", "BENIGN", "OTHER"]
     
     for key in summary_order:
         if category_agg[key] > 0:
+            # Color logic for values
+            val_class = "safe"
+            if key in ["FATAL", "ILLEGAL"]: val_class = "crit"
+            elif key in ["RISKY", "RESTRICTED"]: val_class = "warn"
+            
             summary_parts.append(
                 f'<div class="atlas-sum-metric">'
-                f'{key} <span class="sum-val">{category_agg[key]}</span>'
+                f'<span class="sum-label">{key}</span>'
+                f'<span class="sum-val {val_class}">{category_agg[key]}</span>'
                 f'</div>'
             )
 
     total_inv = sum(invisible_counts.values())
     
+    # Total Block (The Anchor)
     summary_html = f"""
         <div class="atlas-summary-bar">
-            <div class="atlas-sum-metric main">TOTAL <span class="sum-val">{total_inv}</span></div>
+            <div class="atlas-sum-metric main">
+                <span class="sum-label">TOTAL</span>
+                <span class="sum-val">{total_inv}</span>
+            </div>
             {''.join(summary_parts)}
         </div>
     """
     
-    # ---------------------------------------------------------
-    # 3. FINAL ASSEMBLY
-    # ---------------------------------------------------------
+    # --- Final Table Assembly ---
     table_html = f"""
         <div class="atlas-content">
             {summary_html}
             <table class="atlas-table">
                 <thead>
                     <tr>
-                        <th>Symbol</th>
+                        <th class="col-fixed-glyph">Symbol</th>
                         <th>Code</th>
                         <th>Name</th>
                         <th>Forensic Legality</th>
-                        <th>Count</th>
-                        <th>Action</th>
+                        <th class="col-fixed-count">Count</th>
+                        <th class="col-fixed-action">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -10311,7 +10265,6 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         </div>
     """
     
-    # Use PyScript's document to find and update the element
     atlas_body = document.getElementById("invisible-atlas-body")
     if atlas_body:
         atlas_body.innerHTML = table_html
