@@ -10936,39 +10936,31 @@ def render_statistical_profile(stats):
              "Natural: 0.35-0.50 | Machine: <0.20 | High: >0.60 | NOTE: ASCII Only. Not a language classifier.")))
     # 8. Structural Anomalies (The "Participants" List)
     z_parts = stats.get("zalgo_participants", [])
-    z_stats = stats.get("zalgo", {})
     
     if z_parts:
-        # 1. Metrics
-        max_marks = z_stats.get("max", 0)
-        
-        # 2. Build Interactive Chips
         z_chips = []
         
-        # SVG Definitions (Lab Instrument Style)
-        # Critical (Flame)
+        # SVG Definitions
         svg_crit = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3a1 1 0 0 1 .9 2.5z"></path></svg>'
-        # Warning (Triangle)
         svg_warn = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
-        # Invisible/Sneaky (Ghost/Alien)
         svg_ghost = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"></path><path d="M15 10h.01"></path><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"></path></svg>'
-        # Default Cluster (Dotted Circle)
-        svg_base = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" stroke-dasharray="4 4"></circle><circle cx="12" cy="12" r="3"></circle></svg>'
 
         for p in z_parts:
             # Color coding by severity
-            border = "#e2e8f0"; bg = "#f8fafc"; txt = "#64748b"; icon_svg = svg_base
+            border = "#e2e8f0"; bg = "#f8fafc"; txt = "#64748b"; icon_svg = svg_warn
             
-            if p['marks'] >= 10: # Critical
+            if p['severity'] == 'crit':
                 border = "#fecaca"; bg = "#fef2f2"; txt = "#dc2626"; icon_svg = svg_crit
-            elif p['marks'] >= 5: # High
+            elif p['severity'] == 'warn':
                 border = "#fed7aa"; bg = "#fff7ed"; txt = "#9a3412"; icon_svg = svg_warn
-            elif p['type'] == "Invisible": # Sneaky
+            elif p['severity'] == 'ghost':
                 border = "#e9d5ff"; bg = "#faf5ff"; txt = "#7e22ce"; icon_svg = svg_ghost
             
-            # Label: "Index 5 (16)"
-            lbl = f"Index {p['idx']} <b>({p['marks']} Marks)</b>"
+            # Label with TYPE and MARKS
+            # e.g. "Invisible Stack (3)" or "Heavy Stack (16)"
+            lbl = f"Index {p['idx']} <b>{p['type']} ({p['marks']})</b>"
             
+            # Action: Highlight using TRUE LOGICAL INDEX
             chip_html = (
                 f'<button onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({p["idx"]})"'
                 f' style="background:{bg}; border:1px solid {border}; color:{txt}; padding:2px 8px; '
@@ -10979,10 +10971,13 @@ def render_statistical_profile(stats):
             
         chips_container = f'<div style="display:flex; flex-wrap:wrap; width:100%;">{"".join(z_chips)}</div>'
         
+        # Update Row Description
+        desc_logic = "Count(Mn) > 2 OR (Count(Mn) > 0 AND Base=Invisible)"
+        
         rows.append(make_row("Structural Anomalies", chips_container, "",
             ("CLUSTER PHYSICS", 
-             f"List of grapheme clusters exceeding structural limits. Max Stack: {max_marks}. Visible clusters create 'Zalgo' noise. Invisible clusters (Ghost icon) indicate obfuscation or steganography.",
-             "Mark Density > 2",
+             f"List of grapheme clusters exceeding structural limits. Includes both visible rendering noise ('Zalgo') and invisible data stacking (Steganography risk).",
+             desc_logic,
              "Participants sorted by stack height.")))
              
     container.innerHTML = "".join(rows)
@@ -12816,10 +12811,6 @@ def update_all(event=None):
     def get_flag_count(label): return forensic_map.get(label, {}).get("count", 0)
     current_flags = threat_results.get('flags', {})
     
-    # Derived Metrics
-    norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
-    logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
-
     # Zalgo & Anomaly Wiring
     # 1. Generate Graphemes ONCE (Optimized for reuse in Stage 2 Bridge)
     try:
@@ -12829,37 +12820,60 @@ def update_all(event=None):
         # Fallback if Intl.Segmenter fails/missing
         grapheme_list = list(t)
 
-    # 2. Analyze Zalgo (Physics Engine)
-    nsm_stats = analyze_nsm_overload(grapheme_list)
+    # ----------------------------------------------------------------------
+    # [UNIFIED PHYSICS LOOP] Zalgo, Invisibles, and Registry Sync
+    # ----------------------------------------------------------------------
+    # We iterate graphemes ONCE to guarantee that the Hero Counter (Registry)
+    # perfectly matches the Statistical Profile list (Participants).
     
-    # 3. Register Zalgo Hits for HUD Stepper ("phys_zalgo")
-    if nsm_stats["count"] > 0:
-        for pos_str in nsm_stats.get("positions", []):
-            try:
-                # Robust parsing handles both ints and "#123" strings
-                idx = int(str(pos_str).replace("#", ""))
-                _register_hit("phys_zalgo", idx, idx + 1, "Excessive Combining Marks (Zalgo)")
-            except: pass
-
-    # 4. Inject Zalgo & Detailed Participants into Stat Profile
-    # Extract specific "Participants" list for the UI
     zalgo_participants = []
-    if nsm_stats["count"] > 0:
-        for i, g in enumerate(grapheme_list):
-            # Recalculate mark count locally to populate the list
-            # (Fast operation on pre-segmented list)
-            marks = sum(1 for c in g if unicodedata.category(c) == 'Mn')
-            if marks > 0 and (marks > 2 or (marks > 0 and len(g) > 1 and g[0].isspace())): # Matches Engine Logic
-                 # Determine type for label
-                p_type = "Invisible" if g[0].isspace() or unicodedata.category(g[0]) in ('Cf', 'Cc') else "Visible"
-                zalgo_participants.append({
-                    "idx": i, 
-                    "marks": marks, 
-                    "type": p_type,
-                    "char": g[0]
-                })
+    current_logical_idx = 0  # Tracks true Code Point index to fix Selection Drift
     
-    # Sort by severity (Mark count)
+    # We still need nsm_stats for global max/avg metrics, but we won't use its positions.
+    nsm_stats = analyze_nsm_overload(grapheme_list) 
+
+    for g in grapheme_list:
+        g_len = len(g)
+        marks = sum(1 for c in g if unicodedata.category(c) == 'Mn')
+        
+        # Detection Logic (Physics Rules)
+        is_anomaly = False
+        p_type = "Visible"
+        severity = "low"
+        
+        # Rule A: Heavy Stack (Visual Noise / Zalgo)
+        if marks > 2: 
+            is_anomaly = True
+            p_type = "Heavy Stack"
+            severity = "crit" if marks >= 10 else "warn"
+            
+        # Rule B: Invisible Stacking (Steganography / Watermarking)
+        # Condition: Base is Space/Control/Format AND has marks attached
+        elif marks > 0:
+            if g[0].isspace() or unicodedata.category(g[0]) in ('Cf', 'Cc'):
+                is_anomaly = True
+                p_type = "Invisible Stack"
+                severity = "ghost"
+        
+        if is_anomaly:
+            # 1. Add to Roster (For Statistical Profile UI)
+            zalgo_participants.append({
+                "idx": current_logical_idx,  # <--- CRITICAL FIX: True Start Index
+                "len": g_len,
+                "marks": marks, 
+                "type": p_type,
+                "severity": severity,
+                "char": g[0]
+            })
+            
+            # 2. Register for HUD Counter (For Navigation Stepper)
+            # This ensures the Yellow Badge count matches the List exactly.
+            reg_label = f"{p_type} ({marks} mk)"
+            _register_hit("phys_zalgo", current_logical_idx, current_logical_idx + g_len, reg_label)
+            
+        current_logical_idx += g_len # Advance accumulator by actual cluster length
+
+    # Sort participants by severity (heaviest stacks first)
     zalgo_participants.sort(key=lambda x: x['marks'], reverse=True)
     
     # Inject into profile
