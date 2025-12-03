@@ -10243,19 +10243,23 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         </div>
     """
     
-    # --- Final Table Assembly ---
+    # ---------------------------------------------------------
+    # 3. FINAL ASSEMBLY (SURGICAL LAYOUT FIX)
+    # ---------------------------------------------------------
+    # We use inline styles for the headers to strictly enforce the "Lab Instrument" grid.
+    # Symbol: 1% (Shrink to fit) | Name: Auto (Expand) | Counts/Actions: Fixed
     table_html = f"""
         <div class="atlas-content">
             {summary_html}
             <table class="atlas-table">
                 <thead>
                     <tr>
-                        <th class="col-fixed-glyph">Symbol</th>
-                        <th>Code</th>
+                        <th style="width: 1%; white-space: nowrap; text-align: center; padding-left: 16px;">Symbol</th>
+                        <th style="width: 80px;">Code</th>
                         <th>Name</th>
-                        <th>Forensic Legality</th>
-                        <th class="col-fixed-count">Count</th>
-                        <th class="col-fixed-action">Action</th>
+                        <th style="width: 140px;">Forensic Legality</th>
+                        <th style="width: 60px; text-align: right;">Count</th>
+                        <th style="width: 80px; text-align: right; padding-right: 16px;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
