@@ -1924,3 +1924,12 @@ We resolved a critical dependency cycle in the `update_all` orchestrator.
 * **The Fix:** We refactored `update_all` to explicitly calculate `final_score` (inputs + logic) locally before passing it to the Master Auditor. This ensures the "Threat" column in the HUD matches the detailed "Threat-Hunting" profile exactly.
 
 **Result:** The tool now presents a holistic, multi-dimensional security posture (Physical Health, Identity Trust, Active Threat, Structural Anomaly) at a single glance.
+
+### Group 1.5: The Forensic HUD (V3)
+The Head-Up Display has been re-architected into a **Split-Data System**.
+
+* **The Problem:** Previous versions baked labels like "Logic:" directly into the data string. This caused alignment errors in the fixed-width CSS grid of the console, creating empty visual gaps when labels were missing.
+* **The Solution (V3):**
+    1.  **Python Layer:** The `render_forensic_hud` function now generates **Atomic Attributes**. It sends `data-k1="LOGIC"` and `data-v1="Entropy"` as separate signals.
+    2.  **JavaScript Layer:** The `ui-glue.js` bridge reads these attributes separately and injects them into distinct DOM spans (`.console-key` and `.console-val`).
+    3.  **Result:** Zero visual gaps. If a Key is missing, the CSS grid collapses cleanly. If present, it aligns perfectly to the 50px grid line.
