@@ -12991,18 +12991,31 @@ def update_all(event=None):
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
 
+    # 1. Ensure Major Stats exist (Letter/Number counts for the HUD)
+    # We re-run this fast O(N) check to guarantee the data exists, ignoring previous variable name errors.
+    _hud_major, _ = compute_code_point_stats(t)
+
+    # 2. Ensure Integrity Flags exist
+    # We check common variable names, defaulting to empty if missing to prevent crashes.
+    _hud_flags = {}
+    if 'integrity_report' in locals(): _hud_flags = integrity_report.get("flags", {})
+    elif 'integrity_results' in locals(): _hud_flags = integrity_results.get("flags", {})
+
+    # 3. Construct the Package
     stats_package = {
-        "emoji_counts": emoji_report, 
-        "major_stats": major_counts,  # Changed from 'major_stats' to 'major_counts'
-        "forensic_flags": integrity_report.get("flags", {}), # Changed 'integrity_results' to 'integrity_report'
-        "master_ledgers": master_ledgers,
-        # Convenience keys for direct access
+        "emoji_counts": emoji_report if 'emoji_report' in locals() else {}, 
+        "major_stats": _hud_major,       # We calculated this locally above
+        "forensic_flags": _hud_flags,    # We resolved this locally above
+        "master_ledgers": master_ledgers, # This must exist from the block above
+        
+        # Shortcuts for the Renderer
         "integrity": master_ledgers.get("integrity", {}),
         "threat": master_ledgers.get("threat", {}),
         "authenticity": master_ledgers.get("authenticity", {}),
         "anomaly": master_ledgers.get("anomaly", {})
     }
 
+    # 4. Render
     render_forensic_hud(t, stats_package)
     
     # [NEW] Render Adversarial Dashboard 
