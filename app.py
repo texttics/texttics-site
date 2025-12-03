@@ -12991,26 +12991,14 @@ def update_all(event=None):
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
 
-    # 1. Ensure Major Stats exist (Letter/Number counts for the HUD)
-    # We re-run this fast O(N) check to guarantee the data exists, ignoring previous variable name errors.
-    # We capture the full result tuple and just take index [0] to avoid unpacking errors
-    _cp_stats_tuple = compute_code_point_stats(t, emoji_report)
-    _hud_major = _cp_stats_tuple[0]
-
-    # 2. Ensure Integrity Flags exist
-    # We check common variable names, defaulting to empty if missing to prevent crashes.
-    _hud_flags = {}
-    if 'integrity_report' in locals(): _hud_flags = integrity_report.get("flags", {})
-    elif 'integrity_results' in locals(): _hud_flags = integrity_results.get("flags", {})
-
-    # 3. Construct the Package
+    # We map the LOCAL VARIABLES (that definitely exist) to the KEYS expected by the Renderer.
     stats_package = {
-        "emoji_counts": emoji_report if 'emoji_report' in locals() else {}, 
-        "major_stats": _hud_major,       # We calculated this locally above
-        "forensic_flags": _hud_flags,    # We resolved this locally above
-        "master_ledgers": master_ledgers, # This must exist from the block above
+        "emoji_counts": emoji_counts,    # Uses local 'emoji_counts'
+        "major_stats": cp_major,         # Uses local 'cp_major' (This was the missing link)
+        "forensic_flags": forensic_map,  # Uses local 'forensic_map'
+        "master_ledgers": master_ledgers,
         
-        # Shortcuts for the Renderer
+        # Convenience Shortcuts
         "integrity": master_ledgers.get("integrity", {}),
         "threat": master_ledgers.get("threat", {}),
         "authenticity": master_ledgers.get("authenticity", {}),
@@ -13020,7 +13008,7 @@ def update_all(event=None):
     # 4. Render
     render_forensic_hud(t, stats_package)
     
-    # [NEW] Render Adversarial Dashboard 
+    # Render Adversarial Dashboard 
     render_adversarial_dashboard(threat_results.get('adversarial', {}))
     
     render_toc_counts(toc_counts)
