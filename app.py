@@ -12811,7 +12811,7 @@ def update_all(event=None):
     def get_flag_count(label): return forensic_map.get(label, {}).get("count", 0)
     current_flags = threat_results.get('flags', {})
 
-    # Derived Metric (RESTORED)
+    # Derived Metric
     norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
     logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
     
