@@ -10244,16 +10244,18 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     
     # ---------------------------------------------------------
-    # 3. FINAL ASSEMBLY (Layout Fix)
+    # 3. FINAL ASSEMBLY (Layout & Variable Definitions)
     # ---------------------------------------------------------
     
-    # Updated Headers with FIXED WIDTHS to prevent squashing
-    # Symbol: 80px (was 1% - causing the collision)
-    # Code: 80px
-    # Name: Auto (Takes remaining space)
-    # Legality: 140px
-    # Count: 60px
-    # Action: 80px
+    # Define Description HTML (Missing Variable)
+    desc_html = """
+        <div class="atlas-desc">
+            A definitive legend of all invisible, control, and format characters detected in the input. 
+            Click <strong>LOCATE</strong> to find/locate specific instances.
+        </div>
+    """
+
+    # Table Block with FIXED WIDTHS to prevent layout collapse
     table_block = f"""
         <table class="atlas-table">
             <thead>
@@ -10273,7 +10275,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     
     # Assemble the Container
-    # Note: We stripped the wrapper styling here because CSS class .atlas-content handles it
+    # We use the CSS class .atlas-content for the wrapper styling
     table_html = f"""
         <div class="atlas-content">
             {desc_html}
