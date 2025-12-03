@@ -12260,13 +12260,14 @@ def render_adversarial_dashboard(adv_data: dict):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Unified Forensic HUD Renderer (V3 - Fixed Labels).
-    Matches the 'Old but Gold' label logic with V3 architecture.
+    Unified Forensic HUD Renderer (Final Fix).
+    Combines V25 Logic (Math) with V3 Layout (Grid + Hero Rows).
+    Removes forced metadata prefixes to fix Console Labels.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
     
-    # 1. Detect State
+    # 1. Detect State & Init
     is_initial = (t is None) or (len(t) == 0)
     if t is None: t = ""
     
@@ -12299,19 +12300,19 @@ def render_forensic_hud(t, stats):
     def c_safe(v): return "txt-clean" if float(v) == 0 else "txt-warn"
     def esc(s): return s.replace('"', '&quot;')
 
-    # --- CELL RENDERER (Grid) ---
+    # --- HELPER: Cell Renderer (Grid) ---
     def r_cell(label_1, val_1, class_1, label_2, val_2, class_2, 
                d1="", m1="", r1="", d2="", m2="", r2="", 
                reg_key=None):
         
+        # Interaction Logic
         int_attr, int_cls = "", ""
         if not is_initial and reg_key and float(val_2) > 0:
              int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
              int_cls = " hud-interactive"
         
-        # [FIX] NO AUTOMATIC PREFIXES HERE. 
-        # We pass the raw string so we can manually add "Logic:", "Std:", etc. below.
-        
+        # [CRITICAL FIX] No automatic "Calc:" or "Ref:" prefixes.
+        # We pass the strings exactly as defined in the calls below.
         data_attrs = f'data-l1="{esc(label_1)}"' \
                      f' data-d1="{esc(d1)}"' \
                      f' data-m1="{esc(m1)}"' \
@@ -12335,7 +12336,7 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- LEDGER ROW RENDERER (Hero Rows) ---
+    # --- HELPER: Ledger Row Renderer (Hero Rows) ---
     def r_ledger_row(title, type_key, data):
         if is_initial:
             sev, score, verdict, items = "neutral", 0, "WAITING", []
@@ -12356,7 +12357,7 @@ def render_forensic_hud(t, stats):
             elif type_key in ["authenticity", "anomaly"]:
                 items = data.get("vectors", [])
 
-        # Metadata Definitions
+        # Define Metadata with explicit labels (no formatting magic)
         meta = {
             "integrity": {
                 "d1": "Measures physical health. Penalties for corruption (FFFD), broken encoding, and binary injection.",
@@ -12393,7 +12394,6 @@ def render_forensic_hud(t, stats):
         }
         m = meta.get(type_key, {})
         
-        # [FIX] Pass metadata directly, no formatting needed here as 'm' dict has the labels
         data_attrs = f'data-l1="{esc(title)} STATUS"' \
                      f' data-d1="{esc(m.get("d1",""))}"' \
                      f' data-m1="{esc(m.get("m1",""))}"' \
@@ -12426,7 +12426,9 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- ROW 1 CALCS ---
+    # --- MATH & LOGIC (Restored from Old Code) ---
+    
+    # 1. Literals & Runs
     alpha = sum(1 for c in t if c.isalnum())
     runs = 0; in_r = False
     for c in t:
@@ -12434,19 +12436,23 @@ def render_forensic_hud(t, stats):
             if not in_r: runs += 1; in_r = True
         else: in_r = False
     
+    # 2. Units (Lexical Mass)
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
     
+    # 3. Sentences (UAX #29)
     uax_sent = 0
     try:
         c = window.TEXTTICS_CALC_UAX_COUNTS(t)
         if c[0] != -1: uax_sent = c[1]
     except: pass
 
+    # 4. Whitespace
     std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
     non_std = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
     
+    # 5. Delimiters
     cnt_p_ascii = 0; cnt_p_exotic = 0; cnt_p_comfort = 0
     for c in t:
         if unicodedata.category(c).startswith('P'):
@@ -12457,15 +12463,20 @@ def render_forensic_hud(t, stats):
     
     c4_label = "TYPOGRAPHIC" if cnt_p_comfort > 0 else "ASCII PUNC"
     c4_val = cnt_p_ascii + cnt_p_comfort
+    
+    # 6. Symbols
     s_ext = emoji_counts.get("text_symbols_extended", 0)
     s_exo = emoji_counts.get("text_symbols_exotic", 0)
     c5_label = "KEYBOARD" if s_ext == 0 and s_exo == 0 else "EXTENDED"
+    
+    # 7. Hybrids & Emoji
     h_pict = emoji_counts.get("hybrid_pictographs", 0)
     h_amb = emoji_counts.get("hybrid_ambiguous", 0)
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
 
-    # [FIX] MANUALLY ADD LABELS HERE (Logic:, Calc:, Ref:, Std:)
+    # --- RENDER ROW 1 (The Grid) ---
+    # [FIX] Manually included prefixes (Logic:, Calc:, Std:, Class:) for precision
     row1_html = f"""
     <div class="hud-grid-row-1">
         {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs),
@@ -12507,6 +12518,7 @@ def render_forensic_hud(t, stats):
     </div>
     """
 
+    # --- RENDER HERO ROWS (The V3 Ledgers) ---
     rows_html = ""
     rows_html += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}))
     rows_html += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}))
