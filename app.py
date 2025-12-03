@@ -12993,7 +12993,9 @@ def update_all(event=None):
 
     # 1. Ensure Major Stats exist (Letter/Number counts for the HUD)
     # We re-run this fast O(N) check to guarantee the data exists, ignoring previous variable name errors.
-    _hud_major, _ = compute_code_point_stats(t, emoji_report)
+    # We capture the full result tuple and just take index [0] to avoid unpacking errors
+    _cp_stats_tuple = compute_code_point_stats(t, emoji_report)
+    _hud_major = _cp_stats_tuple[0]
 
     # 2. Ensure Integrity Flags exist
     # We check common variable names, defaulting to empty if missing to prevent crashes.
