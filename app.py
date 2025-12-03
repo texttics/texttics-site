@@ -12341,12 +12341,14 @@ def render_forensic_hud(t, stats):
                 "anomaly": "statistical-profile-body"
             }
             t_id = target_ids.get(type_key)
+            # The row click jumps to details (Scroll)
             click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
         # --- Interactive Counter Logic ---
         counter_html = '<span class="interactive-count">-</span>'
         if hit_count > 0:
             risk_cls = " crit" if sev in ("crit", "high", "danger") else ""
+            # Number click -> Activate Stepper (Stop Propagation)
             counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')" title="Cycle through {hit_count} unique positions">{hit_count}</span>'
         elif not is_initial:
              counter_html = '<span class="interactive-count">0</span>'
@@ -12474,17 +12476,17 @@ def render_forensic_hud(t, stats):
                 d2="Broken Sequences.", k2="LOGIC", v2="Flags", rk2="RISK", rv2="Render Failure",
                 reg_key_2="emoji_irregular")
 
-    # --- ASSEMBLY (With Deduplication & Mapping Fixes) ---
+    # --- ASSEMBLY (With Deduplication Logic) ---
     row1 = f'<div class="hud-grid-row-1">{c0}{c1}{c2}{c3}{c4}{c5}{c6}{c7}</div>'
     
-    # Helper: Calculates UNIQUE hits (Deduplication Logic)
+    # Helper: Calculates UNIQUE hits (Deduplication)
     def calc_agg(prefixes):
         if is_initial: return 0
         raw_hits = []
         for p in prefixes:
             raw_hits.extend(HUD_HIT_REGISTRY.get(p, []))
         
-        # [FIX] Deduplicate by start index to match Stepper logic exactly
+        # Deduplicate by start index (Matches Stepper Logic)
         seen_starts = set()
         unique_count = 0
         for hit in raw_hits:
@@ -12496,10 +12498,12 @@ def render_forensic_hud(t, stats):
     # 1. Integrity: Fatal, Fracture, Risk, Decay
     cnt_int = calc_agg(["int_fatal", "int_fracture", "int_risk", "int_decay"])
     
-    # 2. Authenticity: [FIX] Added 'thr_spoofing' and 'thr_suspicious' to capture Homoglyphs/MixedScripts
+    # 2. Authenticity: Spoofing, IDNA, Mixed Scripts
+    # Note: 'thr_spoofing' and 'thr_suspicious' are moved here from Threat to fix the split.
     cnt_auth = calc_agg(["auth_spoof", "auth_mixed", "auth_idna", "thr_spoofing", "thr_suspicious"])
     
-    # 3. Threat: [FIX] Removed 'thr_spoofing'/'thr_suspicious' to prevent double-counting with Authenticity
+    # 3. Threat: Execution, Injection, Obfuscation
+    # Note: Removed spoofing/suspicious to prevent double-counting 90 vs 47+43
     cnt_thr = calc_agg(["thr_execution", "thr_obfuscation"])
     
     # 4. Anomaly: Entropy, Zalgo
