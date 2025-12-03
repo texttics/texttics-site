@@ -13129,7 +13129,7 @@ def update_all(event=None):
     render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True, text_context=t)
 
     # [NEW] Statistical Profile (Group 2.F)
-    stat_profile = compute_statistical_profile(t)
+    # Note: stat_profile was computed earlier and enriched with Zalgo data.
     render_statistical_profile(stat_profile)
     
     render_emoji_qualification_table(emoji_list, text_context=t)
