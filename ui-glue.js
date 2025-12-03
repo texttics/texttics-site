@@ -257,21 +257,21 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
  // ==========================================
-  // 6. HUD CONSOLE BRIDGE (STRUCTURED - V3/V25 Hybrid)
+  // 6. HUD CONSOLE BRIDGE (SPLIT DATA FIX)
   // ==========================================
   const hudContainer = document.getElementById('forensic-hud');
-  
-  // Primary Row Targets
-  const pKey   = document.getElementById('c-p-key'); 
-  const pDef   = document.getElementById('c-p-def');
-  const pLogic = document.getElementById('c-p-logic');
-  const pStd   = document.getElementById('c-p-std');
+   
+  // Targets (We target the VALUE span, but we will also update its sibling KEY span)
+  const pKey    = document.getElementById('c-p-key'); 
+  const pDef    = document.getElementById('c-p-def');
+  const pLogicVal = document.getElementById('c-p-logic'); // Value span
+  const pStdVal   = document.getElementById('c-p-std');   // Value span
 
-  // Secondary Row Targets
-  const sKey   = document.getElementById('c-s-key'); 
-  const sDef   = document.getElementById('c-s-def');
-  const sLogic = document.getElementById('c-s-logic');
-  const sStd   = document.getElementById('c-s-std');
+  // Secondary Targets
+  const sKey    = document.getElementById('c-s-key'); 
+  const sDef    = document.getElementById('c-s-def');
+  const sLogicVal = document.getElementById('c-s-logic');
+  const sStdVal   = document.getElementById('c-s-std');
 
   const defaults = {
     pKey: "STATUS:",
@@ -279,40 +279,52 @@ document.addEventListener('DOMContentLoaded', () => {
     sKey: "",
     sDef: ""
   };
+  
+  // Helper to safely set Key/Value pair
+  function setKV(valSpan, keyText, valText) {
+      if (!valSpan) return;
+      valSpan.textContent = valText || "";
+      
+      // TARGET THE SIBLING KEY SPAN (The Empty Gap)
+      const keySpan = valSpan.previousElementSibling;
+      if (keySpan && keySpan.classList.contains('console-key')) {
+          keySpan.textContent = keyText ? (keyText + ":") : "";
+      }
+  }
 
   if (hudContainer && pDef) {
     
     hudContainer.addEventListener('mouseover', (e) => {
-      // [FIX] Support both Grid Cols AND Hero Rows (New V3 Layout)
       const target = e.target.closest('.hud-col, .hud-detail-row');
       
       if (target) {
-        // [FIX] Clean Data Extraction (No JS formatting, rely on Python raw data)
         const l1 = target.getAttribute('data-l1');
-        const d1 = target.getAttribute('data-d1');
         
         if (l1) {
-            // Primary Row
+            // 1. Primary Row
             pKey.textContent = l1 + ":"; 
-            pDef.textContent = d1 || "";
-            pLogic.textContent = target.getAttribute('data-m1') || "";
-            pStd.textContent = target.getAttribute('data-r1') || "";
+            pDef.textContent = target.getAttribute('data-d1') || "";
+            
+            // Inject Key AND Value separately
+            setKV(pLogicVal, target.getAttribute('data-k1'), target.getAttribute('data-v1'));
+            setKV(pStdVal,   target.getAttribute('data-rk1'), target.getAttribute('data-rv1'));
 
-            // Secondary Row
+            // 2. Secondary Row
             const l2 = target.getAttribute('data-l2');
             if (l2) {
                  sKey.textContent = l2 + ":";
                  sDef.textContent = target.getAttribute('data-d2') || "";
-                 sLogic.textContent = target.getAttribute('data-m2') || "";
-                 sStd.textContent = target.getAttribute('data-r2') || "";
+                 
+                 setKV(sLogicVal, target.getAttribute('data-k2'), target.getAttribute('data-v2'));
+                 setKV(sStdVal,   target.getAttribute('data-rk2'), target.getAttribute('data-rv2'));
                  
                  const sRow = document.getElementById('c-s-row');
                  if(sRow) sRow.style.display = 'flex';
             } else {
                  sKey.textContent = "";
                  sDef.textContent = "";
-                 sLogic.textContent = "";
-                 sStd.textContent = "";
+                 setKV(sLogicVal, "", "");
+                 setKV(sStdVal, "", "");
             }
         }
       }
@@ -322,13 +334,13 @@ document.addEventListener('DOMContentLoaded', () => {
        if (!e.relatedTarget || !hudContainer.contains(e.relatedTarget)) {
           pKey.textContent = defaults.pKey;
           pDef.textContent = defaults.pDef;
-          pLogic.textContent = "";
-          pStd.textContent = "";
+          setKV(pLogicVal, "", "");
+          setKV(pStdVal, "", "");
           
           sKey.textContent = defaults.sKey;
           sDef.textContent = defaults.sDef;
-          sLogic.textContent = "";
-          sStd.textContent = "";
+          setKV(sLogicVal, "", "");
+          setKV(sStdVal, "", "");
        }
     });
   }
