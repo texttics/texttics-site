@@ -5805,190 +5805,164 @@ details.profile-section > summary:hover::marker {
 }
 
 /* =========================================
-   INVISIBLE ATLAS (Forensic Legend v3.2)
+   INVISIBLE ATLAS (Forensic Legend v3.3)
    ========================================= */
 
-/* The Main Container (The Box) */
+/* 1. Main Container - Changed to BLOCK to prevent flex-collapse */
 .atlas-content {
-  display: flex;
-  flex-direction: column;
+  display: block; 
   width: 100%;
+  box-sizing: border-box; /* Critical for padding math */
   background-color: var(--color-white);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  overflow: hidden;
+  border: 1px solid #cbd5e1; /* Slate-300 */
+  border-radius: 6px;
+  overflow: hidden; /* Contains the children */
   margin-top: 1rem;
-  padding: 0 !important; /* Strict reset */
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-/* --- Row 1: The Description (Pretty Text Row) --- */
+/* 2. Description Row */
 .atlas-desc {
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
-  line-height: 1.5;
+  display: block;
+  width: 100%;
+  font-size: 0.85rem;
+  color: #475569; /* Slate-600 */
+  background-color: #f8fafc; /* Slate-50 */
+  padding: 12px 20px;
   margin: 0;
-  padding: 16px 20px; /* Generous padding */
   border-bottom: 1px solid #e2e8f0;
-  background-color: #ffffff;
+  line-height: 1.5;
 }
 
-/* --- Row 2: The Summary (Elegant Cards Row) --- */
+/* 3. Summary Ribbon (The "Disappeared" Totals Fix) */
 .atlas-summary-bar {
   display: flex;
   flex-direction: row;
   align-items: center;
   width: 100%;
-  background-color: #f8fafc; /* Slate-50 context */
+  background-color: #ffffff;
   border-bottom: 1px solid #e2e8f0;
-  min-height: 60px; /* Taller for elegance */
-  overflow-x: auto;
-  font-family: var(--font-sans);
-  margin: 0;
-  padding: 0;
+  height: 70px; /* Fixed height for consistency */
+  overflow-x: auto; /* Scrollable if too many metrics */
+  scrollbar-width: thin;
 }
 
-/* The Metric "Cards" inside the Ribbon */
+/* The Individual Cards */
 .atlas-sum-metric {
-  flex: 0 0 auto;
+  flex: 0 0 auto; /* CRITICAL: Prevents squashing! */
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 0 24px;
-  height: 60px; /* Fill container */
-  border-right: 1px solid #e2e8f0;
-  min-width: 90px;
-  background-color: transparent;
-  transition: background-color 0.2s;
+  height: 100%;
+  min-width: 100px; /* Force minimum width */
+  padding: 0 16px;
+  border-right: 1px solid #f1f5f9;
+  transition: background 0.2s;
 }
 
 .atlas-sum-metric:hover {
-  background-color: #f1f5f9;
+  background-color: #f8fafc;
 }
 
-/* The Anchor Metric (TOTAL) - Distinct Style */
+/* The Anchor (TOTAL) */
 .atlas-sum-metric.main {
-  background-color: #ffffff;
-  border-right: 2px solid #e2e8f0; /* Stronger separator */
-  min-width: 110px;
+  background-color: #f1f5f9; /* Slight contrast */
+  border-right: 2px solid #e2e8f0;
+  min-width: 120px;
 }
 
 .sum-label {
   font-size: 0.65rem;
   font-weight: 800;
-  color: #94a3b8; /* Slate-400 */
-  text-transform: uppercase;
   letter-spacing: 0.05em;
-  line-height: 1;
-  margin-bottom: 6px;
+  color: #94a3b8;
+  margin-bottom: 4px;
 }
 
 .sum-val {
   font-family: var(--font-mono);
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: #334155;
-  line-height: 1;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
 }
 
-/* Status Colors for Values */
-.sum-val.crit { color: #dc2626; }
-.sum-val.warn { color: #d97706; }
-.sum-val.safe { color: #15803d; }
+/* Status Colors */
+.sum-val.crit { color: #dc2626; } /* Red-600 */
+.sum-val.warn { color: #d97706; } /* Amber-600 */
+.sum-val.safe { color: #059669; } /* Emerald-600 */
 
-/* --- Row 3: The Data Table --- */
+/* 4. The Data Table */
 .atlas-table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed; /* STRICT GEOMETRY */
+  table-layout: fixed; /* Strict column sizing */
   font-size: 0.85rem;
-  margin: 0;
 }
 
 /* Headers */
 .atlas-table th {
   background-color: #ffffff;
   color: #64748b;
-  font-weight: 800;
+  font-weight: 700;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  font-size: 0.65rem;
-  letter-spacing: 0.05em;
-  padding: 12px 16px;
-  border-bottom: 2px solid #f1f5f9;
+  padding: 10px 16px;
+  border-bottom: 2px solid #e2e8f0;
   text-align: left;
-  white-space: nowrap;
 }
 
-/* Cells */
+/* Rows */
 .atlas-table td {
   padding: 8px 16px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
+  height: 44px;
   color: #334155;
-  height: 48px;
+  white-space: nowrap; /* Prevent messy wrapping */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .atlas-table tr:hover td {
   background-color: #f8fafc;
 }
 
-/* --- Components --- */
+/* 5. Components */
 .atlas-glyph {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   background-color: #f1f5f9;
-  padding: 4px 8px;
-  border-radius: 4px;
+  border: 1px solid #cbd5e1;
   color: #0f172a;
-  border: 1px solid #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 4px;
   display: inline-block;
-  min-width: 32px;
+  min-width: 24px;
   text-align: center;
 }
 
-/* Badges */
-.atlas-badge {
-  font-size: 0.65rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  letter-spacing: 0.03em;
-  border: 1px solid transparent;
-}
-/* Reusing your standard badge colors */
-.atlas-badge-neutral { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
-.atlas-badge-ok      { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-.atlas-badge-warn    { background: #fffbeb; color: #b45309; border-color: #fde68a; }
-.atlas-badge-high    { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
-.atlas-badge-crit    { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
-
-/* The Action Button */
+/* The Locate Button */
 .atlas-btn {
-  height: 28px;
-  padding: 0 12px;
-  font-size: 0.65rem;
-  border-radius: 4px;
-  font-family: var(--font-sans);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  cursor: pointer;
-  transition: all 0.1s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #4f46e5; /* Indigo-600 */
+  background: #eef2ff; /* Indigo-50 */
+  border: 1px solid #c7d2fe;
+  border-radius: 4px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.15s;
 }
 
 .atlas-btn:hover {
-  border-color: #8b5cf6;
-  color: #7c3aed;
-  background-color: #f5f3ff;
-  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.1);
-  transform: translateY(-1px);
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: #4338ca;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
