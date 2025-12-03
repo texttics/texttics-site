@@ -12258,7 +12258,7 @@ def render_adversarial_dashboard(adv_data: dict):
             target_body.innerHTML = "".join(html_rows)
 
 @create_proxy
-def render_forensic_hud_v2(t, stats):
+def render_forensic_hud(t, stats):
     """
     Unified Forensic HUD Renderer (V3).
     Handles both 'Default/Waiting' and 'Active' states.
@@ -12281,9 +12281,9 @@ def render_forensic_hud_v2(t, stats):
             msg = "Ready. Waiting for input..." if is_initial else f"Analysis complete. Length: {len(t)}"
             status_el.textContent = f"STATUS: {msg}"
             status_el.style.opacity = "1"
-            # Remove old classes
-            status_el.classList.remove("status-loading", "status-ready")
-            # Add new class
+            # Remove old classes to reset color
+            status_el.classList.remove("status-loading", "status-ready", "status-revealed")
+            # Add new class based on state
             status_el.classList.add("status-loading" if is_initial else "status-ready")
     except: pass
 
@@ -12313,7 +12313,6 @@ def render_forensic_hud_v2(t, stats):
              int_cls = " hud-interactive"
         
         # ADD LABELS TO METADATA
-        # We manually prepend "Calc:" or "Scope:" so the console isn't empty
         m1_fmt = f"Calc: {m1}" if m1 else ""
         r1_fmt = f"Ref: {r1}" if r1 else ""
         m2_fmt = f"Calc: {m2}" if m2 else ""
@@ -12365,7 +12364,6 @@ def render_forensic_hud_v2(t, stats):
                 items = data.get("vectors", [])
 
         # 2. Metadata Definitions (With Labels!)
-        # We put the "Headline" directly into the string
         meta = {
             "integrity": {
                 "d1": "Measures physical health. Penalties for corruption (FFFD), broken encoding, and binary injection.",
@@ -12524,7 +12522,9 @@ def render_forensic_hud_v2(t, stats):
 
     container.innerHTML = row1_html + rows_html
 
-    render_forensic_hud = render_forensic_hud_v2
+# --- ALIAS TO PREVENT STARTUP CRASH ---
+render_forensic_hud_v2 = render_forensic_hud
+render_forensic_hud = render_forensic_hud_v2
 
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
