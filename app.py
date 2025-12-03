@@ -12896,6 +12896,14 @@ def update_all(event=None):
 
     # Sort participants by severity (heaviest stacks first)
     zalgo_participants.sort(key=lambda x: x['marks'], reverse=True)
+
+    # ==============================================================================
+    # [PATCH] SYNCHRONIZE ZALGO COUNTS (Fixes "x6" vs "7" Discrepancy)
+    # The analyze_nsm_overload function strictly counts marks >= 3.
+    # The loop above correctly captured an Invisible Stack with only 2 marks.
+    # We must force nsm_stats to accept the total forensic count.
+    # ==============================================================================
+    nsm_stats["count"] = len(zalgo_participants)
     
     # Inject into profile
     stat_profile['zalgo'] = nsm_stats
