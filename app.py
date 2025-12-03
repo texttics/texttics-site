@@ -12349,11 +12349,21 @@ def render_forensic_hud(t, stats):
 
         icon = get_svg(type_key)
         
-        if is_initial: chips = '<span class="hud-chip chip-dim">System Ready</span>'
-        elif not items: chips = '<span class="hud-chip chip-dim">No active signals.</span>'
-        else:
+        # Chips Generation Logic
+        # Handles the "Physics vs Policy" gap (e.g., Counter > 0 but Score = 0)
+        if is_initial: 
+            chips = '<span class="hud-chip chip-dim">System Ready</span>'
+        elif items: 
+            # Case A: Active Ledger Items (High Risk)
             c_list = [f'<span class="hud-chip chip-{sev}">{i["vector"] if isinstance(i, dict) else i}</span>' for i in items[:5]]
             chips = "".join(c_list)
+        elif hit_count > 0:
+            # Case B: Physics Detected, Policy Ignored (Neutral/Low Risk)
+            # This fixes the "7 vs No active signals" disconnect
+            chips = f'<span class="hud-chip chip-neutral" style="opacity:0.7; border:1px dashed currentColor;">{hit_count} Low-Risk Signals Detected</span>'
+        else:
+            # Case C: Clean
+            chips = '<span class="hud-chip chip-dim">No active signals.</span>'
 
         return f"""
         <div class="hud-detail-row border-{sev}" {click_attr} {data_attrs}>
