@@ -12323,8 +12323,8 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- HERO ROW RENDERER ---
-    def r_ledger_row(title, type_key, data):
+    # --- HERO ROW RENDERER (Updated with Middle Pillar) ---
+    def r_ledger_row(title, type_key, data, hit_count, agg_key):
         if is_initial:
             sev, score, verdict, items = "neutral", 0, "WAITING", []
             click_attr = ""
@@ -12334,10 +12334,27 @@ def render_forensic_hud(t, stats):
             verdict = data.get("verdict", "INTACT")
             items = data.get("ledger", []) if "ledger" in data else data.get("vectors", [])
             
-            target_ids = {"integrity": "integrity-matrix-body", "threat": "threat-report-body", "authenticity": "adversarial-dashboard-body", "anomaly": "statistical-profile-body"}
+            # Map type_key to the specific details container ID
+            target_ids = {
+                "integrity": "integrity-matrix-body", 
+                "threat": "threat-report-body", 
+                "authenticity": "adversarial-dashboard-body", 
+                "anomaly": "statistical-profile-body"
+            }
             t_id = target_ids.get(type_key)
+            # The main row click jumps to the details section (scrolls down)
             click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
+        # --- Interactive Counter Logic ---
+        # If hits exist, make it clickable with event.stopPropagation() to prevent scrolling
+        counter_html = '<span class="interactive-count">-</span>'
+        if hit_count > 0:
+            risk_cls = " crit" if sev in ("crit", "high", "danger") else ""
+            counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')" title="Cycle through {hit_count} findings">{hit_count}</span>'
+        elif not is_initial:
+             counter_html = '<span class="interactive-count">0</span>'
+
+        # Forensic Console Metadata
         meta = {
             "integrity":    {"d": "Measures physical health.", "k": "LOGIC", "v": "Base + Density", "rk": "STD", "rv": "Unicode Core Spec"},
             "authenticity": {"d": "Verifies identity.",        "k": "LOGIC", "v": "Skeleton Drift", "rk": "STD", "rv": "UTS #39"},
@@ -12351,9 +12368,11 @@ def render_forensic_hud(t, stats):
 
         icon = get_svg(type_key)
         
+        # Chips Rendering
         if is_initial: chips = '<span class="hud-chip chip-dim">System Ready</span>'
         elif not items: chips = '<span class="hud-chip chip-dim">No active signals.</span>'
         else:
+            # Render first 5 items as chips
             c_list = [f'<span class="hud-chip chip-{sev}">{i["vector"] if isinstance(i, dict) else i}</span>' for i in items[:5]]
             chips = "".join(c_list)
 
@@ -12367,106 +12386,46 @@ def render_forensic_hud(t, stats):
                     <div class="h-score text-{sev}">Score: {score}</div>
                 </div>
             </div>
+            
+            <div class="hud-detail-center">
+                {counter_html}
+            </div>
+
             <div class="hud-detail-right">{chips}</div>
         </div>
         """
 
-    # --- COLOR LOGIC ---
-    def color_neutral(val): return "txt-muted" if float(val) == 0 else "txt-normal"
-    def color_clean(val): return "txt-clean" if float(val) == 0 else "txt-warn"
-    
-    # --- MATH & ASSEMBLY ---
-    alpha_chars = sum(1 for c in t if c.isalnum())
-    alpha_runs = 0; in_run = False
-    for c in t:
-        if c.isalnum():
-            if not in_run: alpha_runs += 1; in_run = True
-        else: in_run = False
-        
-    # [FIXED] Scientific Titles Restored
-    c0 = r_cell("ALPHANUMERIC", "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
-                "RUNS", str(alpha_runs), color_neutral(alpha_runs),
-                d1="Count of Unicode alphanumeric characters.", k1="LOGIC", v1="Count(Alnum)", rk1="REF", rv1="Unicode L+N",
-                d2="Contiguous runs of alphanumeric characters.", k2="LOGIC", v2="Count(Runs)", rk2="REF", rv2="Pattern Alnum+")
-
-    L = stats.get('major_stats', {}).get("L (Letter)", 0)
-    N = stats.get('major_stats', {}).get("N (Number)", 0)
-    vu = (L + N) / 5.0
-    uax_word = 0; uax_sent = 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
-    
-    c1 = r_cell("LEXICAL MASS", "UNITS", f"{vu:.1f}", color_neutral(vu),
-                "WORDS", str(uax_word), color_neutral(uax_word),
-                d1="Normalized text mass.", k1="CALC", v1="(L+N)/5.0", rk1="REF", rv1="Heuristic",
-                d2="Linguistic word count.", k2="CALC", v2="Intl.Segmenter", rk2="STD", rv2="UAX #29")
-
-    seg_est = vu / 20.0
-    c2 = r_cell("SEGMENTATION", "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
-                "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-                d1="Structural units estimate.", k1="CALC", v1="VU / 20.0", rk1="REF", rv1="1 Block=20VU",
-                d2="Linguistic sentence count.", k2="CALC", v2="Intl.Segmenter", rk2="STD", rv2="UAX #29")
-
-    std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
-    non_std_inv = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    c3 = r_cell("WHITESPACE", "ASCII WS", str(std_inv), color_neutral(std_inv),
-                "NON-STD", str(non_std_inv), color_clean(non_std_inv),
-                d1="Basic layout characters.", k1="CLASS", v1="Layout", rk1="REF", rv1="ASCII",
-                d2="Invisible characters.", k2="LOGIC", v2="ZWSP + Tags", rk2="RISK", rv2="Obfuscation",
-                reg_key_2="ws_nonstd")
-
-    cnt_p_ascii = 0; cnt_p_exotic = 0; cnt_p_comfort = 0
-    for c in t:
-        if unicodedata.category(c).startswith('P'):
-            cp = ord(c)
-            if cp <= 0x7F: cnt_p_ascii += 1
-            elif (0xA0 <= cp <= 0xFF) or (0x2000 <= cp <= 0x206F): cnt_p_comfort += 1
-            else: cnt_p_exotic += 1
-    
-    c4_label = "TYPOGRAPHIC" if cnt_p_comfort > 0 else "ASCII PUNC"
-    c4_val = cnt_p_ascii + cnt_p_comfort
-    c4 = r_cell("DELIMITERS", c4_label, str(c4_val), color_neutral(c4_val),
-                "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
-                d1="Standard Punctuation.", k1="SCOPE", v1="ASCII+Common", rk1="CLASS", rv1="Punctuation",
-                d2="Rare/Script Punctuation.", k2="SCOPE", v2="Exotic", rk2="RISK", rv2="Spoofing",
-                reg_key_2="punc_exotic")
-
-    s_ext = emoji_counts.get("text_symbols_extended", 0)
-    s_exo = emoji_counts.get("text_symbols_exotic", 0)
-    c5_label = "KEYBOARD" if s_ext == 0 and s_exo == 0 else "EXTENDED"
-    c5 = r_cell("SYMBOLS", c5_label, str(s_ext), color_neutral(s_ext),
-                "EXOTIC", str(s_exo), color_clean(s_exo),
-                d1="Technical symbols.", k1="CLASS", v1="Symbol", rk1="REF", rv1="Non-Emoji",
-                d2="Rare symbols.", k2="SCOPE", v2="Exotic", rk2="RISK", rv2="Unknown",
-                reg_key_2="sym_exotic")
-
-    h_pict = emoji_counts.get("hybrid_pictographs", 0)
-    h_amb = emoji_counts.get("hybrid_ambiguous", 0)
-    c6 = r_cell("HYBRIDS", "PICTOGRAPH", str(h_pict), color_neutral(h_pict),
-                "AMBIGUOUS", str(h_amb), color_clean(h_amb),
-                d1="Atomic Emoji.", k1="KIND", v1="Atomic", rk1="CLASS", rv1="Emoji",
-                d2="Text-Default Emoji.", k2="CHECK", v2="Emoji_Pres=No", rk2="RISK", rv2="Rendering",
-                reg_key_2="emoji_hybrid")
-
-    rgi = emoji_counts.get("rgi_total", 0)
-    irr = emoji_counts.get("emoji_irregular", 0)
-    c7 = r_cell("EMOJI", "RGI SEQS", str(rgi), color_neutral(rgi),
-                "IRREGULAR", str(irr), color_clean(irr),
-                d1="Valid Sequences.", k1="STD", v1="UTS #51", rk1="REF", rv1="RGI",
-                d2="Broken Sequences.", k2="LOGIC", v2="Flags", rk2="RISK", rv2="Render Failure",
-                reg_key_2="emoji_irregular")
-
-    # --- ASSEMBLY ---
+    # --- ASSEMBLY (Updated Calculation) ---
     row1 = f'<div class="hud-grid-row-1">{c0}{c1}{c2}{c3}{c4}{c5}{c6}{c7}</div>'
     
-    rows = ""
-    rows += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}))
-    rows += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}))
-    rows += r_ledger_row("THREAT", "threat", master_ledgers.get("threat",{}))
-    rows += r_ledger_row("ANOMALY", "anomaly", master_ledgers.get("anomaly",{}))
+    # Helper to calculate aggregate hits from the global registry
+    def calc_agg(prefixes):
+        if is_initial: return 0
+        total = 0
+        for p in prefixes:
+            total += len(HUD_HIT_REGISTRY.get(p, []))
+        return total
 
+    # 1. Integrity Count (Aggregates Fatal, Fracture, Risk, Decay)
+    cnt_int = calc_agg(["int_fatal", "int_fracture", "int_risk", "int_decay"])
+    
+    # 2. Authenticity Count (Aggregates Spoofing, IDNA, Mixed Scripts)
+    cnt_auth = calc_agg(["auth_spoof", "auth_mixed", "auth_idna", "auth_norm"])
+    
+    # 3. Threat Count (Aggregates Execution, Injection, Obfuscation)
+    cnt_thr = calc_agg(["thr_execution", "thr_spoofing", "thr_obfuscation", "thr_suspicious"])
+    
+    # 4. Anomaly Count (Aggregates Entropy, Zalgo)
+    cnt_ano = calc_agg(["phys_entropy", "phys_zalgo", "phys_weird"])
+
+    # Build the Rows
+    rows = ""
+    rows += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}), cnt_int, "integrity_agg")
+    rows += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}), cnt_auth, "authenticity_agg")
+    rows += r_ledger_row("THREAT", "threat", master_ledgers.get("threat",{}), cnt_thr, "threat_agg")
+    rows += r_ledger_row("ANOMALY", "anomaly", master_ledgers.get("anomaly",{}), cnt_ano, "anomaly_agg")
+
+    # Inject
     container.innerHTML = row1 + rows
 
 # ===============================================
@@ -13484,17 +13443,26 @@ def cycle_hud_metric(metric_key, current_dom_pos):
 
     # 3. Resolve targets (With Deduplication)
     raw_targets = []
+    
+    # --- Aggregation Logic for Hero Rows ---
     if metric_key == "integrity_agg":
-        raw_targets = (HUD_HIT_REGISTRY.get("int_fatal", []) +
-                       HUD_HIT_REGISTRY.get("int_fracture", []) +
-                       HUD_HIT_REGISTRY.get("int_risk", []) +
-                       HUD_HIT_REGISTRY.get("int_decay", []))
+        for k in ["int_fatal", "int_fracture", "int_risk", "int_decay"]:
+            raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
+            
     elif metric_key == "threat_agg":
-        raw_targets = (HUD_HIT_REGISTRY.get("thr_execution", []) +
-                       HUD_HIT_REGISTRY.get("thr_spoofing", []) +
-                       HUD_HIT_REGISTRY.get("thr_obfuscation", []) +
-                       HUD_HIT_REGISTRY.get("thr_suspicious", []))
+        for k in ["thr_execution", "thr_spoofing", "thr_obfuscation", "thr_suspicious"]:
+            raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
+            
+    elif metric_key == "authenticity_agg":
+        for k in ["auth_spoof", "auth_mixed", "auth_idna", "auth_norm"]:
+            raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
+            
+    elif metric_key == "anomaly_agg":
+        for k in ["phys_entropy", "phys_zalgo", "phys_weird"]:
+            raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
+            
     else:
+        # Standard single-metric lookup
         raw_targets = HUD_HIT_REGISTRY.get(metric_key, [])
 
     if not raw_targets: return
