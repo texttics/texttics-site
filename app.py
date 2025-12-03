@@ -12522,10 +12522,6 @@ def render_forensic_hud(t, stats):
 
     container.innerHTML = row1_html + rows_html
 
-# --- ALIAS TO PREVENT STARTUP CRASH ---
-render_forensic_hud_v2 = render_forensic_hud
-render_forensic_hud = render_forensic_hud_v2
-
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
 # ===============================================
@@ -13041,6 +13037,8 @@ def update_all(event=None):
     
     threat_results['flags'] = final_threat_flags
     render_threat_analysis(threat_results, text_context=t)
+
+    render_forensic_hud(t, stats_package)
     
     # [NEW] Render Adversarial Dashboard 
     render_adversarial_dashboard(threat_results.get('adversarial', {}))
@@ -13074,10 +13072,8 @@ def update_all(event=None):
         "drift": skel_metrics.get("total_drift", 0),
         "master_ledgers": master_ledgers
     }
-    
-    render_forensic_hud_v2(t, hud_stats)
 
-    # --- NEW: Render Encoding Strip ---
+    # --- Render Encoding Strip ---
     render_encoding_footprint(t)
     
     # Stage 2 Bridge
