@@ -12260,9 +12260,8 @@ def render_adversarial_dashboard(adv_data: dict):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Unified Forensic HUD (The Hybrid).
-    Logic: Uses the 'Old' robust counting logic (C0-C7).
-    Layout: Uses the 'New' V3 structure (Grid Top + Hero Bottom).
+    Unified Forensic HUD (V3 Final - Fixed Titles).
+    Restores correct Scientific Category Titles (e.g., 'ALPHANUMERIC' instead of 'LITERALS').
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -12273,7 +12272,7 @@ def render_forensic_hud(t, stats):
     master_ledgers = stats.get("master_ledgers", {})
     is_initial = (len(t) == 0)
 
-    # --- ICONS (For Hero Rows) ---
+    # --- ICONS ---
     VERDICT_ICONS = {
         "integrity": ('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path>'),
         "authenticity": ('<path d="M2 10c0-4 4-6 9-6s9 2 9 6"></path><path d="M12 2c0 3-2 6-2 9"></path><path d="M19 10c0 4-3 7-7 7"></path><path d="M7 15C4 15 2 12 2 10"></path><circle cx="15.5" cy="9.5" r="1.5"></circle><circle cx="8.5" cy="9.5" r="1.5"></circle>'),
@@ -12284,13 +12283,12 @@ def render_forensic_hud(t, stats):
         return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{VERDICT_ICONS.get(key, "")}</svg>'
     def esc(s): return s.replace('"', '&quot;')
 
-    # --- INTERACTION HELPER (From Old Code) ---
+    # --- INTERACTION HELPER ---
     def get_interaction(val, key, severity="warn"):
         try:
             if float(val) <= 0: return "", ""
         except: return "", ""
         
-        # Check global registry
         if key in HUD_HIT_REGISTRY and HUD_HIT_REGISTRY[key]:
             cls = " hud-interactive"
             if severity == "crit": cls += " hud-interactive-crit"
@@ -12299,20 +12297,20 @@ def render_forensic_hud(t, stats):
             return cls, attr
         return "", ""
 
-    # --- CELL BUILDER (Split Data) ---
-    def render_cell(label_1, val_1, class_1, label_2, val_2, class_2,
-               d1="", k1="", v1="", rk1="", rv1="", # Primary Meta (Def, Key, Val, RefKey, RefVal)
+    # --- CELL BUILDER ---
+    def r_cell(sci_title, label_1, val_1, class_1, label_2, val_2, class_2,
+               d1="", k1="", v1="", rk1="", rv1="", # Primary Meta
                d2="", k2="", v2="", rk2="", rv2="", # Secondary Meta
                reg_key_2=None, risk_2="warn"):
         
         int_cls, int_attr = get_interaction(val_2, reg_key_2, risk_2) if reg_key_2 else ("", "")
 
-        # [FIX] We pass Keys (k1) and Values (v1) separately
         data_attrs = f'data-l1="{esc(label_1)}" data-d1="{esc(d1)}" data-k1="{esc(k1)}" data-v1="{esc(v1)}" data-rk1="{esc(rk1)}" data-rv1="{esc(rv1)}"' \
                      f' data-l2="{esc(label_2)}" data-d2="{esc(d2)}" data-k2="{esc(k2)}" data-v2="{esc(v2)}" data-rk2="{esc(rk2)}" data-rv2="{esc(rv2)}"'
 
         return f"""
         <div class="hud-col" {data_attrs}>
+            <div class="hud-row-sci">{sci_title}</div>
             <div class="hud-metric-group">
                 <div class="hud-label">{label_1}</div>
                 <div class="hud-val {class_1}">{val_1}</div>
@@ -12325,7 +12323,7 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- HERO ROW RENDERER (Split Data) ---
+    # --- HERO ROW RENDERER ---
     def r_ledger_row(title, type_key, data):
         if is_initial:
             sev, score, verdict, items = "neutral", 0, "WAITING", []
@@ -12340,7 +12338,6 @@ def render_forensic_hud(t, stats):
             t_id = target_ids.get(type_key)
             click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
-        # [FIX] Defined Split Metadata
         meta = {
             "integrity":    {"d": "Measures physical health.", "k": "LOGIC", "v": "Base + Density", "rk": "STD", "rv": "Unicode Core Spec"},
             "authenticity": {"d": "Verifies identity.",        "k": "LOGIC", "v": "Skeleton Drift", "rk": "STD", "rv": "UTS #39"},
@@ -12374,19 +12371,11 @@ def render_forensic_hud(t, stats):
         </div>
         """
 
-    # --- COLOR LOGIC (Old Code) ---
+    # --- COLOR LOGIC ---
     def color_neutral(val): return "txt-muted" if float(val) == 0 else "txt-normal"
     def color_clean(val): return "txt-clean" if float(val) == 0 else "txt-warn"
-
-    # --- 0. PRE-CALC ---
-    uax_word = 0
-    uax_sent = 0
-    try:
-        c = window.TEXTTICS_CALC_UAX_COUNTS(t)
-        if c[0] != -1: uax_word, uax_sent = c[0], c[1]
-    except: pass
     
-    # --- MATH & ASSEMBLY (Explicit Keys) ---
+    # --- MATH & ASSEMBLY ---
     alpha_chars = sum(1 for c in t if c.isalnum())
     alpha_runs = 0; in_run = False
     for c in t:
@@ -12394,38 +12383,39 @@ def render_forensic_hud(t, stats):
             if not in_run: alpha_runs += 1; in_run = True
         else: in_run = False
         
-    # [FIX] Explicit k1="LOGIC", v1="Count(Alnum)"
-    c0 = render_cell("LITERALS", "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
-                     "RUNS", str(alpha_runs), color_neutral(alpha_runs),
-                     d1="Count of Unicode alphanumeric characters.", k1="LOGIC", v1="Count(Alnum)", rk1="REF", rv1="Unicode L+N",
-                     d2="Contiguous runs of alphanumeric characters.", k2="LOGIC", v2="Count(Runs)", rk2="REF", rv2="Pattern Alnum+")
+    # [FIXED] Scientific Titles Restored
+    c0 = r_cell("ALPHANUMERIC", "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
+                "RUNS", str(alpha_runs), color_neutral(alpha_runs),
+                d1="Count of Unicode alphanumeric characters.", k1="LOGIC", v1="Count(Alnum)", rk1="REF", rv1="Unicode L+N",
+                d2="Contiguous runs of alphanumeric characters.", k2="LOGIC", v2="Count(Runs)", rk2="REF", rv2="Pattern Alnum+")
 
     L = stats.get('major_stats', {}).get("L (Letter)", 0)
     N = stats.get('major_stats', {}).get("N (Number)", 0)
     vu = (L + N) / 5.0
+    uax_word = 0; uax_sent = 0
     try:
         c = window.TEXTTICS_CALC_UAX_COUNTS(t)
         if c[0] != -1: uax_word, uax_sent = c[0], c[1]
     except: pass
     
-    c1 = render_cell("UNITS", "UNITS", f"{vu:.1f}", color_neutral(vu),
-                     "WORDS", str(uax_word), color_neutral(uax_word),
-                     d1="Normalized text mass.", k1="CALC", v1="(L+N)/5.0", rk1="REF", rv1="Heuristic",
-                     d2="Linguistic word count.", k2="CALC", v2="Intl.Segmenter", rk2="STD", rv2="UAX #29")
+    c1 = r_cell("LEXICAL MASS", "UNITS", f"{vu:.1f}", color_neutral(vu),
+                "WORDS", str(uax_word), color_neutral(uax_word),
+                d1="Normalized text mass.", k1="CALC", v1="(L+N)/5.0", rk1="REF", rv1="Heuristic",
+                d2="Linguistic word count.", k2="CALC", v2="Intl.Segmenter", rk2="STD", rv2="UAX #29")
 
     seg_est = vu / 20.0
-    c2 = render_cell("BLOCKS", "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
-                     "SENTENCES", str(uax_sent), color_neutral(uax_sent),
-                     d1="Structural units estimate.", k1="CALC", v1="VU / 20.0", rk1="REF", rv1="1 Block=20VU",
-                     d2="Linguistic sentence count.", k2="CALC", v2="Intl.Segmenter", rk2="STD", rv2="UAX #29")
+    c2 = r_cell("SEGMENTATION", "BLOCKS", f"{seg_est:.2f}", color_neutral(seg_est),
+                "SENTENCES", str(uax_sent), color_neutral(uax_sent),
+                d1="Structural units estimate.", k1="CALC", v1="VU / 20.0", rk1="REF", rv1="1 Block=20VU",
+                d2="Linguistic sentence count.", k2="CALC", v2="Intl.Segmenter", rk2="STD", rv2="UAX #29")
 
     std_inv = sum(1 for c in t if ord(c) in {0x20, 0x09, 0x0A, 0x0D})
     non_std_inv = stats.get('forensic_flags', {}).get("Flag: Any Invisible or Default-Ignorable (Union)", {}).get("count", 0)
-    c3 = render_cell("WS", "ASCII WS", str(std_inv), color_neutral(std_inv),
-                     "NON-STD", str(non_std_inv), color_clean(non_std_inv),
-                     d1="Basic layout characters.", k1="CLASS", v1="Layout", rk1="REF", rv1="ASCII",
-                     d2="Invisible characters.", k2="LOGIC", v2="ZWSP + Tags", rk2="RISK", rv2="Obfuscation",
-                     reg_key_2="ws_nonstd")
+    c3 = r_cell("WHITESPACE", "ASCII WS", str(std_inv), color_neutral(std_inv),
+                "NON-STD", str(non_std_inv), color_clean(non_std_inv),
+                d1="Basic layout characters.", k1="CLASS", v1="Layout", rk1="REF", rv1="ASCII",
+                d2="Invisible characters.", k2="LOGIC", v2="ZWSP + Tags", rk2="RISK", rv2="Obfuscation",
+                reg_key_2="ws_nonstd")
 
     cnt_p_ascii = 0; cnt_p_exotic = 0; cnt_p_comfort = 0
     for c in t:
@@ -12437,36 +12427,36 @@ def render_forensic_hud(t, stats):
     
     c4_label = "TYPOGRAPHIC" if cnt_p_comfort > 0 else "ASCII PUNC"
     c4_val = cnt_p_ascii + cnt_p_comfort
-    c4 = render_cell("PUNC", c4_label, str(c4_val), color_neutral(c4_val),
-                     "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
-                     d1="Standard Punctuation.", k1="SCOPE", v1="ASCII+Common", rk1="CLASS", rv1="Punctuation",
-                     d2="Rare/Script Punctuation.", k2="SCOPE", v2="Exotic", rk2="RISK", rv2="Spoofing",
-                     reg_key_2="punc_exotic")
+    c4 = r_cell("DELIMITERS", c4_label, str(c4_val), color_neutral(c4_val),
+                "EXOTIC", str(cnt_p_exotic), color_clean(cnt_p_exotic),
+                d1="Standard Punctuation.", k1="SCOPE", v1="ASCII+Common", rk1="CLASS", rv1="Punctuation",
+                d2="Rare/Script Punctuation.", k2="SCOPE", v2="Exotic", rk2="RISK", rv2="Spoofing",
+                reg_key_2="punc_exotic")
 
     s_ext = emoji_counts.get("text_symbols_extended", 0)
     s_exo = emoji_counts.get("text_symbols_exotic", 0)
     c5_label = "KEYBOARD" if s_ext == 0 and s_exo == 0 else "EXTENDED"
-    c5 = render_cell("SYM", c5_label, str(s_ext), color_neutral(s_ext),
-                     "EXOTIC", str(s_exo), color_clean(s_exo),
-                     d1="Technical symbols.", k1="CLASS", v1="Symbol", rk1="REF", rv1="Non-Emoji",
-                     d2="Rare symbols.", k2="SCOPE", v2="Exotic", rk2="RISK", rv2="Unknown",
-                     reg_key_2="sym_exotic")
+    c5 = r_cell("SYMBOLS", c5_label, str(s_ext), color_neutral(s_ext),
+                "EXOTIC", str(s_exo), color_clean(s_exo),
+                d1="Technical symbols.", k1="CLASS", v1="Symbol", rk1="REF", rv1="Non-Emoji",
+                d2="Rare symbols.", k2="SCOPE", v2="Exotic", rk2="RISK", rv2="Unknown",
+                reg_key_2="sym_exotic")
 
     h_pict = emoji_counts.get("hybrid_pictographs", 0)
     h_amb = emoji_counts.get("hybrid_ambiguous", 0)
-    c6 = render_cell("HYBRID", "PICTOGRAPH", str(h_pict), color_neutral(h_pict),
-                     "AMBIGUOUS", str(h_amb), color_clean(h_amb),
-                     d1="Atomic Emoji.", k1="KIND", v1="Atomic", rk1="CLASS", rv1="Emoji",
-                     d2="Text-Default Emoji.", k2="CHECK", v2="Emoji_Pres=No", rk2="RISK", rv2="Rendering",
-                     reg_key_2="emoji_hybrid")
+    c6 = r_cell("HYBRIDS", "PICTOGRAPH", str(h_pict), color_neutral(h_pict),
+                "AMBIGUOUS", str(h_amb), color_clean(h_amb),
+                d1="Atomic Emoji.", k1="KIND", v1="Atomic", rk1="CLASS", rv1="Emoji",
+                d2="Text-Default Emoji.", k2="CHECK", v2="Emoji_Pres=No", rk2="RISK", rv2="Rendering",
+                reg_key_2="emoji_hybrid")
 
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
-    c7 = render_cell("EMOJI", "RGI SEQS", str(rgi), color_neutral(rgi),
-                     "IRREGULAR", str(irr), color_clean(irr),
-                     d1="Valid Sequences.", k1="STD", v1="UTS #51", rk1="REF", rv1="RGI",
-                     d2="Broken Sequences.", k2="LOGIC", v2="Flags", rk2="RISK", rv2="Render Failure",
-                     reg_key_2="emoji_irregular")
+    c7 = r_cell("EMOJI", "RGI SEQS", str(rgi), color_neutral(rgi),
+                "IRREGULAR", str(irr), color_clean(irr),
+                d1="Valid Sequences.", k1="STD", v1="UTS #51", rk1="REF", rv1="RGI",
+                d2="Broken Sequences.", k2="LOGIC", v2="Flags", rk2="RISK", rv2="Render Failure",
+                reg_key_2="emoji_irregular")
 
     # --- ASSEMBLY ---
     row1 = f'<div class="hud-grid-row-1">{c0}{c1}{c2}{c3}{c4}{c5}{c6}{c7}</div>'
