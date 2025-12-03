@@ -13044,7 +13044,7 @@ def update_all(event=None):
     render_threat_analysis(threat_results, text_context=t)
 
     stats_package = {
-        "emoji_counts": emoji_results,
+        "emoji_counts": emoji_report,
         "major_stats": major_stats,
         "forensic_flags": integrity_results.get("flags", {}),
         "master_ledgers": master_ledgers,
