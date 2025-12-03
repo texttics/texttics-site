@@ -13044,9 +13044,9 @@ def update_all(event=None):
     render_threat_analysis(threat_results, text_context=t)
 
     stats_package = {
-        "emoji_counts": emoji_report,
-        "major_stats": major_stats,
-        "forensic_flags": integrity_results.get("flags", {}),
+        "emoji_counts": emoji_report, 
+        "major_stats": major_counts,  # Changed from 'major_stats' to 'major_counts'
+        "forensic_flags": integrity_report.get("flags", {}), # Changed 'integrity_results' to 'integrity_report'
         "master_ledgers": master_ledgers,
         # Convenience keys for direct access
         "integrity": master_ledgers.get("integrity", {}),
