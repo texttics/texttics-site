@@ -10244,18 +10244,31 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     
     # ---------------------------------------------------------
-    # 3. FINAL ASSEMBLY (Layout & Variable Definitions)
+    # 3. FINAL ASSEMBLY (FIXED LAYOUT)
     # ---------------------------------------------------------
     
-    # Define Description HTML (Missing Variable)
+    # [FIX] Define Description HTML (Fixes NameError)
     desc_html = """
         <div class="atlas-desc">
             A definitive legend of all invisible, control, and format characters detected in the input. 
-            Click <strong>LOCATE</strong> to find/locate specific instances.
+            Click <strong>LOCATE</strong> to find specific instances.
         </div>
     """
 
-    # Table Block with FIXED WIDTHS to prevent layout collapse
+    # [FIX] Re-Assemble Summary Ribbon
+    # Ensure this variable exists in scope (it comes from the loop above)
+    summary_html = f"""
+        <div class="atlas-summary-bar">
+            <div class="atlas-sum-metric main">
+                <span class="sum-label">TOTAL</span>
+                <span class="sum-val">{total_inv}</span>
+            </div>
+            {''.join(summary_parts)}
+        </div>
+    """
+
+    # [FIX] Table Block with PIXEL WIDTHS (Fixes Header Smash)
+    # Replaced '1%' with '80px' to prevent collision
     table_block = f"""
         <table class="atlas-table">
             <thead>
@@ -10275,7 +10288,6 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     """
     
     # Assemble the Container
-    # We use the CSS class .atlas-content for the wrapper styling
     table_html = f"""
         <div class="atlas-content">
             {desc_html}
