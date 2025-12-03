@@ -1987,3 +1987,22 @@ Center Counter (Signals): The raw Physics Count. How many anomalies exist? (e.g.
 Left Score (Risk/Deviation): The Policy Verdict. Does this matter? (e.g., "Score: 0 (Benign)" if the clusters are small).
 
 Interactive Navigation: Clicking the Signal Count triggers the Forensic Stepper, instantly scrolling to and highlighting specific anomalies in the text.
+C. The "Zalgo Gradient" Taxonomy
+We moved beyond binary "Zalgo Detection" to a 3-Tier Forensic Taxonomy. The tool now forensically distinguishes intent based on stack density:
+
+Tier 1: Dense Cluster (3–5 marks): Flagged as Amber. Likely complex linguistics (e.g., Vietnamese, IPA) or mild typos.
+
+Tier 2: Heavy Stack (6–15 marks): Flagged as Amber/Red. Intentional visual modification.
+
+Tier 3: Zalgo Overload (16+ marks): Flagged as Red. Active Rendering Denial-of-Service (DoS) risk.
+
+D. The Quad-Ledger Finalization
+You can now formally document the "3+1" Risk Architecture as complete.
+
+Integrity: Rot/Corruption (Shield).
+
+Authenticity: Identity/Spoofing (ID Card).
+
+Threat: Weaponization/Malice (Target).
+
+Anomaly: Physics/Deviation (Scatter Plot). Note: Explicitly distinct from "Health".
