@@ -12300,7 +12300,7 @@ def render_forensic_hud(t, stats):
         return "", ""
 
     # --- CELL BUILDER (Split Data) ---
-    def r_cell(label_1, val_1, class_1, label_2, val_2, class_2,
+    def render_cell(label_1, val_1, class_1, label_2, val_2, class_2,
                d1="", k1="", v1="", rk1="", rv1="", # Primary Meta (Def, Key, Val, RefKey, RefVal)
                d2="", k2="", v2="", rk2="", rv2="", # Secondary Meta
                reg_key_2=None, risk_2="warn"):
