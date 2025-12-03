@@ -5882,3 +5882,40 @@ details.profile-section > summary:hover::marker {
     width: 100%;
     margin-top: 8px;
 }
+
+/* =========================================
+   HUD STEPPER STATUS (The Left Pillar)
+   ========================================= */
+
+/* [FIX] increased specificity (.status-details.status-hud-active) 
+   to override the default .status-details hidden state defined later in the file */
+.status-details.status-hud-active {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    margin-left: 12px;
+    
+    /* The "Pill" Look */
+    background-color: #fffbeb; /* Amber-50 */
+    border: 1px solid #fcd34d; /* Amber-200 */
+    border-radius: 9999px;
+    
+    /* Typography */
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #b45309; /* Amber-700 */
+    
+    /* Animation & Visibility Force */
+    animation: fadeIn 0.2s ease-out;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    
+    /* CRITICAL: Override the default hidden state */
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.status-details.status-hud-active svg {
+    color: #b45309;
+}
