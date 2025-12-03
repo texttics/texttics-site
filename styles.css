@@ -5960,3 +5960,76 @@ details.profile-section > summary:hover::marker {
 .atlas-btn:hover {
   background: #4f46e5; color: #ffffff; border-color: #4338ca;
 }
+
+/* --- ATLAS UPDATE: Forensic Properties Column --- */
+
+/* 1. New Props Column Layout */
+.props-col {
+  padding: 4px 12px;
+  vertical-align: middle;
+}
+
+.props-flex {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* Right-aligned properties */
+  gap: 6px;
+}
+
+/* 2. Property Badges (The "Micro-Chips") */
+.prop-badge {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: help; /* Indicates tooltip availability */
+  white-space: nowrap;
+}
+
+/* 3. Property Colors */
+/* Zero Width (Neutral/Technical) */
+.prop-zero {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+}
+
+/* Wide/Narrow (Info) */
+.prop-wide {
+  background-color: #f0f9ff;
+  color: #0369a1;
+  border-color: #bae6fd;
+}
+
+/* NFKC Modifications (Warning/Crit) */
+.prop-warn {
+  background-color: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+.prop-crit {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+.prop-info {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+/* Default Ignorable (Ghost) */
+.prop-ghost {
+  background-color: #f3e8ff; /* Purple tint */
+  color: #7e22ce;
+  border-color: #d8b4fe;
+}
+
+/* 4. Update Button Sizing for Alignment */
+.atlas-btn {
+  height: 20px; /* Slightly smaller to fit with badges */
+  font-size: 0.6rem;
+  margin-left: 4px;
+}
