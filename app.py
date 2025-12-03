@@ -6934,29 +6934,53 @@ def compute_authenticity_score(inputs, threat_ledger, stage1_5_data):
     }
 
 def compute_anomaly_score(stats):
+    """
+    Calculates the Anomaly (Physics) Score.
+    Patched to enforce ADR-008: Zalgo is always a Hazard.
+    """
     score = 0
-    verdict = "NORMAL"
-    
+    vectors = []
+
     # 1. Physics: Entropy (The "Dust")
-    # High entropy is only "Normal" if it's not extreme.
-    if stats.get('entropy', 0) > 6.5: 
-        score += 15 # Mild penalty for compression/encryption
-        
+    entropy = stats.get('entropy', 0.0)
+    if entropy > 6.5:
+        score += 15
+        vectors.append(f"High Entropy ({entropy})")
+
     # 2. Physics: Zalgo (The "Hazard")
     # FIX: Zalgo always carries a penalty (Rendering Risk)
     zalgo_data = stats.get('zalgo', {})
-    if zalgo_data.get('count', 0) > 0:
-        # Base penalty + density penalty
-        # Ensure 7 clusters results in at least ~30-40 points (Warn)
-        score += 20 + (zalgo_data['count'] * 5)
-        
-    # Verdict Calibration
-    if score == 0: verdict = "NORMAL"
-    elif score < 40: verdict = "DEVIANT"
-    elif score < 70: verdict = "UNSTABLE" # Zalgo usually lands here
-    else: verdict = "ANOMALOUS"
+    z_count = zalgo_data.get('count', 0)
 
-    return {"score": min(100, score), "verdict": verdict, ...}
+    if z_count > 0:
+        # Base penalty (20) + density penalty (5 per cluster)
+        # Example: 7 clusters = 20 + 35 = 55 points (UNSTABLE / Warn)
+        z_pen = 20 + (z_count * 5)
+        score += z_pen
+        vectors.append(f"Zalgo Clusters (x{z_count})")
+
+    # Verdict Calibration
+    verdict = "NORMAL"
+    severity_class = "ok"
+
+    if score > 0:
+        if score < 40:
+            verdict = "DEVIANT"
+            severity_class = "warn" # Amber
+        elif score < 70:
+            verdict = "UNSTABLE"
+            severity_class = "warn" # Amber (Orange in HUD)
+        else:
+            verdict = "ANOMALOUS"
+            severity_class = "crit" # Red
+
+    return {
+        "score": min(100, score),
+        "verdict": verdict,
+        "severity_class": severity_class,
+        "val": entropy,
+        "vectors": vectors
+    }
 
 def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
     """
