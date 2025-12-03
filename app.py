@@ -12317,19 +12317,43 @@ def render_forensic_hud(t, stats):
     master_ledgers = stats.get("master_ledgers", {})
     is_initial = (len(t) == 0)
 
-    # --- ICONS (V4: Intuitive & Distinct) ---
+    # --- ICONS (V5: Clear & Non-Confusable) ---
     VERDICT_ICONS = {
         # Integrity (Shield + Checkmark - Unchanged)
-        "integrity": ('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path>'),
-        
-        # Authenticity (Fingerprint Scan - Clear Identity Link)
-        "authenticity": ('<path d="M12 3a9 9 0 0 0-9 9v2a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-2a9 9 0 0 0-9-9z"></path><path d="M12 17a3 3 0 0 1-3-3"></path><path d="M15 14a3 3 0 0 0-3-3"></path><line x1="12" y1="8" x2="12" y2="8.01"></line>'),
-        
-        # Threat (Crosshair - Removed inner solid dot)
-        "threat": ('<circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line>'),
-        
-        # Anomaly (Scatter Plot & Trendline - Distinct from Health)
-        "anomaly": ('<circle cx="5" cy="18" r="1.5"></circle><circle cx="11" cy="13" r="1.5"></circle><circle cx="16" cy="16" r="1.5"></circle><circle cx="19" cy="7" r="1.5"></circle><line x1="3" y1="20" x2="21" y2="5" stroke-width="1.5" stroke-dasharray="3 3"></line>')
+        "integrity": (
+            '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>'
+            '<path d="M9 12l2 2 4-4"></path>'
+        ),
+
+        # Authenticity (ID Card + Checkmark)
+        # Metaphor: Verified Identity / Profile
+        "authenticity": (
+            '<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>'
+            '<circle cx="9" cy="11" r="2"></circle>'
+            '<path d="M6.5 16a3.5 3.5 0 0 1 5 0"></path>'
+            '<path d="M14 15l2 2 3-4"></path>'
+        ),
+
+        # Threat (Crosshair - Open Sight)
+        # Metaphor: Target / Weaponization (Cleaner look)
+        "threat": (
+            '<circle cx="12" cy="12" r="9"></circle>'
+            '<line x1="12" y1="3" x2="12" y2="6"></line>'
+            '<line x1="12" y1="18" x2="12" y2="21"></line>'
+            '<line x1="3" y1="12" x2="6" y2="12"></line>'
+            '<line x1="18" y1="12" x2="21" y2="12"></line>'
+        ),
+
+        # Anomaly (Histogram + Outlier)
+        # Metaphor: Statistical Deviation (Distinct from Health)
+        "anomaly": (
+            '<path d="M3 19h18"></path>'              # Baseline
+            '<path d="M7 19v-3"></path>'              # Normal bar
+            '<path d="M12 19v-8"></path>'             # Spike bar
+            '<path d="M17 19v-5"></path>'             # Normal bar
+            '<circle cx="12" cy="6" r="1.5"></circle>' # Outlier dot
+            '<path d="M12 11v-3"></path>'             # Connector line
+        )
     }
     def get_svg(key):
         return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{VERDICT_ICONS.get(key, "")}</svg>'
