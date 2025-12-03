@@ -5987,3 +5987,22 @@ details.profile-section > summary:hover::marker {
 .hud-detail-right {
     flex: 1;
 }
+
+/* Force the center column to stack vertically */
+.hud-detail-center {
+    display: flex;
+    flex-direction: column;       /* <--- CRITICAL: Stacks items top-to-bottom */
+    align-items: center;          /* Centers them horizontally */
+    justify-content: center;      /* Centers them vertically */
+    min-width: 60px;              /* Ensures stable width */
+    padding: 0 12px;
+    line-height: 1;               /* Tightens vertical spacing */
+}
+
+/* Ensure the counter number is big and block-like */
+.interactive-count {
+    display: inline-block;
+    font-size: 1.5rem;            /* Adjust size as needed */
+    font-weight: 700;
+    margin-top: 2px;              /* Small gap between Label and Number */
+}
