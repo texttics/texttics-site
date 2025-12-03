@@ -12754,17 +12754,44 @@ def update_all(event=None):
     logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
 
     # Zalgo & Anomaly Wiring
-    grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
-    nsm_stats = analyze_nsm_overload(grapheme_strings)
+    # 1. Generate Graphemes ONCE (Optimized for reuse in Stage 2 Bridge)
+    try:
+        segments_iterable = GRAPHEME_SEGMENTER.segment(t)
+        grapheme_list = [seg.segment for seg in window.Array.from_(segments_iterable)]
+    except:
+        # Fallback if Intl.Segmenter fails/missing
+        grapheme_list = list(t)
+
+    # 2. Analyze Zalgo (Physics Engine)
+    nsm_stats = analyze_nsm_overload(grapheme_list)
     
-    # Zalgo / Noise Checks
-    grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
-    nsm_stats = analyze_nsm_overload(grapheme_strings)
+    # 3. Register Zalgo Hits for HUD Stepper ("phys_zalgo")
+    if nsm_stats["count"] > 0:
+        for pos_str in nsm_stats.get("positions", []):
+            try:
+                # Robust parsing handles both ints and "#123" strings
+                idx = int(str(pos_str).replace("#", ""))
+                _register_hit("phys_zalgo", idx, idx + 1, "Excessive Combining Marks (Zalgo)")
+            except: pass
+
+    # 4. Register Entropy Hits for HUD Stepper ("phys_entropy")
+    # If entropy is high (>6.0), flag the whole text range to activate the counter
+    try:
+        entropy_val = float(stat_profile.get("entropy", 0))
+        if entropy_val > 6.0:
+            _register_hit("phys_entropy", 0, len(t), f"High Entropy ({entropy_val:.2f})")
+    except: pass
+
+    # 5. Inject Zalgo into Stat Profile for the Auditor
+    # This is the "missing link" that turns the Anomaly row RED
+    stat_profile['zalgo'] = nsm_stats
+
+    # 6. Build Noise List for Threat Score
     noise_list = []
     if nsm_stats["level"] >= 1: noise_list.append("Excessive Combining Marks (Zalgo)")
     if threat_results.get("skel_metrics", {}).get("drift_ascii", 0) > 0: 
         noise_list.append("ASCII Normalization Drift")
-
+        
     # Build Inputs for Threat Auditor
     score_inputs = {
         "waf_score": threat_results.get("waf_score", 0),
