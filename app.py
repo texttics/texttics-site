@@ -12334,7 +12334,6 @@ def render_forensic_hud(t, stats):
             verdict = data.get("verdict", "INTACT")
             items = data.get("ledger", []) if "ledger" in data else data.get("vectors", [])
             
-            # Map type_key to the specific details container ID
             target_ids = {
                 "integrity": "integrity-matrix-body", 
                 "threat": "threat-report-body", 
@@ -12342,19 +12341,16 @@ def render_forensic_hud(t, stats):
                 "anomaly": "statistical-profile-body"
             }
             t_id = target_ids.get(type_key)
-            # The main row click jumps to the details section (scrolls down)
             click_attr = f'onclick="window.hud_jump_to_details(\'{t_id}\')"' if t_id else ""
 
         # --- Interactive Counter Logic ---
-        # If hits exist, make it clickable with event.stopPropagation() to prevent scrolling
         counter_html = '<span class="interactive-count">-</span>'
         if hit_count > 0:
             risk_cls = " crit" if sev in ("crit", "high", "danger") else ""
-            counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')" title="Cycle through {hit_count} findings">{hit_count}</span>'
+            counter_html = f'<span class="interactive-count active{risk_cls}" onclick="event.stopPropagation(); window.hud_jump(\'{agg_key}\')" title="Cycle through {hit_count} unique positions">{hit_count}</span>'
         elif not is_initial:
              counter_html = '<span class="interactive-count">0</span>'
 
-        # Forensic Console Metadata
         meta = {
             "integrity":    {"d": "Measures physical health.", "k": "LOGIC", "v": "Base + Density", "rk": "STD", "rv": "Unicode Core Spec"},
             "authenticity": {"d": "Verifies identity.",        "k": "LOGIC", "v": "Skeleton Drift", "rk": "STD", "rv": "UTS #39"},
@@ -12368,11 +12364,9 @@ def render_forensic_hud(t, stats):
 
         icon = get_svg(type_key)
         
-        # Chips Rendering
         if is_initial: chips = '<span class="hud-chip chip-dim">System Ready</span>'
         elif not items: chips = '<span class="hud-chip chip-dim">No active signals.</span>'
         else:
-            # Render first 5 items as chips
             c_list = [f'<span class="hud-chip chip-{sev}">{i["vector"] if isinstance(i, dict) else i}</span>' for i in items[:5]]
             chips = "".join(c_list)
 
@@ -12386,11 +12380,9 @@ def render_forensic_hud(t, stats):
                     <div class="h-score text-{sev}">Score: {score}</div>
                 </div>
             </div>
-            
             <div class="hud-detail-center">
                 {counter_html}
             </div>
-
             <div class="hud-detail-right">{chips}</div>
         </div>
         """
@@ -12482,37 +12474,43 @@ def render_forensic_hud(t, stats):
                 d2="Broken Sequences.", k2="LOGIC", v2="Flags", rk2="RISK", rv2="Render Failure",
                 reg_key_2="emoji_irregular")
 
-    # --- ASSEMBLY (Updated Calculation) ---
+    # --- ASSEMBLY (With Deduplication & Mapping Fixes) ---
     row1 = f'<div class="hud-grid-row-1">{c0}{c1}{c2}{c3}{c4}{c5}{c6}{c7}</div>'
     
-    # Helper to calculate aggregate hits from the global registry
+    # Helper: Calculates UNIQUE hits (Deduplication Logic)
     def calc_agg(prefixes):
         if is_initial: return 0
-        total = 0
+        raw_hits = []
         for p in prefixes:
-            total += len(HUD_HIT_REGISTRY.get(p, []))
-        return total
+            raw_hits.extend(HUD_HIT_REGISTRY.get(p, []))
+        
+        # [FIX] Deduplicate by start index to match Stepper logic exactly
+        seen_starts = set()
+        unique_count = 0
+        for hit in raw_hits:
+            if hit[0] not in seen_starts:
+                seen_starts.add(hit[0])
+                unique_count += 1
+        return unique_count
 
-    # 1. Integrity Count (Aggregates Fatal, Fracture, Risk, Decay)
+    # 1. Integrity: Fatal, Fracture, Risk, Decay
     cnt_int = calc_agg(["int_fatal", "int_fracture", "int_risk", "int_decay"])
     
-    # 2. Authenticity Count (Aggregates Spoofing, IDNA, Mixed Scripts)
-    cnt_auth = calc_agg(["auth_spoof", "auth_mixed", "auth_idna", "auth_norm"])
+    # 2. Authenticity: [FIX] Added 'thr_spoofing' and 'thr_suspicious' to capture Homoglyphs/MixedScripts
+    cnt_auth = calc_agg(["auth_spoof", "auth_mixed", "auth_idna", "thr_spoofing", "thr_suspicious"])
     
-    # 3. Threat Count (Aggregates Execution, Injection, Obfuscation)
-    cnt_thr = calc_agg(["thr_execution", "thr_spoofing", "thr_obfuscation", "thr_suspicious"])
+    # 3. Threat: [FIX] Removed 'thr_spoofing'/'thr_suspicious' to prevent double-counting with Authenticity
+    cnt_thr = calc_agg(["thr_execution", "thr_obfuscation"])
     
-    # 4. Anomaly Count (Aggregates Entropy, Zalgo)
+    # 4. Anomaly: Entropy, Zalgo
     cnt_ano = calc_agg(["phys_entropy", "phys_zalgo", "phys_weird"])
 
-    # Build the Rows
     rows = ""
     rows += r_ledger_row("INTEGRITY", "integrity", master_ledgers.get("integrity",{}), cnt_int, "integrity_agg")
     rows += r_ledger_row("AUTHENTICITY", "authenticity", master_ledgers.get("authenticity",{}), cnt_auth, "authenticity_agg")
     rows += r_ledger_row("THREAT", "threat", master_ledgers.get("threat",{}), cnt_thr, "threat_agg")
     rows += r_ledger_row("ANOMALY", "anomaly", master_ledgers.get("anomaly",{}), cnt_ano, "anomaly_agg")
 
-    # Inject
     container.innerHTML = row1 + rows
 
 # ===============================================
