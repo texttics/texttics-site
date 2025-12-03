@@ -6934,51 +6934,36 @@ def compute_authenticity_score(inputs, threat_ledger, stage1_5_data):
     }
 
 def compute_anomaly_score(stats):
-    """
-    The Anomaly Auditor (Complexity / Physics).
-    Analyzes Entropy, Zalgo, and Structural Weirdness.
-    """
     score = 0
-    vectors = []
-    
-    # 1. Entropy (Physics)
-    entropy = stats.get('shannon_entropy', 0.0)
-    # 6.5 bits/char is the standard threshold for "non-natural"
-    if entropy > 6.5:
-        score += 40
-        vectors.append(f"High Entropy ({entropy:.2f})")
-    elif entropy > 5.8:
-        score += 20
-        vectors.append(f"Elevated Entropy ({entropy:.2f})")
-        
-    # 2. Zalgo (Structure)
-    zalgo = stats.get('avg_marks_per_grapheme', 0.0)
-    if zalgo > 2.0:
-        score += 30
-        vectors.append(f"High Mark Density ({zalgo:.2f})")
-        
-    # 3. Rare Blocks / Weirdness (Optional inputs if available)
-    # (Future expansion: check block diversity)
-
     verdict = "NORMAL"
-    severity = "ok"
-    if score >= 40: verdict, severity = "ANOMALOUS", "crit"
-    elif score >= 20: verdict, severity = "COMPLEX", "warn"
     
-    return {
-        "score": score,
-        "verdict": verdict,
-        "severity_class": severity,
-        "vectors": vectors,
-        "val": entropy
-    }
+    # 1. Physics: Entropy (The "Dust")
+    # High entropy is only "Normal" if it's not extreme.
+    if stats.get('entropy', 0) > 6.5: 
+        score += 15 # Mild penalty for compression/encryption
+        
+    # 2. Physics: Zalgo (The "Hazard")
+    # FIX: Zalgo always carries a penalty (Rendering Risk)
+    zalgo_data = stats.get('zalgo', {})
+    if zalgo_data.get('count', 0) > 0:
+        # Base penalty + density penalty
+        # Ensure 7 clusters results in at least ~30-40 points (Warn)
+        score += 20 + (zalgo_data['count'] * 5)
+        
+    # Verdict Calibration
+    if score == 0: verdict = "NORMAL"
+    elif score < 40: verdict = "DEVIANT"
+    elif score < 70: verdict = "UNSTABLE" # Zalgo usually lands here
+    else: verdict = "ANOMALOUS"
+
+    return {"score": min(100, score), "verdict": verdict, ...}
 
 def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
     """
-    The Master Auditor (V2 - Expanded Data).
-    Now passes full ledgers to the HUD for the 'Sprawl' layout.
+    The Master Auditor (V2.1 - Hardened).
+    Aggregates Integrity, Threat, Authenticity, and Anomaly ledgers.
     """
-    # 1. INTEGRITY
+    # 1. INTEGRITY (The Rot)
     integrity = compute_integrity_score(inputs)
     
     decode_status = "OK"
@@ -6987,22 +6972,29 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
     elif inputs.get("surrogate", 0) > 0:
         decode_status = "WARNING"
     
-    # 2. THREAT
+    # 2. THREAT (The Malice)
     targets = stage1_5_data.get("targets", [])
     peak_score = 0
     if targets:
         peak_score = max(t["score"] for t in targets)
 
-    # 3. AUTHENTICITY
+    # 3. AUTHENTICITY (The Identity)
+    # Fallback logic to find the ledger in nested structures
     t_ledger = threat_output.get("ledger", []) 
     if not t_ledger:
         t_ledger = threat_output.get("flags", {}).get("Threat Level (Heuristic)", {}).get("ledger", [])
 
     auth = compute_authenticity_score(inputs, t_ledger, stage1_5_data)
     
-    # 4. ANOMALY
+    # 4. ANOMALY (The Physics)
+    # [DEPENDENCY]: Requires patched compute_anomaly_score that penalizes Zalgo
     anomaly = compute_anomaly_score(stats_inputs)
     
+    # [SAFETY] Ensure severity class exists
+    anom_sev = anomaly.get("severity_class")
+    if not anom_sev:
+        anom_sev = "warn" if anomaly["score"] > 0 else "ok"
+
     return {
         "integrity": {
             "verdict": integrity["verdict"],
@@ -7030,9 +7022,10 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
         "anomaly": {
             "verdict": anomaly["verdict"],
             "score": anomaly["score"],
-            "severity": anomaly["severity_class"],
-            "entropy": anomaly["val"],
-            "vectors": anomaly["vectors"]
+            "severity": anom_sev,
+            # [FIX] Source truth from stats_inputs to avoid KeyError
+            "entropy": stats_inputs.get("entropy", 0.0),
+            "vectors": anomaly.get("vectors", [])
         }
     }
 
