@@ -12399,8 +12399,8 @@ def render_forensic_hud(t, stats):
                 </div>
             </div>
             <div class="hud-detail-center" title="Physics Measurement (Raw Count)">
+                <div style="font-size:0.6rem; color:#94a3b8; margin-bottom:-2px; font-weight:600; letter-spacing:0.5px;">SIGNALS</div>
                 {counter_html}
-                <div style="font-size:0.6rem; color:#94a3b8; margin-top:-2px; font-weight:600; letter-spacing:0.5px;">SIGNALS</div>
             </div>
             <div class="hud-detail-right">{chips}</div>
         </div>
