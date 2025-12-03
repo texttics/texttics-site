@@ -12774,19 +12774,11 @@ def update_all(event=None):
                 _register_hit("phys_zalgo", idx, idx + 1, "Excessive Combining Marks (Zalgo)")
             except: pass
 
-    # 4. Register Entropy Hits for HUD Stepper ("phys_entropy")
-    # If entropy is high (>6.0), flag the whole text range to activate the counter
-    try:
-        entropy_val = float(stat_profile.get("entropy", 0))
-        if entropy_val > 6.0:
-            _register_hit("phys_entropy", 0, len(t), f"High Entropy ({entropy_val:.2f})")
-    except: pass
-
-    # 5. Inject Zalgo into Stat Profile for the Auditor
+    # 4. Inject Zalgo into Stat Profile for the Auditor
     # This is the "missing link" that turns the Anomaly row RED
     stat_profile['zalgo'] = nsm_stats
 
-    # 6. Build Noise List for Threat Score
+    # 5. Build Noise List for Threat Score
     noise_list = []
     if nsm_stats["level"] >= 1: noise_list.append("Excessive Combining Marks (Zalgo)")
     if threat_results.get("skel_metrics", {}).get("drift_ascii", 0) > 0: 
