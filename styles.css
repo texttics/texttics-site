@@ -5895,12 +5895,12 @@ details.profile-section > summary:hover::marker {
 /* Individual Metric Block */
 .atlas-sum-metric {
   display: flex;
-  flex-direction: column; /* Stack Label on top of Value */
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 8px 24px; /* Generous horizontal spacing */
+  /* CHANGED: Reduced padding and removed min-width to prevent bloat */
+  padding: 6px 16px; 
   border-right: 1px solid #e2e8f0;
-  min-width: 90px;
   height: 50px;
 }
 
