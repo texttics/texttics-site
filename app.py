@@ -2610,7 +2610,7 @@ def _generate_uts39_skeleton_metrics(t: str):
         cp = ord(char)
         val = confusables_map.get(cp)
         
-        # [FIX] Handle Tuples
+        # Handle Tuples
         skeleton_char_str = None
         if val:
             if isinstance(val, tuple):
@@ -5797,7 +5797,7 @@ def analyze_adversarial_tokens(t: str):
     if not t: return {"tokens": [], "collisions": [], "stats": {}}
 
     # --- 1. Forensic Tokenization (Greedy / Whitespace-Based) ---
-    # [FIX] Replaced Regex with Manual Loop to eliminate "invalid escape sequence" errors.
+    # Replaced Regex with Manual Loop to eliminate "invalid escape sequence" errors.
     # This splits purely on Unicode Whitespace while preserving all internal characters
     # (including invisible joiners/format controls) as a single token.
     
@@ -5950,7 +5950,7 @@ def analyze_signal_processor_state(data):
     # Check the global set we loaded from JSON
     is_ascii_confusable = (cp in ASCII_CONFUSABLES)
     
-    # [FIX] Cross-Script requires the source to NOT be Common/Inherited.
+    # Cross-Script requires the source to NOT be Common/Inherited.
     # Em Dash (Common) -> Hyphen (Common) is NOT a cross-script threat.
     is_common_script = script in ("Common", "Inherited")
     is_cross_script_confusable = raw_confusable and not is_ascii and not is_common_script
@@ -6036,7 +6036,7 @@ def analyze_signal_processor_state(data):
         reasons.append("Confusable Identity")
         
     elif is_ascii_confusable or (raw_confusable and is_common_script): 
-        # [FIX] Common/Inherited confusions (like Em Dash) fall here (Note/Blue), not Warn/Orange
+        # Common/Inherited confusions (like Em Dash) fall here (Note/Blue), not Warn/Orange
         current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
         ident_state = "NOTE"
         ident_class = "risk-info"
@@ -7047,7 +7047,7 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
             "verdict": anomaly["verdict"],
             "score": anomaly["score"],
             "severity": anom_sev,
-            # [FIX] Source truth from stats_inputs to avoid KeyError
+            # Source truth from stats_inputs to avoid KeyError
             "entropy": stats_inputs.get("entropy", 0.0),
             "vectors": anomaly.get("vectors", [])
         }
@@ -8358,7 +8358,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 if cp == 0xFEFF and i > 0: health_issues["bom_mid"].append(i)
                 if (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD):
                     health_issues["pua"].append(i)
-                # [FIX] Specific FDD0 Tracking
+                # Specific FDD0 Tracking
                 if 0xFDD0 <= cp <= 0xFDEF: 
                     health_issues["fdd0"].append(i)
                     health_issues["nonchar"].append(i) # Also count as general nonchar
@@ -8589,7 +8589,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
-    # [FIX] Distinct FDD0 Row
+    # Distinct FDD0 Row
     add_row("CRITICAL: Process-Internal Nonchar (FDD0)", len(health_issues["fdd0"]), health_issues["fdd0"], "crit")
     
     # Filter generic nonchars to exclude FDD0 (avoid double reporting)
@@ -8956,7 +8956,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                     'positions': ["(See Provenance Profile for details)"]
                 }
                 script_mix_class = "Mixed Scripts (Base)"
-                # [FIX] Do not flag Index 0. Let the specific foreign chars speak for themselves.
+                # Do not flag Index 0. Let the specific foreign chars speak for themselves.
                 # _register_hit("thr_suspicious", 0, 1, "Mixed Scripts")
                 
             # 2. Extension Mix
@@ -9825,7 +9825,7 @@ def render_integrity_matrix(rows, text_context=None):
     INTEGRITY_KEY = "Integrity Level (Heuristic)"
     DECODE_KEY = "Decode Health Grade"
     
-    # [FIX] Sorting Logic: Pin Decode Health (000) and Integrity Level (001) to top
+    # Sorting Logic: Pin Decode Health (000) and Integrity Level (001) to top
     def sort_key(r):
         lbl = r["label"]
         if lbl == DECODE_KEY: return "000"
@@ -10131,28 +10131,28 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     processed_rows = []
     category_agg = collections.Counter()
     
-    # [FIX] Explicit C0/C1 Control Names
+    # Explicit C0/C1 Control Names
     C0_CONTROL_NAMES = {
         0x00: "NULL", 0x09: "CHARACTER TABULATION", 0x0A: "LINE FEED (LF)", 
         0x0B: "LINE TABULATION", 0x0C: "FORM FEED (FF)", 0x0D: "CARRIAGE RETURN (CR)", 
         0x1B: "ESCAPE", 0x1F: "UNIT SEPARATOR", 0x85: "NEXT LINE (NEL)"
     }
 
-    # [FIX] Specific Bidi Mnemonics
+    # Specific Bidi Mnemonics
     BIDI_TAG_MAP = {
         0x202E: "[RLO]", 0x202D: "[LRO]", 0x202B: "[RLE]", 0x202A: "[LRE]",
         0x202C: "[PDF]", 0x2066: "[LRI]", 0x2067: "[RLI]", 0x2068: "[FSI]",
         0x2069: "[PDI]", 0x061C: "[ALM]", 0x200E: "[LRM]", 0x200F: "[RLM]"
     }
 
-    # [FIX] Expanded Default Ignorable Set (Heuristic coverage of Unicode Prop)
+    # Expanded Default Ignorable Set (Heuristic coverage of Unicode Prop)
     # Includes: ZWSP, ZWJ/ZWNJ, CGJ, MVS, Tags, VS, Hangul Fillers, Deprecated Format
     DEFAULT_IGNORABLE_SET = {
         0x00AD, 0x034F, 0x180E, 0x200B, 0x200C, 0x200D, 0x2060, 0x2061, 0x2062, 0x2063,
         0x2064, 0x2065, 0x3164, 0xFEFF, 0xFFA0, 0xFFF9, 0xFFFA, 0xFFFB
     }
 
-    # [FIX] Forensic Tiering v3.0
+    # Forensic Tiering v3.0
     # TIER 0: Standard Typography (Low Risk)
     TIER_0_TYPO = {0x00A0, 0x00AD} # NBSP, SHY
     # TIER 1: Layout & Whitespace (Structural)
@@ -10371,20 +10371,20 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         </div>
     """
 
-    # [FIX] 9-Column Forensic Layout
+    # 9-Column Forensic Layout
     table_block = f"""
         <table class="atlas-table">
             <thead>
                 <tr>
-                    <th style="width: 70px; text-align: center;">Symbol</th>
-                    <th style="width: 70px;">Code</th>
-                    <th>Name</th>
-                    <th style="width: 110px;">Legality</th>
-                    <th style="width: 110px;">Physics</th>
-                    <th style="width: 100px;">Stability</th>
-                    <th style="width: 60px; text-align: center;">Policy</th>
-                    <th style="width: 50px; text-align: center;">Count</th>
-                    <th style="width: 70px; text-align: right;">Action</th>
+                    <th style="text-align: center;">Symbol</th>
+                    <th style="text-align: center;">Code</th>
+                    <th style="text-align: center;">Name</th>
+                    <th style="text-align: center;">Legality</th>
+                    <th style="text-align: center;">Physics</th>
+                    <th style="text-align: center;">Stability</th>
+                    <th style="text-align: center;">Policy</th>
+                    <th style="text-align: center;">Count</th>
+                    <th style="text-align: center;">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -13220,7 +13220,7 @@ def update_all(event=None):
             _register_hit("thr_suspicious", idx, idx+1, "Forced Presentation")
         except: pass
 
-    # [FIX] Calculate Unique Invisible Count for Atlas TOC
+    # Calculate Unique Invisible Count for Atlas TOC
     unique_invis_set = set()
     for char in t:
         if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
@@ -13815,17 +13815,17 @@ def cycle_hud_metric(metric_key, current_dom_pos):
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
     elif metric_key == "threat_agg":
-        # [FIX] STRICT SCOPE: Only Execution/Obfuscation. Matches Hero Count (47).
+        # STRICT SCOPE: Only Execution/Obfuscation. Matches Hero Count (47).
         for k in ["thr_execution", "thr_obfuscation"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
     elif metric_key == "authenticity_agg":
-        # [FIX] NEW AGGREGATOR: Spoofing/Mixed Scripts. Matches Hero Count (43).
+        # NEW AGGREGATOR: Spoofing/Mixed Scripts. Matches Hero Count (43).
         for k in ["auth_spoof", "auth_mixed", "auth_idna", "thr_spoofing", "thr_suspicious"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
     elif metric_key == "anomaly_agg":
-        # [FIX] NEW AGGREGATOR: Physics/Entropy.
+        # NEW AGGREGATOR: Physics/Entropy.
         for k in ["phys_entropy", "phys_zalgo", "phys_weird"]:
             raw_targets.extend(HUD_HIT_REGISTRY.get(k, []))
             
