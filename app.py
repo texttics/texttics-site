@@ -12810,6 +12810,10 @@ def update_all(event=None):
     # Helper for extracting flags
     def get_flag_count(label): return forensic_map.get(label, {}).get("count", 0)
     current_flags = threat_results.get('flags', {})
+
+    # Derived Metric (RESTORED)
+    norm_inj_count = sum(1 for k in current_flags if "Normalization-Activated" in k)
+    logic_bypass_count = sum(1 for k in current_flags if "Case Mapping" in k or "Bypass Vector" in k)
     
     # Zalgo & Anomaly Wiring
     # 1. Generate Graphemes ONCE (Optimized for reuse in Stage 2 Bridge)
