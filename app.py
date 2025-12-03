@@ -10632,23 +10632,6 @@ def render_statistical_profile(stats):
         )
         return f'<tr {attr_str} onmouseenter="window.updateStatConsole(this)" onmouseleave="window.updateStatConsole(null)"><th scope="row">{label}</th><td colspan="2" style="padding-top:12px; padding-bottom:12px;">{visual}{meta}</td></tr>'
 
-    # --- HELPER: Micro-Card Builder ---
-    def micro_card(label, val, sub_text="", alert=False):
-        border_col = "#e2e8f0"
-        bg_col = "#f8fafc"
-        val_col = "#0f172a"
-        if alert:
-            border_col = "#fed7aa"
-            bg_col = "#fff7ed"
-            val_col = "#9a3412"
-            
-        return f"""
-        <div style="flex:1; background:{bg_col}; border:1px solid {border_col}; border-radius:4px; padding:4px 8px; min-width:0;">
-            <div style="font-size:0.6rem; color:#64748b; font-weight:700; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{label}</div>
-            <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:{val_col}; margin-top:1px;">{val}</div>
-            <div style="font-size:0.6rem; color:#94a3b8; margin-top:1px;">{sub_text}</div>
-        </div>
-        """
 
     # --- HELPER: Micro-Card Builder ---
     def micro_card(label, val, sub_text="&nbsp;", alert=False):
