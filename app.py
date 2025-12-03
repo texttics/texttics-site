@@ -12260,9 +12260,8 @@ def render_adversarial_dashboard(adv_data: dict):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Unified Forensic HUD Renderer (V3 - Clean Metadata Edition).
-    Handles both 'Default/Waiting' and 'Active' states.
-    Restores V25 metadata purity (No hardcoded 'Calc:'/'Ref:' prefixes).
+    Unified Forensic HUD Renderer (V3 - Fixed Labels).
+    Matches the 'Old but Gold' label logic with V3 architecture.
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -12310,7 +12309,9 @@ def render_forensic_hud(t, stats):
              int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
              int_cls = " hud-interactive"
         
-        # [FIX] RAW METADATA PASS-THROUGH (No added "Calc:" or "Ref:")
+        # [FIX] NO AUTOMATIC PREFIXES HERE. 
+        # We pass the raw string so we can manually add "Logic:", "Std:", etc. below.
+        
         data_attrs = f'data-l1="{esc(label_1)}"' \
                      f' data-d1="{esc(d1)}"' \
                      f' data-m1="{esc(m1)}"' \
@@ -12336,7 +12337,6 @@ def render_forensic_hud(t, stats):
 
     # --- LEDGER ROW RENDERER (Hero Rows) ---
     def r_ledger_row(title, type_key, data):
-        # 1. Initial State Logic
         if is_initial:
             sev, score, verdict, items = "neutral", 0, "WAITING", []
             click_attr, title_attr = "", "Waiting for input..."
@@ -12356,7 +12356,7 @@ def render_forensic_hud(t, stats):
             elif type_key in ["authenticity", "anomaly"]:
                 items = data.get("vectors", [])
 
-        # 2. Metadata Definitions (Explicit Labels Included Here Only)
+        # Metadata Definitions
         meta = {
             "integrity": {
                 "d1": "Measures physical health. Penalties for corruption (FFFD), broken encoding, and binary injection.",
@@ -12393,7 +12393,7 @@ def render_forensic_hud(t, stats):
         }
         m = meta.get(type_key, {})
         
-        # Inject Metadata (Note: m1/r1 here already contain "Logic:", so we don't add "Calc:")
+        # [FIX] Pass metadata directly, no formatting needed here as 'm' dict has the labels
         data_attrs = f'data-l1="{esc(title)} STATUS"' \
                      f' data-d1="{esc(m.get("d1",""))}"' \
                      f' data-m1="{esc(m.get("m1",""))}"' \
@@ -12405,7 +12405,6 @@ def render_forensic_hud(t, stats):
 
         icon_svg = get_svg(type_key)
         
-        # Chip Rendering
         if is_initial: chips_html = '<span class="hud-chip chip-dim">System Ready</span>'
         elif not items: chips_html = '<span class="hud-chip chip-dim">No active signals.</span>'
         else:
@@ -12466,44 +12465,44 @@ def render_forensic_hud(t, stats):
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
 
-    # RAW STRINGS PASSED HERE - Matches V25 behavior
+    # [FIX] MANUALLY ADD LABELS HERE (Logic:, Calc:, Ref:, Std:)
     row1_html = f"""
     <div class="hud-grid-row-1">
         {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs),
-                d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Count(Alnum)", r1="Base: Unicode L+N",
-                d2="Contiguous runs of alphanumeric characters.", m2="Count(Runs)", r2="Pattern: Alnum+")}
+                d1="Count of Unicode alphanumeric characters (letters + numbers).", m1="Logic: Count(Alnum)", r1="Base: Unicode L+N",
+                d2="Contiguous runs of alphanumeric characters.", m2="Logic: Count(Runs)", r2="Pattern: Alnum+")}
         
         {r_cell("UNITS", f"{vu:.1f}", c_neut(vu), "BLOCKS", f"{vu/20:.1f}", c_neut(vu),
-                d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="(L+N) / 5.0", r1="Heuristic: 5 chars/word",
-                d2="Structural units derived directly from Lexical Mass.", m2="VU / 20.0", r2="Def: 1 Block = 20 VU")}
+                d1="Normalized text mass in word-equivalents (Volumetric Units).", m1="Calc: (L+N) / 5.0", r1="Heuristic: 5 chars/word",
+                d2="Structural units derived directly from Lexical Mass.", m2="Calc: VU / 20.0", r2="Def: 1 Block = 20 VU")}
         
         {r_cell("SENTENCES", uax_sent, c_neut(uax_sent), "AVG LEN", f"{len(t)/max(1,uax_sent):.0f}", c_neut(uax_sent),
-                d1="Linguistic sentence count via UAX #29 segmentation.", m1="Intl.Segmenter", r1="Std: UAX #29",
-                d2="Average characters per sentence.", m2="Total / Sentences", r2="Complexity")}
+                d1="Linguistic sentence count via UAX #29 segmentation.", m1="Calc: Intl.Segmenter", r1="Std: UAX #29",
+                d2="Average characters per sentence.", m2="Calc: Total / Sentences", r2="Scope: Complexity")}
         
         {r_cell("ASCII WS", std_inv, c_neut(std_inv), "NON-STD", non_std, c_safe(non_std), 
-                d1="Basic layout characters: Space, Tab, CR, LF.", m1="Count(ASCII WS)", r1="Layout",
-                d2="Default-ignorable or invisible formatting characters.", m2="ZWSP + Tags + Bidi", r2="Obfuscation Risk",
+                d1="Basic layout characters: Space, Tab, CR, LF.", m1="Logic: Count(ASCII WS)", r1="Class: Layout",
+                d2="Default-ignorable or invisible formatting characters.", m2="Logic: ZWSP + Tags + Bidi", r2="Risk: Obfuscation",
                 reg_key="ws_nonstd")}
         
         {r_cell(c4_label, c4_val, c_neut(c4_val), "EXOTIC", cnt_p_exotic, c_safe(cnt_p_exotic),
-                d1="Standard ASCII + Common Typography (Smart Quotes, Dashes).", m1="Scope: ASCII+Common", r1="Punctuation",
-                d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Count(P) - Safe", r2="Scope: Exotic",
+                d1="Standard ASCII + Common Typography (Smart Quotes, Dashes).", m1="Scope: ASCII+Common", r1="Class: Punctuation",
+                d2="Rare, Fullwidth, or Script-Specific punctuation.", m2="Scope: Exotic", r2="Class: Punctuation",
                 reg_key="punc_exotic")}
         
         {r_cell(c5_label, s_ext, c_neut(s_ext), "EXOTIC", s_exo, c_safe(s_exo),
-                d1="Technical symbols (Math, Currency, Latin-1) excluding Emoji.", m1="Cluster Kind = TEXT_SYMBOL", r1="Class: Non-Emoji",
-                d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Scope: Exotic",
+                d1="Technical symbols (Math, Currency, Latin-1) excluding Emoji.", m1="Class: TEXT_SYMBOL", r1="Exclude: Emoji",
+                d2="Rare marks, dingbats, or unclassified symbols.", m2="Scope: Exotic", r2="Risk: Unknown",
                 reg_key="sym_exotic")}
         
         {r_cell("PICTOGRAPH", h_pict, c_neut(h_pict), "AMBIGUOUS", h_amb, c_safe(h_amb),
-                d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind=EMOJI_ATOMIC", r1="Class: Atom",
-                d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Emoji_Pres=No", r2="Risk: Rendering",
+                d1="Atomic characters with Emoji property (e.g. Checkmarks, Hearts).", m1="Kind: EMOJI_ATOMIC", r1="Class: Atom",
+                d2="Hybrids that default to text presentation (emoji style only with VS16).", m2="Check: Emoji_Pres=No", r2="Risk: Rendering",
                 reg_key="emoji_hybrid")}
         
         {r_cell("RGI SEQS", rgi, c_neut(rgi), "IRREGULAR", irr, c_safe(irr),
-                d1="Valid Recommended-for-General-Interchange sequences.", m1="UTS #51 Count", r1="Std: UTS #51",
-                d2="Unqualified, broken, or orphaned component artifacts.", m2="Sum(Flags)", r2="Render Risk",
+                d1="Valid Recommended-for-General-Interchange sequences.", m1="Logic: UTS #51 Count", r1="Std: UTS #51",
+                d2="Unqualified, broken, or orphaned component artifacts.", m2="Logic: Sum(Flags)", r2="Risk: Render Failure",
                 reg_key="emoji_irregular")}
     </div>
     """
