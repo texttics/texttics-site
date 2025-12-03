@@ -12260,9 +12260,9 @@ def render_adversarial_dashboard(adv_data: dict):
 @create_proxy
 def render_forensic_hud(t, stats):
     """
-    Unified Forensic HUD Renderer (V3).
+    Unified Forensic HUD Renderer (V3 - Clean Metadata Edition).
     Handles both 'Default/Waiting' and 'Active' states.
-    Features: Fixed Metadata Labels ("Logic:", "Standard:") and Alignment.
+    Restores V25 metadata purity (No hardcoded 'Calc:'/'Ref:' prefixes).
     """
     container = document.getElementById("forensic-hud")
     if not container: return 
@@ -12281,9 +12281,7 @@ def render_forensic_hud(t, stats):
             msg = "Ready. Waiting for input..." if is_initial else f"Analysis complete. Length: {len(t)}"
             status_el.textContent = f"STATUS: {msg}"
             status_el.style.opacity = "1"
-            # Remove old classes to reset color
             status_el.classList.remove("status-loading", "status-ready", "status-revealed")
-            # Add new class based on state
             status_el.classList.add("status-loading" if is_initial else "status-ready")
     except: pass
 
@@ -12312,20 +12310,15 @@ def render_forensic_hud(t, stats):
              int_attr = f'onclick="window.hud_jump(\'{reg_key}\')"'
              int_cls = " hud-interactive"
         
-        # ADD LABELS TO METADATA
-        m1_fmt = f"Calc: {m1}" if m1 else ""
-        r1_fmt = f"Ref: {r1}" if r1 else ""
-        m2_fmt = f"Calc: {m2}" if m2 else ""
-        r2_fmt = f"Scope: {r2}" if r2 else ""
-
+        # [FIX] RAW METADATA PASS-THROUGH (No added "Calc:" or "Ref:")
         data_attrs = f'data-l1="{esc(label_1)}"' \
                      f' data-d1="{esc(d1)}"' \
-                     f' data-m1="{esc(m1_fmt)}"' \
-                     f' data-r1="{esc(r1_fmt)}"' \
+                     f' data-m1="{esc(m1)}"' \
+                     f' data-r1="{esc(r1)}"' \
                      f' data-l2="{esc(label_2)}"' \
                      f' data-d2="{esc(d2)}"' \
-                     f' data-m2="{esc(m2_fmt)}"' \
-                     f' data-r2="{esc(r2_fmt)}"'
+                     f' data-m2="{esc(m2)}"' \
+                     f' data-r2="{esc(r2)}"'
 
         return f"""
         <div class="hud-col" {data_attrs}>
@@ -12363,7 +12356,7 @@ def render_forensic_hud(t, stats):
             elif type_key in ["authenticity", "anomaly"]:
                 items = data.get("vectors", [])
 
-        # 2. Metadata Definitions (With Labels!)
+        # 2. Metadata Definitions (Explicit Labels Included Here Only)
         meta = {
             "integrity": {
                 "d1": "Measures physical health. Penalties for corruption (FFFD), broken encoding, and binary injection.",
@@ -12400,7 +12393,7 @@ def render_forensic_hud(t, stats):
         }
         m = meta.get(type_key, {})
         
-        # Inject Metadata
+        # Inject Metadata (Note: m1/r1 here already contain "Logic:", so we don't add "Calc:")
         data_attrs = f'data-l1="{esc(title)} STATUS"' \
                      f' data-d1="{esc(m.get("d1",""))}"' \
                      f' data-m1="{esc(m.get("m1",""))}"' \
@@ -12473,6 +12466,7 @@ def render_forensic_hud(t, stats):
     rgi = emoji_counts.get("rgi_total", 0)
     irr = emoji_counts.get("emoji_irregular", 0)
 
+    # RAW STRINGS PASSED HERE - Matches V25 behavior
     row1_html = f"""
     <div class="hud-grid-row-1">
         {r_cell("LITERALS", alpha, c_neut(alpha), "RUNS", runs, c_neut(runs),
