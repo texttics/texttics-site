@@ -6105,7 +6105,7 @@ details.profile-section > summary:hover::marker {
   font-size: 1.2rem;
   color: #64748b;
   overflow-x: auto; /* Safety scroll for small screens */
-  margin-right: 50px;
+  margin-right: 40px;
 }
 
 .legend-header {
@@ -6122,7 +6122,7 @@ details.profile-section > summary:hover::marker {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 .legend-key {
@@ -6132,7 +6132,7 @@ details.profile-section > summary:hover::marker {
   background: #e2e8f0;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 .legend-val {
