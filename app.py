@@ -10376,15 +10376,15 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         <table class="atlas-table">
             <thead>
                 <tr>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Symbol</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Code</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Name</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Legality</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Physics</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Stability</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Policy</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Count</th>
-                    <th style="white-space: nowrap; width: 1%; text-align: center;">Action</th>
+                    <th>>Symbol</th>
+                    <th>>Code</th>
+                    <th>>Name</th>
+                    <th>>Legality</th>
+                    <th>>Physics</th>
+                    <th>>Stability</th>
+                    <th>>Policy</th>
+                    <th>>Count</th>
+                    <th>>Action</th>
                 </tr>
             </thead>
             <tbody>
