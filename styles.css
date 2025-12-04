@@ -6096,11 +6096,15 @@ details.profile-section > summary:hover::marker {
 
 /* --- LEGEND BAR (Forensic Dimensions) --- */
 .atlas-legend-bar {
-  /* 1. Use inline-flex to shrink-wrap width AND align items in a row */
-  display: inline-flex; 
+  /* 1. Force items into a single line */
+  display: inline-flex !important;
   flex-direction: row;
   align-items: center;
-  width: fit-content;
+
+  /* 2. FORCE WIDTH TO CONTENT (Kills the right-side gap) */
+  width: -moz-fit-content !important;
+  width: fit-content !important;
+  max-width: 100%;
 
   /* 2. Spacing & sizing */
   gap: 8px; /* Space between the groups */
