@@ -5879,10 +5879,11 @@ details.profile-section > summary:hover::marker {
 }
 
 /* Ribbon Colors */
-.sum-val.crit { color: #dc2626; }
-.sum-val.warn { color: #d97706; }
-.sum-val.neutral { color: #7c3aed; } /* Purple for Ghosts */
-.sum-val.safe { color: #166534; }
+.sum-val.crit    { color: #dc2626; } /* Red */
+.sum-val.warn    { color: #d97706; } /* Amber */
+.sum-val.ghost   { color: #7c3aed; } /* Purple (New Forensic Tier) */
+.sum-val.neutral { color: #64748b; } /* Gray (Other) */
+.sum-val.safe    { color: #166534; } /* Green */
 
 /* 4. The Data Table (The Core Fix) */
 .atlas-table {
