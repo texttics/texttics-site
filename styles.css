@@ -6105,6 +6105,8 @@ details.profile-section > summary:hover::marker {
   font-size: 0.8rem;
   color: #64748b;
   overflow-x: auto; /* Safety scroll for small screens */
+  justify-content: flex-start;
+  display: inline-block;
 }
 
 .legend-header {
