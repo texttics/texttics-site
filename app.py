@@ -6100,13 +6100,13 @@ def analyze_trojan_context(token: str):
 def analyze_confusion_density(token, confusables=None):
     """
     Calculates the 'Confusion Density' of a token using UTS #39 data.
-    [HARDENED v1.3] 
-    - GOLDEN FIX: Removes all unpacking assignments (x, y = val).
-    - Uses explicit index access with bounds checking.
+    [HARDENED v1.4] 
+    - GOLDEN FIX: Removes unpacking assignments. Uses index access.
+    - Handles Strings, 2-Tuples, and 3-Tuples safely.
     """
     if not token: return None
     
-    # 1. Handle optional argument safely
+    # 1. Handle optional argument
     if confusables is None:
         confusables = DATA_STORES.get("Confusables", {})
         
@@ -6120,14 +6120,17 @@ def analyze_confusion_density(token, confusables=None):
             tag = "UNK" # Default tag
             
             # --- GOLDEN FIX: SCHEMA TOLERANCE ---
-            # Never use: tgt, tag = val (This crashes on schema drift)
+            # Old Code (CRASHES): tgt, tag = val
+            # New Code (SAFE): Check type, then index.
+            
             if isinstance(val, (tuple, list)):
                 # If tuple is ('target', 'MA', 'hex', 'comment'), val[1] is 'MA'
                 if len(val) >= 2: 
                     tag = val[1]
-                # If tuple is just ('target',) or len 1, tag remains UNK
+                # If tuple is just ('target',), tag remains "UNK"
+                
             elif isinstance(val, str):
-                # Legacy string format: "target". Tag remains UNK.
+                # Legacy string format: "target". Tag remains "UNK".
                 pass
             
             # 3. Weighted Scoring
@@ -6146,7 +6149,7 @@ def analyze_confusion_density(token, confusables=None):
     if density > 0:
         return {
             "density": density,
-            "risk": int(density * 50),
+            "risk": int(density * 50), # Scale to 0-50 risk points
             "desc": f"Confusable Density ({int(density*100)}%)"
         }
         
