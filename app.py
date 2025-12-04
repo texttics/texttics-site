@@ -996,7 +996,83 @@ class METADATA_POLICY:
         "eval(", "document.cookie", "base64"
     }
 
+# --- 1. UTS #39 RESTRICTION LEVELS (The "Security Clearance") ---
+# These integers represent the hierarchy of safety for mixed-script strings.
+# Used by: analyze_restriction_level()
+RESTRICTION_LEVELS = {
+    "ASCII": 0,            # Pure ASCII (a-z, 0-9). The baseline for protocols.
+    "SINGLE_SCRIPT": 1,    # Single Script + Common/Inherited (e.g., pure Cyrillic).
+    "HIGHLY_RESTRICTIVE": 2, # Latin + {Han, Hiragana, Katakana, Hangul} (Safe East Asian mix).
+    "MODERATELY_RESTRICTIVE": 3, # Latin + {Cyrillic, Greek, etc.} (Covered by script profile).
+    "MINIMALLY_RESTRICTIVE": 4, # Arbitrary mixes found in widespread use.
+    "UNRESTRICTIVE": 5     # Contains "Unknown" scripts or invalid mixes. High Risk.
+}
 
+# --- 2. VERIFICATION VERDICTS (The "Judgment") ---
+# Standardized enums for the Zero-Trust Comparator results.
+VERDICT_TYPES = {
+    "IDENTITY_MATCH": "IDENTITY_MATCH",           # Bitwise Equal
+    "NORMALIZATION_EQ": "NORMALIZATION_EQ",       # NFKC/Casefold Equal (Format Drift)
+    "VISUAL_CLONE": "VISUAL_CLONE",               # Skeleton Equal (Homoglyph Attack)
+    "TARGET_CONTAINED": "TARGET_CONTAINED",       # Trusted is a subset of Suspect (Hidden)
+    "PARTIAL_THREAT": "PARTIAL_OVERLAP_THREATS",  # Partial Match + Residual Risk
+    "VISUAL_OVERLAP": "VISUAL_OVERLAP",           # Benign Partial Match
+    "DISTINCT": "DISTINCT"                        # No Correlation
+}
+
+# --- 3. CONFUSABLE TAXONOMY (The "Spoof Class") ---
+# Used to classify the mechanism of a Homograph Attack (VP-09).
+CONFUSABLE_CLASS = {
+    "SINGLE_SCRIPT": "SINGLE_SCRIPT_SPOOF",       # e.g., '1' vs 'l' (Typosquatting)
+    "CROSS_SCRIPT": "CROSS_SCRIPT_SPOOF",         # e.g., Cyrillic 'a' vs Latin 'a'
+    "WHOLE_SCRIPT": "WHOLE_SCRIPT_SPOOF",         # Entire string is a different script
+    "NONE": "N/A"
+}
+
+# --- 4. UAX #31 IDENTIFIER PROFILES (The "Gatekeeper") ---
+# Deterministic Regex patterns to enforce Identifier Syntax.
+# We use "Negative Matching" (Forbidden Chars) to be lightweight and fast.
+
+# Profile A: STRICT ASCII (IETF / System Identifiers)
+# Allowed: a-z, A-Z, 0-9, underscore.
+# Forbidden: Everything else.
+REGEX_ID_ASCII_STRICT = re.compile(r"^\w+$", re.ASCII)
+
+# Profile B: GENERAL SECURITY PROFILE (UAX #31 Baseline)
+# This is a heuristic approximation of "ID_Start + ID_Continue".
+# Logic: Reject Punctuation (P), Symbols (S), Separators (Z), Control (C).
+# Exception: We allow Connector Punctuation (Pc) like underscore.
+REGEX_ID_GENERAL_SAFE = re.compile(r"^[^\s\p{C}\p{S}\p{P}]+$")
+
+# Profile C: DOMAIN LABEL (RFC 1035 + IDNA)
+# Allowed: Alphanumeric + Hyphen (strictly internal).
+# Rejects: Leading/Trailing hyphens, Symbols.
+REGEX_ID_DOMAIN_LABEL = re.compile(r"^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)$")
+
+# --- 5. RESIDUAL RISK MASKS (The "Cold Zone" Scanners) ---
+# Bitmasks used to scan the unmatched tails of verified strings.
+# Combines multiple flags from INVIS_TABLE for efficiency.
+MASK_RESIDUAL_RISK = (
+    INVIS_BIDI_CONTROL | 
+    INVIS_TAG | 
+    INVIS_ZERO_WIDTH_SPACING | 
+    INVIS_DEFAULT_IGNORABLE |
+    INVIS_JOIN_CONTROL
+)
+
+# --- 6. SCRIPT SAFETY TIERS (For Restriction Level Logic) ---
+# Defines which script combinations are "Authorized" for High Restriction levels.
+# Based on UTS #39 Identifier Profile guidelines.
+SAFE_SCRIPT_MIXES = {
+    # Latin is allowed to mix with these CJK scripts in "Highly Restrictive" profiles
+    "Latin": {"Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"}
+}
+
+# Scripts that are generally discouraged in identifiers (Limited Use)
+# Source: UAX #31 Table 7
+ASPIRATIONAL_SCRIPTS = {
+    "Canadian_Aboriginal", "Yi", "Mongolian", "Tifinagh", "Miao"
+}
 
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
@@ -4669,29 +4745,124 @@ def analyze_class_consistency(token: str):
         return {"desc": ", ".join(anomalies), "risk": 50}
     return None
 
-def analyze_restriction_level(token: str):
+def analyze_restriction_level(t: str) -> dict:
     """
-    [SCRIPT MIXING] UTS #39 Restriction Level Classifier.
-    """
-    scripts = set()
-    for char in token:
-        cp = ord(char)
-        sc = _find_in_ranges(cp, "Scripts")
-        if sc and sc not in ("Common", "Inherited", "Unknown"): scripts.add(sc)
-            
-    if not scripts:
-        if all(ord(c) < 128 for c in token): return "Highly Restrictive (ASCII)", 0
-        return "Single Script (Common)", 0
-    if len(scripts) == 1: return f"Single Script ({list(scripts)[0]})", 0
-        
-    s_list = sorted(list(scripts))
-    has_latin = "Latin" in scripts
-    has_cyr_greek = "Cyrillic" in scripts or "Greek" in scripts
+    [VP-08] UTS #39 Restriction Level Analyzer.
+    Determines the 'Script Mixing Class' of the input string.
     
-    if has_latin and has_cyr_greek:
-        return f"Minimally Restrictive ({', '.join(s_list)})", 90 # Critical
-        
-    return f"Mixed Scripts ({', '.join(s_list)})", 60 # Warning
+    Logic:
+    - Identifies all unique scripts (excluding Common/Inherited).
+    - Checks against SAFE_SCRIPT_MIXES whitelist.
+    - Classification: SINGLE_SCRIPT -> HIGHLY -> MODERATE -> MINIMAL.
+    
+    Returns:
+        dict: { "level": int, "label": str, "scripts": list, "score": int }
+    """
+    if not t: 
+        return {"level": RESTRICTION_LEVELS["ASCII"], "label": "EMPTY", "scripts": [], "score": 0}
+
+    # 1. Fast Path: ASCII
+    if t.isascii():
+        return {"level": RESTRICTION_LEVELS["ASCII"], "label": "ASCII", "scripts": ["Latin"], "score": 0}
+
+    # 2. Forensic Script Extraction
+    # We use a set to deduce the 'Major Scripts' present.
+    # Common (Numbers/Punctuation) and Inherited (Marks) are ignored 
+    # unless they are the *only* scripts present.
+    major_scripts = set()
+    all_scripts = set()
+    
+    for char in t:
+        # Assumes _get_char_script_id helper exists in Block 5
+        script = _get_char_script_id(char)
+        all_scripts.add(script)
+        if script not in ("Common", "Inherited", "Unknown"):
+            major_scripts.add(script)
+            
+    sorted_scripts = sorted(list(major_scripts))
+    script_count = len(sorted_scripts)
+
+    # 3. Restriction Logic (UTS #39 Section 5.2)
+
+    # Case A: Only Symbols/Numbers (e.g., "123.45")
+    if script_count == 0:
+        return {
+            "level": RESTRICTION_LEVELS["SINGLE_SCRIPT"],
+            "label": "SINGLE SCRIPT (Common)",
+            "scripts": sorted(list(all_scripts)), # Return Common/Inherited for context
+            "score": 0
+        }
+
+    # Case B: Single Script (e.g., "Сбербанк" - Pure Cyrillic)
+    if script_count == 1:
+        return {
+            "level": RESTRICTION_LEVELS["SINGLE_SCRIPT"],
+            "label": f"SINGLE SCRIPT ({sorted_scripts[0]})",
+            "scripts": sorted_scripts,
+            "score": 0
+        }
+
+    # Case C: Mixed Scripts (The Danger Zone)
+    # We must determine if the mix is "Authorized" (Highly Restrictive) or "Dangerous".
+    
+    # Check for Latin + Authorized East Asian Scripts (Jap/Kor/Chi)
+    # Ref: SAFE_SCRIPT_MIXES from Iteration 1
+    if "Latin" in major_scripts:
+        # Check if ALL other scripts are in the Latin whitelist
+        others = major_scripts - {"Latin"}
+        if others.issubset(SAFE_SCRIPT_MIXES["Latin"]):
+            return {
+                "level": RESTRICTION_LEVELS["HIGHLY_RESTRICTIVE"],
+                "label": "HIGHLY RESTRICTIVE (Authorized Mix)",
+                "scripts": sorted_scripts,
+                "score": 10 # Low risk penalty
+            }
+
+    # Case D: Unauthorized Mixes (e.g., Latin + Cyrillic)
+    # This is the primary vector for Cross-Script Spoofing.
+    return {
+        "level": RESTRICTION_LEVELS["MINIMALLY_RESTRICTIVE"],
+        "label": "MINIMALLY RESTRICTIVE (Mixed Scripts)",
+        "scripts": sorted_scripts,
+        "score": 80 # High risk penalty
+    }
+
+def analyze_identifier_profile(t: str) -> dict:
+    """
+    [VP-04] UAX #31 Identifier Profile Auditor.
+    Checks compliance against standard identifier definitions.
+    
+    Profiles Checked:
+    1. STRICT_ASCII: a-zA-Z0-9_ only.
+    2. GENERAL_SECURITY: No Whitespace, Controls, or Symbols (Emoji).
+    """
+    results = {
+        "is_strict_ascii": bool(REGEX_ID_ASCII_STRICT.match(t)),
+        "is_general_safe": bool(REGEX_ID_GENERAL_SAFE.match(t)),
+        "violation_type": None
+    }
+    
+    if not results["is_general_safe"]:
+        # Forensic Triage: Why did it fail?
+        # We scan for the first offender to report the 'Violation Type'
+        for char in t:
+            if char.isspace():
+                results["violation_type"] = "WHITESPACE"
+                break
+            # Check O(1) Bitmask for invisible/control
+            cp = ord(char)
+            if cp < 1114112 and (INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL)):
+                results["violation_type"] = "INVISIBLE/CONTROL"
+                break
+            cat = unicodedata2.category(char)
+            if cat.startswith('S'): # Symbol (Emoji, Math)
+                results["violation_type"] = "SYMBOL/EMOJI"
+                break
+            if cat.startswith('P') and char != '_': # Punctuation
+                results["violation_type"] = "PUNCTUATION"
+                break
+                
+    return results
 
 def analyze_normalization_hazards(t: str):
     """
@@ -5362,22 +5533,30 @@ def analyze_domain_heuristics(token: str):
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    Forensic Comparator V9 (Residual Risk Aware).
-    - Identifies the matched "Hot Zone".
-    - SCANS the "Cold Zones" (unmatched parts) for active threats.
-    - Escalates verdict if Bidi/Hidden chars hide in the unmatched tail.
+    [VP-09, VP-16] Forensic Comparator V1.1 (Zero-Trust + Internal Audit).
+    
+    Architecture:
+    1. Quad-State Transformation (Raw, NFKC, Fold, Skel).
+    2. Hot Zone Alignment (Visual Match).
+    3. Residual Risk Scan (Cold Zone Audit).
+    4. Internal Artifact Scan (Hot Zone Audit). [NEW]
+    5. Profile Intersection (Restriction Level Check).
+    6. Verdict Synthesis (Dual-Ledger).
     """
     if not suspect_str or not trusted_str: return None
 
-    # 1. Normalization Pipeline
+    # --- PHASE 1: QUAD-STATE PIPELINE ---
     suspect_nfkc = normalize_extended(suspect_str)
     trusted_nfkc = normalize_extended(trusted_str)
     
-    suspect_skel = _generate_uts39_skeleton(suspect_nfkc.casefold())
-    trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
+    suspect_fold = suspect_nfkc.casefold()
+    trusted_fold = trusted_nfkc.casefold()
 
-    # 2. Sequence Analysis
+    # Generate Skeletons & Track Events (To detect stripped invisibles)
+    suspect_skel, sus_events = _generate_uts39_skeleton(suspect_fold, return_events=True)
+    trusted_skel = _generate_uts39_skeleton(trusted_fold)
 
+    # --- PHASE 2: ALIGNMENT (THE HOT ZONE) ---
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
     match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
     
@@ -5399,156 +5578,132 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         match_start_idx = match.a
         match_end_idx = match.a + match.size
 
-    # --- 3. RESIDUAL RISK SCANNER (New) ---
-    # We check the parts of the suspect string that DID NOT match.
-    # If they contain Bidi or Hidden chars, we must flag them.
-    
+    # --- PHASE 3: RESIDUAL RISK SCANNER (THE COLD ZONES) ---
     residual_threats = []
     curr_skel_idx = 0
     
-    # We iterate again to map raw chars to the skeleton timeline
+    # [HARDENING] Include Variation Selectors in the Risk Mask
+    MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
+
     for char in suspect_str:
+        # Generate atomic skeleton for position mapping
         c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
         c_len = len(c_skel)
         
-        # Check if OUTSIDE the matched zone
-        is_outside = False
+        is_outside_zone = False
+        
         if overlap_pct > 0:
             if c_len == 0:
-                # Invisibles outside logic
-                if not (match_start_idx <= curr_skel_idx < match_end_idx): is_outside = True
+                # Invisible char. Check strictly against timeline logic.
+                if not (match_start_idx <= curr_skel_idx < match_end_idx):
+                    is_outside_zone = True
             else:
-                char_end = curr_skel_idx + c_len
-                # If strictly before or strictly after the match block
-                if char_end <= match_start_idx or curr_skel_idx >= match_end_idx:
-                    is_outside = True
+                char_end_idx = curr_skel_idx + c_len
+                if char_end_idx <= match_start_idx or curr_skel_idx >= match_end_idx:
+                    is_outside_zone = True
         
-        if is_outside:
+        if is_outside_zone:
             cp = ord(char)
-            mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-            
-            if mask & INVIS_BIDI_CONTROL:
-                residual_threats.append("Bidi Injection")
-            elif mask & INVIS_TAG:
-                residual_threats.append("Tag Injection")
-            elif mask & INVIS_ZERO_WIDTH_SPACING:
-                residual_threats.append("Hidden Spacing")
-                
+            if cp < 1114112:
+                mask_val = INVIS_TABLE[cp]
+                if mask_val & MASK_RR:
+                    if mask_val & INVIS_BIDI_CONTROL: residual_threats.append("BIDI_INJECTION")
+                    elif mask_val & INVIS_TAG: residual_threats.append("TAG_INJECTION")
+                    elif mask_val & INVIS_ZERO_WIDTH_SPACING: residual_threats.append("HIDDEN_SPACING")
+                    elif mask_val & INVIS_DEFAULT_IGNORABLE: residual_threats.append("DEFAULT_IGNORABLE")
+                    elif mask_val & INVIS_VARIATION_SELECTOR: residual_threats.append("HIDDEN_VS") # [NEW]
+
         curr_skel_idx += c_len
 
-    # Deduplicate threats
     residual_threats = list(set(residual_threats))
 
-    # 4. Verdict Synthesis
-    match_raw = (suspect_str == trusted_str)
-    
-    # Defaults
-    verdict = "DISTINCT"
-    desc = "No significant structural correlation detected."
+    # --- PHASE 4: PROFILE ANALYSIS ---
+    suspect_profile = analyze_restriction_level(suspect_str)
+    trusted_profile = analyze_restriction_level(trusted_str)
+
+    # --- PHASE 5: VERDICT SYNTHESIS ---
+    verdict = VERDICT_TYPES["DISTINCT"]
+    desc = "No significant structural correlation."
     css = "verdict-neutral"
     icon = "≠"
     
-    state_raw = "N/A"
-    state_nfkc = "N/A"
+    match_raw = (suspect_str == trusted_str)
+    match_nfkc = (suspect_nfkc == trusted_nfkc)
     
+    # [HARDENING] Internal Artifact Detection
+    # If skeletons match but 'ignorables' were stripped, it's an Injection, not just a Homoglyph.
+    internal_injection = (overlap_pct >= 100.0) and (sus_events.get("ignorables_stripped", 0) > 0)
+
     if match_raw:
-        verdict = "IDENTITY MATCH"
-        desc = "Bitwise Identical."
+        verdict = VERDICT_TYPES["IDENTITY_MATCH"]
+        desc = "Bitwise Identical (Raw Bytes)."
         css = "verdict-safe"
         icon = "🛡️"
-        state_raw = "MATCH"
-        state_nfkc = "MATCH"
         
+    elif match_nfkc:
+        verdict = VERDICT_TYPES["NORMALIZATION_EQ"]
+        desc = "Canonically Identical. Bytes differ (Format/Compatibility)."
+        css = "verdict-warn"
+        icon = "⚠️"
+
     elif overlap_pct >= 100.0:
-        # Full Capture Logic (Previous Logic)
+        # Determine specific sub-type of Clone
         if len(suspect_skel) > len(trusted_skel):
-            verdict = "TARGET CONTAINED (100%)"
-            desc = "CRITICAL: The trusted string is hidden inside the selection (Superset)."
-            css = "verdict-crit"
+            verdict = VERDICT_TYPES["TARGET_CONTAINED"]
+            desc = "CRITICAL: Trusted string hidden inside Suspect (Superset)."
             icon = "🎯"
         else:
-            verdict = "VISUAL CLONE (100%)"
-            desc = "CRITICAL: Visual Match with Raw Mismatch (Homoglyph)."
-            css = "verdict-crit"
+            verdict = VERDICT_TYPES["VISUAL_CLONE"]
             icon = "🚨"
-            
-        state_raw = "DIFF" 
-        state_nfkc = "MATCH" if suspect_nfkc == trusted_nfkc else "DIFF"
-
-        # [NEW] Inject Residual Threat Warning
+            if internal_injection:
+                 desc = "CRITICAL: Visual Match contains INVISIBLE INJECTION (Internal Artifacts)."
+            else:
+                 desc = "CRITICAL: Homograph Attack (Visual Match / Raw Mismatch)."
+        
+        css = "verdict-crit"
         if residual_threats:
-            desc += f" ⚠️ Unmatched tail contains: {', '.join(residual_threats)}."
+            desc += f" [TAIL THREATS: {', '.join(residual_threats)}]"
 
     elif overlap_pct > 0:
-        # Partial Capture Logic
-        
-        # [NEW] Escalation Logic
         if residual_threats:
-            verdict = f"PARTIAL OVERLAP + THREATS"
-            desc = f"Matched {matched_skel_len} chars. UNMATCHED DATA CONTAINS: {', '.join(residual_threats)}."
-            css = "verdict-crit" # Force Critical
-            icon = "☣️" # Biohazard / Threat icon
+            verdict = VERDICT_TYPES["PARTIAL_THREAT"]
+            desc = f"Partial Match ({overlap_pct:.1f}%) with WEAPONIZED TAIL."
+            css = "verdict-crit"
+            icon = "☣️"
         else:
-            verdict = f"VISUAL OVERLAP ({overlap_pct:.1f}%)"
-            desc = f"Found {matched_skel_len} matching characters in contiguous sequence."
-            
-            if overlap_pct > 80:
-                css = "verdict-crit"
-                icon = "🔥"
-            else:
-                css = "verdict-warn"
-                icon = "🧩"
-        
-        state_raw = "PARTIAL"
-        state_nfkc = "PARTIAL"
+            verdict = VERDICT_TYPES["VISUAL_OVERLAP"]
+            desc = f"Partial Visual Match ({overlap_pct:.1f}%)."
+            css = "verdict-warn"
+            icon = "🧩"
 
-    # 5. Lens Generation (Highlighting logic remains the same, visuals handled by CSS)
-    html_parts = []
-    curr_skel_idx = 0
-    
-    for char in suspect_str:
-        c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
-        c_len = len(c_skel)
+    # --- PHASE 6: CONFUSABLE CLASSIFICATION ---
+    confusable_class = CONFUSABLE_CLASS["NONE"]
+    if verdict in (VERDICT_TYPES["VISUAL_CLONE"], VERDICT_TYPES["TARGET_CONTAINED"]):
+        # [HARDENING] Strict Script Intersection (Ignore Common)
+        sus_scripts = set(suspect_profile["scripts"]) - {"Common", "Inherited"}
+        tru_scripts = set(trusted_profile["scripts"]) - {"Common", "Inherited"}
         
-        is_in_zone = False
-        if overlap_pct > 0:
-            if c_len == 0:
-                if match_start_idx <= curr_skel_idx < match_end_idx: is_in_zone = True
-            else:
-                char_end = curr_skel_idx + c_len
-                if curr_skel_idx >= match_start_idx and char_end <= match_end_idx:
-                    is_in_zone = True
-        
-        vis_char = _escape_html(char)
-        cp = ord(char)
-        mask = INVIS_TABLE[cp] if cp < 1114112 else 0
-        
-        if is_in_zone:
-            if char in trusted_str:
-                html_parts.append(f'<span class="f-anchor">{vis_char}</span>')
-            else:
-                html_parts.append(f'<span class="f-payload" title="Spoof / Deviation">{vis_char}</span>')
+        if sus_scripts == tru_scripts:
+            confusable_class = CONFUSABLE_CLASS["SINGLE_SCRIPT"]
         else:
-            # [NEW] Highlight threats in the NOISE zone
-            if mask & (INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_ZERO_WIDTH_SPACING):
-                 html_parts.append(f'<span class="f-payload" style="background:#fee2e2; color:#dc2626;" title="Residual Threat">{vis_char}</span>')
-            else:
-                 html_parts.append(f'<span class="f-noise">{vis_char}</span>')
-            
-        curr_skel_idx += c_len
-
-    lens_html = "".join(html_parts)
+            confusable_class = CONFUSABLE_CLASS["CROSS_SCRIPT"]
 
     return {
         "verdict": verdict,
         "desc": desc,
         "css_class": css,
         "icon": icon,
-        "raw": state_raw,
-        "nfkc": state_nfkc,
-        "skel_text": matched_skel_text,
+        "states": {
+            "raw": "MATCH" if match_raw else "DIFF",
+            "nfkc": "MATCH" if match_nfkc else "DIFF",
+            "skel": "MATCH" if overlap_pct >= 100 else "PARTIAL" if overlap_pct > 0 else "DIFF"
+        },
+        "profiles": { "suspect": suspect_profile, "trusted": trusted_profile },
+        "confusable_class": confusable_class,
+        "residual_threats": residual_threats,
+        "internal_injection": internal_injection, # [NEW]
         "overlap_pct": overlap_pct,
-        "lens_html": lens_html
+        "lens_data": { "match_range": (match_start_idx, match_end_idx), "overlap_pct": overlap_pct } 
     }
 
 def compute_statistical_profile(t: str):
@@ -13392,6 +13547,90 @@ def render_forensic_hud(t, stats):
 
     container.innerHTML = row1 + rows
 
+@create_proxy
+def render_verification_lens(suspect_str: str, trusted_str: str, analysis: dict) -> str:
+    """
+    [VP-16] Forensic Lens Renderer V1.1 (Threat-Aware X-Ray).
+    
+    Hardening Upgrades:
+    1. Internal Threat Detection: Flags invisibles *inside* the match as threats, not just spoofs.
+    2. Context-Aware Styling: Uses distinct styling for Normalization drift.
+    
+    Classes:
+    - .f-anchor:         Visual Match (Safe).
+    - .f-format:         Normalization drift (Amber).
+    - .f-payload:        Homoglyph/Spoof (Red).
+    - .f-threat-resid:   Cold Zone Threat (Tail Injection).
+    - .f-threat-internal: Hot Zone Threat (Token Fracture/Injection).
+    - .f-noise:          Unmatched Text.
+    """
+    if not analysis or not suspect_str: return ""
+
+    match_start, match_end = analysis["lens_data"]["match_range"]
+    overlap_pct = analysis["overlap_pct"]
+    verdict_type = analysis["verdict"]
+    
+    html_parts = []
+    
+    # Pre-calc bitmask for threat highlighting
+    MASK_THREAT = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
+    
+    curr_skel_idx = 0
+    
+    for char in suspect_str:
+        # Generate atomic skeleton for position mapping
+        c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
+        c_len = len(c_skel)
+        
+        # 1. Determine Position Logic
+        is_in_hot_zone = False
+        if overlap_pct > 0:
+            if c_len == 0:
+                # Invisible: Check strict containment in timeline
+                if match_start <= curr_skel_idx < match_end:
+                    is_in_hot_zone = True
+            else:
+                char_end = curr_skel_idx + c_len
+                if curr_skel_idx >= match_start and char_end <= match_end:
+                    is_in_hot_zone = True
+
+        # 2. Forensic Classification
+        vis_char = _escape_html(char)
+        cp = ord(char)
+        
+        # Check for Threat Physics (O(1))
+        is_physically_dangerous = False
+        if cp < 1114112 and (INVIS_TABLE[cp] & MASK_THREAT):
+            is_physically_dangerous = True
+
+        if is_in_hot_zone:
+            # --- HOT ZONE (Visual Match) ---
+            if is_physically_dangerous:
+                # CRITICAL: Invisible Weapon INSIDE the matched visual structure (Token Fracture)
+                html_parts.append(f'<span class="f-threat-internal" title="Internal Injection / Fracture">{vis_char}</span>')
+            elif char in trusted_str:
+                # Exact byte match (Heuristic anchor)
+                html_parts.append(f'<span class="f-anchor">{vis_char}</span>')
+            else:
+                # Visual match but Byte mismatch
+                if verdict_type == "NORMALIZATION_EQ":
+                    # It's just a format difference (e.g. NFC vs NFD)
+                    html_parts.append(f'<span class="f-format" title="Normalization Drift">{vis_char}</span>')
+                else:
+                    # It's a Homoglyph
+                    html_parts.append(f'<span class="f-payload" title="Homoglyph / Deviation">{vis_char}</span>')
+        else:
+            # --- COLD ZONE (Noise) ---
+            if is_physically_dangerous:
+                # Residual Threat in Tail/Head
+                html_parts.append(f'<span class="f-threat-resid" title="Residual Threat">{vis_char}</span>')
+            else:
+                html_parts.append(f'<span class="f-noise">{vis_char}</span>')
+        
+        curr_skel_idx += c_len
+
+    return "".join(html_parts)
+
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
 # ===============================================
@@ -14062,114 +14301,124 @@ def update_all(event=None):
         print(f"Error packaging data for Stage 2: {e}")
 
 @create_proxy
-def update_verification(event):
+def update_verification(event=None):
     """
-    Forensic Renderer V8 (Context Aware).
-    - Renders N/A for unrelated text.
-    - Renders PARTIAL for incomplete selections.
-    """
-    trusted_input = document.getElementById("trusted-input")
-    verdict_display = document.getElementById("verdict-display")
-    text_input = document.getElementById("text-input")
+    [VP-19] Verification Workbench Event Loop V1.1.
     
+    Hardening Upgrades:
+    1. Passive Profiling: Renders full Suspect Profile even in Idle state.
+    2. Internal Injection Alarm: Updates UI if 'internal_injection' is detected.
+    3. Defensive DOM: Handles missing elements gracefully.
+    """
+    # 1. DOM Acquisition
+    trusted_input = document.getElementById("trusted-input")
+    text_input = document.getElementById("text-input")
+    verdict_display = document.getElementById("verdict-display")
     suspect_display = document.getElementById("suspect-display")
     scope_badge = document.getElementById("scope-badge")
     
-    if not trusted_input or not verdict_display or not text_input: return
+    if not trusted_input or not text_input: return
 
+    # 2. Scope Awareness Logic
     full_text = text_input.value
     selection_start = text_input.selectionStart
     selection_end = text_input.selectionEnd
     
-    if selection_start != selection_end:
+    has_selection = (selection_start != selection_end)
+    
+    if has_selection:
         suspect_text = full_text[selection_start:selection_end]
-        scope_label = "SELECTION"
-        badge_class = "scope-badge-select"
+        scope_label = "SELECTION SCOPE"
+        badge_class = "scope-select"
     else:
         suspect_text = full_text
-        scope_label = "FULL INPUT"
-        badge_class = "scope-badge-full"
+        scope_label = "FULL INPUT SCOPE"
+        badge_class = "scope-full"
 
     if scope_badge:
         scope_badge.textContent = scope_label
-        scope_badge.className = badge_class
+        scope_badge.className = f"badge {badge_class}"
 
+    # 3. Trusted Input Check
     trusted_text = trusted_input.value
     
+    # [HARDENING] Passive Profile Renderer (Idle State)
     if not trusted_text:
-        verdict_display.classList.add("hidden")
-        if suspect_display: 
-            suspect_display.textContent = suspect_text if suspect_text else "(Waiting...)"
-            suspect_display.style.opacity = "0.5"
+        suspect_profile = analyze_restriction_level(suspect_text)
+        
+        if verdict_display: verdict_display.classList.add("hidden")
+        if suspect_display:
+            # Render a mini-profile so the tool is useful even without a reference
+            risk_color = "#10b981" if suspect_profile["score"] < 10 else "#ef4444"
+            scripts_str = ", ".join(suspect_profile["scripts"])
+            
+            suspect_display.innerHTML = (
+                f'<div style="opacity:0.6; padding:10px;">'
+                f'Waiting for trusted reference...<br><hr style="border-color:#eee; margin:5px 0;">'
+                f'Active Scope Profile:<br>'
+                f'Restriction: <strong style="color:{risk_color}">{suspect_profile["label"]}</strong><br>'
+                f'Scripts: <code>{scripts_str}</code>'
+                f'</div>'
+            )
         return
 
-    verdict_display.classList.remove("hidden")
-    if suspect_display: suspect_display.style.opacity = "1.0"
-    
+    # 4. EXECUTE FORENSIC COMPARATOR
     res = compute_verification_verdict(suspect_text, trusted_text)
-    
-    if res:
-        if suspect_display: suspect_display.innerHTML = res["lens_html"]
+    if not res: return
 
+    # 5. RENDER VERDICT
+    if verdict_display:
+        verdict_display.classList.remove("hidden")
+        verdict_display.className = f"verdict-box {res['css_class']}"
+        
         document.getElementById("verdict-title").textContent = res["verdict"]
         document.getElementById("verdict-desc").textContent = res["desc"]
         document.getElementById("verdict-icon").textContent = res["icon"]
-        
-        # 5. Evidence Matrix (Detailed)
-        def set_metric_detailed(id_str, val, type_label):
-            el = document.getElementById(id_str)
-            
-            status_html = ""
-            detail_text = ""
-            
-            # Logic for Details
-            if type_label == "RAW":
-                if val == "MATCH":
-                    status_html = '<span style="color:#10b981;">MATCH</span>'
-                    detail_text = "Bitwise Identical"
-                elif val == "DIFF":
-                    status_html = '<span style="color:#ef4444;">DIFF</span>'
-                    detail_text = "Byte Mismatch"
-                elif val == "PARTIAL":
-                    status_html = '<span style="color:#f59e0b;">PARTIAL</span>'
-                    detail_text = "Segment Match"
-                else: # N/A
-                    status_html = '<span style="color:#9ca3af;">N/A</span>'
-                    detail_text = "Uncorrelated"
-                    
-            elif type_label == "NFKC":
-                if val == "MATCH":
-                    status_html = '<span style="color:#10b981;">MATCH</span>'
-                    detail_text = "Form Stable"
-                elif val == "DIFF":
-                    status_html = '<span style="color:#ef4444;">DIFF</span>'
-                    detail_text = "Format Drift"
-                elif val == "PARTIAL":
-                    status_html = '<span style="color:#f59e0b;">PARTIAL</span>'
-                    detail_text = "Segment Stable"
-                else: # N/A
-                    status_html = '<span style="color:#9ca3af;">N/A</span>'
-                    detail_text = "Uncorrelated"
-            
-            elif type_label == "SKEL":
-                # Special handling for Skeleton
-                el.innerHTML = f'<code class="v-code-block">{val}</code>'
-                return
 
-            # Render Split Layout
-            el.innerHTML = f"""
-            <div class="v-metric-row">
-                <div class="v-metric-val">{status_html}</div>
-                <div class="v-metric-detail">{detail_text}</div>
-            </div>
-            """
+    # 6. RENDER LENS
+    lens_html = render_verification_lens(suspect_text, trusted_text, res)
+    if suspect_display: suspect_display.innerHTML = lens_html
 
-        set_metric_detailed("vm-raw", res["raw"], "RAW")
-        set_metric_detailed("vm-nfkc", res["nfkc"], "NFKC")
-        set_metric_detailed("vm-skel", res["skel_text"], "SKEL")
+    # 7. POPULATE EVIDENCE MATRIX (Defensive Update)
+    def update_cell(id_str, val, color_override=None):
+        el = document.getElementById(id_str)
+        if not el: return
         
-        verdict_display.className = "verdict-box" 
-        verdict_display.classList.add(res["css_class"])
+        # Default Logic
+        color = "#6b7280"
+        if color_override:
+            color = color_override
+        elif val == "MATCH":
+            color = "#10b981"
+        elif val in ("DIFF", "CROSS-SCRIPT SPOOF"):
+            color = "#ef4444"
+        elif val in ("PARTIAL", "SINGLE-SCRIPT SPOOF", "CASE-DIFF"):
+            color = "#f59e0b"
+            
+        el.innerHTML = f'<span style="color:{color}; font-weight:700;">{val}</span>'
+
+    update_cell("vm-raw", res["states"]["raw"])
+    update_cell("vm-nfkc", res["states"]["nfkc"], 
+                color_override="#f59e0b" if res["states"]["nfkc"] == "CASE-DIFF" else None)
+    update_cell("vm-skel", res["states"]["skel"])
+    
+    # 8. Render Profile Data
+    s_prof = res["profiles"]["suspect"]
+    risk_color = "#10b981" if s_prof["score"] < 10 else "#ef4444"
+    update_cell("vm-suspect-profile", s_prof["label"], color_override=risk_color)
+    
+    t_prof = res["profiles"]["trusted"]
+    update_cell("vm-trusted-profile", t_prof["label"], color_override="#6b7280") # Trusted is neutral reference
+
+    # 9. Render Confusable Class
+    conf_cls = res["confusable_class"]
+    conf_color = "#ef4444" if "CROSS" in conf_cls else "#f59e0b" if "SINGLE" in conf_cls else "#9ca3af"
+    update_cell("vm-confusable-class", conf_cls, color_override=conf_color)
+    
+    # [HARDENING] Internal Injection Alarm
+    # If we detect internal artifacts, we can force the Confusable Class to indicate it
+    if res.get("internal_injection", False):
+         update_cell("vm-confusable-class", "INTERNAL INJECTION", color_override="#ef4444")
 
 # Interaction Handlers
 
