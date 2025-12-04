@@ -6100,7 +6100,7 @@ details.profile-section > summary:hover::marker {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 24px; /* Space between definitions */
+  gap: 10px; /* Space between definitions */
   padding: 10px 16px;
   background-color: #f8fafc; /* Slate-50 background */
   border-bottom: 1px solid #e2e8f0;
@@ -6115,7 +6115,8 @@ details.profile-section > summary:hover::marker {
   color: #334155;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-right: 8px;
+  margin-right: 0px;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
