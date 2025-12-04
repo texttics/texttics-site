@@ -5611,13 +5611,13 @@ def analyze_domain_heuristics(token: str):
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    [VP-09, VP-16] Forensic Comparator V1.1 (Zero-Trust + Internal Audit).
+    [VP-09, VP-16] Forensic Comparator V1.2 (Zero-Trust + Internal Audit).
     
     Architecture:
     1. Quad-State Transformation (Raw, NFKC, Fold, Skel).
     2. Hot Zone Alignment (Visual Match).
     3. Residual Risk Scan (Cold Zone Audit).
-    4. Internal Artifact Scan (Hot Zone Audit). [NEW]
+    4. Internal Artifact Scan (Hot Zone Audit).
     5. Profile Intersection (Restriction Level Check).
     6. Verdict Synthesis (Dual-Ledger).
     """
@@ -5631,7 +5631,12 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     trusted_fold = trusted_nfkc.casefold()
 
     # Generate Skeletons & Track Events (To detect stripped invisibles)
-    suspect_skel, sus_events = _generate_uts39_skeleton(suspect_fold, return_events=True)
+    # [SAFETY] Ensure unpacking works even if return is None
+    res_sus = _generate_uts39_skeleton(suspect_fold, return_events=True)
+    if not res_sus: return None
+    suspect_skel, sus_events = res_sus
+    sus_events = sus_events or {} # Safety default
+
     trusted_skel = _generate_uts39_skeleton(trusted_fold)
 
     # --- PHASE 2: ALIGNMENT (THE HOT ZONE) ---
@@ -5660,8 +5665,14 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     residual_threats = []
     curr_skel_idx = 0
     
-    # [HARDENING] Include Variation Selectors in the Risk Mask
-    MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
+    # [HARDENING] Use Bitmask. Ensure INVIS_VARIATION_SELECTOR is defined.
+    # If not defined globally, fallback to local def to prevent NameError.
+    try:
+        MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
+    except NameError:
+        # Fallback if constants missing
+        INVIS_VARIATION_SELECTOR = 1 << 5 | 1 << 6 
+        MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
 
     for char in suspect_str:
         # Generate atomic skeleton for position mapping
@@ -5672,11 +5683,14 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         
         if overlap_pct > 0:
             if c_len == 0:
-                # Invisible char. Check strictly against timeline logic.
+                # Invisible char.
+                # Strictly Check: Is it INSIDE the match block?
+                # If it equals match_end_idx, it is TAILING (Outside).
                 if not (match_start_idx <= curr_skel_idx < match_end_idx):
                     is_outside_zone = True
             else:
                 char_end_idx = curr_skel_idx + c_len
+                # If the character's skeleton falls entirely outside the match range
                 if char_end_idx <= match_start_idx or curr_skel_idx >= match_end_idx:
                     is_outside_zone = True
         
@@ -5689,7 +5703,7 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
                     elif mask_val & INVIS_TAG: residual_threats.append("TAG_INJECTION")
                     elif mask_val & INVIS_ZERO_WIDTH_SPACING: residual_threats.append("HIDDEN_SPACING")
                     elif mask_val & INVIS_DEFAULT_IGNORABLE: residual_threats.append("DEFAULT_IGNORABLE")
-                    elif mask_val & INVIS_VARIATION_SELECTOR: residual_threats.append("HIDDEN_VS") # [NEW]
+                    elif mask_val & INVIS_VARIATION_SELECTOR: residual_threats.append("HIDDEN_VS")
 
         curr_skel_idx += c_len
 
@@ -5709,7 +5723,6 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     match_nfkc = (suspect_nfkc == trusted_nfkc)
     
     # [HARDENING] Internal Artifact Detection
-    # If skeletons match but 'ignorables' were stripped, it's an Injection, not just a Homoglyph.
     internal_injection = (overlap_pct >= 100.0) and (sus_events.get("ignorables_stripped", 0) > 0)
 
     if match_raw:
@@ -5725,7 +5738,6 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         icon = "⚠️"
 
     elif overlap_pct >= 100.0:
-        # Determine specific sub-type of Clone
         if len(suspect_skel) > len(trusted_skel):
             verdict = VERDICT_TYPES["TARGET_CONTAINED"]
             desc = "CRITICAL: Trusted string hidden inside Suspect (Superset)."
@@ -5757,7 +5769,6 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     # --- PHASE 6: CONFUSABLE CLASSIFICATION ---
     confusable_class = CONFUSABLE_CLASS["NONE"]
     if verdict in (VERDICT_TYPES["VISUAL_CLONE"], VERDICT_TYPES["TARGET_CONTAINED"]):
-        # [HARDENING] Strict Script Intersection (Ignore Common)
         sus_scripts = set(suspect_profile["scripts"]) - {"Common", "Inherited"}
         tru_scripts = set(trusted_profile["scripts"]) - {"Common", "Inherited"}
         
@@ -5779,7 +5790,7 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         "profiles": { "suspect": suspect_profile, "trusted": trusted_profile },
         "confusable_class": confusable_class,
         "residual_threats": residual_threats,
-        "internal_injection": internal_injection, # [NEW]
+        "internal_injection": internal_injection,
         "overlap_pct": overlap_pct,
         "lens_data": { "match_range": (match_start_idx, match_end_idx), "overlap_pct": overlap_pct } 
     }
