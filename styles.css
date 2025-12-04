@@ -6024,6 +6024,7 @@ details.profile-section > summary:hover::marker {
 
 /* Badge Themes */
 .atlas-badge-neutral { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+.atlas-badge-ghost   { background: #f3e8ff; color: #7e22ce; border-color: #d8b4fe; }
 .atlas-badge-ok      { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
 .atlas-badge-warn    { background: #fffbeb; color: #b45309; border-color: #fde68a; }
 .atlas-badge-high    { background: #ffedd5; color: #c2410c; border-color: #fdba74; }
