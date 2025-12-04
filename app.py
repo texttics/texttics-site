@@ -9,12 +9,14 @@ import re
 import math
 import collections
 from collections import Counter
-import html
 import urllib.parse
 import base64
 import binascii
 import difflib
 import bisect
+import html
+from html.parser import HTMLParser
+from typing import List, Dict, Set, Optional, Tuple, Any
 
 # ==========================================
 # BLOCK 1. GLOBAL CONFIG & ENVIRONMENT
@@ -781,6 +783,128 @@ ICONS = {
 for key, regex_str in MINOR_CATEGORIES_29.items():
     # Add to the main matcher dict
     REGEX_MATCHER[key] = window.RegExp.new(regex_str, "gu")
+
+# These constants define the "Immutable Laws" of the Metadata Forensic Engine.
+# They are derived from CSEMiner (ESORICS 2025), WCAG 2.1, and A11Y Project standards.
+
+class METADATA_PHYSICS:
+    """
+    Defines the physical thresholds for 'Invisibility' and 'Obfuscation'.
+    Source: CSEMiner Taxonomy of Hiding Techniques.
+    """
+    
+    # 1. VISIBILITY THRESHOLDS (The "Event Horizon")
+    # -------------------------------------------------------------------------
+    # Values below these thresholds are mathematically treated as "Invisible".
+    MIN_VISIBLE_OPACITY = 0.05        # Below 5% is effectively invisible
+    MIN_VISIBLE_FONT_SIZE = 1.0       # Pixels. <1px is CSEMiner 'H5' category
+    MIN_VISIBLE_DIMENSION = 1.0       # Pixels (Width/Height). Zero-area checks.
+    
+    # 2. POSITIONING THRESHOLDS (The "Off-Screen" Void)
+    # -------------------------------------------------------------------------
+    # Offsets considered "Far Off-Screen" for absolute positioning exploits.
+    MAX_OFFSCREEN_OFFSET = 1000       # Pixels (e.g., left: -1000px)
+    MIN_TEXT_INDENT = -999            # Pixels (e.g., text-indent: -9999px)
+
+    # 3. CRITICAL HIDING VALUES (Computed Style Signatures)
+    # -------------------------------------------------------------------------
+    # Hard-coded values that trigger immediate "HIDDEN" state flags.
+    HARD_DISPLAY_VALUES = {
+        "none", "contents" 
+    }
+    HARD_VISIBILITY_VALUES = {
+        "hidden", "collapse" 
+    }
+    HARD_CLIP_VALUES = {
+        "rect(0,0,0,0)", "rect(0 0 0 0)", "rect(0px,0px,0px,0px)", "inset(50%)"
+    }
+
+    # 4. COLOR PHYSICS (Contrast & Transparency)
+    # -------------------------------------------------------------------------
+    # Colors that indicate active hiding when paired with matching backgrounds.
+    TRANSPARENT_ALIASES = {
+        "transparent", "rgba(0,0,0,0)", "hsla(0,0%,0%,0)", "#00000000"
+    }
+    # Common "Paper White" values used in White-on-White attacks
+    WHITE_ALIASES = {
+        "white", "#fff", "#ffffff", "rgb(255,255,255)", "rgba(255,255,255,1)"
+    }
+
+
+class METADATA_POLICY:
+    """
+    Defines the Judgment Logic (White/Blacklists).
+    Source: WebAIM Accessibility Patterns & SEO Spam Research.
+    """
+
+    # 1. ACCESSIBILITY WHITELIST (The "Safe Harbor")
+    # -------------------------------------------------------------------------
+    # Class names that signal legitimate Screen Reader utility usage.
+    # Detection of these downgrades severity from CRITICAL to INFO (if context matches).
+    A11Y_CLASS_WHITELIST = {
+        "sr-only",
+        "visually-hidden",
+        "screen-reader-text",
+        "u-visually-hidden",
+        "accessible-text",
+        "skip-link"
+    }
+
+    # 2. SAFE VOCABULARY (Context Validation)
+    # -------------------------------------------------------------------------
+    # If text is hidden but contains ONLY these words, it is likely UI navigation.
+    A11Y_SAFE_VOCAB = {
+        "skip", "content", "jump", "navigation", "menu", "sidebar", 
+        "close", "open", "expand", "collapse", "breadcrumb", "dialog"
+    }
+
+    # 3. OBFUSCATION BLACKLIST (The "Known Bad")
+    # -------------------------------------------------------------------------
+    # Class names associated with Black Hat SEO or Bootstrap hacks (deprecated).
+    SUSPICIOUS_CLASS_SIGNATURES = {
+        "text-hide",        # Bootstrap 4 deprecated mixin (often abused)
+        "invisible",        # Generic hiding
+        "opacity-0",        # Tailwind utility (often abused for cloaking)
+        "d-none",           # Bootstrap display:none
+        "hidden",           # HTML5 attribute or utility
+        "cloak",
+        "spoiler"
+    }
+
+    # 4. PAYLOAD TRIGGERS (The "Red Line")
+    # -------------------------------------------------------------------------
+    # If hidden text contains these patterns, the A11Y Whitelist is REVOKED.
+    # Source: Prompt Injection Research.
+    PAYLOAD_KEYWORDS = {
+        "ignore previous", "system prompt", "you are", "gpt", 
+        "password", "admin", "login", "key", "token"
+    }
+
+
+class METADATA_PATTERNS:
+    """
+    Pre-compiled Regex for robust CSS parsing.
+    Replaces simple string splitting to handle edge cases like url(';') or comments.
+    """
+    
+    # Matches individual CSS declarations: "property : value ;"
+    # Handles whitespace and missing trailing semicolons.
+    CSS_DECLARATION_SPLIT = re.compile(
+        r'(?P<prop>[\w-]+)\s*:\s*(?P<val>[^;]+)(?:;|$)', 
+        re.IGNORECASE | re.DOTALL
+    )
+
+    # Matches "Important" flags to respect CSS cascade rules (rudimentary).
+    CSS_IMPORTANT = re.compile(r'!\s*important', re.IGNORECASE)
+
+    # Matches specific dangerous value patterns in raw strings.
+    # Used for "Fast Scan" heuristics before full parsing.
+    REGEX_CRITICAL_PATTERNS = {
+        "OFFSCREEN": re.compile(r'left\s*:\s*-\d{3,4}px'),
+        "TEXT_INDENT": re.compile(r'text-indent\s*:\s*-\d{3,4}px'),
+        "ZERO_SIZE": re.compile(r'(width|height|font-size)\s*:\s*0(?![0-9\.])'),
+        "OPACITY_ZERO": re.compile(r'opacity\s*:\s*0(?![0-9\.])')
+    }
 
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
