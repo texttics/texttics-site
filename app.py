@@ -5609,17 +5609,34 @@ def analyze_domain_heuristics(token: str):
 
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
-    [VP-09, VP-16] Forensic Comparator V1.2 (Zero-Trust + Internal Audit).
+    [VP-09, VP-16] Forensic Comparator V1.4 (Relentless).
     
-    Architecture:
-    1. Quad-State Transformation (Raw, NFKC, Fold, Skel).
-    2. Hot Zone Alignment (Visual Match).
-    3. Residual Risk Scan (Cold Zone Audit).
-    4. Internal Artifact Scan (Hot Zone Audit).
-    5. Profile Intersection (Restriction Level Check).
-    6. Verdict Synthesis (Dual-Ledger).
+    Upgrades:
+    1. Reference Poisoning Check: Audits the 'Trusted' string for threats.
+    2. Profile Locking: Suspect cannot be 'riskier' than Trusted.
+    3. Topology Mismatch: Detects Type Drift (Domain vs Path).
+    4. Quad-State Alignment: existing logic.
     """
     if not suspect_str or not trusted_str: return None
+
+    # --- PHASE 0: REFERENCE HYGIENE (The Mirror Test) ---
+    # Is the user trusting a malicious string?
+    reference_warnings = []
+    
+    # Check 1: Invisibles in Reference
+    ref_invis_count = 0
+    MASK_REF_CHECK = INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_ZERO_WIDTH_SPACING
+    for char in trusted_str:
+        cp = ord(char)
+        if cp < 1114112 and (INVIS_TABLE[cp] & MASK_REF_CHECK):
+            ref_invis_count += 1
+            
+    if ref_invis_count > 0:
+        reference_warnings.append(f"Reference contains {ref_invis_count} hidden chars")
+
+    # Check 2: Bidi in Reference
+    if any(INVIS_TABLE[ord(c)] & INVIS_BIDI_CONTROL for c in trusted_str if ord(c) < 1114112):
+        reference_warnings.append("Reference contains Bidi Controls")
 
     # --- PHASE 1: QUAD-STATE PIPELINE ---
     suspect_nfkc = normalize_extended(suspect_str)
@@ -5628,71 +5645,48 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     suspect_fold = suspect_nfkc.casefold()
     trusted_fold = trusted_nfkc.casefold()
 
-    # Generate Skeletons & Track Events (To detect stripped invisibles)
-    # [SAFETY] Ensure unpacking works even if return is None
-    res_sus = _generate_uts39_skeleton(suspect_fold, return_events=True)
-    if not res_sus: return None
-    suspect_skel, sus_events = res_sus
-    sus_events = sus_events or {} # Safety default
-
+    # Generate Skeletons & Track Events
+    suspect_skel, sus_events = _generate_uts39_skeleton(suspect_fold, return_events=True)
     trusted_skel = _generate_uts39_skeleton(trusted_fold)
 
-    # --- PHASE 2: ALIGNMENT (THE HOT ZONE) ---
+    # --- PHASE 2: ALIGNMENT ---
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
     match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
     
     matched_skel_len = match.size
     target_len = len(trusted_skel)
     
-    # Noise Filter
-    MIN_MATCH_LEN = 3
-    if target_len < 3: MIN_MATCH_LEN = target_len
+    MIN_MATCH_LEN = 3 if target_len >= 3 else target_len
     
     if matched_skel_len < MIN_MATCH_LEN:
         overlap_pct = 0.0
-        matched_skel_text = "NO SIGNIFICANT CORRELATION"
         match_start_idx = -1
         match_end_idx = -1
+        matched_skel_text = "NO CORRELATION"
     else:
         overlap_pct = (matched_skel_len / target_len) * 100.0
         matched_skel_text = suspect_skel[match.a : match.a + match.size]
         match_start_idx = match.a
         match_end_idx = match.a + match.size
 
-    # --- PHASE 3: RESIDUAL RISK SCANNER (THE COLD ZONES) ---
+    # --- PHASE 3: RESIDUAL RISK SCANNER ---
     residual_threats = []
     curr_skel_idx = 0
-    
-    # [HARDENING] Use Bitmask. Ensure INVIS_VARIATION_SELECTOR is defined.
-    # If not defined globally, fallback to local def to prevent NameError.
-    try:
-        MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
-    except NameError:
-        # Fallback if constants missing
-        INVIS_VARIATION_SELECTOR = 1 << 5 | 1 << 6 
-        MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
+    MASK_RR = MASK_RESIDUAL_RISK | INVIS_VARIATION_SELECTOR
 
     for char in suspect_str:
-        # Generate atomic skeleton for position mapping
         c_skel = _generate_uts39_skeleton(normalize_extended(char).casefold())
         c_len = len(c_skel)
         
-        is_outside_zone = False
-        
+        is_outside = False
         if overlap_pct > 0:
             if c_len == 0:
-                # Invisible char.
-                # Strictly Check: Is it INSIDE the match block?
-                # If it equals match_end_idx, it is TAILING (Outside).
-                if not (match_start_idx <= curr_skel_idx < match_end_idx):
-                    is_outside_zone = True
+                if not (match_start_idx <= curr_skel_idx < match_end_idx): is_outside = True
             else:
-                char_end_idx = curr_skel_idx + c_len
-                # If the character's skeleton falls entirely outside the match range
-                if char_end_idx <= match_start_idx or curr_skel_idx >= match_end_idx:
-                    is_outside_zone = True
+                if (curr_skel_idx + c_len) <= match_start_idx or curr_skel_idx >= match_end_idx:
+                    is_outside = True
         
-        if is_outside_zone:
+        if is_outside:
             cp = ord(char)
             if cp < 1114112:
                 mask_val = INVIS_TABLE[cp]
@@ -5707,41 +5701,74 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
 
     residual_threats = list(set(residual_threats))
 
-    # --- PHASE 4: PROFILE ANALYSIS ---
+    # --- PHASE 4: PROFILE & LOCKING ---
     suspect_profile = analyze_restriction_level(suspect_str)
     trusted_profile = analyze_restriction_level(trusted_str)
+    
+    # [HARDENING] Profile Locking
+    # If Trusted is Safe (Score < 20), Suspect MUST NOT be High Risk (Score > 50)
+    profile_violation = False
+    if trusted_profile["score"] <= 20 and suspect_profile["score"] >= 80:
+        profile_violation = True
+        residual_threats.append(f"PROFILE_DOWNGRADE ({trusted_profile['label']} -> {suspect_profile['label']})")
+
+    # [HARDENING] Topology Mismatch (Type Drift)
+    # Check if we moved from a Domain to a Path/Email or vice-versa
+    is_trusted_domain = is_plausible_domain_candidate(trusted_str)
+    is_suspect_domain = is_plausible_domain_candidate(suspect_str)
+    
+    # Simple semantic heuristics
+    def classify_topology(s):
+        if is_plausible_domain_candidate(s): return "DOMAIN"
+        if "/" in s or "\\" in s: return "PATH"
+        if "@" in s: return "EMAIL"
+        if "{" in s or ";" in s: return "CODE"
+        return "TEXT"
+
+    topo_trusted = classify_topology(trusted_str)
+    topo_suspect = classify_topology(suspect_str)
+    
+    topology_mismatch = False
+    if topo_trusted != "TEXT" and topo_trusted != topo_suspect:
+        topology_mismatch = True
+        residual_threats.append(f"TOPOLOGY_MISMATCH ({topo_trusted} -> {topo_suspect})")
 
     # --- PHASE 5: VERDICT SYNTHESIS ---
-    verdict = VERDICT_TYPES["DISTINCT"]
+    verdict = "DISTINCT"
     desc = "No significant structural correlation."
     css = "verdict-neutral"
     icon = "≠"
     
     match_raw = (suspect_str == trusted_str)
     match_nfkc = (suspect_nfkc == trusted_nfkc)
-    
-    # [HARDENING] Internal Artifact Detection
     internal_injection = (overlap_pct >= 100.0) and (sus_events.get("ignorables_stripped", 0) > 0)
 
-    if match_raw:
-        verdict = VERDICT_TYPES["IDENTITY_MATCH"]
+    # 1. POISONED REFERENCE OVERRIDE
+    if reference_warnings:
+        verdict = "POISONED REFERENCE"
+        desc = f"WARNING: Trusted Reference is unsafe ({', '.join(reference_warnings)})."
+        css = "verdict-crit" # Critical because the premise is flawed
+        icon = "☣️"
+        
+    elif match_raw:
+        verdict = "IDENTITY MATCH"
         desc = "Bitwise Identical (Raw Bytes)."
         css = "verdict-safe"
         icon = "🛡️"
         
     elif match_nfkc:
-        verdict = VERDICT_TYPES["NORMALIZATION_EQ"]
+        verdict = "NORMALIZATION_EQ"
         desc = "Canonically Identical. Bytes differ (Format/Compatibility)."
         css = "verdict-warn"
         icon = "⚠️"
 
     elif overlap_pct >= 100.0:
         if len(suspect_skel) > len(trusted_skel):
-            verdict = VERDICT_TYPES["TARGET_CONTAINED"]
+            verdict = "TARGET_CONTAINED"
             desc = "CRITICAL: Trusted string hidden inside Suspect (Superset)."
             icon = "🎯"
         else:
-            verdict = VERDICT_TYPES["VISUAL_CLONE"]
+            verdict = "VISUAL_CLONE"
             icon = "🚨"
             if internal_injection:
                  desc = "CRITICAL: Visual Match contains INVISIBLE INJECTION (Internal Artifacts)."
@@ -5750,30 +5777,42 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         
         css = "verdict-crit"
         if residual_threats:
-            desc += f" [TAIL THREATS: {', '.join(residual_threats)}]"
+            desc += f" [THREATS: {', '.join(residual_threats)}]"
 
     elif overlap_pct > 0:
         if residual_threats:
-            verdict = VERDICT_TYPES["PARTIAL_THREAT"]
+            verdict = "PARTIAL_THREAT"
             desc = f"Partial Match ({overlap_pct:.1f}%) with WEAPONIZED TAIL."
             css = "verdict-crit"
             icon = "☣️"
         else:
-            verdict = VERDICT_TYPES["VISUAL_OVERLAP"]
+            verdict = "VISUAL_OVERLAP"
             desc = f"Partial Visual Match ({overlap_pct:.1f}%)."
             css = "verdict-warn"
             icon = "🧩"
 
-    # --- PHASE 6: CONFUSABLE CLASSIFICATION ---
+    # --- PHASE 6: CLASSIFICATION ---
     confusable_class = CONFUSABLE_CLASS["NONE"]
-    if verdict in (VERDICT_TYPES["VISUAL_CLONE"], VERDICT_TYPES["TARGET_CONTAINED"]):
+    if verdict in ("VISUAL_CLONE", "TARGET_CONTAINED"):
         sus_scripts = set(suspect_profile["scripts"]) - {"Common", "Inherited"}
         tru_scripts = set(trusted_profile["scripts"]) - {"Common", "Inherited"}
-        
         if sus_scripts == tru_scripts:
             confusable_class = CONFUSABLE_CLASS["SINGLE_SCRIPT"]
         else:
             confusable_class = CONFUSABLE_CLASS["CROSS_SCRIPT"]
+            
+    # [HARDENING] Inject Profile/Topology Violation if relevant
+    # Escalate warning if not already critical
+    if (profile_violation or topology_mismatch) and verdict != "POISONED REFERENCE":
+        if css != "verdict-crit":
+            css = "verdict-warn"
+            
+        extras = []
+        if profile_violation: extras.append("PROFILE MISMATCH")
+        if topology_mismatch: extras.append("TYPE DRIFT")
+        
+        if extras:
+            desc += f" [{', '.join(extras)}]"
 
     return {
         "verdict": verdict,
