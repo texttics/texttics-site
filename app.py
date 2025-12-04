@@ -6090,14 +6090,20 @@ def analyze_trojan_context(token: str):
         return {"desc": "Bidi Control near Syntax (Trojan Risk)", "risk": 100}
     return {"desc": "Bidi Control present", "risk": 60}
 
-def analyze_confusion_density(token):
+def analyze_confusion_density(token, confusables=None):
     """
     Calculates the 'Confusion Density' of a token using UTS #39 data.
-    [HARDENED v1.1] Safe against Tuple unpacking errors.
+    [HARDENED v1.2] 
+    - Fixes Signature Mismatch (accepts optional 2nd arg).
+    - Fixes Return Type Mismatch (returns dict, not float).
+    - Fixes Unpacking Error (handles strings/tuples/lists safely).
     """
-    if not token: return 0.0
+    if not token: return None
     
-    confusables = DATA_STORES.get("Confusables", {})
+    # 1. Handle optional argument (Fixes Signature Crash)
+    if confusables is None:
+        confusables = DATA_STORES.get("Confusables", {})
+        
     total_chars = len(token)
     confusable_count = 0
     
@@ -6105,31 +6111,40 @@ def analyze_confusion_density(token):
         cp = ord(char)
         if cp in confusables:
             val = confusables[cp]
-            
-            # [CRITICAL FIX] Defensive Unpacking
-            # Handles legacy (str) and new tuple format (tgt, tag, *extra)
             tag = "UNK"
-            if isinstance(val, tuple):
-                if len(val) >= 2:
-                    _, tag, *_ = val # We only care about the tag (MA/ML/SA/SL) here
-                elif len(val) == 1:
-                    pass # No tag available
-            elif isinstance(val, str):
-                pass # Legacy string format, no tag
             
-            # Weighted Scoring based on Tag
-            # SL (Single Script) / SA (Single ASCII) are lower risk than Mixed
-            if tag in ("MA", "ML"): # Mixed Script / Mixed Latin
+            # 2. Universal Safe Unpacking (Fixes 'Too Many Values' Crash)
+            # Checks type explicitly instead of relying on unpacking syntax
+            if isinstance(val, (tuple, list)):
+                # If tuple is ('target', 'MA', 'hex'), val[1] is 'MA'
+                if len(val) >= 2: 
+                    tag = val[1]
+            elif isinstance(val, str):
+                # Legacy string format: "target". Tag remains "UNK".
+                pass
+            
+            # 3. Weighted Scoring
+            if tag in ("MA", "ML"): # Mixed Script / Mixed Latin (High Risk)
                 confusable_count += 1.0
-            elif tag in ("SA", "SL"): # Single Script
+            elif tag in ("SA", "SL"): # Single Script (Lower Risk)
                 confusable_count += 0.5
             else:
-                confusable_count += 0.8 # Default fallback
+                confusable_count += 0.8 # Default/UNK fallback
                 
-    if total_chars == 0: return 0.0
+    if total_chars == 0: return None
     
-    # Return density (0.0 to 1.0)
-    return min(confusable_count / total_chars, 1.0)
+    # Calculate Density
+    density = min(confusable_count / total_chars, 1.0)
+    
+    # 4. Return Dictionary (Fixes 'Subscriptable' Crash)
+    if density > 0:
+        return {
+            "density": density,
+            "risk": int(density * 50), # Scale to 0-50 risk points
+            "desc": f"Confusable Density ({int(density*100)}%)"
+        }
+        
+    return None
 
 def analyze_zalgo_load(token: str):
     """
