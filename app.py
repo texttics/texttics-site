@@ -9973,17 +9973,34 @@ def _create_position_link(val, text_context=None):
 def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, Any]], ghost_html: str):
     """
     Handles UI injection for the Metadata Workbench.
-    Reflects SOTA 'Quad-Ledger' aesthetics and Fixes XSS vulnerabilities.
+    [UPDATED] Uses Custom Forensic SVG Icons instead of Emojis.
     """
+    
+    # --- INTERNAL ICON SET (Forensic Pack) ---
+    # Thermometer / Critical Gauge
+    SVG_CRIT = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>'
+    
+    # Triangle Alert
+    SVG_WARN = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+    
+    # Ghost / Anomaly
+    SVG_GHOST = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"></path><path d="M15 10h.01"></path><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"></path></svg>'
+    
+    # Shield Check / Safe
+    SVG_SAFE = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>'
+    
+    # Eye / Observation
+    SVG_EYE = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>'
+
     # 1. UI Configuration Map (Colors & Icons)
     UI_MAP = {
-        "CRITICAL":   {"title": "CRITICAL THREAT",     "color": "#dc2626", "icon": "🚨"},
-        "SUSPICIOUS": {"title": "SUSPICIOUS ACTIVITY", "color": "#f59e0b", "icon": "⚠️"},
-        "ANOMALOUS":  {"title": "ANOMALOUS STRUCTURE", "color": "#8b5cf6", "icon": "👻"},
-        "NON-STANDARD": {"title": "NON-STANDARD CSS",  "color": "#3b82f6", "icon": "ℹ️"},
-        "CLEAN":      {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": "✅"},
-        "NEUTRAL":    {"title": "Awaiting Input",      "color": "#4b5563", "icon": "⏳"},
-        "ERROR":      {"title": "Analysis Failed",     "color": "#ef4444", "icon": "💥"}
+        "CRITICAL":   {"title": "CRITICAL THREAT",     "color": "#dc2626", "icon": SVG_CRIT},
+        "SUSPICIOUS": {"title": "SUSPICIOUS ACTIVITY", "color": "#f59e0b", "icon": SVG_WARN},
+        "ANOMALOUS":  {"title": "ANOMALOUS STRUCTURE", "color": "#8b5cf6", "icon": SVG_GHOST},
+        "NON-STANDARD": {"title": "NON-STANDARD CSS",  "color": "#3b82f6", "icon": SVG_WARN},
+        "CLEAN":      {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": SVG_SAFE},
+        "NEUTRAL":    {"title": "Awaiting Input",      "color": "#9ca3af", "icon": SVG_EYE},
+        "ERROR":      {"title": "Analysis Failed",     "color": "#ef4444", "icon": SVG_WARN}
     }
     
     grade = ledger.get("grade", "NEUTRAL")
@@ -9996,16 +10013,24 @@ def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, An
     # Update the visual badge
     verdict_box = document.getElementById("metadata-findings-report")
     icon_box = document.getElementById("css-verdict-icon")
-    if verdict_box: verdict_box.style.borderLeftColor = data["color"]
-    if icon_box: icon_box.textContent = data["icon"]
+    
+    if verdict_box: 
+        verdict_box.style.borderLeftColor = data["color"]
+    
+    if icon_box: 
+        # Inject SVG directly; color inherits via currentColor
+        icon_box.innerHTML = data["icon"]
+        icon_box.style.color = data["color"]
 
     # 3. Update Summary Text (Rich Context)
     summary_el = document.getElementById("css-summary-text")
     if summary_el:
         if grade == "CLEAN":
             summary_el.textContent = "No hidden content or obfuscation vectors detected."
+        elif grade == "NEUTRAL":
+            summary_el.textContent = "Paste raw HTML to begin analysis."
         else:
-            # Show Score and Vectors (e.g., "Risk Score: 75 | Vectors: OPACITY, CLIPPING")
+            # Show Score and Vectors
             vectors = ", ".join(ledger.get("vectors", [])) or "None"
             summary_el.textContent = f"Risk Score: {ledger['score']}/100 | Vectors: {vectors}"
 
@@ -10015,7 +10040,6 @@ def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, An
         list_el.innerHTML = ""
         
         if findings:
-            # Auto-open details if threat exists
             details = document.getElementById("css-findings-details")
             if details: details.open = True
             
@@ -10027,16 +10051,9 @@ def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, An
                 li.style.borderLeft = f"3px solid {data['color']}"
                 li.style.paddingLeft = "8px"
                 
-                # [SECURITY FIX] XSS Prevention
-                # Escape the preview content before rendering
                 safe_preview = html.escape(f.get("content", ""))
+                lineage_str = " > ".join(f.get("lineage", [])[-3:]) 
                 
-                # Format Lineage (Breadcrumbs)
-                # e.g., "DIV.wrapper > SPAN.sr-only"
-                lineage_str = " > ".join(f.get("lineage", [])[-3:]) # Last 3 levels
-                
-                # Construct Rich Item
-                # Shows: [BADGE] Cause (Lineage) -> "Preview"
                 li.innerHTML = (
                     f'<div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 2px;">'
                     f'{lineage_str}</div>'
@@ -10045,12 +10062,10 @@ def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, An
                 )
                 list_el.appendChild(li)
         else:
-            # Close accordion if clean
             details = document.getElementById("css-findings-details")
             if details: details.open = False
 
-    # 5. Inject Ghost View (Forensic X-Ray)
-    # If your UI has a slot for the visualizer, update it here
+    # 5. Inject Ghost View
     ghost_container = document.getElementById("css-ghost-view-container")
     if ghost_container and ghost_html:
         ghost_container.innerHTML = ghost_html
