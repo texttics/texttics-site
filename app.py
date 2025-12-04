@@ -10252,13 +10252,17 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         # ---------------------------------------------------------
         # 2. PHYSICAL PROPERTIES (The "Physics" Column)
         # ---------------------------------------------------------
-        # A. Width Badge
+        # A. Width Badge (Physics)
         cat = ud.category(char)
         width_badge = ""
+        
+        # Heuristic: Cf/Mn/Me/Cc are usually 0-width. Zs is width > 0.
         if cat in ['Cf', 'Mn', 'Me', 'Cc'] or char_code == 0x200B:
-            width_badge = '<span class="prop-badge prop-zero" title="Zero Width (Non-Printing)">W:0</span>'
+            # CHANGED: Use 'prop-warn' (Amber) because hidden width is a risk factor
+            width_badge = '<span class="prop-badge prop-warn" title="Physics: Zero Width (Stealth)">W: 0</span>'
         elif cat == 'Zs':
-            width_badge = '<span class="prop-badge prop-wide" title="Spacing Character">W:N</span>'
+            # CHANGED: Label 'W: >0' (Positive Width). Use 'prop-wide' (Blue/Info)
+            width_badge = '<span class="prop-badge prop-wide" title="Physics: Positive Width (Spacing)">W: &gt;0</span>'
         
         # B. Category Badge (GC)
         gc_badge = f'<span class="prop-badge prop-gc" title="General Category: {cat}">{cat}</span>'
@@ -10333,17 +10337,23 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     # Sort: Risk (Low Rank) -> Count (High to Low)
     processed_rows.sort(key=lambda x: (x["rank"], -x["count"]))
     
-    # --- Build Summary Ribbon ---
+    # --- Build Summary Ribbon (Synchronized Colors) ---
     summary_parts = []
-    # V3 Summary Order: Granular Risk -> Structural -> Typography
     summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT", "GHOST", "SPACES", "LAYOUT", "TYPO", "OTHER"]
+    
+    # Explicit mapping to match the Table Badge colors
+    # crit -> Red, warn -> Amber, neutral -> Gray/Purple, safe -> Green
+    STYLE_MAP = {
+        "FATAL": "crit", "DISALLOWED": "crit", 
+        "RISKY": "warn", "RESTRICTED": "warn",
+        "SCRIPT": "warn", "GHOST": "neutral", # Purple in CSS
+        "SPACES": "safe", "LAYOUT": "safe", "TYPO": "safe", "OTHER": "neutral"
+    }
     
     for key in summary_order:
         if category_agg[key] > 0:
-            val_class = "safe"
-            if key in ["FATAL", "DISALLOWED"]: val_class = "crit"
-            elif key in ["RISKY", "RESTRICTED"]: val_class = "warn"
-            elif key in ["GHOST"]: val_class = "neutral" # Purple?
+            # Default to 'neutral' if key missing
+            val_class = STYLE_MAP.get(key, "neutral")
             
             summary_parts.append(
                 f'<div class="atlas-sum-metric">'
@@ -10366,8 +10376,11 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     
     desc_html = """
         <div class="atlas-desc">
-            Forensic analysis of invisible and control characters.
-            <strong>Legend:</strong> [W:0] Zero-Width, [BC:*] Bidi Class, [DI:YES] Default Ignorable, [NFKC:VOID] Vanishes.
+            <strong>Forensic Dimensions:</strong> 
+            <span style="color:#64748b">LEGALITY</span> (Risk Verdict & Compliance) &bull; 
+            <span style="color:#64748b">PHYSICS</span> (Visual Dimensions & Category) &bull; 
+            <span style="color:#64748b">STABILITY</span> (Normalization & Evasion Risks) &bull; 
+            <span style="color:#64748b">POLICY</span> (Recommended Mitigation).
         </div>
     """
 
