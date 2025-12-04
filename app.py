@@ -10231,10 +10231,10 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
             tier_rank = 3; tier_badge = "RESTRICTED"; tier_class = "atlas-badge-high"; category_agg["RESTRICTED"] += count
             policy_action = "REVIEW"; policy_class = "prop-warn"
         elif char_code in TIER_2_SCRIPT or category_slug == "SELECTOR":
-            tier_rank = 4; tier_badge = "SCRIPT/EMOJI"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT"] += count
+            tier_rank = 4; tier_badge = "SCRIPT/EMOJI"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT/EMOJI"] += count
             policy_action = "CONTEXT"; policy_class = "prop-info"
         elif char_code in TIER_3_GHOST:
-            tier_rank = 5; tier_badge = "GHOST/FORMAT"; tier_class = "atlas-badge-neutral"; category_agg["GHOST"] += count
+            tier_rank = 5; tier_badge = "GHOST/FORMAT"; tier_class = "atlas-badge-neutral"; category_agg["GHOST/FORMAT"] += count
             policy_action = "REVIEW"; policy_class = "prop-ghost"
         elif char_code in TIER_4_WEIRD_SPACE:
             tier_rank = 6; tier_badge = "NON-STD SPACE"; tier_class = "atlas-badge-neutral"; category_agg["SPACES"] += count
@@ -10346,7 +10346,8 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     STYLE_MAP = {
         "FATAL": "crit", "DISALLOWED": "crit", 
         "RISKY": "warn", "RESTRICTED": "warn",
-        "SCRIPT": "warn", "GHOST": "neutral", # Purple in CSS
+        "SCRIPT/EMOJI": "warn", 
+        "GHOST/FORMAT": "ghost",
         "SPACES": "safe", "LAYOUT": "safe", "TYPO": "safe", "OTHER": "neutral"
     }
     
