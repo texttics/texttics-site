@@ -6099,6 +6099,8 @@ details.profile-section > summary:hover::marker {
   /* 1. Use inline-flex to shrink-wrap width AND align items in a row */
   display: inline-flex; 
   flex-direction: row;
+  align-items: center;
+  width: fit-content;
 
   /* 2. Spacing & sizing */
   gap: 8px; /* Space between the groups */
