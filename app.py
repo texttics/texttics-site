@@ -10342,7 +10342,9 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
                 f'</div>'
             )
 
-    total_inv = sum(invisible_counts.values())
+    # Total should sum the TYPES (Rows), not the instances.
+    # Since every row gets exactly one category, this is just the length of the dictionary.
+    total_inv = len(invisible_counts)
     
     summary_html = f"""
         <div class="atlas-summary-bar">
