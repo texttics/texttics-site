@@ -6253,3 +6253,22 @@ details.profile-section > summary:hover::marker {
     background-color: #8b5cf6; /* Violet active state */
     box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
 }
+
+/* --- METADATA INPUT PLACEHOLDER LOGIC --- */
+
+/* Only shows when the div is completely empty */
+.metadata-editable-box:empty::before {
+    content: attr(data-placeholder);
+    color: #9ca3af; /* Muted placeholder gray */
+    pointer-events: none; /* Allows clicks to pass through to the cursor */
+    font-style: italic;
+    display: block; /* Ensures it renders correctly */
+}
+
+/* Optional: Focus state styling for better UX */
+.metadata-editable-box:focus {
+    outline: none;
+    border-color: #8b5cf6 !important; /* Violet focus ring */
+    background-color: #ffffff !important;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
