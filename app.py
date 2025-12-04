@@ -8994,14 +8994,21 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
         # [HOMOGLYPH]
+        # Call the hardened v1.2 helper. 
+        # We pass 'confusables_map' explicitly to avoid global lookup overhead.
         conf_data = analyze_confusion_density(token_text, confusables_map)
+        
         if conf_data:
+            # Boost risk if the FIRST character is a confusable (visual anchor)
+            # This detects spoofing where the "First Letter" is fake (e.g., Cyrillic 'P' in Paypal)
             if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
                 conf_data['desc'] += " (Start-Char)"
+            
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
+            
             lvl = "HIGH" if conf_data['risk'] > 80 else "MED"
             threat_stack.append({ "lvl": lvl, "type": "AMBIGUITY", "desc": conf_data['desc'] })
 
