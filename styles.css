@@ -6099,7 +6099,7 @@ details.profile-section > summary:hover::marker {
   display: flex;
   flex-direction: row;
   gap: 50px; /* Space between definitions */
-  padding: 10px 4px;
+  padding: 10px 10px;
   background-color: #f8fafc; /* Slate-50 background */
   border-bottom: 1px solid #e2e8f0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -6114,7 +6114,7 @@ details.profile-section > summary:hover::marker {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-right: 8px;
-  white-space: nowrap;
+  margin-left: 80px;
 }
 
 .legend-item {
