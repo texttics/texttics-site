@@ -5811,7 +5811,6 @@ details.profile-section > summary:hover::marker {
 /* 1. Main Container */
 .atlas-content {
   display: block;
-  width: 100%;
   background-color: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 8px; /* Softer corners */
@@ -5835,7 +5834,6 @@ details.profile-section > summary:hover::marker {
   display: flex;
   flex-direction: row;
   align-items: center;
-  width: 100%;
   background-color: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   height: 80px; /* Taller for better vertical rhythm */
@@ -5850,7 +5848,6 @@ details.profile-section > summary:hover::marker {
   justify-content: center;
   align-items: center;
   height: 100%;
-  min-width: 100px;
   padding: 0 20px;
   border-right: 1px solid #f1f5f9;
   transition: background-color 0.2s;
@@ -5863,7 +5860,6 @@ details.profile-section > summary:hover::marker {
 .atlas-sum-metric.main {
   background-color: #f8fafc;
   border-right: 2px solid #e2e8f0;
-  min-width: 120px;
 }
 
 .sum-label {
@@ -5890,7 +5886,7 @@ details.profile-section > summary:hover::marker {
 
 /* 4. The Data Table (The Core Fix) */
 .atlas-table {
-  width: 100%;
+  width: auto;
   border-collapse: separate; /* Allows distinct border styling */
   border-spacing: 0;
   font-size: 0.85rem;
@@ -5968,7 +5964,6 @@ details.profile-section > summary:hover::marker {
   white-space: nowrap;
   flex-wrap: nowrap;
   text-overflow: ellipsis;
-  max-width: 1px; /* Magic hack to force table-cell truncation */
   color: #1e293b;
   font-weight: 500;
   text-align: center;
@@ -6009,7 +6004,6 @@ details.profile-section > summary:hover::marker {
   padding: 3px 6px;
   border-radius: 4px;
   display: inline-block;
-  min-width: 32px;
   text-align: center;
   font-weight: 600;
   flex-wrap: nowrap;
