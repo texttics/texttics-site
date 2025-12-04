@@ -6097,7 +6097,7 @@ details.profile-section > summary:hover::marker {
 /* --- LEGEND BAR (Forensic Dimensions) --- */
 .atlas-legend-bar {
   /* 1. Force items into a single line */
-  flex-direction: row;
+  display: inline-flex !important;
   align-items: center;
 
   /* 2. FORCE WIDTH TO CONTENT (Kills the right-side gap) */
