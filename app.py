@@ -10208,7 +10208,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
         elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
         elif char_code in BIDI_TAG_MAP: symbol = BIDI_TAG_MAP[char_code]; category_slug = "BIDI"
-        elif char_code in TIER_4_WEIRD_SPACE: symbol = "[SP:?]"; category_slug = "SPACE"
+        elif char_code in TIER_UNI_SPACE: symbol = "[SP:?]"; category_slug = "SPACE"
         elif 0x00 <= char_code <= 0x1F:
             symbol = f"[CTL:{char_code:02X}]"
             if char_code == 0x00: category_slug = "NULL"
