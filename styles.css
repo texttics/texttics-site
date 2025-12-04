@@ -4423,90 +4423,123 @@ details.profile-section > summary:hover::marker {
 .meter-fill.perfect { background: #10b981; /* Green for safe match */ }
 
 
-/* Forensic Lens V5 Styles */
+/* --- Forensic Lens V6 (Threat-Aware X-Ray) --- */
 
 /* 1. ANCHOR: The Target (Matched Skeleton) */
-/* This is the part of the input that matches the Trusted string */
 .f-anchor {
-    color: #000000;
-    font-weight: 800; /* Extra bold */
-    font-size: 1.1em;
+    color: #374151; /* Dark Gray (Neutral) */
+    font-weight: 700;
+    opacity: 0.9;
 }
 
-/* 2. PAYLOAD: The Spoof (Matched Skeleton, Raw Mismatch) */
-/* This is the 'a' in pаypal */
+/* 2. PAYLOAD: The Spoof (Homoglyph) */
 .f-payload {
     color: #dc2626; /* Bright Red */
     font-weight: 900;
-    background-color: #fecaca; /* Red highlight background */
+    background-color: #fee2e2;
     border-bottom: 2px solid #ef4444;
     padding: 0 1px;
     border-radius: 2px;
 }
 
-/* 3. NOISE: The Context */
-/* This is "Login: ", "Host: ", etc. */
+/* 3. FORMAT DRIFT: Normalization Equivalence (New) */
+.f-format {
+    color: #d97706; /* Amber */
+    font-weight: 800;
+    background-color: #fef3c7;
+    border-bottom: 2px dotted #d97706;
+    padding: 0 1px;
+}
+
+/* 4. INTERNAL THREAT: Injection inside Match (New) */
+/* e.g. "admin<ZWSP>istrator" */
+.f-threat-internal {
+    color: #ffffff;
+    background-color: #dc2626; /* Solid Red background */
+    font-weight: 800;
+    outline: 2px solid #dc2626; /* Hard outline to pop */
+    border-radius: 2px;
+    padding: 0 1px;
+    z-index: 5;
+    position: relative;
+}
+
+/* 5. RESIDUAL THREAT: Tail/Head Injection (New) */
+.f-threat-resid {
+    color: #ffffff;
+    background-color: #7c3aed; /* Violet */
+    font-weight: 800;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+/* 6. NOISE: Unmatched Context */
 .f-noise {
     color: #94a3b8; /* Slate-400 */
     font-weight: 400;
-    opacity: 0.6;
-    font-size: 0.95em;
+    opacity: 0.4;
+    filter: grayscale(100%);
 }
 
-/* --- Metric Matrix (Forensic Detail) --- */
+/* --- Metric Matrix V2 (Stacked Grid) --- */
 .verdict-matrix {
     display: flex;
-    gap: 12px; /* Little more breathing room */
+    flex-direction: column; /* CHANGE: Stack rows vertically */
+    gap: 12px;
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px dashed var(--border-subtle);
+    border-top: 1px dashed var(--color-border-light);
+}
+
+/* New: Container for a horizontal row of metrics */
+.v-metric-row-group {
+    display: flex;
+    gap: 10px;
+    width: 100%;
 }
 
 .v-metric {
     flex: 1;
-    background: #fff;
-    border: 1px solid var(--border-subtle);
+    background: #ffffff;
+    border: 1px solid var(--color-border-light);
     border-radius: 6px;
-    padding: 10px 12px; /* More padding */
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-width: 0; /* Important for text wrapping in flex items */
+    align-items: center; /* Center align for cleaner grid */
+    min-width: 0;
+    text-align: center;
 }
 
-/* Label: Top Left */
 .v-metric-label {
     font-size: 0.65rem;
     text-transform: uppercase;
-    color: var(--text-dim);
+    color: #64748b; /* Slate-500 */
     font-weight: 700;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     letter-spacing: 0.05em;
     display: block;
-    text-align: left; /* Align Left */
-}
-
-/* The Value Row: Holds Status (Left) and Detail (Right) */
-.v-metric-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    width: 100%;
 }
 
 .v-metric-val {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 800;
-    text-align: left; /* Align Left */
+    color: #111827; /* Slate-900 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-mono); /* Force Mono for technical values */
+    width: 100%;
 }
 
-/* The Nuance/Detail Text on the Right */
+/* Detail Text inside metric (Optional) */
 .v-metric-detail {
-    font-size: 0.7rem;
-    color: #64748b; /* Slate-500 */
+    font-size: 0.65rem;
+    color: #9ca3af;
     font-weight: 500;
-    text-align: right;
     font-family: var(--font-sans);
+    margin-top: 2px;
 }
 
 /* Skeleton Code Styling (Wrapping Enabled) */
