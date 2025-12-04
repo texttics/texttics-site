@@ -10152,22 +10152,29 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         0x2064, 0x2065, 0x3164, 0xFEFF, 0xFFA0, 0xFFF9, 0xFFFA, 0xFFFB
     }
 
-    # Forensic Tiering v3.0
-    # TIER 0: Standard Typography (Low Risk)
-    TIER_0_TYPO = {0x00A0, 0x00AD} # NBSP, SHY
-    # TIER 1: Layout & Whitespace (Structural)
-    TIER_1_LAYOUT = {0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x85}
-    # TIER 2: Script/Emoji Glue (Contextual)
-    TIER_2_SCRIPT = {0x200C, 0x200D} 
-    # TIER 3: Ghost / Format (High Evasion Risk)
-    TIER_3_GHOST = DEFAULT_IGNORABLE_SET | {0xFEFF}
-    # TIER 4: Non-Standard Spaces (Spoofing Risk)
-    # En Quad, Em Quad, Thin, Hair, Narrow NBSP, Medium Math, Ideographic
-    TIER_4_WEIRD_SPACE = {
-        0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000
+    # --- Forensic Taxonomy v4.0 (Standards Aligned) ---
+    
+    # 1. GLUE (UAX #14 "Glue" / Non-Breaking)
+    TIER_GLUE = {0x00A0, 0x00AD, 0x2011} # NBSP, SHY, NB-Hyphen
+    
+    # 2. ASCII-WS (Legacy Layout Controls)
+    TIER_ASCII_WS = {0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x85}
+    
+    # 3. UNI-SPACE (Unicode General Category Zs excluding ASCII)
+    TIER_UNI_SPACE = {
+        0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000, 0x1680
     }
-    # TIER 5: Bidi Controls (Directional Risk)
-    TIER_5_BIDI = set(BIDI_TAG_MAP.keys())
+    
+    # 4. JOINERS (Script/Emoji Shaping)
+    # Includes ZWJ, ZWNJ, and Variation Selectors
+    TIER_JOINERS = {0x200C, 0x200D}
+
+    # 5. IGNORABLE (Default_Ignorable_Code_Point + Cf)
+    # The "Ghost" tier. Characters that exist but display nothing.
+    TIER_IGNORABLE = DEFAULT_IGNORABLE_SET | {0xFEFF}
+
+    # 6. BIDI (Bidirectional Controls)
+    TIER_BIDI = set(BIDI_TAG_MAP.keys())
 
     for char_code, count in invisible_counts.items():
         char = chr(char_code)
@@ -10211,43 +10218,58 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         else:
             symbol = "[INV]"; category_slug = "FORMAT"
 
-        # --- Forensic Tiering ---
+        # --- Forensic Classification ---
         tier_rank = 99
-        tier_badge = ""
-        tier_class = ""
+        tier_badge = "OTHER"
+        tier_class = "atlas-badge-neutral"
+        # We categorize primarily for the Ribbon stats
+        bucket_key = "OTHER"
+        
+        # Policy Defaults
         policy_action = "ALLOW"
         policy_class = "prop-stable"
         
         if char_code == 0x0000:
-             tier_rank = 0; tier_badge = "FATAL (NULL)"; tier_class = "atlas-badge-crit"; category_agg["FATAL"] += count
-             policy_action = "BLOCK"; policy_class = "prop-crit"
+             tier_rank = 0; tier_badge = "FATAL (NULL)"; tier_class = "atlas-badge-crit"
+             bucket_key = "FATAL"; policy_action = "BLOCK"; policy_class = "prop-crit"
+             
         elif 0xE0000 <= char_code <= 0xE007F:
-             tier_rank = 1; tier_badge = "DISALLOWED"; tier_class = "atlas-badge-crit"; category_agg["DISALLOWED"] += count
-             policy_action = "BLOCK"; policy_class = "prop-crit"
-        elif char_code in TIER_5_BIDI:
-            tier_rank = 2; tier_badge = "RISKY (BIDI)"; tier_class = "atlas-badge-high"; category_agg["RISKY"] += count
-            policy_action = "REVIEW"; policy_class = "prop-warn"
+             tier_rank = 1; tier_badge = "DISALLOWED"; tier_class = "atlas-badge-crit"
+             bucket_key = "DISALLOWED"; policy_action = "BLOCK"; policy_class = "prop-crit"
+             
+        elif char_code in TIER_BIDI:
+            tier_rank = 2; tier_badge = "BIDI CONTROL"; tier_class = "atlas-badge-high"
+            bucket_key = "BIDI"; policy_action = "REVIEW"; policy_class = "prop-warn"
+            
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
-            tier_rank = 3; tier_badge = "RESTRICTED"; tier_class = "atlas-badge-high"; category_agg["RESTRICTED"] += count
-            policy_action = "REVIEW"; policy_class = "prop-warn"
-        elif char_code in TIER_2_SCRIPT or category_slug == "SELECTOR":
-            tier_rank = 4; tier_badge = "SCRIPT/EMOJI"; tier_class = "atlas-badge-warn"; category_agg["SCRIPT/EMOJI"] += count
-            policy_action = "CONTEXT"; policy_class = "prop-info"
-        elif char_code in TIER_3_GHOST:
-            tier_rank = 5; tier_badge = "GHOST/FORMAT"; tier_class = "atlas-badge-neutral"; category_agg["GHOST/FORMAT"] += count
-            policy_action = "REVIEW"; policy_class = "prop-ghost"
-        elif char_code in TIER_4_WEIRD_SPACE:
-            tier_rank = 6; tier_badge = "NON-STD SPACE"; tier_class = "atlas-badge-neutral"; category_agg["SPACES"] += count
-            policy_action = "NORM"; policy_class = "prop-info"
-        elif char_code in TIER_1_LAYOUT:
-            tier_rank = 7; tier_badge = "WHITESPACE"; tier_class = "atlas-badge-ok"; category_agg["LAYOUT"] += count
-            policy_action = "ALLOW"; policy_class = "prop-stable"
-        elif char_code in TIER_0_TYPO:
-            tier_rank = 8; tier_badge = "TYPOGRAPHIC"; tier_class = "atlas-badge-ok"; category_agg["TYPO"] += count
-            policy_action = "ALLOW"; policy_class = "prop-stable"
+            tier_rank = 3; tier_badge = "RESTRICTED CTRL"; tier_class = "atlas-badge-high"
+            bucket_key = "CONTROLS"; policy_action = "REVIEW"; policy_class = "prop-warn"
+            
+        elif char_code in TIER_IGNORABLE:
+            tier_rank = 4; tier_badge = "IGNORABLE"; tier_class = "atlas-badge-ghost"
+            bucket_key = "IGNORABLE"; policy_action = "REVIEW"; policy_class = "prop-ghost"
+            
+        elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
+            tier_rank = 5; tier_badge = "JOINER/SELECTOR"; tier_class = "atlas-badge-warn" # Changed to Warn/Info
+            bucket_key = "JOINERS"; policy_action = "CONTEXT"; policy_class = "prop-info"
+            
+        elif char_code in TIER_UNI_SPACE:
+            tier_rank = 6; tier_badge = "UNICODE SPACE"; tier_class = "atlas-badge-neutral"
+            bucket_key = "UNI-SPACE"; policy_action = "NORM"; policy_class = "prop-info"
+            
+        elif char_code in TIER_ASCII_WS:
+            tier_rank = 7; tier_badge = "ASCII WS"; tier_class = "atlas-badge-ok"
+            bucket_key = "ASCII-WS"; policy_action = "ALLOW"; policy_class = "prop-stable"
+            
+        elif char_code in TIER_GLUE:
+            tier_rank = 8; tier_badge = "GLUE"; tier_class = "atlas-badge-ok"
+            bucket_key = "GLUE"; policy_action = "ALLOW"; policy_class = "prop-stable"
+            
         else:
-            tier_rank = 9; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"; category_agg["OTHER"] += count
-            policy_action = "REVIEW"; policy_class = "prop-warn"
+            tier_rank = 9; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"
+            bucket_key = "OTHER"; policy_action = "REVIEW"; policy_class = "prop-warn"
+            
+        category_agg[bucket_key] += count
 
         # ---------------------------------------------------------
         # 2. PHYSICAL PROPERTIES (The "Physics" Column)
@@ -10337,18 +10359,19 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     # Sort: Risk (Low Rank) -> Count (High to Low)
     processed_rows.sort(key=lambda x: (x["rank"], -x["count"]))
     
-    # --- Build Summary Ribbon (Synchronized Colors) ---
+    # --- Build Summary Ribbon (Strict Taxonomy) ---
     summary_parts = []
-    summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT/EMOJI", "GHOST/FORMAT", "SPACES", "LAYOUT", "TYPO", "OTHER"]
+    summary_order = [
+        "FATAL", "DISALLOWED", "BIDI", "CONTROLS", 
+        "IGNORABLE", "JOINERS", 
+        "UNI-SPACE", "ASCII-WS", "GLUE", "OTHER"
+    ]
     
-    # Explicit mapping to match the Table Badge colors
-    # crit -> Red, warn -> Amber, neutral -> Gray/Purple, safe -> Green
     STYLE_MAP = {
         "FATAL": "crit", "DISALLOWED": "crit", 
-        "RISKY": "warn", "RESTRICTED": "warn",
-        "SCRIPT/EMOJI": "warn", 
-        "GHOST/FORMAT": "ghost",
-        "SPACES": "safe", "LAYOUT": "safe", "TYPO": "safe", "OTHER": "neutral"
+        "BIDI": "warn", "CONTROLS": "warn",
+        "IGNORABLE": "ghost", "JOINERS": "neutral", # Joiners are usually neutral/info
+        "UNI-SPACE": "neutral", "ASCII-WS": "safe", "GLUE": "safe", "OTHER": "neutral"
     }
     
     for key in summary_order:
