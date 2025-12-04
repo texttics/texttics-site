@@ -444,19 +444,36 @@
                     <div id="verdict-desc" style="margin-bottom: 4px;">Waiting for input...</div>
                     
                     <div class="verdict-matrix" id="verdict-matrix">
-                        <div class="v-metric">
-                            <span class="v-metric-label">RAW BYTES</span>
-                            <span class="v-metric-val" id="vm-raw">--</span>
-                        </div>
-                        <div class="v-metric">
-                            <span class="v-metric-label">COMPATIBILITY (NFKC)</span>
-                            <span class="v-metric-val" id="vm-nfkc">--</span>
-                        </div>
-                        <div class="v-metric">
-                            <span class="v-metric-label">SKELETON (VISUAL)</span>
-                            <span class="v-metric-val" id="vm-skel">--</span>
-                        </div>
-                    </div>
+    <div class="v-metric-row-group">
+        <div class="v-metric">
+            <span class="v-metric-label">RAW BYTES</span>
+            <span class="v-metric-val" id="vm-raw">--</span>
+        </div>
+        <div class="v-metric">
+            <span class="v-metric-label">COMPAT (NFKC)</span>
+            <span class="v-metric-val" id="vm-nfkc">--</span>
+        </div>
+        <div class="v-metric">
+            <span class="v-metric-label">SKELETON (VISUAL)</span>
+            <span class="v-metric-val" id="vm-skel">--</span>
+        </div>
+    </div>
+
+    <div class="v-metric-row-group" style="border-top: 1px solid var(--color-border-light); margin-top: 8px; padding-top: 8px;">
+        <div class="v-metric">
+            <span class="v-metric-label">SUSPECT PROFILE</span>
+            <span class="v-metric-val" id="vm-suspect-profile">--</span>
+        </div>
+        <div class="v-metric">
+            <span class="v-metric-label">TRUSTED PROFILE</span>
+            <span class="v-metric-val" id="vm-trusted-profile">--</span>
+        </div>
+        <div class="v-metric">
+            <span class="v-metric-label">CONFUSABLE CLASS</span>
+            <span class="v-metric-val" id="vm-confusable-class">--</span>
+        </div>
+    </div>
+</div>
                 </div>
             </div>
         </div>
