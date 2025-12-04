@@ -1828,64 +1828,59 @@ window.updateStatConsole = function(row) {
       }
   });
 
-// --- NEW: METADATA WORKBENCH LOGIC ---
+// ==========================================
+// 15. METADATA WORKBENCH BRIDGE (Dynamic & Debounced)
+// ==========================================
+
 const metadataInput = document.getElementById('metadata-input');
- 
+
 if (metadataInput) {
-    // Temporary JS function to pass raw HTML string to Python (Logic remains the same)
-    window.py_analyze_html_metadata = (htmlData) => {
-        console.log("[Metadata Workbench] Received HTML Payload:", htmlData.length, "chars.");
-        console.log("--- RAW HTML PAYLOAD ---");
-        console.log(htmlData);
-        alert("Metadata copied! Now paste the same content into the main 'Text Input' area to correlate findings.");
+    let debounceTimer;
+
+    // A. The Trigger Function
+    // Calls the Python backend with flow control to prevent crashes
+    const triggerForensicScan = (content) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            // Check if Python bridge is ready (it exports as window.analyze_html_metadata)
+            if (typeof window.analyze_html_metadata === 'function') {
+                // Determine payload: If empty or just <br>, send empty string to reset UI
+                const payload = (!content || content === "<br>") ? "" : content;
+                window.analyze_html_metadata(payload);
+            } else {
+                console.warn("[Metadata] Python bridge not ready yet.");
+            }
+        }, 400); // 400ms delay
     };
-    
-    // 1. Intercept the Paste Event
-    metadataInput.onpaste = function(event) {
-        event.preventDefault(); 
+
+    // B. The Paste Interceptor (High Fidelity)
+    // Captures raw HTML before the browser normalizes it
+    metadataInput.addEventListener("paste", (e) => {
+        e.preventDefault(); 
         
-        const clipboardData = event.clipboardData || window.clipboardData;
-        // CRITICAL: Intercept the HTML format
+        const clipboardData = e.clipboardData || window.clipboardData;
         const rawHtml = clipboardData.getData('text/html');
-        // We still extract plain text, but only to feed the Python side later
         const plainText = clipboardData.getData('text/plain');
         
-        // --- START FIX: VISUAL HTML INJECTION ---
-        // 2. Clear the input, then insert the raw HTML string.
-        // This forces the browser to render the colors, boldness, etc.
-        
-        // Clear existing content (important for clean paste)
-        this.innerHTML = ''; 
-        
-        // Use the clipboard's native 'items' to ensure rich text is handled, 
-        // falling back to 'insertHTML' with the string payload.
-        if (clipboardData.items) {
-             // If clipboard items are available, try inserting the first HTML item directly
-             const htmlItem = Array.from(clipboardData.items).find(item => item.type === 'text/html');
-             if (htmlItem) {
-                 htmlItem.getAsString(function(htmlString) {
-                     document.execCommand('insertHTML', false, htmlString);
-                 });
-             } else {
-                 // If item access fails, fall back to string insertion
-                 document.execCommand('insertHTML', false, rawHtml);
-             }
+        // 1. Visual Injection (So the user sees what they pasted)
+        // Use execCommand to preserve the Undo stack and handle HTML insertion safely
+        if (rawHtml) {
+            document.execCommand('insertHTML', false, rawHtml);
         } else {
-             // Legacy method: insert the raw HTML string
-             document.execCommand('insertHTML', false, rawHtml);
+            // Fallback for plain text pastes
+            document.execCommand('insertText', false, plainText);
         }
-        
-        // --- END FIX: VISUAL HTML INJECTION ---
 
-        // 3. Pass the captured raw HTML Payload to the Python Bridge
-        if (window.py_analyze_html_metadata) {
-            window.py_analyze_html_metadata(rawHtml);
-        }
-    };
-    
-    // 4. Reveal the workbench interface (Logic remains the same)
-    const container = document.getElementById('metadata-workbench-container');
-    if (container) {
-        container.style.display = 'block';
-    }
+        // 2. Forensic Handoff (Send the rawest data possible)
+        // Note: We send 'rawHtml' if available, otherwise 'plainText'
+        triggerForensicScan(rawHtml || plainText);
+    });
+
+    // C. The Dynamic Monitor (Edits/Deletes)
+    // Fires on typing, backspace, cut, and drag-drop.
+    metadataInput.addEventListener("input", (e) => {
+        // For edits, we must analyze the current DOM state (innerHTML)
+        // This handles the "Ghost Problem" where deleting text didn't clear the alert.
+        triggerForensicScan(metadataInput.innerHTML);
+    });
 }
