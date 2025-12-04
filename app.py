@@ -2676,12 +2676,14 @@ def normalize_extended(text: str) -> str:
 def _generate_uts39_skeleton(t: str, return_events=False):
     """
     Generates the UTS #39 'Skeleton' following the full forensic pipeline.
+    [HARDENED v1.1] Robust against Schema Drift in DATA_STORES.
     
     Args:
         t (str): Input string.
         return_events (bool): If True, returns (skeleton, events_dict). 
                               If False, returns just skeleton string (Backward Compat).
     """
+    # 0. Safety Check
     if LOADING_STATE != "READY" or not t:
         return ("", {}) if return_events else ""
         
@@ -2691,18 +2693,18 @@ def _generate_uts39_skeleton(t: str, return_events=False):
         "mappings": []
     }
 
-    # 1. NFKC (Compatibility)
+    # 1. NFKC (Compatibility Normalization)
     # Collapses fullwidth (Ａ->A) and ligatures (ﬁ->fi)
     try:
         s1 = unicodedata2.normalize("NFKC", t)
     except:
         s1 = unicodedata.normalize("NFKC", t)
 
-    # 2. Casefold (Identity)
+    # 2. Casefold (Identity Normalization)
     # Collapses case distinctions (A->a)
     s2 = s1.casefold()
 
-    # 3. Map Confusables (Visual) + Track Events
+    # 3. Map Confusables (Visual Transformation)
     confusables_map = DATA_STORES.get("Confusables", {})
     mapped_chars = []
     
@@ -2712,38 +2714,52 @@ def _generate_uts39_skeleton(t: str, return_events=False):
             # Found a mapping!
             val = confusables_map[cp]
             
-            # DEFENSIVE UNPACKING: Handles both old (str) and new (tuple) formats
+            # [CRITICAL FIX] Schema Tolerance Logic
+            # We strictly extract what we need (Target, Tag) and ignore the rest.
+            tgt = char # Default safe fallback
+            tag = "UNK"
+            
             if isinstance(val, tuple):
-                tgt, tag = val
-            else:
+                # Handle Tuple (New Format): (Target, Tag, [Optional...])
+                if len(val) >= 2:
+                    tgt = val[0]
+                    tag = val[1]
+                    # Note: We intentionally ignore val[2+] (Comments/Hex)
+                elif len(val) == 1:
+                    tgt = val[0]
+            elif isinstance(val, str):
+                # Handle String (Legacy Format): "Target"
                 tgt = val
-                tag = "UNK" # Fallback for legacy data
             
             mapped_chars.append(tgt)
             
-            # Log the event
+            # Log the forensic event
             events["confusables_mapped"] += 1
             events["mappings"].append({
                 "char": char,
                 "hex": f"{cp:04X}",
                 "map_to": tgt,
-                "type": tag # MA, ML, etc.
+                "type": tag 
             })
         else:
             mapped_chars.append(char)
         
     s3 = "".join(mapped_chars)
 
-    # 4. Strip Default Ignorables & Bidi (Structure) + Track Events
-    # UTS #39 requires stripping these to see the "Visual Bone Structure"
+    # 4. Strip Default Ignorables & Bidi (Visual Bone Structure)
+    # UTS #39 requires stripping these to see the true visual layout
     filtered_chars = []
+    
+    # Pre-calculate mask for speed inside the loop
+    MASK_STRIP = (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_CRITICAL_CONTROL)
+
     for char in s3:
         cp = ord(char)
         is_ignorable = False
         
-        # O(1) Bitmask Check
-        if cp < 0x110000:
-             if (INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_CRITICAL_CONTROL)):
+        # O(1) Bitmask Check (Bounds Checked)
+        if cp < 1114112:
+             if INVIS_TABLE[cp] & MASK_STRIP:
                  is_ignorable = True
         
         if not is_ignorable:
@@ -2754,11 +2770,13 @@ def _generate_uts39_skeleton(t: str, return_events=False):
     s4 = "".join(filtered_chars)
 
     # 5. NFD Normalization (Canonical Final Form)
+    # Ensures combining marks are in a consistent order for string equality checks
     try:
         final_skel = unicodedata2.normalize("NFD", s4)
     except:
         final_skel = unicodedata.normalize("NFD", s4)
         
+    # 6. Return Contract
     if return_events:
         return final_skel, events
         
