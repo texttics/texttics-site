@@ -2006,3 +2006,32 @@ Authenticity: Identity/Spoofing (ID Card).
 Threat: Weaponization/Malice (Target).
 
 Anomaly: Physics/Deviation (Scatter Plot). Note: Explicitly distinct from "Health".
+
+***
+
+### 🛡️ Update: The Invisible Atlas V3.1 (Forensic-Grade Instrument)
+
+**Session Goal:** To transition the Invisible Character Atlas from a "Passive Legend" to a **"Scientifically Exhaustive Forensic Instrument."** We moved beyond simple character counting to a robust, **9-column** architecture that exposes the **Security Physics** of every hidden particle.
+
+#### 1. Scientific Hardening & Terminology
+We conducted a rigorous audit against **Unicode 16.0** and **UTS #39** standards to eliminate vague or misleading terminology.
+* **Precision Naming:** Replaced generic fallback names ("UNASSIGNED") with a dedicated **C0/C1 Control Lookup Engine**, ensuring characters like `U+000A` are correctly identified as `LINE FEED (LF)`.
+* **Bidi Specificity:** Abandoned the generic `[BIDI]` tag in favor of precise, forensic mnemonics: `[RLO]` (Right-to-Left Override), `[LRI]` (Isolate), `[PDF]` (Pop Directional Formatting). This allows analysts to distinguish between "Trojan Source" weapons and standard grammar.
+* **Risk Taxonomy:** Renamed "ILLEGAL" to **"DISALLOWED"** (matching IDNA standards) and "BENIGN" to **"TYPOGRAPHIC"**.
+
+#### 2. New Dimension: Forensic Physics & Stability
+We added three new dimensions of analysis to answer *why* a character is dangerous, not just *that* it exists.
+* **Visual Physics (`W:0` vs `W: >0`):** Explicitly badges characters as **Zero-Width (Stealth)** vs. **Positive Width (Spacing)**.
+* **Normalization Stability (`NFKC`):** A predictive badge that warns if a character will **Vanish (`VOID`)**, **Mutate (`MOD`)**, or turn into a Space (`SP`) during NFKC normalization—a primary vector for WAF bypass.
+* **Ignorability (`DI:YES`):** A heuristic check against the **Default_Ignorable_Code_Point** property, flagging "Ghost" characters that persist in data but vanish in rendering.
+
+#### 3. The "Ghost" Tier & Policy Engine
+We refined the risk model to prevent false confidence.
+* **The "Ghost" Tier (Purple):** We moved characters like **Zero Width Space (`U+200B`)**, **Mongolian Vowel Separator**, and **Word Joiner** out of the "Typographic" (Safe) tier and into a dedicated **"GHOST/FORMAT"** tier. This creates a distinct visual alert for characters used in evasion attacks.
+* **Policy Recommendations:** Added a **POLICY** column that translates abstract risk into actionable advice: `[BLOCK]`, `[REVIEW]`, `[NORM]`, or `[ALLOW]`.
+
+#### 4. UX Architecture: The 9-Column Grid
+We completely rebuilt the CSS layout to support high-density forensic data without clutter.
+* **No-Wrap Discipline:** Implemented surgical CSS overrides (`white-space: nowrap`, `width: 1%`) to ensure symbol columns auto-fit perfectly while preventing the "Code" column from feeling depressed or squashed.
+* **The "Sponge" Logic:** Engineered the **Name** column to act as a layout buffer, absorbing excess whitespace while prioritizing the visibility of forensic badges.
+* **Synchronized Color System:** Aligned the **Summary Ribbon** metrics (Totals) with the **Table Rows** using a unified color theory (Red/Critical, Amber/Warning, Purple/Ghost, Green/Safe).
