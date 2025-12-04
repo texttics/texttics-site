@@ -10376,15 +10376,15 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         <table class="atlas-table">
             <thead>
                 <tr>
-                    <th>>Symbol</th>
-                    <th>>Code</th>
-                    <th>>Name</th>
-                    <th>>Legality</th>
-                    <th>>Physics</th>
-                    <th>>Stability</th>
-                    <th>>Policy</th>
-                    <th>>Count</th>
-                    <th>>Action</th>
+                    <th>Symbol</th>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Legality</th>
+                    <th>Physics</th>
+                    <th>Stability</th>
+                    <th>Policy</th>
+                    <th>Count</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
