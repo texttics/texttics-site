@@ -5879,11 +5879,11 @@ details.profile-section > summary:hover::marker {
 }
 
 /* Ribbon Colors */
-.sum-val.crit    { color: #dc2626; } /* Red */
-.sum-val.warn    { color: #d97706; } /* Amber */
-.sum-val.ghost   { color: #7c3aed; } /* Purple (New Forensic Tier) */
-.sum-val.neutral { color: #64748b; } /* Gray (Other) */
 .sum-val.safe    { color: #166534; } /* Green */
+.sum-val.ghost   { color: #7c3aed; } /* Purple */
+.sum-val.neutral { color: #64748b; } /* Gray */
+.sum-val.warn    { color: #d97706; } /* Amber */
+.sum-val.crit    { color: #dc2626; } /* Red */
 
 /* 4. The Data Table (The Core Fix) */
 .atlas-table {
@@ -5997,18 +5997,29 @@ details.profile-section > summary:hover::marker {
   text-align: center;
 }
 
+/* FORENSIC SPECIMEN CHIP */
 .atlas-glyph {
-  font-family: "SF Mono", "Segoe UI Mono", "Roboto Mono", monospace;
+  /* Typography */
+  font-family: "SF Mono", "Consolas", "Liberation Mono", Menlo, monospace;
   font-size: 0.75rem;
-  background-color: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  color: #0f172a;
-  padding: 8px 8px;
-  border-radius: 4px;
+  font-weight: 700;
+  color: #334155; /* Slate 700 - Strong, readable text */
+  letter-spacing: -0.02em;
+
+  /* The "Chip" Look */
+  background-color: #ffffff; /* Clean white background */
+  border: 1px solid #cbd5e1; /* Sharp definition */
+  border-bottom: 2px solid #94a3b8; /* "Tactile" bottom edge for depth */
+  border-radius: 6px; /* Slightly softer corners */
+  
+  /* Layout */
+  padding: 4px 10px; /* Wider horizontal padding for "Tag" feel */
   display: inline-block;
+  min-width: 60px; /* Enforces uniformity for short tags like [RLO] */
   text-align: center;
-  font-weight: 600;
-  flex-wrap: nowrap;
+  
+  /* Interaction Hint */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .atlas-badge {
