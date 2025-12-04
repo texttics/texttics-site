@@ -6139,3 +6139,117 @@ details.profile-section > summary:hover::marker {
   font-weight: 500;
   color: #64748b;
 }
+
+
+/* --- METADATA WORKBENCH HEADER (SOTA V3) --- */
+
+.metadata-header-panel {
+    background: #fdfbff; /* Subtle violet tint for Anomaly context */
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid #8b5cf6; /* Violet Accent to match Anomaly logic */
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Row 1: Scope & Definition */
+.metadata-scope-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.scope-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.scope-badge {
+    background: #8b5cf6;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 3px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace; /* Technical font */
+}
+
+.scope-mime {
+    font-size: 0.65rem;
+    color: #8b5cf6;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    opacity: 0.9;
+}
+
+.scope-desc {
+    font-size: 0.75rem;
+    color: #6b7280;
+    line-height: 1.2;
+    text-align: right;
+}
+
+/* Row 2: Sensor Legend */
+.metadata-sensor-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sensor-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #9ca3af;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.sensor-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sensor-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.65rem;
+    color: #4b5563;
+    background: #fff;
+    padding: 2px 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px; /* Pill shape */
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: help;
+    transition: all 0.15s ease;
+}
+
+.sensor-chip:hover {
+    border-color: #d8b4fe;
+    color: #7c3aed;
+    background: #f5f3ff;
+}
+
+/* The CSS-generated Dot (Replaces Emoji) */
+.sensor-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: #d1d5db; /* Inactive Gray */
+    border-radius: 50%;
+    margin-right: 6px;
+    transition: background-color 0.2s;
+}
+
+/* Active State on Hover */
+.sensor-chip:hover .sensor-dot {
+    background-color: #8b5cf6; /* Violet active state */
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
