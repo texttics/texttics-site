@@ -2035,3 +2035,24 @@ We completely rebuilt the CSS layout to support high-density forensic data witho
 * **No-Wrap Discipline:** Implemented surgical CSS overrides (`white-space: nowrap`, `width: 1%`) to ensure symbol columns auto-fit perfectly while preventing the "Code" column from feeling depressed or squashed.
 * **The "Sponge" Logic:** Engineered the **Name** column to act as a layout buffer, absorbing excess whitespace while prioritizing the visibility of forensic badges.
 * **Synchronized Color System:** Aligned the **Summary Ribbon** metrics (Totals) with the **Table Rows** using a unified color theory (Red/Critical, Amber/Warning, Purple/Ghost, Green/Safe).
+
+---
+
+### 🛡️ New Module: The Metadata Workbench (Stage 1.5)
+**Focus:** Forensic CSS Simulation & Obfuscation Analysis
+
+> **The "Dual-Pipe" Adversarial Physics Engine for Raw Clipboard Forensics**
+
+We have introduced a **Stage 1.5** analysis layer designed to solve the "Blind Spot" of standard text forensics: the loss of styling metadata during paste operations. While the main analyzer secures the *Logical Atom* (plain text), the **Metadata Workbench** secures the *Contextual Reality* (the DOM). It operates on a specialized **"Dual-Pipe" Architecture** that intercepts the raw `text/html` clipboard stream before browser sanitization occurs, enabling the detection of threats that rely on being "technically present but visually missing."
+
+#### 🔬 The Static Forensic Simulator
+Unlike traditional regex scanners, this module utilizes a deterministic **Forensic Stack Machine** (built on Python’s `html.parser`). It performs a single-pass simulation of the browser’s rendering engine to calculate the **Effective Forensic State** of every node.
+* **Physics Simulation:** It models CSS inheritance (Parent `visibility` $\to$ Child), opacity multiplication, and geometric stacking to detect deep obfuscation.
+* **SOTA Detection Engines:** Implements the **CSEMiner Taxonomy** (ESORICS 2025) to detect **Photometric Hiding** (White-on-White, Transparent), **Geometric Collapse** (0px fonts, 1px clipping), **Layout Suppression** (display:none), and **Coordinate Displacement** (Off-screen positioning).
+* **Forensic Impact & Sophistication (FIS) Scoring:** A CVSS-style risk model that calculates threat levels based not just on severity, but on **Vector Diversity**. It applies polymorphic multipliers to flag sophisticated attacks (which mix multiple hiding techniques) while using an **A11Y Policy Auditor** to whitelist legitimate accessibility patterns (like `.sr-only` skip links) derived from WebAIM standards.
+
+#### 🏛️ The "Lab Instrument" Interface
+The UI has been upgraded to a **Forensic Laboratory** aesthetic, featuring:
+* **Active Sensor Array:** A dedicated header visualizing active detection modules (Layout, Geometry, Lineage).
+* **Lineage Trace:** A "Debugger-style" stack view that answers *why* text is hidden (e.g., `DIV.wrapper > SPAN.hidden`).
+* **Ghost Text X-Ray:** A specialized "Invisibility Goggles" mode that renders hidden payloads inline with a distinct visual signature (Red/Dashed), allowing analysts to see the invisible layer of the web.
