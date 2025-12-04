@@ -6178,6 +6178,8 @@ details.profile-section > summary:hover::marker {
     border-radius: 3px;
     letter-spacing: 0.05em;
     font-family: 'JetBrains Mono', monospace; /* Technical font */
+    display: inline-flex;
+    align-items: center;
 }
 
 .scope-mime {
