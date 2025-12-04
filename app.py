@@ -1039,10 +1039,21 @@ CONFUSABLE_CLASS = {
 REGEX_ID_ASCII_STRICT = re.compile(r"^\w+$", re.ASCII)
 
 # Profile B: GENERAL SECURITY PROFILE (UAX #31 Baseline)
-# This is a heuristic approximation of "ID_Start + ID_Continue".
-# Logic: Reject Punctuation (P), Symbols (S), Separators (Z), Control (C).
-# Exception: We allow Connector Punctuation (Pc) like underscore.
-REGEX_ID_GENERAL_SAFE = re.compile(r"^[^\s\p{C}\p{S}\p{P}]+$")
+# Replaces the broken \p{} regex with a standard Python equivalent.
+# Pattern: ^\w+$
+# Matches: Unicode Alphanumeric (L, N) + Underscore (Pc) + Marks (M).
+# Rejects: Whitespace (Z), Control (C), Symbols (S), Punctuation (P) (excl. _).
+REGEX_ID_GENERAL_SAFE = re.compile(r"^\w+$")
+
+# [NEW] Diagnostic Tuples (The "Why" Definitions)
+# Used by the Logic Engine to explain *why* a string failed the regex.
+# We define the forbidden physics here, not inside the function.
+ID_VIOLATION_MAP = {
+    "WHITESPACE": ("Z",),          # Separators
+    "CONTROL":    ("C",),          # Control/Format
+    "SYMBOL":     ("S",),          # Math, Emoji, Currency
+    "PUNCTUATION": ("P",)          # Punctuation (logic handles '_' exception)
+}
 
 # Profile C: DOMAIN LABEL (RFC 1035 + IDNA)
 # Allowed: Alphanumeric + Hyphen (strictly internal).
@@ -4834,35 +4845,55 @@ def analyze_identifier_profile(t: str) -> dict:
     
     Profiles Checked:
     1. STRICT_ASCII: a-zA-Z0-9_ only.
-    2. GENERAL_SECURITY: No Whitespace, Controls, or Symbols (Emoji).
+    2. GENERAL_SECURITY: Unicode Letters, Numbers, Marks, Underscore.
+       (Rejects Emoji, Spaces, Symbols, and non-connector Punctuation).
     """
-    results = {
-        "is_strict_ascii": bool(REGEX_ID_ASCII_STRICT.match(t)),
-        "is_general_safe": bool(REGEX_ID_GENERAL_SAFE.match(t)),
-        "violation_type": None
-    }
+    # 1. Fast Regex Checks (Block 2 Definitions)
+    is_strict_ascii = bool(REGEX_ID_ASCII_STRICT.match(t))
+    is_general_safe = bool(REGEX_ID_GENERAL_SAFE.match(t))
     
-    if not results["is_general_safe"]:
-        # Forensic Triage: Why did it fail?
-        # We scan for the first offender to report the 'Violation Type'
-        for char in t:
-            if char.isspace():
-                results["violation_type"] = "WHITESPACE"
-                break
-            # Check O(1) Bitmask for invisible/control
-            cp = ord(char)
-            if cp < 1114112 and (INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL)):
-                results["violation_type"] = "INVISIBLE/CONTROL"
-                break
-            cat = unicodedata2.category(char)
-            if cat.startswith('S'): # Symbol (Emoji, Math)
-                results["violation_type"] = "SYMBOL/EMOJI"
-                break
-            if cat.startswith('P') and char != '_': # Punctuation
-                results["violation_type"] = "PUNCTUATION"
-                break
+    violation_type = None
+    
+    # 2. Forensic Diagnostics (Only run if unsafe)
+    if not is_general_safe:
+        if not t:
+            violation_type = "EMPTY"
+        else:
+            # Slow Path: Iterate to find the first offender
+            for char in t:
+                # A. Check Invisibles (The "Ghost" Layer)
+                cp = ord(char)
+                if cp < 1114112:
+                    if INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL):
+                        violation_type = "INVISIBLE/CONTROL"
+                        break
+
+                # B. Check Categories (The "Physics" Layer)
+                try:
+                    cat = unicodedata2.category(char)
+                except:
+                    cat = unicodedata.category(char)
                 
-    return results
+                # Check against Block 2 Definitions
+                if cat.startswith(ID_VIOLATION_MAP["WHITESPACE"]):
+                    violation_type = "WHITESPACE"
+                    break
+                if cat.startswith(ID_VIOLATION_MAP["CONTROL"]):
+                    violation_type = "CONTROL_CHAR"
+                    break
+                if cat.startswith(ID_VIOLATION_MAP["SYMBOL"]):
+                    violation_type = "SYMBOL/EMOJI"
+                    break
+                if cat.startswith(ID_VIOLATION_MAP["PUNCTUATION"]):
+                    if cat != 'Pc': # Allow Connector Punctuation (e.g. underscore)
+                        violation_type = "PUNCTUATION"
+                        break
+
+    return {
+        "is_strict_ascii": is_strict_ascii,
+        "is_general_safe": is_general_safe,
+        "violation_type": violation_type
+    }
 
 def analyze_normalization_hazards(t: str):
     """
