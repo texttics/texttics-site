@@ -10339,7 +10339,7 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     
     # --- Build Summary Ribbon (Synchronized Colors) ---
     summary_parts = []
-    summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT", "GHOST", "SPACES", "LAYOUT", "TYPO", "OTHER"]
+    summary_order = ["FATAL", "DISALLOWED", "RISKY", "RESTRICTED", "SCRIPT/EMOJI", "GHOST/FORMAT", "SPACES", "LAYOUT", "TYPO", "OTHER"]
     
     # Explicit mapping to match the Table Badge colors
     # crit -> Red, warn -> Amber, neutral -> Gray/Purple, safe -> Green
