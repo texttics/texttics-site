@@ -10166,118 +10166,159 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     summary_counts = collections.Counter()
 
     for char_code, count in invisible_counts.items():
-        char = chr(char_code)
-        
-        # --- Name Resolution ---
-        name = "Unknown"
-        if char_code in C0_CONTROL_NAMES:
-            name = C0_CONTROL_NAMES[char_code]
-        else:
-            try: name = ud.name(char)
-            except: 
-                if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
-                else: name = "UNASSIGNED / CONTROL"
+        char = chr(char_code)
+        
+        # --- Name Resolution ---
+        name = "Unknown"
+        if char_code in C0_CONTROL_NAMES:
+            name = C0_CONTROL_NAMES[char_code]
+        else:
+            try: name = ud.name(char)
+            except: 
+                if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
+                else: name = "UNASSIGNED / CONTROL"
 
-        # --- Visual Decoding (Symbol) & CATEGORY SLUG DEFINITION ---
-        symbol = "."
-        category_slug = "UNKNOWN"
-        
-        if 0xE0000 <= char_code <= 0xE007F:
-            tag_char = chr(char_code - 0xE0000)
-            if 0xE0020 <= char_code <= 0xE007E: symbol = f"[TAG:{tag_char}]"
-            elif char_code == 0xE007F: symbol = "[TAG:X]"
-            else: symbol = "[TAG:?]"
-            category_slug = "TAG"
-        elif 0xFE00 <= char_code <= 0xFE0F:
-            symbol = f"[VS{char_code - 0xFE00 + 1}]"; category_slug = "SELECTOR"
-        elif 0xE0100 <= char_code <= 0xE01EF:
-            symbol = f"[VS{char_code - 0xE0100 + 17}]"; category_slug = "SELECTOR"
-        elif char_code == 0x200B: symbol = "[ZWSP]"; category_slug = "ZW-SPACE"
-        elif char_code == 0x200D: symbol = "[ZWJ]"; category_slug = "JOINER"
-        elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
-        elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
-        elif char_code in BIDI_TAG_MAP: symbol = BIDI_TAG_MAP[char_code]; category_slug = "BIDI"
-        elif char_code in TIER_UNI_SPACE: symbol = "[SP:?]"; category_slug = "SPACE"
-        elif 0x00 <= char_code <= 0x1F:
-            symbol = f"[CTL:{char_code:02X}]"
-            if char_code == 0x00: category_slug = "NULL"
-            elif char_code == 0x09: category_slug = "TAB"
-            elif char_code in [0x0A, 0x0D]: category_slug = "NEWLINE"
-            else: category_slug = "CONTROL"
-        else:
-            symbol = "[INV]"; category_slug = "FORMAT"
-        
-        # --- FORENSIC CLASSIFICATION (Single Source of Truth) ---
-        # 1. Determine Identity & Risk in ONE pass.
-        
-        tier_badge = "OTHER"
-        badge_style = "neutral" 
-        tier_rank = 9
-        policy_action = "REVIEW"
-        policy_class = "prop-warn"
+        # --- Visual Decoding (Symbol) & CATEGORY SLUG DEFINITION ---
+        symbol = "."
+        category_slug = "UNKNOWN"
+        
+        if 0xE0000 <= char_code <= 0xE007F:
+            tag_char = chr(char_code - 0xE0000)
+            if 0xE0020 <= char_code <= 0xE007E: symbol = f"[TAG:{tag_char}]"
+            elif char_code == 0xE007F: symbol = "[TAG:X]"
+            else: symbol = "[TAG:?]"
+            category_slug = "TAG"
+        elif 0xFE00 <= char_code <= 0xFE0F:
+            symbol = f"[VS{char_code - 0xFE00 + 1}]"; category_slug = "SELECTOR"
+        elif 0xE0100 <= char_code <= 0xE01EF:
+            symbol = f"[VS{char_code - 0xE0100 + 17}]"; category_slug = "SELECTOR"
+        elif char_code == 0x200B: symbol = "[ZWSP]"; category_slug = "ZW-SPACE"
+        elif char_code == 0x200D: symbol = "[ZWJ]"; category_slug = "JOINER"
+        elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
+        elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
+        elif char_code in BIDI_TAG_MAP: symbol = BIDI_TAG_MAP[char_code]; category_slug = "BIDI"
+        elif char_code in TIER_UNI_SPACE: symbol = "[SP:?]"; category_slug = "SPACE"
+        elif 0x00 <= char_code <= 0x1F:
+            symbol = f"[CTL:{char_code:02X}]"
+            if char_code == 0x00: category_slug = "NULL"
+            elif char_code == 0x09: category_slug = "TAB"
+            elif char_code in [0x0A, 0x0D]: category_slug = "NEWLINE"
+            else: category_slug = "CONTROL"
+        else:
+            symbol = "[INV]"; category_slug = "FORMAT"
+        
+        # --- FORENSIC CLASSIFICATION (Single Source of Truth) ---
+        tier_badge = "OTHER"
+        badge_style = "neutral" 
+        tier_rank = 9
+        policy_action = "REVIEW"
+        policy_class = "prop-warn"
 
-        if char_code == 0x0000:
-            tier_badge = "FATAL (NULL)"; badge_style = "crit"; tier_rank = 0
-            policy_action = "BLOCK"; policy_class = "prop-crit"
-            
-        elif 0xE0000 <= char_code <= 0xE007F:
-            tier_badge = "DISALLOWED"; badge_style = "crit"; tier_rank = 1
-            policy_action = "BLOCK"; policy_class = "prop-crit"
-            
-        elif char_code in TIER_BIDI:
-            tier_badge = "BIDI CONTROL"; badge_style = "warn"; tier_rank = 2
-            policy_action = "REVIEW"; policy_class = "prop-warn"
-            
-        elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
-            tier_badge = "RESTRICTED CTRL"; badge_style = "warn"; tier_rank = 3
-            policy_action = "REVIEW"; policy_class = "prop-warn"
-            
-        elif char_code in TIER_GLUE:
-            tier_badge = "GLUE"; badge_style = "safe"; tier_rank = 8
-            policy_action = "ALLOW"; policy_class = "prop-stable"
-            
-        elif char_code in TIER_ASCII_WS:
-            tier_badge = "ASCII WS"; badge_style = "safe"; tier_rank = 7
-            policy_action = "ALLOW"; policy_class = "prop-stable"
-            
-        elif char_code in TIER_UNI_SPACE:
-            tier_badge = "UNICODE SPACE"; badge_style = "neutral"; tier_rank = 6
-            policy_action = "NORM"; policy_class = "prop-info"
-            
-        elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
-            tier_badge = "JOINER/SELECTOR"; badge_style = "neutral"; tier_rank = 5
-            policy_action = "CONTEXT"; policy_class = "prop-info"
-            
-        elif char_code in TIER_IGNORABLE:
-            tier_badge = "IGNORABLE"; badge_style = "ghost"; tier_rank = 4
-            policy_action = "REVIEW"; policy_class = "prop-ghost"
+        if char_code == 0x0000:
+            tier_badge = "FATAL (NULL)"; badge_style = "crit"; tier_rank = 0
+            policy_action = "BLOCK"; policy_class = "prop-crit"
+            
+        elif 0xE0000 <= char_code <= 0xE007F:
+            tier_badge = "DISALLOWED"; badge_style = "crit"; tier_rank = 1
+            policy_action = "BLOCK"; policy_class = "prop-crit"
+            
+        elif char_code in TIER_BIDI:
+            tier_badge = "BIDI CONTROL"; badge_style = "warn"; tier_rank = 2
+            policy_action = "REVIEW"; policy_class = "prop-warn"
+            
+        elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
+            tier_badge = "RESTRICTED CTRL"; badge_style = "warn"; tier_rank = 3
+            policy_action = "REVIEW"; policy_class = "prop-warn"
+            
+        elif char_code in TIER_GLUE:
+            tier_badge = "GLUE"; badge_style = "safe"; tier_rank = 8
+            policy_action = "ALLOW"; policy_class = "prop-stable"
+            
+        elif char_code in TIER_ASCII_WS:
+            tier_badge = "ASCII WS"; badge_style = "safe"; tier_rank = 7
+            policy_action = "ALLOW"; policy_class = "prop-stable"
+            
+        elif char_code in TIER_UNI_SPACE:
+            tier_badge = "UNICODE SPACE"; badge_style = "neutral"; tier_rank = 6
+            policy_action = "NORM"; policy_class = "prop-info"
+            
+        elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
+            tier_badge = "JOINER/SELECTOR"; badge_style = "neutral"; tier_rank = 5
+            policy_action = "CONTEXT"; policy_class = "prop-info"
+            
+        elif char_code in TIER_IGNORABLE:
+            tier_badge = "IGNORABLE"; badge_style = "ghost"; tier_rank = 4
+            policy_action = "REVIEW"; policy_class = "prop-ghost"
 
-        # --- AGGREGATION (Plain and Simple) ---
-        # Count 1 per row (Type), not per count (Instance)
-        summary_counts[tier_badge] += 1
-        
-        # --- ROW PROPERTIES ---
-        tier_class = f"atlas-badge-{badge_style}" # e.g. atlas-badge-crit
+        # --- AGGREGATION (Plain and Simple) ---
+        # Count 1 per row (Type), not per count (Instance)
+        summary_counts[tier_badge] += 1
+        
+        # --- ROW PROPERTIES ---
+        tier_class = f"atlas-badge-{badge_style}" # e.g. atlas-badge-crit
 
-        # ... [Physical & Stability Properties logic omitted for brevity] ...
+        # ---------------------------------------------------------
+        # 2. PHYSICAL PROPERTIES (The Missing Link restored!)
+        # ---------------------------------------------------------
+        cat = ud.category(char)
+        width_badge = ""
+        # Heuristic for width
+        if cat in ['Cf', 'Mn', 'Me', 'Cc'] or char_code == 0x200B:
+            width_badge = '<span class="prop-badge prop-warn" title="Physics: Zero Width (Stealth)">W: 0</span>'
+        elif cat == 'Zs':
+            width_badge = '<span class="prop-badge prop-wide" title="Physics: Positive Width (Spacing)">W: &gt;0</span>'
 
-        processed_rows.append({
-            "rank": tier_rank, "count": count,
-            "html": f"""
-            <tr>
-                <td style="text-align:center;"><span class="atlas-glyph">{symbol}</span></td>
-                <td class="code-col">U+{char_code:04X}</td>
-                <td class="name-col" title="{name}">{name}</td>
-                <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
-                <td class="phys-col">{physics_html}</td>
-                <td class="stab-col">{stability_html}</td>
-                <td style="text-align:center;">{policy_html}</td>
-                <td class="count-col" style="font-family:var(--font-mono); font-weight:700;">{count}</td>
-                <td style="text-align:right;">
-                    <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})" title="Locate in text">LOCATE</button>
-                </td>
-            </tr>"""
-        })
+        gc_badge = f'<span class="prop-badge prop-gc" title="General Category: {cat}">{cat}</span>'
+
+        bc_badge = ""
+        try:
+            bc = ud.bidirectional(char)
+            if bc: bc_badge = f'<span class="prop-badge prop-gc" title="Bidi Class: {bc}">BC:{bc}</span>'
+        except: pass
+
+        physics_html = f'<div class="props-flex">{width_badge}{gc_badge}{bc_badge}</div>'
+
+        # ---------------------------------------------------------
+        # 3. STABILITY PROPERTIES
+        # ---------------------------------------------------------
+        nfkc_form = ud.normalize('NFKC', char)
+        nfkc_badge = ""
+        if nfkc_form == "":
+            nfkc_badge = '<span class="prop-badge prop-crit" title="NFKC: Removes Character">NFKC:VOID</span>'
+        elif nfkc_form == " ":
+            nfkc_badge = '<span class="prop-badge prop-warn" title="NFKC: Maps to Space">NFKC:SP</span>'
+        elif nfkc_form != char:
+             target_hex = " ".join([f"{ord(c):04X}" for c in nfkc_form])
+             nfkc_badge = f'<span class="prop-badge prop-info" title="NFKC Maps to: {target_hex}">NFKC:MOD</span>'
+        else:
+             nfkc_badge = '<span class="prop-badge prop-stable" title="NFKC: Stable">NFKC:OK</span>'
+
+        di_badge = ""
+        is_di = (char_code in DEFAULT_IGNORABLE_SET or 0xE0000 <= char_code <= 0xE007F or 0xFE00 <= char_code <= 0xFE0F or 0x206A <= char_code <= 0x206F)
+        if is_di:
+             di_badge = '<span class="prop-badge prop-ghost" title="Default Ignorable Code Point: YES">DI:YES</span>'
+
+        stability_html = f'<div class="props-flex">{di_badge}{nfkc_badge}</div>'
+        
+        policy_html = f'<span class="prop-badge {policy_class}" style="font-size:0.65rem;">{policy_action}</span>'
+
+        processed_rows.append({
+            "rank": tier_rank, "count": count,
+            "html": f"""
+            <tr>
+                <td style="text-align:center;"><span class="atlas-glyph">{symbol}</span></td>
+                <td class="code-col">U+{char_code:04X}</td>
+                <td class="name-col" title="{name}">{name}</td>
+                <td class="tier-col"><span class="atlas-badge {tier_class}">{tier_badge}</span></td>
+                <td class="phys-col">{physics_html}</td>
+                <td class="stab-col">{stability_html}</td>
+                <td style="text-align:center;">{policy_html}</td>
+                <td class="count-col" style="font-family:var(--font-mono); font-weight:700;">{count}</td>
+                <td style="text-align:right;">
+                    <button class="atlas-btn" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({char_code})" title="Locate in text">LOCATE</button>
+                </td>
+            </tr>"""
+        })
 
     # Sort: Risk (Low Rank) -> Count (High to Low)
     processed_rows.sort(key=lambda x: (x["rank"], -x["count"]))
