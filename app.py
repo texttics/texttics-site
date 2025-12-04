@@ -906,6 +906,97 @@ class METADATA_PATTERNS:
         "OPACITY_ZERO": re.compile(r'opacity\s*:\s*0(?![0-9\.])')
     }
 
+class METADATA_SCORING_CONFIG:
+    """
+    [SOTA] Forensic Impact & Sophistication (FIS) Model Weights.
+    Derived from CVSS v3.1 and CSEMiner Risk Models.
+    """
+    # 1. BASE SEVERITY (Impact Sub-Score)
+    # -------------------------------------------------------------------------
+    # 'CRITICAL': Active Payload / System Compromise Vector
+    # 'HIGH':     Definite Obfuscation / SEO Spam / Phishing Lure
+    # 'MEDIUM':   Ambiguous Hiding / Legacy Hacks
+    # 'INFO':     Accessibility / Layout
+    W_CRITICAL = 60.0 
+    W_HIGH     = 25.0
+    W_MEDIUM   = 10.0
+    W_INFO     = 0.0
+
+    # 2. SOPHISTICATION MULTIPLIERS (Exploitability Sub-Score)
+    # -------------------------------------------------------------------------
+    # "Polymorphism": Using distinct vectors (e.g. Opacity + Clip + Z-Index)
+    # suggests an advanced cloaking tool, not manual CSS.
+    MULTI_VECTOR_FACTOR = 1.5  # 2+ Distinct Vectors detected
+    POLYMORPHIC_FACTOR  = 2.2  # 4+ Distinct Vectors (High Sophistication)
+    
+    # "Deep Nesting": Hiding content 5+ levels deep implies intent to evade
+    # shallow scrapers or parsers.
+    NESTING_PENALTY_THRESHOLD = 5
+    NESTING_FACTOR = 1.2
+
+    # 3. SATURATION LIMITS (The "Ceiling")
+    # -------------------------------------------------------------------------
+    # Prevents alert fatigue. A score of 100 means "Certain Malice."
+    MAX_SCORE = 100
+    
+    # 4. INSTANT KILL TRIGGERS
+    # -------------------------------------------------------------------------
+    # If these conditions are met, score is forced to 100 regardless of math.
+    FATAL_CONDITIONS = {
+        "PAYLOAD_IN_A11Y",   # Injection hidden inside .sr-only
+        "OFFSCREEN_PHISHING" # Login form hidden off-screen
+    }
+
+
+class METADATA_POLICY:
+    """
+    [SOTA] Judgment Logic (White/Blacklists).
+    Expanded with 'Jailbroken' prompt vocabularies and Phishing Kit signatures.
+    """
+
+    # 1. ACCESSIBILITY WHITELIST (The "Safe Harbor")
+    # Source: WebAIM, Bootstrap, Tailwind, HTML5 Boilerplate
+    A11Y_CLASS_WHITELIST = {
+        "sr-only", "visually-hidden", "screen-reader-text", 
+        "u-visually-hidden", "accessible-text", "skip-link", 
+        "offscreen", "element-invisible"
+    }
+
+    # 2. SAFE VOCABULARY (Context Validation)
+    # If hidden text contains ONLY these, it is UI plumbing.
+    A11Y_SAFE_VOCAB = {
+        "skip", "content", "jump", "navigation", "menu", "sidebar", 
+        "close", "open", "expand", "collapse", "breadcrumb", "dialog",
+        "toggle", "previous", "next", "search", "main"
+    }
+
+    # 3. OBFUSCATION BLACKLIST (The "Known Bad")
+    # Signatures from Phishing Kits (16Shop, LogoKit) and SEO Spam.
+    SUSPICIOUS_CLASS_SIGNATURES = {
+        "text-hide", "invisible", "opacity-0", "d-none", "hidden", 
+        "cloak", "spoiler", "hide-text", "transparent", "f0", 
+        "w-0", "h-0", "z-negative", "absolute-hide"
+    }
+
+    # 4. PAYLOAD TRIGGERS (The "Red Line")
+    # Comprehensive Threat Vocabulary
+    PAYLOAD_KEYWORDS = {
+        # A. Prompt Injection / Jailbreak
+        "ignore previous", "system prompt", "you are", "gpt", 
+        "developer mode", "do not reveal", "hypothetical response",
+        " DAN ", "jailbreak", "override",
+
+        # B. Credentials / PII
+        "password", "admin", "login", "key", "token", "cvv", 
+        "ssn", "credit card", "billing", "signin",
+
+        # C. Exfiltration / Command & Control
+        "shell", "exec", "curl", "wget", "powershell", "cmd.exe",
+        "eval(", "document.cookie", "base64"
+    }
+
+
+
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
 # ===============================================
@@ -6362,6 +6453,207 @@ def compute_whitespace_topology(t):
     """
     return html
 
+def _parse_inline_css(style_str: str) -> Dict[str, str]:
+    """
+    Parses inline style strings into a dictionary using the robust regex from Block 2.
+    Handles 'display: none;' and 'display:none' equally.
+    """
+    if not style_str:
+        return {}
+    
+    styles = {}
+    # Use the pre-compiled regex from METADATA_PATTERNS to allow for complex values
+    for match in METADATA_PATTERNS.CSS_DECLARATION_SPLIT.finditer(style_str):
+        prop = match.group('prop').lower().strip()
+        val = match.group('val').lower().strip()
+        styles[prop] = val
+    return styles
+
+class ForensicContext:
+    """
+    Represents the Computed Forensic State of a single DOM node.
+    Simulates CSS inheritance to determine the 'Effective Style'.
+    """
+    def __init__(self, tag: str, attrs: List[Tuple[str, str]], parent: Optional['ForensicContext'] = None):
+        self.tag = tag
+        self.attrs = dict(attrs)
+        self.classes = set(self.attrs.get('class', '').split())
+        self.id_ref = self.attrs.get('id', '')
+        
+        # 1. Parse Local Styles
+        self.local_style = _parse_inline_css(self.attrs.get('style', ''))
+        
+        # 2. Compute Physics (Inheritance Simulation)
+        # ---------------------------------------------------------------------
+        
+        # A. Visibility Lineage (Inherits DOWN)
+        # If parent is hidden, I am hidden.
+        parent_visible = parent.is_visible if parent else True
+        self.is_visible = parent_visible and self._check_local_visibility()
+        
+        # B. Opacity Physics (Multiplies DOWN)
+        # Parent(0.5) * Child(0.5) = 0.25
+        parent_opacity = parent.effective_opacity if parent else 1.0
+        self.effective_opacity = parent_opacity * self._get_local_opacity()
+        
+        # C. Color Physics (Contrast)
+        # Color inherits; Background does NOT (defaults to transparent/parent's visible bg)
+        self.color = self.local_style.get('color') or (parent.color if parent else 'black')
+        self.bg_color = self.local_style.get('background-color') or (self.local_style.get('background'))
+        
+        # Resolve effective background (if local is transparent, look up stack)
+        self.effective_bg = self.bg_color
+        if not self.effective_bg or self.effective_bg in METADATA_PHYSICS.TRANSPARENT_ALIASES:
+            self.effective_bg = parent.effective_bg if parent else 'white' # Assume page default white
+
+    def _check_local_visibility(self) -> bool:
+        """Checks SOTA Hard-Hiding Flags."""
+        # 1. HTML Attributes
+        if self.attrs.get('hidden') is not None: return False
+        if self.attrs.get('aria-hidden') == 'true': return False
+        
+        # 2. CSS Display/Visibility
+        display = self.local_style.get('display', '')
+        visibility = self.local_style.get('visibility', '')
+        if display in METADATA_PHYSICS.HARD_DISPLAY_VALUES: return False
+        if visibility in METADATA_PHYSICS.HARD_VISIBILITY_VALUES: return False
+        
+        # 3. Geometric Hiding (Zero Size)
+        width = self.local_style.get('width', '')
+        height = self.local_style.get('height', '')
+        font_size = self.local_style.get('font-size', '')
+        
+        if width in {'0', '0px'} or height in {'0', '0px'}: return False
+        if font_size == '0' or font_size == '0px': return False
+        
+        # 4. Off-Screen Positioning (Heuristic)
+        # Checks for 'left: -9999px' patterns
+        left = self.local_style.get('left', '0').replace('px', '')
+        text_indent = self.local_style.get('text-indent', '0').replace('px', '')
+        try:
+            if float(left) < -METADATA_PHYSICS.MAX_OFFSCREEN_OFFSET: return False
+            if float(text_indent) < METADATA_PHYSICS.MIN_TEXT_INDENT: return False
+        except ValueError:
+            pass # Ignore complex calc() values for now
+            
+        return True
+
+    def _get_local_opacity(self) -> float:
+        try:
+            val = self.local_style.get('opacity', '1.0')
+            return float(val)
+        except ValueError:
+            return 1.0
+
+    def diagnose_root_cause(self) -> str:
+        """Returns the specific forensic reason for invisibility."""
+        if self.effective_opacity < METADATA_PHYSICS.MIN_VISIBLE_OPACITY:
+            return f"Opacity Chain ({self.effective_opacity:.2f})"
+        
+        # Check White-on-White (Contrast Hiding)
+        # Simple string matching for Stage 1.5 (SOTA parsers use relative luminance)
+        if (self.color in METADATA_PHYSICS.WHITE_ALIASES and 
+            self.effective_bg in METADATA_PHYSICS.WHITE_ALIASES):
+            return "Zero Contrast (White-on-White)"
+            
+        if self.local_style.get('display') in METADATA_PHYSICS.HARD_DISPLAY_VALUES:
+            return f"Display: {self.local_style['display']}"
+            
+        if self.local_style.get('visibility') in METADATA_PHYSICS.HARD_VISIBILITY_VALUES:
+            return f"Visibility: {self.local_style['visibility']}"
+            
+        if self.attrs.get('hidden') is not None:
+            return "Attribute: [hidden]"
+            
+        if self.attrs.get('aria-hidden') == 'true':
+            return "Attribute: [aria-hidden]"
+            
+        return "Inherited/Geometric Obfuscation"
+
+
+class ForensicHTMLParser(HTMLParser):
+    """
+    [STAGE 1.5] The Static Forensic Simulator.
+    Iterates raw HTML, maintains the Context Stack, and generates the Forensic X-Ray.
+    """
+    def __init__(self):
+        super().__init__()
+        self.stack: List[ForensicContext] = []
+        self.findings: List[Dict[str, Any]] = []
+        self.ghost_view_fragments: List[str] = []
+        self._current_lineage: List[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        # 1. Push Context
+        parent = self.stack[-1] if self.stack else None
+        ctx = ForensicContext(tag, attrs, parent)
+        self.stack.append(ctx)
+        
+        # 2. Maintain Lineage Trace (e.g., "DIV.main > SPAN.hidden")
+        ident = tag
+        if 'class' in ctx.attrs:
+            ident += f".{'.'.join(ctx.classes)[:15]}" # Truncate for UI
+        elif ctx.id_ref:
+            ident += f"#{ctx.id_ref}"
+        self._current_lineage.append(ident)
+
+    def handle_endtag(self, tag):
+        if self.stack:
+            self.stack.pop()
+        if self._current_lineage:
+            self._current_lineage.pop()
+
+    def handle_data(self, data):
+        if not data.strip(): 
+            return # Ignore whitespace nodes
+
+        current = self.stack[-1] if self.stack else None
+        
+        # 3. Detect Obfuscation (The Trigger)
+        is_obfuscated = False
+        cause = "Unknown"
+        
+        if current:
+            # Check Physics
+            is_hidden = not current.is_visible
+            is_transparent = current.effective_opacity < METADATA_PHYSICS.MIN_VISIBLE_OPACITY
+            is_contrast_hidden = "Zero Contrast" in current.diagnose_root_cause()
+            
+            if is_hidden or is_transparent or is_contrast_hidden:
+                is_obfuscated = True
+                cause = current.diagnose_root_cause()
+                
+                # Record Finding
+                self.findings.append({
+                    "type": "CSS_OBFUSCATION",
+                    "content": data[:50].strip(), # Preview
+                    "lineage": list(self._current_lineage), # Clone list
+                    "cause": cause,
+                    "context_classes": list(current.classes),
+                    "context_tag": current.tag
+                })
+
+        # 4. Generate "Ghost View" (Forensic X-Ray)
+        # Wraps hidden content in a visualizer span for the Editor Overlay
+        safe_data = html.escape(data)
+        
+        if is_obfuscated:
+            # Inject Forensic Markers for Blueprint 3
+            # Defines the "Red Dashed" visual style in CSS
+            marker_class = "forensic-ghost"
+            if "White-on-White" in cause:
+                marker_class += " forensic-contrast-fail"
+            
+            self.ghost_view_fragments.append(
+                f'<span class="{marker_class}" title="HIDDEN via {cause}">{safe_data}</span>'
+            )
+        else:
+            self.ghost_view_fragments.append(safe_data)
+
+    def get_ghost_html(self) -> str:
+        """Returns the fully reconstructed HTML with forensic markers."""
+        return "".join(self.ghost_view_fragments)
+
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
 # ===============================================
@@ -7176,6 +7468,193 @@ def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
             "vectors": anomaly.get("vectors", [])
         }
     }
+
+def _map_cause_to_vector_category(cause: str) -> str:
+    """
+    [HELPER] Normalizes specific CSS rules into Abstract Hiding Vectors.
+    Used to calculate the 'Polymorphism' score.
+    
+    Example: 'display:none' and 'visibility:hidden' -> 'LAYOUT_SUPPRESSION'
+    """
+    c = cause.lower()
+    
+    # Vector 1: Layout Suppression (Hard Hiding)
+    if "display" in c or "visibility" in c or "hidden" in c:
+        return "LAYOUT_SUPPRESSION"
+        
+    # Vector 2: Geometric Collapse (Zero Size)
+    if "width" in c or "height" in c or "font-size" in c or "scale" in c:
+        return "GEOMETRIC_COLLAPSE"
+        
+    # Vector 3: Coordinate Displacement (Off-Screen)
+    if "left" in c or "text-indent" in c or "position" in c or "absolute" in c:
+        return "COORDINATE_DISPLACEMENT"
+        
+    # Vector 4: Photometric Hiding (Invisible Ink)
+    if "opacity" in c or "color" in c or "contrast" in c or "transparent" in c:
+        return "PHOTOMETRIC_HIDING"
+        
+    # Vector 5: Viewport Clipping (Masking)
+    if "clip" in c or "mask" in c:
+        return "VIEWPORT_CLIPPING"
+        
+    return "UNKNOWN_VECTOR"
+
+
+def _audit_metadata_findings(raw_findings: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    [STAGE 1.5] The Master Auditor for Metadata.
+    
+    Implements the FIS (Forensic Impact & Sophistication) Model:
+    Score = (BaseSeverity * VectorPolymorphism * NestingDepth) + PayloadOverrides
+    
+    Returns:
+        1. Audited Findings (Enriched with Verdicts and Badges)
+        2. The Forensic Ledger (Structured score data for the HUD)
+    """
+    audited_results = []
+    
+    # 1. Topology Counters
+    topology = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "INFO": 0}
+    
+    # 2. Sophistication Trackers
+    active_vectors = set()  # Track unique abstract vectors (e.g., GEOMETRY vs LAYOUT)
+    max_lineage_depth = 0   # Track deepest obfuscation nesting
+    
+    # 3. Kill Switches
+    has_fatal_payload = False
+    fatal_reason = None
+    
+    for f in raw_findings:
+        # --- A. INITIAL CLASSIFICATION (Policy Application) ---
+        risk = "HIGH" 
+        verdict = "Obfuscated Content"
+        badge = "OBFUSCATION"
+        
+        content_lower = f['content'].lower()
+        classes = set(f['context_classes'])
+        cause = f['cause']
+        lineage_depth = len(f.get('lineage', []))
+        max_lineage_depth = max(max_lineage_depth, lineage_depth)
+        
+        # POLICY 1: ACCESSIBILITY WHITELIST CHECK
+        is_a11y_class = not classes.isdisjoint(METADATA_POLICY.A11Y_CLASS_WHITELIST)
+        
+        if is_a11y_class:
+            # Sub-Policy: Payload Injection (The Poisoned Apple)
+            payload_trigger = next((t for t in METADATA_POLICY.PAYLOAD_KEYWORDS if t in content_lower), None)
+            
+            if payload_trigger:
+                risk = "CRITICAL"
+                verdict = f"Injection in A11Y Wrapper ('{payload_trigger}')"
+                badge = "INJECTION"
+                has_fatal_payload = True
+                fatal_reason = "PAYLOAD_IN_A11Y"
+            
+            # Sub-Policy: Safe Vocabulary (The Good Citizen)
+            elif any(safe in content_lower for safe in METADATA_POLICY.A11Y_SAFE_VOCAB):
+                risk = "INFO"
+                verdict = "Screen Reader Text"
+                badge = "ACCESSIBILITY"
+            
+            # Sub-Policy: Ambiguity (The Unknown)
+            else:
+                risk = "MEDIUM"
+                verdict = "Hidden Text (A11Y Class)"
+                badge = "REVIEW"
+
+        # POLICY 2: BLACK HAT PATTERNS
+        elif "Zero Contrast" in cause or "White-on-White" in cause:
+            risk = "HIGH"
+            verdict = "White-on-White (SEO/Spam)"
+            badge = "SPAM"
+            
+        elif "font-size" in cause and "0" in cause:
+            risk = "HIGH"
+            verdict = "Micro-Typography (SEO)"
+            badge = "SPAM"
+
+        # POLICY 3: PAYLOAD SCANNING (Global)
+        else:
+            payload_trigger = next((t for t in METADATA_POLICY.PAYLOAD_KEYWORDS if t in content_lower), None)
+            if payload_trigger:
+                risk = "CRITICAL"
+                verdict = f"Hidden Payload ('{payload_trigger}')"
+                badge = "THREAT"
+                has_fatal_payload = True
+                fatal_reason = "HIDDEN_PAYLOAD"
+
+        # --- B. SOPHISTICATION TRACKING ---
+        # Only track vectors for actual threats (High/Critical), not A11Y info
+        if risk in {"CRITICAL", "HIGH"}:
+            vector_category = _map_cause_to_vector_category(cause)
+            active_vectors.add(vector_category)
+
+        # --- C. ENRICHMENT ---
+        f['severity'] = risk
+        f['verdict'] = verdict
+        f['badge'] = badge
+        f['vector_category'] = _map_cause_to_vector_category(cause) # For UI tooltip
+        
+        topology[risk] += 1
+        audited_results.append(f)
+
+    # --- D. FIS SCORING ENGINE (Forensic Impact & Sophistication) ---
+    
+    # 1. Base Impact Score (CVSS-style weighted sum)
+    base_score = (
+        (topology["CRITICAL"] * METADATA_SCORING_CONFIG.W_CRITICAL) +
+        (topology["HIGH"]     * METADATA_SCORING_CONFIG.W_HIGH) +
+        (topology["MEDIUM"]   * METADATA_SCORING_CONFIG.W_MEDIUM)
+    )
+    
+    # 2. Sophistication Multiplier (Polymorphism)
+    # Rationale: Mixing 'Opacity' and 'Clipping' is harder to detect than just 'Opacity'.
+    # 2+ Categories = 1.5x | 4+ Categories = 2.2x
+    poly_factor = 1.0
+    if len(active_vectors) >= 4:
+        poly_factor = METADATA_SCORING_CONFIG.POLYMORPHIC_FACTOR
+    elif len(active_vectors) >= 2:
+        poly_factor = METADATA_SCORING_CONFIG.MULTI_VECTOR_FACTOR
+        
+    # 3. Nesting Multiplier (Defense in Depth)
+    # Rationale: Hiding content 10 levels deep is an evasion technique against shallow parsers.
+    nest_factor = 1.0
+    if max_lineage_depth >= METADATA_SCORING_CONFIG.NESTING_PENALTY_THRESHOLD:
+        nest_factor = METADATA_SCORING_CONFIG.NESTING_FACTOR
+        
+    # 4. Final Calculation
+    final_score = base_score * poly_factor * nest_factor
+    
+    # 5. Overrides & Clamping
+    if has_fatal_payload:
+        final_score = METADATA_SCORING_CONFIG.MAX_SCORE
+        
+    final_score = int(min(final_score, METADATA_SCORING_CONFIG.MAX_SCORE))
+    
+    # --- E. GENERATE LEDGER ---
+    ledger = {
+        "score": final_score,
+        "grade": _get_risk_grade(final_score),
+        "topology": topology,
+        "vectors": list(active_vectors), # List of strings e.g., ["PHOTOMETRIC_HIDING", "GEOMETRIC_COLLAPSE"]
+        "stats": {
+            "is_polymorphic": len(active_vectors) >= 2,
+            "max_depth": max_lineage_depth,
+            "has_payload": has_fatal_payload,
+            "fatal_reason": fatal_reason
+        }
+    }
+    
+    return audited_results, ledger
+
+def _get_risk_grade(score: int) -> str:
+    """Maps FIS Score to Forensic Verdict."""
+    if score >= 90: return "CRITICAL"
+    if score >= 50: return "SUSPICIOUS"
+    if score >= 20: return "ANOMALOUS"
+    if score > 0:   return "NON-STANDARD"
+    return "CLEAN"
 
 # ===============================================
 # BLOCK 8. ORCHESTRATION (CONTROLLER)
@@ -9491,37 +9970,52 @@ def _create_position_link(val, text_context=None):
     # Otherwise, return the text as-is
     return txt
 
-def _update_css_workbench_ui(verdict_key: str, summary: str, count: int, findings: list):
+def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, Any]], ghost_html: str):
     """
-    Handles all UI injection logic for the Metadata Workbench report panel.
+    Handles UI injection for the Metadata Workbench.
+    Reflects SOTA 'Quad-Ledger' aesthetics and Fixes XSS vulnerabilities.
     """
-    # Mapping table for visual output
+    # 1. UI Configuration Map (Colors & Icons)
     UI_MAP = {
-        "CRITICAL": {"title": "CSS THREAT DETECTED", "color": "#dc2626", "icon": "🚨"},
-        "CLEAN": {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": "✅"},
-        "NEUTRAL": {"title": "Awaiting Paste", "color": "#4b5563", "icon": "ⓘ"}
+        "CRITICAL":   {"title": "CRITICAL THREAT",     "color": "#dc2626", "icon": "🚨"},
+        "SUSPICIOUS": {"title": "SUSPICIOUS ACTIVITY", "color": "#f59e0b", "icon": "⚠️"},
+        "ANOMALOUS":  {"title": "ANOMALOUS STRUCTURE", "color": "#8b5cf6", "icon": "👻"},
+        "NON-STANDARD": {"title": "NON-STANDARD CSS",  "color": "#3b82f6", "icon": "ℹ️"},
+        "CLEAN":      {"title": "CLEAN: No Obfuscation", "color": "#16a34a", "icon": "✅"},
+        "NEUTRAL":    {"title": "Awaiting Input",      "color": "#4b5563", "icon": "⏳"},
+        "ERROR":      {"title": "Analysis Failed",     "color": "#ef4444", "icon": "💥"}
     }
     
-    data = UI_MAP.get(verdict_key, UI_MAP["NEUTRAL"])
+    grade = ledger.get("grade", "NEUTRAL")
+    data = UI_MAP.get(grade, UI_MAP["NEUTRAL"])
     
-    # 1. Update Header and Summary
+    # 2. Update Header & Scoreboard
     document.getElementById("css-verdict-title").textContent = data["title"]
-    document.getElementById("css-summary-text").textContent = summary
-    document.getElementById("css-finding-count").textContent = str(count)
+    document.getElementById("css-finding-count").textContent = str(len(findings))
     
-    # 2. Update Visuals
+    # Update the visual badge
     verdict_box = document.getElementById("metadata-findings-report")
     icon_box = document.getElementById("css-verdict-icon")
-    
-    verdict_box.style.borderLeftColor = data["color"]
-    icon_box.textContent = data["icon"]
-    
-    # 3. Update Findings List (Detailed)
+    if verdict_box: verdict_box.style.borderLeftColor = data["color"]
+    if icon_box: icon_box.textContent = data["icon"]
+
+    # 3. Update Summary Text (Rich Context)
+    summary_el = document.getElementById("css-summary-text")
+    if summary_el:
+        if grade == "CLEAN":
+            summary_el.textContent = "No hidden content or obfuscation vectors detected."
+        else:
+            # Show Score and Vectors (e.g., "Risk Score: 75 | Vectors: OPACITY, CLIPPING")
+            vectors = ", ".join(ledger.get("vectors", [])) or "None"
+            summary_el.textContent = f"Risk Score: {ledger['score']}/100 | Vectors: {vectors}"
+
+    # 4. Update Findings List (The Forensic Trace)
     list_el = document.getElementById("css-findings-list")
-    
     if list_el:
         list_el.innerHTML = ""
+        
         if findings:
+            # Auto-open details if threat exists
             details = document.getElementById("css-findings-details")
             if details: details.open = True
             
@@ -9529,20 +10023,37 @@ def _update_css_workbench_ui(verdict_key: str, summary: str, count: int, finding
                 li = document.createElement("li")
                 li.style.fontFamily = "monospace"
                 li.style.fontSize = "0.85rem"
+                li.style.marginBottom = "8px"
+                li.style.borderLeft = f"3px solid {data['color']}"
+                li.style.paddingLeft = "8px"
                 
-                # Highlight Rule and Preview
-                rule_text = f.get('rule', 'UNKNOWN').toUpperCase()
+                # [SECURITY FIX] XSS Prevention
+                # Escape the preview content before rendering
+                safe_preview = html.escape(f.get("content", ""))
                 
-                # Use standard black/white for text, but color the rule
+                # Format Lineage (Breadcrumbs)
+                # e.g., "DIV.wrapper > SPAN.sr-only"
+                lineage_str = " > ".join(f.get("lineage", [])[-3:]) # Last 3 levels
+                
+                # Construct Rich Item
+                # Shows: [BADGE] Cause (Lineage) -> "Preview"
                 li.innerHTML = (
-                    f'<span style="color:{data["color"]}; font-weight:700;">{rule_text}</span>'
-                    f': "{f["content_preview"]}"'
+                    f'<div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 2px;">'
+                    f'{lineage_str}</div>'
+                    f'<div><span style="color:{data["color"]}; font-weight:700;">[{f["badge"]}] {f["cause"]}</span>'
+                    f': <span style="background: #f3f4f6; padding: 0 4px;">"{safe_preview}"</span></div>'
                 )
                 list_el.appendChild(li)
         else:
-             # Ensure the accordion is closed if clean
+            # Close accordion if clean
             details = document.getElementById("css-findings-details")
-            if details: details.open = false
+            if details: details.open = False
+
+    # 5. Inject Ghost View (Forensic X-Ray)
+    # If your UI has a slot for the visualizer, update it here
+    ghost_container = document.getElementById("css-ghost-view-container")
+    if ghost_container and ghost_html:
+        ghost_container.innerHTML = ghost_html
 
 def render_status(message):
     """Updates the status line with text and CSS class."""
@@ -14393,82 +14904,50 @@ def sanitize_text(profile_type):
 @create_proxy
 def analyze_html_metadata(raw_html_string: str):
     """
-    [STAGE 1.5] METADATA WORKBENCH ANALYZER (Updated v2.0)
-    Scans raw HTML clipboard content for CSS-based obfuscation.
-    Injects the verdict directly into the Metadata Workbench UI section.
+    [STAGE 1.5] METADATA WORKBENCH ORCHESTRATOR (v3.0 SOTA).
+    
+    Replaces Regex scanning with a Forensic Stack Simulation.
+    1. Simulates Browser Physics (Inheritance/Cascade).
+    2. Applies FIS Scoring (Impact * Sophistication).
+    3. Renders a Dual-View (Report + Ghost Text).
     """
-    if not raw_html_string:
-        # Clear UI if input is empty
-        _update_css_workbench_ui("NEUTRAL", "Awaiting input...", 0, None)
-        return []
-        
-    findings = []
-    
-    # Check for empty paste (sometimes raw_html is just boilerplate from the editor)
-    if not raw_html_string.strip() or len(raw_html_string.strip()) < 10:
-        _update_css_workbench_ui("NEUTRAL", "No significant HTML source found in paste.", 0, None)
+    # 1. Input Hygiene
+    if not raw_html_string or len(raw_html_string.strip()) < 10:
+        _update_css_workbench_ui(
+            {"grade": "NEUTRAL", "score": 0, "vectors": []}, 
+            [], 
+            ""
+        )
         return []
 
-    # FIX 1: STYLE_CONTENT_PATTERN must be a raw string.
-    STYLE_CONTENT_PATTERN = re.compile(
-        r'<(\w+)\s+[^>]*?style\s*=\s*["\'](.*?)["\'][^>]*?>(.*?)</\1>',
-        re.IGNORECASE | re.DOTALL
-    )
-
-    # --- CRITICAL STYLE DEFINITIONS (FIXED WITH 'r') ---
-    CRITICAL_STYLE_RULES = [
-        r"visibility:\s*hidden",
-        r"display:\s*none",
-        r"opacity:\s*0",
-        r"position:\s*absolute;\s*left:\s*-?\d{3,}px"
-    ]
-    
-    CRITICAL_CONTRAST_RULES = [
-        r"color:\s*white;\s*background:\s*white",
-        r"color:\s*#fff;\s*background:\s*#fff"
-    ]
-
-    # --- 1. Scan for Hiding (Visibility, Position) and Contrast ---
-    
-    for match in STYLE_CONTENT_PATTERN.finditer(raw_html_string):
-        tag, style_attr, content = match.groups()
+    try:
+        # 2. THE PHYSICS PHASE (Simulation)
+        # Instantiate the Stack Machine from Block 6
+        parser = ForensicHTMLParser()
+        parser.feed(raw_html_string)
         
-        # 2. Normalize the style attribute (remove all whitespace)
-        # This speeds up searching significantly
-        normalized_style = style_attr.lower().replace(" ", "")
+        # 3. THE JUDGMENT PHASE (Auditing)
+        # Pass raw physical findings to the Policy Auditor from Block 7
+        audited_findings, ledger = _audit_metadata_findings(parser.findings)
         
-        rule_hit = ""
+        # 4. THE RENDER PHASE (View)
+        # Generate the "Ghost View" (Forensic X-Ray HTML)
+        ghost_html = parser.get_ghost_html()
         
-        # Check for ABOLUTE hiding rules
-        for rule in CRITICAL_STYLE_RULES:
-            if re.search(rule, normalized_style):
-                rule_hit = rule.split(":")[0] 
-                break
+        # Push to UI
+        _update_css_workbench_ui(ledger, audited_findings, ghost_html)
         
-        # Check for low-contrast rules
-        if not rule_hit:
-            for rule in CRITICAL_CONTRAST_RULES:
-                if re.search(rule, normalized_style):
-                    rule_hit = "low-contrast"
-                    break
+        return audited_findings
 
-        if rule_hit:
-            # We found a definitive hiding technique
-            findings.append({
-                "type": "CSS_OBFUSCATION",
-                "rule": rule_hit,
-                "content_preview": content.strip()[:50] + "...", # Preview of hidden text
-                "desc": f"Text hidden via {rule_hit} style in <{tag}> tag."
-            })
-    
-    # --- 3. UI Update and Reporting ---
-    
-    if findings:
-        _update_css_workbench_ui("CRITICAL", "CSS Obfuscation detected in pasted HTML.", len(findings), findings)
-    else:
-        _update_css_workbench_ui("CLEAN", "No CSS Obfuscation detected in HTML payload.", 0, None)
-
-    return findings
+    except Exception as e:
+        # Fail gracefully in the UI if parsing crashes
+        print(f"Metadata Analysis Error: {e}")
+        _update_css_workbench_ui(
+            {"grade": "ERROR", "score": 0, "vectors": []}, 
+            [], 
+            ""
+        )
+        return []
 
 # Export & Utility Bridges
 
