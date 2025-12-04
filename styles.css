@@ -6061,7 +6061,6 @@ details.profile-section > summary:hover::marker {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 26px;
   padding: 0 12px;
   font-size: 0.7rem;
   font-weight: 700;
