@@ -6099,14 +6099,10 @@ details.profile-section > summary:hover::marker {
   /* 1. Use inline-flex to shrink-wrap width AND align items in a row */
   display: inline-flex; 
   flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  
+
   /* 2. Spacing & sizing */
-  gap: 16px; /* Space between the groups */
+  gap: 8px; /* Space between the groups */
   padding: 6px 12px;
-  max-width: 100%; /* Safety: don't overflow screen */
-  overflow-x: auto; /* Scroll if screen is too small */
   
   /* 3. Visuals */
   background-color: #f8fafc;
@@ -6117,7 +6113,6 @@ details.profile-section > summary:hover::marker {
   color: #64748b;
   
   /* 4. Formatting */
-  white-space: nowrap;
   scrollbar-width: none; /* Hide scrollbar for cleaner look */
 }
 
@@ -6128,7 +6123,6 @@ details.profile-section > summary:hover::marker {
   letter-spacing: 0.05em;
   margin-right: 0px;
   flex: 0 0 auto;
-  white-space: nowrap;
 }
 
 .legend-item {
