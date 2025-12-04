@@ -5974,7 +5974,6 @@ details.profile-section > summary:hover::marker {
   font-family: "SF Mono", "Segoe UI Mono", "Roboto Mono", monospace;
   font-weight: 700;
   color: #0f172a;
-  background-color: #f8fafc;
   white-space: nowrap;
   flex-wrap: nowrap;
   text-align: center;
