@@ -8991,7 +8991,12 @@ def compute_adversarial_metrics(t: str):
                             else: token_families.add("INJECTION")
 
         # [SCRIPT]
-        r_lbl, r_score = analyze_restriction_level(token_text)
+        # Was: r_lbl, r_score = analyze_restriction_level(token_text)
+        # Fixed: Handle dict return
+        r_data = analyze_restriction_level(token_text)
+        r_lbl = r_data["label"]
+        r_score = r_data["score"]
+        
         if r_score > 0:
             if "CONTEXT" in token_families and r_score < 50: pass 
             else:
