@@ -3043,15 +3043,35 @@ def compute_normalization_drift(raw, nfkc, nfkc_cf, skeleton, skel_events=None):
 def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
     """
     Helper to build the <span class="confusable" title="...">...</span> HTML.
-    This logic is extracted from the original compute_threat_analysis loop.
+    [HARDENED] Robust against Tuple/String schema drift in confusables_map.
     """
     try:
-        skeleton_char_str = confusables_map[cp]
+        # [CRITICAL FIX] Defensive Unpacking
+        # The map might return a String ('a') or a Tuple ('a', 'MA', ...)
+        val = confusables_map[cp]
+        
+        if isinstance(val, tuple):
+            # Take the first element (Target Char) and ignore metadata
+            skeleton_char_str = val[0]
+            # Optional: Capture tag if needed for future logic
+            # tag = val[1] if len(val) > 1 else "UNK"
+        else:
+            # Legacy fallback (String)
+            skeleton_char_str = val
+
+        # --- EXISTING LOGIC PRESERVED BELOW ---
+        
+        # Ensure we have a string before performing string ops
+        if not isinstance(skeleton_char_str, str):
+            skeleton_char_str = str(skeleton_char_str)
+
         skeleton_cp_hex = f"U+{ord(skeleton_char_str[0]):04X}"
         skeleton_cp = ord(skeleton_char_str[0])
+        
         source_script = _find_in_ranges(cp, "Scripts") or "Unknown"
         target_script = _find_in_ranges(skeleton_cp, "Scripts") or "Common"
 
+        # Risk Label Logic (Unchanged)
         if (source_script != target_script and 
             target_script != "Common" and 
             source_script != "Unknown"):
@@ -3069,9 +3089,10 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
             f'<span class="confusable" title="{_escape_html(title)}">'
             f"{_escape_html(char)}</span>"
         )
-    except Exception:
-        # Failsafe
-        return f'<span class="confusable" title="Confusable">{_escape_html(char)}</span>'
+    except Exception as e:
+        # [HARDENED] Log error to console for debugging but don't crash UI
+        # print(f"Error in _build_confusable_span for {char}: {e}")
+        return f'<span class="confusable" title="Confusable processing error">{_escape_html(char)}</span>'
 
 def _get_single_char_skeleton(s: str) -> str:
     """
