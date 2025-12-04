@@ -6096,18 +6096,29 @@ details.profile-section > summary:hover::marker {
 
 /* --- LEGEND BAR (Forensic Dimensions) --- */
 .atlas-legend-bar {
+  /* 1. Use inline-flex to shrink-wrap width AND align items in a row */
+  display: inline-flex; 
+  flex-direction: row;
   align-items: center;
-  gap: 10px; /* Space between definitions */
-  padding: 10px 16px;
-  background-color: #f8fafc; /* Slate-50 background */
-  border-bottom: 1px solid #e2e8f0;
+  justify-content: flex-start;
+  
+  /* 2. Spacing & sizing */
+  gap: 16px; /* Space between the groups */
+  padding: 6px 12px;
+  max-width: 100%; /* Safety: don't overflow screen */
+  overflow-x: auto; /* Scroll if screen is too small */
+  
+  /* 3. Visuals */
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0; /* Full border looks cleaner for a "chip" */
+  border-radius: 6px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 0.8rem;
   color: #64748b;
-  overflow-x: auto; /* Safety scroll for small screens */
-  display: inline-block;
+  
+  /* 4. Formatting */
   white-space: nowrap;
-  flex-wrap: nowrap;
+  scrollbar-width: none; /* Hide scrollbar for cleaner look */
 }
 
 .legend-header {
@@ -6121,9 +6132,9 @@ details.profile-section > summary:hover::marker {
 }
 
 .legend-item {
+  display: flex; 
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
 }
 
 .legend-key {
