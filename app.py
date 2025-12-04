@@ -1395,26 +1395,27 @@ def _parse_confusables(txt: str):
     count = 0
     lines = txt.split('\n')
     for raw in lines:
-        # 1. Strip comments immediately
+        # 1. Strip comments immediately (Fixes "MA # Comment" issues)
         line = raw.split('#', 1)[0].strip()
         if not line or line.startswith(';'):
             continue
         
-        # 2. Split by semicolon (max 2 splits to get 3 parts: Code; Target; Type)
-        parts = line.split(';', 2)
+        # 2. Split by semicolon
+        parts = line.split(';')
         if len(parts) < 3:
             continue
         
         try:
             source_hex = parts[0].strip()
             tgt_hex = parts[1].strip().split()
-            tag = parts[2].strip() # 'MA', 'ML', 'SA', 'SL'
+            # Strict Tag Extraction (MA, ML, SA, SL)
+            tag = parts[2].strip().split()[0] 
             
             source_cp = int(source_hex, 16)
             target_str = "".join([chr(int(h, 16)) for h in tgt_hex])
             
-            # Store strict 2-tuple to match logic expectations, 
-            # OR logic engine must handle >2 (which we fixed above).
+            # Store as tuple. We allow length > 2 for future extensibility (e.g. comments)
+            # but the logic engine will now handle it safely.
             store[source_cp] = (target_str, tag)
             count += 1
         except Exception:
@@ -2726,16 +2727,14 @@ def _generate_uts39_skeleton(t: str, return_events=False):
             tgt = char # Default safe fallback
             tag = "UNK"
             
-            if isinstance(val, tuple):
+            if isinstance(val, (tuple, list)):
                 # Handle Tuple (New Format): (Target, Tag, [Optional...])
                 if len(val) >= 2:
                     tgt = val[0]
                     tag = val[1]
-                    # Note: We intentionally ignore val[2+] (Comments/Hex)
                 elif len(val) == 1:
                     tgt = val[0]
             elif isinstance(val, str):
-                # Handle String (Legacy Format): "Target"
                 tgt = val
             
             mapped_chars.append(tgt)
@@ -6100,9 +6099,9 @@ def analyze_trojan_context(token: str):
 def analyze_confusion_density(token, confusables=None):
     """
     Calculates the 'Confusion Density' of a token using UTS #39 data.
-    [HARDENED v1.4] 
-    - GOLDEN FIX: Removes unpacking assignments. Uses index access.
-    - Handles Strings, 2-Tuples, and 3-Tuples safely.
+    [HARDENED v2.0] 
+    - GOLDEN FIX: Removes unpacking assignments. Uses strict index access.
+    - Handles Strings, 2-Tuples, and N-Tuples safely.
     """
     if not token: return None
     
@@ -6124,7 +6123,7 @@ def analyze_confusion_density(token, confusables=None):
             # New Code (SAFE): Check type, then index.
             
             if isinstance(val, (tuple, list)):
-                # If tuple is ('target', 'MA', 'hex', 'comment'), val[1] is 'MA'
+                # If tuple is ('target', 'MA', ...), val[1] is 'MA'
                 if len(val) >= 2: 
                     tag = val[1]
                 # If tuple is just ('target',), tag remains "UNK"
