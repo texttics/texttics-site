@@ -10229,51 +10229,62 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         policy_action = "ALLOW"
         policy_class = "prop-stable"
         
+        # --- FORENSIC CLASSIFICATION (Priority Ordered) ---
+        
+        # 1. FATAL (Nulls) - Highest Priority
         if char_code == 0x0000:
              tier_rank = 0; tier_badge = "FATAL (NULL)"; tier_class = "atlas-badge-crit"
              bucket_key = "FATAL"; policy_action = "BLOCK"; policy_class = "prop-crit"
              
+        # 2. DISALLOWED (Tags, Internal)
         elif 0xE0000 <= char_code <= 0xE007F:
              tier_rank = 1; tier_badge = "DISALLOWED"; tier_class = "atlas-badge-crit"
              bucket_key = "DISALLOWED"; policy_action = "BLOCK"; policy_class = "prop-crit"
              
+        # 3. BIDI (Security Threat)
         elif char_code in TIER_BIDI:
             tier_rank = 2; tier_badge = "BIDI CONTROL"; tier_class = "atlas-badge-high"
             bucket_key = "BIDI"; policy_action = "REVIEW"; policy_class = "prop-warn"
             
+        # 4. CONTROLS (Legacy C0/C1)
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
             tier_rank = 3; tier_badge = "RESTRICTED CTRL"; tier_class = "atlas-badge-high"
             bucket_key = "CONTROLS"; policy_action = "REVIEW"; policy_class = "prop-warn"
 
-        # --- Check Specifics BEFORE Generics ---
-        
+        # 5. GLUE (Specific) - CHECK THIS BEFORE IGNORABLE!
+        # Catches NBSP and SHY so they don't get eaten by the Ignorable bucket
         elif char_code in TIER_GLUE:
-            # Must be before Ignorable (e.g. SHY is Ignorable but acts as Glue)
             tier_rank = 8; tier_badge = "GLUE"; tier_class = "atlas-badge-ok"
             bucket_key = "GLUE"; policy_action = "ALLOW"; policy_class = "prop-stable"
             
+        # 6. JOINERS (Specific) - CHECK THIS BEFORE IGNORABLE!
+        # Catches ZWJ/ZWNJ so they appear as Joiners, not generic Ignorables
         elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
-            # Must be before Ignorable (e.g. ZWJ is Ignorable but acts as Joiner)
             tier_rank = 5; tier_badge = "JOINER/SELECTOR"; tier_class = "atlas-badge-warn" 
             bucket_key = "JOINERS"; policy_action = "CONTEXT"; policy_class = "prop-info"
             
+        # 7. IGNORABLE (Generic Catch-all)
+        # Only catches the 'True Ghosts' left over (ZWSP, MVS, Word Joiner)
         elif char_code in TIER_IGNORABLE:
-            # Catch leftovers (ZWSP, MVS, Word Joiner) here
             tier_rank = 4; tier_badge = "IGNORABLE"; tier_class = "atlas-badge-ghost"
             bucket_key = "IGNORABLE"; policy_action = "REVIEW"; policy_class = "prop-ghost"
             
+        # 8. SPACING (Unicode Zs)
         elif char_code in TIER_UNI_SPACE:
             tier_rank = 6; tier_badge = "UNICODE SPACE"; tier_class = "atlas-badge-neutral"
             bucket_key = "UNI-SPACE"; policy_action = "NORM"; policy_class = "prop-info"
             
+        # 9. LAYOUT (ASCII)
         elif char_code in TIER_ASCII_WS:
             tier_rank = 7; tier_badge = "ASCII WS"; tier_class = "atlas-badge-ok"
             bucket_key = "ASCII-WS"; policy_action = "ALLOW"; policy_class = "prop-stable"
             
+        # 10. FALLBACK
         else:
             tier_rank = 9; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"
             bucket_key = "OTHER"; policy_action = "REVIEW"; policy_class = "prop-warn"
             
+        # Increment the Summary Counter
         category_agg[bucket_key] += count
 
         # ---------------------------------------------------------
