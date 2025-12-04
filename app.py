@@ -10168,7 +10168,44 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
     for char_code, count in invisible_counts.items():
         char = chr(char_code)
         
-        # ... [Name Resolution & Visual Decoding logic omitted for brevity, assume it exists above] ...
+        # --- Name Resolution ---
+        name = "Unknown"
+        if char_code in C0_CONTROL_NAMES:
+            name = C0_CONTROL_NAMES[char_code]
+        else:
+            try: name = ud.name(char)
+            except: 
+                if 0x80 <= char_code <= 0x9F: name = f"C1 CONTROL 0x{char_code:02X}"
+                else: name = "UNASSIGNED / CONTROL"
+
+        # --- Visual Decoding (Symbol) & CATEGORY SLUG DEFINITION ---
+        symbol = "."
+        category_slug = "UNKNOWN"
+        
+        if 0xE0000 <= char_code <= 0xE007F:
+            tag_char = chr(char_code - 0xE0000)
+            if 0xE0020 <= char_code <= 0xE007E: symbol = f"[TAG:{tag_char}]"
+            elif char_code == 0xE007F: symbol = "[TAG:X]"
+            else: symbol = "[TAG:?]"
+            category_slug = "TAG"
+        elif 0xFE00 <= char_code <= 0xFE0F:
+            symbol = f"[VS{char_code - 0xFE00 + 1}]"; category_slug = "SELECTOR"
+        elif 0xE0100 <= char_code <= 0xE01EF:
+            symbol = f"[VS{char_code - 0xE0100 + 17}]"; category_slug = "SELECTOR"
+        elif char_code == 0x200B: symbol = "[ZWSP]"; category_slug = "ZW-SPACE"
+        elif char_code == 0x200D: symbol = "[ZWJ]"; category_slug = "JOINER"
+        elif char_code == 0x200C: symbol = "[ZWNJ]"; category_slug = "JOINER"
+        elif char_code == 0x00AD: symbol = "[SHY]"; category_slug = "HYPHEN"
+        elif char_code in BIDI_TAG_MAP: symbol = BIDI_TAG_MAP[char_code]; category_slug = "BIDI"
+        elif char_code in TIER_UNI_SPACE: symbol = "[SP:?]"; category_slug = "SPACE"
+        elif 0x00 <= char_code <= 0x1F:
+            symbol = f"[CTL:{char_code:02X}]"
+            if char_code == 0x00: category_slug = "NULL"
+            elif char_code == 0x09: category_slug = "TAB"
+            elif char_code in [0x0A, 0x0D]: category_slug = "NEWLINE"
+            else: category_slug = "CONTROL"
+        else:
+            symbol = "[INV]"; category_slug = "FORMAT"
         
         # --- FORENSIC CLASSIFICATION (Single Source of Truth) ---
         # 1. Determine Identity & Risk in ONE pass.
