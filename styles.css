@@ -6096,10 +6096,7 @@ details.profile-section > summary:hover::marker {
 
 /* --- LEGEND BAR (Forensic Dimensions) --- */
 .atlas-legend-bar {
-  display: flex;
-  flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
   gap: 10px; /* Space between definitions */
   padding: 10px 16px;
   background-color: #f8fafc; /* Slate-50 background */
@@ -6121,7 +6118,6 @@ details.profile-section > summary:hover::marker {
 }
 
 .legend-item {
-  display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
