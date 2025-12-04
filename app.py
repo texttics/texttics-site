@@ -6069,45 +6069,46 @@ def analyze_trojan_context(token: str):
         return {"desc": "Bidi Control near Syntax (Trojan Risk)", "risk": 100}
     return {"desc": "Bidi Control present", "risk": 60}
 
-def analyze_confusion_density(token: str, confusables_map: dict):
+def analyze_confusion_density(token):
     """
-    [CONFUSION DENSITY] Calculates per-token ambiguity using UTS #39 data.
+    Calculates the 'Confusion Density' of a token using UTS #39 data.
+    [HARDENED v1.1] Safe against Tuple unpacking errors.
     """
-    if not token or not confusables_map: return None
+    if not token: return 0.0
     
+    confusables = DATA_STORES.get("Confusables", {})
+    total_chars = len(token)
     confusable_count = 0
-    effective_len = 0
     
     for char in token:
         cp = ord(char)
-        # Filter out common punctuation to avoid noise
-        if not unicodedata.category(char).startswith('P'):
-            effective_len += 1
-            # Check map
-            if cp in confusables_map:
-                # Retrieve mapping
-                val = confusables_map[cp]
-                target = val[0] if isinstance(val, tuple) else val
+        if cp in confusables:
+            val = confusables[cp]
+            
+            # [CRITICAL FIX] Defensive Unpacking
+            # Handles legacy (str) and new tuple format (tgt, tag, *extra)
+            tag = "UNK"
+            if isinstance(val, tuple):
+                if len(val) >= 2:
+                    _, tag, *_ = val # We only care about the tag (MA/ML/SA/SL) here
+                elif len(val) == 1:
+                    pass # No tag available
+            elif isinstance(val, str):
+                pass # Legacy string format, no tag
+            
+            # Weighted Scoring based on Tag
+            # SL (Single Script) / SA (Single ASCII) are lower risk than Mixed
+            if tag in ("MA", "ML"): # Mixed Script / Mixed Latin
+                confusable_count += 1.0
+            elif tag in ("SA", "SL"): # Single Script
+                confusable_count += 0.5
+            else:
+                confusable_count += 0.8 # Default fallback
                 
-                # If it maps to something DIFFERENT, it's ambiguous
-                if target != char:
-                    confusable_count += 1
-
-    if effective_len == 0: return None
+    if total_chars == 0: return 0.0
     
-    density = confusable_count / effective_len
-    
-    if density > 0.0:
-        risk = int(density * 100)
-        # Boost risk for high density
-        if density > 0.5: risk = min(100, risk + 20)
-        
-        return {
-            "desc": f"Confusion Density: {density:.0%}",
-            "density": density,
-            "risk": risk
-        }
-    return None
+    # Return density (0.0 to 1.0)
+    return min(confusable_count / total_chars, 1.0)
 
 def analyze_zalgo_load(token: str):
     """
