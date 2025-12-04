@@ -5893,7 +5893,7 @@ details.profile-section > summary:hover::marker {
   text-align: center;
   white-space: nowrap;
   flex-wrap: nowrap;
-  padding: 4px 4px;
+  padding: 8px 8px;
 }
 
 /* Header Styling */
@@ -5910,7 +5910,7 @@ details.profile-section > summary:hover::marker {
   text-align: center;
   white-space: nowrap;
   flex-wrap: nowrap;
-  padding: 4px 4px;
+  padding: 8px 8px;
 }
 
 .atlas-table th:last-child {
@@ -5927,7 +5927,7 @@ details.profile-section > summary:hover::marker {
   vertical-align: middle;
   white-space: nowrap;
   flex-wrap: nowrap;
-  padding: 4px 4px;
+  padding: 8px 8px;
 }
 
 .atlas-table tr:hover td {
@@ -5942,6 +5942,7 @@ details.profile-section > summary:hover::marker {
   background-color: #fcfcfc; /* Slight tint for ID column */
   white-space: nowrap;
   flex-wrap: nowrap;
+  padding: 8px 8px;
 }
 
 /* Code Column (The Fix) */
@@ -5954,6 +5955,7 @@ details.profile-section > summary:hover::marker {
   white-space: nowrap;
   flex-wrap: nowrap;
   text-align: center;
+  padding: 8px 8px;
 }
 
 /* Name Column (The Taming) */
@@ -5977,6 +5979,7 @@ details.profile-section > summary:hover::marker {
   white-space: nowrap;
   flex-wrap: nowrap;
   text-align: center;
+  padding: 8px 8px;
 }
 
 /* 6. Forensic Badges & Properties */
@@ -5999,7 +6002,7 @@ details.profile-section > summary:hover::marker {
   background-color: #f1f5f9;
   border: 1px solid #cbd5e1;
   color: #0f172a;
-  padding: 4px 4px;
+  padding: 8px 8px;
   border-radius: 4px;
   display: inline-block;
   text-align: center;
@@ -6012,7 +6015,7 @@ details.profile-section > summary:hover::marker {
   font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 4px 4px;
+  padding: 8px 8px;
   border-radius: 12px; /* Capsule shape */
   border: 1px solid transparent;
   white-space: nowrap;
@@ -6030,7 +6033,7 @@ details.profile-section > summary:hover::marker {
   font-family: "SF Mono", "Segoe UI Mono", "Roboto Mono", monospace;
   font-size: 0.65rem;
   font-weight: 600;
-  padding: 4px 4px;
+  padding: 8px 8px;
   border-radius: 4px;
   border: 1px solid transparent;
   cursor: help;
@@ -6059,7 +6062,7 @@ details.profile-section > summary:hover::marker {
   cursor: pointer;
   text-transform: uppercase;
   transition: all 0.2s;
-  padding: 4px 4px;
+  padding: 8px 8px;
 }
 
 .atlas-btn:hover {
