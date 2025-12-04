@@ -2056,3 +2056,43 @@ The UI has been upgraded to a **Forensic Laboratory** aesthetic, featuring:
 * **Active Sensor Array:** A dedicated header visualizing active detection modules (Layout, Geometry, Lineage).
 * **Lineage Trace:** A "Debugger-style" stack view that answers *why* text is hidden (e.g., `DIV.wrapper > SPAN.hidden`).
 * **Ghost Text X-Ray:** A specialized "Invisibility Goggles" mode that renders hidden payloads inline with a distinct visual signature (Red/Dashed), allowing analysts to see the invisible layer of the web.
+
+***
+
+### 🛡️ New Module: The Verification Bench (Zero-Trust Comparator)
+
+**Focus:** Pairwise Identity Verification & Policy Enforcement
+> **"Trust, but Verify (Deterministically)."**
+
+We have introduced a dedicated **Verification Workbench**, transforming the tool from a passive profiler into an active **Zero-Trust Comparator**. Unlike standard "diff" tools that check for byte equality, this instrument performs a **Quad-State Forensic Alignment** to answer the critical security question: *"Is the Suspect string a visual clone, a logical match, or a weaponized spoof of the Trusted Reference?"*
+
+#### 1. The "Quad-State" Alignment Engine
+The comparator implements a rigorous pipeline that analyzes the relationship between two strings across four simultaneous realities, detecting "Drift" that signals deception:
+* **Raw State (Bitwise):** Checks for exact byte equality.
+* **Canonical State (NFC):** Checks for standard equivalence.
+* **Compatibility State (NFKC):** Detects formatting bypasses (e.g., `ﬁ` vs `fi`).
+* **Visual State (UTS #39 Skeleton):** The "Deep Truth." It maps characters to their visual prototypes (e.g., Cyrillic `a` $\to$ Latin `a`) to detect high-fidelity **Homograph Attacks**.
+
+#### 2. Stage 1.5 "Adversarial Physics" Sensors
+We upgraded the detection logic to **Stage 1.5**, introducing "Active Sensors" that scan for weaponization patterns defined in recent security literature (Mandiant, Trojan Source, SSTA):
+* **Residual Risk Scanner (Cold Zones):** A specialized audit that scans the *unmatched* tails/heads of a string. It ensures that a perfect visual match isn't serving as a "Trojan Horse" for hidden payloads (Bidi controls, Tags) appended to the end.
+* **Internal Artifact Scanner (Hot Zone):** Detects **Token Fractures** (Invisible Injections). If a visual match contains hidden characters *inside* the matched sequence (e.g., `ad<ZWSP>min`), it escalates the verdict to **CRITICAL**, distinguishing "Structural Sabotage" from simple visual spoofing.
+* **Variation Selector Topology:** A new bitmask filter (`INVIS_VARIATION_SELECTOR`) that flags anomalous Emoji Modifiers used to alter meaning or evade hash-based blocklists.
+
+#### 3. Standards-Based Policy Auditors (Gatekeepers)
+To move beyond heuristic guessing, we integrated formal Unicode Security Profiles:
+* **UTS #39 Restriction Levels:** The bench classifies strings into security tiers: **ASCII** (Safe), **Single-Script** (High), **Moderate** (Latin+Greek/Cyrillic), or **Minimally Restrictive** (Dangerous Mixes). This allows for immediate detection of "Cross-Script Spoofing."
+* **UAX #31 Identifier Profiling:** A "Gatekeeper" engine that validates tokens against the **General Security Profile** (`ID_Start` + `ID_Continue`), flagging illegal syntax (Emoji, Symbols, Spaces) inside usernames or keys.
+
+#### 4. The "Forensic Lens" Interface (X-Ray V6)
+The UI has been upgraded to a **6-Point Evidence Matrix** that visualizes the exact mechanism of the threat:
+* **Verdict Grid:** Displays Raw, NFKC, and Skeleton match status side-by-side.
+* **Visual X-Ray:** A color-coded forensic string view that highlights:
+    * **Anchors (Gray):** Safe matches.
+    * **Payloads (Red):** Homoglyphs (Visual match, Byte mismatch).
+    * **Format Drift (Amber):** Normalization variances.
+    * **Internal Threats (Solid Red Outline):** Token fractures and invisible injections.
+* **Scope Awareness:** The engine automatically detects if the user has selected a specific substring (e.g., a domain inside a URL) and switches scope from "Full Input" to "Selection," enabling surgical analysis of embedded threats.
+
+#### 🔧 Architectural Hardening (The "Golden Fix")
+Underpinning these features is a hardened **Logic Layer (v1.2)** designed to resist data schema drift. The core engines (`analyze_confusion_density`, `compute_adversarial_metrics`) now feature **Polymorphic Unpacking**, allowing them to safely consume evolving Unicode datasets (tuples, lists, or strings) without runtime errors, ensuring the tool remains stable as the Unicode Standard evolves.
