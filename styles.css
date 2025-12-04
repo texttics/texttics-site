@@ -5893,8 +5893,11 @@ details.profile-section > summary:hover::marker {
   width: 100%;
   border-collapse: separate; /* Allows distinct border styling */
   border-spacing: 0;
-  table-layout: fixed; /* CRITICAL: Enforces column widths */
   font-size: 0.85rem;
+  text-align: center;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  padding: 4px 4px;
 
 }
 
