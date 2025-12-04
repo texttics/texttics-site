@@ -1393,27 +1393,34 @@ def _parse_confusables(txt: str):
     store = DATA_STORES["Confusables"]
     store.clear()
     count = 0
-    for raw in txt.splitlines():
+    lines = txt.split('\n')
+    for raw in lines:
+        # 1. Strip comments immediately
         line = raw.split('#', 1)[0].strip()
         if not line or line.startswith(';'):
             continue
         
+        # 2. Split by semicolon (max 2 splits to get 3 parts: Code; Target; Type)
         parts = line.split(';', 2)
-        if len(parts) < 2:
+        if len(parts) < 3:
             continue
         
         try:
             source_hex = parts[0].strip()
-            skeleton_hex_list = parts[1].strip().split()
-            source_cp = int(source_hex, 16)
-            skeleton_str = "".join([chr(int(hex_val, 16)) for hex_val in skeleton_hex_list])
+            tgt_hex = parts[1].strip().split()
+            tag = parts[2].strip() # 'MA', 'ML', 'SA', 'SL'
             
-            # Add to map
-            store[source_cp] = skeleton_str
+            source_cp = int(source_hex, 16)
+            target_str = "".join([chr(int(h, 16)) for h in tgt_hex])
+            
+            # Store strict 2-tuple to match logic expectations, 
+            # OR logic engine must handle >2 (which we fixed above).
+            store[source_cp] = (target_str, tag)
             count += 1
         except Exception:
-            pass # Ignore malformed lines
-    print(f"Loaded {count} confusable mappings.")
+            pass 
+            
+    print(f"Loaded {count} confusable mappings with Forensic Types.")
 
 def _parse_intentional(txt: str):
     """Parses intentional.txt into a set of frozenset pairs."""
@@ -6093,14 +6100,13 @@ def analyze_trojan_context(token: str):
 def analyze_confusion_density(token, confusables=None):
     """
     Calculates the 'Confusion Density' of a token using UTS #39 data.
-    [HARDENED v1.2] 
-    - Fixes Signature Mismatch (accepts optional 2nd arg).
-    - Fixes Return Type Mismatch (returns dict, not float).
-    - Fixes Unpacking Error (handles strings/tuples/lists safely).
+    [HARDENED v1.3] 
+    - GOLDEN FIX: Removes all unpacking assignments (x, y = val).
+    - Uses explicit index access with bounds checking.
     """
     if not token: return None
     
-    # 1. Handle optional argument (Fixes Signature Crash)
+    # 1. Handle optional argument safely
     if confusables is None:
         confusables = DATA_STORES.get("Confusables", {})
         
@@ -6111,16 +6117,17 @@ def analyze_confusion_density(token, confusables=None):
         cp = ord(char)
         if cp in confusables:
             val = confusables[cp]
-            tag = "UNK"
+            tag = "UNK" # Default tag
             
-            # 2. Universal Safe Unpacking (Fixes 'Too Many Values' Crash)
-            # Checks type explicitly instead of relying on unpacking syntax
+            # --- GOLDEN FIX: SCHEMA TOLERANCE ---
+            # Never use: tgt, tag = val (This crashes on schema drift)
             if isinstance(val, (tuple, list)):
-                # If tuple is ('target', 'MA', 'hex'), val[1] is 'MA'
+                # If tuple is ('target', 'MA', 'hex', 'comment'), val[1] is 'MA'
                 if len(val) >= 2: 
                     tag = val[1]
+                # If tuple is just ('target',) or len 1, tag remains UNK
             elif isinstance(val, str):
-                # Legacy string format: "target". Tag remains "UNK".
+                # Legacy string format: "target". Tag remains UNK.
                 pass
             
             # 3. Weighted Scoring
@@ -6136,11 +6143,10 @@ def analyze_confusion_density(token, confusables=None):
     # Calculate Density
     density = min(confusable_count / total_chars, 1.0)
     
-    # 4. Return Dictionary (Fixes 'Subscriptable' Crash)
     if density > 0:
         return {
             "density": density,
-            "risk": int(density * 50), # Scale to 0-50 risk points
+            "risk": int(density * 50),
             "desc": f"Confusable Density ({int(density*100)}%)"
         }
         
