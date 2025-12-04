@@ -10229,63 +10229,60 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         policy_action = "ALLOW"
         policy_class = "prop-stable"
         
-        # --- FORENSIC CLASSIFICATION (Priority Ordered) ---
+        # --- FLATTENED FORENSIC CLASSIFICATION (Single Source of Truth) ---
+        # 1. Determine Identity & Risk in ONE pass.
+        # Priority: Security > Specific Function > Generic Property
         
-        # 1. FATAL (Nulls) - Highest Priority
-        if char_code == 0x0000:
-             tier_rank = 0; tier_badge = "FATAL (NULL)"; tier_class = "atlas-badge-crit"
-             bucket_key = "FATAL"; policy_action = "BLOCK"; policy_class = "prop-crit"
-             
-        # 2. DISALLOWED (Tags, Internal)
-        elif 0xE0000 <= char_code <= 0xE007F:
-             tier_rank = 1; tier_badge = "DISALLOWED"; tier_class = "atlas-badge-crit"
-             bucket_key = "DISALLOWED"; policy_action = "BLOCK"; policy_class = "prop-crit"
-             
-        # 3. BIDI (Security Threat)
-        elif char_code in TIER_BIDI:
-            tier_rank = 2; tier_badge = "BIDI CONTROL"; tier_class = "atlas-badge-high"
-            bucket_key = "BIDI"; policy_action = "REVIEW"; policy_class = "prop-warn"
-            
-        # 4. CONTROLS (Legacy C0/C1)
-        elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
-            tier_rank = 3; tier_badge = "RESTRICTED CTRL"; tier_class = "atlas-badge-high"
-            bucket_key = "CONTROLS"; policy_action = "REVIEW"; policy_class = "prop-warn"
+        # Defaults
+        bucket_key = "OTHER"
+        badge_style = "neutral"  # maps to: atlas-badge-neutral AND sum-val neutral
+        tier_rank = 9
+        policy_action = "REVIEW"
+        policy_class = "prop-warn"
+        tier_badge = "OTHER"
 
-        # 5. GLUE (Specific) - CHECK THIS BEFORE IGNORABLE!
-        # Catches NBSP and SHY so they don't get eaten by the Ignorable bucket
+        if char_code == 0x0000:
+            bucket_key = "FATAL"; badge_style = "crit"; tier_rank = 0
+            tier_badge = "FATAL (NULL)"; policy_action = "BLOCK"; policy_class = "prop-crit"
+            
+        elif 0xE0000 <= char_code <= 0xE007F:
+            bucket_key = "DISALLOWED"; badge_style = "crit"; tier_rank = 1
+            tier_badge = "DISALLOWED"; policy_action = "BLOCK"; policy_class = "prop-crit"
+            
+        elif char_code in TIER_BIDI:
+            bucket_key = "BIDI"; badge_style = "warn"; tier_rank = 2
+            tier_badge = "BIDI CONTROL"; policy_action = "REVIEW"; policy_class = "prop-warn"
+            
+        elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
+            bucket_key = "CONTROLS"; badge_style = "warn"; tier_rank = 3
+            tier_badge = "RESTRICTED CTRL"; policy_action = "REVIEW"; policy_class = "prop-warn"
+            
         elif char_code in TIER_GLUE:
-            tier_rank = 8; tier_badge = "GLUE"; tier_class = "atlas-badge-ok"
-            bucket_key = "GLUE"; policy_action = "ALLOW"; policy_class = "prop-stable"
+            bucket_key = "GLUE"; badge_style = "safe"; tier_rank = 8
+            tier_badge = "GLUE"; policy_action = "ALLOW"; policy_class = "prop-stable"
             
-        # 6. JOINERS (Specific) - CHECK THIS BEFORE IGNORABLE!
-        # Catches ZWJ/ZWNJ so they appear as Joiners, not generic Ignorables
-        elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
-            tier_rank = 5; tier_badge = "JOINER/SELECTOR"; tier_class = "atlas-badge-warn" 
-            bucket_key = "JOINERS"; policy_action = "CONTEXT"; policy_class = "prop-info"
-            
-        # 7. IGNORABLE (Generic Catch-all)
-        # Only catches the 'True Ghosts' left over (ZWSP, MVS, Word Joiner)
-        elif char_code in TIER_IGNORABLE:
-            tier_rank = 4; tier_badge = "IGNORABLE"; tier_class = "atlas-badge-ghost"
-            bucket_key = "IGNORABLE"; policy_action = "REVIEW"; policy_class = "prop-ghost"
-            
-        # 8. SPACING (Unicode Zs)
-        elif char_code in TIER_UNI_SPACE:
-            tier_rank = 6; tier_badge = "UNICODE SPACE"; tier_class = "atlas-badge-neutral"
-            bucket_key = "UNI-SPACE"; policy_action = "NORM"; policy_class = "prop-info"
-            
-        # 9. LAYOUT (ASCII)
         elif char_code in TIER_ASCII_WS:
-            tier_rank = 7; tier_badge = "ASCII WS"; tier_class = "atlas-badge-ok"
-            bucket_key = "ASCII-WS"; policy_action = "ALLOW"; policy_class = "prop-stable"
+            bucket_key = "ASCII-WS"; badge_style = "safe"; tier_rank = 7
+            tier_badge = "ASCII WS"; policy_action = "ALLOW"; policy_class = "prop-stable"
             
-        # 10. FALLBACK
-        else:
-            tier_rank = 9; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"
-            bucket_key = "OTHER"; policy_action = "REVIEW"; policy_class = "prop-warn"
+        elif char_code in TIER_UNI_SPACE:
+            bucket_key = "UNI-SPACE"; badge_style = "neutral"; tier_rank = 6
+            tier_badge = "UNICODE SPACE"; policy_action = "NORM"; policy_class = "prop-info"
             
-        # Increment the Summary Counter
+        elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
+            bucket_key = "JOINERS"; badge_style = "neutral"; tier_rank = 5
+            tier_badge = "JOINER/SELECTOR"; policy_action = "CONTEXT"; policy_class = "prop-info"
+            
+        elif char_code in TIER_IGNORABLE:
+            bucket_key = "IGNORABLE"; badge_style = "ghost"; tier_rank = 4
+            tier_badge = "IGNORABLE"; policy_action = "REVIEW"; policy_class = "prop-ghost"
+            
+        # --- 2. AGGREGATION (Math Fix) ---
+        # The summary simply sums these keys. No separate logic.
         category_agg[bucket_key] += count
+        
+        # --- 3. ROW PROPERTIES ---
+        tier_class = f"atlas-badge-{badge_style}" # e.g. atlas-badge-crit
 
         # ---------------------------------------------------------
         # 2. PHYSICAL PROPERTIES (The "Physics" Column)
@@ -10383,17 +10380,18 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         "UNI-SPACE", "ASCII-WS", "GLUE", "OTHER"
     ]
     
-    STYLE_MAP = {
+    # Simple Map: Key -> Style Class
+    KEY_TO_STYLE = {
         "FATAL": "crit", "DISALLOWED": "crit", 
         "BIDI": "warn", "CONTROLS": "warn",
-        "IGNORABLE": "ghost", "JOINERS": "neutral", # Joiners are usually neutral/info
-        "UNI-SPACE": "neutral", "ASCII-WS": "safe", "GLUE": "safe", "OTHER": "neutral"
+        "IGNORABLE": "ghost", 
+        "JOINERS": "neutral", "UNI-SPACE": "neutral", "OTHER": "neutral",
+        "ASCII-WS": "safe", "GLUE": "safe"
     }
     
     for key in summary_order:
         if category_agg[key] > 0:
-            # Default to 'neutral' if key missing
-            val_class = STYLE_MAP.get(key, "neutral")
+            val_class = KEY_TO_STYLE.get(key, "neutral")
             
             summary_parts.append(
                 f'<div class="atlas-sum-metric">'
