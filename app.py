@@ -6472,7 +6472,7 @@ def _parse_inline_css(style_str: str) -> Dict[str, str]:
 class ForensicContext:
     """
     Represents the Computed Forensic State of a single DOM node.
-    Simulates CSS inheritance to determine the 'Effective Style'.
+    [UPDATED] Adds robust Color Normalization to fix the 'Round Trip' bug.
     """
     def __init__(self, tag: str, attrs: List[Tuple[str, str]], parent: Optional['ForensicContext'] = None):
         self.tag = tag
@@ -6484,27 +6484,42 @@ class ForensicContext:
         self.local_style = _parse_inline_css(self.attrs.get('style', ''))
         
         # 2. Compute Physics (Inheritance Simulation)
-        # ---------------------------------------------------------------------
         
-        # A. Visibility Lineage (Inherits DOWN)
-        # If parent is hidden, I am hidden.
+        # A. Visibility Lineage
         parent_visible = parent.is_visible if parent else True
         self.is_visible = parent_visible and self._check_local_visibility()
         
-        # B. Opacity Physics (Multiplies DOWN)
-        # Parent(0.5) * Child(0.5) = 0.25
+        # B. Opacity Physics
         parent_opacity = parent.effective_opacity if parent else 1.0
         self.effective_opacity = parent_opacity * self._get_local_opacity()
         
-        # C. Color Physics (Contrast)
-        # Color inherits; Background does NOT (defaults to transparent/parent's visible bg)
-        self.color = self.local_style.get('color') or (parent.color if parent else 'black')
-        self.bg_color = self.local_style.get('background-color') or (self.local_style.get('background'))
+        # C. Color Physics (Contrast) with NORMALIZATION
+        # Get raw color strings
+        raw_color = self.local_style.get('color') or (parent.raw_color if parent else 'black')
+        raw_bg = self.local_style.get('background-color') or (self.local_style.get('background'))
         
-        # Resolve effective background (if local is transparent, look up stack)
-        self.effective_bg = self.bg_color
-        if not self.effective_bg or self.effective_bg in METADATA_PHYSICS.TRANSPARENT_ALIASES:
-            self.effective_bg = parent.effective_bg if parent else 'white' # Assume page default white
+        # Save raw for inheritance
+        self.raw_color = raw_color 
+        
+        # Normalize for Physics Check (Strip spaces, lowercase)
+        # Fixes the "rgb(255, 255, 255)" vs "rgb(255,255,255)" mismatch
+        self.norm_color = self._normalize_color(raw_color)
+        
+        # Resolve effective background
+        # If local bg is missing/transparent, inherit from parent
+        local_bg_norm = self._normalize_color(raw_bg)
+        if not local_bg_norm or local_bg_norm in METADATA_PHYSICS.TRANSPARENT_ALIASES:
+            self.norm_bg = parent.norm_bg if parent else 'white' # Assume page default white
+        else:
+            self.norm_bg = local_bg_norm
+
+    def _normalize_color(self, color_str: Optional[str]) -> str:
+        """
+        [CRITICAL FIX] Strips whitespace to ensure 'rgb(255, 255, 255)' matches aliases.
+        """
+        if not color_str: return ""
+        # Remove all spaces and lower case
+        return color_str.lower().replace(" ", "")
 
     def _check_local_visibility(self) -> bool:
         """Checks SOTA Hard-Hiding Flags."""
@@ -6518,7 +6533,7 @@ class ForensicContext:
         if display in METADATA_PHYSICS.HARD_DISPLAY_VALUES: return False
         if visibility in METADATA_PHYSICS.HARD_VISIBILITY_VALUES: return False
         
-        # 3. Geometric Hiding (Zero Size)
+        # 3. Geometric Hiding
         width = self.local_style.get('width', '')
         height = self.local_style.get('height', '')
         font_size = self.local_style.get('font-size', '')
@@ -6526,15 +6541,14 @@ class ForensicContext:
         if width in {'0', '0px'} or height in {'0', '0px'}: return False
         if font_size == '0' or font_size == '0px': return False
         
-        # 4. Off-Screen Positioning (Heuristic)
-        # Checks for 'left: -9999px' patterns
+        # 4. Off-Screen Positioning
         left = self.local_style.get('left', '0').replace('px', '')
         text_indent = self.local_style.get('text-indent', '0').replace('px', '')
         try:
             if float(left) < -METADATA_PHYSICS.MAX_OFFSCREEN_OFFSET: return False
             if float(text_indent) < METADATA_PHYSICS.MIN_TEXT_INDENT: return False
         except ValueError:
-            pass # Ignore complex calc() values for now
+            pass 
             
         return True
 
@@ -6550,10 +6564,9 @@ class ForensicContext:
         if self.effective_opacity < METADATA_PHYSICS.MIN_VISIBLE_OPACITY:
             return f"Opacity Chain ({self.effective_opacity:.2f})"
         
-        # Check White-on-White (Contrast Hiding)
-        # Simple string matching for Stage 1.5 (SOTA parsers use relative luminance)
-        if (self.color in METADATA_PHYSICS.WHITE_ALIASES and 
-            self.effective_bg in METADATA_PHYSICS.WHITE_ALIASES):
+        # Check White-on-White (Contrast Hiding) using NORMALIZED values
+        if (self.norm_color in METADATA_PHYSICS.WHITE_ALIASES and 
+            self.norm_bg in METADATA_PHYSICS.WHITE_ALIASES):
             return "Zero Contrast (White-on-White)"
             
         if self.local_style.get('display') in METADATA_PHYSICS.HARD_DISPLAY_VALUES:
