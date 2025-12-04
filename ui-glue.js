@@ -1362,6 +1362,55 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
  * @param {number} startCP - Inclusive start index (Code Points)
  * @param {number} endCP   - Exclusive end index (Code Points)
  */
+
+/**
+ * Mode B: Highlight by Code Point Index (For Stage 1 / Micro View)
+ * This is the critical function used by the Atlas LOCATE buttons.
+ */
+window.TEXTTICS_HIGHLIGHT_CODEPOINT = (targetCodePoint) => {
+  const textArea = document.getElementById('text-input');
+  if (!textArea) return;
+  const text = textArea.value;
+
+  let domStart = -1;
+  
+  // 1. Iterate by Code Point to find the target character
+  // Note: We use a for-of loop because it correctly handles Surrogate Pairs as 1 unit
+  let currentCPIndex = 0;
+  let cursor = 0; // Tracks UTF-16 units (DOM Index)
+
+  for (const char of text) {
+    // Convert char to code point integer to match the Atlas data
+    const cpVal = char.codePointAt(0);
+    
+    if (cpVal === targetCodePoint) {
+      domStart = cursor;
+      // We found the first instance of this specific invisible character code.
+      // In a real 'Find Next' implementation, we would need a state tracker,
+      // but for 'LOCATE' (find first), this is sufficient.
+      
+      // Calculate length (1 or 2 units)
+      const length = char.length;
+      
+      textArea.focus();
+      textArea.setSelectionRange(domStart, domStart + length);
+      
+      // Force scroll
+      textArea.blur();
+      textArea.focus();
+      return; 
+    }
+    
+    // Advance counters
+    cursor += char.length; 
+    currentCPIndex++;
+  }
+  
+  if (domStart === -1) {
+    console.warn(`Character U+${targetCodePoint.toString(16)} not found in text.`);
+  }
+};
+
 window.TEXTTICS_HIGHLIGHT_RANGE = (startCP, endCP) => {
   const textArea = document.getElementById('text-input');
   if (!textArea) return;
