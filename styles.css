@@ -6098,7 +6098,7 @@ details.profile-section > summary:hover::marker {
 .atlas-legend-bar {
   display: flex;
   flex-direction: row;
-  gap: 1px; /* Space between definitions */
+  gap: 50px; /* Space between definitions */
   padding: 10px 4px;
   background-color: #f8fafc; /* Slate-50 background */
   border-bottom: 1px solid #e2e8f0;
