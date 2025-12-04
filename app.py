@@ -10244,14 +10244,23 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         elif category_slug == "CONTROL" or (0xFDD0 <= char_code <= 0xFDEF):
             tier_rank = 3; tier_badge = "RESTRICTED CTRL"; tier_class = "atlas-badge-high"
             bucket_key = "CONTROLS"; policy_action = "REVIEW"; policy_class = "prop-warn"
-            
-        elif char_code in TIER_IGNORABLE:
-            tier_rank = 4; tier_badge = "IGNORABLE"; tier_class = "atlas-badge-ghost"
-            bucket_key = "IGNORABLE"; policy_action = "REVIEW"; policy_class = "prop-ghost"
+
+        # --- Check Specifics BEFORE Generics ---
+        
+        elif char_code in TIER_GLUE:
+            # Must be before Ignorable (e.g. SHY is Ignorable but acts as Glue)
+            tier_rank = 8; tier_badge = "GLUE"; tier_class = "atlas-badge-ok"
+            bucket_key = "GLUE"; policy_action = "ALLOW"; policy_class = "prop-stable"
             
         elif char_code in TIER_JOINERS or category_slug == "SELECTOR":
-            tier_rank = 5; tier_badge = "JOINER/SELECTOR"; tier_class = "atlas-badge-warn" # Changed to Warn/Info
+            # Must be before Ignorable (e.g. ZWJ is Ignorable but acts as Joiner)
+            tier_rank = 5; tier_badge = "JOINER/SELECTOR"; tier_class = "atlas-badge-warn" 
             bucket_key = "JOINERS"; policy_action = "CONTEXT"; policy_class = "prop-info"
+            
+        elif char_code in TIER_IGNORABLE:
+            # Catch leftovers (ZWSP, MVS, Word Joiner) here
+            tier_rank = 4; tier_badge = "IGNORABLE"; tier_class = "atlas-badge-ghost"
+            bucket_key = "IGNORABLE"; policy_action = "REVIEW"; policy_class = "prop-ghost"
             
         elif char_code in TIER_UNI_SPACE:
             tier_rank = 6; tier_badge = "UNICODE SPACE"; tier_class = "atlas-badge-neutral"
@@ -10260,10 +10269,6 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         elif char_code in TIER_ASCII_WS:
             tier_rank = 7; tier_badge = "ASCII WS"; tier_class = "atlas-badge-ok"
             bucket_key = "ASCII-WS"; policy_action = "ALLOW"; policy_class = "prop-stable"
-            
-        elif char_code in TIER_GLUE:
-            tier_rank = 8; tier_badge = "GLUE"; tier_class = "atlas-badge-ok"
-            bucket_key = "GLUE"; policy_action = "ALLOW"; policy_class = "prop-stable"
             
         else:
             tier_rank = 9; tier_badge = "OTHER"; tier_class = "atlas-badge-neutral"
