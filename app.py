@@ -14964,6 +14964,9 @@ def analyze_html_metadata(raw_html_string: str):
         
         # Push to UI
         _update_css_workbench_ui(ledger, audited_findings, ghost_html)
+
+        # This plugs the function into the browser's global scope
+        window.analyze_html_metadata = analyze_html_metadata
         
         return audited_findings
 
