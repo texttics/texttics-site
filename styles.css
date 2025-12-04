@@ -6114,7 +6114,7 @@ details.profile-section > summary:hover::marker {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-right: 8px;
-  margin-left: 100px;
+  margin-left: 10px;
 }
 
 .legend-item {
@@ -6122,6 +6122,7 @@ details.profile-section > summary:hover::marker {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  font-size: 1rem;
 }
 
 .legend-key {
@@ -6131,7 +6132,7 @@ details.profile-section > summary:hover::marker {
   background: #e2e8f0;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .legend-val {
