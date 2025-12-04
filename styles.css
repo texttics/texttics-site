@@ -6076,7 +6076,7 @@ details.profile-section > summary:hover::marker {
 
 /* Empty State */
 .empty-state {
-  padding: 40px;
+  padding: 1px;
   text-align: center;
   color: #94a3b8;
   font-style: italic;
