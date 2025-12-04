@@ -10356,13 +10356,30 @@ def render_invisible_atlas(invisible_counts, invisible_positions=None):
         </div>
     """
     
+    # --- Updated Legend (Forensic Dimensions) ---
     desc_html = """
-        <div class="atlas-desc">
-            <strong>Forensic Dimensions:</strong> 
-            <span style="color:#64748b">LEGALITY</span> (Risk Verdict & Compliance) &bull; 
-            <span style="color:#64748b">PHYSICS</span> (Visual Dimensions & Category) &bull; 
-            <span style="color:#64748b">STABILITY</span> (Normalization & Evasion Risks) &bull; 
-            <span style="color:#64748b">POLICY</span> (Recommended Mitigation).
+        <div class="atlas-legend-bar">
+            <span class="legend-header">FORENSIC DIMENSIONS:</span>
+            
+            <div class="legend-item">
+                <span class="legend-key">LEGALITY</span>
+                <span class="legend-val">Security Tier</span>
+            </div>
+            
+            <div class="legend-item">
+                <span class="legend-key">PHYSICS</span>
+                <span class="legend-val">Display Width &amp; Category</span>
+            </div>
+            
+            <div class="legend-item">
+                <span class="legend-key">STABILITY</span>
+                <span class="legend-val">Normalization &amp; Stealth Risk</span>
+            </div>
+            
+            <div class="legend-item">
+                <span class="legend-key">POLICY</span>
+                <span class="legend-val">Recommended Action</span>
+            </div>
         </div>
     """
 
