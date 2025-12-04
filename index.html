@@ -337,14 +337,35 @@
     
     <div class="bench-container" style="padding: 1rem; border-top: 1px solid var(--color-border);">
         <div class="bench-input-group" style="margin-bottom: 1rem;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:0.5rem;">
-                <label style="font-size:0.85rem; color:var(--color-text-muted); font-family:var(--font-mono);">
-                    Source Analysis Scope:
-                </label>
+            <div class="metadata-header-panel">
+    <div class="metadata-scope-row">
+        <div class="scope-group">
+            <span class="scope-badge">SCOPE: RAW CLIPBOARD</span>
+            <span class="scope-mime">MIME: text/html</span>
+        </div>
+        <div class="scope-desc">
+            Bypasses standard sanitization. Input retains structural metadata for <strong>Forensic CSS Simulation</strong>.
+        </div>
+    </div>
+
+    <div class="metadata-sensor-row">
+        <span class="sensor-label">ACTIVE SENSORS:</span>
+        <div class="sensor-grid">
+            <div class="sensor-chip" title="Detects display:none, visibility:hidden, opacity:0">
+                <span class="sensor-dot"></span>LAYOUT
             </div>
-            <p style="font-size: 0.85rem; color: #4b5563; margin-bottom: 0.75rem;">
-                Paste formatted text here to analyze hidden CSS properties (e.g., color, visibility). This input retains HTML metadata.
-            </p>
+            <div class="sensor-chip" title="Detects White-on-White, Transparent text, Contrast Ratios">
+                <span class="sensor-dot"></span>PHOTOMETRICS
+            </div>
+            <div class="sensor-chip" title="Detects 0px font, 1px width, off-screen absolute pos">
+                <span class="sensor-dot"></span>GEOMETRY
+            </div>
+            <div class="sensor-chip" title="Traces parent/child inheritance chain">
+                <span class="sensor-dot"></span>LINEAGE
+            </div>
+        </div>
+    </div>
+</div>
             <div id="metadata-input" contenteditable="true" aria-label="Rich Text Paste Area"
                  style="min-height: 150px; border: 1px dashed #d1d5db; padding: 10px; font-family: var(--font-sans); font-size: 1rem; color: #111827; background-color: #f8fafc; overflow-y: auto;">
                 Click here and paste formatted text (Ctrl+V)...
