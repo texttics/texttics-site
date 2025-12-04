@@ -5894,7 +5894,6 @@ details.profile-section > summary:hover::marker {
   white-space: nowrap;
   flex-wrap: nowrap;
   padding: 4px 4px;
-
 }
 
 /* Header Styling */
@@ -5960,7 +5959,7 @@ details.profile-section > summary:hover::marker {
 /* Name Column (The Taming) */
 .name-col {
   /* This combination forces the column to truncate instead of expanding */
-  width: auto;
+  width: 100%;
   white-space: nowrap;
   flex-wrap: nowrap;
   text-overflow: ellipsis;
