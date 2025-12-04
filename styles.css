@@ -5821,7 +5821,7 @@ details.profile-section > summary:hover::marker {
 
 /* 2. Description Header */
 .atlas-desc {
-  padding: 16px 24px;
+  padding: 4px 4px;
   font-size: 0.9rem;
   color: #334155;
   background-color: #f8fafc;
@@ -5989,7 +5989,7 @@ details.profile-section > summary:hover::marker {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 4px;
   white-space: nowrap;
   flex-wrap: nowrap;
   text-align: center;
@@ -6001,7 +6001,7 @@ details.profile-section > summary:hover::marker {
   background-color: #f1f5f9;
   border: 1px solid #cbd5e1;
   color: #0f172a;
-  padding: 3px 6px;
+  padding: 4px 4px;
   border-radius: 4px;
   display: inline-block;
   text-align: center;
@@ -6014,7 +6014,7 @@ details.profile-section > summary:hover::marker {
   font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 3px 8px;
+  padding: 4px 4px;
   border-radius: 12px; /* Capsule shape */
   border: 1px solid transparent;
   white-space: nowrap;
@@ -6032,7 +6032,7 @@ details.profile-section > summary:hover::marker {
   font-family: "SF Mono", "Segoe UI Mono", "Roboto Mono", monospace;
   font-size: 0.65rem;
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 4px 4px;
   border-radius: 4px;
   border: 1px solid transparent;
   cursor: help;
@@ -6055,7 +6055,6 @@ details.profile-section > summary:hover::marker {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
   font-size: 0.7rem;
   font-weight: 700;
   color: #4338ca;
@@ -6065,6 +6064,7 @@ details.profile-section > summary:hover::marker {
   cursor: pointer;
   text-transform: uppercase;
   transition: all 0.2s;
+  padding: 4px 4px;
 }
 
 .atlas-btn:hover {
@@ -6076,7 +6076,7 @@ details.profile-section > summary:hover::marker {
 
 /* Empty State */
 .empty-state {
-  padding: 1px;
+  padding: 0px;
   text-align: center;
   color: #94a3b8;
   font-style: italic;
