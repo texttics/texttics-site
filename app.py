@@ -4807,14 +4807,7 @@ def analyze_restriction_level(t: str) -> dict:
     """
     [VP-08] UTS #39 Restriction Level Analyzer.
     Determines the 'Script Mixing Class' of the input string.
-    
-    Logic:
-    - Identifies all unique scripts (excluding Common/Inherited).
-    - Checks against SAFE_SCRIPT_MIXES whitelist.
-    - Classification: SINGLE_SCRIPT -> HIGHLY -> MODERATE -> MINIMAL.
-    
-    Returns:
-        dict: { "level": int, "label": str, "scripts": list, "score": int }
+    [FIXED] Passes explicit code point to helper to avoid TypeError.
     """
     if not t: 
         return {"level": RESTRICTION_LEVELS["ASCII"], "label": "EMPTY", "scripts": [], "score": 0}
@@ -4824,18 +4817,28 @@ def analyze_restriction_level(t: str) -> dict:
         return {"level": RESTRICTION_LEVELS["ASCII"], "label": "ASCII", "scripts": ["Latin"], "score": 0}
 
     # 2. Forensic Script Extraction
-    # We use a set to deduce the 'Major Scripts' present.
-    # Common (Numbers/Punctuation) and Inherited (Marks) are ignored 
-    # unless they are the *only* scripts present.
     major_scripts = set()
     all_scripts = set()
     
     for char in t:
-        # Assumes _get_char_script_id helper exists in Block 5
-        script = _get_char_script_id(char)
+        # [CRITICAL FIX] Must pass both char AND ord(char)
+        script = _get_char_script_id(char, ord(char))
+        
         all_scripts.add(script)
-        if script not in ("Common", "Inherited", "Unknown"):
-            major_scripts.add(script)
+        # Clean up the ID for logic (strip "Script: " prefix if present or handle raw)
+        # The helper returns "Script: Latin" or "Script-Ext: Latn"
+        # We normalize specific values for the set logic
+        
+        # Simple extraction for now:
+        if "Script:" in script:
+            s_name = script.split(":")[1].strip()
+        elif "Script-Ext:" in script:
+            s_name = script.split(":")[1].strip().split()[0] # Take first if multiple
+        else:
+            s_name = script
+
+        if s_name not in ("Common", "Inherited", "Unknown"):
+            major_scripts.add(s_name)
             
     sorted_scripts = sorted(list(major_scripts))
     script_count = len(sorted_scripts)
@@ -4847,7 +4850,7 @@ def analyze_restriction_level(t: str) -> dict:
         return {
             "level": RESTRICTION_LEVELS["SINGLE_SCRIPT"],
             "label": "SINGLE SCRIPT (Common)",
-            "scripts": sorted(list(all_scripts)), # Return Common/Inherited for context
+            "scripts": sorted(list(all_scripts)), 
             "score": 0
         }
 
@@ -4861,10 +4864,6 @@ def analyze_restriction_level(t: str) -> dict:
         }
 
     # Case C: Mixed Scripts (The Danger Zone)
-    # We must determine if the mix is "Authorized" (Highly Restrictive) or "Dangerous".
-    
-    # Check for Latin + Authorized East Asian Scripts (Jap/Kor/Chi)
-    # Ref: SAFE_SCRIPT_MIXES from Iteration 1
     if "Latin" in major_scripts:
         # Check if ALL other scripts are in the Latin whitelist
         others = major_scripts - {"Latin"}
@@ -4873,16 +4872,15 @@ def analyze_restriction_level(t: str) -> dict:
                 "level": RESTRICTION_LEVELS["HIGHLY_RESTRICTIVE"],
                 "label": "HIGHLY RESTRICTIVE (Authorized Mix)",
                 "scripts": sorted_scripts,
-                "score": 10 # Low risk penalty
+                "score": 10 
             }
 
-    # Case D: Unauthorized Mixes (e.g., Latin + Cyrillic)
-    # This is the primary vector for Cross-Script Spoofing.
+    # Case D: Unauthorized Mixes
     return {
         "level": RESTRICTION_LEVELS["MINIMALLY_RESTRICTIVE"],
         "label": "MINIMALLY RESTRICTIVE (Mixed Scripts)",
         "scripts": sorted_scripts,
-        "score": 80 # High risk penalty
+        "score": 80 
     }
 
 def analyze_identifier_profile(t: str) -> dict:
