@@ -15731,11 +15731,17 @@ def update_all(event=None):
     # Note: stat_profile was computed earlier and enriched with Zalgo data.
     render_statistical_profile(stat_profile)
 
-    # [STAGE 1.7] Render Topology Card
+    # Render Topology Card (Into Statistical Profile)
     topo_html = render_topology_card(topology_results)
     topo_container = document.getElementById("topology-card-container")
     if topo_container:
         topo_container.innerHTML = topo_html
+    
+    # Render GlitchMap Panel (Into Integrity Profile)
+    glitch_html = render_glitchmap_panel(glitchmap_results)
+    glitch_container = document.getElementById("glitchmap-panel-container")
+    if glitch_container:
+        glitch_container.innerHTML = glitch_html
     
     render_emoji_qualification_table(emoji_list, text_context=t)
     render_emoji_summary(emoji_counts, emoji_list)
