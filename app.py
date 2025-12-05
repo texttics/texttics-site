@@ -5607,6 +5607,183 @@ def analyze_domain_heuristics(token: str):
 
 # F. Verification & Statistics
 
+def _classify_topology(s: str) -> str:
+    """
+    [Phase 3.5] Topology Classifier (Forensic Grade).
+    Determines the semantic shape using character-class density.
+    """
+    if not s: return "EMPTY"
+    
+    # 1. Structure Detection (Syntax)
+    has_slash = "/" in s or "\\" in s
+    has_at = "@" in s
+    has_dot = "." in s
+    has_code_syntax = any(c in "{};()[]=" for c in s)
+    
+    # 2. Entropy / Class Analysis
+    # We count broad categories
+    alnum = 0
+    alpha = 0
+    digit = 0
+    space = 0
+    
+    for c in s:
+        if c.isalnum(): alnum += 1
+        if c.isalpha(): alpha += 1
+        if c.isdigit(): digit += 1
+        if c.isspace(): space += 1
+        
+    length = len(s)
+    
+    # --- Classification Logic ---
+    
+    # A. Code / Data Structures
+    if has_code_syntax and space > 0:
+        return "CODE/DATA"
+    
+    # B. Email
+    if has_at and has_dot and not has_slash and " " not in s:
+        return "EMAIL"
+    
+    # C. Domain / Host
+    # Criteria: No spaces, has dots, mostly alphanumeric
+    if is_plausible_domain_candidate(s):
+        return "DOMAIN"
+        
+    # D. File Path
+    if has_slash:
+        return "PATH"
+        
+    # E. Numeric / Key
+    if digit == length:
+        return "NUMERIC"
+    if alnum == length and digit > 0 and alpha > 0:
+        return "ALPHANUMERIC_KEY"
+        
+    # F. Text / Sentence
+    if space > 0:
+        return "TEXT_PHRASE"
+        
+    return "TOKEN"
+
+def _audit_reference_safety(trusted_str: str) -> list:
+    """
+    [Phase 0] The Mirror Test (Expanded).
+    Ensures the user isn't trusting a malicious, weak, or deceptive reference.
+    """
+    warnings = []
+    
+    # 1. Entropy Guard (Length & Diversity)
+    if len(trusted_str) < 3:
+        warnings.append("Weak Reference (Too Short)")
+    elif len(set(trusted_str)) == 1:
+        warnings.append("Weak Reference (Zero Entropy)")
+
+    # 2. Hidden Character Check
+    MASK_REF = INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_ZERO_WIDTH_SPACING
+    
+    invis_count = 0
+    has_bidi = False
+    has_control_pics = False
+    
+    for char in trusted_str:
+        cp = ord(char)
+        if cp < 1114112:
+            mask = INVIS_TABLE[cp]
+            if mask & MASK_REF: invis_count += 1
+            if mask & INVIS_BIDI_CONTROL: has_bidi = True
+        
+        # 3. Control Picture Check (Visual Spoofing)
+        if 0x2400 <= cp <= 0x243F:
+            has_control_pics = True
+                
+    if invis_count > 0: warnings.append(f"Reference contains {invis_count} hidden chars")
+    if has_bidi: warnings.append("Reference contains Bidi Controls")
+    if has_control_pics: warnings.append("Reference contains Control Pictures (Visual Spoof)")
+    
+    return warnings
+
+def _audit_deep_physics(suspect_str, trusted_str, suspect_nfkc, suspect_prof, trusted_prof) -> list:
+    """
+    [Phase 3.5] Paranoid Physics Engine.
+    Checks Inflation, Topology, Whitespace, Profile Locking, Numeric Value, and Casing.
+    """
+    threats = []
+
+    # 1. Inflation Check (DoS Vector)
+    if len(suspect_nfkc) > len(suspect_str) * 2 and len(suspect_str) > 1:
+        ratio = len(suspect_nfkc) / len(suspect_str)
+        threats.append(f"INFLATION_RISK (x{ratio:.1f})")
+
+    # 2. Profile Locking (Downgrade Attack)
+    if trusted_prof["score"] <= 20 and suspect_prof["score"] >= 80:
+        threats.append(f"PROFILE_DOWNGRADE ({trusted_prof['label']} -> {suspect_prof['label']})")
+
+    # 3. Topology Mismatch (Type Drift)
+    t_topo = _classify_topology(trusted_str)
+    s_topo = _classify_topology(suspect_str)
+    
+    # We only flag if the types are DISTINCT and incompatible
+    # e.g. TEXT -> TEXT is fine. DOMAIN -> PATH is suspicious.
+    # Exception: TOKEN -> ALPHANUMERIC_KEY is often fine.
+    if t_topo != s_topo:
+        # Filter noise: don't flag "TOKEN" vs "TEXT_PHRASE" if they are just words
+        safe_transitions = {("TOKEN", "ALPHANUMERIC_KEY"), ("ALPHANUMERIC_KEY", "TOKEN")}
+        if (t_topo, s_topo) not in safe_transitions:
+             threats.append(f"TOPOLOGY_MISMATCH ({t_topo} -> {s_topo})")
+
+    # 4. Whitespace Topology (The "Invisible Grid")
+    def get_ws_set(s): return {ord(c) for c in s if c.isspace()}
+    ws_t = get_ws_set(trusted_str)
+    ws_s = get_ws_set(suspect_str)
+    
+    if ws_t != ws_s and ws_t:
+        # If trusted uses standard spaces (32) but suspect uses exotic ones
+        if 32 in ws_t and not ws_s.issubset(ws_t):
+            threats.append("WHITESPACE_SPOOFING")
+
+    # 5. Numeric Value Audit (Financial Defense)
+    # Calculates the mathematical sum of digits. Catches 1 vs l, 0 vs O.
+    def get_numeric_sum(s):
+        total = 0.0
+        has_nums = False
+        for c in s:
+            try: 
+                val = unicodedata.numeric(c)
+                total += val
+                has_nums = True
+            except: pass
+        return total, has_nums
+
+    val_t, has_t = get_numeric_sum(trusted_str)
+    val_s, has_s = get_numeric_sum(suspect_str)
+    
+    # Only flag if BOTH strings contain numbers, but the sums differ
+    if has_t and has_s and val_t != val_s:
+        threats.append(f"NUMERIC_MISMATCH ({val_t} vs {val_s})")
+
+    # 6. Casing Lockdown (The "CamelCase" Defense)
+    # If skeletons match but case differs, check if complexity changed.
+    # e.g. "adminUser" vs "adminuser" (Loss of CamelCase is a structure change)
+    if suspect_str.lower() == trusted_str.lower() and suspect_str != trusted_str:
+        # Calculate Casing Entropy (Transitions)
+        def case_transitions(s):
+            trans = 0
+            for i in range(len(s)-1):
+                if s[i].islower() and s[i+1].isupper(): trans += 1
+                if s[i].isupper() and s[i+1].islower(): trans += 1
+            return trans
+            
+        ct_t = case_transitions(trusted_str)
+        ct_s = case_transitions(suspect_str)
+        
+        if ct_t > 0 and ct_s == 0:
+            threats.append("CASING_FLATTENED (CamelCase Lost)")
+        elif ct_t != ct_s:
+            threats.append("CASING_STRUCTURE_MISMATCH")
+
+    return threats
+
 def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     """
     [VP-09, VP-16] Forensic Comparator V1.4 (Relentless).
@@ -5620,34 +5797,8 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     if not suspect_str or not trusted_str: return None
 
     # --- PHASE 0: REFERENCE HYGIENE (The Mirror Test) ---
-    # Is the user trusting a malicious string?
-    reference_warnings = []
-    
-    # Check 1: Invisibles in Reference
-    ref_invis_count = 0
-    MASK_REF_CHECK = INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL | INVIS_TAG | INVIS_ZERO_WIDTH_SPACING
-    for char in trusted_str:
-        cp = ord(char)
-        if cp < 1114112 and (INVIS_TABLE[cp] & MASK_REF_CHECK):
-            ref_invis_count += 1
-            
-    if ref_invis_count > 0:
-        reference_warnings.append(f"Reference contains {ref_invis_count} hidden chars")
-
-    # Check 2: Bidi in Reference
-    if any(INVIS_TABLE[ord(c)] & INVIS_BIDI_CONTROL for c in trusted_str if ord(c) < 1114112):
-        reference_warnings.append("Reference contains Bidi Controls")
-
-    # --- PHASE 1: QUAD-STATE PIPELINE ---
-    suspect_nfkc = normalize_extended(suspect_str)
-    trusted_nfkc = normalize_extended(trusted_str)
-    
-    suspect_fold = suspect_nfkc.casefold()
-    trusted_fold = trusted_nfkc.casefold()
-
-    # Generate Skeletons & Track Events
-    suspect_skel, sus_events = _generate_uts39_skeleton(suspect_fold, return_events=True)
-    trusted_skel = _generate_uts39_skeleton(trusted_fold)
+    # Call the new Reference Auditor
+    reference_warnings = _audit_reference_safety(trusted_str)
 
     # --- PHASE 2: ALIGNMENT ---
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
@@ -5701,37 +5852,16 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
 
     residual_threats = list(set(residual_threats))
 
-    # --- PHASE 4: PROFILE & LOCKING ---
+    # --- PHASE 4: PROFILING & PARANOID PHYSICS ---
     suspect_profile = analyze_restriction_level(suspect_str)
     trusted_profile = analyze_restriction_level(trusted_str)
     
-    # [HARDENING] Profile Locking
-    # If Trusted is Safe (Score < 20), Suspect MUST NOT be High Risk (Score > 50)
-    profile_violation = False
-    if trusted_profile["score"] <= 20 and suspect_profile["score"] >= 80:
-        profile_violation = True
-        residual_threats.append(f"PROFILE_DOWNGRADE ({trusted_profile['label']} -> {suspect_profile['label']})")
-
-    # [HARDENING] Topology Mismatch (Type Drift)
-    # Check if we moved from a Domain to a Path/Email or vice-versa
-    is_trusted_domain = is_plausible_domain_candidate(trusted_str)
-    is_suspect_domain = is_plausible_domain_candidate(suspect_str)
+    # Call the new Deep Physics Auditor
+    # This handles Inflation, Profile Locking, Topology, Whitespace, Numeric, and Casing
+    physics_threats = _audit_deep_physics(suspect_str, trusted_str, suspect_nfkc, suspect_profile, trusted_profile)
     
-    # Simple semantic heuristics
-    def classify_topology(s):
-        if is_plausible_domain_candidate(s): return "DOMAIN"
-        if "/" in s or "\\" in s: return "PATH"
-        if "@" in s: return "EMAIL"
-        if "{" in s or ";" in s: return "CODE"
-        return "TEXT"
-
-    topo_trusted = classify_topology(trusted_str)
-    topo_suspect = classify_topology(suspect_str)
-    
-    topology_mismatch = False
-    if topo_trusted != "TEXT" and topo_trusted != topo_suspect:
-        topology_mismatch = True
-        residual_threats.append(f"TOPOLOGY_MISMATCH ({topo_trusted} -> {topo_suspect})")
+    # Merge physics threats into residual threats for reporting
+    residual_threats.extend(physics_threats)
 
     # --- PHASE 5: VERDICT SYNTHESIS ---
     verdict = "DISTINCT"
@@ -5801,18 +5931,13 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         else:
             confusable_class = CONFUSABLE_CLASS["CROSS_SCRIPT"]
             
-    # [HARDENING] Inject Profile/Topology Violation if relevant
-    # Escalate warning if not already critical
-    if (profile_violation or topology_mismatch) and verdict != "POISONED REFERENCE":
+    # Ensure Physics threats are visible in description if not already critical
+    if physics_threats and verdict != "POISONED REFERENCE":
         if css != "verdict-crit":
             css = "verdict-warn"
-            
-        extras = []
-        if profile_violation: extras.append("PROFILE MISMATCH")
-        if topology_mismatch: extras.append("TYPE DRIFT")
-        
-        if extras:
-            desc += f" [{', '.join(extras)}]"
+            # Deduplicate description if needed, but append for visibility
+            if "THREATS" not in desc:
+                 desc += f" [ANOMALIES: {', '.join(physics_threats)}]"
 
     return {
         "verdict": verdict,
