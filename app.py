@@ -14567,6 +14567,8 @@ def render_inspector_panel(data):
     # FORENSIC FOOTER GENERATOR (Does not touch main table)
     forensic_row_html = ""
     report = data.get("forensic_report")
+
+    print(f"DEBUG: Report Present? {bool(report)}")
     
     if report:
         # A. Determine Colors (Independent of main table)
