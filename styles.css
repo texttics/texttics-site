@@ -6307,3 +6307,50 @@ details.profile-section > summary:hover::marker {
     background-color: #ffffff !important;
     box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
 }
+
+/* [BLOCK 9] TOPOLOGY CSS REFERENCE */
+
+.topo-evidence-box {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.topo-evidence-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.topo-chip-stream {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 60px; /* Force Scroll */
+    overflow-y: auto; /* Enable Scroll */
+    scrollbar-width: thin;
+}
+
+.topo-chip {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    cursor: default;
+}
+
+.chip-syntax {
+    color: var(--color-crit); /* Red Text for Quotes */
+    border-color: var(--color-crit-dim);
+    background: var(--bg-crit-faint);
+}
+
+.chip-geo {
+    color: var(--color-warn); /* Amber Text for Raggedness */
+    border-color: var(--color-warn-dim);
+    background: var(--bg-warn-faint);
+}
