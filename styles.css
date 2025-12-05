@@ -727,6 +727,8 @@ Stage 2: Heatmap Row Classes
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
+
+  overflow-y: visible; /* Let the footer be seen */
 }
 
 /* Empty State Centering */
