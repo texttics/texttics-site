@@ -10077,35 +10077,21 @@ def compute_adversarial_metrics(t: str):
         if krypto_report["count"] > 0:
             krypto_active = True
             for f in krypto_report["findings"]:
-                mech = f.get("mechanism", "UNKNOWN") # Safe key access
-                
-                # Default severity
-                risk_adder = 20
-                lvl = "MED"
-                cat = "SYNTAX"
-                label = f["name"]
+                mech = f.get("mechanism", "UNKNOWN")
+                risk_adder = 20; lvl = "MED"; cat = "SYNTAX"; label = f["name"]
 
-                # High-Value Threats
                 if mech == "REGEX_BREAK":
-                    risk_adder = 100
-                    lvl = "CRIT"
-                    cat = "SYNTAX"
-                    label = "Regex Breaker (LS/PS)"
+                    risk_adder = 100; lvl = "CRIT"; cat = "SYNTAX"
+                    label = "Regex-Breaking Line Terminator" # MATCHES GLOBAL AUDITOR
                 elif mech == "BIDI_CONFUSE":
-                    risk_adder = 100
-                    lvl = "CRIT"
-                    cat = "INJECTION"
-                    label = "Bidi Flow Reversal"
+                    risk_adder = 100; lvl = "CRIT"; cat = "INJECTION"
+                    label = "Bidi Flow Reversal" # MATCHES GLOBAL AUDITOR
                 elif mech == "LOGIC_INJECT":
-                    risk_adder = 60
-                    lvl = "HIGH"
-                    cat = "OBFUSCATION"
-                    label = "Invisible Logic Injection"
+                    risk_adder = 60; lvl = "HIGH"; cat = "OBFUSCATION"
+                    label = "Invisible Logic Injection" # MATCHES GLOBAL AUDITOR
                 elif mech == "CONFUSER":
-                    risk_adder = 40
-                    lvl = "HIGH"
-                    cat = "SPOOFING"
-                    label = "Syntax Confusable"
+                    risk_adder = 40; lvl = "HIGH"; cat = "SPOOFING"
+                    label = "Syntax Confusable" # MATCHES GLOBAL AUDITOR
 
                 token_score += risk_adder
                 threat_stack.append({ "lvl": lvl, "type": cat, "desc": label })
@@ -11367,12 +11353,14 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     if adversarial_data and 'targets' in adversarial_data:
         for target in adversarial_data['targets']:
             for item in target.get('stack', []):
+                # We filter for CRIT/HIGH to keep noise out of the main table
                 if item['lvl'] in ('CRIT', 'HIGH'):
-                    # 1. Normalize Severity Label
+                    # 1. Normalize Severity (The Magic Link)
+                    # "CRIT" (Token Engine) -> "CRITICAL" (Global Engine)
                     sev_label = "CRITICAL" if item['lvl'] == "CRIT" else "HIGH"
                     
-                    # 2. Create the unified key (Matches Audit Logic)
-                    # e.g., "CRITICAL: Bidi Flow Reversal"
+                    # 2. Create the unified key
+                    # e.g., "CRITICAL: Regex-Breaking Line Terminator"
                     key = f"{sev_label}: {item['desc']}"
                     
                     if key not in threat_flags:
@@ -11383,7 +11371,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                         }
                     
                     threat_flags[key]['count'] += 1
-                    # 3. Add rich context (The Token)
+                    # 3. Add Context
                     threat_flags[key]['positions'].append(f"in '{target['token']}'")
     # -------------------------------------------------------
     # [STAGE 1.5] SOFT MERGE INTEGRATION
@@ -11453,7 +11441,6 @@ def _create_position_link(val, text_context=None):
     if cp_idx is not None:
         dom_idx = cp_idx # Default fallback
         
-        # --- INDEXING PATCH START ---
         # Calculate the exact UTF-16 offset if text context is available.
         if text_context is not None:
             # Encode the substring up to the character as UTF-16-LE.
@@ -11462,9 +11449,16 @@ def _create_position_link(val, text_context=None):
                 dom_idx = len(text_context[:cp_idx].encode("utf-16-le")) // 2
             except Exception:
                 dom_idx = cp_idx # Failsafe
-        # --- INDEXING PATCH END ---
 
-        return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({dom_idx}); return false;">{txt}</a>'
+        # Calculate length of the target character (1 or 2 units)
+        char_len = 1
+        if text_context and cp_idx < len(text_context):
+            char_len = 2 if ord(text_context[cp_idx]) > 0xFFFF else 1
+
+        dom_end = dom_start + char_len
+
+        # Use HIGHLIGHT_SEGMENT instead of HIGHLIGHT_CODEPOINT
+        return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_SEGMENT({dom_start}, {dom_end}); return false;">{txt}</a>'
 
     # Otherwise, return the text as-is
     return txt
