@@ -6537,54 +6537,20 @@ details.profile-section > summary:hover::marker {
 
 
 /* --- NEW FORENSIC FOOTER (Independent) --- */
+/* 2. The New Footer (Fluid, Independent) */
+#inspector-forensic-footer {
+    margin-top: 12px; /* Gap between Instrument and Footer */
+    width: 100%;
+    min-height: 0; /* Collapses when empty */
+    /* It will grow naturally based on content size */
+}
+
+/* The footer internal styling remains the same as before */
 .forensic-footer {
-    margin-top: 16px;
-    border-radius: 6px;
     display: flex;
     overflow: hidden;
     font-family: 'IBM Plex Mono', monospace;
     width: 100%;
-    box-sizing: border-box;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
-
-.forensic-left {
-    flex: 0 0 180px;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.forensic-right {
-    flex: 1;
-    background: #ffffff;
-    padding: 10px 16px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-/* Typography inside Footer */
-.f-label { font-size: 0.65rem; font-weight: 600; opacity: 0.8; margin-bottom: 2px; letter-spacing: 0.05em; }
-.f-level { font-size: 1.1rem; font-weight: 800; margin-bottom: 4px; }
-.f-verdict { font-size: 0.75rem; font-weight: 600; line-height: 1.25; margin-bottom: 8px; }
-
-.f-badges { display: flex; flex-wrap: wrap; gap: 4px; }
-.forensic-badge {
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: #ffffff;
-    border: 1px solid; /* Color set inline */
-    box-shadow: 0 1px 1px rgba(0,0,0,0.05);
-}
-
-.f-list { list-style: none; padding: 0; margin: 0; font-size: 0.8rem; color: #374151; line-height: 1.5; }
-.f-list li { display: flex; align-items: flex-start; margin-bottom: 2px; }
-.f-list .bullet { margin-right: 8px; font-weight: bold; }
-
-.f-divider { margin: 8px 0; border-top: 1px dashed #e5e7eb; }
-
-.f-ctx { font-size: 0.75rem; color: #6b7280; font-style: italic; }
-.f-ctx .icon { margin-right: 6px; font-style: normal; opacity: 0.7; }
