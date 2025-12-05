@@ -6533,3 +6533,20 @@ details.profile-section > summary:hover::marker {
 .wl-item { display: flex; align-items: center; gap: 6px; }
 .wl-dot { width: 8px; height: 8px; border-radius: 50%; }
 .wl-val { font-family: var(--fx-font-mono); font-weight: 700; color: #0f172a; margin-left: 4px;}
+
+#inspector-panel-content {
+    /* Ensure the panel can grow or scroll */
+    height: auto; 
+    min-height: 280px; /* Give it base room */
+    overflow-y: visible; /* Let the footer be seen */
+    margin-bottom: 20px; /* Breathing room at bottom */
+}
+
+/* Ensure the footer we just added looks correct */
+.forensic-footer-row {
+    width: 100%;
+    margin-top: 15px;
+    clear: both;
+    position: relative;
+    z-index: 10;
+}
