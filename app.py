@@ -4475,72 +4475,129 @@ def compute_whitespace_topology(t):
     Analyzes Whitespace & Line Ending Topology.
     Design: Substrate Analysis (Spectrum Bar).
     """
+    # --- 1. THE PHYSICS (Counting Logic Restored) ---
     ws_stats = collections.Counter()
+    prev_was_cr = False
     
-    # ... (Keep existing Logic for counting state machine) ...
-    # [PASTE YOUR EXISTING LOGIC HERE TO POPULATE ws_stats & flags]
-    # Re-implementing just the Render part below for brevity, assumes counters are filled
-    # ...
-    # Assume 'ws_stats' is populated, e.g. {'SPACE (ASCII)': 35, 'LF (Unix)': 11, 'LS (Line Sep)': 1}
-    # Assume 'has_nel', 'has_ls_ps', 'has_crlf', 'has_lf' booleans are set
-    
-    # -----------------------------------------------------------------------
-    # --- RENDER LOGIC START ---
-    
-    # 1. Alerts
-    alerts = []
-    # Recalculate mixed line endings logic based on counters if variables aren't available
-    n_crlf = ws_stats['CRLF (Windows)']
-    n_lf = ws_stats['LF (Unix)']
-    n_cr = ws_stats['CR (Legacy Mac)']
-    
-    if (n_crlf > 0 and n_lf > 0) or (n_crlf > 0 and n_cr > 0):
-        alerts.append('<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Consistency Failure:</strong> Mixed Line Endings Detected</div>')
-    
-    if ws_stats['LS (Line Sep)'] > 0 or ws_stats['PS (Para Sep)'] > 0 or ws_stats['NEL (Next Line)'] > 0:
-        alerts.append('<div class="ws-alert info"><span class="icon">ℹ️</span> <strong>Unicode Newlines:</strong> LS/PS/NEL present (Regex Risk)</div>')
+    # Flags
+    has_lf = False
+    has_cr = False
+    has_crlf = False
+    has_nel = False
+    has_ls_ps = False
 
-    # 2. Composition Spectrum
+    for ch in t:
+        # Newline State Machine
+        if ch == '\n':
+            if prev_was_cr:
+                ws_stats['CRLF (Windows)'] += 1
+                has_crlf = True
+                prev_was_cr = False
+            else:
+                ws_stats['LF (Unix)'] += 1
+                has_lf = True
+        elif ch == '\r':
+            if prev_was_cr:
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+            prev_was_cr = True
+        elif ch == '\u0085':
+            ws_stats['NEL (Next Line)'] += 1
+            has_nel = True
+            prev_was_cr = False
+        elif ch == '\u2028':
+            ws_stats['LS (Line Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        elif ch == '\u2029':
+            ws_stats['PS (Para Sep)'] += 1
+            has_ls_ps = True
+            prev_was_cr = False
+        else:
+            # Dangling CR check
+            if prev_was_cr:
+                ws_stats['CR (Legacy Mac)'] += 1
+                has_cr = True
+                prev_was_cr = False
+            
+            # Spacing Check
+            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
+            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
+            elif ch == '\t': ws_stats['TAB'] += 1
+            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
+            elif unicodedata.category(ch) == 'Zs':
+                try: name = unicodedata.name(ch, 'UNKNOWN SPACE')
+                except: name = 'UNKNOWN SPACE'
+                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
+
+    # Final dangling CR
+    if prev_was_cr:
+        ws_stats['CR (Legacy Mac)'] += 1
+        has_cr = True
+
+    # --- 2. THE RENDERER (Visuals) ---
+    
+    # A. Alerts
+    alerts = []
+    
+    # Mixed Line Endings Logic
+    newline_types_count = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
+    if newline_types_count > 1:
+        alerts.append('<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Consistency Failure:</strong> Mixed Line Endings</div>')
+    
+    # Unicode Newlines Logic
+    if has_nel or has_ls_ps:
+        alerts.append('<div class="ws-alert info"><span class="icon">ℹ️</span> <strong>Unicode Newlines:</strong> LS/PS/NEL Detected</div>')
+
+    # Deceptive Spacing Logic
+    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
+        alerts.append('<div class="ws-alert warn"><span class="icon">⚠️</span> <strong>Mixed Spacing:</strong> ASCII + NBSP (Phishing Risk)</div>')
+
+    # B. Spectrum Bar
     total = sum(ws_stats.values())
     spectrum_html = ""
     legend_html = ""
     
-    # Mapping for colors/classes
+    # Color Mapping (Forensic Palette)
     KEY_MAP = {
-        'SPACE (ASCII)': ('bg-sp', '#cbd5e1'),
-        'LF (Unix)': ('bg-lf', '#3b82f6'),
-        'CRLF (Windows)': ('bg-crlf', '#a855f7'),
-        'TAB': ('bg-tab', '#eab308'),
-        'LS (Line Sep)': ('bg-ls', '#ef4444'),
-        'PS (Para Sep)': ('bg-ls', '#ef4444'),
-        'NEL (Next Line)': ('bg-ls', '#ef4444'),
-        'NBSP (Non-Breaking)': ('bg-ls', '#ef4444')
+        'SPACE (ASCII)': ('bg-sp', '#cbd5e1'),   # Slate-300
+        'LF (Unix)': ('bg-lf', '#3b82f6'),       # Blue-500
+        'CRLF (Windows)': ('bg-crlf', '#a855f7'),# Purple-500
+        'TAB': ('bg-tab', '#eab308'),            # Yellow-500
+        'LS (Line Sep)': ('bg-ls', '#ef4444'),   # Red-500
+        'PS (Para Sep)': ('bg-ls', '#ef4444'),   # Red-500
+        'NEL (Next Line)': ('bg-ls', '#ef4444'), # Red-500
+        'NBSP (Non-Breaking)': ('bg-ls', '#f97316') # Orange-500
     }
 
     if total > 0:
+        # Sort by count desc
         for k, v in ws_stats.most_common():
             pct = (v / total) * 100
+            # Default styling for unknowns
             cls, hex_col = KEY_MAP.get(k, ('bg-sp', '#94a3b8'))
             
-            # Bar Segment
+            # 1. Bar Segment
             spectrum_html += f'<div class="ws-seg {cls}" style="width:{pct}%" title="{k}: {v}"></div>'
             
-            # Legend Item
+            # 2. Legend Item
+            label = k.split('(')[0].strip()
             legend_html += f"""
             <div class="wl-item">
                 <span class="wl-dot {cls}"></span>
-                <span class="wl-key">{k.split('(')[0].strip()}:</span>
+                <span class="wl-key">{label}</span>
                 <span class="wl-val">{v}</span>
             </div>
             """
     else:
         spectrum_html = '<div class="ws-seg bg-sp" style="width:100%; opacity:0.1"></div>'
-        legend_html = '<span style="color:#94a3b8">No whitespace detected.</span>'
+        legend_html = '<span style="color:#94a3b8; font-style:italic;">No whitespace detected.</span>'
 
     return f"""
     <div class="fx-card ws-panel">
-        <div class="fx-header" style="background:none; padding:0 0 12px 0; border:none;">
+        <div class="fx-header">
             <span>Whitespace Topology</span>
+            <span class="fx-badge { 'crit' if alerts else 'ok' }">{ 'ANOMALY' if alerts else 'STABLE' }</span>
         </div>
         
         <div class="ws-alert-box">
