@@ -14484,69 +14484,6 @@ def render_inspector_panel(data):
 
     # [VISUAL SYNC] Inject the calculated risk level (0-4) as a CSS class
     tier_class = f"risk-tier-{state['level']}"
-
-    # --- NEW: FORENSIC BOTTOM ROW (The "Lab Report" Footer) ---
-    forensic_row_html = ""
-    report = data.get("forensic_report")
-    
-    if report:
-        # A. Determine Severity Colors
-        level = report["security"]["level"]
-        if level == "CRITICAL":
-            verdict_bg = "#fee2e2" # Red-100
-            verdict_txt = "#dc2626" # Red-600
-            border_color = "#fca5a5"
-        elif level == "SUSPICIOUS":
-            verdict_bg = "#ffedd5" # Orange-100
-            verdict_txt = "#c2410c" # Orange-700
-            border_color = "#fdba74"
-        elif level == "WARN":
-            verdict_bg = "#fef9c3" # Yellow-100
-            verdict_txt = "#b45309" # Yellow-700
-            border_color = "#fde047"
-        else: # SAFE / NOTE / UNKNOWN
-            verdict_bg = "#f3f4f6" # Gray-100
-            verdict_txt = "#374151" # Gray-700
-            border_color = "#e5e7eb"
-
-        # B. Build Badges
-        badges_html = ""
-        for b in report["security"]["badges"]:
-            badges_html += f'<span style="font-size:0.65rem; font-weight:700; padding:2px 6px; border-radius:4px; background:white; color:{verdict_txt}; border:1px solid {border_color}; margin-right:4px; box-shadow: 0 1px 1px rgba(0,0,0,0.05);">{b}</span>'
-
-        # C. Build Technical Lines (with bullets)
-        tech_lines = ""
-        for t in report["technical"]:
-            tech_lines += f'<li style="margin-bottom:3px; display:flex; align-items:flex-start;"><span style="color:{verdict_txt}; margin-right:6px;">•</span><span>{t}</span></li>'
-        
-        # D. Build Context Lines (Muted)
-        ctx_lines = ""
-        for c in report["context"]:
-             ctx_lines += f'<li style="margin-bottom:3px; font-style:italic; color:#6b7280; display:flex; align-items:flex-start;"><span style="margin-right:6px;">ℹ</span><span>{c}</span></li>'
-
-        # E. Construct the Full-Width Row
-        forensic_row_html = f"""
-        <div class="forensic-footer-row" style="margin-top: 12px; border: 1px solid {border_color}; border-radius: 6px; overflow: hidden; display: flex; font-family: 'IBM Plex Mono', monospace;">
-            
-            <div style="background: {verdict_bg}; padding: 12px; flex: 0 0 180px; border-right: 1px solid {border_color}; display: flex; flex-direction: column; justify-content: center;">
-                <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: {verdict_txt}; opacity: 0.8; margin-bottom: 4px;">Forensic Verdict</div>
-                <div style="font-size: 1.1rem; font-weight: 800; color: {verdict_txt}; margin-bottom: 8px;">{level}</div>
-                <div style="font-size: 0.75rem; font-weight: 600; color: {verdict_txt}; line-height: 1.25;">{report["security"]["verdict"]}</div>
-                <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">{badges_html}</div>
-            </div>
-
-            <div style="padding: 10px 16px; flex: 1; background: #ffffff; display: flex; flex-direction: column; justify-content: center;">
-                <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.8rem; color: #374151; line-height: 1.5;">
-                    {tech_lines}
-                </ul>
-                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb;">
-                    <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.75rem; line-height: 1.4;">
-                        {ctx_lines}
-                    </ul>
-                </div>
-            </div>
-        </div>
-        """
     
     html = f"""
     <div class="inspector-layout-v3">
@@ -14626,9 +14563,59 @@ def render_inspector_panel(data):
             </div>
         </div>
     </div>
-    
-    {forensic_row_html}
     """
+    # FORENSIC FOOTER GENERATOR (Does not touch main table)
+    forensic_row_html = ""
+    report = data.get("forensic_report")
+    
+    if report:
+        # A. Determine Colors (Independent of main table)
+        level = report["security"]["level"]
+        if level == "CRITICAL":
+            f_bg = "#fee2e2" 
+            f_txt = "#991b1b"
+            f_border = "#fca5a5"
+        elif level == "SUSPICIOUS":
+            f_bg = "#ffedd5"
+            f_txt = "#9a3412"
+            f_border = "#fdba74"
+        elif level == "WARN":
+            f_bg = "#fef9c3"
+            f_txt = "#854d0e" 
+            f_border = "#fde047"
+        else: # SAFE / UNKNOWN
+            f_bg = "#f3f4f6"
+            f_txt = "#374151" 
+            f_border = "#e5e7eb"
+
+        # B. Badges
+        badges_str = ""
+        for b in report["security"]["badges"]:
+            badges_str += f'<span class="forensic-badge" style="border-color:{f_border}; color:{f_txt};">{b}</span>'
+
+        # C. Technical Data
+        tech_str = "".join([f'<li><span class="bullet" style="color:{f_txt}">•</span> {t}</li>' for t in report["technical"]])
+        
+        # D. Context Data
+        ctx_str = "".join([f'<li class="ctx-item"><span class="icon">ℹ</span> {c}</li>' for c in report["context"]])
+
+        # E. The Footer HTML (Self-Contained Styles)
+        forensic_row_html = f"""
+        <div class="forensic-footer" style="border: 1px solid {f_border};">
+            <div class="forensic-left" style="background: {f_bg}; border-right: 1px solid {f_border};">
+                <div class="f-label" style="color:{f_txt}">VERDICT</div>
+                <div class="f-level" style="color:{f_txt}">{level}</div>
+                <div class="f-verdict" style="color:{f_txt}">{report["security"]["verdict"]}</div>
+                <div class="f-badges">{badges_str}</div>
+            </div>
+            <div class="forensic-right">
+                <ul class="f-list">{tech_str}</ul>
+                <div class="f-divider"></div>
+                <ul class="f-list f-ctx">{ctx_str}</ul>
+            </div>
+        </div>
+        """
+    html += forensic_row_html
     panel.innerHTML = html
     
     try:
