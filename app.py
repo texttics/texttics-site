@@ -5800,6 +5800,14 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     # Call the new Reference Auditor
     reference_warnings = _audit_reference_safety(trusted_str)
 
+    # --- PHASE 1: QUAD-STATE PIPELINE ---
+    suspect_nfkc = normalize_extended(suspect_str)
+    trusted_nfkc = normalize_extended(trusted_str)
+    
+    # Generate Skeletons & Track Events
+    suspect_skel, sus_events = _generate_uts39_skeleton(suspect_nfkc.casefold(), return_events=True)
+    trusted_skel = _generate_uts39_skeleton(trusted_nfkc.casefold())
+
     # --- PHASE 2: ALIGNMENT ---
     sm = difflib.SequenceMatcher(None, suspect_skel, trusted_skel)
     match = sm.find_longest_match(0, len(suspect_skel), 0, len(trusted_skel))
