@@ -6780,15 +6780,18 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
         if krypto_report["count"] > 0:
             for f in krypto_report["findings"]:
                 # Map mechanism to Dashboard UI Metadata
+                # Note: We use f["mechanism"] here because we are inside the same loop logic
+                mech = f.get("mechanism", "UNKNOWN")
+                
                 risk_meta = {"label": f["name"], "sev": "HIGH", "cat": "UNKNOWN"}
                 
-                if f["mech"] == MECH_REGEX_BREAK:
+                if mech == MECH_REGEX_BREAK:
                     risk_meta = {"label": "Regex Breaker (LS/PS)", "sev": "CRITICAL", "cat": "SYNTAX"}
-                elif f["mech"] == MECH_BIDI_CONFUSE:
+                elif mech == MECH_BIDI_CONFUSE:
                     risk_meta = {"label": "Bidi Flow Reversal", "sev": "CRITICAL", "cat": "INJECTION"}
-                elif f["mech"] == MECH_LOGIC_INJECT:
+                elif mech == MECH_LOGIC_INJECT:
                     risk_meta = {"label": "Invisible Logic Injection", "sev": "HIGH", "cat": "OBFUSCATION"}
-                elif f["mech"] == MECH_CONFUSER:
+                elif mech == MECH_CONFUSER:
                     risk_meta = {"label": "Syntax Confusable", "sev": "HIGH", "cat": "SPOOFING"}
                 
                 krypto_risks.append(risk_meta)
@@ -8880,7 +8883,7 @@ def audit_regex_safety(results: dict, threat_ledger: list, authenticity_ledger: 
     indices_by_mech = {}
     
     for f in findings:
-        m = f.get("mech", "UNKNOWN")
+        m = f.get("mechanism", "UNKNOWN")
         if m not in mechs: 
             mechs[m] = 0
             indices_by_mech[m] = []
