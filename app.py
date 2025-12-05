@@ -8026,10 +8026,11 @@ def _evaluate_adversarial_risk(intermediate_data):
     Syntax/Execution threats appear as the Primary Verdict in the dashboard, 
     overriding generic "Hidden Character" warnings.
     """
+    # ... (Setup Code) ...
     tokens = intermediate_data["tokens"]
     skeleton_map = intermediate_data["skeleton_map"]
     
-    # --- A. Detect Skeleton Collisions ---
+    # ... (Collision Logic) ...
     collisions = []
     collision_skeletons = set()
     for skel, indices in skeleton_map.items():
@@ -8043,7 +8044,6 @@ def _evaluate_adversarial_risk(intermediate_data):
                 "risk": "CRITICAL"
             })
 
-    # --- B. Per-Token Risk Assessment ---
     risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
     topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0, "SYNTAX": 0}
     targets = [] 
@@ -8052,70 +8052,67 @@ def _evaluate_adversarial_risk(intermediate_data):
         risk_level = 0 
         triggers = []
         token_topology_hits = set()
-        detailed_stack = [] # Explicit visual stack
+        detailed_stack = []
         
-        # Safe access to text (Hybrid Tokenizer Support)
         t_str = token.get("text", token.get("token", ""))
         
-        # ======================================================================
-        # RULE 0: REGEX KRYPTONITE (PRIORITY OVERRIDE)
-        # ======================================================================
-        # We check this FIRST so specific code-breaking threats become the 
-        # Primary Verdict (triggers[0]) in the dashboard.
+        # Track which mechanisms were caught by Kryptonite to prevent double-flagging
+        krypto_active = False 
+
+        # --- Rule 0: Regex Kryptonite (PRIORITY) ---
         krypto_risks = token.get("krypto_risks", [])
         if krypto_risks:
+            krypto_active = True
             for k in krypto_risks:
-                # Map numeric risk level
-                if k["sev"] == "CRITICAL": 
-                    risk_level = max(risk_level, 3)
-                elif k["sev"] == "HIGH":     
-                    risk_level = max(risk_level, 2)
-                else:                        
-                    risk_level = max(risk_level, 1)
+                if k["sev"] == "CRITICAL": risk_level = max(risk_level, 3)
+                elif k["sev"] == "HIGH":     risk_level = max(risk_level, 2)
+                else:                        risk_level = max(risk_level, 1)
                 
                 token_topology_hits.add(k["cat"])
-                desc = f"R90: {k['label']}"
+                desc = f"{k['label']}" # Removed R90 prefix for cleaner UI
                 triggers.append(desc)
                 detailed_stack.append({"lvl": k["sev"], "type": k["cat"], "desc": desc})
 
-        # --- Rule 1: Fracture Scanner (Precision Mode) ---
-        if len(t_str) > 2:
-            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
+        # --- Rule 1: Fracture Scanner (Conditional) ---
+        # Skip fracture check if we already flagged Bidi Flow Reversal (which IS a fracture)
+        # to avoid redundancy like "Bidi Flow Reversal" AND "Token Fracture".
+        run_fracture = True
+        if krypto_active and any("Bidi" in k["label"] for k in krypto_risks):
+            run_fracture = False
+
+        if run_fracture and len(t_str) > 2:
+            f_state = 0 
             for fc in t_str:
                 f_cp = ord(fc)
                 f_is_alnum = fc.isalnum()
                 f_is_agent = False
-                
-                # Check for Forensic Fracture Agent
                 if f_cp < 1114112:
                     mask = INVIS_TABLE[f_cp]
                     if mask & (INVIS_ZERO_WIDTH_SPACING | INVIS_JOIN_CONTROL | INVIS_TAG | INVIS_BIDI_CONTROL):
                         f_is_agent = True
-                    # Emoji check: Must be Emoji AND Not Alphanumeric
                     elif not f_is_alnum and (_find_in_ranges(f_cp, "Emoji") or _find_in_ranges(f_cp, "Extended_Pictographic")):
                         f_is_agent = True
 
                 if f_state == 0:
                     if f_is_alnum: f_state = 1
                 elif f_state == 1:
-                    if f_is_agent: f_state = 2 # Found Agent
-                    elif not f_is_alnum: f_state = 0 # Reset
+                    if f_is_agent: f_state = 2
+                    elif not f_is_alnum: f_state = 0
                 elif f_state == 2:
                     if f_is_alnum:
-                        # TRIGGER: Alpha -> Agent -> Alpha
                         risk_level = max(risk_level, 3)
-                        desc = "R99: Token Fracture (Mid-Token Injection)"
+                        desc = "Token Fracture (Mid-Token Injection)"
                         triggers.append(desc)
                         token_topology_hits.add("OBFUSCATION")
                         detailed_stack.append({"lvl": "CRITICAL", "type": "OBFUSCATION", "desc": desc})
                         break
                     elif not f_is_agent:
-                        f_state = 0 # Reset
+                        f_state = 0
 
         # --- Rule 2: Skeleton Collisions ---
         if token["skeleton"] in collision_skeletons:
             risk_level = max(risk_level, 3)
-            desc = "R30: Skeleton Collision (Homograph)"
+            desc = "Skeleton Collision (Homograph)"
             triggers.append(desc)
             token_topology_hits.add("HOMOGLYPH")
             detailed_stack.append({"lvl": "CRITICAL", "type": "HOMOGLYPH", "desc": desc})
@@ -8124,11 +8121,11 @@ def _evaluate_adversarial_risk(intermediate_data):
         if token["is_mixed"]:
             if token["kind"] in ("domain", "identifier", "email"):
                 risk_level = max(risk_level, 2)
-                desc = "R10: Mixed Scripts in ID/Domain"
+                desc = "Mixed Scripts in ID/Domain"
                 lvl_tag = "HIGH"
             else:
                 risk_level = max(risk_level, 1)
-                desc = "R01: Mixed Scripts"
+                desc = "Mixed Scripts"
                 lvl_tag = "MED"
             triggers.append(desc)
             token_topology_hits.add("SPOOFING")
@@ -8137,51 +8134,48 @@ def _evaluate_adversarial_risk(intermediate_data):
         # --- Rule 4: Confusables ---
         if token["confusables"]["density"] > 0.5:
             risk_level = max(risk_level, 1)
-            desc = "R02: High Confusable Density"
+            desc = "High Confusable Density"
             triggers.append(desc)
             token_topology_hits.add("SPOOFING")
             detailed_stack.append({"lvl": "MED", "type": "SPOOFING", "desc": desc})
             
-        # --- Rule 5: Identifier Status (Restored Safety Net) ---
+        # --- Rule 5: Identifier Status ---
         if token["id_status"] in ("Restricted", "Disallowed"):
             risk_level = max(risk_level, 2)
-            desc = f"R11: Identifier Status ({token['id_status']})"
+            desc = f"Identifier Status ({token['id_status']})"
             triggers.append(desc)
             token_topology_hits.add("PROTOCOL")
             detailed_stack.append({"lvl": "HIGH", "type": "PROTOCOL", "desc": desc})
 
-        # --- Rule 6: Hidden Channels & Bidi (Generic Fallback) ---
-        if token["invisibles"] > 0:
+        # --- Rule 6: Invisibles (Strict Dedup) ---
+        # Only report generic "Perturbation" if NO other higher-priority finding exists.
+        if token["invisibles"] > 0 and not krypto_active:
             has_bidi = False
             for char in t_str:
                 if INVIS_TABLE[ord(char)] & INVIS_BIDI_CONTROL:
                     has_bidi = True
                     break
             
+            # Since we ran Kryptonite first, if we are here, these must be non-Kryptonite invisibles
+            # OR Kryptonite failed to catch them. We'll report as Generic.
             if has_bidi:
-                # Only escalate if not already caught by Kryptonite (avoid double counting)
-                if risk_level < 3: 
-                    risk_level = max(risk_level, 3)
-                desc = "R12: Bidi Control in Token"
+                risk_level = max(risk_level, 3)
+                desc = "Bidi Control in Token"
                 lvl_tag = "CRITICAL"
                 top_tag = "INJECTION"
             else:
-                if risk_level < 2:
-                    risk_level = max(risk_level, 2)
-                desc = "R03: Hidden Characters"
+                risk_level = max(risk_level, 2)
+                desc = "Hidden Characters"
                 lvl_tag = "HIGH"
                 top_tag = "OBFUSCATION"
-            
-            # Smart Dedup: Only add generic warning if specific R90/R99 warning is absent
-            # This ensures "Regex Breaker" stays the headline, not "Hidden Characters"
-            if not any("R90" in t for t in triggers) and not any("R99" in t for t in triggers):
+                
+            # STRICT DEDUP: Only append if list is empty or doesn't have "Fracture"
+            if not any("Fracture" in t for t in triggers):
                 triggers.append(desc)
                 token_topology_hits.add(top_tag)
                 detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
 
-        # --- Final Scoring & Stats ---
-        
-        # Map numeric level to string
+        # --- Final Scoring ---
         final_risk = "LOW"
         if risk_level >= 3: final_risk = "CRITICAL"
         elif risk_level == 2: final_risk = "HIGH"
