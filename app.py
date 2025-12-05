@@ -11358,23 +11358,30 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
     # --- BRIDGE: Promote Adversarial Findings to Threat Flags ---
     # This ensures the "Group 3" table sees the "Group 4" discoveries.
+    # [FIX] Deduplication Logic:
+    # We now map "CRIT" -> "CRITICAL" to match the Global Auditor labels.
+    # This ensures that if both engines find the same threat, the Token View (Context)
+    # overwrites the Global View (Index), preventing duplicate rows.
     if adversarial_data and 'targets' in adversarial_data:
         for target in adversarial_data['targets']:
             for item in target.get('stack', []):
-                # We only promote CRITICAL/HIGH findings to the main flag list to avoid noise
                 if item['lvl'] in ('CRIT', 'HIGH'):
-                    # Create a readable key like "CRITICAL: Token Fracture (Mid-Token Injection)"
-                    key = f"{item['lvl']}: {item['desc']}"
+                    # 1. Normalize Severity Label
+                    sev_label = "CRITICAL" if item['lvl'] == "CRIT" else "HIGH"
+                    
+                    # 2. Create the unified key (Matches Audit Logic)
+                    # e.g., "CRITICAL: Bidi Flow Reversal"
+                    key = f"{sev_label}: {item['desc']}"
                     
                     if key not in threat_flags:
                         threat_flags[key] = {
                             'count': 0,
                             'positions': [],
-                            'severity': 'crit' if item['lvl'] == 'CRIT' else 'warn'
+                            'severity': 'crit' if sev_label == "CRITICAL" else 'warn'
                         }
                     
                     threat_flags[key]['count'] += 1
-                    # Add the token itself as the position context
+                    # 3. Add rich context (The Token)
                     threat_flags[key]['positions'].append(f"in '{target['token']}'")
     # -------------------------------------------------------
     # [STAGE 1.5] SOFT MERGE INTEGRATION
@@ -15695,7 +15702,36 @@ def update_all(event=None):
             'badge': "ZALGO"
         }
 
-    final_threat_flags.update(threat_results['flags'])
+    # [FIX] Smart Merge: Combine Global (Index) and Token (Context) findings
+    # Instead of blindly overwriting, we check for collisions and merge the evidence.
+    for label, data in threat_results['flags'].items():
+        if label in final_threat_flags:
+            # COLLISION DETECTED: Merge the evidence lists
+            
+            # 1. Get existing (Global) and new (Token) positions
+            global_positions = final_threat_flags[label]["positions"]
+            token_positions = data["positions"]
+            
+            # 2. Combine them (Token Context first for readability)
+            # Use a set to prevent duplicates if they match exactly
+            merged_pos = []
+            seen = set()
+            
+            for p in token_positions + global_positions:
+                if p not in seen:
+                    merged_pos.append(p)
+                    seen.add(p)
+            
+            # 3. Update the Final Record
+            final_threat_flags[label]["positions"] = merged_pos
+            # Optional: Update count if you want total instances (Global + Token)
+            # Usually, Token count is more accurate for the user, so we max it or sum it.
+            # Here we take the max to represent "Count of bad actors"
+            final_threat_flags[label]["count"] = max(final_threat_flags[label]["count"], data["count"])
+            
+        else:
+            # No collision, just add the new token finding
+            final_threat_flags[label] = data
     
     inv_vs = forensic_map.get("Flag: Invalid Variation Selector")
     if inv_vs and inv_vs.get("count", 0) > 0:
