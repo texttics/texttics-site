@@ -8019,8 +8019,9 @@ def audit_stage1_5_signals(signals):
 
 def _evaluate_adversarial_risk(intermediate_data):
     """
-    Block 2: The Risk Engine (Robust Version).
-    Restores R11 Safety Net and implements Precision Fracture Scanning.
+    Block 7: The Risk Engine (Robust + Stage 1.7 Integrated).
+    Restores R11 Safety Net, Precision Fracture Scanning, and 
+    Integrates Regex Kryptonite findings.
     """
     tokens = intermediate_data["tokens"]
     skeleton_map = intermediate_data["skeleton_map"]
@@ -8041,7 +8042,7 @@ def _evaluate_adversarial_risk(intermediate_data):
 
     # --- B. Per-Token Risk Assessment ---
     risk_stats = {"CRITICAL": 0, "HIGH": 0, "MED": 0, "LOW": 0}
-    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0}
+    topology = {"SPOOFING": 0, "INJECTION": 0, "OBFUSCATION": 0, "PROTOCOL": 0, "HIDDEN": 0, "HOMOGLYPH": 0, "SYNTAX": 0}
     targets = [] 
 
     for token in tokens:
@@ -8050,7 +8051,8 @@ def _evaluate_adversarial_risk(intermediate_data):
         token_topology_hits = set()
         detailed_stack = [] # Explicit visual stack
         
-        t_str = token["text"]
+        # Safe access to text (Hybrid Tokenizer Support)
+        t_str = token.get("text", token.get("token", ""))
         
         # --- Rule 0: Fracture Scanner (Precision Mode) ---
         if len(t_str) > 2:
@@ -8148,9 +8150,32 @@ def _evaluate_adversarial_risk(intermediate_data):
             token_topology_hits.add(top_tag)
             detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
 
+        # --- Rule 6: [NEW] Regex Kryptonite Integration ---
+        # This connects the Block 6 findings to the Dashboard Stack
+        krypto_risks = token.get("krypto_risks", [])
+        if krypto_risks:
+            for k in krypto_risks:
+                # Map numeric risk level based on severity string
+                if k["sev"] == "CRITICAL": 
+                    risk_level = max(risk_level, 3)
+                elif k["sev"] == "HIGH":     
+                    risk_level = max(risk_level, 2)
+                else:                        
+                    risk_level = max(risk_level, 1)
+                
+                # Add to topology counters
+                token_topology_hits.add(k["cat"])
+                
+                # Add to Visual Stack
+                desc = f"R90: {k['label']}"
+                triggers.append(desc)
+                detailed_stack.append({"lvl": k["sev"], "type": k["cat"], "desc": desc})
+
+        # --- Final Scoring & Stats ---
+        
         # Map numeric level to string
         final_risk = "LOW"
-        if risk_level == 3: final_risk = "CRITICAL"
+        if risk_level >= 3: final_risk = "CRITICAL"
         elif risk_level == 2: final_risk = "HIGH"
         elif risk_level == 1: final_risk = "MED"
         
@@ -8159,7 +8184,7 @@ def _evaluate_adversarial_risk(intermediate_data):
         risk_stats[final_risk] += 1
 
         for hit in token_topology_hits:
-            topology[hit] += 1
+            topology[hit] = topology.get(hit, 0) + 1
             
         if risk_level >= 2:
             targets.append({
