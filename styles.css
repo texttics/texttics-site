@@ -6424,3 +6424,112 @@ details.profile-section > summary:hover::marker {
     font-style: italic;
     padding-top: 6px;
 }
+
+/* --- FORENSIC UI SYSTEM V2 --- */
+:root {
+    --fx-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --fx-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --fx-col-crit: #e11d48; /* Rose-600 */
+    --fx-col-warn: #d97706; /* Amber-600 */
+    --fx-col-safe: #059669; /* Emerald-600 */
+    --fx-col-info: #2563eb; /* Blue-600 */
+    --fx-col-slate: #475569;
+    --fx-bg-subtle: #f8fafc;
+    --fx-border: #e2e8f0;
+}
+
+.fx-card {
+    background: #fff;
+    border: 1px solid var(--fx-border);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    margin-bottom: 20px;
+    overflow: hidden;
+    font-family: var(--fx-font-sans);
+}
+
+.fx-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--fx-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--fx-bg-subtle);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--fx-col-slate);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.fx-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+.fx-badge.ok { background: #d1fae5; color: var(--fx-col-safe); }
+.fx-badge.warn { background: #fef3c7; color: var(--fx-col-warn); }
+.fx-badge.crit { background: #ffe4e6; color: var(--fx-col-crit); }
+
+/* --- MODULE 1: TOPOLOGY (Grid Physics) --- */
+.topo-layout { display: flex; flex-direction: column; }
+.topo-metrics { display: flex; padding: 16px; align-items: center; gap: 24px; border-bottom: 1px solid var(--fx-border); }
+.topo-stat-big { display: flex; flex-direction: column; }
+.ts-val { font-family: var(--fx-font-mono); font-size: 1.5rem; font-weight: 700; color: #0f172a; }
+.ts-dim { color: #94a3b8; font-weight: 300; margin: 0 2px; }
+.ts-lbl { font-size: 0.65rem; color: #64748b; font-weight: 600; text-transform: uppercase; }
+
+.topo-bar-container { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.tb-meta { display: flex; justify-content: space-between; font-size: 0.7rem; color: #64748b; margin-bottom: 6px; }
+.tb-track { height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.tb-fill { height: 100%; transition: width 0.3s ease; }
+.tb-fill.ok { background: var(--fx-col-safe); }
+.tb-fill.crit { background: var(--fx-col-crit); }
+
+.topo-console { background: #1e293b; padding: 10px; font-family: var(--fx-font-mono); font-size: 0.7rem; color: #e2e8f0; max-height: 120px; overflow-y: auto; }
+.tc-row { display: flex; gap: 10px; margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #334155; }
+.tc-idx { color: #94a3b8; min-width: 40px; }
+.tc-type-geo { color: #fcd34d; font-weight: 700; } /* Geometry = Amber */
+.tc-type-syn { color: #f87171; font-weight: 700; } /* Syntax = Red */
+
+/* --- MODULE 2: DECODE HEALTH (Medical Chart) --- */
+.glitch-dashboard { padding: 0; }
+.diagnosis-strip { padding: 12px 16px; display: flex; gap: 12px; align-items: center; border-bottom: 1px dashed var(--fx-border); }
+.diag-icon { font-size: 1.2rem; }
+.diag-main { font-weight: 700; color: #334155; font-size: 0.9rem; }
+.diag-meta { font-size: 0.75rem; color: #64748b; margin-left: auto; }
+
+.artifact-grid { display: grid; grid-template-columns: auto 1fr auto; }
+.ag-row { display: contents; }
+.ag-cell { padding: 8px 16px; border-bottom: 1px solid var(--fx-border); font-size: 0.8rem; align-self: center; }
+.ag-source { font-family: var(--fx-font-mono); color: #b91c1c; background: #fff1f2; border-radius: 4px; padding: 2px 6px; display: inline-block;}
+.ag-arrow { color: #94a3b8; font-size: 0.8rem; padding: 0 8px; }
+.ag-target { font-family: var(--fx-font-mono); color: var(--fx-col-safe); font-weight: 700; }
+.ag-fam { font-size: 0.65rem; color: #64748b; text-transform: uppercase; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; margin-left: 8px; }
+.ag-count { font-family: var(--fx-font-mono); font-weight: 700; color: #334155; text-align: right; }
+.ag-loc { text-align: right; font-size: 0.75rem; }
+.ag-loc a { color: var(--fx-col-info); text-decoration: none; }
+
+/* --- MODULE 3: WHITESPACE (Substrate) --- */
+.ws-panel { padding: 16px; }
+.ws-alert-box { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.ws-alert { padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; display: flex; gap: 8px; align-items: center; }
+.ws-alert.crit { background: #fff1f2; border: 1px solid #fecdd3; color: #9f1239; }
+.ws-alert.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+
+.ws-spectrum { height: 24px; display: flex; border-radius: 6px; overflow: hidden; margin-bottom: 16px; border: 1px solid var(--fx-border); }
+.ws-seg { height: 100%; transition: width 0.3s; position: relative; }
+.ws-seg:hover::after { content: attr(title); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #000; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; pointer-events: none; margin-bottom: 4px; }
+
+/* Whitespace Colors */
+.bg-sp { background: #cbd5e1; } /* Space = Grey */
+.bg-lf { background: #3b82f6; } /* LF = Blue */
+.bg-ls { background: #ef4444; } /* LS = Red */
+.bg-tab { background: #eab308; } /* TAB = Yellow */
+.bg-crlf { background: #a855f7; } /* CRLF = Purple */
+
+.ws-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.75rem; color: #475569; }
+.wl-item { display: flex; align-items: center; gap: 6px; }
+.wl-dot { width: 8px; height: 8px; border-radius: 50%; }
+.wl-val { font-family: var(--fx-font-mono); font-weight: 700; color: #0f172a; margin-left: 4px;}
