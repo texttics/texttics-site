@@ -8020,8 +8020,11 @@ def audit_stage1_5_signals(signals):
 def _evaluate_adversarial_risk(intermediate_data):
     """
     Block 7: The Risk Engine (Robust + Stage 1.7 Integrated).
-    Restores R11 Safety Net, Precision Fracture Scanning, and 
-    Integrates Regex Kryptonite findings.
+    
+    Render Priority Fix:
+    "Regex Kryptonite" checks are now Rule 0. This ensures that specific 
+    Syntax/Execution threats appear as the Primary Verdict in the dashboard, 
+    overriding generic "Hidden Character" warnings.
     """
     tokens = intermediate_data["tokens"]
     skeleton_map = intermediate_data["skeleton_map"]
@@ -8054,7 +8057,28 @@ def _evaluate_adversarial_risk(intermediate_data):
         # Safe access to text (Hybrid Tokenizer Support)
         t_str = token.get("text", token.get("token", ""))
         
-        # --- Rule 0: Fracture Scanner (Precision Mode) ---
+        # ======================================================================
+        # RULE 0: REGEX KRYPTONITE (PRIORITY OVERRIDE)
+        # ======================================================================
+        # We check this FIRST so specific code-breaking threats become the 
+        # Primary Verdict (triggers[0]) in the dashboard.
+        krypto_risks = token.get("krypto_risks", [])
+        if krypto_risks:
+            for k in krypto_risks:
+                # Map numeric risk level
+                if k["sev"] == "CRITICAL": 
+                    risk_level = max(risk_level, 3)
+                elif k["sev"] == "HIGH":     
+                    risk_level = max(risk_level, 2)
+                else:                        
+                    risk_level = max(risk_level, 1)
+                
+                token_topology_hits.add(k["cat"])
+                desc = f"R90: {k['label']}"
+                triggers.append(desc)
+                detailed_stack.append({"lvl": k["sev"], "type": k["cat"], "desc": desc})
+
+        # --- Rule 1: Fracture Scanner (Precision Mode) ---
         if len(t_str) > 2:
             f_state = 0 # 0=Start, 1=Alpha, 2=Agent
             for fc in t_str:
@@ -8088,7 +8112,7 @@ def _evaluate_adversarial_risk(intermediate_data):
                     elif not f_is_agent:
                         f_state = 0 # Reset
 
-        # --- Rule 1: Skeleton Collisions ---
+        # --- Rule 2: Skeleton Collisions ---
         if token["skeleton"] in collision_skeletons:
             risk_level = max(risk_level, 3)
             desc = "R30: Skeleton Collision (Homograph)"
@@ -8096,7 +8120,7 @@ def _evaluate_adversarial_risk(intermediate_data):
             token_topology_hits.add("HOMOGLYPH")
             detailed_stack.append({"lvl": "CRITICAL", "type": "HOMOGLYPH", "desc": desc})
 
-        # --- Rule 2: Script Mixing ---
+        # --- Rule 3: Script Mixing ---
         if token["is_mixed"]:
             if token["kind"] in ("domain", "identifier", "email"):
                 risk_level = max(risk_level, 2)
@@ -8110,7 +8134,7 @@ def _evaluate_adversarial_risk(intermediate_data):
             token_topology_hits.add("SPOOFING")
             detailed_stack.append({"lvl": lvl_tag, "type": "SPOOFING", "desc": desc})
 
-        # --- Rule 3: Confusables ---
+        # --- Rule 4: Confusables ---
         if token["confusables"]["density"] > 0.5:
             risk_level = max(risk_level, 1)
             desc = "R02: High Confusable Density"
@@ -8118,16 +8142,15 @@ def _evaluate_adversarial_risk(intermediate_data):
             token_topology_hits.add("SPOOFING")
             detailed_stack.append({"lvl": "MED", "type": "SPOOFING", "desc": desc})
             
-        # --- Rule 4: Identifier Status (Restored Safety Net) ---
+        # --- Rule 5: Identifier Status (Restored Safety Net) ---
         if token["id_status"] in ("Restricted", "Disallowed"):
-            # SAFETY NET: Restricted is always at least HIGH risk
             risk_level = max(risk_level, 2)
             desc = f"R11: Identifier Status ({token['id_status']})"
             triggers.append(desc)
             token_topology_hits.add("PROTOCOL")
             detailed_stack.append({"lvl": "HIGH", "type": "PROTOCOL", "desc": desc})
 
-        # --- Rule 5: Hidden Channels & Bidi ---
+        # --- Rule 6: Hidden Channels & Bidi (Generic Fallback) ---
         if token["invisibles"] > 0:
             has_bidi = False
             for char in t_str:
@@ -8136,40 +8159,25 @@ def _evaluate_adversarial_risk(intermediate_data):
                     break
             
             if has_bidi:
-                risk_level = max(risk_level, 3)
+                # Only escalate if not already caught by Kryptonite (avoid double counting)
+                if risk_level < 3: 
+                    risk_level = max(risk_level, 3)
                 desc = "R12: Bidi Control in Token"
                 lvl_tag = "CRITICAL"
                 top_tag = "INJECTION"
             else:
-                risk_level = max(risk_level, 2)
+                if risk_level < 2:
+                    risk_level = max(risk_level, 2)
                 desc = "R03: Hidden Characters"
                 lvl_tag = "HIGH"
                 top_tag = "OBFUSCATION"
-                
-            triggers.append(desc)
-            token_topology_hits.add(top_tag)
-            detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
-
-        # --- Rule 6: [NEW] Regex Kryptonite Integration ---
-        # This connects the Block 6 findings to the Dashboard Stack
-        krypto_risks = token.get("krypto_risks", [])
-        if krypto_risks:
-            for k in krypto_risks:
-                # Map numeric risk level based on severity string
-                if k["sev"] == "CRITICAL": 
-                    risk_level = max(risk_level, 3)
-                elif k["sev"] == "HIGH":     
-                    risk_level = max(risk_level, 2)
-                else:                        
-                    risk_level = max(risk_level, 1)
-                
-                # Add to topology counters
-                token_topology_hits.add(k["cat"])
-                
-                # Add to Visual Stack
-                desc = f"R90: {k['label']}"
+            
+            # Smart Dedup: Only add generic warning if specific R90/R99 warning is absent
+            # This ensures "Regex Breaker" stays the headline, not "Hidden Characters"
+            if not any("R90" in t for t in triggers) and not any("R99" in t for t in triggers):
                 triggers.append(desc)
-                detailed_stack.append({"lvl": k["sev"], "type": k["cat"], "desc": desc})
+                token_topology_hits.add(top_tag)
+                detailed_stack.append({"lvl": lvl_tag, "type": top_tag, "desc": desc})
 
         # --- Final Scoring & Stats ---
         
@@ -8190,7 +8198,7 @@ def _evaluate_adversarial_risk(intermediate_data):
             targets.append({
                 "token": t_str,
                 "verdict": triggers[0] if triggers else "High Risk",
-                "stack": detailed_stack, # Use the explicitly built stack
+                "stack": detailed_stack, 
                 "score": risk_level * 25,
                 "b64": "N/A", "hex": "N/A" 
             })
