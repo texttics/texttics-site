@@ -729,6 +729,7 @@ Stage 2: Heatmap Row Classes
   flex-direction: column;
 
   overflow-y: visible; /* Let the footer be seen */
+  height: auto;
 }
 
 /* Empty State Centering */
