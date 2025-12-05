@@ -1044,20 +1044,23 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     });
   }
 
- // B. Copy Inspector Data (Structured Forensic Format)
+ // B. Copy Inspector Data (Structured Forensic Format - V3.1 Update)
   const btnCopyInsp = document.getElementById('btn-copy-inspector');
   if (btnCopyInsp) {
     btnCopyInsp.addEventListener('click', () => {
       const root = document.getElementById('inspector-panel-content');
+      // [FIX] Also grab the footer which sits OUTSIDE the main panel content
+      const footerRoot = document.getElementById('inspector-forensic-footer'); 
+      
       if (!root) return;
 
       // Helper to safely get text
-      const txt = (sel) => root.querySelector(sel)?.textContent.trim() || "";
+      const txt = (el, sel) => el.querySelector(sel)?.textContent.trim() || "";
       
       // 1. HEADER: Target Identity
-      const glyph = txt('.inspector-glyph');
-      const cp = txt('.inspector-codepoint');
-      const name = txt('.inspector-header');
+      const glyph = txt(root, '.inspector-glyph');
+      const cp = txt(root, '.inspector-codepoint');
+      const name = txt(root, '.inspector-header');
       
       let report = `[ Character Inspector Data ]\n`;
       report += `--------------------------------------------------\n`;
@@ -1066,65 +1069,64 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       report += `--------------------------------------------------\n\n`;
 
       // 2. RISK ASSESSMENT (Verdict & Matrix)
-      const verdict = txt('.risk-verdict-text');
-      const level = txt('.risk-header-top');
-      
-      report += `[ RISK ASSESSMENT ]\n`;
-      report += `Verdict:  ${level} - ${verdict}\n`;
-      
-      // Scrape the Diagnostic Matrix rows
-      root.querySelectorAll('.risk-row').forEach(row => {
-          const label = row.querySelector('.risk-facet')?.textContent.trim() || "";
-          const status = row.querySelector('.risk-status')?.textContent.trim() || "";
-          const detail = row.querySelector('.risk-detail')?.textContent.trim() || "";
-          if(label) report += `${label.padEnd(12, ' ')}: ${status} (${detail})\n`;
-      });
+      // Check if we have the new Forensic Footer (V3.1) or fallback to Matrix
+      if (footerRoot && footerRoot.style.display !== 'none') {
+          const verdict = txt(footerRoot, '.f-verdict');
+          const level = txt(footerRoot, '.f-level');
+          
+          report += `[ FORENSIC VERDICT ]\n`;
+          report += `LEVEL:    ${level}\n`;
+          report += `SUMMARY:  ${verdict}\n\n`;
+          
+          report += `[ CONTEXT LENSES ]\n`;
+          // Scrape the 3 lenses (Code, DNS, Text)
+          const lenses = footerRoot.querySelectorAll('.forensic-right > div:first-child > div');
+          lenses.forEach(lens => {
+              // The lens HTML structure is: Label (child 0), Status (child 1), Text (child 2)
+              const label = lens.children[0]?.textContent || "";
+              const status = lens.children[1]?.textContent || "";
+              const text = lens.children[2]?.textContent || "";
+              report += `${label.padEnd(15, ' ')}: [${status}] ${text}\n`;
+          });
+          report += `\n`;
 
-      // [NEW] Scrape Risk Footer (Detailed Detection Info)
-      const footerLabel = txt('.risk-footer-label');
-      const footerContent = txt('.risk-footer-content');
-      if (footerLabel && footerContent) {
-          report += `${footerLabel.padEnd(12, ' ')}: ${footerContent}\n`;
+          report += `[ HIGHLIGHTS ]\n`;
+          // Scrape the highlights list
+          const highlights = footerRoot.querySelectorAll('.forensic-right > div:nth-child(2) > div');
+          highlights.forEach(h => {
+              const label = h.children[0]?.textContent || "";
+              const text = h.children[1]?.textContent || "";
+              report += `${label.padEnd(15, ' ')}: ${text}\n`;
+          });
+          report += `\n`;
+      } else {
+          // Fallback to old Matrix scraping if footer missing
+          const verdict = txt(root, '.risk-verdict-text');
+          const level = txt(root, '.risk-header-top');
+          report += `[ RISK MATRIX ]\n`;
+          report += `Verdict:  ${level} - ${verdict}\n`;
+          root.querySelectorAll('.risk-row').forEach(row => {
+              const label = row.querySelector('.risk-facet')?.textContent.trim() || "";
+              const status = row.querySelector('.risk-status')?.textContent.trim() || "";
+              const detail = row.querySelector('.risk-detail')?.textContent.trim() || "";
+              if(label) report += `${label.padEnd(12, ' ')}: ${status} (${detail})\n`;
+          });
+          report += `\n`;
       }
-      report += `\n`;
 
-      // 3. IDENTITY PROFILE
-      report += `[ IDENTITY PROFILE ]\n`;
-      root.querySelectorAll('.col-identity .matrix-item').forEach(item => {
+      // 3. IDENTITY PROFILE (The Grid)
+      report += `[ IDENTITY SPECS ]\n`;
+      root.querySelectorAll('.spec-matrix .matrix-item').forEach(item => {
           const label = item.querySelector('.spec-label')?.textContent.trim() || "PROPERTY";
           let val = item.querySelector('.matrix-val')?.textContent.trim() || "";
+          const sub = item.querySelector('.matrix-sub')?.textContent.trim(); // e.g. Grapheme sub-type
+          if (sub) val += ` / ${sub}`;
           
-          // Check for sub-details
-          const sub = item.querySelector('.matrix-sub')?.textContent.trim();
-          if (sub) val += ` (${sub})`;
-
           if (label && val) {
               report += `${label.padEnd(15, ' ')}: ${val}\n`;
           }
       });
       report += `\n`;
-
-      // [NEW] NORMALIZATION GHOSTS
-      const ghostSection = root.querySelector('.ghost-section');
-      if (ghostSection) {
-          report += `[ NORMALIZATION ]\n`;
-          // Check if stable
-          if (ghostSection.classList.contains('stable')) {
-               const key = ghostSection.querySelector('.ghost-key')?.textContent.trim() || "STATUS";
-               const val = ghostSection.querySelector('.ghost-val-ok')?.textContent.trim() || "STABLE";
-               report += `${key} ${val}\n`;
-          } else {
-               // Iterate steps (RAW -> NFKC -> SKEL)
-               const steps = ghostSection.querySelectorAll('.ghost-step');
-               steps.forEach(step => {
-                   // Split label "RAW" from value "A" (contained in span)
-                   const label = step.childNodes[0].textContent.trim();
-                   const val = step.querySelector('span')?.textContent.trim() || "";
-                   report += `${label.padEnd(10, ' ')}: ${val}\n`;
-               });
-          }
-          report += `\n`;
-      }
 
       // 4. LOOKALIKES
       const lookalikes = root.querySelector('.ghost-section.lookalikes');
@@ -1166,7 +1168,7 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       report += `[ ENCODINGS ]\n`;
       root.querySelectorAll('.byte-row').forEach(row => {
           const label = row.querySelector('.label')?.textContent.replace(':','').trim();
-          const val = row.innerText.split(':')[1]?.trim() || ""; 
+          const val = row.childNodes[1]?.textContent.trim() || ""; // Get text node directly to skip label
           if(label) report += `${label.padEnd(12, ' ')}: ${val}\n`;
       });
 
