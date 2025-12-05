@@ -1204,6 +1204,93 @@ REGEX_KRYPTONITE_MAP = {
     0xFE0F: {"name": "VARIATION_SELECTOR_16", "mech": MECH_NORMALIZER_TRAP, "risk": "MEDIUM", "desc": "Forces emoji presentation; invisible in many regex engines."},
 }
 
+# GLITCHMAP (DECODE HEALTH) CONSTANTS
+
+# 1. FAMILY DEFINITIONS (THE "WHO")
+
+FAMILY_UTF8_CP1252_LATIN = "UTF8_CP1252_LATIN"  # Accents (e.g., Ã©)
+FAMILY_UTF8_CP1252_PUNCT = "UTF8_CP1252_PUNCT"  # Smart Punctuation (e.g., â€™)
+FAMILY_UTF8_CP1252_SPACE = "UTF8_CP1252_SPACE"  # Spacing/Symbols (e.g., Â )
+FAMILY_CP1251_UTF8       = "CP1251_UTF8"        # Cyrillic Misinterpretation (Ð)
+FAMILY_DOUBLE_ENCODING   = "DOUBLE_ENCODING"    # Recursive/Nested Mojibake (Ãƒ)
+FAMILY_DECODE_FAILURE    = "DECODE_FAILURE"     # Hard Data Loss ()
+
+# 2. THE ARTIFACT MAP (THE "WHAT")
+
+# Maps specific garbage strings to their forensic origin story.
+# Structure: { "ARTIFACT": { "family": STR, "orig": STR, "conf": STR, "desc": STR } }
+# Source: ftfy, ConceptNet, and manual forensic analysis of common decoding errors.
+
+MOJIBAKE_ARTIFACTS = {
+    # --- FAMILY A: UTF-8 Latin-1 Supplement (Accents) -> CP1252 ---
+    # The most common form. 2-byte UTF-8 sequences for accented chars.
+    "Ã©": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "é", "conf": "HIGH", "desc": "UTF-8(é) interpreted as CP1252."},
+    "Ã±": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ñ", "conf": "HIGH", "desc": "UTF-8(ñ) interpreted as CP1252."},
+    "Ã¼": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ü", "conf": "HIGH", "desc": "UTF-8(ü) interpreted as CP1252."},
+    "Ã¡": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "á", "conf": "HIGH", "desc": "UTF-8(á) interpreted as CP1252."},
+    "Ã ": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "à", "conf": "HIGH", "desc": "UTF-8(à) interpreted as CP1252."},
+    "Ã­": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "í", "conf": "HIGH", "desc": "UTF-8(í) interpreted as CP1252."},
+    "Ã³": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ó", "conf": "HIGH", "desc": "UTF-8(ó) interpreted as CP1252."},
+    "Ãº": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ú", "conf": "HIGH", "desc": "UTF-8(ú) interpreted as CP1252."},
+    "Ã§": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ç", "conf": "HIGH", "desc": "UTF-8(ç) interpreted as CP1252."},
+    "Ã¶": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ö", "conf": "HIGH", "desc": "UTF-8(ö) interpreted as CP1252."},
+    "ÃŸ": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ß", "conf": "HIGH", "desc": "UTF-8(ß) interpreted as CP1252."},
+    "Ã„": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "Ä", "conf": "HIGH", "desc": "UTF-8(Ä) interpreted as CP1252."},
+    "Ã–": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "Ö", "conf": "HIGH", "desc": "UTF-8(Ö) interpreted as CP1252."},
+    "Ãœ": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "Ü", "conf": "HIGH", "desc": "UTF-8(Ü) interpreted as CP1252."},
+    "Ã¨": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "è", "conf": "HIGH", "desc": "UTF-8(è) interpreted as CP1252."},
+    "Ãª": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ê", "conf": "HIGH", "desc": "UTF-8(ê) interpreted as CP1252."},
+    "Ã«": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ë", "conf": "HIGH", "desc": "UTF-8(ë) interpreted as CP1252."},
+    "Ã²": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ò", "conf": "HIGH", "desc": "UTF-8(ò) interpreted as CP1252."},
+    "Ã´": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ô", "conf": "HIGH", "desc": "UTF-8(ô) interpreted as CP1252."},
+    "Ãµ": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "õ", "conf": "HIGH", "desc": "UTF-8(õ) interpreted as CP1252."},
+    "Ã¸": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ø", "conf": "HIGH", "desc": "UTF-8(ø) interpreted as CP1252."},
+    "Ã¥": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "å", "conf": "HIGH", "desc": "UTF-8(å) interpreted as CP1252."},
+    "Ã¤": {"family": FAMILY_UTF8_CP1252_LATIN, "orig": "ä", "conf": "HIGH", "desc": "UTF-8(ä) interpreted as CP1252."},
+
+    # --- FAMILY B: UTF-8 General Punctuation -> CP1252 ---
+    # The "Smart Quote" Disaster. 3-byte sequences starting with 0xE2.
+    # Often results in 'â' followed by control chars or currency symbols.
+    "â€™": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "’", "conf": "HIGH", "desc": "UTF-8(Right Quote) interpreted as CP1252."},
+    "â€˜": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "‘", "conf": "HIGH", "desc": "UTF-8(Left Quote) interpreted as CP1252."},
+    "â€œ": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "“", "conf": "HIGH", "desc": "UTF-8(Left Double Quote) interpreted as CP1252."},
+    "â€": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "”", "conf": "HIGH", "desc": "UTF-8(Right Double Quote) interpreted as CP1252."},
+    "â€“": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "–", "conf": "HIGH", "desc": "UTF-8(En Dash) interpreted as CP1252."},
+    "â€”": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "—", "conf": "HIGH", "desc": "UTF-8(Em Dash) interpreted as CP1252."},
+    "â€¦": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "…", "conf": "HIGH", "desc": "UTF-8(Ellipsis) interpreted as CP1252."},
+    "â€¢": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "•", "conf": "HIGH", "desc": "UTF-8(Bullet) interpreted as CP1252."},
+    "â„¢": {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "™", "conf": "HIGH", "desc": "UTF-8(Trademark) interpreted as CP1252."},
+    "â€":  {"family": FAMILY_UTF8_CP1252_PUNCT, "orig": "†/‡", "conf": "MED",  "desc": "UTF-8(Dagger/Punct) fragment interpreted as CP1252."},
+
+    # --- FAMILY C: UTF-8 Spaces & Symbols -> CP1252 ---
+    # 0xC2 byte becoming Â. The NBSP error is extremely common.
+    "Â ": {"family": FAMILY_UTF8_CP1252_SPACE, "orig": "[NBSP]", "conf": "HIGH", "desc": "UTF-8(NBSP) interpreted as CP1252."},
+    "Â£": {"family": FAMILY_UTF8_CP1252_SPACE, "orig": "£",      "conf": "HIGH", "desc": "UTF-8(£) interpreted as CP1252."},
+    "Â©": {"family": FAMILY_UTF8_CP1252_SPACE, "orig": "©",      "conf": "HIGH", "desc": "UTF-8(©) interpreted as CP1252."},
+    "Â°": {"family": FAMILY_UTF8_CP1252_SPACE, "orig": "°",      "conf": "HIGH", "desc": "UTF-8(°) interpreted as CP1252."},
+
+    # --- FAMILY D: Double Encoding (Recursive) ---
+    # When Mojibake is re-encoded as UTF-8 and decoded again.
+    "Ãƒ": {"family": FAMILY_DOUBLE_ENCODING, "orig": "Unknown", "conf": "HIGH", "desc": "Double UTF-8 encoding detected (Recursive Artifact)."},
+    "â‚¬": {"family": FAMILY_DOUBLE_ENCODING, "orig": "Unknown", "conf": "MED",  "desc": "Euro sign artifact; possibly double encoding."},
+    "‚Äô": {"family": FAMILY_DOUBLE_ENCODING, "orig": "’",       "conf": "HIGH", "desc": "Multi-hop encoding error (MacRoman/CP1252 chain)."},
+    "‚Äù": {"family": FAMILY_DOUBLE_ENCODING, "orig": "”",       "conf": "HIGH", "desc": "Multi-hop encoding error (MacRoman/CP1252 chain)."},
+
+    # --- FAMILY E: Cyrillic -> CP1252/Latin-1 ---
+    # Heuristics for D0/D1 lead bytes.
+    # Note: These are single chars that often appear in pairs.
+    # The Logic Engine must detect DENSITY of these to flag.
+    "Ð": {"family": FAMILY_CP1251_UTF8, "orig": "Cyrillic Lead", "conf": "LOW", "desc": "Potential Cyrillic misinterpretation (Lead Byte D0)."},
+    "Ñ": {"family": FAMILY_CP1251_UTF8, "orig": "Cyrillic Lead", "conf": "LOW", "desc": "Potential Cyrillic misinterpretation (Lead Byte D1)."},
+
+    # --- FAMILY F: Hard Failures ---
+    "\ufffd": {"family": FAMILY_DECODE_FAILURE, "orig": "Unknown", "conf": "HIGH", "desc": "Replacement Character; Data permanently lost upstream."}
+}
+
+# 3. HEURISTIC SETS
+# Used by Block 6 to upgrade confidence based on cluster density.
+GLITCHMAP_CYRILLIC_TRIGGERS = {0x00D0, 0x00D1}
+
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
 # ===============================================
@@ -7290,6 +7377,103 @@ def scan_regex_safety(t: str) -> dict:
         "context_risk": context_risk_detected
     }
 
+def scan_glitchmap_artifacts(t: str) -> dict:
+    """
+    [Stage 1.7] GlitchMap Artifact Hunter.
+    
+    A deterministic forensic engine that scans for 'Impossible Bigrams' indicating 
+    upstream encoding corruption.
+    
+    Logic Features:
+    1. Length-Priority Scanning: Prioritizes complex artifacts ("Ã©") over simple ones ("Ã").
+    2. Cyrillic Density Heuristic: Distinguishes 'Eth' (Icelandic) from 'Mojibake' (Russian).
+    3. Decode Health Scoring: Calculates a weighted density score for the Auditor.
+    """
+    
+    # 1. Setup
+    findings = []
+    detected_families = set()
+    total_artifact_chars = 0
+    
+    # Track "consumed" indices implicitly by prioritizing longest matches first.
+    # We sort keys by length (desc) to ensure "Ã©" (len 2) is matched before "Ã" (len 1).
+    sorted_artifacts = sorted(MOJIBAKE_ARTIFACTS.keys(), key=len, reverse=True)
+    
+    # Temporary copy of text for non-destructive counting (optional optimization)
+    # For Stage 1 (read-only), we just count.
+    
+    # 2. The Artifact Scan Loop
+    cyrillic_lead_count = 0  # Special tracker for Family E
+    
+    for seq in sorted_artifacts:
+        count = t.count(seq)
+        
+        if count > 0:
+            info = MOJIBAKE_ARTIFACTS[seq]
+            
+            # Special Handling: Cyrillic Leads (Ð, Ñ)
+            # We track these separately because they are valid in some languages.
+            if info["family"] == FAMILY_CP1251_UTF8:
+                cyrillic_lead_count += count
+            
+            # Record the finding
+            detected_families.add(info["family"])
+            
+            # Weighted impact: Longer artifacts = stronger signal
+            total_artifact_chars += (len(seq) * count)
+            
+            # Sample Position (Forensic Evidence)
+            # Find the first index to allow the UI to "Jump to Threat"
+            first_index = t.find(seq)
+            
+            findings.append({
+                "seq": seq,
+                "family": info["family"],
+                "hypothesis": info["orig"],
+                "desc": info["desc"],
+                "count": count,
+                "confidence": info["conf"], # Baseline confidence
+                "index": first_index # Anchor for the UI Inspector
+            })
+
+    # 3. The Cyrillic Heuristic (Family E Validation)
+    # Problem: 'Ð' is valid in Icelandic/Faroese. 'Ñ' is valid in Spanish.
+    # Solution: CP1251 mojibake produces these in massive swarms, often 40-50% of the text.
+    # Rule: If Cyrillic Leads > 2% of total text, Upgrade confidence to HIGH.
+    
+    text_len = len(t) if len(t) > 0 else 1
+    cyrillic_density = cyrillic_lead_count / text_len
+    
+    if cyrillic_density > 0.02: # 2% Threshold
+        for f in findings:
+            if f["family"] == FAMILY_CP1251_UTF8:
+                f["confidence"] = "HIGH"
+                f["desc"] += " (High Density Cluster Confirmed)"
+
+    # 4. Metrics & Scoring
+    # Calculate global density of artifacts (0.0 to 1.0)
+    global_artifact_density = total_artifact_chars / text_len
+    
+    # Determine the "Dominant Family" for the HUD Badge
+    dominant_family = None
+    if findings:
+        # Find family with highest occurrence count
+        # (Simple logic: just count frequency of family tags in findings)
+        # For precision, we'd sum counts, but mostly one family dominates.
+        family_counts = {}
+        for f in findings:
+            family_counts[f["family"]] = family_counts.get(f["family"], 0) + f["count"]
+        dominant_family = max(family_counts, key=family_counts.get)
+
+    return {
+        "findings": findings,              # Detailed list for Atlas/Table
+        "families": list(detected_families), # List of unique families found
+        "dominant_family": dominant_family,  # For HUD Badge (e.g., "UTF-8->CP1252")
+        "density": global_artifact_density,  # For Integrity Score penalty
+        "cyrillic_density": cyrillic_density,# Metadata
+        "is_corrupt": global_artifact_density > 0.0  # Boolean flag
+    }
+
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
 # ===============================================
@@ -8391,6 +8575,83 @@ def audit_regex_safety(results: dict, threat_ledger: list, authenticity_ledger: 
             "penalty": 15,
             "desc": "Characters that vanish or mutate under NFKC."
         })
+
+def audit_glitchmap(results: dict, integrity_ledger: list) -> None:
+    """
+    [Stage 1.7] GlitchMap Auditor.
+    
+    Interprets artifacts from Block 6 and assigns 'Integrity' penalties.
+    
+    Policy Logic:
+    1. Thresholding: Ignores negligible noise (< 0.1% density) unless it's a Hard Failure.
+    2. Severity Tiering: Double Encoding > Cyrillic Mismatch > Latin Accents.
+    3. Ledger Injection: Appends actionable 'DATA_CORRUPTION' entries.
+    """
+    
+    # 1. Early Exit (Clean Text)
+    if not results.get("is_corrupt", False):
+        return
+
+    # 2. Policy Definitions (Risk Weights)
+    # How much does this specific family hurt data integrity?
+    FAMILY_RISK_WEIGHTS = {
+        FAMILY_DOUBLE_ENCODING:   25,  # Recursive failure (Critical)
+        FAMILY_DECODE_FAILURE:    20,  # Data loss (Critical)
+        FAMILY_CP1251_UTF8:       15,  # Total illegibility (High)
+        FAMILY_UTF8_CP1252_PUNCT: 10,  # Formatting broken (Med)
+        FAMILY_UTF8_CP1252_LATIN: 10,  # Readable but ugly (Med)
+        FAMILY_UTF8_CP1252_SPACE: 5,   # Minor layout issues (Low)
+    }
+
+    # 3. Analyze The Findings
+    findings = results.get("findings", [])
+    density = results.get("density", 0.0)
+    dominant_family = results.get("dominant_family", "UNKNOWN")
+    
+    # Calculate Base Penalty based on the worst offender found
+    max_family_risk = 0
+    worst_offender_desc = ""
+    
+    for f in findings:
+        risk = FAMILY_RISK_WEIGHTS.get(f["family"], 5)
+        if risk > max_family_risk:
+            max_family_risk = risk
+            worst_offender_desc = f["desc"] # Capture the "Why"
+
+    # 4. Calculate Final Score (Base Risk + Density Multiplier)
+    # Logic: A single artifact is annoying (Base). 
+    #        50% density is unusable (Base + 50).
+    #        Cap at 100.
+    
+    density_penalty = min(50, int(density * 100)) # Up to 50 pts for density
+    total_penalty = min(100, max_family_risk + density_penalty)
+    
+    # 5. Formulate the Verdict Label
+    # We create a human-readable diagnosis.
+    verdict_label = "WARN"
+    if total_penalty >= 40:
+        verdict_label = "CRITICAL"
+    elif total_penalty >= 20:
+        verdict_label = "HIGH"
+
+    # Generate the "Reason" string for the UI
+    # e.g., "UTF-8 misread as CP1252 (High Density)"
+    reason = f"{dominant_family} Artifacts Detected"
+    if density > 0.05:
+        reason += f" (Density: {density:.1%})"
+    
+    # 6. Inject into Integrity Ledger
+    # This feeds the "Rot" axis of the Quad-Ledger.
+    entry = {
+        "category": "DATA_CORRUPTION",
+        "label": f"{verdict_label}: Decode Health",
+        "score": total_penalty,
+        "details": f"{reason}. Hypothesis: {worst_offender_desc}",
+        "count": len(findings),
+        "indices": [f["index"] for f in findings][:10] # Provide anchors for Stepper
+    }
+    
+    integrity_ledger.append(entry)
 
 # ===============================================
 # BLOCK 8. ORCHESTRATION (CONTROLLER)
