@@ -19,6 +19,8 @@ from html.parser import HTMLParser
 from typing import List, Dict, Set, Optional, Tuple, Any
 from js import window, document
 import statistics
+import zipfile
+import io
 
 # ==========================================
 # BLOCK 1. GLOBAL CONFIG & ENVIRONMENT
@@ -1360,6 +1362,9 @@ REGEX_KRYPTONITE_MAP.update({
 # Enclosed Alphanumerics → ASCII (⓼ → 8, ⓐ → a, ① → 1, etc.)
 ENCLOSED_MAP = {}
 
+FORENSIC_DB = {}  # Populated by load_forensic_db
+FORENSIC_DB_READY = False # Flag for UI safety
+
 def _build_enclosed():
     """Populates the ENCLOSED_MAP with manual normalization rules."""
     try:
@@ -2478,6 +2483,41 @@ def run_self_tests():
 
     print("--- Self-Tests Complete ---")
 
+async def load_forensic_db():
+    """
+    Fetches and extracts the compressed Forensic Knowledge Base (forensic_db.zip).
+    Populates the global FORENSIC_DB dictionary.
+    """
+    from pyodide.http import pyfetch
+    global FORENSIC_DB, FORENSIC_DB_READY
+    
+    print("Fetching Forensic DB (Compressed)...")
+    try:
+        # Fetch from root
+        response = await pyfetch("forensic_db.zip")
+        if response.status != 200:
+            print(f"⚠️ Forensic DB Download Failed: HTTP {response.status}")
+            return
+
+        data = await response.bytes()
+        
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            # Dynamic Member Detection
+            try:
+                name = next(n for n in z.namelist() if n.endswith(".json"))
+            except StopIteration:
+                raise Exception("No JSON file found inside zip artifact.")
+                
+            with z.open(name) as f:
+                FORENSIC_DB = json.load(f)
+                
+        FORENSIC_DB_READY = True
+        print(f"✅ Forensic DB Loaded: {len(FORENSIC_DB)} records from RAM.")
+        
+    except Exception as e:
+        print(f"CRITICAL: Failed to load Forensic DB: {e}")
+        FORENSIC_DB_READY = False
+
 async def load_unicode_data():
 
     # --- USE THE GLOBAL LOCK ---
@@ -2548,6 +2588,20 @@ async def load_unicode_data():
             "Idna2008.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
+
+        # 1. Create the File Fetch Task
+        file_fetch_task = asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
+        
+        # 2. Create the Forensic DB Load Task
+        db_load_task = load_forensic_db()
+        
+        # 3. Run BOTH in parallel
+        # We wrap them in gather so they happen simultaneously
+        # results_tuple will contain: ( [file_contents...], None )
+        results_tuple = await asyncio.gather(file_fetch_task, db_load_task)
+        
+        # 4. Unpack the file contents (Index 0 of the tuple)
+        results = results_tuple[0]
     
         # --- MODIFIED (Feature 2 Expanded) ---
         (blocks_txt, age_txt, id_type_txt, id_status_txt, intentional_txt, confusables_txt, variants_txt, 
@@ -3660,6 +3714,132 @@ def _get_codepoint_properties(t: str):
 # ===============================================
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
+
+async def load_forensic_db():
+    """
+    [Block 4 Extension] Fetches and extracts the compressed Forensic Knowledge Base.
+    """
+    from pyodide.http import pyfetch
+    
+    # Update global state
+    global FORENSIC_DB
+    
+    print("Fetching Forensic DB (Compressed)...")
+    try:
+        # Fetch the 1MB zip file
+        response = await pyfetch("./forensic_db/forensic_db.zip")
+        if response.status != 200:
+            print(f"⚠️ Forensic DB Download Failed: HTTP {response.status}")
+            return
+
+        # Read bytes
+        bytes_content = await response.bytes()
+        
+        # Unzip in memory using Python's Standard Library
+        with zipfile.ZipFile(io.BytesIO(bytes_content)) as z:
+            with z.open("forensic_db.json") as f:
+                FORENSIC_DB = json.load(f)
+                
+        print(f"✅ Forensic DB Loaded: {len(FORENSIC_DB)} records from RAM.")
+        
+    except Exception as e:
+        print(f"CRITICAL: Failed to load Forensic DB: {e}")
+        # Non-fatal: App continues without detailed explanations
+
+class ForensicExplainer:
+    """
+    [Block 6.5] The Policy Engine.
+    Translates raw 'forensic_db.json' data into human-readable security verdicts.
+    """
+    def __init__(self, database):
+        self.db = database
+
+    def explain(self, hex_str):
+        """
+        Returns a structured dictionary of explanations for the UI.
+        """
+        # 1. Fetch Record (Default to Unknown if missing)
+        rec = self.db.get(hex_str, {
+            "name": "Unknown Code Point",
+            "blk": "Unknown Block",
+            "gc": "Cn",
+            "script": "Unknown",
+            "id_stat": "Restricted",
+            "id_type": ["Not_Assigned"],
+            "confusables": [],
+            "idna": "disallowed",
+            "props": [],
+            "notes": [],
+            "aliases": []
+        })
+
+        # 2. Initialize Report
+        report = {
+            "identity": "",
+            "security": {"level": "SAFE", "verdict": "", "badges": []},
+            "technical": [],
+            "context": []
+        }
+
+        # --- A. IDENTITY LAYER (Who are you?) ---
+        # Clean up the Age field (remove comments like "# [32]...")
+        age_clean = rec.get("age", "NA").split("#")[0].strip()
+        report["identity"] = f"{rec['name']} ({rec['blk']}). Age: {age_clean}."
+
+        # --- B. SECURITY LAYER (Are you dangerous?) ---
+        
+        # Rule 1: Identifier Status (The Law)
+        id_stat = rec.get("id_stat", "Restricted")
+        if id_stat == "Allowed":
+            report["security"]["level"] = "SAFE"
+            report["security"]["verdict"] = "Recommended for Identifiers (UAX #31)."
+        elif id_stat == "Restricted":
+            report["security"]["level"] = "CRITICAL"
+            report["security"]["verdict"] = "RESTRICTED. Banned in secure identifiers."
+            report["security"]["badges"].append("RESTRICTED")
+        
+        # Rule 2: IDNA (The Protocol)
+        idna = rec.get("idna", "disallowed")
+        if idna == "disallowed":
+            report["security"]["badges"].append("NO-DNS")
+            report["technical"].append("Disallowed in International Domain Names (IDNA2008).")
+        elif idna == "deviation":
+            report["security"]["badges"].append("SCHISM")
+            report["technical"].append("Protocol Deviation: Behaver differently in IDNA2003 vs 2008.")
+
+        # Rule 3: Confusables (The Spoof)
+        if rec["confusables"]:
+            target = rec["confusables"][0] 
+            report["security"]["level"] = "SUSPICIOUS"
+            report["security"]["badges"].append("SPOOF")
+            report["technical"].append(f"Visual Confusable: Mimics another character (Target: U+{target}).")
+
+        # Rule 4: Mechanical Hazards (The Physics)
+        props = rec.get("props", [])
+        if "Bidi_Control" in props:
+            report["security"]["level"] = "CRITICAL"
+            report["security"]["verdict"] = "DANGEROUS SYNTAX. Can alter source code flow."
+            report["security"]["badges"].append("BIDI-CTRL")
+        if "Default_Ignorable_Code_Point" in props:
+            report["security"]["badges"].append("INVISIBLE")
+            report["technical"].append("Default Ignorable: Invisible to humans, visible to parsers.")
+        if "Deprecated" in props:
+            report["security"]["badges"].append("DEPRECATED")
+            report["technical"].append("Officially Deprecated by Unicode.")
+        if "Pattern_Syntax" in props:
+            report["security"]["badges"].append("SYNTAX")
+            report["technical"].append("Pattern Syntax: Reserved for programming language syntax.")
+
+        # --- C. CONTEXT LAYER (Notes & Aliases) ---
+        if rec["aliases"]:
+            # Limit aliases to keep UI clean
+            report["context"].append(f"Also known as: {', '.join(rec['aliases'][:3])}")
+        
+        # Add the NamesList notes
+        for note in rec["notes"]:
+            report["context"].append(note)
+
+        return report
 
 # A. Stage 1.5 Micro-Analyzers (The Sensors)
 
@@ -7721,6 +7901,108 @@ def analyze_delimited_topology(t: str) -> dict:
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
 # ===============================================
 
+class ForensicExplainer:
+    """
+    Translates raw 'forensic_db.json' data into human-readable security verdicts.
+    Enforces Monotonic Severity (Critical threats cannot be downgraded).
+    """
+    def __init__(self, database):
+        self.db = database
+        # Severity Rank: Higher number = Higher Priority
+        self.SEVERITY_RANK = {
+            "UNKNOWN": 0, "SAFE": 1, "NOTE": 2, 
+            "WARN": 3, "SUSPICIOUS": 4, "CRITICAL": 5
+        }
+
+    def _escalate(self, current_level, new_level):
+        """Monotonic upgrade: Only change level if new_level is more severe."""
+        if self.SEVERITY_RANK.get(new_level, 0) > self.SEVERITY_RANK.get(current_level, 0):
+            return new_level
+        return current_level
+
+    def explain(self, hex_str):
+        """Returns a structured dictionary of explanations for the UI."""
+        # 0. Safety Check
+        if not FORENSIC_DB_READY:
+            return {
+                "identity": "System Loading...",
+                "security": {"level": "UNKNOWN", "verdict": "Forensic Database not loaded.", "badges": ["NO-DB"]},
+                "technical": ["Please wait for system initialization."],
+                "context": []
+            }
+
+        # 1. Fetch Record
+        rec = self.db.get(hex_str)
+        if not rec:
+             return {
+                "identity": "Unknown Code Point",
+                "security": {"level": "UNKNOWN", "verdict": "No forensic record found.", "badges": ["NO-DATA"]},
+                "technical": [],
+                "context": []
+            }
+
+        # 2. Initialize Report
+        report = {
+            "identity": "",
+            "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
+            "technical": [],
+            "context": []
+        }
+
+        # --- A. IDENTITY LAYER ---
+        age_clean = rec.get("age", "NA").split("#")[0].strip()
+        report["identity"] = f"{rec['name']} ({rec['blk']}). Age: {age_clean}."
+
+        # --- B. SECURITY LAYER (Monotonic Logic) ---
+        # Rule 1: Identifier Status
+        id_stat = rec.get("id_stat", "Restricted")
+        if id_stat == "Restricted":
+            report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
+            report["security"]["badges"].append("RESTRICTED")
+            report["security"]["verdict"] = "Restricted in Identifiers (UAX #31)."
+        
+        # Rule 2: IDNA
+        idna = rec.get("idna", "disallowed")
+        if idna == "disallowed":
+            report["security"]["badges"].append("NO-DNS")
+            report["technical"].append("Disallowed in IDNA2008 (Domain Names).")
+        elif idna == "deviation":
+            report["security"]["badges"].append("DEVIATION")
+            report["technical"].append("Protocol Deviation: Check IDNA2003 vs 2008 mapping.")
+
+        # Rule 3: Confusables
+        if rec["confusables"]:
+            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
+            report["security"]["badges"].append("SPOOF")
+            target = rec["confusables"][0]
+            count = len(rec["confusables"])
+            msg = f"Visual Confusable: Mimics U+{target}"
+            if count > 1: msg += f" (+{count-1} others)"
+            report["technical"].append(msg)
+
+        # Rule 4: Mechanical Hazards
+        props = rec.get("props", [])
+        if "Bidi_Control" in props:
+            report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
+            report["security"]["verdict"] = "DANGEROUS SYNTAX (Trojan Source Risk)."
+            report["security"]["badges"].append("BIDI-CTRL")
+        if "Default_Ignorable_Code_Point" in props:
+            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
+            report["security"]["badges"].append("INVISIBLE")
+            report["technical"].append("Default Ignorable: Invisible to humans, visible to parsers.")
+        if "Deprecated" in props:
+            report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
+            report["security"]["badges"].append("DEPRECATED")
+            report["technical"].append("Officially Deprecated by Unicode.")
+
+        # --- C. CONTEXT LAYER ---
+        if rec["aliases"]:
+            report["context"].append(f"Alias: {', '.join(rec['aliases'][:3])}")
+        for note in rec["notes"]:
+            report["context"].append(note)
+
+        return report
+    
 def audit_stage1_5_signals(signals):
     """
     [STAGE 1.5] Structural Profiler Engine.
