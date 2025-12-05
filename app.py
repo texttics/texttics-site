@@ -11417,41 +11417,60 @@ def _create_position_link(val, text_context=None):
     Helper: Transforms an index (int or '#123' string) into a clickable HTML link.
     Calls window.TEXTTICS_HIGHLIGHT_SEGMENT(start, end).
     """
+    # 1. Initialize variables immediately to prevent UnboundLocalError
     txt = str(val)
     cp_idx = None
+    dom_start = 0
+    dom_end = 0
 
-    if isinstance(val, int):
-        cp_idx = val
-        txt = f"#{val}"
-    elif isinstance(val, str):
-        clean = val.strip()
-        if clean.startswith("#") and clean[1:].isdigit():
-            cp_idx = int(clean[1:])
-        elif clean.isdigit():
-            cp_idx = int(clean)
-            txt = f"#{cp_idx}"
-    
+    # 2. Parse the input value
+    try:
+        if isinstance(val, int):
+            cp_idx = val
+            txt = f"#{val}"
+        elif isinstance(val, str):
+            clean = val.strip()
+            if clean.startswith("#") and clean[1:].isdigit():
+                cp_idx = int(clean[1:])
+            elif clean.isdigit():
+                cp_idx = int(clean)
+                txt = f"#{cp_idx}"
+    except:
+        return txt # Return raw text if parsing fails completely
+
+    # 3. If valid index, calculate DOM offsets
     if cp_idx is not None:
+        # Default fallback: 1:1 mapping (Assumes ASCII)
         dom_start = cp_idx
         
-        # Calculate UTF-16 DOM offset
+        # Precise Calculation: UTF-16 mapping (Required for Emoji/Multibyte)
         if text_context is not None:
             try:
-                # Convert Python logical index to JS UTF-16 index
-                # (Counts surrogate pairs as 2)
-                sub = text_context[:cp_idx]
+                # Safety: Handle index out of bounds
+                safe_idx = min(len(text_context), cp_idx)
+                
+                # Measure UTF-16 units up to the target
+                sub = text_context[:safe_idx]
                 dom_start = len(sub.encode("utf-16-le")) // 2
-            except:
-                dom_start = cp_idx # Fallback
+            except Exception:
+                # On any error, revert to logical index
+                dom_start = cp_idx
 
-        # Calculate length of the target character (1 or 2 units)
+        # 4. Calculate Length of Target Character (for Highlight Width)
         char_len = 1
-        if text_context and cp_idx < len(text_context):
-            char_len = 2 if ord(text_context[cp_idx]) > 0xFFFF else 1
-
+        try:
+            if text_context and cp_idx < len(text_context):
+                target_char = text_context[cp_idx]
+                # If astral plane (e.g. Emoji), it takes 2 UTF-16 units
+                if ord(target_char) > 0xFFFF:
+                    char_len = 2
+        except:
+            pass # Keep default length 1
+        
         dom_end = dom_start + char_len
 
-        # [FIX] Use HIGHLIGHT_SEGMENT instead of HIGHLIGHT_CODEPOINT
+        # 5. Generate Link
+        # Uses HIGHLIGHT_SEGMENT (Offset-based) to avoid "Character not found" errors
         return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_SEGMENT({dom_start}, {dom_end}); return false;">{txt}</a>'
 
     return txt
