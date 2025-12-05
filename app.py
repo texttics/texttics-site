@@ -6786,7 +6786,9 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
                 risk_meta = {"label": f["name"], "sev": "HIGH", "cat": "UNKNOWN"}
                 
                 if mech == MECH_REGEX_BREAK:
-                    risk_meta = {"label": "Regex Breaker (LS/PS)", "sev": "CRITICAL", "cat": "SYNTAX"}
+                    # We ONLY set the label here to match Block 7.
+                    # We don't need to repeat the details string.
+                    risk_meta = {"label": "Regex-Breaking Line Terminator", "sev": "CRITICAL", "cat": "SYNTAX"}
                 elif mech == MECH_BIDI_CONFUSE:
                     risk_meta = {"label": "Bidi Flow Reversal", "sev": "CRITICAL", "cat": "INJECTION"}
                 elif mech == MECH_LOGIC_INJECT:
