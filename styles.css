@@ -6354,3 +6354,73 @@ details.profile-section > summary:hover::marker {
     border-color: var(--color-warn-dim);
     background: var(--bg-warn-faint);
 }
+
+/* [BLOCK 9] GLITCHMAP PANEL CSS */
+
+.glitch-panel {
+    border-left: 3px solid var(--color-warn); /* Amber accent */
+}
+
+.gl-diagnosis {
+    margin: 8px 0;
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+}
+
+.gl-diag-label { color: var(--text-muted); }
+.gl-diag-val { color: var(--text-main); font-weight: 600; }
+
+/* Density Gauge */
+.gl-gauge-wrapper { margin-bottom: 12px; }
+.gl-gauge-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; }
+.gl-gauge-track {
+    height: 4px;
+    background: var(--bg-surface-dim);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.gl-gauge-fill { height: 100%; }
+
+/* Matrix Table */
+.gl-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+}
+
+.gl-matrix-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: normal;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.glitch-row td { padding: 4px 0; vertical-align: middle; }
+
+.gl-cell-art { width: 1%; white-space: nowrap; }
+.gl-pill {
+    background: var(--bg-warn-faint);
+    color: var(--color-warn-dark);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--color-warn-dim);
+    font-weight: bold;
+}
+
+.gl-cell-arrow { color: var(--text-muted); padding: 0 6px; }
+
+.gl-cell-hyp { color: var(--text-success); opacity: 0.9; }
+.gl-ghost { font-style: italic; }
+
+.gl-cell-fam { color: var(--text-muted); font-size: 0.7rem; }
+.gl-cell-cnt { text-align: right; padding-right: 8px; font-weight: 600; }
+.gl-cell-loc { text-align: right; }
+
+.gl-more {
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    padding-top: 6px;
+}
