@@ -14485,7 +14485,8 @@ def render_inspector_panel(data):
     # [VISUAL SYNC] Inject the calculated risk level (0-4) as a CSS class
     tier_class = f"risk-tier-{state['level']}"
     
-    html = f"""
+    # 1. Render the MAIN PANEL (Rigid Layout)
+    main_html = f"""
     <div class="inspector-layout-v3">
         <div class="col-context col-prev">
             <div class="ctx-label">PREV</div>
@@ -14564,14 +14565,13 @@ def render_inspector_panel(data):
         </div>
     </div>
     """
-    # FORENSIC FOOTER GENERATOR (Does not touch main table)
+    
+    # 2. Render the FOOTER (Fluid Layout)
     forensic_row_html = ""
     report = data.get("forensic_report")
-
-    print(f"DEBUG: Report Present? {bool(report)}")
     
     if report:
-        # A. Determine Colors (Independent of main table)
+        # A. Determine Colors
         level = report["security"]["level"]
         if level == "CRITICAL":
             f_bg = "#fee2e2" 
@@ -14601,7 +14601,7 @@ def render_inspector_panel(data):
         # D. Context Data
         ctx_str = "".join([f'<li class="ctx-item"><span class="icon">ℹ</span> {c}</li>' for c in report["context"]])
 
-        # E. The Footer HTML (Self-Contained Styles)
+        # E. HTML
         forensic_row_html = f"""
         <div class="forensic-footer" style="border: 1px solid {f_border};">
             <div class="forensic-left" style="background: {f_bg}; border-right: 1px solid {f_border};">
@@ -14617,8 +14617,19 @@ def render_inspector_panel(data):
             </div>
         </div>
         """
-    html += forensic_row_html
-    panel.innerHTML = html
+
+    # --- INJECT INTO SEPARATE CONTAINERS ---
+    panel.innerHTML = main_html
+    
+    # Safe Target: Only try to update footer if element exists
+    footer_panel = document.getElementById("inspector-forensic-footer")
+    if footer_panel:
+        footer_panel.innerHTML = forensic_row_html
+        # Handle visibility
+        if not forensic_row_html:
+            footer_panel.style.display = "none"
+        else:
+            footer_panel.style.display = "block"
     
     try:
         window.TEXTTICS_CENTER_GLYPH()
