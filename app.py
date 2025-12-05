@@ -15615,6 +15615,33 @@ def update_all(event=None):
         'ledger': final_score.get('ledger', []),
         'noise': final_score.get('noise', [])
     }
+
+    # MERGE STAGE 1.7 FINDINGS INTO DISPLAY
+    # We convert the list-based findings from the new Auditors into the 
+    # dictionary format required by render_threat_analysis.
+    
+    # 1. Merge Threat Items (Regex Kryptonite, CSV Injection)
+    for item in new_threat_items:
+        # Create a unique key for the table
+        label = item.get("label", "Unknown Threat")
+        final_threat_flags[label] = {
+            "count": item.get("count", 1),
+            "severity": "crit" if "CRITICAL" in label else "warn", # Visual mapping
+            "badge": item.get("vector", "THREAT"), # e.g. SYNTAX_EVASION
+            "positions": [f"#{i}" for i in item.get("indices", [])],
+            "details": item.get("details", "")
+        }
+
+    # 2. Merge Authenticity Items (Syntax Spoofing)
+    for item in new_authenticity_items:
+        label = item.get("label", "Unknown Risk")
+        final_threat_flags[label] = {
+            "count": item.get("count", 1),
+            "severity": "warn",
+            "badge": "SPOOF",
+            "positions": [f"#{i}" for i in item.get("indices", [])],
+            "details": item.get("details", "")
+        }
     
     if nsm_stats["count"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
