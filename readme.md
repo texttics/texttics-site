@@ -2104,3 +2104,59 @@ The UI has been upgraded to a **6-Point Evidence Matrix** that visualizes the ex
 
 #### 🔧 Architectural Hardening (The "Golden Fix")
 Underpinning these features is a hardened **Logic Layer (v1.2)** designed to resist data schema drift. The core engines (`analyze_confusion_density`, `compute_adversarial_metrics`) now feature **Polymorphic Unpacking**, allowing them to safely consume evolving Unicode datasets (tuples, lists, or strings) without runtime errors, ensuring the tool remains stable as the Unicode Standard evolves.
+
+***
+
+## 🛡️ Addendum #11: Stage 1.7 "The Decoder & Developer" Upgrade
+
+**Session Goal:** To expand the tool's operational scope beyond "Text Analysis" into **"Code Safety"** and **"Data Hygiene."** This update introduces three specialized forensic engines designed to protect Developers (from regex-breaking characters), Security Engineers (from encoding artifacts), and Data Analysts (from structural corruption).
+
+### 1. New Core Engine: Module A "Regex Kryptonite" (Developer Safety)
+**Focus:** Code Logic Stability & Mental Model Mismatches.
+
+We identified that valid Unicode characters often act as **"Saboteurs"** when pasted into source code or regular expressions. This module scans for characters that are theoretically valid strings but catastrophic in execution contexts.
+
+* **The "Line Terminator" Trap:**
+    * **Physics:** Detects `U+2028` (LS) and `U+2029` (PS).
+    * **The Threat:** In JavaScript and Python, the regex dot `.` matches everything *except* line terminators. These characters break the "Single Line" assumption, allowing malicious payloads to bypass validation filters (e.g., `^.*$`).
+* **Bidi Flow Reversal (The "Visual Lie"):**
+    * **Physics:** Explicitly tags Bidi controls (`RLO`, `LRE`) not just as "bad characters," but as **"Flow Reversal Agents."**
+    * **Forensic Value:** Explains *why* a regex failed. The tool visualizes the divergence between the **Logical Stream** (what the regex sees) and the **Visual Stream** (what the developer sees).
+* **Verdict:** Feeds the **THREAT** ledger under the `SYNTAX` category.
+
+### 2. New Core Engine: Module B "GlitchMap" (Decode Health)
+**Focus:** Symptom Detection vs. Encoding Guessing.
+
+We moved away from probabilistic "Charset Detection" (which requires raw bytes) to deterministic **"Artifact Hunter"** logic. This engine scans the decoded string for **"Impossible Bigrams"**—sequences that rarely occur in natural language but are mathematical certainties when UTF-8 bytes are mis-decoded.
+
+* **The Artifact Families:**
+    * **UTF8 $\to$ CP1252:** Detects the "Ã-Accents" family (e.g., `Ã©` instead of `é`).
+    * **Smart Punctuation Decay:** Detects the "â-Punctuation" family (e.g., `â€™` instead of `’`).
+    * **Cyrillic D0/D1 Cluster:** Uses a density heuristic to distinguish valid Icelandic `Ð` from broken Russian mojibake.
+    * **Recursive Damage:** Detects Double-Encoded UTF-8 (e.g., `Ãƒ`).
+* **Verdict:** Feeds the **INTEGRITY** ledger under the `DATA_CORRUPTION` category.
+
+### 3. New Core Engine: Module C "Delimited Topology" (Structure)
+**Focus:** Grid Consistency & Data Injection.
+
+This module treats the text as a **Topology Grid** to audit spreadsheets and logs without performing semantic parsing (preserving the "Post-Clipboard" constraint). It answers: *"Is this data structurally sound and safe to open?"*
+
+* **The "Quote-Aware" Sniffer:**
+    * **Physics:** Uses an O(N) sampling strategy to elect a candidate delimiter (Comma, Tab, Pipe, Semicolon) based on **Variance Minimization**.
+    * **Geometry Scan:** Detects **Fractures** (Ragged Rows) where the column count deviates from the mode.
+* **Data Hygiene (Type Drift):**
+    * **Physics:** Detects columns that violate their own schema (e.g., a column that is 99% Numeric but contains 1% Text/Nulls). This signals "Dirty Data" or framing errors.
+* **Weaponization (CSV Injection):**
+    * **The Security Vector:** Scans the first byte of sampled cells for DDE triggers (`=`, `@`, `+`, `-`).
+    * **Forensic Value:** Flags a file as **"WEAPONIZED"** even if the grid is perfectly rectangular, protecting analysts from Excel-based formula execution attacks.
+* **Verdict:** Feeds both **INTEGRITY** (Structure) and **THREAT** (Injection).
+
+### 4. Architectural Hardening (Block 6 & 7)
+To support these features, the architecture was refined to handle **Forensic Sampling**.
+
+* **O(N) Sampling Logic:** For massive pastes, the Topology Engine restricts analysis to a "Head/Body/Tail" sample (First 400, Middle 200, Last 400 lines) to guarantee UI responsiveness while catching "Frankenstein" merges.
+* **Physics vs. Policy Enforcement:**
+    * **Block 6 (Sensors):** Reports raw counts (e.g., "15 ragged rows", "0.02% Cyrillic density").
+    * **Block 7 (Auditors):** Applies judgment (e.g., "Raggedness > 10% = WARN", "Injection Count > 0 = CRITICAL").
+
+***
