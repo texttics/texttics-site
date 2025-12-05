@@ -18,6 +18,7 @@ import html
 from html.parser import HTMLParser
 from typing import List, Dict, Set, Optional, Tuple, Any
 from js import window, document
+import statistics
 
 # ==========================================
 # BLOCK 1. GLOBAL CONFIG & ENVIRONMENT
@@ -1290,6 +1291,38 @@ MOJIBAKE_ARTIFACTS = {
 # 3. HEURISTIC SETS
 # Used by Block 6 to upgrade confidence based on cluster density.
 GLITCHMAP_CYRILLIC_TRIGGERS = {0x00D0, 0x00D1}
+
+# MODULE C: DELIMITED TOPOLOGY (STRUCTURE) CONSTANTS
+
+# 1. The Candidates (The "Sniffer" List)
+# We strictly reject Space (' ') and Colon (':') as primary candidates to prevent 
+# false positives on Prose, JSON objects, and Key-Value dumps.
+DELIMITER_CANDIDATES = [",", "\t", ";", "|"]
+
+# 2. Forensic Metadata (UI Labels)
+# Used by Block 9 to render precise structural descriptions.
+DELIMITER_METADATA = {
+    ",":  {"name": "COMMA",      "desc": "Standard CSV (RFC 4180)"},
+    "\t": {"name": "TAB",        "desc": "Tab-Separated Values (TSV)"},
+    ";":  {"name": "SEMICOLON",  "desc": "Regional/European CSV"},
+    "|":  {"name": "PIPE",       "desc": "Data Pipeline / Log Format"}
+}
+
+# 3. The Immutable Laws of "Valid Grids"
+# Used by Block 6 to decide if a string is a true Table or just unstructured noise.
+GRID_THRESHOLDS = {
+    "MIN_CONFIDENCE": 0.7,   # 70% of rows must match the Mode Column Count.
+                             # (e.g., in a 10-row file, 7 must share the same shape).
+                             
+    "MIN_ROWS": 3,           # Minimum non-empty rows required to qualify as a Grid.
+                             # Prevents 2-line headers or title+subtitle from flagging as CSV.
+                             
+    "MAX_RAGGEDNESS": 0.1,   # The Fracture Threshold.
+                             # If > 10% of rows deviate from the mode, the grid is "BROKEN".
+                             
+    "SAMPLE_LIMIT": 1000     # Performance Cap.
+                             # For massive pastes, we only audit the topology of the first 1000 rows.
+}
 
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
@@ -7474,6 +7507,158 @@ def scan_glitchmap_artifacts(t: str) -> dict:
         "is_corrupt": global_artifact_density > 0.0  # Boolean flag
     }
 
+# DELIMITED TOPOLOGY ENGINE (LOGIC)
+
+# Pre-compiled regex for fast "Quote Masking". 
+# Matches pairs of double quotes to temporarily hide them during counting.
+# Logic: "Match a quote, then anything that isn't a quote, then a closing quote"
+# Note: This is a fast heuristic for structure; it does not handle complex escapes ("") perfectly,
+# but it is O(1) per line and sufficient for topology sniffing.
+_REGEX_QUOTE_MASK = re.compile(r'"[^"]*"')
+
+def analyze_delimited_topology(t: str) -> dict:
+    """
+    [Stage 1.7] Delimited Topology Scanner.
+    
+    Performs a forensic structural audit of tabular data.
+    1. Detects Line Ending Physics (CRLF vs LF).
+    2. Elects a Candidate Delimiter using a Quote-Aware Sniffer.
+    3. Calculates Structural Fracture (Raggedness) and Quote Health.
+    
+    Returns: None if not a grid, or a TopologyReport dict.
+    """
+    
+    
+    # PHASE A: PREPROCESSING & SAMPLING
+    
+    # 1. Forensic Line Ending Detection (Before normalization)
+    newline_type = "UNKNOWN"
+    if "\r\n" in t:
+        newline_type = "CRLF (Windows)" if "\n" not in t.replace("\r\n", "") else "MIXED (CRLF/LF)"
+    elif "\n" in t:
+        newline_type = "LF (Unix)"
+    elif "\r" in t:
+        newline_type = "CR (Legacy Mac)"
+
+    # 2. Normalization & Filtering
+    # We strip empty lines to avoid skewing stats (trailing newlines are common).
+    lines = [line for line in t.splitlines() if line.strip()]
+    total_rows = len(lines)
+    
+    # 3. Gatekeeper
+    if total_rows < GRID_THRESHOLDS["MIN_ROWS"]:
+        return None  # Not a grid (too short)
+
+    # 4. Deterministic Sampling (O(N) Optimization)
+    # If file is massive, we inspect Head, Body, and Tail to detect "Frankenstein" merges.
+    limit = GRID_THRESHOLDS["SAMPLE_LIMIT"]
+    if total_rows > limit:
+        # Sample first 400, middle 200, last 400
+        mid = total_rows // 2
+        sample_subset = (lines[:400] + 
+                         lines[mid-100:mid+100] + 
+                         lines[-400:])
+    else:
+        sample_subset = lines
+
+    
+    # PHASE B: DELIMITER ELECTION (THE "SNIFFER")
+    
+    best_candidate = None
+    best_score = -1.0
+    elected_topology = None # Will hold the RowLengthVector of the winner
+
+    for delim in DELIMITER_CANDIDATES:
+        # Vector Generation: Calculate column count for every row in sample
+        # Strategy: Mask quoted content -> Count delimiters -> Add 1
+        # Example: 'a, "b,c", d' -> 'a, XX, d' -> 2 commas -> 3 cols
+        col_counts = []
+        for line in sample_subset:
+            # Fast structural masking
+            masked_line = _REGEX_QUOTE_MASK.sub('XX', line) if '"' in line else line
+            col_counts.append(masked_line.count(delim) + 1)
+        
+        # Statistical Analysis
+        if not col_counts: continue
+        
+        # Mode Calculation
+        counter = collections.Counter(col_counts)
+        mode_cols, mode_freq = counter.most_common(1)[0]
+        
+        # Heuristic 1: Mode must represent > 1 column (Avoids single-column text files)
+        if mode_cols < 2: 
+            continue
+
+        # Heuristic 2: Coverage Score (0.0 to 1.0)
+        coverage = mode_freq / len(sample_subset)
+        
+        # Election Logic: Prioritize highest consistency
+        # If coverages are similar, prefer the delimiter that produces more columns (usually safer)
+        if coverage > best_score:
+            best_score = coverage
+            best_candidate = delim
+            elected_topology = {
+                "counts": col_counts,
+                "mode": mode_cols,
+                "coverage": coverage
+            }
+        elif coverage == best_score and best_candidate:
+            # Tie-breaker: Choose candidate with more columns (e.g., TSV over CSV if ambiguous)
+            if mode_cols > elected_topology["mode"]:
+                best_candidate = delim
+                elected_topology = {"counts": col_counts, "mode": mode_cols, "coverage": coverage}
+
+    # Gatekeeper: Did we find a valid grid?
+    if not best_candidate or best_score < GRID_THRESHOLDS["MIN_CONFIDENCE"]:
+        return None # Just unstructured text
+
+    
+    # PHASE C: STRUCTURAL ANALYSIS (THE "SCANNER")
+    
+    # Now we perform the deep scan using the elected delimiter.
+    
+    target_cols = elected_topology["mode"]
+    ragged_rows = []
+    quote_errors = []
+    
+    # Note: We re-scan the *sample* (or full text if small) for detailed fracture reporting.
+    # In a full production system, we might stream this. For Stage 1.7, iterating sample is safe.
+    
+    for i, line in enumerate(sample_subset):
+        # 1. Quote Audit (Heuristic: Odd number of quotes = Broken Escaping)
+        if line.count('"') % 2 != 0:
+            quote_errors.append(i)
+            # Cannot accurately count cols if quotes are broken, flag and skip logic
+            continue 
+
+        # 2. Fracture Scan
+        masked_line = _REGEX_QUOTE_MASK.sub('XX', line) if '"' in line else line
+        actual_cols = masked_line.count(best_candidate) + 1
+        
+        if actual_cols != target_cols:
+            ragged_rows.append(i)
+
+    
+    # PHASE D: VERDICT GENERATION
+    
+    # Calculate fracture percentage
+    raggedness = len(ragged_rows) / len(sample_subset)
+
+    return {
+        "is_grid": True,
+        "delimiter": best_candidate,
+        "delimiter_name": DELIMITER_METADATA[best_candidate]["name"],
+        "newline_type": newline_type,
+        "grid_shape": (total_rows, target_cols),
+        "raggedness": raggedness,
+        "is_broken": raggedness > GRID_THRESHOLDS["MAX_RAGGEDNESS"],
+        "fracture_count": len(ragged_rows),
+        "quote_error_count": len(quote_errors),
+        # Evidence for the UI (Truncated list of indices)
+        "evidence_fractures": ragged_rows[:10],
+        "evidence_quotes": quote_errors[:10]
+    }
+
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
 # ===============================================
@@ -8652,6 +8837,87 @@ def audit_glitchmap(results: dict, integrity_ledger: list) -> None:
     }
     
     integrity_ledger.append(entry)
+
+# AUDIT: DELIMITED TOPOLOGY (STRUCTURE)
+def audit_topology(results: dict, integrity_ledger: list) -> None:
+    """
+    [Stage 1.7] Topology Auditor.
+    
+    Interprets the structural physics from Block 6 and assigns 'Integrity' penalties.
+    
+    Policy Logic:
+    1. Geometric Integrity: Penalizes "Raggedness" (rows that break the grid).
+    2. Syntactic Integrity: Penalizes "Broken Escaping" (odd number of quotes).
+    3. Hygiene: Penalizes "Mixed Line Endings" (CRLF + LF).
+    """
+    
+    # 1. Early Exit (Not a Grid)
+    if not results or not results.get("is_grid"):
+        return
+
+    # Extract Physics
+    raggedness = results.get("raggedness", 0.0)
+    fracture_count = results.get("fracture_count", 0)
+    quote_errors = results.get("quote_error_count", 0)
+    delim_name = results.get("delimiter_name", "UNKNOWN")
+    target_cols = results.get("grid_shape", (0, 0))[1]
+    newline_type = results.get("newline_type", "UNKNOWN")
+
+    # VECTOR A: GEOMETRIC FRACTURE (RAGGEDNESS)
+    if raggedness > 0:
+        # Policy: Determine Severity based on Fracture %
+        if raggedness > 0.50:
+            severity = "HIGH"
+            score = 40
+            label = "Structural Collapse"
+        elif raggedness > 0.10:
+            severity = "WARN"
+            score = 20
+            label = "Ragged Grid"
+        else:
+            severity = "INFO"
+            score = 5
+            label = "Minor Fracture"
+
+        # Forensic Message
+        details = (
+            f"{label} ({delim_name}). "
+            f"Mode: {target_cols} columns. "
+            f"{fracture_count} rows ({raggedness:.1%}) deviated."
+        )
+
+        integrity_ledger.append({
+            "category": "STRUCTURAL_FRACTURE",
+            "label": f"{severity}: {label}",
+            "score": score,
+            "details": details,
+            "count": fracture_count,
+            # Pass the evidence indices for the UI Stepper
+            "indices": results.get("evidence_fractures", [])
+        })
+
+    # VECTOR B: SYNTACTIC CORRUPTION (QUOTES)
+    if quote_errors > 0:
+        # Policy: Broken quotes are always a WARN/HIGH because they break parsers.
+        integrity_ledger.append({
+            "category": "DATA_CORRUPTION",
+            "label": "WARN: Broken Escaping",
+            "score": 25, # High penalty for syntax errors
+            "details": f"Odd number of double-quotes found in {quote_errors} rows. Parser desynchronization likely.",
+            "count": quote_errors,
+            "indices": results.get("evidence_quotes", [])
+        })
+
+    # VECTOR C: HYGIENE (NEWLINES)
+    if "MIXED" in newline_type:
+        integrity_ledger.append({
+            "category": "PROTOCOL_VIOLATION",
+            "label": "INFO: Mixed Line Endings",
+            "score": 5, # Low penalty, but noted
+            "details": "Input contains both CRLF (Windows) and LF (Unix) line terminators. Potential concatenation artifact.",
+            "count": 1, 
+            "indices": [] # Global issue, no specific index
+        })
 
 # ===============================================
 # BLOCK 8. ORCHESTRATION (CONTROLLER)
@@ -14470,6 +14736,109 @@ def render_verification_lens(suspect_str: str, trusted_str: str, analysis: dict)
         curr_skel_idx += c_len
 
     return "".join(html_parts)
+
+def render_topology_card(topo_data: dict) -> str:
+    """
+    [Stage 1.7] Renders the Delimited Topology Micro-Card.
+    
+    Visuals:
+    1. Health Badge: STRICT (Green) vs FRACTURED (Red)
+    2. Shape Metaphor: "150 Rows x 5 Cols"
+    3. Evidence Locker: Scrollable list of broken row indices.
+    """
+    
+    # 1. Early Exit (Not a Grid)
+    # Text...tics philosophy: Don't show empty cards.
+    if not topo_data or not topo_data.get("is_grid"):
+        return ""
+
+    # 2. Extract Data
+    delim_name = topo_data["delimiter_name"]
+    rows, cols = topo_data["grid_shape"]
+    raggedness = topo_data["raggedness"]
+    fractures = topo_data["evidence_fractures"]
+    quotes_bad = topo_data["evidence_quotes"]
+    
+    # 3. Determine Health State (Visual Logic)
+    # We map the Physics (Raggedness) to Semantics (Color/Label)
+    if raggedness == 0.0 and len(quotes_bad) == 0:
+        health_class = "metric-ok"       # Green
+        health_label = "STRICT GRID"
+        icon_html = '<span class="topo-icon">▦</span>' # Clean Grid Icon
+    elif raggedness > 0.10 or len(quotes_bad) > 0:
+        health_class = "metric-crit"     # Red
+        health_label = "FRACTURED"
+        icon_html = '<span class="topo-icon">▨</span>' # Broken Grid Icon
+    else:
+        health_class = "metric-warn"     # Amber
+        health_label = "RAGGED"
+        icon_html = '<span class="topo-icon">▤</span>' # Irregular Grid Icon
+
+    # 4. Build The Evidence Stream (The "Fracture List")
+    # This is the scrollable verification list requested.
+    evidence_html = ""
+    
+    if fractures or quotes_bad:
+        # Limit the view to prevent DOM bloating if thousands of errors
+        display_limit = 20
+        total_errs = len(fractures) + len(quotes_bad)
+        
+        items = []
+        
+        # Add Quote Errors first (Syntax is worse than Geometry)
+        for idx in quotes_bad[:display_limit]:
+            items.append(f'<span class="topo-chip chip-syntax">Row #{idx+1} (Qt)</span>')
+            
+        # Add Fracture Errors
+        remaining_slots = display_limit - len(items)
+        for idx in fractures[:remaining_slots]:
+            items.append(f'<span class="topo-chip chip-geo">Row #{idx+1} (Col)</span>')
+            
+        # Add "See more" if truncated
+        if total_errs > display_limit:
+            items.append(f'<span class="topo-more">...and {total_errs - display_limit} more</span>')
+            
+        evidence_html = f'''
+        <div class="topo-evidence-box">
+            <div class="topo-evidence-label">Structural Deviations:</div>
+            <div class="topo-chip-stream">
+                {"".join(items)}
+            </div>
+        </div>
+        '''
+
+    # 5. Render The Card
+    return f"""
+    <div class="stat-micro-card topo-card">
+        <div class="stat-header">
+            DELIMITED TOPOLOGY
+            <span class="stat-badge {health_class}">{health_label}</span>
+        </div>
+        
+        <div class="stat-main-row">
+            <div class="stat-big-value">
+                {icon_html} {delim_name}
+            </div>
+            <div class="stat-sub-value">
+                {rows:,} Rows <span class="stat-dim">×</span> {cols} Cols
+            </div>
+        </div>
+        
+        <div class="stat-meta-row">
+            <span class="stat-meta-item">
+                <span class="stat-label">Stability:</span>
+                <span class="stat-data">{1.0 - raggedness:.1%}</span>
+            </span>
+            <span class="stat-meta-divider">|</span>
+            <span class="stat-meta-item">
+                <span class="stat-label">Fracture:</span>
+                <span class="stat-data {health_class}">{raggedness:.1%}</span>
+            </span>
+        </div>
+        
+        {evidence_html}
+    </div>
+    """
 
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
