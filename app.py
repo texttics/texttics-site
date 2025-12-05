@@ -8064,6 +8064,8 @@ def _evaluate_adversarial_risk(intermediate_data):
 
         # --- Rule 0: Regex Kryptonite (PRIORITY) ---
         krypto_risks = token.get("krypto_risks", [])
+        krypto_active = False # New flag
+        
         if krypto_risks:
             krypto_active = True
             for k in krypto_risks:
@@ -8083,7 +8085,8 @@ def _evaluate_adversarial_risk(intermediate_data):
         if krypto_active and any("Bidi" in k["label"] for k in krypto_risks):
             run_fracture = False
 
-        if run_fracture and len(t_str) > 2:
+        # Only run if NOT krypto_active
+        if not krypto_active and len(t_str) > 2:
             f_state = 0 
             for fc in t_str:
                 f_cp = ord(fc)
@@ -8152,6 +8155,7 @@ def _evaluate_adversarial_risk(intermediate_data):
 
         # --- Rule 6: Invisibles (Strict Dedup) ---
         # Only report generic "Perturbation" if NO other higher-priority finding exists.
+        # Only run if NOT krypto_active
         if token["invisibles"] > 0 and not krypto_active:
             has_bidi = False
             for char in t_str:
