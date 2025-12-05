@@ -715,8 +715,8 @@ Stage 2: Heatmap Row Classes
 #inspector-panel-content {
   
   /* 1. Allow the user to drag the height if they want */ /*resize: vertical; */
-  height: 275px; /* Default starting height */
-  min-height: 275px;
+  height: 300px; /* Default starting height */
+  min-height: 300px;
   
   /* 2. Handle overflow */
   overflow: auto; /* Shows resize handle + scrollbars */
