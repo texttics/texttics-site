@@ -8841,313 +8841,223 @@ def _get_risk_grade(score: int) -> str:
 
 def audit_regex_safety(results: dict, threat_ledger: list, authenticity_ledger: list) -> None:
     """
-    [Stage 1.7] Regex Kryptonite Auditor (Quad-Ledger Compliant).
-    
-    Interprets physical 'Kryptonite' findings and routes them to the correct 
-    Forensic Axis based on intent:
-    
-    1. THREAT (Malice/Execution):
-       - REGEX_BREAK (LS/PS) -> Syntax Evasion
-       - BIDI_CONFUSE        -> Execution Risk (Flow Reversal)
-       - LOGIC_INJECT        -> Obfuscation
-       
-    2. AUTHENTICITY (Identity/Spoofing):
-       - CONFUSER            -> Syntax Spoofing (; vs ;)
-       - WHITESPACE_TRAP     -> Identity Evasion
-       - NORMALIZER_TRAP     -> Stability Issues
+    [Stage 1.7] Regex Kryptonite Auditor (Hardened).
+    Routes physical findings to Threat (Execution) or Authenticity (Spoofing).
     """
+    # 1. Safety Gate
+    if not results or not isinstance(results, dict): return
+    if results.get("count", 0) == 0: return
     
-    # 1. Safety Gate (Handle None/Empty)
-    if not results or results.get("count", 0) == 0:
-        return
-
     findings = results.get("findings", [])
-    if not findings:
-        return
+    if not findings: return
 
-    # 2. Aggregation (Group by Mechanism)
-    # We group findings to prevent ledger spam (one entry per vector).
+    # 2. Aggregation
     mechs = {}
     indices_by_mech = {}
     
     for f in findings:
         m = f.get("mech", "UNKNOWN")
-        if m not in mechs:
+        if m not in mechs: 
             mechs[m] = 0
             indices_by_mech[m] = []
         mechs[m] += 1
         indices_by_mech[m].append(f.get("index", 0))
 
-    # 3. ROUTING LOGIC (The "Split Brain" Decision)
-
-    # --- AXIS A: THREAT LEDGER (Execution Risks) ------------------------------
-
-    # Vector 1: Syntax Evasion (The "Line Terminator" Trap)
-    # Physics: U+2028/U+2029 break single-line regex dot (.) matching.
+    # 3. Routing Logic (Using 'vector' key for compatibility)
+    
+    # --- THREAT AXIS (Execution) ---
     if MECH_REGEX_BREAK in mechs:
-        count = mechs[MECH_REGEX_BREAK]
         threat_ledger.append({
-            "category": "SYNTAX_EVASION",
+            "vector": "SYNTAX_EVASION",
             "label": "CRITICAL: Regex-Breaking Line Terminator",
-            "score": 60,  # Critical because it bypasses validation logic
-            "details": f"Found {count} characters (LS/PS/NEL) that break JS/Python single-line Regex logic. Payloads after this character may bypass filters.",
-            "count": count,
+            "score": 60,
+            "details": f"Found {mechs[MECH_REGEX_BREAK]} characters (LS/PS) that break single-line Regex logic.",
+            "count": mechs[MECH_REGEX_BREAK],
             "indices": indices_by_mech[MECH_REGEX_BREAK]
         })
 
-    # Vector 2: Trojan Source (Flow Reversal)
-    # Physics: Bidi controls that reorder the visual display vs logical memory.
     if MECH_BIDI_CONFUSE in mechs:
-        count = mechs[MECH_BIDI_CONFUSE]
         threat_ledger.append({
-            "category": "EXECUTION_RISK",
+            "vector": "EXECUTION_RISK",
             "label": "CRITICAL: Bidi Flow Reversal",
             "score": 50,
-            "details": f"Found {count} controls (RLO/LRE/Isolates) that actively reorder visual text flow. Code logic may execute in reverse order.",
-            "count": count,
+            "details": f"Found {mechs[MECH_BIDI_CONFUSE]} controls reordering visual flow.",
+            "count": mechs[MECH_BIDI_CONFUSE],
             "indices": indices_by_mech[MECH_BIDI_CONFUSE]
         })
 
-    # Vector 3: Logic Injection (Invisible Identifiers)
-    # Physics: Zero-width characters inside strings/identifiers.
     if MECH_LOGIC_INJECT in mechs:
-        count = mechs[MECH_LOGIC_INJECT]
         threat_ledger.append({
-            "category": "OBFUSCATION",
+            "vector": "OBFUSCATION",
             "label": "HIGH: Invisible Logic Injection",
             "score": 30,
-            "details": f"Found {count} invisible characters inside potential code tokens. 'admin' + ZWSP != 'admin'.",
-            "count": count,
+            "details": f"Found {mechs[MECH_LOGIC_INJECT]} invisible characters inside tokens.",
+            "count": mechs[MECH_LOGIC_INJECT],
             "indices": indices_by_mech[MECH_LOGIC_INJECT]
         })
 
-    # --- AXIS B: AUTHENTICITY LEDGER (Spoofing Risks) -------------------------
-
-    # Vector 4: Syntax Homoglyphs
-    # Physics: Characters that look like code syntax (; : . " /) but aren't.
+    # --- AUTHENTICITY AXIS (Spoofing) ---
     if MECH_CONFUSER in mechs:
-        count = mechs[MECH_CONFUSER]
         authenticity_ledger.append({
-            "category": "SYNTAX_SPOOF",
+            "vector": "SYNTAX_SPOOF",
             "label": "HIGH: Syntax Confusable",
             "score": 25,
-            "details": f"Found {count} characters that visually mimic code syntax (e.g. Greek Question Mark vs Semicolon).",
-            "count": count,
+            "details": f"Found {mechs[MECH_CONFUSER]} characters mimicking code syntax.",
+            "count": mechs[MECH_CONFUSER],
             "indices": indices_by_mech[MECH_CONFUSER]
         })
 
-    # Vector 5: Whitespace Traps
-    # Physics: Spaces that don't match \s or trim() in standard libraries.
     if MECH_WHITESPACE_TRAP in mechs:
-        count = mechs[MECH_WHITESPACE_TRAP]
         authenticity_ledger.append({
-            "category": "EVASION",
+            "vector": "EVASION",
             "label": "WARN: Deceptive Whitespace",
             "score": 20,
-            "details": f"Found {count} non-standard spaces (NBSP/Figure Space) that may bypass split/trim logic.",
-            "count": count,
+            "details": "Non-standard spaces found.",
+            "count": mechs[MECH_WHITESPACE_TRAP],
             "indices": indices_by_mech[MECH_WHITESPACE_TRAP]
         })
 
-    # Vector 6: Normalization Traps
-    # Physics: Characters that change identity/length under NFKC.
     if MECH_NORMALIZER_TRAP in mechs:
-        count = mechs[MECH_NORMALIZER_TRAP]
         authenticity_ledger.append({
-            "category": "IDENTITY_INSTABILITY",
+            "vector": "IDENTITY_INSTABILITY",
             "label": "NOTE: Normalization Trap",
             "score": 15,
-            "details": f"Found {count} characters (e.g. CGJ) that may vanish or mutate during backend normalization.",
-            "count": count,
+            "details": "Characters that mutate under NFKC.",
+            "count": mechs[MECH_NORMALIZER_TRAP],
             "indices": indices_by_mech[MECH_NORMALIZER_TRAP]
         })
 
 def audit_glitchmap(results: dict, integrity_ledger: list) -> None:
     """
-    [Stage 1.7] GlitchMap Auditor.
-    
-    Interprets artifacts from Block 6 and assigns 'Integrity' penalties.
-    
-    Policy Logic:
-    1. Thresholding: Ignores negligible noise (< 0.1% density) unless it's a Hard Failure.
-    2. Severity Tiering: Double Encoding > Cyrillic Mismatch > Latin Accents.
-    3. Ledger Injection: Appends actionable 'DATA_CORRUPTION' entries.
+    [Stage 1.7] GlitchMap Auditor (Hardened).
     """
-    
-    # 1. Early Exit (Clean Text)
-    if not results.get("is_corrupt", False):
-        return
+    if not results or not results.get("is_corrupt", False): return
 
-    # 2. Policy Definitions (Risk Weights)
-    # How much does this specific family hurt data integrity?
+    # Policy Definitions
     FAMILY_RISK_WEIGHTS = {
-        FAMILY_DOUBLE_ENCODING:   25,  # Recursive failure (Critical)
-        FAMILY_DECODE_FAILURE:    20,  # Data loss (Critical)
-        FAMILY_CP1251_UTF8:       15,  # Total illegibility (High)
-        FAMILY_UTF8_CP1252_PUNCT: 10,  # Formatting broken (Med)
-        FAMILY_UTF8_CP1252_LATIN: 10,  # Readable but ugly (Med)
-        FAMILY_UTF8_CP1252_SPACE: 5,   # Minor layout issues (Low)
+        FAMILY_DOUBLE_ENCODING: 25, 
+        FAMILY_DECODE_FAILURE: 20, 
+        FAMILY_CP1251_UTF8: 15,
+        FAMILY_UTF8_CP1252_PUNCT: 10, 
+        FAMILY_UTF8_CP1252_LATIN: 10, 
+        FAMILY_UTF8_CP1252_SPACE: 5
     }
 
-    # 3. Analyze The Findings
     findings = results.get("findings", [])
     density = results.get("density", 0.0)
     dominant_family = results.get("dominant_family", "UNKNOWN")
     
-    # Calculate Base Penalty based on the worst offender found
     max_family_risk = 0
     worst_offender_desc = ""
     
     for f in findings:
-        risk = FAMILY_RISK_WEIGHTS.get(f["family"], 5)
+        fam = f.get("family", "")
+        risk = FAMILY_RISK_WEIGHTS.get(fam, 5)
         if risk > max_family_risk:
             max_family_risk = risk
-            worst_offender_desc = f["desc"] # Capture the "Why"
+            worst_offender_desc = f.get("desc", "")
 
-    # 4. Calculate Final Score (Base Risk + Density Multiplier)
-    # Logic: A single artifact is annoying (Base). 
-    #        50% density is unusable (Base + 50).
-    #        Cap at 100.
-    
-    density_penalty = min(50, int(density * 100)) # Up to 50 pts for density
+    # Calculate Score
+    density_penalty = min(50, int(density * 100))
     total_penalty = min(100, max_family_risk + density_penalty)
     
-    # 5. Formulate the Verdict Label
-    # We create a human-readable diagnosis.
     verdict_label = "WARN"
-    if total_penalty >= 40:
-        verdict_label = "CRITICAL"
-    elif total_penalty >= 20:
-        verdict_label = "HIGH"
+    if total_penalty >= 40: verdict_label = "CRITICAL"
+    elif total_penalty >= 20: verdict_label = "HIGH"
 
-    # Generate the "Reason" string for the UI
-    # e.g., "UTF-8 misread as CP1252 (High Density)"
-    reason = f"{dominant_family} Artifacts Detected"
-    if density > 0.05:
-        reason += f" (Density: {density:.1%})"
+    reason = f"{dominant_family} Artifacts"
+    if density > 0.05: reason += f" (Density: {density:.1%})"
     
-    # 6. Inject into Integrity Ledger
-    # This feeds the "Rot" axis of the Quad-Ledger.
-    entry = {
-        "category": "DATA_CORRUPTION",
+    # Inject (using 'vector' key)
+    integrity_ledger.append({
+        "vector": "DATA_CORRUPTION",
         "label": f"{verdict_label}: Decode Health",
         "score": total_penalty,
         "details": f"{reason}. Hypothesis: {worst_offender_desc}",
         "count": len(findings),
-        "indices": [f["index"] for f in findings][:10] # Provide anchors for Stepper
-    }
-    
-    integrity_ledger.append(entry)
+        "indices": [f["index"] for f in findings][:10]
+    })
 
 # AUDIT: DELIMITED TOPOLOGY (STRUCTURE)
 def audit_topology(results: dict, integrity_ledger: list, threat_ledger: list) -> None:
     """
-    [Stage 1.7] Topology Auditor.
-    
-    Interprets structural physics from Block 6.
-    
-    The Quad-Ledger logic:
-    1. Geometry (Integrity): Is the grid rectangular? (Raggedness)
-    2. Syntax (Integrity): Is the escaping valid? (Quotes)
-    3. Hygiene (Integrity): Is the data schema consistent? (Type Drift)
-    4. Weaponization (Threat): Are cells executable? (DDE Injection)
+    [Stage 1.7] Topology Auditor (Hardened).
     """
-    
-    # 1. Early Exit
-    if not results or not results.get("is_grid"):
-        return
+    if not results or not results.get("is_grid"): return
 
-    # Extract Physics
     raggedness = results.get("raggedness", 0.0)
     fracture_count = results.get("fracture_count", 0)
     quote_errors = results.get("quote_error_count", 0)
     injection_count = results.get("injection_count", 0)
     type_drift_count = results.get("type_drift_count", 0)
-    
     delim_name = results.get("delimiter_name", "UNKNOWN")
-    target_cols = results.get("grid_shape", (0, 0))[1]
+    
+    # Safe retrieval of grid shape
+    grid_shape = results.get("grid_shape", (0, 0))
+    target_cols = grid_shape[1] if grid_shape else 0
+    
     newline_type = results.get("newline_type", "UNKNOWN")
 
-    # VECTOR A: GEOMETRIC FRACTURE (INTEGRITY)
+    # A. Geometry (Integrity)
     if raggedness > 0:
         if raggedness > 0.50:
-            severity = "HIGH"
-            score = 40
-            label = "Structural Collapse"
+            severity, score, label = "HIGH", 40, "Structural Collapse"
         elif raggedness > 0.10:
-            severity = "WARN"
-            score = 20
-            label = "Ragged Grid"
+            severity, score, label = "WARN", 20, "Ragged Grid"
         else:
-            severity = "INFO"
-            score = 5
-            label = "Minor Fracture"
+            severity, score, label = "INFO", 5, "Minor Fracture"
 
         integrity_ledger.append({
-            "category": "STRUCTURAL_FRACTURE",
+            "vector": "STRUCTURAL_FRACTURE",
             "label": f"{severity}: {label}",
             "score": score,
-            "details": f"{label} ({delim_name}). Mode: {target_cols} cols. {fracture_count} rows ({raggedness:.1%}) deviated.",
+            "details": f"{label} ({delim_name}). Mode: {target_cols} cols. {fracture_count} rows deviated.",
             "count": fracture_count,
             "indices": results.get("evidence_fractures", [])
         })
-    
-    # VECTOR B: SYNTACTIC CORRUPTION (INTEGRITY)
+
+    # B. Syntax (Integrity)
     if quote_errors > 0:
         integrity_ledger.append({
-            "category": "DATA_CORRUPTION",
+            "vector": "DATA_CORRUPTION",
             "label": "WARN: Broken Escaping",
             "score": 25,
-            "details": f"Odd number of double-quotes found in {quote_errors} rows. Likely parser desynchronization.",
+            "details": f"Odd number of double-quotes found in {quote_errors} rows.",
             "count": quote_errors,
             "indices": results.get("evidence_quotes", [])
         })
 
-    # VECTOR C: DATA HYGIENE / TYPE DRIFT (INTEGRITY) [NEW]
-    # Physics: A column is 99% Number but has 1% Text.
-    # Significance: Often indicates "Dirty Data" (e.g., 'N/A' in int column) or 
-    # specific forms of corruption (framing errors).
+    # C. Hygiene (Integrity)
     if type_drift_count > 0:
         integrity_ledger.append({
-            "category": "SCHEMA_VIOLATION",
+            "vector": "SCHEMA_VIOLATION",
             "label": "WARN: Column Type Drift",
             "score": 15,
-            "details": f"{type_drift_count} columns contain 'Dirty Data' (Mixed Types). Strong numeric consensus violated by text artifacts.",
+            "details": f"{type_drift_count} columns contain Mixed Types.",
             "count": type_drift_count,
-            "indices": results.get("evidence_drift", []) # Highlight the dirty columns
+            "indices": results.get("evidence_drift", [])
         })
-  
-    # VECTOR D: WEAPONIZATION / CSV INJECTION (THREAT)
-    # Physics: Cells starting with =, +, -, @.
-    # Significance: DDE (Dynamic Data Exchange) execution in Excel/Calc.
+
+    # D. Weaponization (Threat)
     if injection_count > 0:
-        # Threat Scaling: 
-        # 1 injection might be accidental text. 
-        # 50 injections is a weaponized payload generator.
-        
-        if injection_count > 5:
-            severity = "CRITICAL"
-            score = 60 # High confidence attack
-        else:
-            severity = "WARN"
-            score = 30 # Potential risk
-            
+        severity = "CRITICAL" if injection_count > 5 else "WARN"
+        score = 60 if injection_count > 5 else 30
         threat_ledger.append({
-            "category": "INJECTION",
+            "vector": "INJECTION",
             "label": f"{severity}: CSV Formula Injection",
             "score": score,
-            "details": f"Found {injection_count} rows starting with formula triggers (=, +, -, @). Potential DDE/Macro execution risk.",
+            "details": f"Found {injection_count} rows with formula triggers. DDE risk.",
             "count": injection_count,
             "indices": results.get("evidence_injections", [])
         })
 
-    # VECTOR E: PROTOCOL HYGIENE (NEWLINES)
+    # E. Protocol (Integrity)
     if "MIXED" in newline_type:
         integrity_ledger.append({
-            "category": "PROTOCOL_VIOLATION",
+            "vector": "PROTOCOL_VIOLATION",
             "label": "INFO: Mixed Line Endings",
             "score": 5,
-            "details": "Input contains both CRLF and LF. Potential concatenation artifact.",
+            "details": "Input contains both CRLF and LF.",
             "count": 1,
             "indices": []
         })
