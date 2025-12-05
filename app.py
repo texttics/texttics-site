@@ -8778,104 +8778,127 @@ def _get_risk_grade(score: int) -> str:
     if score > 0:   return "NON-STANDARD"
     return "CLEAN"
 
-def audit_regex_safety(results: dict, threat_ledger: list, authenticity_ledger: list):
+def audit_regex_safety(results: dict, threat_ledger: list, authenticity_ledger: list) -> None:
     """
-    [Stage 1.7] Regex Kryptonite Auditor.
-    Translates physical 'Kryptonite' findings into Quad-Ledger Penalties.
+    [Stage 1.7] Regex Kryptonite Auditor (Quad-Ledger Compliant).
     
-    Routing Logic:
-    - REGEX_BREAK, BIDI, LOGIC_INJECT -> THREAT (Weaponization/Obfuscation)
-    - CONFUSER, WHITESPACE_TRAP       -> AUTHENTICITY (Spoofing/Identity)
-    - NORMALIZER_TRAP                 -> AUTHENTICITY (Stability)
+    Interprets physical 'Kryptonite' findings and routes them to the correct 
+    Forensic Axis based on intent:
+    
+    1. THREAT (Malice/Execution):
+       - REGEX_BREAK (LS/PS) -> Syntax Evasion
+       - BIDI_CONFUSE        -> Execution Risk (Flow Reversal)
+       - LOGIC_INJECT        -> Obfuscation
+       
+    2. AUTHENTICITY (Identity/Spoofing):
+       - CONFUSER            -> Syntax Spoofing (; vs ;)
+       - WHITESPACE_TRAP     -> Identity Evasion
+       - NORMALIZER_TRAP     -> Stability Issues
     """
-    if results["count"] == 0:
+    
+    # 1. Safety Gate (Handle None/Empty)
+    if not results or results.get("count", 0) == 0:
         return
 
-    mechs = results["mechanisms"]
+    findings = results.get("findings", [])
+    if not findings:
+        return
+
+    # 2. Aggregation (Group by Mechanism)
+    # We group findings to prevent ledger spam (one entry per vector).
+    mechs = {}
+    indices_by_mech = {}
     
-    # AXIS 1: THREAT LEDGER (Execution, Injection, Syntax)
-    
-    # Vector: Regex/Parser Break (LS/PS/NEL)
-    # Risk: Massive. Can bypass validation logic entirely.
+    for f in findings:
+        m = f.get("mech", "UNKNOWN")
+        if m not in mechs:
+            mechs[m] = 0
+            indices_by_mech[m] = []
+        mechs[m] += 1
+        indices_by_mech[m].append(f.get("index", 0))
+
+    # 3. ROUTING LOGIC (The "Split Brain" Decision)
+
+    # --- AXIS A: THREAT LEDGER (Execution Risks) ------------------------------
+
+    # Vector 1: Syntax Evasion (The "Line Terminator" Trap)
+    # Physics: U+2028/U+2029 break single-line regex dot (.) matching.
     if MECH_REGEX_BREAK in mechs:
         count = mechs[MECH_REGEX_BREAK]
         threat_ledger.append({
-            "category": "SYNTAX_INJECTION",
-            "label": "Regex Breaker (Line Separators)",
-            "value": f"{count} chars (LS/PS)",
-            "severity": "CRITICAL",
-            "penalty": 50, # Immediate Critical Threat
-            "desc": "Characters that break line-based Regex (.) and JS parsers."
+            "category": "SYNTAX_EVASION",
+            "label": "CRITICAL: Regex-Breaking Line Terminator",
+            "score": 60,  # Critical because it bypasses validation logic
+            "details": f"Found {count} characters (LS/PS/NEL) that break JS/Python single-line Regex logic. Payloads after this character may bypass filters.",
+            "count": count,
+            "indices": indices_by_mech[MECH_REGEX_BREAK]
         })
 
-    # Vector: Trojan Source (Bidi)
-    # Risk: Code logic executes differently than it looks.
+    # Vector 2: Trojan Source (Flow Reversal)
+    # Physics: Bidi controls that reorder the visual display vs logical memory.
     if MECH_BIDI_CONFUSE in mechs:
         count = mechs[MECH_BIDI_CONFUSE]
         threat_ledger.append({
             "category": "EXECUTION_RISK",
-            "label": "Trojan Source (Bidi Controls)",
-            "value": f"{count} chars",
-            "severity": "CRITICAL",
-            "penalty": 50,
-            "desc": "Visual reordering of source code logic."
+            "label": "CRITICAL: Bidi Flow Reversal",
+            "score": 50,
+            "details": f"Found {count} controls (RLO/LRE/Isolates) that actively reorder visual text flow. Code logic may execute in reverse order.",
+            "count": count,
+            "indices": indices_by_mech[MECH_BIDI_CONFUSE]
         })
 
-    # Vector: Logic Injection (Invisibles)
-    # Risk: Distinct variables that look identical (admin vs admin<ZWSP>).
+    # Vector 3: Logic Injection (Invisible Identifiers)
+    # Physics: Zero-width characters inside strings/identifiers.
     if MECH_LOGIC_INJECT in mechs:
         count = mechs[MECH_LOGIC_INJECT]
-        # Context Escalation: If found inside a String Literal, it's higher risk
-        severity = "CRITICAL" if results.get("context_risk") else "HIGH"
-        
         threat_ledger.append({
             "category": "OBFUSCATION",
-            "label": "Invisible Logic Injection",
-            "value": f"{count} chars",
-            "severity": severity,
-            "penalty": 30,
-            "desc": "Invisible characters affecting string/identifier identity."
+            "label": "HIGH: Invisible Logic Injection",
+            "score": 30,
+            "details": f"Found {count} invisible characters inside potential code tokens. 'admin' + ZWSP != 'admin'.",
+            "count": count,
+            "indices": indices_by_mech[MECH_LOGIC_INJECT]
         })
 
-    # AXIS 2: AUTHENTICITY LEDGER (Spoofing, Identity)
+    # --- AXIS B: AUTHENTICITY LEDGER (Spoofing Risks) -------------------------
 
-    # Vector: Syntax Homoglyphs
-    # Risk: User thinks it's syntax (;), Parser thinks it's a token (;).
+    # Vector 4: Syntax Homoglyphs
+    # Physics: Characters that look like code syntax (; : . " /) but aren't.
     if MECH_CONFUSER in mechs:
         count = mechs[MECH_CONFUSER]
         authenticity_ledger.append({
             "category": "SYNTAX_SPOOF",
-            "label": "Syntax Homoglyphs",
-            "value": f"{count} chars",
-            "severity": "HIGH",
-            "penalty": 25,
-            "desc": "Characters mimicking code syntax (quotes, semicolons)."
+            "label": "HIGH: Syntax Confusable",
+            "score": 25,
+            "details": f"Found {count} characters that visually mimic code syntax (e.g. Greek Question Mark vs Semicolon).",
+            "count": count,
+            "indices": indices_by_mech[MECH_CONFUSER]
         })
 
-    # Vector: Whitespace Traps
-    # Risk: Bypasses split() or trim() logic in auth/parsing.
+    # Vector 5: Whitespace Traps
+    # Physics: Spaces that don't match \s or trim() in standard libraries.
     if MECH_WHITESPACE_TRAP in mechs:
         count = mechs[MECH_WHITESPACE_TRAP]
         authenticity_ledger.append({
             "category": "EVASION",
-            "label": "Deceptive Whitespace",
-            "value": f"{count} chars",
-            "severity": "HIGH",
-            "penalty": 20,
-            "desc": "Non-standard spaces that bypass trim/split logic."
+            "label": "WARN: Deceptive Whitespace",
+            "score": 20,
+            "details": f"Found {count} non-standard spaces (NBSP/Figure Space) that may bypass split/trim logic.",
+            "count": count,
+            "indices": indices_by_mech[MECH_WHITESPACE_TRAP]
         })
 
-    # Vector: Normalization Traps
-    # Risk: String changes meaning after backend normalization.
+    # Vector 6: Normalization Traps
+    # Physics: Characters that change identity/length under NFKC.
     if MECH_NORMALIZER_TRAP in mechs:
         count = mechs[MECH_NORMALIZER_TRAP]
         authenticity_ledger.append({
             "category": "IDENTITY_INSTABILITY",
-            "label": "Normalization Traps",
-            "value": f"{count} chars",
-            "severity": "MEDIUM",
-            "penalty": 15,
-            "desc": "Characters that vanish or mutate under NFKC."
+            "label": "NOTE: Normalization Trap",
+            "score": 15,
+            "details": f"Found {count} characters (e.g. CGJ) that may vanish or mutate during backend normalization.",
+            "count": count,
+            "indices": indices_by_mech[MECH_NORMALIZER_TRAP]
         })
 
 def audit_glitchmap(results: dict, integrity_ledger: list) -> None:
@@ -15339,30 +15362,28 @@ def update_all(event=None):
     threat_results = compute_threat_analysis(t, script_run_stats)
     window.latest_threat_data = threat_results
 
+    # [STAGE 1.7] THE DECODER & DEVELOPER ENGINES ------------------------------
     # 1. Regex Kryptonite (Developer Safety)
     regex_safety_results = scan_regex_safety(t)
     
-    # 2. GlitchMap
+    # 2. GlitchMap (Decode Health)
     glitchmap_results = scan_glitchmap_artifacts(t)
     
     # 3. Delimited Topology (Structure)
-    # Only run if line count is reasonable to avoid lag on huge logs (Sampling handles huge, but simple short-circuit helps)
+    # Only run if line count is reasonable to avoid lag on huge logs 
+    # (Sampling handles huge, but simple short-circuit helps)
     topology_results = analyze_delimited_topology(t) if '\n' in t or ',' in t else None
     
     # [AUDITING PHASE]
-    # We pass these results to the Master Auditor logic implicitly by appending 
-    # to the ledgers that audit_master_ledgers will eventually aggregate.
-    # Note: Since audit_master_ledgers aggregates from inputs, we need to 
-    # modify how we pass data or run specific auditors here that modify shared lists.
-    
-    # Strategy: Run specific auditors now to populate 'integrity_ledger_updates' 
-    # and 'threat_ledger_updates' which we can merge later.
-    
-    # Create temporary containers for the new findings
+    # Create temporary containers for ALL axes to hold Stage 1.7 findings
     new_integrity_items = []
     new_threat_items = []
+    new_authenticity_items = [] # <--- NEW: Required for audit_regex_safety logic
     
-    audit_regex_safety(regex_safety_results, new_threat_items)
+    # Execute Auditors
+    # Note: We pass the specific lists they need.
+    # audit_regex_safety now splits findings between Threat (Execution) and Authenticity (Spoofing)
+    audit_regex_safety(regex_safety_results, new_threat_items, new_authenticity_items) 
     audit_glitchmap(glitchmap_results, new_integrity_items)
     audit_topology(topology_results, new_integrity_items, new_threat_items)
 
@@ -15386,9 +15407,7 @@ def update_all(event=None):
         # Fallback if Intl.Segmenter fails/missing
         grapheme_list = list(t)
 
-    # ----------------------------------------------------------------------
     # [UNIFIED PHYSICS LOOP] Zalgo, Invisibles, and Registry Sync
-    # ----------------------------------------------------------------------
     # We iterate graphemes ONCE to guarantee that the Hero Counter (Registry)
     # perfectly matches the Statistical Profile list (Participants).
     
@@ -15500,7 +15519,8 @@ def update_all(event=None):
         stage1_5_data=stage1_5_data, 
         threat_output=final_score,
         extra_integrity=new_integrity_items,
-        extra_threat=new_threat_items
+        extra_threat=new_threat_items,
+        extra_authenticity=new_authenticity_items
     )
     
     # --- Prepare Data for Renderers ---
