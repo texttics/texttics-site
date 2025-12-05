@@ -15214,6 +15214,33 @@ def update_all(event=None):
     threat_results = compute_threat_analysis(t, script_run_stats)
     window.latest_threat_data = threat_results
 
+    # 1. Regex Kryptonite (Developer Safety)
+    regex_safety_results = scan_regex_safety(t)
+    
+    # 2. GlitchMap
+    glitchmap_results = scan_glitchmap_artifacts(t)
+    
+    # 3. Delimited Topology (Structure)
+    # Only run if line count is reasonable to avoid lag on huge logs (Sampling handles huge, but simple short-circuit helps)
+    topology_results = analyze_delimited_topology(t) if '\n' in t or ',' in t else None
+    
+    # [AUDITING PHASE]
+    # We pass these results to the Master Auditor logic implicitly by appending 
+    # to the ledgers that audit_master_ledgers will eventually aggregate.
+    # Note: Since audit_master_ledgers aggregates from inputs, we need to 
+    # modify how we pass data or run specific auditors here that modify shared lists.
+    
+    # Strategy: Run specific auditors now to populate 'integrity_ledger_updates' 
+    # and 'threat_ledger_updates' which we can merge later.
+    
+    # Create temporary containers for the new findings
+    new_integrity_items = []
+    new_threat_items = []
+    
+    audit_regex_safety(regex_safety_results, new_threat_items)
+    audit_glitchmap(glitchmap_results, new_integrity_items)
+    audit_topology(topology_results, new_integrity_items, new_threat_items)
+
     # Extract Stage 1.5 Data
     stage1_5_data = threat_results.get('adversarial', {})
 
@@ -15346,7 +15373,9 @@ def update_all(event=None):
         inputs=integrity_inputs, 
         stats_inputs=stat_profile, 
         stage1_5_data=stage1_5_data, 
-        threat_output=final_score
+        threat_output=final_score,
+        extra_integrity=new_integrity_items,
+        extra_threat=new_threat_items
     )
     
     # --- Prepare Data for Renderers ---
@@ -15576,6 +15605,12 @@ def update_all(event=None):
     # [NEW] Statistical Profile (Group 2.F)
     # Note: stat_profile was computed earlier and enriched with Zalgo data.
     render_statistical_profile(stat_profile)
+
+    # [STAGE 1.7] Render Topology Card
+    topo_html = render_topology_card(topology_results)
+    topo_container = document.getElementById("topology-card-container")
+    if topo_container:
+        topo_container.innerHTML = topo_html
     
     render_emoji_qualification_table(emoji_list, text_context=t)
     render_emoji_summary(emoji_counts, emoji_list)
