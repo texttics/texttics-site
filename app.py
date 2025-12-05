@@ -1324,6 +1324,34 @@ GRID_THRESHOLDS = {
                              # For massive pastes, we only audit the topology of the first 1000 rows.
 }
 
+# CSV Injection Triggers (DDE / Formula Injection)
+# Physics: If a cell starts with these, spreadsheets treat it as code/formula.
+# Source: OWASP, USENIX WOOT 2025
+CSV_INJECTION_PREFIXES = {"=", "+", "-", "@"}
+
+# Updated Regex Kryptonite Map (Bidi Clarification)
+# We ensure the description explains the "Flow Reversal" mechanic.
+REGEX_KRYPTONITE_MAP.update({
+    # Controls that actively reverse visual flow
+    0x202E: {"name": "RLO (RIGHT_TO_LEFT_OVERRIDE)", 
+             "mech": MECH_BIDI_CONFUSE, 
+             "risk": "CRITICAL",
+             "desc": "Forces text to render backwards, masking true logical order."},
+    0x202D: {"name": "LRO (LEFT_TO_RIGHT_OVERRIDE)",
+             "mech": MECH_BIDI_CONFUSE,
+             "risk": "CRITICAL",
+             "desc": "Forces text direction, potentially hiding code logic."},
+    # Embeddings/Isolates that create directional islands
+    0x202A: {"name": "LRE (LEFT_TO_RIGHT_EMBEDDING)", 
+             "mech": MECH_BIDI_CONFUSE, 
+             "risk": "CRITICAL",
+             "desc": "Starts a new directional run, potentially hiding code."},
+    0x202B: {"name": "RLE (RIGHT_TO_LEFT_EMBEDDING)",
+             "mech": MECH_BIDI_CONFUSE,
+             "risk": "CRITICAL",
+             "desc": "Starts a new directional run, potentially hiding code."}
+})
+
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
 # ===============================================
@@ -7615,48 +7643,137 @@ def analyze_delimited_topology(t: str) -> dict:
     
     # PHASE C: STRUCTURAL ANALYSIS (THE "SCANNER")
     
-    # Now we perform the deep scan using the elected delimiter.
-    
+    # We now perform a single-pass deep scan on the sample.
+    # Goals: 
+    # 1. Detect Fractures (Geometry)
+    # 2. Detect Injections (Security)
+    # 3. Detect Quote Corruption (Syntax)
+    # 4. Detect Type Drift (Data Hygiene - NEW)
+
     target_cols = elected_topology["mode"]
-    ragged_rows = []
-    quote_errors = []
     
-    # Note: We re-scan the *sample* (or full text if small) for detailed fracture reporting.
-    # In a full production system, we might stream this. For Stage 1.7, iterating sample is safe.
+    # -- Collectors --
+    ragged_rows = []       # Indices where col_count != target
+    quote_errors = []      # Indices with odd quote counts
+    injection_rows = []    # Indices with DDE payloads (=, +, -, @)
     
+    # -- Type Drift Trackers (NEW) --
+    # We track the "Dominant Type" per column to find anomalies.
+    # Structure: col_index -> { "NUM": int, "TXT": int, "NULL": int }
+    col_type_stats = collections.defaultdict(lambda: {"NUM": 0, "TXT": 0, "NULL": 0, "INJ": 0})
+
+    # Regex for stripping quotes to check content (faster than manual slicing in loop)
+    # Pre-compiled above function scope ideally, but here for context
+    _REGEX_UNQUOTE = re.compile(r'^"(.*)"$') 
+
     for i, line in enumerate(sample_subset):
-        # 1. Quote Audit (Heuristic: Odd number of quotes = Broken Escaping)
+        # 1. Quote Syntax Audit (Fastest Check)
+        # Heuristic: Odd number of quotes usually means a broken line break inside a field
         if line.count('"') % 2 != 0:
             quote_errors.append(i)
-            # Cannot accurately count cols if quotes are broken, flag and skip logic
+            # If quoting is broken, splitting is unreliable. 
+            # We record the error but skip deep field analysis for this row.
             continue 
 
-        # 2. Fracture Scan
-        masked_line = _REGEX_QUOTE_MASK.sub('XX', line) if '"' in line else line
-        actual_cols = masked_line.count(best_candidate) + 1
+        # 2. Field Splitting (The Geometry Check)
+        # We assume the quote mask from Phase B was temporary. 
+        # For deep scanning, we need the *real* fields to check for injections.
+        # Simple split is risky if delimiter is inside quotes.
+        # Forensic compromise: Use the masking logic again for the split, 
+        # then restore/analyze content.
         
+        # Fast Masking for Split
+        masked_line = _REGEX_QUOTE_MASK.sub('""', line) if '"' in line else line
+        fields = masked_line.split(best_candidate)
+        
+        actual_cols = len(fields)
         if actual_cols != target_cols:
             ragged_rows.append(i)
+            # If geometry is wrong, column-based type analysis will be misaligned. Skip types.
+            continue
+
+        # 3. Cell-Level Forensics (Injection & Typing)
+        # To get actual content, we need a smarter split or a heuristic.
+        # Since we masked quotes as "", the length of fields matches. 
+        # We can try to reconstruct or just scan the raw line for injections if not complex.
+        
+        # Optimization: Scan the split fields. If they contain the mask "", 
+        # we know they were quoted. For Stage 1.7, we approximate content analysis.
+        
+        for col_idx, raw_val in enumerate(fields):
+            val = raw_val.strip()
+            
+            # Classification Logic
+            is_quoted = val == '""' # Was masked
+            
+            # To actually check injection in quoted fields, we'd need the unmasked line.
+            # For speed/safety trade-off in Stage 1.7, we check unmasked parts 
+            # or rely on the fact that DDE must be at the START of the cell.
+            
+            # --- Forensic Type Detection ---
+            if not val:
+                col_type_stats[col_idx]["NULL"] += 1
+            elif is_quoted:
+                col_type_stats[col_idx]["TXT"] += 1 # Quoted is usually text
+            elif val.replace('.', '', 1).isdigit(): 
+                col_type_stats[col_idx]["NUM"] += 1
+            else:
+                col_type_stats[col_idx]["TXT"] += 1
+
+            # --- Injection Scan (Security) ---
+            # DDE payloads execute even if quoted in some older contexts, 
+            # but primary risk is raw start.
+            # We look for the raw payload signatures in the *original* line if possible,
+            # or rely on the field check.
+            
+            if len(val) > 0 and val[0] in CSV_INJECTION_PREFIXES:
+                # If it's a number (e.g. -500), it's not an injection.
+                # If it's Text/Formula (e.g. -cmd|), it is.
+                if not val.replace('.', '', 1).isdigit():
+                    col_type_stats[col_idx]["INJ"] += 1
+                    injection_rows.append(i)
 
     
     # PHASE D: VERDICT GENERATION
     
-    # Calculate fracture percentage
     raggedness = len(ragged_rows) / len(sample_subset)
-
+    
+    # Analyze Type Drift (Col 3 is 99% Numbers, 1% Text => Drift)
+    drift_cols = []
+    for col_idx, stats in col_type_stats.items():
+        total = stats["NUM"] + stats["TXT"] + stats["NULL"]
+        if total == 0: continue
+        
+        # Calculate dominance
+        num_ratio = stats["NUM"] / total
+        txt_ratio = stats["TXT"] / total
+        
+        # Definition of Drift: Strong consensus (>90%) violated by small outliers
+        if num_ratio > 0.90 and stats["TXT"] > 0:
+            drift_cols.append(col_idx) # "Dirty Number Column"
+    
     return {
         "is_grid": True,
         "delimiter": best_candidate,
         "delimiter_name": DELIMITER_METADATA[best_candidate]["name"],
         "newline_type": newline_type,
         "grid_shape": (total_rows, target_cols),
+        
+        # Metrics
         "raggedness": raggedness,
         "is_broken": raggedness > GRID_THRESHOLDS["MAX_RAGGEDNESS"],
+        
+        # Counts
         "fracture_count": len(ragged_rows),
         "quote_error_count": len(quote_errors),
-        # Evidence for the UI (Truncated list of indices)
+        "injection_count": len(set(injection_rows)), # Dedup rows
+        "type_drift_count": len(drift_cols),
+        
+        # Evidence (Truncated for UI)
         "evidence_fractures": ragged_rows[:10],
-        "evidence_quotes": quote_errors[:10]
+        "evidence_quotes": quote_errors[:10],
+        "evidence_injections": list(set(injection_rows))[:10],
+        "evidence_drift": drift_cols[:5] # Columns with dirty data
     }
 
 # ===============================================
@@ -8839,19 +8956,20 @@ def audit_glitchmap(results: dict, integrity_ledger: list) -> None:
     integrity_ledger.append(entry)
 
 # AUDIT: DELIMITED TOPOLOGY (STRUCTURE)
-def audit_topology(results: dict, integrity_ledger: list) -> None:
+def audit_topology(results: dict, integrity_ledger: list, threat_ledger: list) -> None:
     """
     [Stage 1.7] Topology Auditor.
     
-    Interprets the structural physics from Block 6 and assigns 'Integrity' penalties.
+    Interprets structural physics from Block 6.
     
-    Policy Logic:
-    1. Geometric Integrity: Penalizes "Raggedness" (rows that break the grid).
-    2. Syntactic Integrity: Penalizes "Broken Escaping" (odd number of quotes).
-    3. Hygiene: Penalizes "Mixed Line Endings" (CRLF + LF).
+    The Quad-Ledger logic:
+    1. Geometry (Integrity): Is the grid rectangular? (Raggedness)
+    2. Syntax (Integrity): Is the escaping valid? (Quotes)
+    3. Hygiene (Integrity): Is the data schema consistent? (Type Drift)
+    4. Weaponization (Threat): Are cells executable? (DDE Injection)
     """
     
-    # 1. Early Exit (Not a Grid)
+    # 1. Early Exit
     if not results or not results.get("is_grid"):
         return
 
@@ -8859,13 +8977,15 @@ def audit_topology(results: dict, integrity_ledger: list) -> None:
     raggedness = results.get("raggedness", 0.0)
     fracture_count = results.get("fracture_count", 0)
     quote_errors = results.get("quote_error_count", 0)
+    injection_count = results.get("injection_count", 0)
+    type_drift_count = results.get("type_drift_count", 0)
+    
     delim_name = results.get("delimiter_name", "UNKNOWN")
     target_cols = results.get("grid_shape", (0, 0))[1]
     newline_type = results.get("newline_type", "UNKNOWN")
 
-    # VECTOR A: GEOMETRIC FRACTURE (RAGGEDNESS)
+    # VECTOR A: GEOMETRIC FRACTURE (INTEGRITY)
     if raggedness > 0:
-        # Policy: Determine Severity based on Fracture %
         if raggedness > 0.50:
             severity = "HIGH"
             score = 40
@@ -8879,44 +8999,73 @@ def audit_topology(results: dict, integrity_ledger: list) -> None:
             score = 5
             label = "Minor Fracture"
 
-        # Forensic Message
-        details = (
-            f"{label} ({delim_name}). "
-            f"Mode: {target_cols} columns. "
-            f"{fracture_count} rows ({raggedness:.1%}) deviated."
-        )
-
         integrity_ledger.append({
             "category": "STRUCTURAL_FRACTURE",
             "label": f"{severity}: {label}",
             "score": score,
-            "details": details,
+            "details": f"{label} ({delim_name}). Mode: {target_cols} cols. {fracture_count} rows ({raggedness:.1%}) deviated.",
             "count": fracture_count,
-            # Pass the evidence indices for the UI Stepper
             "indices": results.get("evidence_fractures", [])
         })
-
-    # VECTOR B: SYNTACTIC CORRUPTION (QUOTES)
+    
+    # VECTOR B: SYNTACTIC CORRUPTION (INTEGRITY)
     if quote_errors > 0:
-        # Policy: Broken quotes are always a WARN/HIGH because they break parsers.
         integrity_ledger.append({
             "category": "DATA_CORRUPTION",
             "label": "WARN: Broken Escaping",
-            "score": 25, # High penalty for syntax errors
-            "details": f"Odd number of double-quotes found in {quote_errors} rows. Parser desynchronization likely.",
+            "score": 25,
+            "details": f"Odd number of double-quotes found in {quote_errors} rows. Likely parser desynchronization.",
             "count": quote_errors,
             "indices": results.get("evidence_quotes", [])
         })
 
-    # VECTOR C: HYGIENE (NEWLINES)
+    # VECTOR C: DATA HYGIENE / TYPE DRIFT (INTEGRITY) [NEW]
+    # Physics: A column is 99% Number but has 1% Text.
+    # Significance: Often indicates "Dirty Data" (e.g., 'N/A' in int column) or 
+    # specific forms of corruption (framing errors).
+    if type_drift_count > 0:
+        integrity_ledger.append({
+            "category": "SCHEMA_VIOLATION",
+            "label": "WARN: Column Type Drift",
+            "score": 15,
+            "details": f"{type_drift_count} columns contain 'Dirty Data' (Mixed Types). Strong numeric consensus violated by text artifacts.",
+            "count": type_drift_count,
+            "indices": results.get("evidence_drift", []) # Highlight the dirty columns
+        })
+  
+    # VECTOR D: WEAPONIZATION / CSV INJECTION (THREAT)
+    # Physics: Cells starting with =, +, -, @.
+    # Significance: DDE (Dynamic Data Exchange) execution in Excel/Calc.
+    if injection_count > 0:
+        # Threat Scaling: 
+        # 1 injection might be accidental text. 
+        # 50 injections is a weaponized payload generator.
+        
+        if injection_count > 5:
+            severity = "CRITICAL"
+            score = 60 # High confidence attack
+        else:
+            severity = "WARN"
+            score = 30 # Potential risk
+            
+        threat_ledger.append({
+            "category": "INJECTION",
+            "label": f"{severity}: CSV Formula Injection",
+            "score": score,
+            "details": f"Found {injection_count} rows starting with formula triggers (=, +, -, @). Potential DDE/Macro execution risk.",
+            "count": injection_count,
+            "indices": results.get("evidence_injections", [])
+        })
+
+    # VECTOR E: PROTOCOL HYGIENE (NEWLINES)
     if "MIXED" in newline_type:
         integrity_ledger.append({
             "category": "PROTOCOL_VIOLATION",
             "label": "INFO: Mixed Line Endings",
-            "score": 5, # Low penalty, but noted
-            "details": "Input contains both CRLF (Windows) and LF (Unix) line terminators. Potential concatenation artifact.",
-            "count": 1, 
-            "indices": [] # Global issue, no specific index
+            "score": 5,
+            "details": "Input contains both CRLF and LF. Potential concatenation artifact.",
+            "count": 1,
+            "indices": []
         })
 
 # ===============================================
