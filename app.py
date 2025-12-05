@@ -9946,12 +9946,10 @@ def compute_provenance_stats(t: str):
 
     return final_stats
 
-# Advanced Orchestrators
-
 def compute_adversarial_metrics(t: str):
     """
-    Adversarial Engine v10 (Consolidated & Paper-Aligned).
-    Integrates: Ghost, Fracture, Stutter, and Jailbreak Styles.
+    Adversarial Engine v11 (Consolidated & Paper-Aligned).
+    Integrates: Ghost, Fracture, Stutter, Jailbreak Styles, AND Regex Kryptonite.
     """
     if not t: 
         return {
@@ -10067,14 +10065,59 @@ def compute_adversarial_metrics(t: str):
         threat_stack = [] 
 
         is_domain_candidate = is_plausible_domain_candidate(token_text)
+        
+        # =================================================================
+        # [NEW] RULE 0: REGEX KRYPTONITE (PRIORITY OVERRIDE)
+        # =================================================================
+        krypto_active = False
+        krypto_report = scan_regex_safety(token_text)
+        
+        if krypto_report["count"] > 0:
+            krypto_active = True
+            for f in krypto_report["findings"]:
+                mech = f.get("mechanism", "UNKNOWN") # Safe key access
+                
+                # Default severity
+                risk_adder = 20
+                lvl = "MED"
+                cat = "SYNTAX"
+                label = f["name"]
 
-        # [NEW] FRACTURE SCANNER (Paper 1: Invisible Sandwich)
-        # Detects: Alpha -> Agent -> Alpha (e.g. "sens😎itive")
+                # High-Value Threats
+                if mech == "REGEX_BREAK":
+                    risk_adder = 100
+                    lvl = "CRIT"
+                    cat = "SYNTAX"
+                    label = "Regex Breaker (LS/PS)"
+                elif mech == "BIDI_CONFUSE":
+                    risk_adder = 100
+                    lvl = "CRIT"
+                    cat = "INJECTION"
+                    label = "Bidi Flow Reversal"
+                elif mech == "LOGIC_INJECT":
+                    risk_adder = 60
+                    lvl = "HIGH"
+                    cat = "OBFUSCATION"
+                    label = "Invisible Logic Injection"
+                elif mech == "CONFUSER":
+                    risk_adder = 40
+                    lvl = "HIGH"
+                    cat = "SPOOFING"
+                    label = "Syntax Confusable"
+
+                token_score += risk_adder
+                threat_stack.append({ "lvl": lvl, "type": cat, "desc": label })
+                token_families.add(cat)
+
+        # =================================================================
+
+        # [FRACTURE SCANNER] - Run ONLY if Kryptonite didn't already explain it
+        # This prevents "Regex Breaker" from also being flagged as a generic "Token Fracture"
         fracture_risk = 0
         fracture_desc = ""
         
-        if len(token_text) > 2:
-            f_state = 0 # 0=Start, 1=Alpha, 2=Agent
+        if not krypto_active and len(token_text) > 2:
+            f_state = 0 
             SAFE_PUNCT = {'.', '-', '_', '@', ':', '/'}
             
             for char in token_text:
@@ -10165,8 +10208,6 @@ def compute_adversarial_metrics(t: str):
                             else: token_families.add("INJECTION")
 
         # [SCRIPT]
-        # Was: r_lbl, r_score = analyze_restriction_level(token_text)
-        # Fixed: Handle dict return
         r_data = analyze_restriction_level(token_text)
         r_lbl = r_data["label"]
         r_score = r_data["score"]
@@ -10181,13 +10222,9 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
         # [HOMOGLYPH]
-        # Call the hardened v1.2 helper. 
-        # We pass 'confusables_map' explicitly to avoid global lookup overhead.
         conf_data = analyze_confusion_density(token_text, confusables_map)
         
         if conf_data:
-            # Boost risk if the FIRST character is a confusable (visual anchor)
-            # This detects spoofing where the "First Letter" is fake (e.g., Cyrillic 'P' in Paypal)
             if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
                 conf_data['desc'] += " (Start-Char)"
@@ -10216,23 +10253,27 @@ def compute_adversarial_metrics(t: str):
             threat_stack.append({ "lvl": "HIGH", "type": "HIDDEN", "desc": norm['desc'] })
         
         # [PERTURBATION]
-        pert = analyze_structural_perturbation(token_text)
-        if pert:
-            token_score += pert['risk']
-            token_reasons.append(pert['desc'])
-            token_families.add("PERTURBATION")
-            is_bidi = "Bidi" in pert['desc']
-            p_type = "INJECTION" if is_bidi else "HIDDEN"
-            threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
+        # Only run if not Kryptonite (Reduces noise)
+        if not krypto_active:
+            pert = analyze_structural_perturbation(token_text)
+            if pert:
+                token_score += pert['risk']
+                token_reasons.append(pert['desc'])
+                token_families.add("PERTURBATION")
+                is_bidi = "Bidi" in pert['desc']
+                p_type = "INJECTION" if is_bidi else "HIDDEN"
+                threat_stack.append({ "lvl": "CRIT", "type": p_type, "desc": pert['desc'] })
 
         # [TROJAN]
-        trojan = analyze_trojan_context(token_text)
-        if trojan:
-            token_score += trojan['risk']
-            token_reasons.append(trojan['desc'])
-            token_families.add("TROJAN")
-            lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
-            threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
+        # Legacy check, but we keep it for non-Kryptonite Bidi scenarios
+        if not krypto_active:
+            trojan = analyze_trojan_context(token_text)
+            if trojan:
+                token_score += trojan['risk']
+                token_reasons.append(trojan['desc'])
+                token_families.add("TROJAN")
+                lvl = "CRIT" if trojan['risk'] >= 100 else "HIGH"
+                threat_stack.append({ "lvl": lvl, "type": "SYNTAX", "desc": trojan['desc'] })
 
         # [IDNA Compression]
         idna_comp = analyze_idna_compression(token_text)
