@@ -3112,6 +3112,7 @@ def tokenize_forensic(t: str) -> list:
         
         tokens.append({
             "text": clean_text,
+            "token": clean_text,  # <--- LEGACY BACKSTOP (Prevents Block 8 Crashes)
             "start": real_start,
             "end": real_end
         })
@@ -6796,6 +6797,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
         token_data = {
             "id": idx,
             "text": txt,
+            "token": txt,
             "span": (raw["start"], raw["end"]),
             "kind": kind,
             "scripts": sorted(list(major_scripts)),
