@@ -3057,37 +3057,65 @@ def _generate_uts39_skeleton(t: str, return_events=False):
 
 # Tokenization & Profile Helpers
 
-def tokenize_forensic(text: str):
+def tokenize_forensic(t: str) -> list:
     """
-    Forensic Tokenizer (Adversarial Hardened).
-    Splits on whitespace but treats Invisible/Format characters as PAYLOADS.
-    Returns list of DICTIONARIES.
+    [Stage 1.7] Forensic Tokenizer (ASCII-Safe & Greedy).
+    
+    Splits text into tokens based STRICTLY on ASCII whitespace.
+    
+    CRITICAL PHYSICS: 
+    Standard Python .split() treats Unicode whitespace (U+2028 LS, U+200B ZWSP) 
+    as separators. This destroys forensic evidence by splitting the payload 
+    away from the target (e.g., 'admin<ZWSP>' becomes 'admin' + '').
+    
+    This function uses a Negative Set Regex to capture everything that is 
+    NOT ASCII whitespace as a single cohesive token.
+    
+    Returns: List of dicts [{'text', 'start', 'end'}]
     """
+    if not t: return []
+    
+    # 1. The Physics: ASCII Whitespace Only
+    # We match runs of characters that are NOT: Space, Tab, LF, CR, FF, VT.
+    # This implicitly treats U+2028, U+200B, Bidi Controls, etc., as "Word Characters".
+    TOKEN_PATTERN = re.compile(r'[^\ \t\n\r\f\v]+')
+    
+    # Characters to strip from edges to reduce visual noise (Punctuation wrappers)
+    # Note: We do NOT strip forensic characters here.
+    STRIP_CHARS = "()[]{}<>\"',;!|`"
+    
     tokens = []
-    if not text: return tokens
     
-    # Python's .split() breaks on whitespace (Zs, Cc whitespace)
-    raw_chunks = text.split()
-    
-    current_start = 0
-    for chunk in raw_chunks:
-        # Calculate real index (approximation for locating)
-        idx = text.find(chunk, current_start)
-        if idx == -1: idx = current_start # Fallback
-        current_start = idx + len(chunk)
+    # 2. The Scan (O(N) via C-Optimized Regex)
+    for match in TOKEN_PATTERN.finditer(t):
+        raw_text = match.group()
+        abs_start = match.start()
         
-        # Strip outer "Open/Close" delimiters to isolate the Identifier
-        clean = chunk.strip("()[]{}<>\"',;!|")
+        # 3. Edge Stripping (Visual Hygiene)
+        # We strip surrounding brackets/quotes to isolate the Identifier/Domain.
+        # Logic: "admin" is the token inside ("admin").
+        clean_text = raw_text.strip(STRIP_CHARS)
         
-        if clean:
-            tokens.append({
-                'token': clean,
-                'raw_chunk': chunk,
-                'start': idx,
-                'end': idx + len(chunk),
-                'kind': 'word' # Default kind
-            })
+        if not clean_text:
+            continue
             
+        # 4. Precise Offset Calculation
+        # We must find where the clean text starts relative to the raw match
+        # to ensure the highlighter highlights the word, not the bracket.
+        
+        # Count how many characters were stripped from the left
+        # (len(raw) - len(lstripped)) gives the left offset index
+        leading_removed = len(raw_text) - len(raw_text.lstrip(STRIP_CHARS))
+        
+        real_start = abs_start + leading_removed
+        real_end = real_start + len(clean_text)
+        
+        tokens.append({
+            "text": clean_text,
+            "start": real_start,
+            "end": real_end
+        })
+        
     return tokens
 
 def _get_script_set(token: str) -> set:
@@ -6698,105 +6726,73 @@ def detect_invisible_patterns(t: str):
         }
     return None
 
-def analyze_adversarial_tokens(t: str):
+def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
     """
-    The Core Engine for Stage 1.1 "Adversarial Intelligence".
-    Tokenizes text and performs per-token forensic extraction.
+    [Stage 1.5/1.7] Adversarial Token Intelligence (Enriched).
     
-    ULTIMATE VERSION (Syntax-Safe):
-    1. Uses Manual Tokenization (char.isspace) to avoid Regex escape issues.
-    2. Performs deep forensic enrichment (Skeletons, Scripts, ID Profile).
+    Integrates Stage 1.7 "Regex Kryptonite" scans directly into the token object.
+    This ensures that threats like 'attacker<LS>' appear in the Adversarial Dashboard.
     """
-    if not t: return {"tokens": [], "collisions": [], "stats": {}}
+    if not t: return {"targets": [], "stats": {}}
 
-    # --- 1. Forensic Tokenization (Greedy / Whitespace-Based) ---
-    # Replaced Regex with Manual Loop to eliminate "invalid escape sequence" errors.
-    # This splits purely on Unicode Whitespace while preserving all internal characters
-    # (including invisible joiners/format controls) as a single token.
+    # 1. Forensic Tokenization (ASCII-Safe)
+    raw_tokens = tokenize_forensic(t)
     
-    raw_tokens = []
-    current_start = -1
-    
-    for i, char in enumerate(t):
-        is_ws = char.isspace()
-        
-        if not is_ws:
-            # If we are not in a token, start one
-            if current_start == -1:
-                current_start = i
-        else:
-            # If we were in a token, close it
-            if current_start != -1:
-                clean_text = t[current_start:i].strip("()[]{}<>\"',;!|")
-                
-                if clean_text:
-                    # Calculate real offsets after strip
-                    raw_chunk = t[current_start:i]
-                    offset = raw_chunk.find(clean_text)
-                    real_start = current_start + offset
-                    
-                    raw_tokens.append({
-                        "text": clean_text,
-                        "start": real_start,
-                        "end": real_start + len(clean_text)
-                    })
-                
-                current_start = -1
-
-    # Flush final token if string didn't end with whitespace
-    if current_start != -1:
-        clean_text = t[current_start:].strip("()[]{}<>\"',;!|")
-        
-        if clean_text:
-            raw_chunk = t[current_start:]
-            offset = raw_chunk.find(clean_text)
-            real_start = current_start + offset
-            
-            raw_tokens.append({
-                "text": clean_text,
-                "start": real_start,
-                "end": real_start + len(clean_text)
-            })
-
-    enriched_tokens = []
+    analyzed_tokens = []
     skeleton_map = collections.defaultdict(list) # skeleton -> [token_indices]
 
     # --- 2. Enrichment Loop ---
     for idx, raw in enumerate(raw_tokens):
         txt = raw["text"]
         
-        # A. Classification (Email, Domain, Identifier, Word)
+        # A. Classification
         kind = _classify_token_kind(txt)
         
-        # B. Scripts (Set of scripts used in token)
+        # B. Scripts & Profile
         scripts = _get_script_set(txt)
-        
-        # C. Identifier Profile (UAX #31 Status/Type)
         id_profile = _get_identifier_profile(txt)
         
-        # D. Skeleton Generation & Metadata
-        # We need return_events=True to calculate Confusable Density
+        # C. Visual Skeleton (UTS #39)
         skel, skel_events = _generate_uts39_skeleton(txt, return_events=True)
         
-        # E. Confusable Analysis (Local Density)
+        # D. Confusable Analysis
         confusable_count = skel_events.get('confusables_mapped', 0)
-        confusable_density = 0
+        confusable_density = 0.0
         if len(txt) > 0:
             confusable_density = round(confusable_count / len(txt), 2)
             
-        # F. Invisible/Hidden Check (Local Count)
+        # E. Invisible/Hidden Check (O(1) Lookup)
         invis_count = 0
         for char in txt:
-            # Use O(1) Lookup Table
             if INVIS_TABLE[ord(char)] & INVIS_ANY_MASK:
                 invis_count += 1
-                
-        # G. Mixed Script Check
-        # Filter out "safe" scripts (Common/Inherited) to find true mixing
+
+        # F. Mixed Script Check
         major_scripts = {s for s in scripts if s not in ("Common", "Inherited", "Unknown")}
         is_mixed_script = len(major_scripts) > 1
 
-        # Build Feature Vector (Consumed by _evaluate_adversarial_risk)
+        # G. [NEW] Regex Kryptonite (Developer Safety)
+        # We run the safety scanner ON THE TOKEN itself.
+        krypto_report = scan_regex_safety(txt)
+        krypto_risks = []
+        
+        if krypto_report["count"] > 0:
+            for f in krypto_report["findings"]:
+                # Map mechanism to Dashboard UI Metadata
+                risk_meta = {"label": f["name"], "sev": "HIGH", "cat": "UNKNOWN"}
+                
+                if f["mech"] == MECH_REGEX_BREAK:
+                    risk_meta = {"label": "Regex Breaker (LS/PS)", "sev": "CRITICAL", "cat": "SYNTAX"}
+                elif f["mech"] == MECH_BIDI_CONFUSE:
+                    risk_meta = {"label": "Bidi Flow Reversal", "sev": "CRITICAL", "cat": "INJECTION"}
+                elif f["mech"] == MECH_LOGIC_INJECT:
+                    risk_meta = {"label": "Invisible Logic Injection", "sev": "HIGH", "cat": "OBFUSCATION"}
+                elif f["mech"] == MECH_CONFUSER:
+                    risk_meta = {"label": "Syntax Confusable", "sev": "HIGH", "cat": "SPOOFING"}
+                
+                krypto_risks.append(risk_meta)
+
+        # H. Build The Feature Vector
         token_data = {
             "id": idx,
             "text": txt,
@@ -6813,20 +6809,19 @@ def analyze_adversarial_tokens(t: str):
                 "mappings": skel_events.get('mappings', []) 
             },
             "invisibles": invis_count,
-            "risk": "LOW", # Will be updated by Block 2 (Risk Engine)
-            "triggers": [] # Will be populated by Block 2
+            "krypto_risks": krypto_risks, # [NEW] Attached Risks
+            "risk": "LOW", # Placeholder, updated by Auditor
+            "triggers": [] # Placeholder, updated by Auditor
         }
         
-        enriched_tokens.append(token_data)
+        analyzed_tokens.append(token_data)
         
         # Map for collision detection (Homograph Radar)
-        # Only map tokens > 1 char to avoid noise
         if len(txt) > 1:
             skeleton_map[skel].append(idx)
 
-    # Return intermediate data structure
     return {
-        "tokens": enriched_tokens,
+        "targets": analyzed_tokens, # Renamed from 'tokens' to match Renderer expectation
         "skeleton_map": skeleton_map
     }
 
