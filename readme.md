@@ -2160,3 +2160,58 @@ To support these features, the architecture was refined to handle **Forensic Sam
     * **Block 7 (Auditors):** Applies judgment (e.g., "Raggedness > 10% = WARN", "Injection Count > 0 = CRITICAL").
 
 ***
+
+---
+
+## 🛡️ Addendum #12: Stage 1.7 "The Forensic Narrator" (Deep Knowledge Upgrade)
+
+**Session Goal:** To transition the tool from a **"Passive Instrument"** (displaying raw Unicode properties) to an **"Active Narrator"** (explaining *why* a character is safe or dangerous). We implemented a "Physics vs. Policy" architecture that compiles authoritative UCD specifications into a deterministic security report.
+
+### 1. Architecture: The "Grinder" Pipeline (Knowledge Engineering)
+We moved away from hardcoded Python dictionaries to a **Generated Knowledge Base**.
+
+* **The "V8" Grinder (`build_knowledge_base.py`):**
+    * A custom ETL pipeline that selectively ingests **~35 high-value UCD files** (including `Security`, `IDNA`, `Segmentation`, and `ScriptExtensions`) to build a definitive forensic index.
+    * **Auto-Vocabulary Generation:** Instead of hand-coding labels, the grinder parses `PropertyAliases.txt` and `PropertyValueAliases.txt` to automatically derive official long names (e.g., `Lu` $\to$ `Uppercase_Letter`), ensuring 100% terminological accuracy with the standard.
+    * **Semantic Compression:** The grinder compiles 300,000+ records and metadata into a highly optimized JSON structure, then compresses it into a **~1.0 MB ZIP artifact** (`forensic_db.zip`).
+
+* **In-Memory Hydration (The Supply Chain):**
+    * The browser fetches the compressed artifact once on load.
+    * Python (`app.py`) uses `zipfile` + `io.BytesIO` to decompress the database directly into RAM, bypassing filesystem limitations and enabling instant $O(1)$ lookups for the entire Unicode standard.
+
+### 2. Core Engine: The Forensic Explainer (Layer C)
+We implemented a dedicated **Policy Engine** (`ForensicExplainer`) that sits between the raw data and the UI. It acts as the "Narrator."
+
+* **Monotonic Severity Logic:**
+    * Implements a strict escalation ladder (`SAFE < NOTE < WARN < SUSPICIOUS < CRITICAL`).
+    * Ensures that a critical threat (e.g., "Bidi Control") can never be downgraded by a benign property (e.g., "Allowed in IDNA").
+* **The "Context Lenses" System:**
+    * Instead of a binary "Good/Bad," the engine evaluates safety across three distinct domains simultaneously:
+        1.  **Source Code:** Checks `XID_Start`, `Pattern_Syntax`, and `Bidi_Control` (Trojan Source).
+        2.  **Domain Names (DNS):** Checks `IDNA2008` status and mappings.
+        3.  **General Text:** Checks visibility (`Default_Ignorable`) and rendering safety.
+* **Forensic Highlights:**
+    * Automatically generates "Why" sentences based on deep physics:
+        * *Layout:* Detects "Fullwidth" spoofing risks via `East_Asian_Width`.
+        * *Stability:* Detects "Normalization Hazards" (characters that decompose/change under NFKC).
+        * *Timeline:* Contextualizes characters by their introduction Age (e.g., "Introduced in Unicode 1.1").
+
+### 3. UI/UX: The "Split-Layout" Inspector
+We re-architected the **Character Inspector** to handle the depth of the new data without breaking the "Lab Instrument" aesthetic.
+
+* **Structural Separation:**
+    * **The Instrument (Top):** Keeps the rigid, scrollable grid for raw metrics (UTF-8 bytes, block, script).
+    * **The Report (Bottom):** A new, fluid **Forensic Footer** that sits outside the main container. It expands naturally to fit long-form explanations.
+* **The Context Dashboard:**
+    * A dedicated visual zone in the footer displaying the three **Context Lenses** as color-coded cards (Green/Safe, Red/Critical), giving the analyst an immediate "Where can I use this?" answer.
+* **Visual Semantics:**
+    * Uses a strict color theory (Red/Orange/Yellow/Gray) derived directly from the Monotonic Severity score, ensuring the visual "Heat" matches the logical threat level.
+
+### 4. Data Coverage (The "Treasure Chest")
+The system now leverages the following UCD dimensions for analysis:
+* **Deep Segmentation:** Line Break, Word Break, Grapheme Break properties.
+* **Layout Physics:** Vertical Orientation (Rotate vs Upright) and East Asian Width.
+* **Complex Scripts:** Shaping (Joining Type/Group) and Hangul Syllable Types.
+* **Normalization Qualifiers:** NFC/NFD/NFKC/NFKD Quick Check flags.
+* **Security Profiles:** Identifier Status, Type, and Confusables.
+* **Legacy Context:** Case Folding maps and Name Aliases.
