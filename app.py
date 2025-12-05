@@ -14713,11 +14713,12 @@ def render_inspector_panel(data):
     html += forensic_row_html
     panel.innerHTML = html
     
-    # Safe Target: Only try to update footer if element exists
+    # INJECT INTO SEPARATE DOM CONTAINERS
+    panel.innerHTML = main_html
+    
     footer_panel = document.getElementById("inspector-forensic-footer")
     if footer_panel:
         footer_panel.innerHTML = forensic_row_html
-        # Handle visibility
         if not forensic_row_html:
             footer_panel.style.display = "none"
         else:
