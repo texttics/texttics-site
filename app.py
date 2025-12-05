@@ -2486,15 +2486,16 @@ def run_self_tests():
 async def load_forensic_db():
     """
     Fetches and extracts the compressed Forensic Knowledge Base (forensic_db.zip).
-    Populates the global FORENSIC_DB dictionary.
+    Hardened V2: Root path + Dynamic Member Detection.
     """
     from pyodide.http import pyfetch
     global FORENSIC_DB, FORENSIC_DB_READY
     
     print("Fetching Forensic DB (Compressed)...")
     try:
-        # Fetch from root
+        # CORRECT PATH: Relative to root index.html
         response = await pyfetch("forensic_db.zip")
+        
         if response.status != 200:
             print(f"⚠️ Forensic DB Download Failed: HTTP {response.status}")
             return
@@ -3714,37 +3715,6 @@ def _get_codepoint_properties(t: str):
 # ===============================================
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
-
-async def load_forensic_db():
-    """
-    [Block 4 Extension] Fetches and extracts the compressed Forensic Knowledge Base.
-    """
-    from pyodide.http import pyfetch
-    
-    # Update global state
-    global FORENSIC_DB
-    
-    print("Fetching Forensic DB (Compressed)...")
-    try:
-        # Fetch the 1MB zip file
-        response = await pyfetch("./forensic_db/forensic_db.zip")
-        if response.status != 200:
-            print(f"⚠️ Forensic DB Download Failed: HTTP {response.status}")
-            return
-
-        # Read bytes
-        bytes_content = await response.bytes()
-        
-        # Unzip in memory using Python's Standard Library
-        with zipfile.ZipFile(io.BytesIO(bytes_content)) as z:
-            with z.open("forensic_db.json") as f:
-                FORENSIC_DB = json.load(f)
-                
-        print(f"✅ Forensic DB Loaded: {len(FORENSIC_DB)} records from RAM.")
-        
-    except Exception as e:
-        print(f"CRITICAL: Failed to load Forensic DB: {e}")
-        # Non-fatal: App continues without detailed explanations
 
 class ForensicExplainer:
     """
