@@ -11415,20 +11415,14 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 def _create_position_link(val, text_context=None):
     """
     Helper: Transforms an index (int or '#123' string) into a clickable HTML link.
-    Calls window.TEXTTICS_HIGHLIGHT_CODEPOINT(dom_idx).
-    
-    Indexing Patch: Uses text_context (if provided) to translate Python's 
-    Code Point Index to the Browser's UTF-16 DOM Index.
+    Calls window.TEXTTICS_HIGHLIGHT_SEGMENT(start, end).
     """
     txt = str(val)
     cp_idx = None
 
-    # Case A: It is an integer (e.g., 52)
     if isinstance(val, int):
         cp_idx = val
         txt = f"#{val}"
-    
-    # Case B: It is a string (e.g., "#52" or "52")
     elif isinstance(val, str):
         clean = val.strip()
         if clean.startswith("#") and clean[1:].isdigit():
@@ -11437,18 +11431,18 @@ def _create_position_link(val, text_context=None):
             cp_idx = int(clean)
             txt = f"#{cp_idx}"
     
-    # If we successfully extracted a Code Point index...
     if cp_idx is not None:
-        dom_idx = cp_idx # Default fallback
+        dom_start = cp_idx
         
-        # Calculate the exact UTF-16 offset if text context is available.
+        # Calculate UTF-16 DOM offset
         if text_context is not None:
-            # Encode the substring up to the character as UTF-16-LE.
-            # The length of the bytes divided by 2 gives the number of UTF-16 code units.
             try:
-                dom_idx = len(text_context[:cp_idx].encode("utf-16-le")) // 2
-            except Exception:
-                dom_idx = cp_idx # Failsafe
+                # Convert Python logical index to JS UTF-16 index
+                # (Counts surrogate pairs as 2)
+                sub = text_context[:cp_idx]
+                dom_start = len(sub.encode("utf-16-le")) // 2
+            except:
+                dom_start = cp_idx # Fallback
 
         # Calculate length of the target character (1 or 2 units)
         char_len = 1
@@ -11457,10 +11451,9 @@ def _create_position_link(val, text_context=None):
 
         dom_end = dom_start + char_len
 
-        # Use HIGHLIGHT_SEGMENT instead of HIGHLIGHT_CODEPOINT
+        # [FIX] Use HIGHLIGHT_SEGMENT instead of HIGHLIGHT_CODEPOINT
         return f'<a href="#" class="pos-link" onclick="window.TEXTTICS_HIGHLIGHT_SEGMENT({dom_start}, {dom_end}); return false;">{txt}</a>'
 
-    # Otherwise, return the text as-is
     return txt
 
 def _update_css_workbench_ui(ledger: Dict[str, Any], findings: List[Dict[str, Any]], ghost_html: str):
