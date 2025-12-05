@@ -14989,6 +14989,131 @@ def render_topology_card(topo_data: dict) -> str:
     </div>
     """
 
+def render_glitchmap_panel(glitch_data: dict) -> str:
+    """
+    [Stage 1.7] Renders the Decode Health Matrix.
+    
+    Visuals:
+    1. Diagnosis Header: Severity Badge + Dominant Cause (e.g. "UTF-8 -> CP1252").
+    2. Density Gauge: Visualizing how much of the file is 'Rot'.
+    3. Correction Matrix: A table showing Artifact -> Hypothesis pairs.
+    """
+    
+    # 1. Early Exit (Clean Text)
+    if not glitch_data or not glitch_data.get("is_corrupt", False):
+        return ""
+
+    # 2. Extract Metrics
+    density = glitch_data.get("density", 0.0)
+    dominant_family = glitch_data.get("dominant_family", "UNKNOWN")
+    findings = glitch_data.get("findings", [])
+    
+    # Human-Readable Family Labels
+    FAMILY_LABELS = {
+        "UTF8_CP1252_LATIN": "UTF-8 interpreted as CP1252 (Latin)",
+        "UTF8_CP1252_PUNCT": "UTF-8 interpreted as CP1252 (Punctuation)",
+        "UTF8_CP1252_SPACE": "UTF-8 interpreted as CP1252 (Whitespace)",
+        "CP1251_UTF8":       "CP1251 interpreted as UTF-8 (Cyrillic)",
+        "DOUBLE_ENCODING":   "Recursive / Double Encoding",
+        "DECODE_FAILURE":    "Hard Data Loss (Replacement Char)"
+    }
+    diagnosis = FAMILY_LABELS.get(dominant_family, dominant_family)
+
+    # 3. Determine Severity & Visuals
+    if density > 0.05:
+        sev_class = "metric-crit"
+        sev_label = "CRITICAL FAILURE"
+        bar_color = "var(--color-crit)"
+    elif density > 0.01:
+        sev_class = "metric-warn"
+        sev_label = "DECODE ERROR"
+        bar_color = "var(--color-warn)"
+    else:
+        sev_class = "metric-warn" # Even low density is a warning for integrity
+        sev_label = "ARTIFACTS DETECTED"
+        bar_color = "var(--color-warn-dim)"
+
+    # 4. Build the Correction Matrix (The Rows)
+    # We define a limit to prevent DOM explosion on massive files
+    DISPLAY_LIMIT = 12
+    sorted_findings = sorted(findings, key=lambda x: x['count'], reverse=True)
+    
+    rows_html = ""
+    for f in sorted_findings[:DISPLAY_LIMIT]:
+        # Escape HTML to prevent injection from the artifact itself
+        safe_seq = html.escape(f['seq'])
+        safe_hyp = html.escape(f['hypothesis'])
+        count = f['count']
+        idx = f['index']
+        
+        # Link to first occurrence
+        # Note: Uses the "pos-link" class to trigger the existing Inspector Bridge
+        loc_link = f'<a href="#" class="pos-link" data-index="{idx}">#{idx}</a>'
+        
+        row = f"""
+        <tr class="glitch-row">
+            <td class="gl-cell-art"><span class="gl-pill">{safe_seq}</span></td>
+            <td class="gl-cell-arrow">➔</td>
+            <td class="gl-cell-hyp"><span class="gl-ghost">{safe_hyp}</span></td>
+            <td class="gl-cell-fam">{f['family'].replace('UTF8_CP1252_', '')}</td>
+            <td class="gl-cell-cnt">{count}</td>
+            <td class="gl-cell-loc">{loc_link}</td>
+        </tr>
+        """
+        rows_html += row
+
+    # Add "Show More" if truncated
+    remaining = len(findings) - DISPLAY_LIMIT
+    if remaining > 0:
+        rows_html += f"""
+        <tr><td colspan="6" class="gl-more">...and {remaining} more artifact types</td></tr>
+        """
+
+    # 5. Build the Density Gauge
+    # A visual bar representing the corruption %
+    pct = min(100, density * 100 * 5) # Scale up visibility (1% density = 5% bar width)
+    gauge_html = f"""
+    <div class="gl-gauge-wrapper">
+        <div class="gl-gauge-label">Corruption Density: {density:.2%}</div>
+        <div class="gl-gauge-track">
+            <div class="gl-gauge-fill" style="width: {pct}%; background-color: {bar_color};"></div>
+        </div>
+    </div>
+    """
+
+    # 6. Assemble the Panel
+    return f"""
+    <div class="stat-card glitch-panel">
+        <div class="stat-header">
+            DECODE HEALTH MATRIX
+            <span class="stat-badge {sev_class}">{sev_label}</span>
+        </div>
+        
+        <div class="gl-diagnosis">
+            <span class="gl-diag-label">Primary Diagnosis:</span>
+            <span class="gl-diag-val">{diagnosis}</span>
+        </div>
+        
+        {gauge_html}
+        
+        <table class="gl-matrix-table">
+            <thead>
+                <tr>
+                    <th>Artifact</th>
+                    <th></th>
+                    <th>Hypothesis</th>
+                    <th>Family</th>
+                    <th>Count</th>
+                    <th>Loc</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+    </div>
+    """
+
 # ===============================================
 # BLOCK 10. INTERACTION & EVENTS (THE BRIDGE)
 # ===============================================
