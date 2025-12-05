@@ -14708,10 +14708,6 @@ def render_inspector_panel(data):
             </div>
         </div>
         """
-
-    # --- APPEND TO MAIN VIEW ---
-    html += forensic_row_html
-    panel.innerHTML = html
     
     # INJECT INTO SEPARATE DOM CONTAINERS
     panel.innerHTML = main_html
