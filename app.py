@@ -1363,7 +1363,9 @@ REGEX_KRYPTONITE_MAP.update({
 ENCLOSED_MAP = {}
 
 FORENSIC_DB = {}  # Populated by load_forensic_db
+FORENSIC_META = {} # Holds the Vocabulary
 FORENSIC_DB_READY = False # Flag for UI safety
+FORENSIC_EXPLAINER = None # Global instance placeholder
 
 def _build_enclosed():
     """Populates the ENCLOSED_MAP with manual normalization rules."""
@@ -2510,10 +2512,17 @@ async def load_forensic_db():
                 raise Exception("No JSON file found inside zip artifact.")
                 
             with z.open(name) as f:
-                FORENSIC_DB = json.load(f)
+                # V7 Structure: {"meta": {...}, "data": {...}}
+                package = json.load(f)
+                FORENSIC_DB = package["data"]
+                FORENSIC_META = package["meta"]
+                
+                # Initialize the engine immediately with both parts
+                global FORENSIC_EXPLAINER
+                FORENSIC_EXPLAINER = ForensicExplainer(FORENSIC_DB, FORENSIC_META)
                 
         FORENSIC_DB_READY = True
-        print(f"✅ Forensic DB Loaded: {len(FORENSIC_DB)} records from RAM.")
+        print(f"✅ Forensic DB Loaded: {len(FORENSIC_DB)} records + Vocabulary.")
         
     except Exception as e:
         print(f"CRITICAL: Failed to load Forensic DB: {e}")
@@ -3718,94 +3727,150 @@ def _get_codepoint_properties(t: str):
 
 class ForensicExplainer:
     """
-    [Block 6.5] The Policy Engine.
-    Translates raw 'forensic_db.json' data into human-readable security verdicts.
+    [Block 6.5] The Policy Engine (Layer C - V7 Ultimate).
+    Translates raw 'forensic_db.json' data into human-readable security verdicts
+    using the FORENSIC_META vocabulary.
     """
-    def __init__(self, database):
+    def __init__(self, database, meta):
         self.db = database
+        self.meta = meta
+        self.SEVERITY_RANK = {
+            "UNKNOWN": 0, "SAFE": 1, "NOTE": 2, 
+            "WARN": 3, "SUSPICIOUS": 4, "CRITICAL": 5
+        }
+
+    def _escalate(self, current_level, new_level):
+        """Monotonic upgrade: Only change level if new_level is more severe."""
+        if self.SEVERITY_RANK.get(new_level, 0) > self.SEVERITY_RANK.get(current_level, 0):
+            return new_level
+        return current_level
+
+    def _get_vocab(self, category, key, default=None):
+        """Helper to safely fetch long names from FORENSIC_META."""
+        if not key: return default
+        # meta["gc"]["Lu"] -> "Uppercase_Letter"
+        return self.meta.get(category, {}).get(key, default or key)
 
     def explain(self, hex_str):
         """
         Returns a structured dictionary of explanations for the UI.
         """
-        # 1. Fetch Record (Default to Unknown if missing)
-        rec = self.db.get(hex_str, {
-            "name": "Unknown Code Point",
-            "blk": "Unknown Block",
-            "gc": "Cn",
-            "script": "Unknown",
-            "id_stat": "Restricted",
-            "id_type": ["Not_Assigned"],
-            "confusables": [],
-            "idna": "disallowed",
-            "props": [],
-            "notes": [],
-            "aliases": []
-        })
+        # 0. Safety Check
+        if not FORENSIC_DB_READY:
+            return {
+                "identity": "System Loading...",
+                "security": {"level": "UNKNOWN", "verdict": "Forensic Database not loaded.", "badges": ["NO-DB"]},
+                "technical": ["Please wait for system initialization."],
+                "context": []
+            }
+
+        # 1. Fetch Record (Default to UNKNOWN if missing)
+        rec = self.db.get(hex_str)
+        if not rec:
+             return {
+                "identity": "Unknown Code Point",
+                "security": {"level": "UNKNOWN", "verdict": "No forensic record found.", "badges": ["NO-DATA"]},
+                "technical": [],
+                "context": []
+            }
 
         # 2. Initialize Report
         report = {
             "identity": "",
-            "security": {"level": "SAFE", "verdict": "", "badges": []},
+            "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
             "technical": [],
             "context": []
         }
 
-        # --- A. IDENTITY LAYER (Who are you?) ---
-        # Clean up the Age field (remove comments like "# [32]...")
-        age_clean = rec.get("age", "NA").split("#")[0].strip()
-        report["identity"] = f"{rec['name']} ({rec['blk']}). Age: {age_clean}."
-
-        # --- B. SECURITY LAYER (Are you dangerous?) ---
+        # --- A. IDENTITY LAYER (Vocab-Enriched) ---
+        age = rec.get("age", "NA")
         
-        # Rule 1: Identifier Status (The Law)
+        # General Category (e.g. "Lu" -> "Uppercase_Letter")
+        gc_code = rec.get("gc", "Cn")
+        gc_name = self._get_vocab("gc", gc_code)
+        
+        # Script & Block
+        script_code = rec.get("script", "Zzzz")
+        script_name = self._get_vocab("sc", script_code)
+        blk_name = rec.get("blk", "Unknown Block")
+
+        report["identity"] = f"{rec['name']} ({blk_name})."
+        report["technical"].append(f"Type: {gc_name} ({gc_code}). Script: {script_name}.")
+        report["technical"].append(f"Age: Introduced in Unicode {age}.")
+
+        # --- B. SECURITY LAYER (Policy Engine) ---
+        
+        # Rule 1: Identifier Status
         id_stat = rec.get("id_stat", "Restricted")
-        if id_stat == "Allowed":
-            report["security"]["level"] = "SAFE"
-            report["security"]["verdict"] = "Recommended for Identifiers (UAX #31)."
-        elif id_stat == "Restricted":
-            report["security"]["level"] = "CRITICAL"
-            report["security"]["verdict"] = "RESTRICTED. Banned in secure identifiers."
+        if id_stat == "Restricted":
+            report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("RESTRICTED")
+            # Use Vocabulary explanation
+            verdict_text = self._get_vocab("id_stat", "Restricted")
+            report["security"]["verdict"] = verdict_text
         
-        # Rule 2: IDNA (The Protocol)
+        # Rule 2: IDNA
         idna = rec.get("idna", "disallowed")
-        if idna == "disallowed":
-            report["security"]["badges"].append("NO-DNS")
-            report["technical"].append("Disallowed in International Domain Names (IDNA2008).")
-        elif idna == "deviation":
-            report["security"]["badges"].append("SCHISM")
-            report["technical"].append("Protocol Deviation: Behaver differently in IDNA2003 vs 2008.")
+        if idna != "valid":
+            badge = "NO-DNS" if idna == "disallowed" else idna.upper()
+            report["security"]["badges"].append(badge)
+            report["technical"].append(f"IDNA Status: {self._get_vocab('idna', idna)}.")
 
-        # Rule 3: Confusables (The Spoof)
+        # Rule 3: Confusables
         if rec["confusables"]:
-            target = rec["confusables"][0] 
-            report["security"]["level"] = "SUSPICIOUS"
+            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("SPOOF")
-            report["technical"].append(f"Visual Confusable: Mimics another character (Target: U+{target}).")
+            target = rec["confusables"][0]
+            count = len(rec["confusables"])
+            msg = f"Visual Confusable: Mimics U+{target}"
+            if count > 1: msg += f" (+{count-1} others)"
+            report["technical"].append(msg)
 
-        # Rule 4: Mechanical Hazards (The Physics)
+        # Rule 4: Mechanical Hazards (Properties)
         props = rec.get("props", [])
-        if "Bidi_Control" in props:
-            report["security"]["level"] = "CRITICAL"
-            report["security"]["verdict"] = "DANGEROUS SYNTAX. Can alter source code flow."
-            report["security"]["badges"].append("BIDI-CTRL")
-        if "Default_Ignorable_Code_Point" in props:
-            report["security"]["badges"].append("INVISIBLE")
-            report["technical"].append("Default Ignorable: Invisible to humans, visible to parsers.")
-        if "Deprecated" in props:
-            report["security"]["badges"].append("DEPRECATED")
-            report["technical"].append("Officially Deprecated by Unicode.")
-        if "Pattern_Syntax" in props:
-            report["security"]["badges"].append("SYNTAX")
-            report["technical"].append("Pattern Syntax: Reserved for programming language syntax.")
-
-        # --- C. CONTEXT LAYER (Notes & Aliases) ---
-        if rec["aliases"]:
-            # Limit aliases to keep UI clean
-            report["context"].append(f"Also known as: {', '.join(rec['aliases'][:3])}")
         
-        # Add the NamesList notes
+        if "Bidi_Control" in props: 
+            report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
+            report["security"]["verdict"] = "DANGEROUS SYNTAX: Bidi Control."
+            report["security"]["badges"].append("BIDI")
+            
+        if "Default_Ignorable_Code_Point" in props:
+            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
+            report["security"]["badges"].append("INVISIBLE")
+            
+        if "Deprecated" in props:
+            report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
+            report["security"]["badges"].append("DEPRECATED")
+
+        # --- C. PHYSICS LAYER (New V7 Insights) ---
+        
+        # Bidi Class (BC)
+        bc_code = rec.get("bc", "L")
+        if bc_code in ["R", "AL", "RLE", "RLO", "RLI"]:
+             bc_name = self._get_vocab("bc", bc_code)
+             report["technical"].append(f"Directionality: Right-to-Left ({bc_name}).")
+        
+        # Line Break (LB)
+        lb_code = rec.get("lb", "XX")
+        if lb_code in ["GL", "WJ", "ZWJ"]:
+             lb_name = self._get_vocab("lb", lb_code)
+             report["technical"].append(f"Line Break: {lb_name} (Prevents Breaking).")
+
+        # East Asian Width (EA)
+        ea_code = rec.get("ea", "N")
+        if ea_code in ["F", "W"]:
+             report["technical"].append("Layout: Fullwidth/Wide (Visual Spoof Risk).")
+
+        # Script Extensions (SCX)
+        scx = rec.get("scx", [])
+        if len(scx) > 1:
+             scx_names = [self._get_vocab("sc", s) for s in scx[:3]]
+             report["technical"].append(f"Used in: {', '.join(scx_names)}.")
+
+        # --- D. CONTEXT LAYER (Notes & Aliases) ---
+        if rec["aliases"]:
+            report["context"].append(f"Alias: {', '.join(rec['aliases'][:3])}")
+        
         for note in rec["notes"]:
             report["context"].append(note)
 
@@ -7870,108 +7935,6 @@ def analyze_delimited_topology(t: str) -> dict:
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
 # ===============================================
-
-class ForensicExplainer:
-    """
-    Translates raw 'forensic_db.json' data into human-readable security verdicts.
-    Enforces Monotonic Severity (Critical threats cannot be downgraded).
-    """
-    def __init__(self, database):
-        self.db = database
-        # Severity Rank: Higher number = Higher Priority
-        self.SEVERITY_RANK = {
-            "UNKNOWN": 0, "SAFE": 1, "NOTE": 2, 
-            "WARN": 3, "SUSPICIOUS": 4, "CRITICAL": 5
-        }
-
-    def _escalate(self, current_level, new_level):
-        """Monotonic upgrade: Only change level if new_level is more severe."""
-        if self.SEVERITY_RANK.get(new_level, 0) > self.SEVERITY_RANK.get(current_level, 0):
-            return new_level
-        return current_level
-
-    def explain(self, hex_str):
-        """Returns a structured dictionary of explanations for the UI."""
-        # 0. Safety Check
-        if not FORENSIC_DB_READY:
-            return {
-                "identity": "System Loading...",
-                "security": {"level": "UNKNOWN", "verdict": "Forensic Database not loaded.", "badges": ["NO-DB"]},
-                "technical": ["Please wait for system initialization."],
-                "context": []
-            }
-
-        # 1. Fetch Record
-        rec = self.db.get(hex_str)
-        if not rec:
-             return {
-                "identity": "Unknown Code Point",
-                "security": {"level": "UNKNOWN", "verdict": "No forensic record found.", "badges": ["NO-DATA"]},
-                "technical": [],
-                "context": []
-            }
-
-        # 2. Initialize Report
-        report = {
-            "identity": "",
-            "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
-            "technical": [],
-            "context": []
-        }
-
-        # --- A. IDENTITY LAYER ---
-        age_clean = rec.get("age", "NA").split("#")[0].strip()
-        report["identity"] = f"{rec['name']} ({rec['blk']}). Age: {age_clean}."
-
-        # --- B. SECURITY LAYER (Monotonic Logic) ---
-        # Rule 1: Identifier Status
-        id_stat = rec.get("id_stat", "Restricted")
-        if id_stat == "Restricted":
-            report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
-            report["security"]["badges"].append("RESTRICTED")
-            report["security"]["verdict"] = "Restricted in Identifiers (UAX #31)."
-        
-        # Rule 2: IDNA
-        idna = rec.get("idna", "disallowed")
-        if idna == "disallowed":
-            report["security"]["badges"].append("NO-DNS")
-            report["technical"].append("Disallowed in IDNA2008 (Domain Names).")
-        elif idna == "deviation":
-            report["security"]["badges"].append("DEVIATION")
-            report["technical"].append("Protocol Deviation: Check IDNA2003 vs 2008 mapping.")
-
-        # Rule 3: Confusables
-        if rec["confusables"]:
-            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
-            report["security"]["badges"].append("SPOOF")
-            target = rec["confusables"][0]
-            count = len(rec["confusables"])
-            msg = f"Visual Confusable: Mimics U+{target}"
-            if count > 1: msg += f" (+{count-1} others)"
-            report["technical"].append(msg)
-
-        # Rule 4: Mechanical Hazards
-        props = rec.get("props", [])
-        if "Bidi_Control" in props:
-            report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
-            report["security"]["verdict"] = "DANGEROUS SYNTAX (Trojan Source Risk)."
-            report["security"]["badges"].append("BIDI-CTRL")
-        if "Default_Ignorable_Code_Point" in props:
-            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
-            report["security"]["badges"].append("INVISIBLE")
-            report["technical"].append("Default Ignorable: Invisible to humans, visible to parsers.")
-        if "Deprecated" in props:
-            report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
-            report["security"]["badges"].append("DEPRECATED")
-            report["technical"].append("Officially Deprecated by Unicode.")
-
-        # --- C. CONTEXT LAYER ---
-        if rec["aliases"]:
-            report["context"].append(f"Alias: {', '.join(rec['aliases'][:3])}")
-        for note in rec["notes"]:
-            report["context"].append(note)
-
-        return report
     
 def audit_stage1_5_signals(signals):
     """
@@ -14522,6 +14485,69 @@ def render_inspector_panel(data):
     # [VISUAL SYNC] Inject the calculated risk level (0-4) as a CSS class
     tier_class = f"risk-tier-{state['level']}"
 
+    # --- NEW: FORENSIC BOTTOM ROW (The "Lab Report" Footer) ---
+    forensic_row_html = ""
+    report = data.get("forensic_report")
+    
+    if report:
+        # A. Determine Severity Colors
+        level = report["security"]["level"]
+        if level == "CRITICAL":
+            verdict_bg = "#fee2e2" # Red-100
+            verdict_txt = "#dc2626" # Red-600
+            border_color = "#fca5a5"
+        elif level == "SUSPICIOUS":
+            verdict_bg = "#ffedd5" # Orange-100
+            verdict_txt = "#c2410c" # Orange-700
+            border_color = "#fdba74"
+        elif level == "WARN":
+            verdict_bg = "#fef9c3" # Yellow-100
+            verdict_txt = "#b45309" # Yellow-700
+            border_color = "#fde047"
+        else: # SAFE / NOTE / UNKNOWN
+            verdict_bg = "#f3f4f6" # Gray-100
+            verdict_txt = "#374151" # Gray-700
+            border_color = "#e5e7eb"
+
+        # B. Build Badges
+        badges_html = ""
+        for b in report["security"]["badges"]:
+            badges_html += f'<span style="font-size:0.65rem; font-weight:700; padding:2px 6px; border-radius:4px; background:white; color:{verdict_txt}; border:1px solid {border_color}; margin-right:4px; box-shadow: 0 1px 1px rgba(0,0,0,0.05);">{b}</span>'
+
+        # C. Build Technical Lines (with bullets)
+        tech_lines = ""
+        for t in report["technical"]:
+            tech_lines += f'<li style="margin-bottom:3px; display:flex; align-items:flex-start;"><span style="color:{verdict_txt}; margin-right:6px;">•</span><span>{t}</span></li>'
+        
+        # D. Build Context Lines (Muted)
+        ctx_lines = ""
+        for c in report["context"]:
+             ctx_lines += f'<li style="margin-bottom:3px; font-style:italic; color:#6b7280; display:flex; align-items:flex-start;"><span style="margin-right:6px;">ℹ</span><span>{c}</span></li>'
+
+        # E. Construct the Full-Width Row
+        forensic_row_html = f"""
+        <div class="forensic-footer-row" style="margin-top: 12px; border: 1px solid {border_color}; border-radius: 6px; overflow: hidden; display: flex; font-family: 'IBM Plex Mono', monospace;">
+            
+            <div style="background: {verdict_bg}; padding: 12px; flex: 0 0 180px; border-right: 1px solid {border_color}; display: flex; flex-direction: column; justify-content: center;">
+                <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: {verdict_txt}; opacity: 0.8; margin-bottom: 4px;">Forensic Verdict</div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: {verdict_txt}; margin-bottom: 8px;">{level}</div>
+                <div style="font-size: 0.75rem; font-weight: 600; color: {verdict_txt}; line-height: 1.25;">{report["security"]["verdict"]}</div>
+                <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">{badges_html}</div>
+            </div>
+
+            <div style="padding: 10px 16px; flex: 1; background: #ffffff; display: flex; flex-direction: column; justify-content: center;">
+                <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.8rem; color: #374151; line-height: 1.5;">
+                    {tech_lines}
+                </ul>
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb;">
+                    <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.75rem; line-height: 1.4;">
+                        {ctx_lines}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        """
+    
     html = f"""
     <div class="inspector-layout-v3">
         <div class="col-context col-prev">
@@ -14600,6 +14626,8 @@ def render_inspector_panel(data):
             </div>
         </div>
     </div>
+    
+    {forensic_row_html}
     """
     panel.innerHTML = html
     
@@ -16276,6 +16304,14 @@ def inspect_character(event):
         # 3. Analyze the Cluster
         base_char = target_cluster[0]
         cp_base = ord(base_char)
+
+        hex_str = f"{cp_base:04X}" # Needed for lookup
+
+        # --- Call the Policy Engine ---
+        # Get the deep forensic explanation for the base character
+        forensic_report = None
+        if FORENSIC_EXPLAINER: 
+            forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
         
         cat_short = unicodedata.category(base_char)
         base_char_data = {
@@ -16449,7 +16485,8 @@ def inspect_character(event):
             "confusable": confusable_msg,
             "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
             "stack_msg": stack_msg,
-            "components": components
+            "components": components,
+            "forensic_report": forensic_report
         }
         
         render_inspector_panel(data)
