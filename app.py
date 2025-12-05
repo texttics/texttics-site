@@ -8520,74 +8520,135 @@ def compute_anomaly_score(stats):
         "vectors": vectors
     }
 
-def audit_master_ledgers(inputs, stats_inputs, stage1_5_data, threat_output):
+def audit_master_ledgers(inputs: dict, stats_inputs: dict, stage1_5_data: dict, threat_output: dict, 
+                         extra_integrity: list = None, extra_threat: list = None, extra_authenticity: list = None) -> dict:
     """
-    The Master Auditor (V2.1 - Hardened).
+    The Supreme Court of the application (V3.0 - Hardened).
     Aggregates Integrity, Threat, Authenticity, and Anomaly ledgers.
-    """
-    # 1. INTEGRITY (The Rot)
-    integrity = compute_integrity_score(inputs)
     
+    Features:
+    1. Safe Merging: Accepts Stage 1.7 'extra' lists (Regex, GlitchMap, Topology).
+    2. Defensive Coding: Handles missing keys/scores gracefully.
+    3. Legacy Preservation: Maintains 'decode_status' and 'peak_score' logic.
+    4. Verdict Recalculation: Updates severity based on merged scores.
+    """
+    # 1. Initialize Extras (Safety check against None)
+    extra_integrity = extra_integrity or []
+    extra_threat = extra_threat or []
+    extra_authenticity = extra_authenticity or []
+
+    # AXIS 1: INTEGRITY (The Rot + Structure + Decode Health)
+    integrity_data = compute_integrity_score(inputs)
+    
+    # Merge Stage 1.7 Extras
+    final_integrity_ledger = integrity_data.get("ledger", []) + extra_integrity
+    
+    # Recalculate Score (Base + Extras)
+    extra_i_score = sum(item.get("score", 0) for item in extra_integrity)
+    final_integrity_score = min(100, integrity_data.get("score", 0) + extra_i_score)
+    
+    # Calculate Decode Status (Legacy Logic Preservation)
     decode_status = "OK"
     if inputs.get("fffd", 0) > 0 or inputs.get("nul", 0) > 0:
         decode_status = "CRITICAL"
     elif inputs.get("surrogate", 0) > 0:
         decode_status = "WARNING"
+        
+    # Re-evaluate Verdict based on final score
+    if final_integrity_score >= 50: i_verdict = "CRITICAL"
+    elif final_integrity_score >= 20: i_verdict = "POOR"
+    else: i_verdict = "HEALTHY"
     
-    # 2. THREAT (The Malice)
+    # Map verdict to CSS severity class
+    i_severity = "crit" if final_integrity_score >= 50 else "warn" if final_integrity_score >= 20 else "ok"
+
+    # AXIS 2: THREAT (The Malice + Injection + Syntax Sabotage)
+    # Handle potentially missing keys in threat_output
+    base_t_ledger = threat_output.get("ledger", [])
+    base_t_score = threat_output.get("score", 0)
+    
+    # Merge Stage 1.7 Extras
+    final_threat_ledger = base_t_ledger + extra_threat
+    extra_t_score = sum(item.get("score", 0) for item in extra_threat)
+    final_threat_score = min(100, base_t_score + extra_t_score)
+    
+    # Safe Peak Score Calculation (Context for dashboard)
     targets = stage1_5_data.get("targets", [])
     peak_score = 0
     if targets:
-        peak_score = max(t["score"] for t in targets)
+        peak_score = max((t.get("score", 0) for t in targets), default=0)
 
-    # 3. AUTHENTICITY (The Identity)
-    # Fallback logic to find the ledger in nested structures
-    t_ledger = threat_output.get("ledger", []) 
-    if not t_ledger:
-        t_ledger = threat_output.get("flags", {}).get("Threat Level (Heuristic)", {}).get("ledger", [])
+    # Re-evaluate Verdict
+    if final_threat_score >= 80: t_verdict = "CRITICAL"
+    elif final_threat_score >= 40: t_verdict = "HIGH"
+    elif final_threat_score >= 10: t_verdict = "SUSPICIOUS"
+    else: t_verdict = "CLEAN"
+    
+    t_severity = "crit" if final_threat_score >= 80 else "warn" if final_threat_score >= 10 else "ok"
 
-    auth = compute_authenticity_score(inputs, t_ledger, stage1_5_data)
+    # AXIS 3: AUTHENTICITY (Identity + Spoofing)
+    # Fallback logic to find the threat ledger for cross-referencing
+    # (Authenticity sometimes checks if threats exist to downrank trust)
+    ref_t_ledger = base_t_ledger
+    if not ref_t_ledger:
+        # Deep lookup fallback
+        ref_t_ledger = threat_output.get("flags", {}).get("Threat Level (Heuristic)", {}).get("ledger", [])
+
+    auth_data = compute_authenticity_score(inputs, ref_t_ledger, stage1_5_data)
     
-    # 4. ANOMALY (The Physics)
-    # [DEPENDENCY]: Requires patched compute_anomaly_score that penalizes Zalgo
-    anomaly = compute_anomaly_score(stats_inputs)
+    # Merge Stage 1.7 Extras
+    final_auth_ledger = auth_data.get("ledger", []) + extra_authenticity
+    extra_a_score = sum(item.get("score", 0) for item in extra_authenticity)
+    final_auth_score = min(100, auth_data.get("score", 0) + extra_a_score)
     
-    # [SAFETY] Ensure severity class exists
-    anom_sev = anomaly.get("severity_class")
+    # Re-evaluate Verdict
+    if final_auth_score >= 50: a_verdict = "SUSPECT"
+    elif final_auth_score >= 20: a_verdict = "AMBIGUOUS"
+    else: a_verdict = "VERIFIED"
+    
+    a_severity = "crit" if final_auth_score >= 50 else "warn" if final_auth_score >= 20 else "ok"
+
+    # AXIS 4: ANOMALY (Physics + Entropy)
+    anomaly_data = compute_anomaly_score(stats_inputs)
+    
+    # Safety: Ensure severity class exists
+    anom_sev = anomaly_data.get("severity_class")
     if not anom_sev:
-        anom_sev = "warn" if anomaly["score"] > 0 else "ok"
+        anom_sev = "warn" if anomaly_data.get("score", 0) > 0 else "ok"
 
+    # FINAL CONSTRUCTION
     return {
         "integrity": {
-            "verdict": integrity["verdict"],
-            "score": integrity["score"],
-            "severity": integrity["severity_class"],
-            "decode_status": decode_status,
-            "issues": len(integrity["ledger"]),
-            "ledger": integrity["ledger"]
-        },
-        "authenticity": {
-            "verdict": auth["verdict"],
-            "score": auth["score"],
-            "severity": auth["severity_class"],
-            "vector_count": auth["vector_count"],
-            "vectors": auth["vectors"] 
+            "verdict": i_verdict,
+            "score": final_integrity_score,
+            "severity": i_severity,
+            "decode_status": decode_status, # Preserved legacy key
+            "issues": len(final_integrity_ledger),
+            "ledger": final_integrity_ledger
         },
         "threat": {
-            "verdict": threat_output["verdict"],
-            "score": threat_output["score"],
-            "severity": threat_output["severity_class"],
-            "peak_score": peak_score,
-            "signals": len(threat_output["ledger"]),
-            "ledger": threat_output["ledger"] 
+            "verdict": t_verdict,
+            "score": final_threat_score,
+            "severity": t_severity,
+            "peak_score": peak_score, # Preserved legacy key
+            "signals": len(final_threat_ledger),
+            "ledger": final_threat_ledger
+        },
+        "authenticity": {
+            "verdict": a_verdict,
+            "score": final_auth_score,
+            "severity": a_severity,
+            "vector_count": len(final_auth_ledger), 
+            "ledger": final_auth_ledger,
+            "vectors": auth_data.get("vectors", []) # Preserved vectors
         },
         "anomaly": {
-            "verdict": anomaly["verdict"],
-            "score": anomaly["score"],
+            "verdict": anomaly_data.get("verdict", "UNKNOWN"),
+            "score": anomaly_data.get("score", 0),
             "severity": anom_sev,
-            # Source truth from stats_inputs to avoid KeyError
-            "entropy": stats_inputs.get("entropy", 0.0),
-            "vectors": anomaly.get("vectors", [])
+            "entropy": stats_inputs.get("entropy", 0.0), # Safe access
+            "vectors": anomaly_data.get("vectors", []),
+            "ledger": anomaly_data.get("ledger", [])
         }
     }
 
