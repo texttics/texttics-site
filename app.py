@@ -1087,6 +1087,123 @@ ASPIRATIONAL_SCRIPTS = {
     "Canadian_Aboriginal", "Yi", "Mongolian", "Tifinagh", "Miao"
 }
 
+# REGEX KRYPTONITE (DEVELOPER SAFETY) CONSTANTS
+
+# 1. Threat Mechanisms (The "How")
+# Used by Block 7 to assign specific risk labels and routing.
+MECH_REGEX_BREAK     = "REGEX_BREAK"      # Breaks line-based matching (e.g., /.+/)
+MECH_BIDI_CONFUSE    = "BIDI_CONFUSE"     # Reorders code display vs logic (Trojan Source)
+MECH_LOGIC_INJECT    = "LOGIC_INJECT"     # Invisible chars altering identity/tokens
+MECH_WHITESPACE_TRAP = "WHITESPACE_TRAP"  # Bypasses trim/split logic or tokenizer boundaries
+MECH_CONFUSER        = "CONFUSER"         # Homoglyphs mimicking code syntax (;, ", /)
+MECH_NORMALIZER_TRAP = "NORMALIZER_TRAP"  # Changes identity/length under NFKC
+
+# 2. The Kryptonite Map (The "Who")
+# A zero-trust registry of characters that are valid Unicode but fatal in code.
+# Sources: Unicode TR36, Trojan Source (CVE-2021-42574), ECMAScript Specs.
+
+REGEX_KRYPTONITE_MAP = {
+    # --- GROUP A: The Regex & Parser Breakers (Line Terminators) ---
+    # These characters are technically 'Newlines'.
+    # 1. In JS/Python Regex: The dot (.) char DOES NOT match these (unless dotAll).
+    # 2. In JS Strings: Valid in JSON, but syntax error if unescaped in source code.
+    0x0085: {
+        "name": "NEXT_LINE (NEL)",
+        "mech": MECH_REGEX_BREAK,
+        "risk": "CRITICAL",
+        "desc": "Breaks Regex dot matching; treated as newline in modern parsers."
+    },
+    0x2028: {
+        "name": "LINE_SEPARATOR (LS)",
+        "mech": MECH_REGEX_BREAK,
+        "risk": "CRITICAL",
+        "desc": "Fatal in JS string literals; breaks Regex dot matching; creates XSS vectors in JSON-to-JS."
+    },
+    0x2029: {
+        "name": "PARAGRAPH_SEPARATOR (PS)",
+        "mech": MECH_REGEX_BREAK,
+        "risk": "CRITICAL",
+        "desc": "Fatal in JS string literals; breaks Regex dot matching; creates XSS vectors in JSON-to-JS."
+    },
+
+    # --- GROUP B: The Trojan Source Family (Bidi Controls) ---
+    # Reorders how code is displayed vs. how the compiler/interpreter reads it.
+    # Enables 'Invisible Comments' and logic inversion.
+    0x061C: {"name": "ARABIC_LETTER_MARK", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; reorders code display."},
+    0x200E: {"name": "LEFT_TO_RIGHT_MARK", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; reorders code display."},
+    0x200F: {"name": "RIGHT_TO_LEFT_MARK", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; reorders code display."},
+    0x202A: {"name": "LEFT_TO_RIGHT_EMBEDDING (LRE)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; opens reordering scope."},
+    0x202B: {"name": "RIGHT_TO_LEFT_EMBEDDING (RLE)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; opens reordering scope."},
+    0x202D: {"name": "LEFT_TO_RIGHT_OVERRIDE (LRO)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; forces visual reordering of tokens."},
+    0x202E: {"name": "RIGHT_TO_LEFT_OVERRIDE (RLO)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; forces visual reordering of tokens."},
+    0x202C: {"name": "POP_DIRECTIONAL_FORMATTING (PDF)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; closes reordering scope."},
+    0x2066: {"name": "LEFT_TO_RIGHT_ISOLATE (LRI)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; isolates code block flow."},
+    0x2067: {"name": "RIGHT_TO_LEFT_ISOLATE (RLI)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; isolates code block flow."},
+    0x2068: {"name": "FIRST_STRONG_ISOLATE (FSI)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; isolates code block flow."},
+    0x2069: {"name": "POP_DIRECTIONAL_ISOLATE (PDI)", "mech": MECH_BIDI_CONFUSE, "risk": "CRITICAL", "desc": "Trojan Source; closes isolation block."},
+
+    # --- GROUP C: Logic Injectors (Invisibles) ---
+    # Characters that are invisible or functionally empty, creating distinctive identifiers.
+    # e.g., "admin" vs "admin[ZWSP]" are different users/keys.
+    0x200B: {"name": "ZERO_WIDTH_SPACE", "mech": MECH_LOGIC_INJECT, "risk": "HIGH", "desc": "Invisible literal; creates distinct identifiers/keys."},
+    0x200C: {"name": "ZERO_WIDTH_NON_JOINER", "mech": MECH_LOGIC_INJECT, "risk": "HIGH", "desc": "Invisible formatting; splits ligatures but creates distinct IDs."},
+    0x200D: {"name": "ZERO_WIDTH_JOINER", "mech": MECH_LOGIC_INJECT, "risk": "HIGH", "desc": "Invisible formatting; joins chars but creates distinct IDs."},
+    0x2060: {"name": "WORD_JOINER", "mech": MECH_LOGIC_INJECT, "risk": "HIGH", "desc": "Invisible glue character; prevents line breaks."},
+    0x00AD: {"name": "SOFT_HYPHEN", "mech": MECH_LOGIC_INJECT, "risk": "MEDIUM", "desc": "Invisible hyphen; splits words in search indices/validators."},
+    0xFEFF: {"name": "ZERO_WIDTH_NO_BREAK_SPACE", "mech": MECH_LOGIC_INJECT, "risk": "HIGH", "desc": "BOM; causes script errors if found inside strings/headers."},
+    0x180E: {"name": "MONGOLIAN_VOWEL_SEPARATOR", "mech": MECH_LOGIC_INJECT, "risk": "HIGH", "desc": "Invisible control (formerly whitespace); logic breaker."},
+    0x3164: {"name": "HANGUL_FILLER", "mech": MECH_LOGIC_INJECT, "risk": "CRITICAL", "desc": "The 'Invisible ID' King; renders blank but is a valid ID letter."},
+
+    # --- GROUP D: Whitespace Traps (Deceptive Spacing) ---
+    # Characters that look like space (U+0020) but are not matched by standard trim() or split().
+    0x00A0: {"name": "NO_BREAK_SPACE", "mech": MECH_WHITESPACE_TRAP, "risk": "HIGH", "desc": "Non-breaking space; bypasses simple split/trim logic."},
+    0x2007: {"name": "FIGURE_SPACE", "mech": MECH_WHITESPACE_TRAP, "risk": "HIGH", "desc": "Fixed-width space; bypasses logic."},
+    0x202F: {"name": "NARROW_NO_BREAK_SPACE", "mech": MECH_WHITESPACE_TRAP, "risk": "HIGH", "desc": "Narrow space; bypasses logic."},
+    0x3000: {"name": "IDEOGRAPHIC_SPACE", "mech": MECH_WHITESPACE_TRAP, "risk": "CRITICAL", "desc": "Wide CJK space; often missed by ASCII trim; common in domain spoofing."},
+    0x1680: {"name": "OGHAM_SPACE_MARK", "mech": MECH_WHITESPACE_TRAP, "risk": "HIGH", "desc": "Looks like a dash or nothing; bypasses logic."},
+
+    # --- GROUP E: Syntax Spoofers (Confusers) ---
+    # Homoglyphs that mimic code syntax characters, causing logic errors or 'Syntax Error'.
+    
+    # Semicolons (Statement Terminators)
+    0x037E: {"name": "GREEK_QUESTION_MARK", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Semicolon (;); breaks statement logic."},
+    0x061B: {"name": "ARABIC_SEMICOLON", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Semicolon (;)."},
+    0xFF1B: {"name": "FULLWIDTH_SEMICOLON", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Semicolon (;)."},
+    0xFE54: {"name": "SMALL_SEMICOLON", "mech": MECH_CONFUSER, "risk": "MEDIUM", "desc": "Looks like Semicolon (;)."},
+
+    # Colons (Keys/Assignment) & Dots (Accessors)
+    0xFF1A: {"name": "FULLWIDTH_COLON", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Colon (:); breaks JSON/Maps."},
+    0x2236: {"name": "RATIO", "mech": MECH_CONFUSER, "risk": "MEDIUM", "desc": "Looks like Colon (:)."},
+    0x3002: {"name": "IDEOGRAPHIC_FULL_STOP", "mech": MECH_CONFUSER, "risk": "CRITICAL", "desc": "Looks like Dot (.); used in IDN spoofing to mimic domain root."},
+    0x2024: {"name": "ONE_DOT_LEADER", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Dot (.); breaks method calls."},
+    0xFF0E: {"name": "FULLWIDTH_FULL_STOP", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Dot (.); breaks method calls."},
+
+    # Slashes (Paths/Comments) & Backslashes (Escapes)
+    0xFF0F: {"name": "FULLWIDTH_SOLIDUS", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Slash (/); breaks paths/comments."},
+    0x2215: {"name": "DIVISION_SLASH", "mech": MECH_CONFUSER, "risk": "MEDIUM", "desc": "Looks like Slash (/); breaks paths/comments."},
+    0x2044: {"name": "FRACTION_SLASH", "mech": MECH_CONFUSER, "risk": "MEDIUM", "desc": "Looks like Slash (/); breaks paths/comments."},
+    0x2216: {"name": "SET_MINUS", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Backslash (\\); breaks escape sequences."},
+    
+    # Quotes (Strings)
+    0xFF02: {"name": "FULLWIDTH_QUOTATION_MARK", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Double Quote (\"); breaks string definition."},
+    0xFF07: {"name": "FULLWIDTH_APOSTROPHE", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Single Quote ('); breaks string definition."},
+    0x2018: {"name": "LEFT_SINGLE_QUOTE", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Smart Quote; often breaks code requiring straight quotes."},
+    0x2019: {"name": "RIGHT_SINGLE_QUOTE", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Smart Quote; often breaks code requiring straight quotes."},
+    0x201C: {"name": "LEFT_DOUBLE_QUOTE", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Smart Quote; often breaks code requiring straight quotes."},
+    0x201D: {"name": "RIGHT_DOUBLE_QUOTE", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Smart Quote; often breaks code requiring straight quotes."},
+
+    # Operators
+    0x2212: {"name": "MINUS_SIGN", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Hyphen (-); breaks subtraction/flags."},
+    0x2013: {"name": "EN_DASH", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Hyphen (-); breaks subtraction/flags."},
+    0x2014: {"name": "EM_DASH", "mech": MECH_CONFUSER, "risk": "HIGH", "desc": "Looks like Hyphen (-); breaks subtraction/flags."},
+
+    # --- GROUP F: Normalization Traps ---
+    # Characters that are invisible or distinct but affect canonical equivalence.
+    0x034F: {"name": "COMBINING_GRAPHEME_JOINER", "mech": MECH_NORMALIZER_TRAP, "risk": "HIGH", "desc": "Invisible glue; blocks canonical reordering; alters string equality."},
+    0xFE0E: {"name": "VARIATION_SELECTOR_15", "mech": MECH_NORMALIZER_TRAP, "risk": "MEDIUM", "desc": "Forces text presentation; invisible in many regex engines."},
+    0xFE0F: {"name": "VARIATION_SELECTOR_16", "mech": MECH_NORMALIZER_TRAP, "risk": "MEDIUM", "desc": "Forces emoji presentation; invisible in many regex engines."},
+}
+
 # ===============================================
 # BLOCK 3. GLOBAL STATE & DATA STORES
 # ===============================================
@@ -7100,6 +7217,79 @@ class ForensicHTMLParser(HTMLParser):
         """Returns the fully reconstructed HTML with forensic markers."""
         return "".join(self.ghost_view_fragments)
 
+def scan_regex_safety(t: str) -> dict:
+    """
+    [Stage 1.7] Developer Safety Scanner.
+    Performs a single-pass forensic scan for 'Kryptonite' characters that 
+    break parsers, regex engines, or code logic.
+    
+    Advanced Features:
+    1. Context Heuristics: Tracks simplistic state (quotes/slashes) to hint 
+       if the threat is inside a String Literal or Regex.
+    2. Mechanism Aggregation: Pre-calculates counts per threat vector.
+    
+    Returns:
+        dict: {
+            "count": int,
+            "findings": List[dict],
+            "mechanisms": Dict[str, int],  # e.g., {'REGEX_BREAK': 2}
+            "context_risk": bool           # True if threats found in string/regex context
+        }
+    """
+    findings = []
+    mech_counts = collections.defaultdict(int)
+    
+    # Context State Machine (Heuristic)
+    # We track if we are likely inside a string (' " `) or regex (/)
+    # Note: This is not a full AST parser, just a forensic hint.
+    in_double_quote = False
+    in_single_quote = False
+    in_backtick = False
+    in_regex_slash = False # Heuristic guess
+    
+    context_risk_detected = False
+
+    for i, char in enumerate(t):
+        cp = ord(char)
+        
+        # 1. Update Context State (Toggle logic)
+        if char == '"' and not in_single_quote: in_double_quote = not in_double_quote
+        elif char == "'" and not in_double_quote: in_single_quote = not in_single_quote
+        elif char == '`': in_backtick = not in_backtick
+        
+        # 2. Check Kryptonite Map (O(1) Lookup)
+        if cp in REGEX_KRYPTONITE_MAP:
+            info = REGEX_KRYPTONITE_MAP[cp]
+            mech = info["mech"]
+            
+            # Record Mechanism
+            mech_counts[mech] += 1
+            
+            # Determine Local Context
+            current_context = "RAW"
+            if in_double_quote or in_single_quote or in_backtick:
+                current_context = "STRING_LITERAL"
+                context_risk_detected = True
+            
+            # Create Forensic Record
+            findings.append({
+                "index": i,
+                "char": char,
+                "codepoint": f"U+{cp:04X}",
+                "name": info["name"],
+                "mechanism": mech,
+                "risk_level": info["risk"],
+                "desc": info["desc"],
+                "context": current_context
+            })
+
+    return {
+        "count": len(findings),
+        "findings": findings,
+        "mechanisms": dict(mech_counts),
+        "context_risk": context_risk_detected
+    }
+
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
 # ===============================================
@@ -8101,6 +8291,106 @@ def _get_risk_grade(score: int) -> str:
     if score >= 20: return "ANOMALOUS"
     if score > 0:   return "NON-STANDARD"
     return "CLEAN"
+
+def audit_regex_safety(results: dict, threat_ledger: list, authenticity_ledger: list):
+    """
+    [Stage 1.7] Regex Kryptonite Auditor.
+    Translates physical 'Kryptonite' findings into Quad-Ledger Penalties.
+    
+    Routing Logic:
+    - REGEX_BREAK, BIDI, LOGIC_INJECT -> THREAT (Weaponization/Obfuscation)
+    - CONFUSER, WHITESPACE_TRAP       -> AUTHENTICITY (Spoofing/Identity)
+    - NORMALIZER_TRAP                 -> AUTHENTICITY (Stability)
+    """
+    if results["count"] == 0:
+        return
+
+    mechs = results["mechanisms"]
+    
+    # AXIS 1: THREAT LEDGER (Execution, Injection, Syntax)
+    
+    # Vector: Regex/Parser Break (LS/PS/NEL)
+    # Risk: Massive. Can bypass validation logic entirely.
+    if MECH_REGEX_BREAK in mechs:
+        count = mechs[MECH_REGEX_BREAK]
+        threat_ledger.append({
+            "category": "SYNTAX_INJECTION",
+            "label": "Regex Breaker (Line Separators)",
+            "value": f"{count} chars (LS/PS)",
+            "severity": "CRITICAL",
+            "penalty": 50, # Immediate Critical Threat
+            "desc": "Characters that break line-based Regex (.) and JS parsers."
+        })
+
+    # Vector: Trojan Source (Bidi)
+    # Risk: Code logic executes differently than it looks.
+    if MECH_BIDI_CONFUSE in mechs:
+        count = mechs[MECH_BIDI_CONFUSE]
+        threat_ledger.append({
+            "category": "EXECUTION_RISK",
+            "label": "Trojan Source (Bidi Controls)",
+            "value": f"{count} chars",
+            "severity": "CRITICAL",
+            "penalty": 50,
+            "desc": "Visual reordering of source code logic."
+        })
+
+    # Vector: Logic Injection (Invisibles)
+    # Risk: Distinct variables that look identical (admin vs admin<ZWSP>).
+    if MECH_LOGIC_INJECT in mechs:
+        count = mechs[MECH_LOGIC_INJECT]
+        # Context Escalation: If found inside a String Literal, it's higher risk
+        severity = "CRITICAL" if results.get("context_risk") else "HIGH"
+        
+        threat_ledger.append({
+            "category": "OBFUSCATION",
+            "label": "Invisible Logic Injection",
+            "value": f"{count} chars",
+            "severity": severity,
+            "penalty": 30,
+            "desc": "Invisible characters affecting string/identifier identity."
+        })
+
+    # AXIS 2: AUTHENTICITY LEDGER (Spoofing, Identity)
+
+    # Vector: Syntax Homoglyphs
+    # Risk: User thinks it's syntax (;), Parser thinks it's a token (;).
+    if MECH_CONFUSER in mechs:
+        count = mechs[MECH_CONFUSER]
+        authenticity_ledger.append({
+            "category": "SYNTAX_SPOOF",
+            "label": "Syntax Homoglyphs",
+            "value": f"{count} chars",
+            "severity": "HIGH",
+            "penalty": 25,
+            "desc": "Characters mimicking code syntax (quotes, semicolons)."
+        })
+
+    # Vector: Whitespace Traps
+    # Risk: Bypasses split() or trim() logic in auth/parsing.
+    if MECH_WHITESPACE_TRAP in mechs:
+        count = mechs[MECH_WHITESPACE_TRAP]
+        authenticity_ledger.append({
+            "category": "EVASION",
+            "label": "Deceptive Whitespace",
+            "value": f"{count} chars",
+            "severity": "HIGH",
+            "penalty": 20,
+            "desc": "Non-standard spaces that bypass trim/split logic."
+        })
+
+    # Vector: Normalization Traps
+    # Risk: String changes meaning after backend normalization.
+    if MECH_NORMALIZER_TRAP in mechs:
+        count = mechs[MECH_NORMALIZER_TRAP]
+        authenticity_ledger.append({
+            "category": "IDENTITY_INSTABILITY",
+            "label": "Normalization Traps",
+            "value": f"{count} chars",
+            "severity": "MEDIUM",
+            "penalty": 15,
+            "desc": "Characters that vanish or mutate under NFKC."
+        })
 
 # ===============================================
 # BLOCK 8. ORCHESTRATION (CONTROLLER)
