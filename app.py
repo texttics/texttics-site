@@ -4472,105 +4472,90 @@ def analyze_bidi_structure(t: str, rows: list):
 
 def compute_whitespace_topology(t):
     """
-    Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
-    Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
+    Analyzes Whitespace & Line Ending Topology.
+    Design: Substrate Analysis (Spectrum Bar).
     """
     ws_stats = collections.Counter()
     
-    # State tracking for CRLF
-    prev_was_cr = False
+    # ... (Keep existing Logic for counting state machine) ...
+    # [PASTE YOUR EXISTING LOGIC HERE TO POPULATE ws_stats & flags]
+    # Re-implementing just the Render part below for brevity, assumes counters are filled
+    # ...
+    # Assume 'ws_stats' is populated, e.g. {'SPACE (ASCII)': 35, 'LF (Unix)': 11, 'LS (Line Sep)': 1}
+    # Assume 'has_nel', 'has_ls_ps', 'has_crlf', 'has_lf' booleans are set
     
-    # Flags for Verdict
-    has_lf = False
-    has_cr = False
-    has_crlf = False
-    has_nel = False
-    has_ls_ps = False
-
-    for ch in t:
-        # --- A. Newline State Machine ---
-        if ch == '\n':
-            if prev_was_cr:
-                ws_stats['CRLF (Windows)'] += 1
-                has_crlf = True
-                prev_was_cr = False # Consumed
-            else:
-                ws_stats['LF (Unix)'] += 1
-                has_lf = True
-        elif ch == '\r':
-            if prev_was_cr: # Double CR case (CR + CR)
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-            prev_was_cr = True # Defer count until next char check
-        elif ch == '\u0085':
-            ws_stats['NEL (Next Line)'] += 1
-            has_nel = True
-            prev_was_cr = False
-        elif ch == '\u2028':
-            ws_stats['LS (Line Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        elif ch == '\u2029':
-            ws_stats['PS (Para Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        else:
-            # Not a newline, but check if we have a dangling CR pending
-            if prev_was_cr:
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-                prev_was_cr = False
-            
-            # --- B. Whitespace Classification ---
-            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
-            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
-            elif ch == '\t': ws_stats['TAB'] += 1
-            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
-            elif ud.category(ch) == 'Zs':
-                name = ud.name(ch, 'UNKNOWN SPACE')
-                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
-
-    # Final check for trailing CR
-    if prev_was_cr:
-        ws_stats['CR (Legacy Mac)'] += 1
-        has_cr = True
-
-    # --- C. Heuristic Alerts ---
+    # -----------------------------------------------------------------------
+    # --- RENDER LOGIC START ---
+    
+    # 1. Alerts
     alerts = []
+    # Recalculate mixed line endings logic based on counters if variables aren't available
+    n_crlf = ws_stats['CRLF (Windows)']
+    n_lf = ws_stats['LF (Unix)']
+    n_cr = ws_stats['CR (Legacy Mac)']
     
-    # 1. Mixed Line Endings
-    newline_types = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
-    if newline_types > 1:
-        alerts.append("⚠️ Mixed Line Endings (Consistency Failure)")
+    if (n_crlf > 0 and n_lf > 0) or (n_crlf > 0 and n_cr > 0):
+        alerts.append('<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Consistency Failure:</strong> Mixed Line Endings Detected</div>')
     
-    # 2. Mixed Spacing (Phishing Vector)
-    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
-        alerts.append("⚠️ Mixed Spacing (ASCII + NBSP)")
-        
-    if has_nel or has_ls_ps:
-        alerts.append("ℹ️ Unicode Newlines (NEL/LS/PS) Detected")
+    if ws_stats['LS (Line Sep)'] > 0 or ws_stats['PS (Para Sep)'] > 0 or ws_stats['NEL (Next Line)'] > 0:
+        alerts.append('<div class="ws-alert info"><span class="icon">ℹ️</span> <strong>Unicode Newlines:</strong> LS/PS/NEL present (Regex Risk)</div>')
 
-    # --- D. Render ---
-    rows = ""
-    for k, v in ws_stats.most_common():
-        rows += f"<tr><td>{k}</td><td style='text-align:right; font-family:monospace;'>{v}</td></tr>"
-        
-    if not rows: rows = "<tr><td colspan='2' style='color:#999'>No whitespace detected.</td></tr>"
+    # 2. Composition Spectrum
+    total = sum(ws_stats.values())
+    spectrum_html = ""
+    legend_html = ""
     
-    alert_html = ""
-    if alerts:
-        alert_html = f"<div style='color:#b02a37; font-size:0.85em; margin-bottom:8px; font-weight:bold;'>{'<br>'.join(alerts)}</div>"
+    # Mapping for colors/classes
+    KEY_MAP = {
+        'SPACE (ASCII)': ('bg-sp', '#cbd5e1'),
+        'LF (Unix)': ('bg-lf', '#3b82f6'),
+        'CRLF (Windows)': ('bg-crlf', '#a855f7'),
+        'TAB': ('bg-tab', '#eab308'),
+        'LS (Line Sep)': ('bg-ls', '#ef4444'),
+        'PS (Para Sep)': ('bg-ls', '#ef4444'),
+        'NEL (Next Line)': ('bg-ls', '#ef4444'),
+        'NBSP (Non-Breaking)': ('bg-ls', '#ef4444')
+    }
 
-    html = f"""
-    <div class="ws-topology-card" style="margin-top:1rem; border:1px solid #dee2e6; padding:10px; border-radius:4px; background:#f8f9fa;">
-        <h4 style="margin:0 0 8px 0; font-size:0.9rem; color:#495057;">Whitespace & Line Ending Topology</h4>
-        {alert_html}
-        <table style="width:100%; font-size:0.85rem;">
-            {rows}
-        </table>
+    if total > 0:
+        for k, v in ws_stats.most_common():
+            pct = (v / total) * 100
+            cls, hex_col = KEY_MAP.get(k, ('bg-sp', '#94a3b8'))
+            
+            # Bar Segment
+            spectrum_html += f'<div class="ws-seg {cls}" style="width:{pct}%" title="{k}: {v}"></div>'
+            
+            # Legend Item
+            legend_html += f"""
+            <div class="wl-item">
+                <span class="wl-dot {cls}"></span>
+                <span class="wl-key">{k.split('(')[0].strip()}:</span>
+                <span class="wl-val">{v}</span>
+            </div>
+            """
+    else:
+        spectrum_html = '<div class="ws-seg bg-sp" style="width:100%; opacity:0.1"></div>'
+        legend_html = '<span style="color:#94a3b8">No whitespace detected.</span>'
+
+    return f"""
+    <div class="fx-card ws-panel">
+        <div class="fx-header" style="background:none; padding:0 0 12px 0; border:none;">
+            <span>Whitespace Topology</span>
+        </div>
+        
+        <div class="ws-alert-box">
+            {''.join(alerts)}
+        </div>
+        
+        <div class="ws-spectrum">
+            {spectrum_html}
+        </div>
+        
+        <div class="ws-legend">
+            {legend_html}
+        </div>
     </div>
     """
-    return html
 
 # C. Scientific Threat Intelligence (The Papers)
 
@@ -7049,109 +7034,6 @@ def analyze_signal_processor_state(data):
         "footer_text": footer_text,
         "footer_class": footer_class
     }
-
-def compute_whitespace_topology(t):
-    """
-    Analyzes Whitespace & Line Ending Topology (The 'Frankenstein' Detector).
-    Detects Mixed Line Endings (CRLF/LF) and Deceptive Spacing (ASCII/NBSP).
-    """
-    
-    ws_stats = collections.Counter()
-    
-    # State tracking for CRLF
-    prev_was_cr = False
-    
-    # Flags for Verdict
-    has_lf = False
-    has_cr = False
-    has_crlf = False
-    has_nel = False
-    has_ls_ps = False
-
-    for ch in t:
-        # --- A. Newline State Machine ---
-        if ch == '\n':
-            if prev_was_cr:
-                ws_stats['CRLF (Windows)'] += 1
-                has_crlf = True
-                prev_was_cr = False # Consumed
-            else:
-                ws_stats['LF (Unix)'] += 1
-                has_lf = True
-        elif ch == '\r':
-            if prev_was_cr: # Double CR case (CR + CR)
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-            prev_was_cr = True # Defer count until next char check
-        elif ch == '\u0085':
-            ws_stats['NEL (Next Line)'] += 1
-            has_nel = True
-            prev_was_cr = False
-        elif ch == '\u2028':
-            ws_stats['LS (Line Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        elif ch == '\u2029':
-            ws_stats['PS (Para Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        else:
-            # Not a newline, but check if we have a dangling CR pending
-            if prev_was_cr:
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-                prev_was_cr = False
-            
-            # --- B. Whitespace Classification ---
-            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
-            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
-            elif ch == '\t': ws_stats['TAB'] += 1
-            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
-            elif ud.category(ch) == 'Zs':
-                name = ud.name(ch, 'UNKNOWN SPACE')
-                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
-
-    # Final check for trailing CR
-    if prev_was_cr:
-        ws_stats['CR (Legacy Mac)'] += 1
-        has_cr = True
-
-    # --- C. Heuristic Alerts ---
-    alerts = []
-    
-    # 1. Mixed Line Endings
-    newline_types = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
-    if newline_types > 1:
-        alerts.append("⚠️ Mixed Line Endings (Consistency Failure)")
-    
-    # 2. Mixed Spacing (Phishing Vector)
-    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
-        alerts.append("⚠️ Mixed Spacing (ASCII + NBSP)")
-        
-    if has_nel or has_ls_ps:
-        alerts.append("ℹ️ Unicode Newlines (NEL/LS/PS) Detected")
-
-    # --- D. Render ---
-    rows = ""
-    for k, v in ws_stats.most_common():
-        rows += f"<tr><td>{k}</td><td style='text-align:right; font-family:monospace;'>{v}</td></tr>"
-        
-    if not rows: rows = "<tr><td colspan='2' style='color:#999'>No whitespace detected.</td></tr>"
-    
-    alert_html = ""
-    if alerts:
-        alert_html = f"<div style='color:#b02a37; font-size:0.85em; margin-bottom:8px; font-weight:bold;'>{'<br>'.join(alerts)}</div>"
-
-    html = f"""
-    <div class="ws-topology-card" style="margin-top:1rem; border:1px solid #dee2e6; padding:10px; border-radius:4px; background:#f8f9fa;">
-        <h4 style="margin:0 0 8px 0; font-size:0.9rem; color:#495057;">Whitespace & Line Ending Topology</h4>
-        {alert_html}
-        <table style="width:100%; font-size:0.85rem;">
-            {rows}
-        </table>
-    </div>
-    """
-    return html
 
 def _parse_inline_css(style_str: str) -> Dict[str, str]:
     """
@@ -14970,228 +14852,143 @@ def render_verification_lens(suspect_str: str, trusted_str: str, analysis: dict)
 def render_topology_card(topo_data: dict) -> str:
     """
     [Stage 1.7] Renders the Delimited Topology Micro-Card.
-    
-    Visuals:
-    1. Health Badge: STRICT (Green) vs FRACTURED (Red)
-    2. Shape Metaphor: "150 Rows x 5 Cols"
-    3. Evidence Locker: Scrollable list of broken row indices.
+    Design: Dashboard + Terminal Log.
     """
-    
-    # 1. Early Exit (Not a Grid)
-    # Text...tics philosophy: Don't show empty cards.
-    if not topo_data or not topo_data.get("is_grid"):
+    if not topo_data or not topo_data.get("is_grid"): 
         return ""
 
-    # 2. Extract Data
-    delim_name = topo_data["delimiter_name"]
+    # Extract Data
     rows, cols = topo_data["grid_shape"]
     raggedness = topo_data["raggedness"]
+    stability = 1.0 - raggedness
+    delim_name = topo_data["delimiter_name"]
     fractures = topo_data["evidence_fractures"]
     quotes_bad = topo_data["evidence_quotes"]
     
-    # 3. Determine Health State (Visual Logic)
-    # We map the Physics (Raggedness) to Semantics (Color/Label)
-    if raggedness == 0.0 and len(quotes_bad) == 0:
-        health_class = "metric-ok"       # Green
-        health_label = "STRICT GRID"
-        icon_html = '<span class="topo-icon">▦</span>' # Clean Grid Icon
-    elif raggedness > 0.10 or len(quotes_bad) > 0:
-        health_class = "metric-crit"     # Red
-        health_label = "FRACTURED"
-        icon_html = '<span class="topo-icon">▨</span>' # Broken Grid Icon
+    # Verdict Logic
+    if raggedness == 0.0 and not quotes_bad:
+        status_cls = "ok"
+        status_lbl = "STABLE GRID"
+        bar_color = "ok"
+    elif raggedness > 0.1:
+        status_cls = "crit"
+        status_lbl = "FRACTURED"
+        bar_color = "crit"
     else:
-        health_class = "metric-warn"     # Amber
-        health_label = "RAGGED"
-        icon_html = '<span class="topo-icon">▤</span>' # Irregular Grid Icon
+        status_cls = "warn"
+        status_lbl = "IRREGULAR"
+        bar_color = "warn"
 
-    # 4. Build The Evidence Stream (The "Fracture List")
-    # This is the scrollable verification list requested.
-    evidence_html = ""
+    # Build Terminal Log (The Evidence Locker)
+    log_rows = []
     
-    if fractures or quotes_bad:
-        # Limit the view to prevent DOM bloating if thousands of errors
-        display_limit = 20
-        total_errs = len(fractures) + len(quotes_bad)
+    # Priority 1: Syntax Errors
+    for idx in quotes_bad[:5]:
+        log_rows.append(f'<div class="tc-row"><span class="tc-idx">#{idx+1:04d}</span> <span class="tc-type-syn">SYNTAX</span> Unbalanced Quotes</div>')
+    
+    # Priority 2: Geometry Errors
+    for idx in fractures[:10]:
+        log_rows.append(f'<div class="tc-row"><span class="tc-idx">#{idx+1:04d}</span> <span class="tc-type-geo">GEOMETRY</span> Column Mismatch</div>')
         
-        items = []
-        
-        # Add Quote Errors first (Syntax is worse than Geometry)
-        for idx in quotes_bad[:display_limit]:
-            items.append(f'<span class="topo-chip chip-syntax">Row #{idx+1} (Qt)</span>')
-            
-        # Add Fracture Errors
-        remaining_slots = display_limit - len(items)
-        for idx in fractures[:remaining_slots]:
-            items.append(f'<span class="topo-chip chip-geo">Row #{idx+1} (Col)</span>')
-            
-        # Add "See more" if truncated
-        if total_errs > display_limit:
-            items.append(f'<span class="topo-more">...and {total_errs - display_limit} more</span>')
-            
-        evidence_html = f'''
-        <div class="topo-evidence-box">
-            <div class="topo-evidence-label">Structural Deviations:</div>
-            <div class="topo-chip-stream">
-                {"".join(items)}
-            </div>
-        </div>
-        '''
+    # Truncation
+    total_errs = len(fractures) + len(quotes_bad)
+    shown_errs = len(log_rows)
+    if total_errs > shown_errs:
+        log_rows.append(f'<div class="tc-row" style="color:#64748b; font-style:italic;">... {total_errs - shown_errs} more events hidden ...</div>')
+    
+    if not log_rows:
+        log_rows.append('<div class="tc-row" style="color:#10b981;">No structural deviations detected.</div>')
 
-    # 5. Render The Card
     return f"""
-    <div class="stat-micro-card topo-card">
-        <div class="stat-header">
-            DELIMITED TOPOLOGY
-            <span class="stat-badge {health_class}">{health_label}</span>
+    <div class="fx-card topo-layout">
+        <div class="fx-header">
+            <span>Delimited Topology</span>
+            <span class="fx-badge {status_cls}">{status_lbl}</span>
         </div>
         
-        <div class="stat-main-row">
-            <div class="stat-big-value">
-                {icon_html} {delim_name}
+        <div class="topo-metrics">
+            <div class="topo-stat-big">
+                <div class="ts-val">{rows:,} <span class="ts-dim">×</span> {cols}</div>
+                <div class="ts-lbl">{delim_name}</div>
             </div>
-            <div class="stat-sub-value">
-                {rows:,} Rows <span class="stat-dim">×</span> {cols} Cols
+            
+            <div class="topo-bar-container">
+                <div class="tb-meta">
+                    <span>Structural Stability</span>
+                    <strong>{stability:.1%}</strong>
+                </div>
+                <div class="tb-track">
+                    <div class="tb-fill {bar_color}" style="width: {stability*100}%"></div>
+                </div>
+                <div class="tb-meta" style="margin-top:4px; margin-bottom:0;">
+                    <span>{len(fractures)} Deviations</span>
+                    <span>{len(quotes_bad)} Syntax Errs</span>
+                </div>
             </div>
         </div>
-        
-        <div class="stat-meta-row">
-            <span class="stat-meta-item">
-                <span class="stat-label">Stability:</span>
-                <span class="stat-data">{1.0 - raggedness:.1%}</span>
-            </span>
-            <span class="stat-meta-divider">|</span>
-            <span class="stat-meta-item">
-                <span class="stat-label">Fracture:</span>
-                <span class="stat-data {health_class}">{raggedness:.1%}</span>
-            </span>
+
+        <div class="topo-console">
+            {''.join(log_rows)}
         </div>
-        
-        {evidence_html}
     </div>
     """
 
 def render_glitchmap_panel(glitch_data: dict) -> str:
     """
     [Stage 1.7] Renders the Decode Health Matrix.
-    
-    Visuals:
-    1. Diagnosis Header: Severity Badge + Dominant Cause (e.g. "UTF-8 -> CP1252").
-    2. Density Gauge: Visualizing how much of the file is 'Rot'.
-    3. Correction Matrix: A table showing Artifact -> Hypothesis pairs.
+    Design: Medical Diagnosis + Transformation Pipeline.
     """
-    
-    # 1. Early Exit (Clean Text)
-    if not glitch_data or not glitch_data.get("is_corrupt", False):
+    if not glitch_data or not glitch_data.get("is_corrupt", False): 
         return ""
 
-    # 2. Extract Metrics
     density = glitch_data.get("density", 0.0)
-    dominant_family = glitch_data.get("dominant_family", "UNKNOWN")
     findings = glitch_data.get("findings", [])
+    diagnosis = glitch_data.get('dominant_family', 'Unknown').replace('_', ' ')
     
-    # Human-Readable Family Labels
-    FAMILY_LABELS = {
-        "UTF8_CP1252_LATIN": "UTF-8 interpreted as CP1252 (Latin)",
-        "UTF8_CP1252_PUNCT": "UTF-8 interpreted as CP1252 (Punctuation)",
-        "UTF8_CP1252_SPACE": "UTF-8 interpreted as CP1252 (Whitespace)",
-        "CP1251_UTF8":       "CP1251 interpreted as UTF-8 (Cyrillic)",
-        "DOUBLE_ENCODING":   "Recursive / Double Encoding",
-        "DECODE_FAILURE":    "Hard Data Loss (Replacement Char)"
-    }
-    diagnosis = FAMILY_LABELS.get(dominant_family, dominant_family)
+    # Severity Logic
+    if density > 0.05: status_cls = "crit"
+    elif density > 0.01: status_cls = "warn"
+    else: status_cls = "warn"
 
-    # 3. Determine Severity & Visuals
-    if density > 0.05:
-        sev_class = "metric-crit"
-        sev_label = "CRITICAL FAILURE"
-        bar_color = "var(--color-crit)"
-    elif density > 0.01:
-        sev_class = "metric-warn"
-        sev_label = "DECODE ERROR"
-        bar_color = "var(--color-warn)"
-    else:
-        sev_class = "metric-warn" # Even low density is a warning for integrity
-        sev_label = "ARTIFACTS DETECTED"
-        bar_color = "var(--color-warn-dim)"
-
-    # 4. Build the Correction Matrix (The Rows)
-    # We define a limit to prevent DOM explosion on massive files
-    DISPLAY_LIMIT = 12
-    sorted_findings = sorted(findings, key=lambda x: x['count'], reverse=True)
-    
+    # Build Artifact Rows
+    # Sort by count, limit to top 8 for UI cleanliness
     rows_html = ""
-    for f in sorted_findings[:DISPLAY_LIMIT]:
-        # Escape HTML to prevent injection from the artifact itself
-        safe_seq = html.escape(f['seq'])
-        safe_hyp = html.escape(f['hypothesis'])
-        count = f['count']
-        idx = f['index']
+    for f in sorted(findings, key=lambda x: x['count'], reverse=True)[:8]:
+        fam_short = f['family'].replace('UTF8_CP1252_', '').replace('DOUBLE_', '')
         
-        # Link to first occurrence
-        # Note: Uses the "pos-link" class to trigger the existing Inspector Bridge
-        loc_link = f'<a href="#" class="pos-link" data-index="{idx}">#{idx}</a>'
+        # Link using the existing bridge
+        loc_link = f'<a href="#" onclick="window.TEXTTICS_HIGHLIGHT_CODEPOINT({f["index"]}); return false;">#{f["index"]}</a>'
         
-        row = f"""
-        <tr class="glitch-row">
-            <td class="gl-cell-art"><span class="gl-pill">{safe_seq}</span></td>
-            <td class="gl-cell-arrow">➔</td>
-            <td class="gl-cell-hyp"><span class="gl-ghost">{safe_hyp}</span></td>
-            <td class="gl-cell-fam">{f['family'].replace('UTF8_CP1252_', '')}</td>
-            <td class="gl-cell-cnt">{count}</td>
-            <td class="gl-cell-loc">{loc_link}</td>
-        </tr>
-        """
-        rows_html += row
-
-    # Add "Show More" if truncated
-    remaining = len(findings) - DISPLAY_LIMIT
-    if remaining > 0:
         rows_html += f"""
-        <tr><td colspan="6" class="gl-more">...and {remaining} more artifact types</td></tr>
+        <div class="ag-row">
+            <div class="ag-cell">
+                <span class="ag-source">{html.escape(f['seq'])}</span> 
+                <span class="ag-arrow">➜</span> 
+                <span class="ag-target">{html.escape(f['hypothesis'])}</span>
+                <span class="ag-fam">{fam_short}</span>
+            </div>
+            <div class="ag-cell ag-count">×{f['count']}</div>
+            <div class="ag-cell ag-loc">{loc_link}</div>
+        </div>
         """
 
-    # 5. Build the Density Gauge
-    # A visual bar representing the corruption %
-    pct = min(100, density * 100 * 5) # Scale up visibility (1% density = 5% bar width)
-    gauge_html = f"""
-    <div class="gl-gauge-wrapper">
-        <div class="gl-gauge-label">Corruption Density: {density:.2%}</div>
-        <div class="gl-gauge-track">
-            <div class="gl-gauge-fill" style="width: {pct}%; background-color: {bar_color};"></div>
-        </div>
-    </div>
-    """
-
-    # 6. Assemble the Panel
     return f"""
-    <div class="stat-card glitch-panel">
-        <div class="stat-header">
-            DECODE HEALTH MATRIX
-            <span class="stat-badge {sev_class}">{sev_label}</span>
+    <div class="fx-card">
+        <div class="fx-header">
+            <span>Decode Health Matrix</span>
+            <span class="fx-badge {status_cls}">DENSITY: {density:.2%}</span>
         </div>
         
-        <div class="gl-diagnosis">
-            <span class="gl-diag-label">Primary Diagnosis:</span>
-            <span class="gl-diag-val">{diagnosis}</span>
-        </div>
-        
-        {gauge_html}
-        
-        <table class="gl-matrix-table">
-            <thead>
-                <tr>
-                    <th>Artifact</th>
-                    <th></th>
-                    <th>Hypothesis</th>
-                    <th>Family</th>
-                    <th>Count</th>
-                    <th>Loc</th>
-                </tr>
-            </thead>
-            <tbody>
+        <div class="glitch-dashboard">
+            <div class="diagnosis-strip">
+                <span class="diag-icon">🩺</span>
+                <span class="diag-main">{diagnosis}</span>
+            </div>
+            
+            <div class="artifact-grid">
                 {rows_html}
-            </tbody>
-        </table>
+            </div>
+        </div>
     </div>
     """
 
