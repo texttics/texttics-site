@@ -3892,22 +3892,39 @@ class ForensicExplainer:
 
         # --- E. CONTEXT LENSES (The "Where") ---
 
-        # Lens 1: Source Code
+        # Lens 1: Source Code (Identifiers)
+        is_xid_start = "XID_Start" in props
+        is_xid_continue = "XID_Continue" in props
+
         code_status = "SAFE"
         code_msg = "Safe for use in identifiers."
+
+        # 1) Hard blockers / syntax characters
         if "Pattern_Syntax" in props:
             code_status = "WARN"
-            code_msg = "Pattern Syntax (Reserved for language grammar)."
-        elif "XID_Start" not in props and "XID_Continue" not in props:
-            code_status = "NOTE"
-            code_msg = "Not a valid identifier character."
+            code_msg = "Pattern syntax character (reserved for language grammar)."
+
+        # 2) Identifier security profile (UAX #39 / IdentifierStatus)
         if id_stat == "Restricted":
             code_status = "WARN"
-            code_msg = "Restricted in secure identifiers (UAX #31)."
+            code_msg = "Restricted in secure identifier profiles (UAX #31 / #39)."
+
+        # 3) Bidi / invisible hazards (Trojan Source)
         if "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
             code_status = "CRITICAL"
-            code_msg = "BLOCK. Source code masking risk (Trojan Source)."
-        
+            code_msg = "BLOCK. Source code masking risk (bidi / invisible control)."
+
+        # 4) XID behaviour (only if not already escalated)
+        if code_status == "SAFE":
+            if is_xid_start:
+                code_msg = "Valid identifier start and continue character (XID_Start / XID_Continue)."
+            elif is_xid_continue:
+                # FIX FOR DIGITS: Valid to use, just not at start.
+                code_msg = "Valid as identifier continuation (XID_Continue), but not as the first character."
+            else:
+                code_status = "NOTE"
+                code_msg = "Not recommended for identifiers (no XID_Start / XID_Continue)."
+
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
         # Lens 2: Domain Names (DNS)
@@ -3925,16 +3942,30 @@ class ForensicExplainer:
             
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
 
-        # Lens 3: General Text
+        # Lens 3: General Text / UI
         text_status = "SAFE"
         text_msg = "Standard visible character."
+
+        # Control / non-text categories
         if gc_code in ["Cc", "Cf", "Co", "Cn"]:
             text_status = "NOTE"
-            text_msg = "Invisible or special usage. Not for plain text."
+            text_msg = "Invisible or special-purpose character. Not for plain body text."
+
+        # Emoji semantics (The "Digit 3" Fix)
         if "Emoji" in props:
-            text_status = "NOTE"
-            text_msg = "Emoji character."
-            
+            has_emoji_presentation = "Emoji_Presentation" in props or "Extended_Pictographic" in props
+
+            if has_emoji_presentation:
+                # True emoji (😀, 🚀)
+                text_status = "NOTE"
+                text_msg = "Emoji character (default emoji presentation)."
+            else:
+                # Emoji Bases (Digits 0-9, #, *)
+                if gc_code.startswith("N"):
+                    text_msg = "Standard digit/number; also used as a base in emoji keycap sequences."
+                else:
+                    text_msg = "Text character that can participate in emoji sequences."
+
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
         # --- F. HUMAN CONTEXT (NamesList) ---
