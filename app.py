@@ -3936,16 +3936,41 @@ class ForensicExplainer:
         id_notes.append(f"Script: {script_detail}")
         
         # D. Functional Identity (What does it DO?)
+        # D. Functional Identity (What does it DO?)
         if "Math" in props:
-            id_notes.append("Function: Mathematical Symbol")
+            # [UTR #25] Distinguish Operators from Alphanumerics (Spoofing vs Syntax)
+            if gc_code in ("Lu", "Ll", "Nd"):
+                id_notes.append("Function: Mathematical Alphanumeric (UTR #25)")
+                id_notes.append("Semantically distinct from ASCII; ignores standard case-folding")
+            else:
+                id_notes.append("Function: Mathematical Operator")
+                
+                # [UTR #36] Syntax Spoofing check
+                if "Pattern_Syntax" not in props and id_stat == "Allowed":
+                     id_notes.append("Risk: Mimics executable syntax (UTR #36)")
+
         elif "White_Space" in props:
             id_notes.append("Function: Structural Whitespace")
+            
+            # [UTS #18] Regex Safety Check (RL1.6 Line Boundaries)
+            # U+2028 (LS) and U+2029 (PS) are dangerous because '.' in regex often matches them,
+            # but they act as newlines in rendering, creating injection/bypass vectors.
+            if gc_code in ("Zl", "Zp"):
+                layout_notes.append("Regex Risk: Acts as a Line Boundary in Unicode (UTS #18) but often matches '.' in regex.")
         elif "Alphabetic" in props:
-            pass # Implicit for letters, reduce noise
+            # [Forensic Nuance] Distinguish structural modifiers from standard text
+            if gc_code == "Lm":
+                id_notes.append("Function: Modifier Letter (Spacing). Affects layout; frequent vector for 'homoglyph-adjacent' spoofing.")
+            else:
+                pass # Implicit for standard letters (Ll, Lu, Lo), reduce noise
+
         elif gc_code == "Co":
-            id_notes.append("Function: Private Use (System-Dependent)")
+            id_notes.append("Function: Private Use Area (PUA)")
+            id_notes.append("Risk: Non-interoperable. Meaning is undefined without specific font agreement (Steganography Risk).")
+
         elif gc_code == "Cs":
-            id_notes.append("Function: Surrogate (Invalid in UTF-8)")
+            id_notes.append("Function: Lone Surrogate (Broken Encoding)")
+            id_notes.append("CRITICAL: Invalid Unicode scalar. Breaks UTF-8/JSON interchange; proves upstream data corruption.")
 
         report["highlights"].append({
             "label": "Identity",
@@ -4143,8 +4168,10 @@ class ForensicExplainer:
             pass # Explicit Narrow is standard, no comment needed
             
         # C. Verticality (Rotation Risks)
+        # [UAX #50] Detect Rotation Spoofing
         if vo_code in ("Tr", "Tu"):
-             layout_notes.append("Orientation: Transformed (Rotated in vertical text)")
+             layout_notes.append("Orientation: Transformed (Rotated 90°).")
+             layout_notes.append("Risk: Delimiter spoofing in horizontal text (mimics pipes/slashes).")
 
         report["highlights"].append({
             "label": "Layout",
@@ -5846,38 +5873,48 @@ def analyze_class_consistency(token: str):
 
 def analyze_restriction_level(t: str) -> dict:
     """
-    [VP-08] UTS #39 Restriction Level Analyzer.
-    Determines the 'Script Mixing Class' of the input string.
-    [FIXED] Passes explicit code point to helper to avoid TypeError.
+    [Block 6] UTS #39 Restriction Level Analyzer (V2.0).
+    Implements the formal Restriction Level detection algorithm (UTS #39 §5.2).
+    Distinguishes between Safe, Highly Restrictive, Moderately Restrictive, and Minimally Restrictive.
     """
     if not t: 
         return {"level": RESTRICTION_LEVELS["ASCII"], "label": "EMPTY", "scripts": [], "score": 0}
 
     # 1. Fast Path: ASCII
     if t.isascii():
-        return {"level": RESTRICTION_LEVELS["ASCII"], "label": "ASCII", "scripts": ["Latin"], "score": 0}
+        return {"level": RESTRICTION_LEVELS["ASCII"], "label": "ASCII-ONLY", "scripts": ["Latin"], "score": 0}
 
-    # 2. Forensic Script Extraction
+    # 2. Forensic Script Extraction (Normalized)
     major_scripts = set()
     all_scripts = set()
     
+    # Allow-lists for Levels 3 and 4 (using standard Unicode names)
+    # Level 3: Latin + CJKV (Safe Mixes)
+    highly_restrictive_partners = {
+        "Han", "Hiragana", "Katakana", "Hangul", "Bopomofo"
+    }
+    # Level 4: Latin + One other Recommended Script (Risky but standard)
+    # We exclude Cyrillic/Greek from being "Highly" restrictive due to spoofing, 
+    # but they qualify for "Moderately".
+    
     for char in t:
-        # [CRITICAL FIX] Must pass both char AND ord(char)
-        script = _get_char_script_id(char, ord(char))
+        # [CRITICAL FIX] Pass explicit code point to avoid TypeError
+        script_raw = _get_char_script_id(char, ord(char))
         
-        all_scripts.add(script)
-        # Clean up the ID for logic (strip "Script: " prefix if present or handle raw)
-        # The helper returns "Script: Latin" or "Script-Ext: Latn"
-        # We normalize specific values for the set logic
-        
-        # Simple extraction for now:
-        if "Script:" in script:
-            s_name = script.split(":")[1].strip()
-        elif "Script-Ext:" in script:
-            s_name = script.split(":")[1].strip().split()[0] # Take first if multiple
+        # Normalize Script Name
+        # Returns "Script: Latin" or "Script-Ext: Latn" -> "Latin"
+        s_name = "Unknown"
+        if "Script:" in script_raw:
+            s_name = script_raw.split(":")[1].strip()
+        elif "Script-Ext:" in script_raw:
+            # Handle extensions if primary script is Common
+            # For simplicity in Stage 1, we treat the first extension as the primary
+            # Ideally this would implement the full "Resolved Script Set" logic
+            s_name = script_raw.split(":")[1].strip().split()[0]
         else:
-            s_name = script
+            s_name = script_raw
 
+        all_scripts.add(s_name)
         if s_name not in ("Common", "Inherited", "Unknown"):
             major_scripts.add(s_name)
             
@@ -5886,40 +5923,56 @@ def analyze_restriction_level(t: str) -> dict:
 
     # 3. Restriction Logic (UTS #39 Section 5.2)
 
-    # Case A: Only Symbols/Numbers (e.g., "123.45")
-    if script_count == 0:
+    # Level 2: Single Script (or Common-only)
+    # e.g., "123" (Common) or "Сбербанк" (Cyrillic)
+    if script_count <= 1:
+        script_label = sorted_scripts[0] if script_count == 1 else "Common"
         return {
             "level": RESTRICTION_LEVELS["SINGLE_SCRIPT"],
-            "label": "SINGLE SCRIPT (Common)",
-            "scripts": sorted(list(all_scripts)), 
-            "score": 0
-        }
-
-    # Case B: Single Script (e.g., "Сбербанк" - Pure Cyrillic)
-    if script_count == 1:
-        return {
-            "level": RESTRICTION_LEVELS["SINGLE_SCRIPT"],
-            "label": f"SINGLE SCRIPT ({sorted_scripts[0]})",
+            "label": f"SINGLE SCRIPT ({script_label})",
             "scripts": sorted_scripts,
             "score": 0
         }
 
-    # Case C: Mixed Scripts (The Danger Zone)
+    # Mixed Script Logic
+    # Case C: Highly Restrictive (Level 3)
+    # Latin + CJKV
     if "Latin" in major_scripts:
-        # Check if ALL other scripts are in the Latin whitelist
         others = major_scripts - {"Latin"}
-        if others.issubset(SAFE_SCRIPT_MIXES["Latin"]):
+        if others.issubset(highly_restrictive_partners):
             return {
                 "level": RESTRICTION_LEVELS["HIGHLY_RESTRICTIVE"],
-                "label": "HIGHLY RESTRICTIVE (Authorized Mix)",
+                "label": "HIGHLY RESTRICTIVE (Latin + CJKV)",
                 "scripts": sorted_scripts,
                 "score": 10 
             }
 
-    # Case D: Unauthorized Mixes
+        # Case D: Moderately Restrictive (Level 4)
+        # Latin + ONE other script (excluding Cyrillic/Greek/Cherokee if strictly following profile, 
+        # but standard Level 4 allows any recommended script).
+        # We flag it as Moderate Risk because Latin+Cyrillic is the #1 spoofing vector.
+        if len(others) == 1:
+            other_script = list(others)[0]
+            # Warning: Latin+Cyrillic or Latin+Greek is formally Level 4 but HIGH RISK
+            risk_score = 40
+            label = f"MODERATELY RESTRICTIVE (Latin + {other_script})"
+            
+            if other_script in ("Cyrillic", "Greek"):
+                label += " [SPOOF RISK]"
+                risk_score = 60 # Elevate score for known high-risk pairs
+
+            return {
+                "level": 4, # Mapped to MODERATE in constants
+                "label": label,
+                "scripts": sorted_scripts,
+                "score": risk_score
+            }
+
+    # Case E: Minimally Restrictive (Level 5)
+    # Arbitrary mixes (e.g. Greek + Cyrillic, or Latin + 2 others)
     return {
         "level": RESTRICTION_LEVELS["MINIMALLY_RESTRICTIVE"],
-        "label": "MINIMALLY RESTRICTIVE (Mixed Scripts)",
+        "label": "MINIMALLY RESTRICTIVE (Complex Mix)",
         "scripts": sorted_scripts,
         "score": 80 
     }
