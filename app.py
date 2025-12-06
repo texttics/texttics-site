@@ -3827,6 +3827,11 @@ class ForensicExplainer:
         id_stat = rec.get("id_stat", "Restricted")
         id_type = rec.get("id_type", []) # [V4] List: Recommended, Technical, etc.
         idna = rec.get("idna", "disallowed")
+
+        # Get raw code, then map to Pretty Name
+        bc_code = rec.get("bc", "L")
+        bc_pretty = BIDI_PRETTY_MAP.get(bc_code, self._get_vocab("bc", bc_code))
+        
         bc_code = rec.get("bc", "L")
         bc_name = self._get_vocab("bc", bc_code)
         confusables = rec.get("confusables", [])
