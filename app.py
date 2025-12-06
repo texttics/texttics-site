@@ -4062,7 +4062,6 @@ class ForensicExplainer:
         # 4. Normalization Structure (SOTA Wired: Pure Physics + Rich Descriptions)
         
         norm_notes = []
-        dt = rec.get("dt") # Start with DB value
         
         try:
             char_raw = chr(cp_int)
