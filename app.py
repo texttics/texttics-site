@@ -3745,9 +3745,8 @@ def _get_codepoint_properties(t: str):
 
 class ForensicExplainer:
     """
-    [Block 6.5] The Policy Engine (Layer C - Ultimate V8).
-    Translates raw V7 forensic data into human-readable security verdicts,
-    Context Lenses (Code/DNS/Text), and detailed Forensic Highlights.
+    [Block 6.5] The Policy Engine (Layer C - V4.4 Hardened).
+    Narrative Engine with Rank-Based Logic and Anchor Protection.
     """
     def __init__(self, database, meta):
         self.db = database
@@ -3758,41 +3757,30 @@ class ForensicExplainer:
         }
 
     def _escalate(self, current_level, new_level):
-        """Monotonic upgrade: Only change level if new_level is more severe."""
         if self.SEVERITY_RANK.get(new_level, 0) > self.SEVERITY_RANK.get(current_level, 0):
             return new_level
         return current_level
 
     def _get_vocab(self, category, key, default=None):
-        """Helper to safely fetch long names from FORENSIC_META."""
         if not key: return default
         return self.meta.get(category, {}).get(key, default or key)
 
     def explain(self, hex_str):
-        """
-        Forensic Explainer V4.0: The Narrative Engine.
-        Uses V7+ 'Gold' data (SCX, NT/NV, ID_TYPE) to generate dynamic security stories.
-        """
         # 0. Safety Check
         if not FORENSIC_DB_READY:
-            return {
-                "identity": "System Loading...",
-                "security": {"level": "UNKNOWN", "verdict": "Forensic Database not loaded.", "badges": ["NO-DB"]},
-                "props": [], 
-                "highlights": [], "lenses": {}, "context": []
-            }
+            return self._fallback_report("System Loading...", "Forensic Database not loaded.", "NO-DB")
 
         # 1. Fetch Record
         rec = self.db.get(hex_str)
         if not rec:
-             return {
-                "identity": "Unknown Code Point",
-                "security": {"level": "UNKNOWN", "verdict": "No forensic record found.", "badges": ["NO-DATA"]},
-                "props": [],
-                "highlights": [], "lenses": {}, "context": []
-            }
+             return self._fallback_report("Unknown Code Point", "No forensic record found.", "NO-DATA")
 
         props = rec.get("props", [])
+        
+        # Derive Physics Early
+        try: cp_int = int(hex_str, 16)
+        except: cp_int = 0
+        is_ascii = (cp_int <= 0x7F)
 
         # 2. Initialize Report
         report = {
@@ -3810,98 +3798,126 @@ class ForensicExplainer:
         report["identity"] = f"{name} ({blk})"
 
         gc_code = rec.get("gc", "Cn")
-        gc_name = self._get_vocab("gc", gc_code)
+        gc_name = self._get_vocab("gc", gc_code).replace("_", " ")
         
-        # [V4 UPGRADE] Script Extensions Logic
         script_code = rec.get("script", "Zzzz")
-        script_name = self._get_vocab("sc", script_code)
-        scx = rec.get("scx", [])
+        script_name = self._get_vocab("sc", script_code).replace("_", " ")
         
+        # Script Extensions
+        scx = rec.get("scx", [])
         script_detail = script_name
         if script_code in ("Common", "Inherited") and scx:
-            # "Common (Used in: Latin, Greek)"
             scx_names = [self._get_vocab("sc", s) for s in scx[:3]]
             script_detail += f" (Used in: {', '.join(scx_names)})"
 
         # --- B. DATA EXTRACTION ---
         id_stat = rec.get("id_stat", "Restricted")
-        id_type = rec.get("id_type", []) # [V4] List: Recommended, Technical, etc.
+        id_type = rec.get("id_type", [])
         idna = rec.get("idna", "disallowed")
-
-        # Get raw code, then map to Pretty Name
+        
         bc_code = rec.get("bc", "L")
         bc_pretty = BIDI_PRETTY_MAP.get(bc_code, self._get_vocab("bc", bc_code))
         
-        bc_code = rec.get("bc", "L")
-        bc_name = self._get_vocab("bc", bc_code)
         confusables = rec.get("confusables", [])
         
-        # --- C. SECURITY VERDICT (Monotonic Logic) ---
+        # --- C. SECURITY VERDICT ---
         # 1. Identifier Status
         if id_stat == "Restricted":
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["verdict"] = "Restricted in Identifiers (UAX #31)."
             report["security"]["badges"].append("RESTRICTED")
         elif id_stat == "Allowed":
-            report["security"]["verdict"] = "Allowed in Identifiers."
+            if report["security"]["verdict"] == "Standard Character.":
+                report["security"]["verdict"] = "Allowed in Identifiers."
 
         # 2. IDNA Protocol
-        if idna == "disallowed":
-            report["security"]["badges"].append("NO-DNS")
-        elif idna == "deviation":
-            report["security"]["badges"].append("DEVIATION")
-        elif idna in ("mapped", "ignored"):
-            report["security"]["badges"].append("MAPPED")
+        if idna == "disallowed": report["security"]["badges"].append("NO-DNS")
+        elif idna == "deviation": report["security"]["badges"].append("DEVIATION")
+        elif idna in ("mapped", "ignored"): report["security"]["badges"].append("MAPPED")
 
-        # 3. Spoofing
+        # 3. Spoofing (Confusables) - [FIX V4.4 Robust Logic]
         if confusables:
-            report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
-            report["security"]["badges"].append("SPOOF")
-            report["security"]["verdict"] = f"Visual Spoof Risk ({len(confusables)} Lookalikes)."
+            if is_ascii:
+                # ASCII Anchor: Inform, don't escalate.
+                report["security"]["badges"].append("CONFUSABLES")
+                
+                # Check badges/level instead of string sniffing
+                is_clean = report["security"]["level"] == "SAFE" and not any(
+                    b in report["security"]["badges"] for b in ("RESTRICTED", "BIDI", "INVISIBLE", "DEPRECATED")
+                )
+                
+                if is_clean:
+                     report["security"]["verdict"] = f"ASCII character with {len(confusables)} known lookalikes."
+            else:
+                # Non-ASCII Imitator: Escalate.
+                report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
+                report["security"]["badges"].append("SPOOF")
+                report["security"]["verdict"] = f"Visual Spoof Risk ({len(confusables)} Lookalikes)."
 
         # 4. Critical Hazards
         if "Bidi_Control" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
             report["security"]["verdict"] = "DANGEROUS SYNTAX: Bidi Control."
             report["security"]["badges"].append("BIDI")
-        
+            
         if "Default_Ignorable_Code_Point" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("INVISIBLE")
-            if report["security"]["level"] < "CRITICAL":
+            
+            # [FIX V4.4] Rank-Based Comparison, not String
+            current_rank = self.SEVERITY_RANK[report["security"]["level"]]
+            crit_rank = self.SEVERITY_RANK["CRITICAL"]
+            
+            if current_rank < crit_rank:
                 report["security"]["verdict"] = "Invisible Character (Default Ignorable)."
-
+                
         if "Deprecated" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("DEPRECATED")
 
-        # --- D. NARRATIVE HIGHLIGHTS (The Story) ---
+        # --- D. NARRATIVE HIGHLIGHTS ---
         
-        # 1. Identity & Usage
-        # "Lowercase_Letter (Ll) in Latin script."
+        # 1. Identity
         report["highlights"].append({
             "label": "Identity",
             "text": f"{gc_name} ({gc_code}) in {script_detail} script."
         })
 
-        # 1.5. Directionality (The Clean Look)
+        # 2. Directionality
         mirror = rec.get("mirror")
         dir_msg = f"{bc_pretty} ({bc_code})."
-        if mirror:
-            dir_msg += f" Mirrored (pairs with {mirror})."
-        elif "Bidi_Control" in props:
-            dir_msg += " Explicit Directional Formatting Control."
+        if mirror: dir_msg += f" Mirrored (pairs with {mirror})."
+        elif "Bidi_Control" in props: dir_msg += " Explicit Directional Formatting Control."
             
         report["highlights"].append({
             "label": "Direction",
             "text": dir_msg
         })
 
-        # 2. Security Profile (Rich Context)
-        # "Allowed (Recommended). Safe for identifiers."
+        # 3. Numeric Physics
+        nt = rec.get("nt")
+        nv = rec.get("nv")
+        if nt and nt != "None":
+            nt_map = {"De": "Decimal Digit", "Di": "Digit", "Nu": "Numeric"}
+            report["highlights"].append({
+                "label": "Numeric",
+                "text": f"{nt_map.get(nt, 'Numeric')}. Mathematical Value: {nv}."
+            })
+
+        # 4. Normalization Structure
+        nfkc_qc = rec.get("nfkc_qc") or "Y"
+        norm_text = "Stable under NFKC."
+        if nfkc_qc != "Y":
+            norm_text = "Unstable. Changes/Decomposes under NFKC normalization."
+            
+        report["highlights"].append({
+            "label": "Structure",
+            "text": norm_text
+        })
+
+        # 5. Security Profile
         sec_msg = f"{id_stat}."
         if id_stat == "Allowed" and id_type:
-            # Capitalize first item (Recommended, Inclusion, Technical)
             sec_msg += f" Type: {id_type[0].capitalize()}."
         elif id_stat == "Restricted":
             sec_msg += " Not for general use in secure strings."
@@ -3910,88 +3926,39 @@ class ForensicExplainer:
             "label": "Security",
             "text": sec_msg
         })
-
-        # 3. Numeric Physics (V4 Feature)
-        # "Decimal Digit. Value: 5."
-        nt = rec.get("nt")
-        nv = rec.get("nv")
-        if nt and nt != "None":
-            nt_map = {"De": "Decimal Digit", "Di": "Digit", "Nu": "Numeric"}
-            nt_desc = nt_map.get(nt, "Numeric")
-            report["highlights"].append({
-                "label": "Numeric",
-                "text": f"{nt_desc}. Mathematical Value: {nv}."
-            })
-
-        # 4. Deep Structure (Normalization & Bidi)
-        # Combine structural facts into one dense update if interesting
-        nfkc_qc = rec.get("nfkc_qc") or "Y"
-        mirror = rec.get("mirror")
         
-        struct_notes = []
-        if nfkc_qc != "Y":
-            struct_notes.append("Unstable under NFKC (Changes/Decomposes).")
-        else:
-            struct_notes.append("Stable under NFKC.")
-            
-        if mirror:
-            struct_notes.append(f"Mirrored Bidi (pairs with {mirror}).")
-        elif "Bidi_Control" in props:
-            struct_notes.append("Invisible Directional Control (RTL/LTR).")
-            
-        report["highlights"].append({
-            "label": "Structure",
-            "text": " ".join(struct_notes)
-        })
-
-        # 6. Layout (Forensic Geometry)
-        # We combine Line Break, Width, and Verticality into a cohesive story.
+        # 6. Layout
         lb_code = rec.get("lb", "XX")
         lb_name = self._get_vocab("lb", lb_code).replace("_", " ")
+        ea_code = rec.get("ea", "N")
         
         layout_notes = [f"Line Break: {lb_name}"]
+        if ea_code in ("F", "W"): layout_notes.append("Width: Fullwidth/Wide (2 columns).")
+        elif ea_code == "A": layout_notes.append("Width: Ambiguous.")
         
-        # Add Width Context (Crucial for Terminal/CLI forensics)
-        ea_code = rec.get("ea", "N")
-        if ea_code in ("F", "W"):
-            layout_notes.append("Width: Fullwidth/Wide (2 columns).")
-        elif ea_code == "A":
-            layout_notes.append("Width: Ambiguous (Context-dependent).")
-        elif ea_code == "H":
-            layout_notes.append("Width: Halfwidth.")
-            
-        # Add Vertical Context (Rare but useful)
-        vo_code = rec.get("vo", "R")
-        if vo_code == "U":
-            layout_notes.append("Vertical: Upright.")
-        elif vo_code == "Tr":
-            layout_notes.append("Vertical: Transformed (Rotated).")
-
         report["highlights"].append({
             "label": "Layout",
-            "text": ". ".join(layout_notes) + "."
+            "text": ". ".join(layout_notes)
         })
 
-        # 6. Timeline
-        # Age = "Birth Version". Characters are immutable, so there is no "Latest".
-        # We flag "New" characters as they may cause rendering issues (Boxes).
-        age_val = rec.get("age", "NA")
-        try:
-            # Simple heuristic: Unicode 14.0+ is "Modern/New"
-            if float(age_val) >= 14.0:
-                time_msg = f"Recent addition (Unicode {age_val}). Rendering support may vary."
-            else:
-                time_msg = f"Standard legacy support (Unicode {age_val})."
-        except:
-            time_msg = f"Introduced in Unicode {age_val}."
-
+        # 7. Timeline
         report["highlights"].append({
             "label": "Timeline",
-            "text": time_msg
+            "text": f"Introduced in Unicode {age}."
         })
 
         # --- E. CONTEXT LENSES ---
+        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii)
+        
+        # --- F. CONTEXT NOTES ---
+        if rec["aliases"]:
+            report["context"].append(f"Aliases: {', '.join(rec['aliases'][:3])}")
+        for note in rec["notes"]:
+            report["context"].append(note)
 
+        return report
+
+    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii):
         # Lens 1: Source Code
         is_xid_start = "XID_Start" in props
         is_xid_continue = "XID_Continue" in props
@@ -4021,6 +3988,7 @@ class ForensicExplainer:
         # Lens 2: DNS
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
+        
         if idna == "disallowed":
             dns_status = "CRITICAL"
             dns_msg = "Banned in International Domain Names."
@@ -4028,9 +3996,13 @@ class ForensicExplainer:
             dns_status = "WARN"
             dns_msg = "Deviation: Differs between IDNA2003 and 2008."
         elif idna in ("mapped", "ignored"):
-            dns_status = "WARN"
-            dns_msg = "Mapped/Removed under IDNA/UTS #46. Will not appear in final label."
-        elif idna == "valid" and confusables:
+            if is_ascii:
+                dns_status = "SAFE"
+                dns_msg = "Case-folded in IDNA (e.g. 'A' -> 'a'); standard behavior."
+            else:
+                dns_status = "WARN"
+                dns_msg = "Mapped/Removed under IDNA/UTS #46. Will not appear in final label."
+        elif idna == "valid" and confusables and not is_ascii:
             dns_status = "WARN"
             dns_msg = "Valid, but visual spoofing risk exists."
             
@@ -4056,13 +4028,13 @@ class ForensicExplainer:
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
-        # --- F. CONTEXT NOTES ---
-        if rec["aliases"]:
-            report["context"].append(f"Aliases: {', '.join(rec['aliases'][:3])}")
-        for note in rec["notes"]:
-            report["context"].append(note)
-
-        return report
+    def _fallback_report(self, identity_msg, verdict_msg, badge_err):
+        return {
+            "identity": identity_msg,
+            "security": {"level": "UNKNOWN", "verdict": verdict_msg, "badges": [badge_err]},
+            "props": [],
+            "highlights": [], "lenses": {}, "context": []
+        }
 
 # A. Stage 1.5 Micro-Analyzers (The Sensors)
 
