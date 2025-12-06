@@ -17070,7 +17070,7 @@ def inspect_character(event):
         matrix_state = analyze_signal_processor_state(data)
         
         # 10. Render
-        render_inspector_panel(data, matrix_state)
+        render_inspector_panel(data)
 
     except Exception as e:
         print(f"Inspector Error: {e}")
