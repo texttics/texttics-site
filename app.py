@@ -16923,7 +16923,7 @@ def inspect_character(event):
         # 3. Analyze the Cluster
         base_char = target_cluster[0]
         cp_base = ord(base_char)
-        hex_str = f"{cp_base:04X}" # Needed for lookup
+        hhex_str = f"{cp_base:04X}"
 
         # [SOTA FIX] Fetch from Explainer DB (Source of Truth)
         rec = {}
@@ -16938,7 +16938,7 @@ def inspect_character(event):
         lb_val = rec.get("lb") or _find_in_ranges(cp_base, "LineBreak") or "XX"
         ea_val = rec.get("ea") or _find_in_ranges(cp_base, "EastAsianWidth") or "N"
         
-        # Calculate Ghosts early for the Patch
+        # Ghosts Calculation (Must be BEFORE dictionary)
         ghosts = _get_ghost_chain(base_char)
 
         # [SOTA PATCH] Force Physics consistency
@@ -16947,10 +16947,10 @@ def inspect_character(event):
             if not dt_val:
                 dt_val = "Compat"
 
-        Pre-calculate components to avoid circular dependency
+        # Pre-calculate components (Must be BEFORE dictionary)
         components = []
         zalgo_score = 0
-        for ch in target_char: # Inspecting atomic char for now
+        for ch in target_char:
             cat = unicodedata.category(ch)
             if cat.startswith('M'): zalgo_score += 1
             components.append({
@@ -16960,38 +16960,34 @@ def inspect_character(event):
                 'ccc': unicodedata.combining(ch),
                 'is_base': not cat.startswith('M')
             })
-  
-        # 5. Build Base Payload
+
         cat_short = unicodedata.category(base_char)
         
+        # Build Data Dictionary (Now has all variables ready)
         base_char_data = {
+            "char": target_char,
+            "codepoint": f"U+{hex_str}",
+            "name": rec.get("name") or unicodedata.name(target_char, "UNKNOWN"),
             "block": rec.get("blk") or _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(target_cluster[0]), # Use base char
+            "bidi": unicodedata.bidirectional(target_char),
             "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
-            
-            # Physics Keys
             "lb": lb_val, 
             "ea": ea_val, 
             "dt": dt_val, 
             "line_break": lb_val,
-
-            # Context Keys
             "ghosts": ghosts,
-            "components": components,
+            "components": components, 
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING), 
             "lookalikes_data": rec.get("confusables", []),
-            "stack_msg": None 
+            "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None 
         }
 
-        # 6. Cluster Analysis
-        cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
-        
-        # Inject computed components back into base data
-        base_char_data['components'] = cluster_identity.get('components', [])
+        # Cluster Analysis
+        cluster_identity = _compute_cluster_identity(target_char, base_char_data)
         
         # 7. Policy Engine (The Narrator)
         forensic_report = None
