@@ -7198,220 +7198,116 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic State Machine v5.2 (Fixed Data Structures & Cross-Script Logic).
-    Standardizes all facets to dictionaries to prevent NameError.
+    Forensic Matrix V3.1: Semantic Alignment.
+    Resolves the 'Stable vs Unstable' conflict by renaming Structure labels.
+    Synchronizes the Visual/Structure/Identity matrix with the Forensic Report.
     """
+    # 1. Unpack Context (The Truth)
+    report = data.get('forensic_report') or {}
+    sec_level = report.get('security', {}).get('level', 'UNKNOWN')
     
-    # --- 1. THREAT DEFINITIONS ---
-    RISK_WEIGHTS = {
-        "INVISIBLE": 2.0,
-        "NON_ASCII": 0.5,
-        "BIDI": 4.0,             
-        "ZALGO_HEAVY": 3.0,      
-        "ZALGO_LIGHT": 0.5,      
-        "LAYOUT_CONTROL": 1.5,   
-        "CONFUSABLE_CROSS": 3.0, 
-        "CONFUSABLE_SAME": 0.0,  
+    # 2. Determine Risk Level (0-4)
+    # Map Forensic Verdicts (Policy) to Inspector Levels (Visuals)
+    level_map = {
+        "SAFE": 0, "NOTE": 1, "WARN": 2, 
+        "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0
     }
-
-    # --- 2. RAW SENSORS & CONTEXT ---
+    level = level_map.get(sec_level, 0)
     
-    cp_hex = data.get('cp_hex_base', '').replace('U+', '')
-    try:
-        cp = int(cp_hex, 16)
-    except:
-        cp = 0
+    # Physics Overrides (Zalgo)
+    stack_count = 0
+    if data.get('stack_msg'): 
+        try: stack_count = int(re.search(r'\d+', data['stack_msg']).group())
+        except: stack_count = 3
+    if stack_count > 5: level = max(level, 3)
     
-    script = data.get('script', 'Common')
-    raw_confusable = bool(data.get('confusable'))
-    is_ascii = data.get('ascii', 'N/A') != 'N/A'
-
-    # Check the global set we loaded from JSON
-    is_ascii_confusable = (cp in ASCII_CONFUSABLES)
+    # 3. FACET 1: VISIBILITY
+    vis_state = "PASS"
+    vis_class = "risk-ok"
+    vis_detail = "Standard Visible"
+    vis_icon = "eye"
     
-    # Cross-Script requires the source to NOT be Common/Inherited.
-    # Em Dash (Common) -> Hyphen (Common) is NOT a cross-script threat.
-    is_common_script = script in ("Common", "Inherited")
-    is_cross_script_confusable = raw_confusable and not is_ascii and not is_common_script
+    if data.get('is_invisible'):
+        vis_state = "HIDDEN"
+        vis_class = "risk-crit"
+        vis_detail = "Zero-Width / Control"
+        vis_icon = "eye-off"
+    elif not data['is_ascii']:
+        vis_state = "EXTENDED" # Kept per user preference, strictly means > 0x7F
+        vis_class = "risk-info"
+        vis_detail = "Unicode Range"
+        vis_icon = "globe"
+
+    # 4. FACET 2: STRUCTURE (Terminology Fix)
+    # Old: "STABLE" (Conflicted with Normalization) -> New: "ATOMIC"
+    struct_state = "ATOMIC"
+    struct_class = "risk-ok"
+    struct_detail = "Single Point"
+    struct_icon = "box"
     
-    stack_msg = data.get('stack_msg') or ""
-    mark_count = 0
-    if 'components' in data:
-        for c in data['components']:
-            if not c['is_base']: mark_count += 1
-            
-    zalgo_threshold = 2 if script in ('Latin', 'Common') else 4
-    is_heavy_zalgo = "Heavy" in stack_msg or mark_count > zalgo_threshold
-    is_light_mark = mark_count > 0 and not is_heavy_zalgo
+    # Check for Normalization Instability (The Truth from Footer)
+    ghosts = data.get('ghosts')
+    is_norm_unstable = ghosts and (ghosts['raw'] != ghosts['nfkc'])
     
-    is_invisible = data.get('is_invisible', False)
-    bidi_val = data.get('bidi')
-    is_bidi_control = bidi_val in ('LRE', 'RLE', 'LRO', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI')
-    
-    cat = data.get('category', 'N/A')
-    is_layout_control = cat in ('Format', 'Space Separator') and not is_bidi_control and not is_invisible and not is_ascii
+    # Logic: Structure can be Atomic but Mutable
+    if is_norm_unstable:
+        struct_state = "MUTABLE"
+        struct_class = "risk-warn" # Align color with footer WARN
+        struct_detail = "Changes in NFKC"
+        struct_icon = "refresh-cw"
+    elif len(data['components']) > 1:
+        struct_state = "COMPOSITE"
+        struct_class = "risk-info"
+        struct_detail = f"{len(data['components'])} Components"
+        struct_icon = "layers"
 
-    # --- 3. FACET STATE CALCULATOR ---
-
-    # Check for Hard Corruption
-    is_corruption = (cp == 0xFFFD or cp == 0x0000 or cat == 'Cs')
-    
-    current_score = 0.0
-    reasons = []
-
-    # A. VISIBILITY (Constructs 'vis' dict)
-    if is_invisible:
-        if is_bidi_control:
-             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Control Char"}
-        else:
-             current_score += RISK_WEIGHTS["INVISIBLE"]
-             vis = {"state": "HIDDEN", "class": "risk-fail", "icon": "eye_off", "detail": "Non-Rendered"}
-             reasons.append("Invisible Character")
-    elif is_corruption:
-        # Explicit Corruption Handling
-        current_score += 4.0 # Instant Critical
-        vis = {"state": "CORRUPT", "class": "risk-fail", "icon": "eye_off", "detail": "Data Loss"}
-        reasons.append("Data Corruption")
-    elif not is_ascii:
-        current_score += RISK_WEIGHTS["NON_ASCII"]
-        vis = {"state": "EXTENDED", "class": "risk-info", "icon": "eye", "detail": "Unicode Range"}
-    else:
-        vis = {"state": "PASS", "class": "risk-pass", "icon": "eye", "detail": "Standard ASCII"}
-
-    # B. STRUCTURE (Constructs 'struct' dict)
-    if is_bidi_control:
-        current_score += RISK_WEIGHTS["BIDI"]
-        struct = {"state": "FRACTURED", "class": "risk-fail", "icon": "layers", "detail": "Bidi Control"}
-        reasons.append("Directional Control")
-    elif is_heavy_zalgo:
-        current_score += RISK_WEIGHTS["ZALGO_HEAVY"]
-        struct = {"state": "UNSTABLE", "class": "risk-warn", "icon": "layers", "detail": f"Heavy Stack ({mark_count})"}
-        reasons.append("Excessive Marks")
-    elif is_light_mark:
-        current_score += RISK_WEIGHTS["ZALGO_LIGHT"]
-        struct = {"state": "MODIFIED", "class": "risk-info", "icon": "cube", "detail": "Combining Marks"}
-    elif is_layout_control:
-        current_score += RISK_WEIGHTS["LAYOUT_CONTROL"]
-        struct = {"state": "LAYOUT", "class": "risk-warn", "icon": "cube", "detail": "Format Control"}
-    else:
-        struct = {"state": "STABLE", "class": "risk-pass", "icon": "cube", "detail": "Atomic Base"}
-
-    # C. IDENTITY (Calculates vars, then constructs 'ident' dict)
+    # 5. FACET 3: IDENTITY
     ident_state = "UNIQUE"
-    ident_class = "risk-pass"
-    ident_icon = "fingerprint"
+    ident_class = "risk-ok"
     ident_detail = "No Lookalikes"
-
-    lookalikes = DATA_STORES.get("InverseConfusables", {}).get(str(cp), [])
-    lookalike_count = len(lookalikes)
-
-    if is_cross_script_confusable:
-        current_score += RISK_WEIGHTS["CONFUSABLE_CROSS"]
-        ident_state = "AMBIGUOUS"
-        ident_class = "risk-warn"
-        ident_icon = "clone"
-        detail_text = f"{lookalike_count} Lookalikes" if lookalike_count > 0 else "Cross-Script Risk"
-        ident_detail = detail_text
-        reasons.append("Confusable Identity")
-        
-    elif is_ascii_confusable or (raw_confusable and is_common_script): 
-        # Common/Inherited confusions (like Em Dash) fall here (Note/Blue), not Warn/Orange
-        current_score += RISK_WEIGHTS["CONFUSABLE_SAME"]
-        ident_state = "NOTE"
-        ident_class = "risk-info"
-        ident_icon = "fingerprint"
-        ident_detail = f"{lookalike_count} Lookalikes"
-        
-    elif lookalike_count > 0:
-        ident_state = "NOTE"
-        ident_class = "risk-info"
-        ident_detail = f"{lookalike_count} Lookalikes"
-
-    # Wrap Identity into a dict to match the others
-    ident = {
-        "state": ident_state,
-        "class": ident_class,
-        "icon": ident_icon,
-        "detail": ident_detail
-    }
-
-    # --- 4. VERDICT LEVEL MAPPING ---
+    ident_icon = "fingerprint"
     
-    level = 0
-    label = "BASELINE"
-    header_class = "header-baseline"
-    icon = "shield_ok"
+    lookalikes = len(data.get('lookalikes_data', []))
+    if lookalikes > 0:
+        ident_state = "NOTE"
+        ident_class = "risk-info"
+        ident_detail = f"{lookalikes} Lookalikes"
+    
+    # 6. Header Semantics (Synced with Footer)
+    # We use the Forensic Level to drive the Header Class/Text
+    header_config = {
+        0: ("BASELINE", "header-baseline", "Standard Composition"),
+        1: ("NON-STD",  "header-complex",  "Extended / Complex"),
+        2: ("ANOMALOUS","header-anomalous","Restricted / Mutable"), # Matches WARN
+        3: ("SUSPICIOUS","header-suspicious","Evasion Risk"),
+        4: ("CRITICAL", "header-critical", "Active Threat")
+    }
+    level_text, header_cls, verdict_text = header_config.get(level, header_config[0])
+
+    # Dynamic Footer Label
     footer_label = "ANALYSIS"
-    footer_text = "Standard Composition"
     footer_class = "footer-neutral"
-
-    if 0.5 <= current_score < 1.5:
-        level = 1
-        label = "NON-STD"
-        header_class = "header-complex"
-        icon = "shield_ok"
-        footer_label = "NOTE"
-        footer_text = "Extended Unicode / Marks"
-        footer_class = "footer-info"
-        
-    elif 1.5 <= current_score < 3.0:
-        level = 2
-        label = "ANOMALOUS"
-        header_class = "header-anomalous"
-        icon = "shield_warn"
-        footer_label = "DETECTED"
-        footer_class = "footer-warn"
-        
-    elif 3.0 <= current_score < 4.0:
-        level = 3
-        label = "SUSPICIOUS"
-        header_class = "header-suspicious"
-        icon = "shield_warn"
-        footer_label = "DETECTED"
-        footer_class = "footer-warn"
-        
-    elif current_score >= 4.0:
-        level = 4
-        label = "CRITICAL"
-        header_class = "header-critical"
-        icon = "octagon_crit"
-        footer_label = "DETECTED"
-        footer_class = "footer-crit"
-
-    # --- 5. HARD OVERRIDES ---
-    if is_bidi_control and level < 3:
-        level = 3
-        label = "SUSPICIOUS"
-        header_class = "header-suspicious"
-        icon = "shield_warn"
-        footer_class = "footer-warn"
-
-    # HARD OVERRIDE FOR CORRUPTION
-    if is_corruption:
-        level = 4
-        label = "CRITICAL"
-        header_class = "header-critical"
-        icon = "octagon_crit"
-        footer_label = "FATAL"
-        footer_text = "Data Integrity Failure"
-        footer_class = "footer-crit"
-
-    if reasons:
-        footer_text = ", ".join(reasons)
-    elif level == 0 and is_ascii_confusable:
-        footer_label = "NOTE"
-        footer_text = "Common Lookalike (Safe)"
+    footer_text = verdict_text
+    
+    if level >= 2:
+        footer_label = "VERDICT"
+        footer_class = "footer-warn" if level < 4 else "footer-crit"
+        footer_text = report.get('security', {}).get('verdict', verdict_text)
 
     return {
         "level": level,
-        "level_text": f"LEVEL {level}",
-        "verdict_text": label,
-        "header_class": header_class,
-        "icon_key": icon,
-        "facets": [vis, struct, ident], # Pass the dicts directly
+        "level_text": level_text,
+        "header_class": header_cls,
+        "verdict_text": verdict_text,
+        "icon_key": "shield" if level == 0 else "alert-triangle",
+        "facets": [
+            {"state": vis_state, "class": vis_class, "detail": vis_detail, "icon": vis_icon},
+            {"state": struct_state, "class": struct_class, "detail": struct_detail, "icon": struct_icon},
+            {"state": ident_state, "class": ident_class, "detail": ident_detail, "icon": ident_icon}
+        ],
         "footer_label": footer_label,
-        "footer_text": footer_text,
-        "footer_class": footer_class
+        "footer_class": footer_class,
+        "footer_text": footer_text
     }
 
 def _parse_inline_css(style_str: str) -> Dict[str, str]:
@@ -16461,7 +16357,10 @@ def inspect_character(event):
             
         id_type = _find_in_ranges(cp_base, "IdentifierType")
             
-        macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask)
+        # Pass the forensic level (e.g., "WARN") to the macro classifier
+        f_level = forensic_report["security"]["level"] if forensic_report else "SAFE"
+        macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
+        
         ghosts = _get_ghost_chain(base_char)
         
         bidi_short = unicodedata.bidirectional(base_char)
