@@ -3936,34 +3936,32 @@ class ForensicExplainer:
         id_notes.append(f"Script: {script_detail}")
         
         # D. Functional Identity (What does it DO?)
-        # D. Functional Identity (What does it DO?)
+        
+        # [UTR #25] Math Analysis: Distinguish "Fake Text" from "Real Math"
         if "Math" in props:
-            # [UTR #25] Distinguish Operators from Alphanumerics (Spoofing vs Syntax)
             if gc_code in ("Lu", "Ll", "Nd"):
                 id_notes.append("Function: Mathematical Alphanumeric (UTR #25)")
                 id_notes.append("Semantically distinct from ASCII; ignores standard case-folding")
             else:
                 id_notes.append("Function: Mathematical Operator")
-                
-                # [UTR #36] Syntax Spoofing check
-                if "Pattern_Syntax" not in props and id_stat == "Allowed":
-                     id_notes.append("Risk: Mimics executable syntax (UTR #36)")
 
+        # [UTS #18] Whitespace Analysis: The Regex Trap
         elif "White_Space" in props:
             id_notes.append("Function: Structural Whitespace")
             
-            # [UTS #18] Regex Safety Check (RL1.6 Line Boundaries)
-            # U+2028 (LS) and U+2029 (PS) are dangerous because '.' in regex often matches them,
-            # but they act as newlines in rendering, creating injection/bypass vectors.
+            # RL1.6: Line Separator (2028) & Para Separator (2029)
+            # These break the "dot matches all" assumption in regex.
             if gc_code in ("Zl", "Zp"):
                 layout_notes.append("Regex Risk: Acts as a Line Boundary in Unicode (UTS #18) but often matches '.' in regex.")
+
+        # [Forensic Nuance] Structural Modifiers vs Standard Text
         elif "Alphabetic" in props:
-            # [Forensic Nuance] Distinguish structural modifiers from standard text
             if gc_code == "Lm":
                 id_notes.append("Function: Modifier Letter (Spacing). Affects layout; frequent vector for 'homoglyph-adjacent' spoofing.")
             else:
                 pass # Implicit for standard letters (Ll, Lu, Lo), reduce noise
 
+        # [UTR #36] Non-Visual Risks (The Void)
         elif gc_code == "Co":
             id_notes.append("Function: Private Use Area (PUA)")
             id_notes.append("Risk: Non-interoperable. Meaning is undefined without specific font agreement (Steganography Risk).")
@@ -3971,6 +3969,15 @@ class ForensicExplainer:
         elif gc_code == "Cs":
             id_notes.append("Function: Lone Surrogate (Broken Encoding)")
             id_notes.append("CRITICAL: Invalid Unicode scalar. Breaks UTF-8/JSON interchange; proves upstream data corruption.")
+
+        # [UTR #36] Global Syntax Mimicry Detector (The Catch-All)
+        # This runs for Math, Punctuation, and Symbols. 
+        # Logic: If it is a Symbol/Punctuation but NOT reserved syntax, it is a potential spoof.
+        # We explicitly exclude ASCII to prevent flagging standard operators (+, ., /) as mimics of themselves.
+        if not is_ascii and "Pattern_Syntax" not in props:
+            if "Math" in props or gc_code.startswith("P") or gc_code.startswith("S"):
+                 if id_stat == "Allowed":
+                     id_notes.append("Risk: Syntax Mimic (UTR #36). Visually resembles an executable operator but parses as a symbol.")
 
         report["highlights"].append({
             "label": "Identity",
@@ -4236,8 +4243,15 @@ class ForensicExplainer:
         is_line_spoof = "Line_Separator" in str(report) or "Paragraph_Separator" in str(report) # Heuristic from identity
         # Better heuristic: Check against known dangerous props if available, or just rely on 'Default_Ignorable' logic below.
         
-        # A. Critical Injection Risks
-        if "Bidi_Control" in props:
+        # A. Critical Spoofing Vectors (UTS #55)
+        
+        # A0. Non-Interoperable (PUA) [PRIORITY CHECK]
+        if gc_code == "Co":
+            code_status = "CRITICAL"
+            code_msg = "BLOCK. Private Use Area. Undefined behavior across systems. High risk of steganography or C2 communication."
+        
+        # A1. Critical Injection Risks
+        elif "Bidi_Control" in props:
             code_status = "CRITICAL"
             code_msg = "BLOCK. Source code masking risk (Trojan Source). Manipulates logic visibility."
         
@@ -4293,9 +4307,8 @@ class ForensicExplainer:
         
         # 2. Deviation (The Transition Trap - e.g., ß, ς)
         elif idna == "deviation":
-            dns_status = "WARN"
-            # Insight: UTS 46 V17 deprecates transitional, but legacy libraries persist.
-            dns_msg = "Protocol Deviation. Ambiguous resolution (IDNA2003 vs IDNA2008). Modern clients accept it; legacy systems map it."
+            dns_status = "CRITICAL" # Upgraded from WARN based on UTR #36
+            dns_msg = "Protocol Schism. Resolves to DIFFERENT destinations on transitional vs nontransitional systems. Active Hijacking Risk."
         
         # 3. Mapped / Ignored (Identity Mutation)
         elif idna in ("mapped", "ignored"):
@@ -4348,8 +4361,8 @@ class ForensicExplainer:
 
         # B. Private & Invalid (The Void)
         elif gc_code == "Co":
-            text_status = "WARN"
-            text_msg = "Private Use Area. Rendering is undefined/system-dependent (Steganography risk)."
+            text_status = "SUSPICIOUS" # Upgraded from WARN
+            text_msg = "Private Use Area. Meaning is strictly local. Often used to bypass filters (Steganography) or fingerprint devices."
         elif gc_code == "Cn":
             text_status = "WARN"
             text_msg = "Unassigned Code Point. Should not appear in valid text."
