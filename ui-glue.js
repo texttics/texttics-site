@@ -1167,8 +1167,14 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       // 6. FORENSIC ENCODINGS
       report += `[ ENCODINGS ]\n`;
       root.querySelectorAll('.byte-row').forEach(row => {
-          const label = row.querySelector('.label')?.textContent.replace(':','').trim();
-          const val = row.childNodes[1]?.textContent.trim() || ""; // Get text node directly to skip label
+          const labelNode = row.querySelector('.label');
+          if (!labelNode) return;
+          
+          const label = labelNode.textContent.replace(':', '').trim();
+          // Robust text extraction: get full text, remove label text
+          const fullText = row.textContent; 
+          const val = fullText.replace(labelNode.textContent, '').trim();
+          
           if(label) report += `${label.padEnd(12, ' ')}: ${val}\n`;
       });
 
