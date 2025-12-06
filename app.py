@@ -4294,8 +4294,8 @@ class ForensicExplainer:
 
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
-        # Lens 2: DNS (V5.0: Domain Policy)
-        # Enforces LDH (RFC 1123) for ASCII and Strict IDNA2008 for Unicode.
+        # Lens 2: DNS (V5.1: SOTA Domain Policy)
+        # Enforces LDH (RFC 1123) for ASCII and Strict IDNA2008 + UTS #46 Mapping awareness.
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
@@ -4310,25 +4310,40 @@ class ForensicExplainer:
                 dns_status = "CRITICAL"
                 dns_msg = "Protocol Violation. Not allowed in hostnames (LDH rule); implies wildcard or configuration file."
 
-        # 1. Bidi & Invisible Controls (Priority Check)
-        elif "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
+        # 1. Bidi Controls (Trojan Source / Spoofing)
+        elif "Bidi_Control" in props:
             dns_status = "CRITICAL"
-            dns_msg = "Protocol Violation. Invisibles/Controls are strictly banned in International Domain Names (UTS #46)."
+            dns_msg = "Protocol Violation. Bidi controls (RLO, LRO, etc.) are strictly banned in International Domain Names."
 
-        # 2. Disallowed (IDNA Hard Ban)
+        # 2. Join Controls (ContextJ)
+        elif "Join_Control" in props:
+            # ZWJ/ZWNJ are only valid in specific scripts (Arabic, Indic) under strict constraints.
+            dns_status = "WARN"
+            dns_msg = "Conditional Validity (ContextJ). Allowed only in specific contexts (Arabic/Indic); otherwise disallowed."
+
+        # 3. Other Invisibles (Default Ignorables)
+        elif "Default_Ignorable_Code_Point" in props:
+            dns_status = "CRITICAL"
+            dns_msg = "Protocol Violation. Invisible character strictly banned in IDN labels (UTS #46)."
+
+        # 4. Disallowed (IDNA Hard Ban)
         elif idna == "disallowed":
             dns_status = "CRITICAL"
-            dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
+            # Specific nuance for Emoji (common confusion point)
+            if "Emoji" in props:
+                 dns_msg = "Protocol Violation. Emoji are banned in IDNA2008 (must be Punycode mapped)."
+            else:
+                 dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
         
-        # 3. Deviation (The Transition Trap)
+        # 5. Deviation (The Transition Trap)
         elif idna == "deviation":
             dns_status = "CRITICAL"
-            dns_msg = "Protocol Schism. Resolves differently on transitional vs nontransitional systems (e.g. ß -> ss)."
+            dns_msg = "Protocol Schism. Resolves differently on transitional (ß->ss) vs nontransitional (ß->ß) systems."
         
-        # 4. Mapped / Ignored
+        # 6. Mapped / Ignored
         elif idna in ("mapped", "ignored"):
              dns_status = "WARN"
-             dns_msg = "Identity Loss. Mapped under UTS #46 (Visual Case Fold). User sees one glyph; network receives another."
+             dns_msg = "Identity Loss. Mapped under UTS #46 (Normalization/Case-fold). User sees one glyph; network receives another."
 
         # Lens 3: General Text (V4.11: Content Security & Rendering)
         text_status = "SAFE"
