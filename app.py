@@ -16920,10 +16920,10 @@ def inspect_character(event):
         if not target_cluster:
             target_cluster = text[python_idx]
             
-        # 3. Analyze the Cluster
+        # 3. Analyze the Cluster (Define Definitions Here)
         base_char = target_cluster[0]
         cp_base = ord(base_char)
-        hhex_str = f"{cp_base:04X}"
+        hex_str = f"{cp_base:04X}" 
 
         # [SOTA FIX] Fetch from Explainer DB (Source of Truth)
         rec = {}
@@ -16950,7 +16950,7 @@ def inspect_character(event):
         # Pre-calculate components (Must be BEFORE dictionary)
         components = []
         zalgo_score = 0
-        for ch in target_char:
+        for ch in target_cluster:
             cat = unicodedata.category(ch)
             if cat.startswith('M'): zalgo_score += 1
             components.append({
@@ -16972,12 +16972,16 @@ def inspect_character(event):
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(target_char),
+            "bidi": unicodedata.bidirectional(target_cluster[0]),
             "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
+            
+            # Physics Keys
             "lb": lb_val, 
             "ea": ea_val, 
             "dt": dt_val, 
             "line_break": lb_val,
+
+            # Context Keys
             "ghosts": ghosts,
             "components": components, 
             "is_ascii": (cp_base <= 0x7F),
