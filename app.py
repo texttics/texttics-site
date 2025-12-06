@@ -3782,6 +3782,18 @@ class ForensicExplainer:
         except: cp_int = 0
         is_ascii = (cp_int <= 0x7F)
 
+        # [HOISTED PATCH] PHYSICS OVERRIDE: Calculate Truth Locally (Global Scope)
+        # We calculate NFKC stability immediately so ALL sections (Verdict, Structure, Lenses) see the truth.
+        dt = rec.get("dt") # Start with DB value
+        try:
+            char_raw = chr(cp_int)
+            nfkc_val = unicodedata.normalize('NFKC', char_raw)
+            # If Raw != NFKC, it IS physically unstable. 
+            if char_raw != nfkc_val and not dt:
+                dt = "Compat" 
+        except:
+            pass
+
         # 2. Initialize Report
         report = {
             "identity": "",
@@ -3838,8 +3850,6 @@ class ForensicExplainer:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("RESTRICTED")
             
-            # Forensic Detail: Diagnose the Restriction
-            dt = rec.get("dt")
             # Check for specific compatibility types (Compat, Circle, Super, etc)
             # Standard UCD types: Com, Enc, Fin, Font, Fra, Init, Iso, Med, Nar, Nob, Sml, Sqr, Sub, Sup, Vert, Wide, Circ
             compat_types = ("Com", "Compat", "Circle", "Super", "Sub", "Font", "Wide", "Narrow", "Small", "Square", "Fraction")
@@ -4049,48 +4059,57 @@ class ForensicExplainer:
                 "text": f"{num_desc}. Value: {nv}.{safety_note}"
             })
 
-        # 4. Normalization Structure (SOTA Wired)
+        # 4. Normalization Structure (SOTA Wired: Pure Physics + Rich Descriptions)
         
-        # [PATCH] PHYSICS OVERRIDE: Calculate Truth Locally
-        # The DB might be stale or missing tags for characters like ⓼ (U+24FC).
-        # We trust the runtime engine over the static file.
+        norm_notes = []
+        dt = rec.get("dt") # Start with DB value
+        
         try:
             char_raw = chr(cp_int)
+            nfc_val = unicodedata.normalize('NFC', char_raw)
             nfkc_val = unicodedata.normalize('NFKC', char_raw)
-            # If Raw != NFKC, it IS physically unstable. 
-            # If DB missed this (dt is empty), we force a generic "Compat" tag.
-            if char_raw != nfkc_val and not rec.get("dt"):
-                dt = "Compat"
+            
+            if char_raw == nfkc_val:
+                # Case A: Physically Stable (e.g. 'A')
+                norm_notes.append("Stable. Preserves identity under NFKC normalization")
+                
+            elif nfc_val == nfkc_val:
+                # Case B: Canonical Equivalence (e.g. 'A' + '´' -> 'Á')
+                # NFC matches NFKC, so no compatibility loss occurred.
+                norm_notes.append("Canonically Equivalent. Decomposes to base characters")
+                
             else:
-                dt = rec.get("dt") # Trust DB if it has data or if text is stable
-        except:
-            dt = rec.get("dt")
-
-        norm_notes = []
-        nfkc_qc = rec.get("nfkc_qc") or "Y"
-        
-        if nfkc_qc == "Y" and not dt:
-             norm_notes.append("Stable. Preserves identity under NFKC normalization")
-        elif dt:
-             # Compatibility (Physics: MUTABLE)
-             type_map = {
-                "Can": "Canonical (Equivalence)",
-                "Com": "Compatibility (Formatting)",
-                "Compat": "Compatibility",
-                "Circle": "Circled Style",
-                "Super": "Superscript",
-                "Sub": "Subscript",
-                "Font": "Font Variant",
-                "Wide": "Fullwidth",
-                "Narrow": "Halfwidth",
-                "Small": "Small Variant",
-                "Square": "Squared Layout",
-                "Fraction": "Fractional Composition"
-            }
-             human_type = type_map.get(dt, dt.capitalize())
-             norm_notes.append(f"Unstable under NFKC. Compatibility mapping ({human_type})")
-        else:
-             norm_notes.append("Canonically Equivalent. Decomposes to base characters")
+                # Case C: Compatibility Mutation (e.g. '⓼' -> '8')
+                # NFC differs from NFKC. This proves structural transformation.
+                
+                # Restore the Rich Map for human-readable details
+                type_map = {
+                    "Can": "Canonical (Equivalence)",
+                    "Com": "Compatibility (Formatting)",
+                    "Compat": "Compatibility",
+                    "Circle": "Circled Style",
+                    "Super": "Superscript",
+                    "Sub": "Subscript",
+                    "Font": "Font Variant",
+                    "Wide": "Fullwidth",
+                    "Narrow": "Halfwidth",
+                    "Small": "Small Variant",
+                    "Square": "Squared Layout",
+                    "Fraction": "Fractional Composition"
+                }
+                
+                # If DB missed the tag, force a generic one.
+                # If DB has "Circle", we keep "Circle".
+                effective_dt = dt if dt else "Compat"
+                
+                # Update the variable so the Domain Lens sees it later!
+                dt = effective_dt 
+                
+                human_type = type_map.get(effective_dt, effective_dt.capitalize())
+                norm_notes.append(f"Unstable under NFKC. Compatibility mapping ({human_type})")
+                
+        except Exception as e:
+            norm_notes.append("Normalization check failed (Runtime Error).")
 
         report["highlights"].append({
             "label": "Structure",
