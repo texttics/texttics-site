@@ -4345,6 +4345,8 @@ class ForensicExplainer:
              dns_status = "WARN"
              dns_msg = "Identity Loss. Mapped under UTS #46 (Normalization/Case-fold). User sees one glyph; network receives another."
 
+        report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
+        
         # Lens 3: General Text (V4.11: Content Security & Rendering)
         text_status = "SAFE"
         text_msg = "Standard visible character."
