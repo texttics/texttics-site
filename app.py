@@ -14363,12 +14363,12 @@ def render_inspector_panel(data):
     """
 
     # 5. Bottom Grid (Technical Specs)
-    # [FIX V3.4] Drive styling directly from Identifier Status, not Macro Type.
+    # [FIX V3.4] Drive styling directly from Identifier Status.
     status_cls = "id-status-allowed"
     if data['id_status'] == "Restricted":
         status_cls = "id-status-restricted"
     elif mt in ("ROT", "THREAT"):
-        status_cls = "id-status-restricted" # Force red for rot/threats
+        status_cls = "id-status-restricted" 
     
     matrix_extra_cell = f"""
         <div class="matrix-item">
@@ -14376,7 +14376,7 @@ def render_inspector_panel(data):
             <span class="matrix-val {status_cls}">{data['id_status']}</span>
         </div>
     """
-
+    
     technical_grid = f"""
         <div class="spec-matrix">
             <div class="matrix-item">
