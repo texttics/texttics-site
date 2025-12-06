@@ -16931,6 +16931,8 @@ def inspect_character(event):
         forensic_report = None
         if FORENSIC_EXPLAINER: 
             forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
+
+        ghosts = _get_ghost_chain(base_char)
         
         cat_short = unicodedata.category(base_char)
         
@@ -16986,8 +16988,6 @@ def inspect_character(event):
         # Pass the forensic level (e.g., "WARN") to the macro classifier
         f_level = forensic_report["security"]["level"] if forensic_report else "SAFE"
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
-        
-        ghosts = _get_ghost_chain(base_char)
 
         # Heuristic for missing DB data
         # If Normalization changes (Raw != NFKC) but dt is missing,
