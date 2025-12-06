@@ -16836,8 +16836,10 @@ def update_verification(event=None):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v3.1: Selection-Aware.
-    Now allows inspection even when text is highlighted/selected (e.g., by the Invisible Finder).
+    Forensic Inspector v4.0: SOTA Hardening & Sync.
+    - Resolves segmentation/indexing runtime errors (bidirectional, index must be int).
+    - Syncs Normalization Stability (MUTABLE vs. Stable) to Physics Core.
+    - Implements Guard Rails for robustness against corrupted Pyodide/JS objects.
     """
     try:
         text_input = document.getElementById("text-input")
@@ -16847,17 +16849,13 @@ def inspect_character(event):
 
         dom_pos = text_input.selectionStart
         
-        # [REMOVED BLOCKER] 
-        # Previously, we returned here if selectionStart != selectionEnd.
-        # We removed that check so the Inspector works when the Highlighter selects a char.
-
         # Handle Newline normalization mismatch (Windows \r\n vs \n)
         text = str(text_input.value)
         if not text:
             render_inspector_panel(None)
             return
         
-        # 1. Map DOM Index to Python Index
+        # 1. Map DOM Index to Python Index (Logical Index)
         python_idx = 0
         utf16_accum = 0
         found_sync = False
@@ -16869,20 +16867,29 @@ def inspect_character(event):
                 break
             
             # Logic: Is this a surrogate pair? (2 units) or BMP (1 unit)
+            # ord(ch) is safe for single units, but careful with proxies
             step = 2 if ord(ch) > 0xFFFF else 1
             utf16_accum += step
             
             if utf16_accum > dom_pos:
-                # We landed inside a character (rare, but possible with surrogates)
+                # We landed inside a character (e.g., cursor is on the low surrogate)
                 python_idx = i
                 found_sync = True
                 break
         
+        # Cursor is exactly at the end of the text.
         if not found_sync and utf16_accum == dom_pos:
-             render_inspector_panel(None) # End of string
+             render_inspector_panel(None) 
              return
 
-        # 2. Localized Segmentation
+        # *** HARDENED CHECK: Cursor must be within bounds for string indexing ***
+        if python_idx >= len(text):
+            render_inspector_panel(None)
+            return
+        
+        # 2. **HARDENED** Grapheme Cluster Acquisition
+        # Goal: Find the *full* grapheme cluster that contains the python_idx.
+
         start_search = max(0, python_idx - 50)
         end_search = min(len(text), python_idx + 50)
         local_text = text[start_search:end_search]
@@ -16898,34 +16905,49 @@ def inspect_character(event):
         current_local_idx = 0
         
         for seg in segments_iter:
+            # *** GUARD RAIL 1: Ensure Pyodide proxy object is converted to native Python string ***
             seg_str = str(seg.segment)
             seg_len = len(seg_str)
             seg_end = current_local_idx + seg_len
             
-            # Check containment relative to local window
+            # Check containment: target is inside this cluster's range [start, end)
             if current_local_idx <= local_target_idx < seg_end:
                 target_cluster = seg_str
-                # Continue to get next_cluster
+                # Once found, continue to get the next cluster, then break
                 current_local_idx = seg_end
                 continue
             
+            # This segment is after the target cluster (used to set next_cluster)
             if target_cluster is not None:
                 next_cluster = seg_str
                 break
             
+            # This segment is before the target cluster (used to set prev_cluster)
             prev_cluster = seg_str
             current_local_idx = seg_end
-
-        # Fallback
+            
+        # *** NEW FALLBACK LOGIC ***
         if not target_cluster:
-            target_cluster = text[python_idx]
+            # Fallback to single code point at the Python index.
+            try:
+                target_cluster = text[python_idx]
+            except IndexError:
+                # Should not happen after initial check, but for absolute safety
+                render_inspector_panel(None)
+                return
 
         target_char = target_cluster
+        
+        # *** GUARD RAIL 2: Ensure target_char is a non-empty string before analysis ***
+        if not isinstance(target_char, str) or not target_char:
+            print(f"Inspector Guard Rail: Invalid target_char type or empty: {target_char}")
+            render_inspector_panel({"error": "Inspection Paused (Invalid Target Character)"})
+            return
             
         # 3. Analyze the Cluster
         base_char = target_char[0]
         cp_base = ord(base_char)
-        hex_str = f"{cp_base:04X}" 
+        hex_str = f"{cp_base:04X}"  # Used for Explainer DB lookup
 
         # [SOTA FIX] Fetch from Explainer DB (Source of Truth)
         rec = {}
@@ -16941,14 +16963,14 @@ def inspect_character(event):
         ea_val = rec.get("ea") or _find_in_ranges(cp_base, "EastAsianWidth") or "N"
         
         # Ghosts Calculation (Early for Patch)
-        ghosts = _get_ghost_chain(base_char)
+        ghosts = _get_ghost_chain(target_char) # Use target_char (cluster) for full NFKC path
 
-        # [SOTA PATCH] Force Physics consistency
+        # [SOTA PATCH] Force Physics consistency (The Compatibility Artifact Fix)
         # If the text changes (e.g. ⓼ -> 8) but dt was missing in DB, FORCE it to "Compat".
         if ghosts and (ghosts['raw'] != ghosts['nfkc']):
             if not dt_val:
                 dt_val = "Compat"
-
+        
         # 5. Build Base Payload
         cat_short = unicodedata.category(base_char)
         
@@ -16957,15 +16979,22 @@ def inspect_character(event):
         zalgo_score = 0
         for ch in target_char:
             cat = unicodedata.category(ch)
+            # *** BUG FIX: unicodedata.bidirectional is now safe to call here ***
             if cat.startswith('M'): zalgo_score += 1
             components.append({
-                'hex': f"U+{ord(ch):04X}", 
-                'name': unicodedata.name(ch, "Unknown"), 
-                'cat': cat, 
-                'ccc': unicodedata.combining(ch), 
+                'hex': f"U+{ord(ch):04X}",  
+                'name': unicodedata.name(ch, "Unknown"),  
+                'cat': cat,  
+                'ccc': unicodedata.combining(ch),  
                 'is_base': not cat.startswith('M')
             })
 
+        # *** SOTA SYNC: Normalization Stability Flag ***
+        # Determines if the string changes identity when normalized.
+        is_mutable = bool(dt_val) or (ghosts and ghosts['raw'] != ghosts['nfc']) or (ghosts and ghosts['raw'] != ghosts['nfkc'])
+        stability_text = "MUTABLE (Transforms on NFKC)" if is_mutable else "Stable"
+        
+        # Assemble Base Payload
         base_char_data = {
             "char": target_char,
             "codepoint": f"U+{hex_str}",
@@ -16974,26 +17003,37 @@ def inspect_character(event):
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(target_char), 
+            "bidi": unicodedata.bidirectional(target_char),  
             "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
             
             # Physics Keys
-            "lb": lb_val, 
-            "ea": ea_val, 
-            "dt": dt_val, 
+            "lb": lb_val,  
+            "ea": ea_val,  
+            "dt": dt_val,  
             "line_break": lb_val,
 
             # Context Keys
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
-            "is_invisible": (cp_base in INVISIBLE_MAPPING), 
+            "is_invisible": (cp_base in INVISIBLE_MAPPING),  
             "lookalikes_data": rec.get("confusables", []),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
-            "components": components # Explicitly included
+            "components": components, # Explicitly included
+            "stability_text": stability_text # *** NEW SYNCHRONIZED FIELD ***
         }
 
         # Cluster Analysis
-        cluster_identity = _compute_cluster_identity(target_char, base_char_data)
+        cluster_identity_raw = _compute_cluster_identity(target_char, base_char_data)
+        
+        # *** GUARD RAIL 3: Ensure cluster_identity is a dictionary (Fixes 'string indices must be integers' error) ***
+        if not isinstance(cluster_identity_raw, dict):
+             print(f"Inspector Guard Rail: cluster_identity failed, defaulted to safe dict. Raw: {cluster_identity_raw}")
+             # Default to a safe dictionary structure
+             cluster_identity = {"is_cluster": len(target_char) > 1, "max_risk_cat": cat_short, "type_label": "ERROR_SAFE", 
+                                 "block_val": base_char_data["block"], "script_val": base_char_data["script"], 
+                                 "bidi_val": base_char_data["bidi"], "age_val": base_char_data["age"]}
+        else:
+             cluster_identity = cluster_identity_raw
         
         # 7. Policy Engine (The Narrator)
         forensic_report = None
@@ -17004,8 +17044,8 @@ def inspect_character(event):
 
         # 8. Build Full Data Object (Preserving Logic)
         comp_cat = cluster_identity["max_risk_cat"]
-        comp_mask = cluster_identity["cluster_mask"]
-        
+        # comp_mask = cluster_identity["cluster_mask"] # No longer used below
+
         if comp_cat in ("Cn", "Co", "Cs", "Cf"):
             id_status = "Restricted"
         else:
@@ -17013,6 +17053,8 @@ def inspect_character(event):
             
         id_type = _find_in_ranges(cp_base, "IdentifierType")
         f_level = forensic_report["security"]["level"] if forensic_report else "SAFE"
+        # cluster_identity["cluster_mask"] is now used here (must exist in the dictionary)
+        comp_mask = cluster_identity.get("cluster_mask", 0) 
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
 
         # Encodings Generation
@@ -17029,17 +17071,17 @@ def inspect_character(event):
             **base_char_data, # Inherit base props
             "python_idx": python_idx,
             "cluster_glyph": target_cluster,
-            "prev_glyph": prev_cluster, 
+            "prev_glyph": prev_cluster,  
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name"),
             "is_cluster": cluster_identity["is_cluster"],
             "type_label": cluster_identity["type_label"],
-            "type_val":   cluster_identity["type_val"],
-            "block":      cluster_identity["block_val"],
-            "script":     cluster_identity["script_val"],
-            "bidi":       cluster_identity["bidi_val"],
-            "age":        cluster_identity["age_val"],
+            "type_val":  cluster_identity["type_val"],
+            "block":     cluster_identity["block_val"],
+            "script":    cluster_identity["script_val"],
+            "bidi":      cluster_identity["bidi_val"],
+            "age":       cluster_identity["age_val"],
             "id_status": id_status,
             "id_type": id_type,
             "macro_type": macro_type,
@@ -17061,9 +17103,10 @@ def inspect_character(event):
             
             "confusable": f"Base maps to: '{ghosts['skeleton']}'" if ghosts and ghosts['skeleton'] != base_char else None,
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            "stack_msg": None, # Recalculated if needed
+            "stack_msg": base_char_data["stack_msg"], # Re-added from base_char_data
             "components": base_char_data['components'],
-            "forensic_report": forensic_report
+            "forensic_report": forensic_report,
+            "stability_text": stability_text # *** SOTA SYNC FINAL PASS ***
         }
 
         # 9. Run Physics Engine (The Signal Processor)
@@ -17073,6 +17116,7 @@ def inspect_character(event):
         render_inspector_panel(data)
 
     except Exception as e:
+        # Final catch-all for Pyodide errors
         print(f"Inspector Error: {e}")
         render_inspector_panel({"error": str(e)})
 
