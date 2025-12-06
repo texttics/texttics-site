@@ -102,6 +102,33 @@ COMPLEX_ORTHOGRAPHY_SCRIPTS = {
     "Tibetan", "Myanmar", "Khmer", "Adlam", "Rohingya"
 }
 
+# Human-Readable Bidi Names
+BIDI_PRETTY_MAP = {
+    'L': 'Left-to-Right',
+    'R': 'Right-to-Left',
+    'AL': 'Arabic Letter (Right-to-Left)',
+    'EN': 'European Number',
+    'ES': 'European Separator',
+    'ET': 'European Terminator',
+    'AN': 'Arabic Number',
+    'CS': 'Common Separator',
+    'NSM': 'Non-Spacing Mark',
+    'BN': 'Boundary Neutral',
+    'B': 'Paragraph Separator',
+    'S': 'Segment Separator',
+    'WS': 'Whitespace',
+    'ON': 'Other Neutral',
+    'LRE': 'Left-to-Right Embedding',
+    'LRO': 'Left-to-Right Override',
+    'RLE': 'Right-to-Left Embedding',
+    'RLO': 'Right-to-Left Override',
+    'PDF': 'Pop Directional Format',
+    'LRI': 'Left-to-Right Isolate',
+    'RLI': 'Right-to-Left Isolate',
+    'FSI': 'First Strong Isolate',
+    'PDI': 'Pop Directional Isolate'
+}
+
 # Injection Pattern RegEx (Source 1: Web Search Exfiltration)
 # High-fidelity patterns for "System Prompt Override" and "Tool Chaining"
 INJECTION_PATTERNS = {
@@ -3850,6 +3877,19 @@ class ForensicExplainer:
         report["highlights"].append({
             "label": "Identity",
             "text": f"{gc_name} ({gc_code}) in {script_detail} script."
+        })
+
+        # 1.5. Directionality (The Clean Look)
+        mirror = rec.get("mirror")
+        dir_msg = f"{bc_pretty} ({bc_code})."
+        if mirror:
+            dir_msg += f" Mirrored (pairs with {mirror})."
+        elif "Bidi_Control" in props:
+            dir_msg += " Explicit Directional Formatting Control."
+            
+        report["highlights"].append({
+            "label": "Direction",
+            "text": dir_msg
         })
 
         # 2. Security Profile (Rich Context)
