@@ -3864,14 +3864,12 @@ class ForensicExplainer:
         })
 
         # Highlight 3: Normalization Stability
-        nfkc_qc = rec.get("nfkc_qc", "Y")
+        # Logic: DB stores None by default. None implies "Y" (Stable).
+        nfkc_qc = rec.get("nfkc_qc") or "Y"
+        
         norm_text = "Stable under NFKC."
         if nfkc_qc != "Y":
             norm_text = "Unstable. Changes/Decomposes under NFKC normalization."
-        report["highlights"].append({
-            "label": "Normalization",
-            "text": norm_text
-        })
 
         # Highlight 4: Segmentation & Layout
         lb_code = rec.get("lb", "XX")
@@ -3930,12 +3928,16 @@ class ForensicExplainer:
         # Lens 2: Domain Names (DNS)
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
+        
         if idna == "disallowed":
             dns_status = "CRITICAL"
             dns_msg = "Banned in International Domain Names."
         elif idna == "deviation":
             dns_status = "WARN"
             dns_msg = "Deviation: Differs between IDNA2003 and 2008."
+        elif idna in ("mapped", "ignored"):
+            dns_status = "WARN"
+            dns_msg = "Mapped/Removed under IDNA/UTS #46. Will not appear in final label."
         elif idna == "valid" and confusables:
             dns_status = "WARN"
             dns_msg = "Valid, but visual spoofing risk exists."
