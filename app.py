@@ -16946,6 +16946,8 @@ def inspect_character(event):
         dt_val = rec.get("dt") 
         if dt_val in ("None", "none", ""): dt_val = None
 
+        ghosts = _get_ghost_chain(base_char)
+
         # 2. Line Break & Width (Layout Physics)
         # Priority: DB -> Raw Range -> Default
         lb_val = rec.get("lb") or _find_in_ranges(cp_base, "LineBreak") or "XX"
