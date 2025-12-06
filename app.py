@@ -4227,7 +4227,7 @@ class ForensicExplainer:
 
         return report
 
-    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii):
+    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val):
         # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
         # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
         
