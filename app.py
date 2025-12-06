@@ -4052,26 +4052,22 @@ class ForensicExplainer:
         # 4. Normalization Structure (SOTA Wired)
         
         # [PATCH] PHYSICS OVERRIDE: Calculate Truth Locally
-        # The DB might be stale or missing specific dt tags. We trust the runtime engine.
+        # The DB might be stale or missing tags for characters like ⓼ (U+24FC).
+        # We trust the runtime engine over the static file.
         try:
             char_raw = chr(cp_int)
             nfkc_val = unicodedata.normalize('NFKC', char_raw)
-            is_physically_unstable = (char_raw != nfkc_val)
+            # If Raw != NFKC, it IS physically unstable. 
+            # If DB missed this (dt is empty), we force a generic "Compat" tag.
+            if char_raw != nfkc_val and not rec.get("dt"):
+                dt = "Compat"
+            else:
+                dt = rec.get("dt") # Trust DB if it has data or if text is stable
         except:
-            is_physically_unstable = False
+            dt = rec.get("dt")
 
         norm_notes = []
         nfkc_qc = rec.get("nfkc_qc") or "Y"
-        dt = rec.get("dt")
-        
-        # If Physics says Unstable but DB says Stable -> Trust Physics
-        # This fixes ⓼ being called "Stable"
-        if is_physically_unstable and not dt:
-            dt = "Compat"
-        
-        # Check raw decomposition change (Physics Truth)
-        # Note: We need 'ghosts' data here, but 'explain' doesn't have it.
-        # We rely on 'dt' presence + 'nfkc_qc' as a proxy for the Physics logic.
         
         if nfkc_qc == "Y" and not dt:
              norm_notes.append("Stable. Preserves identity under NFKC normalization")
@@ -4094,7 +4090,6 @@ class ForensicExplainer:
              human_type = type_map.get(dt, dt.capitalize())
              norm_notes.append(f"Unstable under NFKC. Compatibility mapping ({human_type})")
         else:
-             # Canonical (Physics: EQUIV)
              norm_notes.append("Canonically Equivalent. Decomposes to base characters")
 
         report["highlights"].append({
@@ -4229,7 +4224,6 @@ class ForensicExplainer:
         })
 
         # --- E. CONTEXT LENSES ---
-        dt = rec.get("dt") # Ensure this is fetched from rec
         self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt)
         
         # --- F. CONTEXT NOTES ---
