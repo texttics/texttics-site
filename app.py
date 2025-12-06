@@ -4216,7 +4216,8 @@ class ForensicExplainer:
         })
 
         # --- E. CONTEXT LENSES ---
-        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii)
+        # Pass cp_int to enable LDH checks in _build_lenses
+        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int)
         
         # --- F. CONTEXT NOTES ---
         if rec["aliases"]:
@@ -4227,41 +4228,20 @@ class ForensicExplainer:
         return report
 
     def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii):
-        # Lens 1: Source Code (V4.15: UAX #31 & UTS #55)
-        # Integrates Immutable Syntax rules and Source Code Spoofing detection.
+        # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
+        # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
         
         is_xid_start = "XID_Start" in props
         is_xid_continue = "XID_Continue" in props
         
-        # Helper for specific code points
-        try: cp_val = int(report.get("identity", "").split("U+")[-1].split(")")[0], 16) # Fallback if hex_str not passed
-        except: cp_val = 0
-        # Better: Since explain() calls this, we can rely on props, but let's grab the CP from the report context if needed
-        # Actually, let's just accept 'rec' or 'hex_str' in arguments if we need specific CP checks. 
-        # Since we don't have hex_str here, let's look at 'Default_Ignorable' and Props.
-        
         code_status = "SAFE"
         code_msg = "Safe for use in identifiers."
 
-        # A. Critical Spoofing Vectors (UTS #55)
-        # 1. Line Break Spoofing (LS/PS)
-        # We identify these by the 'Line_Separator' or 'Paragraph_Separator' categories if we had them, 
-        # or check specific whitespace props. 
-        # Assuming 'White_Space' is in props and it's NOT 'Pattern_White_Space' (standard).
-        # Actually, let's rely on the props we mined. 
-        # If the 'Layout' highlight says "Line Break: Line Separator", we know.
-        # But simpler: If it is Zl or Zp (Separator).
-        is_line_spoof = "Line_Separator" in str(report) or "Paragraph_Separator" in str(report) # Heuristic from identity
-        # Better heuristic: Check against known dangerous props if available, or just rely on 'Default_Ignorable' logic below.
-        
-        # A. Critical Spoofing Vectors (UTS #55)
-        
-        # A0. Non-Interoperable (PUA) [PRIORITY CHECK]
+        # A. Critical Spoofing Vectors (UTS #55 / Trojan Source)
         if gc_code == "Co":
             code_status = "CRITICAL"
             code_msg = "BLOCK. Private Use Area. Undefined behavior across systems. High risk of steganography or C2 communication."
         
-        # A1. Critical Injection Risks
         elif "Bidi_Control" in props:
             code_status = "CRITICAL"
             code_msg = "BLOCK. Source code masking risk (Trojan Source). Manipulates logic visibility."
@@ -4279,10 +4259,10 @@ class ForensicExplainer:
         elif "Pattern_Syntax" in props:
             code_status = "WARN"
             code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters. Cannot be an identifier."
+        
         elif "Pattern_White_Space" in props:
             code_status = "NOTE"
             # Explicit UTS #55 check for LS (U+2028) and PS (U+2029)
-            # These often act as Pattern_White_Space but cause Line Break Spoofing.
             if "Line_Separator" in str(report) or "Paragraph_Separator" in str(report): 
                  code_status = "CRITICAL"
                  code_msg = "Line Break Spoofing Risk (UTS #55). Visually splits lines but may be parsed as whitespace."
@@ -4297,9 +4277,17 @@ class ForensicExplainer:
         # D. Valid Identifiers (The Physics of Naming)
         elif code_status == "SAFE":
             if is_xid_start:
-                code_msg = "Identifier Start. Safe to begin variable, class, or function names (XID_Start)."
+                # [SOTA Enhance] Check for High-Risk Confusable Contexts (Latin/Greek/Cyrillic)
+                # If it's a valid ID Start but part of a high-risk confusable cluster, we downgrade from SAFE to NOTE.
+                if report["security"]["level"] in ("SUSPICIOUS", "CRITICAL") or "SPOOF" in report["security"]["badges"]:
+                     code_status = "NOTE"
+                     code_msg = "Technically valid Identifier Start, but High Spoofing Risk (Confusable Cluster). Use with caution."
+                else:
+                     code_msg = "Identifier Start. Safe to begin variable, class, or function names (XID_Start)."
+            
             elif is_xid_continue:
                 code_msg = "Identifier Continuation. Valid within an identifier, but causes syntax errors if used as the start."
+            
             else:
                 code_status = "NOTE"
                 code_msg = "Invalid Identifier. Not recommended for variable names (No XID properties)."
