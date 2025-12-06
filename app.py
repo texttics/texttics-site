@@ -4122,72 +4122,140 @@ class ForensicExplainer:
         return report
 
     def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii):
-        # Lens 1: Source Code
+        # Lens 1: Source Code (V4.13: UAX #31 Lexical Physics)
+        # We classify based on the "Disjoint Categories" defined in UAX #31 Figure 1.
+        
         is_xid_start = "XID_Start" in props
         is_xid_continue = "XID_Continue" in props
+        
         code_status = "SAFE"
         code_msg = "Safe for use in identifiers."
 
-        if "Pattern_Syntax" in props:
+        # A. Critical Injection Risks (Trojan Source)
+        # These override all other syntax rules because they alter the compiler's perception.
+        if "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
+            code_status = "CRITICAL"
+            code_msg = "BLOCK. Source code masking risk (Bidi/Invisible). Can manipulate logic visibility."
+
+        # B. Syntax & Grammar (The "Pattern" Layer)
+        # These are immutable sets reserved for operators, delimiters, and formatting.
+        elif "Pattern_Syntax" in props:
+            # e.g., { } [ ] ! @ # $ % ^ & * ( )
             code_status = "WARN"
-            code_msg = "Pattern syntax character (reserved for language grammar)."
+            code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters (Pattern_Syntax). Cannot be an identifier."
+        elif "Pattern_White_Space" in props:
+            # e.g., Space, Tab, Newline
+            code_status = "NOTE"
+            code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
+
+        # C. Security Profile Restrictions (UAX #39)
+        # Characters that are technically identifiers but banned by security policy.
         elif id_stat == "Restricted":
             code_status = "WARN"
-            code_msg = "Restricted in secure identifier profiles (UAX #31 / #39)."
-        elif "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
-            code_status = "CRITICAL"
-            code_msg = "BLOCK. Source code masking risk (bidi / invisible control)."
+            code_msg = "Restricted Identifier. Excluded from secure profiles (UAX #31) due to confusion/obsolescence risks."
+
+        # D. Valid Identifiers (The "Identifier" Layer)
         elif code_status == "SAFE":
             if is_xid_start:
-                code_msg = "Valid identifier start and continuation character (XID_Start / XID_Continue)."
+                # Letters (A, α, etc.) - Can start AND continue
+                code_msg = "Identifier Start. Safe to begin variable, class, or function names (XID_Start)."
             elif is_xid_continue:
-                code_msg = "Valid as identifier continuation (XID_Continue), but not as the first character."
+                # Digits (1, 2) and Combining Marks - Can ONLY continue
+                code_msg = "Identifier Continuation. Valid within an identifier, but causes syntax errors if used as the start."
             else:
+                # Symbols (Emoji, etc.) that are neither Syntax nor Identifiers
                 code_status = "NOTE"
-                code_msg = "Not recommended for identifiers (no XID props)."
+                code_msg = "Invalid Identifier. Not recommended for variable names (No XID properties)."
 
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
-        # Lens 2: DNS
+        # Lens 2: DNS (V4.10: Deep Protocol Forensics)
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
         if idna == "disallowed":
             dns_status = "CRITICAL"
-            dns_msg = "Banned in International Domain Names."
+            dns_msg = "Protocol Violation: Disallowed in IDNA2008. Valid domains cannot contain this."
+        
         elif idna == "deviation":
+            # e.g., 'ß' resolves to 'ss' (2003) or 'ß' (2008). 
+            # Forensic Risk: The user might land on a different server depending on browser version.
             dns_status = "WARN"
-            dns_msg = "Deviation: Differs between IDNA2003 and 2008."
+            dns_msg = "Protocol Deviation. Resolves differently in IDNA2003 vs IDNA2008 (Ambiguous Resolution)."
+        
         elif idna in ("mapped", "ignored"):
             if is_ascii:
+                # ASCII Mapping (A->a) is fundamental to DNS case-insensitivity.
                 dns_status = "SAFE"
-                dns_msg = "Case-folded in IDNA (e.g. 'A' -> 'a'); standard behavior."
+                dns_msg = "Standard IDNA Mapping (Case-folded). Preserves identity."
             else:
+                # Non-ASCII mapping changes the visual identity of the domain.
+                # Risk: User sees '½', Network receives '1⁄2'. Phishing vector.
                 dns_status = "WARN"
-                dns_msg = "Mapped/Removed under IDNA/UTS #46. Will not appear in final label."
+                dns_msg = "Identity Loss. Mapped/Removed under UTS #46. The visual glyph will not appear in the DNS lookup."
+        
         elif idna == "valid" and confusables and not is_ascii:
+            # Valid doesn't mean Safe.
             dns_status = "WARN"
-            dns_msg = "Valid, but visual spoofing risk exists."
+            dns_msg = "Valid IDNA2008, but high Homograph Attack risk (Visual Spoofing)."
             
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
 
-        # Lens 3: Text
+        # Lens 3: General Text (V4.11: Content Security & Rendering)
         text_status = "SAFE"
         text_msg = "Standard visible character."
-        if gc_code in ["Cc", "Cf", "Co", "Cn"]:
+
+        # A. Invisible / Format Controls (The Hiding Layer)
+        if gc_code == "Cf":
+            if "Bidi_Control" in props:
+                text_status = "CRITICAL"
+                text_msg = "Directional Override. Can reverse text flow and hide payloads."
+            elif "Join_Control" in props:
+                text_status = "NOTE"
+                text_msg = "Invisible Joiner. Alters rendering of adjacent characters (e.g., Emoji)."
+            elif "Variation_Selector" in props:
+                text_status = "NOTE"
+                text_msg = "Variation Selector. Modifies glyph appearance (Text vs Emoji)."
+            else:
+                text_status = "WARN"
+                text_msg = "Invisible Format Control. High risk of content obfuscation."
+
+        # B. Private & Invalid (The Void)
+        elif gc_code == "Co":
+            text_status = "WARN"
+            text_msg = "Private Use Area. Rendering is undefined/system-dependent (Steganography risk)."
+        elif gc_code == "Cn":
+            text_status = "WARN"
+            text_msg = "Unassigned Code Point. Should not appear in valid text."
+        elif gc_code == "Cs":
+            text_status = "CRITICAL"
+            text_msg = "Surrogate. Invalid in UTF-8. Indicates broken encoding."
+
+        # C. Whitespace (The Separators)
+        elif gc_code == "Zs":
+            if is_ascii: # U+0020
+                text_status = "SAFE"
+                text_msg = "Standard Space."
+            else:
+                text_status = "NOTE"
+                text_msg = "Non-Standard Whitespace. May bypass 'trim()' filters or confuse parsers."
+
+        # D. Combining Marks (The Modifiers)
+        elif gc_code.startswith("M"):
             text_status = "NOTE"
-            text_msg = "Invisible or special-purpose character."
-        
-        if "Emoji" in props:
+            text_msg = "Combining Mark. Modifies the preceding base character (Visual modification)."
+
+        # E. Emoji (The Graphics)
+        elif "Emoji" in props:
             has_emoji_pres = "Emoji_Presentation" in props or "Extended_Pictographic" in props
             if has_emoji_pres:
                 text_status = "NOTE"
-                text_msg = "Emoji character (default emoji presentation)."
+                text_msg = "Pictographic (Emoji). Rendering varies by platform/font."
             else:
                 if gc_code.startswith("N"):
                     text_msg = "Standard digit/number; also used as a base in emoji keycap sequences."
                 else:
-                    text_msg = "Text character that can participate in emoji sequences."
+                    text_msg = "Text character. Can participate in emoji sequences."
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
