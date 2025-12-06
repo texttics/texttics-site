@@ -4216,8 +4216,8 @@ class ForensicExplainer:
         })
 
         # --- E. CONTEXT LENSES ---
-        # Pass cp_int to enable LDH checks in _build_lenses
-        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int)
+        dt = rec.get("dt") # Ensure this is fetched from rec
+        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt)
         
         # --- F. CONTEXT NOTES ---
         if rec["aliases"]:
@@ -4227,7 +4227,7 @@ class ForensicExplainer:
 
         return report
 
-    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val):
+    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val, dt):
         # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
         # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
         
@@ -4295,17 +4295,15 @@ class ForensicExplainer:
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
         # Lens 2: DNS (V5.1: SOTA Domain Policy)
-        # Enforces LDH (RFC 1123) for ASCII and Strict IDNA2008 + UTS #46 Mapping awareness.
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
         # 0. LDH Check (Letters, Digits, Hyphen) for ASCII
-        # Real hostnames cannot contain *, _, spaces, or punctuation.
         if is_ascii:
             is_ldh = (0x61 <= cp_val <= 0x7A) or \
                      (0x41 <= cp_val <= 0x5A) or \
                      (0x30 <= cp_val <= 0x39) or \
-                     (cp_val == 0x2D) # Hyphen
+                     (cp_val == 0x2D)
             if not is_ldh:
                 dns_status = "CRITICAL"
                 dns_msg = "Protocol Violation. Not allowed in hostnames (LDH rule); implies wildcard or configuration file."
@@ -4317,7 +4315,6 @@ class ForensicExplainer:
 
         # 2. Join Controls (ContextJ)
         elif "Join_Control" in props:
-            # ZWJ/ZWNJ are only valid in specific scripts (Arabic, Indic) under strict constraints.
             dns_status = "WARN"
             dns_msg = "Conditional Validity (ContextJ). Allowed only in specific contexts (Arabic/Indic); otherwise disallowed."
 
@@ -4326,24 +4323,36 @@ class ForensicExplainer:
             dns_status = "CRITICAL"
             dns_msg = "Protocol Violation. Invisible character strictly banned in IDN labels (UTS #46)."
 
-        # 4. Disallowed (IDNA Hard Ban)
+        # 4. Compatibility Artifacts (The "⓼" Fix)
+        # CRITICAL CHECK: Even if IDNA says "Valid", if it decomposes (dt exists), 
+        # the visual identity is lost. It is NOT safe.
+        elif dt:
+             dns_status = "WARN"
+             dns_msg = f"Identity Loss. Compatibility mapping ({dt}). The visual style is lost in IDNA/NFKC normalization."
+
+        # 5. Disallowed (IDNA Hard Ban)
         elif idna == "disallowed":
             dns_status = "CRITICAL"
-            # Specific nuance for Emoji (common confusion point)
             if "Emoji" in props:
                  dns_msg = "Protocol Violation. Emoji are banned in IDNA2008 (must be Punycode mapped)."
             else:
                  dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
         
-        # 5. Deviation (The Transition Trap)
+        # 6. Deviation (The Transition Trap)
         elif idna == "deviation":
             dns_status = "CRITICAL"
             dns_msg = "Protocol Schism. Resolves differently on transitional (ß->ss) vs nontransitional (ß->ß) systems."
         
-        # 6. Mapped / Ignored
+        # 7. Mapped / Ignored
         elif idna in ("mapped", "ignored"):
              dns_status = "WARN"
-             dns_msg = "Identity Loss. Mapped under UTS #46 (Normalization/Case-fold). User sees one glyph; network receives another."
+             dns_msg = "Identity Loss. Mapped under UTS #46 (Visual Case Fold). User sees one glyph; network receives another."
+        
+        # 8. Valid (Conditional Risk)
+        elif idna == "valid":
+            if confusables and not is_ascii:
+                dns_status = "WARN"
+                dns_msg = "Valid IDNA2008, but high Homograph Attack risk (Visual Spoofing)."
 
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
         
@@ -16954,6 +16963,13 @@ def inspect_character(event):
             "dt": dt_val, # [Physics] Canonical vs Compat
             "line_break": lb_val # Legacy compat
         }
+
+        # [SOTA PATCH] Force Physics consistency
+        # If the text changes (⓼ -> 8) but dt was missing/None, FORCE it to "Compat".
+        # This guarantees the Physics Matrix reports "MUTABLE", matching the Explainer.
+        if base_char_data['ghosts'] and (base_char_data['ghosts']['raw'] != base_char_data['ghosts']['nfkc']):
+            if not base_char_data['dt']:
+                base_char_data['dt'] = "Compat"
 
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
 
