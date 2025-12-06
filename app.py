@@ -7198,31 +7198,40 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V3.2: The "Law vs. Order" Split.
-    Top Panel (Matrix) = Physical Taxonomy (What it is).
-    Bottom Panel (Footer) = Security Policy (How it behaves).
+    Forensic Matrix V3.3: Hardened Physics/Policy Split.
+    Top Panel = Physical Taxonomy (The Law).
+    Bottom Panel = Security Policy (The Order).
     """
-    # 1. Unpack Context
+    # 1. Unpack Context (The Truth Source)
     report = data.get('forensic_report') or {}
-    sec_level = report.get('security', {}).get('level', 'UNKNOWN')
+    security = report.get('security', {})
     
-    # 2. Determine Visual Risk Level (Synchronized Color)
-    # We keep the color/level synced so the UI doesn't look schizophrenic
+    # Extract Policy Signals
+    policy_level_str = security.get('level', 'UNKNOWN')
+    policy_badges = security.get('badges', [])
+    policy_verdict = security.get('verdict', "")
+
+    # 2. Determine Visual Risk Level (0-4)
+    # Start with the Policy Level (The Floor)
     level_map = {
         "SAFE": 0, "NOTE": 1, "WARN": 2, 
         "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0
     }
-    level = level_map.get(sec_level, 0)
+    level = level_map.get(policy_level_str, 0)
     
-    # Physics Overrides (Zalgo Density)
+    # Apply Physics Overrides (Can only ESCALATE, never downgrade)
+    # Zalgo / Mark Density Check
     stack_count = 0
     if data.get('stack_msg'): 
         try: stack_count = int(re.search(r'\d+', data['stack_msg']).group())
         except: stack_count = 3
-    if stack_count > 5: level = max(level, 3)
     
-    # --- 3. FACET CALCULATIONS (Standard) ---
-    # A. VISIBILITY
+    if stack_count > 5: 
+        level = max(level, 3) # Force at least SUSPICIOUS for Zalgo
+    
+    # --- 3. FACET CALCULATIONS (Physical Attributes) ---
+    
+    # A. VISIBILITY (Pixel Presence)
     vis_state = "PASS"
     vis_class = "risk-ok"
     vis_detail = "Standard Visible"
@@ -7234,24 +7243,25 @@ def analyze_signal_processor_state(data):
         vis_detail = "Zero-Width / Control"
         vis_icon = "eye-off"
     elif not data['is_ascii']:
-        vis_state = "EXTENDED"
+        vis_state = "EXTENDED" 
         vis_class = "risk-info"
         vis_detail = "Unicode Range"
         vis_icon = "globe"
 
-    # B. STRUCTURE (Terminology: Atomic vs Mutable)
+    # B. STRUCTURE (Atomic Integrity)
     struct_state = "ATOMIC"
     struct_class = "risk-ok"
     struct_detail = "Single Point"
     struct_icon = "box"
     
     ghosts = data.get('ghosts')
+    # If Raw != NFKC, the structure is mutable
     is_norm_unstable = ghosts and (ghosts['raw'] != ghosts['nfkc'])
     
     if is_norm_unstable:
         struct_state = "MUTABLE"
-        struct_class = "risk-warn"
-        struct_detail = "Changes in NFKC" # Physical Fact
+        struct_class = "risk-warn" 
+        struct_detail = "Changes in NFKC"
         struct_icon = "refresh-cw"
     elif len(data['components']) > 1:
         struct_state = "COMPOSITE"
@@ -7259,7 +7269,7 @@ def analyze_signal_processor_state(data):
         struct_detail = f"{len(data['components'])} Components"
         struct_icon = "layers"
 
-    # C. IDENTITY
+    # C. IDENTITY (Visual Uniqueness)
     ident_state = "UNIQUE"
     ident_class = "risk-ok"
     ident_detail = "No Lookalikes"
@@ -7271,66 +7281,60 @@ def analyze_signal_processor_state(data):
         ident_class = "risk-info"
         ident_detail = f"{lookalikes} Lookalikes"
     
-    if sec_level == "SUSPICIOUS" and "SPOOF" in str(report):
+    # Upgrade Identity Risk if Policy detected Spoofing
+    if "SPOOF" in policy_badges and level >= 3:
         ident_state = "AMBIGUOUS"
         ident_class = "risk-warn"
         ident_detail = "High Confusability"
         ident_icon = "alert-triangle"
 
     # --- 4. THE "PHYSICS" TAXONOMY (Top Panel Text) ---
-    # Instead of parroting the Security Verdict, we describe the Physical Class.
+    # Describes the intrinsic nature of the character.
     
-    # Defaults
-    header_cls = "header-baseline"
-    verdict_text = "Standard Composition" # Default Physics description
+    # Style Config
+    header_config = {
+        0: ("BASELINE", "header-baseline"),
+        1: ("NON-STD",  "header-complex"),
+        2: ("ANOMALOUS","header-anomalous"),
+        3: ("SUSPICIOUS","header-suspicious"),
+        4: ("CRITICAL", "header-critical")
+    }
+    level_text, header_cls = header_config.get(level, header_config[0])
     
-    # Level-Based Styling
-    if level == 1: header_cls = "header-complex"
-    if level == 2: header_cls = "header-anomalous"
-    if level == 3: header_cls = "header-suspicious"
-    if level == 4: header_cls = "header-critical"
-
-    # The Physics Classifier Logic
-    # 1. Normalization Artifacts (e.g. ½, Ⅻ)
+    # Verdict Text Logic (Deterministic Physics Waterfall)
+    verdict_text = "Standard Composition" # Default
+    
     if is_norm_unstable:
         verdict_text = "Compatibility Mapping" 
-        
-    # 2. Invisible / Layout (e.g. ZWSP, RLO)
     elif data.get('is_invisible'):
-        verdict_text = "Invisible Format Control"
-        
-    # 3. Zalgo / Stacking
+        # Check specific badges to be precise
+        if "BIDI" in policy_badges: verdict_text = "Directional Control"
+        elif "TAG" in policy_badges: verdict_text = "Protocol Tag"
+        else: verdict_text = "Invisible Format Control"
     elif stack_count > 2:
         verdict_text = "High-Density Cluster"
-        
-    # 4. Non-ASCII Logic (e.g. Cyrillic 'a', Emoji)
     elif not data['is_ascii']:
         if data.get('macro_type') == "NUMBER":
-            verdict_text = "Non-ASCII Numeric" # Good for ½ if stable
-        elif "Emoji" in str(report):
-            verdict_text = "Pictographic Symbol"
+            verdict_text = "Non-ASCII Numeric"
+        elif "Emoji" in str(report.get('lenses',{})): # Safe string check on lens text
+             verdict_text = "Pictographic Symbol"
         else:
             verdict_text = "Extended Script Character"
 
-    # 5. Critical Overrides (Payloads)
-    if sec_level == "CRITICAL":
-        if "Bidi" in str(report): verdict_text = "Directional Override"
-        elif "Tag" in str(report): verdict_text = "Protocol Tag Sequence"
-
     # --- 5. Footer Configuration (The Bridge) ---
-    # The footer still grabs the Policy Verdict ("Restricted", "Banned")
+    # The footer displays the Policy Decision from the Explainer.
     footer_label = "ANALYSIS"
     footer_class = "footer-neutral"
-    
-    policy_verdict = report.get('security', {}).get('verdict', "")
+    footer_text = verdict_text # Default to physics text if safe
     
     if level >= 2:
         footer_label = "VERDICT"
         footer_class = "footer-warn" if level < 4 else "footer-crit"
+        footer_text = policy_verdict # Use the strict policy verdict (e.g. "Restricted")
     
     return {
         "level": level,
-        "level_text": f"LEVEL {level}", # Keep numeric level
+        "level_text": f"LEVEL {level}", 
         "header_class": header_cls,
         "verdict_text": verdict_text,   # PHYSICAL DESCRIPTION (Top)
         "icon_key": "shield" if level == 0 else "alert-triangle",
@@ -7341,7 +7345,7 @@ def analyze_signal_processor_state(data):
         ],
         "footer_label": footer_label,
         "footer_class": footer_class,
-        "footer_text": policy_verdict # POLICY DESCRIPTION (Bottom)
+        "footer_text": footer_text
     }
 
 def _parse_inline_css(style_str: str) -> Dict[str, str]:
