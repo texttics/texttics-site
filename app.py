@@ -3820,18 +3820,29 @@ class ForensicExplainer:
         
         confusables = rec.get("confusables", [])
         
-        # --- C. SECURITY VERDICT (V4.7: Executive Summary) ---
+        # --- C. SECURITY VERDICT (V4.7: Monotonic & Composite) ---
         
+        # Helper: Check if current level is below a target threshold
+        def _is_below(target_level):
+            curr_rank = self.SEVERITY_RANK.get(report["security"]["level"], 0)
+            target_rank = self.SEVERITY_RANK.get(target_level, 0)
+            return curr_rank < target_rank
+
         # Default Baseline
         report["security"]["verdict"] = "Standard Literal. Safe for general interchange."
 
-        # 1. Identifier Status (The "Law")
+        # 1. Identifier Status (The Baseline)
         if id_stat == "Restricted":
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("RESTRICTED")
             
             # Forensic Detail: Diagnose the Restriction
-            if "Compat" in str(rec.get("dt", "")):
+            dt = rec.get("dt")
+            # Check for specific compatibility types (Compat, Circle, Super, etc)
+            # Standard UCD types: Com, Enc, Fin, Font, Fra, Init, Iso, Med, Nar, Nob, Sml, Sqr, Sub, Sup, Vert, Wide, Circ
+            compat_types = ("Com", "Compat", "Circle", "Super", "Sub", "Font", "Wide", "Narrow", "Small", "Square", "Fraction")
+            
+            if dt and any(t in str(dt) for t in compat_types):
                 report["security"]["verdict"] = "Compatibility Artifact. Restricted due to normalization instability (NFKC)."
             else:
                 report["security"]["verdict"] = "Restricted Entity. Excluded from secure identifier profiles (UAX #31)."
@@ -3842,13 +3853,24 @@ class ForensicExplainer:
                 if id_type and "Technical" in id_type[0]:
                     report["security"]["verdict"] = "Technical Syntax. Valid in specialized contexts (Math/Programming)."
                 else:
-                    report["security"]["verdict"] = "Verified Identifier. Universally accepted in secure profiles (UAX #31)."
+                    # [FIX V4.7] Softer claim ("Universally accepted" -> "Allowed in standard profiles")
+                    report["security"]["verdict"] = "Verified Identifier. Allowed in standard secure profiles (UAX #31)."
 
         # 2. IDNA Protocol (Network Safety)
         if idna == "disallowed":
             report["security"]["badges"].append("NO-DNS")
-            if report["security"]["level"] < "CRITICAL":
-                report["security"]["verdict"] = "Protocol Violation. Strictly banned in network hostnames (IDNA2008)."
+            # [FIX V4.7] Escalate to NOTE/WARN to reflect network ban
+            # We don't force WARN globally if it's safe in code, but we note the protocol violation.
+            if _is_below("WARN"):
+                 # Only overwrite if we are currently SAFE/NOTE. 
+                 # If we are already WARN (Restricted), we keep that message or append.
+                 if report["security"]["level"] == "SAFE":
+                     report["security"]["level"] = "NOTE"
+                     report["security"]["verdict"] = "Protocol Violation. Strictly banned in network hostnames (IDNA2008)."
+                 else:
+                     # Append context if space allows, or rely on badges
+                     pass 
+
         elif idna == "deviation":
             report["security"]["badges"].append("DEVIATION")
         elif idna in ("mapped", "ignored"):
@@ -3859,12 +3881,22 @@ class ForensicExplainer:
             if is_ascii:
                 # ASCII Anchor: The "Gold Standard" of trust
                 report["security"]["badges"].append("CONFUSABLES")
-                report["security"]["verdict"] = f"Verified Anchor. Standard ASCII baseline for spoofing detection ({len(confusables)} imitators)."
+                # Append info, don't overwrite blindly
+                if "Standard" in report["security"]["verdict"] or "Allowed" in report["security"]["verdict"]:
+                     report["security"]["verdict"] = f"Verified Anchor. Standard ASCII baseline for spoofing detection ({len(confusables)} imitators)."
             else:
                 # Non-ASCII Imitator: The Risk
+                # [FIX V4.7] Monotonic escalation
                 report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
                 report["security"]["badges"].append("SPOOF")
-                report["security"]["verdict"] = f"Visual Impersonator. High-risk confusable; distinct from safe ASCII anchor."
+                
+                # Composite Verdict: Don't hide previous warnings (like Restricted)
+                # If we are already WARN/RESTRICTED, we combine.
+                base_msg = report["security"]["verdict"]
+                if "Restricted" in base_msg:
+                    report["security"]["verdict"] = f"Restricted Visual Impersonator. High-risk confusable."
+                else:
+                    report["security"]["verdict"] = f"Visual Impersonator. High-risk confusable; distinct from safe ASCII anchor."
 
         # 4. Critical Hazards (Active Weaponization)
         if "Bidi_Control" in props:
@@ -3876,17 +3908,15 @@ class ForensicExplainer:
             report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("INVISIBLE")
             
-            # Rank-based comparison (V4.4 Logic)
-            current_rank = self.SEVERITY_RANK[report["security"]["level"]]
-            crit_rank = self.SEVERITY_RANK["CRITICAL"]
-            
-            if current_rank < crit_rank:
+            # [FIX V4.7] Robust Rank Comparison
+            if _is_below("CRITICAL"):
                 report["security"]["verdict"] = "Obfuscation Artifact. Invisible character restricted in secure contexts."
 
         if "Deprecated" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("DEPRECATED")
-            if report["security"]["level"] < "CRITICAL":
+            # [FIX V4.7] Robust Rank Comparison
+            if _is_below("CRITICAL"):
                 report["security"]["verdict"] = "Deprecated Standard. Obsolete character; usage discouraged."
 
         # --- D. NARRATIVE HIGHLIGHTS ---
