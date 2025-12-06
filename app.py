@@ -16836,10 +16836,10 @@ def update_verification(event=None):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v4.0: SOTA Hardening & Sync.
-    - Resolves segmentation/indexing runtime errors (bidirectional, index must be int).
-    - Syncs Normalization Stability (MUTABLE vs. Stable) to Physics Core.
-    - Implements Guard Rails for robustness against corrupted Pyodide/JS objects.
+    Forensic Inspector v6.0: "Physics First" Hardening.
+    - FIX: ghosts dict is initialized with local normalization (Source of Truth), preventing KeyError 'nfc'.
+    - FIX: unicodedata calls use base_char to prevent 'str' errors on clusters.
+    - FIX: Skeleton extraction guarded against type errors.
     """
     try:
         text_input = document.getElementById("text-input")
@@ -16849,13 +16849,13 @@ def inspect_character(event):
 
         dom_pos = text_input.selectionStart
         
-        # Handle Newline normalization mismatch (Windows \r\n vs \n)
+        # Handle Newline normalization mismatch
         text = str(text_input.value)
         if not text:
             render_inspector_panel(None)
             return
         
-        # 1. Map DOM Index to Python Index (Logical Index)
+        # 1. Map DOM Index to Python Index
         python_idx = 0
         utf16_accum = 0
         found_sync = False
@@ -16866,186 +16866,165 @@ def inspect_character(event):
                 found_sync = True
                 break
             
-            # Logic: Is this a surrogate pair? (2 units) or BMP (1 unit)
-            # ord(ch) is safe for single units, but careful with proxies
             step = 2 if ord(ch) > 0xFFFF else 1
             utf16_accum += step
             
             if utf16_accum > dom_pos:
-                # We landed inside a character (e.g., cursor is on the low surrogate)
                 python_idx = i
                 found_sync = True
                 break
         
-        # Cursor is exactly at the end of the text.
         if not found_sync and utf16_accum == dom_pos:
              render_inspector_panel(None) 
              return
 
-        # *** HARDENED CHECK: Cursor must be within bounds for string indexing ***
         if python_idx >= len(text):
             render_inspector_panel(None)
             return
         
-        # 2. **HARDENED** Grapheme Cluster Acquisition
-        # Goal: Find the *full* grapheme cluster that contains the python_idx.
-
+        # 2. Hardened Segmentation
         start_search = max(0, python_idx - 50)
         end_search = min(len(text), python_idx + 50)
         local_text = text[start_search:end_search]
-        
         local_target_idx = python_idx - start_search
-        
         segments_iter = GRAPHEME_SEGMENTER.segment(local_text)
         
         target_cluster = None
         prev_cluster = None
         next_cluster = None
-        
         current_local_idx = 0
         
         for seg in segments_iter:
-            # *** GUARD RAIL 1: Ensure Pyodide proxy object is converted to native Python string ***
             seg_str = str(seg.segment)
             seg_len = len(seg_str)
             seg_end = current_local_idx + seg_len
             
-            # Check containment: target is inside this cluster's range [start, end)
             if current_local_idx <= local_target_idx < seg_end:
                 target_cluster = seg_str
-                # Once found, continue to get the next cluster, then break
                 current_local_idx = seg_end
                 continue
             
-            # This segment is after the target cluster (used to set next_cluster)
             if target_cluster is not None:
                 next_cluster = seg_str
                 break
             
-            # This segment is before the target cluster (used to set prev_cluster)
             prev_cluster = seg_str
             current_local_idx = seg_end
             
-        # *** NEW FALLBACK LOGIC ***
         if not target_cluster:
-            # Fallback to single code point at the Python index.
             try:
                 target_cluster = text[python_idx]
             except IndexError:
-                # Should not happen after initial check, but for absolute safety
                 render_inspector_panel(None)
                 return
 
         target_char = target_cluster
         
-        # *** GUARD RAIL 2: Ensure target_char is a non-empty string before analysis ***
+        # Guard Rail: Ensure string type
         if not isinstance(target_char, str) or not target_char:
-            print(f"Inspector Guard Rail: Invalid target_char type or empty: {target_char}")
-            render_inspector_panel({"error": "Inspection Paused (Invalid Target Character)"})
+            render_inspector_panel({"error": "Inspection Paused (Invalid Target)"})
             return
             
-        # 3. Analyze the Cluster
-        base_char = target_char[0]
+        # 3. Analyze the Cluster (Atomic vs Molecular)
+        base_char = target_char[0] # The Atom
         cp_base = ord(base_char)
-        hex_str = f"{cp_base:04X}"  # Used for Explainer DB lookup
+        hex_str = f"{cp_base:04X}"
 
-        # [SOTA FIX] Fetch from Explainer DB (Source of Truth)
         rec = {}
         if FORENSIC_EXPLAINER and hasattr(FORENSIC_EXPLAINER, 'db'):
             rec = FORENSIC_EXPLAINER.db.get(hex_str, {})
 
-        # Decomposition Type (Canonical vs Compat)
         dt_val = rec.get("dt")
         if dt_val in ("None", "none", ""): dt_val = None
 
-        # Line Break & Width (Layout Physics)
         lb_val = rec.get("lb") or _find_in_ranges(cp_base, "LineBreak") or "XX"
         ea_val = rec.get("ea") or _find_in_ranges(cp_base, "EastAsianWidth") or "N"
         
-        # Ghosts Calculation (Early for Patch)
-        ghosts = _get_ghost_chain(target_char) # Use target_char (cluster) for full NFKC path
+        # --- Normalization Snapshots (Physics Source of Truth) ---
+        # FIX 1: Calculate local normalization first. This guarantees keys exist.
+        raw_form = target_char
+        nfc_form = unicodedata.normalize("NFC", raw_form)
+        nfkc_form = unicodedata.normalize("NFKC", raw_form)
 
-        # [SOTA PATCH] Force Physics consistency (The Compatibility Artifact Fix)
-        # If the text changes (e.g. ⓼ -> 8) but dt was missing in DB, FORCE it to "Compat".
-        if ghosts and (ghosts['raw'] != ghosts['nfkc']):
-            if not dt_val:
-                dt_val = "Compat"
+        ghosts = {
+            "raw": raw_form,
+            "nfc": nfc_form,
+            "nfkc": nfkc_form,
+            "skeleton": nfkc_form, # Fallback skeleton
+        }
         
-        # 5. Build Base Payload
+        # Merge external DB data if available, but trust local physics for keys
+        try:
+            extra_ghosts = _get_ghost_chain(raw_form)
+            if isinstance(extra_ghosts, dict):
+                ghosts.update(extra_ghosts)
+        except Exception as ge:
+            print(f"Ghost chain error: {ge}")
+
+        # Consistency Check
+        if raw_form != nfkc_form and not dt_val:
+            dt_val = "Compat"
+
         cat_short = unicodedata.category(base_char)
-        
-        # Pre-calculate components to avoid circular dependency
+
         components = []
         zalgo_score = 0
         for ch in target_char:
             cat = unicodedata.category(ch)
-            # *** BUG FIX: unicodedata.bidirectional is now safe to call here ***
-            if cat.startswith('M'): zalgo_score += 1
+            if cat.startswith('M'):
+                zalgo_score += 1
             components.append({
-                'hex': f"U+{ord(ch):04X}",  
-                'name': unicodedata.name(ch, "Unknown"),  
-                'cat': cat,  
-                'ccc': unicodedata.combining(ch),  
-                'is_base': not cat.startswith('M')
+                "hex": f"U+{ord(ch):04X}",
+                "name": unicodedata.name(ch, "Unknown"),
+                "cat": cat,
+                "ccc": unicodedata.combining(ch),
+                "is_base": not cat.startswith("M"),
             })
 
-        # *** SOTA SYNC: Normalization Stability Flag ***
-        # Determines if the string changes identity when normalized.
-        is_mutable = bool(dt_val) or (ghosts and ghosts['raw'] != ghosts['nfc']) or (ghosts and ghosts['raw'] != ghosts['nfkc'])
+        # SOTA Sync: Stability
+        is_mutable = bool(dt_val) or (raw_form != nfc_form) or (raw_form != nfkc_form)
         stability_text = "MUTABLE (Transforms on NFKC)" if is_mutable else "Stable"
         
-        # Assemble Base Payload
+        # FIX 2: Use base_char for atomic properties to prevent 'str' errors on clusters
         base_char_data = {
             "char": target_char,
             "codepoint": f"U+{hex_str}",
-            "name": rec.get("name") or unicodedata.name(target_char, "UNKNOWN"),
+            "name": rec.get("name") or unicodedata.name(base_char, "UNKNOWN"), 
             "block": rec.get("blk") or _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(target_char),  
+            "bidi": unicodedata.bidirectional(base_char), # Safe: len(base_char) == 1
             "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
             
-            # Physics Keys
-            "lb": lb_val,  
-            "ea": ea_val,  
-            "dt": dt_val,  
-            "line_break": lb_val,
+            "lb": lb_val, "ea": ea_val, "dt": dt_val, "line_break": lb_val,
 
-            # Context Keys
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),  
             "lookalikes_data": rec.get("confusables", []),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
-            "components": components, # Explicitly included
-            "stability_text": stability_text # *** NEW SYNCHRONIZED FIELD ***
+            "components": components,
+            "stability_text": stability_text,
         }
 
-        # Cluster Analysis
         cluster_identity_raw = _compute_cluster_identity(target_char, base_char_data)
         
-        # *** GUARD RAIL 3: Ensure cluster_identity is a dictionary (Fixes 'string indices must be integers' error) ***
         if not isinstance(cluster_identity_raw, dict):
-             print(f"Inspector Guard Rail: cluster_identity failed, defaulted to safe dict. Raw: {cluster_identity_raw}")
-             # Default to a safe dictionary structure
              cluster_identity = {"is_cluster": len(target_char) > 1, "max_risk_cat": cat_short, "type_label": "ERROR_SAFE", 
                                  "block_val": base_char_data["block"], "script_val": base_char_data["script"], 
                                  "bidi_val": base_char_data["bidi"], "age_val": base_char_data["age"]}
         else:
              cluster_identity = cluster_identity_raw
         
-        # 7. Policy Engine (The Narrator)
         forensic_report = None
         if FORENSIC_EXPLAINER:
             forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
         
         base_char_data["forensic_report"] = forensic_report
 
-        # 8. Build Full Data Object (Preserving Logic)
-        comp_cat = cluster_identity["max_risk_cat"]
-        # comp_mask = cluster_identity["cluster_mask"] # No longer used below
-
+        comp_cat = cluster_identity.get("max_risk_cat", cat_short)
+        
         if comp_cat in ("Cn", "Co", "Cs", "Cf"):
             id_status = "Restricted"
         else:
@@ -17053,11 +17032,9 @@ def inspect_character(event):
             
         id_type = _find_in_ranges(cp_base, "IdentifierType")
         f_level = forensic_report["security"]["level"] if forensic_report else "SAFE"
-        # cluster_identity["cluster_mask"] is now used here (must exist in the dictionary)
         comp_mask = cluster_identity.get("cluster_mask", 0) 
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
 
-        # Encodings Generation
         utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
         utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
         utf32_hex = f"{cp_base:08X}"
@@ -17066,9 +17043,12 @@ def inspect_character(event):
             try: return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
             except: return "N/A"
 
-        # Construct Final Data Dict
+        # FIX 3: Safe Skeleton Extraction
+        skeleton_val = ghosts.get("skeleton") if isinstance(ghosts, dict) else None
+        confusable_msg = f"Base maps to: '{skeleton_val}'" if skeleton_val and skeleton_val != base_char else None
+
         data = {
-            **base_char_data, # Inherit base props
+            **base_char_data,
             "python_idx": python_idx,
             "cluster_glyph": target_cluster,
             "prev_glyph": prev_cluster,  
@@ -17076,12 +17056,12 @@ def inspect_character(event):
             "cp_hex_base": f"U+{cp_base:04X}",
             "name_base": unicodedata.name(base_char, "No Name"),
             "is_cluster": cluster_identity["is_cluster"],
-            "type_label": cluster_identity["type_label"],
-            "type_val":  cluster_identity["type_val"],
-            "block":     cluster_identity["block_val"],
-            "script":    cluster_identity["script_val"],
-            "bidi":      cluster_identity["bidi_val"],
-            "age":       cluster_identity["age_val"],
+            "type_label": cluster_identity.get("type_label", "N/A"),
+            "type_val":  cluster_identity.get("type_val", "N/A"),
+            "block":     cluster_identity.get("block_val", "N/A"),
+            "script":    cluster_identity.get("script_val", "N/A"),
+            "bidi":      cluster_identity.get("bidi_val", "N/A"),
+            "age":       cluster_identity.get("age_val", "N/A"),
             "id_status": id_status,
             "id_type": id_type,
             "macro_type": macro_type,
@@ -17089,7 +17069,6 @@ def inspect_character(event):
             "grapheme_break": _find_in_ranges(cp_base, "GraphemeBreak") or "Base",
             "props": forensic_report.get("props", []) if forensic_report else [],
             
-            # Encodings
             "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
             "ascii": try_enc("ascii"), "latin1": try_enc("latin-1"), "cp1252": try_enc("cp1252"),
             "url": "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8")),
@@ -17101,22 +17080,18 @@ def inspect_character(event):
             "html_hex": "".join(f"&#x{ord(c):X};" for c in target_cluster),
             "es6": "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster),
             
-            "confusable": f"Base maps to: '{ghosts['skeleton']}'" if ghosts and ghosts['skeleton'] != base_char else None,
+            "confusable": confusable_msg,
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            "stack_msg": base_char_data["stack_msg"], # Re-added from base_char_data
+            "stack_msg": base_char_data["stack_msg"], 
             "components": base_char_data['components'],
             "forensic_report": forensic_report,
-            "stability_text": stability_text # *** SOTA SYNC FINAL PASS ***
+            "stability_text": stability_text
         }
 
-        # 9. Run Physics Engine (The Signal Processor)
         matrix_state = analyze_signal_processor_state(data)
-        
-        # 10. Render
         render_inspector_panel(data)
 
     except Exception as e:
-        # Final catch-all for Pyodide errors
         print(f"Inspector Error: {e}")
         render_inspector_panel({"error": str(e)})
 
