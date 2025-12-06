@@ -7198,30 +7198,31 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V3.1: Semantic Alignment.
-    Resolves the 'Stable vs Unstable' conflict by renaming Structure labels.
-    Synchronizes the Visual/Structure/Identity matrix with the Forensic Report.
+    Forensic Matrix V3.2: The "Law vs. Order" Split.
+    Top Panel (Matrix) = Physical Taxonomy (What it is).
+    Bottom Panel (Footer) = Security Policy (How it behaves).
     """
-    # 1. Unpack Context (The Truth)
+    # 1. Unpack Context
     report = data.get('forensic_report') or {}
     sec_level = report.get('security', {}).get('level', 'UNKNOWN')
     
-    # 2. Determine Risk Level (0-4)
-    # Map Forensic Verdicts (Policy) to Inspector Levels (Visuals)
+    # 2. Determine Visual Risk Level (Synchronized Color)
+    # We keep the color/level synced so the UI doesn't look schizophrenic
     level_map = {
         "SAFE": 0, "NOTE": 1, "WARN": 2, 
         "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0
     }
     level = level_map.get(sec_level, 0)
     
-    # Physics Overrides (Zalgo)
+    # Physics Overrides (Zalgo Density)
     stack_count = 0
     if data.get('stack_msg'): 
         try: stack_count = int(re.search(r'\d+', data['stack_msg']).group())
         except: stack_count = 3
     if stack_count > 5: level = max(level, 3)
     
-    # 3. FACET 1: VISIBILITY
+    # --- 3. FACET CALCULATIONS (Standard) ---
+    # A. VISIBILITY
     vis_state = "PASS"
     vis_class = "risk-ok"
     vis_detail = "Standard Visible"
@@ -7233,27 +7234,24 @@ def analyze_signal_processor_state(data):
         vis_detail = "Zero-Width / Control"
         vis_icon = "eye-off"
     elif not data['is_ascii']:
-        vis_state = "EXTENDED" # Kept per user preference, strictly means > 0x7F
+        vis_state = "EXTENDED"
         vis_class = "risk-info"
         vis_detail = "Unicode Range"
         vis_icon = "globe"
 
-    # 4. FACET 2: STRUCTURE (Terminology Fix)
-    # Old: "STABLE" (Conflicted with Normalization) -> New: "ATOMIC"
+    # B. STRUCTURE (Terminology: Atomic vs Mutable)
     struct_state = "ATOMIC"
     struct_class = "risk-ok"
     struct_detail = "Single Point"
     struct_icon = "box"
     
-    # Check for Normalization Instability (The Truth from Footer)
     ghosts = data.get('ghosts')
     is_norm_unstable = ghosts and (ghosts['raw'] != ghosts['nfkc'])
     
-    # Logic: Structure can be Atomic but Mutable
     if is_norm_unstable:
         struct_state = "MUTABLE"
-        struct_class = "risk-warn" # Align color with footer WARN
-        struct_detail = "Changes in NFKC"
+        struct_class = "risk-warn"
+        struct_detail = "Changes in NFKC" # Physical Fact
         struct_icon = "refresh-cw"
     elif len(data['components']) > 1:
         struct_state = "COMPOSITE"
@@ -7261,7 +7259,7 @@ def analyze_signal_processor_state(data):
         struct_detail = f"{len(data['components'])} Components"
         struct_icon = "layers"
 
-    # 5. FACET 3: IDENTITY
+    # C. IDENTITY
     ident_state = "UNIQUE"
     ident_class = "risk-ok"
     ident_detail = "No Lookalikes"
@@ -7273,32 +7271,68 @@ def analyze_signal_processor_state(data):
         ident_class = "risk-info"
         ident_detail = f"{lookalikes} Lookalikes"
     
-    # 6. Header Semantics (Synced with Footer)
-    # We use the Forensic Level to drive the Header Class/Text
-    header_config = {
-        0: ("BASELINE", "header-baseline", "Standard Composition"),
-        1: ("NON-STD",  "header-complex",  "Extended / Complex"),
-        2: ("ANOMALOUS","header-anomalous","Restricted / Mutable"), # Matches WARN
-        3: ("SUSPICIOUS","header-suspicious","Evasion Risk"),
-        4: ("CRITICAL", "header-critical", "Active Threat")
-    }
-    level_text, header_cls, verdict_text = header_config.get(level, header_config[0])
+    if sec_level == "SUSPICIOUS" and "SPOOF" in str(report):
+        ident_state = "AMBIGUOUS"
+        ident_class = "risk-warn"
+        ident_detail = "High Confusability"
+        ident_icon = "alert-triangle"
 
-    # Dynamic Footer Label
+    # --- 4. THE "PHYSICS" TAXONOMY (Top Panel Text) ---
+    # Instead of parroting the Security Verdict, we describe the Physical Class.
+    
+    # Defaults
+    header_cls = "header-baseline"
+    verdict_text = "Standard Composition" # Default Physics description
+    
+    # Level-Based Styling
+    if level == 1: header_cls = "header-complex"
+    if level == 2: header_cls = "header-anomalous"
+    if level == 3: header_cls = "header-suspicious"
+    if level == 4: header_cls = "header-critical"
+
+    # The Physics Classifier Logic
+    # 1. Normalization Artifacts (e.g. ½, Ⅻ)
+    if is_norm_unstable:
+        verdict_text = "Compatibility Mapping" 
+        
+    # 2. Invisible / Layout (e.g. ZWSP, RLO)
+    elif data.get('is_invisible'):
+        verdict_text = "Invisible Format Control"
+        
+    # 3. Zalgo / Stacking
+    elif stack_count > 2:
+        verdict_text = "High-Density Cluster"
+        
+    # 4. Non-ASCII Logic (e.g. Cyrillic 'a', Emoji)
+    elif not data['is_ascii']:
+        if data.get('macro_type') == "NUMBER":
+            verdict_text = "Non-ASCII Numeric" # Good for ½ if stable
+        elif "Emoji" in str(report):
+            verdict_text = "Pictographic Symbol"
+        else:
+            verdict_text = "Extended Script Character"
+
+    # 5. Critical Overrides (Payloads)
+    if sec_level == "CRITICAL":
+        if "Bidi" in str(report): verdict_text = "Directional Override"
+        elif "Tag" in str(report): verdict_text = "Protocol Tag Sequence"
+
+    # --- 5. Footer Configuration (The Bridge) ---
+    # The footer still grabs the Policy Verdict ("Restricted", "Banned")
     footer_label = "ANALYSIS"
     footer_class = "footer-neutral"
-    footer_text = verdict_text
+    
+    policy_verdict = report.get('security', {}).get('verdict', "")
     
     if level >= 2:
         footer_label = "VERDICT"
         footer_class = "footer-warn" if level < 4 else "footer-crit"
-        footer_text = report.get('security', {}).get('verdict', verdict_text)
-
+    
     return {
         "level": level,
-        "level_text": level_text,
+        "level_text": f"LEVEL {level}", # Keep numeric level
         "header_class": header_cls,
-        "verdict_text": verdict_text,
+        "verdict_text": verdict_text,   # PHYSICAL DESCRIPTION (Top)
         "icon_key": "shield" if level == 0 else "alert-triangle",
         "facets": [
             {"state": vis_state, "class": vis_class, "detail": vis_detail, "icon": vis_icon},
@@ -7307,7 +7341,7 @@ def analyze_signal_processor_state(data):
         ],
         "footer_label": footer_label,
         "footer_class": footer_class,
-        "footer_text": footer_text
+        "footer_text": policy_verdict # POLICY DESCRIPTION (Bottom)
     }
 
 def _parse_inline_css(style_str: str) -> Dict[str, str]:
