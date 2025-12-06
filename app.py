@@ -3787,7 +3787,8 @@ class ForensicExplainer:
         dt = rec.get("dt") # Start with DB value
         try:
             char_raw = chr(cp_int)
-            nfkc_val = unicodedata.normalize('NFKC', char_raw)
+            # FIX: Use the app's robust normalizer (handles ENCLOSED_MAP patches)
+            nfkc_val = normalize_extended(char_raw) 
             # If Raw != NFKC, it IS physically unstable. 
             if char_raw != nfkc_val and not dt:
                 dt = "Compat" 
@@ -4066,7 +4067,8 @@ class ForensicExplainer:
         try:
             char_raw = chr(cp_int)
             nfc_val = unicodedata.normalize('NFC', char_raw)
-            nfkc_val = unicodedata.normalize('NFKC', char_raw)
+            # FIX: Use robust normalizer here too, otherwise it will falsely report "Stable"
+            nfkc_val = normalize_extended(char_raw)
             
             if char_raw == nfkc_val:
                 # Case A: Physically Stable (e.g. 'A')
