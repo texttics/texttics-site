@@ -16966,7 +16966,7 @@ def inspect_character(event):
             "line_break": lb_val, # Legacy compat
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
-            "is_invisible": (cp_base in INVIS_TABLE_KEYS), # Assuming this global exists
+            "is_invisible": (cp_base in INVISIBLE_MAPPING),
             "lookalikes_data": rec.get("confusables", []), # Use rec for speed
             "components": _compute_cluster_identity(target_char),
             "stack_msg": None # Populated if Zalgo detected
