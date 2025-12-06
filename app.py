@@ -16968,7 +16968,6 @@ def inspect_character(event):
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
             "lookalikes_data": rec.get("confusables", []), # Use rec for speed
-            "components": _compute_cluster_identity(target_char),
             "stack_msg": None # Populated if Zalgo detected
         }
 
@@ -16980,6 +16979,8 @@ def inspect_character(event):
                 base_char_data['dt'] = "Compat"
 
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
+
+        base_char_data['components'] = cluster_identity.get('components', [])
 
         comp_cat = cluster_identity["max_risk_cat"]
         comp_mask = cluster_identity["cluster_mask"]
