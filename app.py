@@ -3870,6 +3870,10 @@ class ForensicExplainer:
         norm_text = "Stable under NFKC."
         if nfkc_qc != "Y":
             norm_text = "Unstable. Changes/Decomposes under NFKC normalization."
+        report["highlights"].append({
+            "label": "Normalization",
+            "text": norm_text
+        })
 
         # Highlight 4: Segmentation & Layout
         lb_code = rec.get("lb", "XX")
