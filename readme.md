@@ -2163,55 +2163,71 @@ To support these features, the architecture was refined to handle **Forensic Sam
 
 ---
 
-## 🛡️ Addendum #12: Stage 1.7 "The Forensic Narrator" (Deep Knowledge Upgrade)
+## 🛡️ Addendum #12: Stage 1.8 "The Forensic Narrator" & Deep Physics
 
-**Session Goal:** To transition the tool from a **"Passive Instrument"** (displaying raw Unicode properties) to an **"Active Narrator"** (explaining *why* a character is safe or dangerous). We implemented a "Physics vs. Policy" architecture that compiles authoritative UCD specifications into a deterministic security report.
+**Session Goal:** To transition the tool from a **"Passive Instrument"** (displaying raw Unicode properties) to an **"Active Narrator"** (explaining *why* a character is safe or dangerous). We implemented a rigorous **"Physics vs. Policy"** architecture that compiles authoritative UCD specifications into a deterministic security report.
 
 ### 1. Architecture: The "Grinder" Pipeline (Knowledge Engineering)
 We moved away from hardcoded Python dictionaries to a **Generated Knowledge Base**.
 
-* **The "V8" Grinder (`build_knowledge_base.py`):**
-    * A custom ETL pipeline that selectively ingests **~35 high-value UCD files** (including `Security`, `IDNA`, `Segmentation`, and `ScriptExtensions`) to build a definitive forensic index.
-    * **Auto-Vocabulary Generation:** Instead of hand-coding labels, the grinder parses `PropertyAliases.txt` and `PropertyValueAliases.txt` to automatically derive official long names (e.g., `Lu` $\to$ `Uppercase_Letter`), ensuring 100% terminological accuracy with the standard.
-    * **Semantic Compression:** The grinder compiles 300,000+ records and metadata into a highly optimized JSON structure, then compresses it into a **~1.0 MB ZIP artifact** (`forensic_db.zip`).
+* **The "V7+" Grinder (`build_knowledge_base.py`):**
+    * A custom ETL pipeline that selectively ingests **~40 high-value UCD files** to build a definitive forensic index.
+    * **The "Maximum Squeeze" Strategy:** Unlike standard parsers, this engine targets specific "Forensic Gold" often left behind:
+        * **Numeric Physics:** Parses `DerivedNumericValues.txt` to extract actual mathematical values (e.g., `½` $\to$ `0.5`), enabling anti-spoofing logic for financial systems.
+        * **Syntax Logic:** Parses `BidiBrackets.txt` to power the UTS #55 Stack Machine (preventing Spillover Attacks).
+        * **Identifier Profiles:** Extracts `XID_Start` and `XID_Continue` to strictly enforce UAX #31.
+    * **Semantic Compression:** The grinder compiles 300,000+ records into a highly optimized JSON structure, compressed into a **~2.0 MB ZIP artifact** (`forensic_db.zip`) fetched once on load.
 
-* **In-Memory Hydration (The Supply Chain):**
-    * The browser fetches the compressed artifact once on load.
-    * Python (`app.py`) uses `zipfile` + `io.BytesIO` to decompress the database directly into RAM, bypassing filesystem limitations and enabling instant $O(1)$ lookups for the entire Unicode standard.
+### 2. Core Engine: The "Law vs. Order" Architecture
+We resolved the "Split-Brain" problem (where different parts of the UI gave conflicting verdicts) by enforcing a strict separation of concerns.
 
-### 2. Core Engine: The Forensic Explainer (Layer C)
-We implemented a dedicated **Policy Engine** (`ForensicExplainer`) that sits between the raw data and the UI. It acts as the "Narrator."
+* **Top Panel: The Physicist (The Law)**
+    * **Role:** Describes the **Intrinsic Nature** of the particle.
+    * **Vocabulary:** Uses strict Unicode terminology (e.g., "Compatibility Mapping," "Mutable Structure," "High-Density Cluster").
+    * **Source:** Direct UCD Properties (Normalization Ghosts, Combining Classes).
 
-* **Monotonic Severity Logic:**
-    * Implements a strict escalation ladder (`SAFE < NOTE < WARN < SUSPICIOUS < CRITICAL`).
-    * Ensures that a critical threat (e.g., "Bidi Control") can never be downgraded by a benign property (e.g., "Allowed in IDNA").
-* **The "Context Lenses" System:**
-    * Instead of a binary "Good/Bad," the engine evaluates safety across three distinct domains simultaneously:
-        1.  **Source Code:** Checks `XID_Start`, `Pattern_Syntax`, and `Bidi_Control` (Trojan Source).
-        2.  **Domain Names (DNS):** Checks `IDNA2008` status and mappings.
-        3.  **General Text:** Checks visibility (`Default_Ignorable`) and rendering safety.
-* **Forensic Highlights:**
-    * Automatically generates "Why" sentences based on deep physics:
-        * *Layout:* Detects "Fullwidth" spoofing risks via `East_Asian_Width`.
-        * *Stability:* Detects "Normalization Hazards" (characters that decompose/change under NFKC).
-        * *Timeline:* Contextualizes characters by their introduction Age (e.g., "Introduced in Unicode 1.1").
+* **Bottom Panel: The Policy Officer (The Order)**
+    * **Role:** Describes the **Operational Context** and Security Status.
+    * **Vocabulary:** Uses security verdicts (e.g., "Restricted in Identifiers," "Mapped in IDNA," "Trojan Source Risk").
+    * **Source:** UAX #31 (Identifiers), UTS #39 (Security), UTS #46 (IDNA).
 
-### 3. UI/UX: The "Split-Layout" Inspector
+* **Synchronization:** A master logic layer ensures that if Policy says "WARN," the Physics layer visualizes it as "ANOMALOUS" (Yellow), ensuring total cognitive coherence.
+
+### 3. Feature: The Narrative Engine (V4.0)
+We replaced static property lists with a dynamic **Forensic Explainer** (`ForensicExplainer` class) that generates context-aware sentences.
+
+* **Script Context:** Instead of just "Common," it explains usage: *"Common (Used in: Latin, Greek)."*
+* **Numeric Truth:** Explicitly states values to expose spoofing: *"Numeric. Mathematical Value: 3."*
+* **Timeline forensics:** Flags "Modern" characters (Unicode 14.0+) that may cause rendering issues vs. "Legacy" characters (Unicode 1.1).
+* **Normalization Stability:** Explicitly flags characters that "shapeshift" under NFKC (e.g., `d` is "Stable", `½` is "Unstable").
+
+### 4. Feature: The "Context Lenses" System
+Instead of a binary "Good/Bad," the engine evaluates safety across three distinct domains simultaneously, fixing false positives for digits and symbols.
+
+* **Lens 1: Source Code (Identifiers)**
+    * **Logic:** Checks `XID_Start` vs `XID_Continue`.
+    * **Nuance:** Correctly identifies that a digit (`3`) is **SAFE** as a continuation character, even though it cannot start a variable.
+* **Lens 2: Domain Names (DNS)**
+    * **Logic:** Checks `IDNA2008` status and `UTS #46` mappings.
+    * **Nuance:** Correctly flags characters like `½` as **WARN**, explaining that they are "Mapped/Removed" and will not appear in the final URL.
+* **Lens 3: General Text**
+    * **Logic:** Distinguishes between **Emoji Base** (Digit 3) and **Emoji Presentation** (😀).
+    * **Nuance:** Prevents ASCII digits from being flagged as "Emoji," while correctly identifying visual symbols.
+
+### 5. UI/UX: The "Split-Layout" Inspector
 We re-architected the **Character Inspector** to handle the depth of the new data without breaking the "Lab Instrument" aesthetic.
 
-* **Structural Separation:**
-    * **The Instrument (Top):** Keeps the rigid, scrollable grid for raw metrics (UTF-8 bytes, block, script).
-    * **The Report (Bottom):** A new, fluid **Forensic Footer** that sits outside the main container. It expands naturally to fit long-form explanations.
-* **The Context Dashboard:**
-    * A dedicated visual zone in the footer displaying the three **Context Lenses** as color-coded cards (Green/Safe, Red/Critical), giving the analyst an immediate "Where can I use this?" answer.
+* **The Instrument (Top Matrix):** Keeps the rigid, scrollable grid for raw metrics. Labels now reflect **Physical Taxonomy** (Atomic, Composite, Mutable).
+* **The Report (Forensic Footer):** A fluid, expanding zone that contains the Narrative and Lenses.
 * **Visual Semantics:**
-    * Uses a strict color theory (Red/Orange/Yellow/Gray) derived directly from the Monotonic Severity score, ensuring the visual "Heat" matches the logical threat level.
+    * **Security Chips:** Badges like "SECURITY" now dynamically change color (Green/Allowed vs. Red/Restricted) based on the UAX #31 status.
+    * **Monotonic Severity:** A "Zalgo" override ensures that high-density clusters are always flagged as at least "SUSPICIOUS," regardless of their identifier status.
 
-### 4. Data Coverage (The "Treasure Chest")
+### 6. Data Coverage (The "Treasure Chest")
 The system now leverages the following UCD dimensions for analysis:
-* **Deep Segmentation:** Line Break, Word Break, Grapheme Break properties.
-* **Layout Physics:** Vertical Orientation (Rotate vs Upright) and East Asian Width.
+* **Deep Segmentation:** Line Break, Word Break, Grapheme Break.
+* **Forensic Geometry:** East Asian Width (Fullwidth detection) and Vertical Orientation.
+* **Numeric Physics:** Exact values and types (Decimal vs. Digit vs. Numeric).
 * **Complex Scripts:** Shaping (Joining Type/Group) and Hangul Syllable Types.
-* **Normalization Qualifiers:** NFC/NFD/NFKC/NFKD Quick Check flags.
-* **Security Profiles:** Identifier Status, Type, and Confusables.
-* **Legacy Context:** Case Folding maps and Name Aliases.
+* **Normalization Qualifiers:** NFKC_QC flags for stability detection.
+* **Security Profiles:** Identifier Status, Type, Confusables, and Hidden Properties (Variation Selectors).
