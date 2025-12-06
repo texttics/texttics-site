@@ -2231,3 +2231,44 @@ The system now leverages the following UCD dimensions for analysis:
 * **Complex Scripts:** Shaping (Joining Type/Group) and Hangul Syllable Types.
 * **Normalization Qualifiers:** NFKC_QC flags for stability detection.
 * **Security Profiles:** Identifier Status, Type, Confusables, and Hidden Properties (Variation Selectors).
+
+
+---
+
+### The Physics/Policy Stratification (V7.0)
+
+We transitioned the entire system to a **Pure Physics Architecture**, strictly decoupling observation from judgment. This solves the "Hybrid Monster" flaw where the analysis mixed UI concerns with structural measurement.
+
+| Component | Responsibility (V7.0) | Former State |
+| :--- | :--- | :--- |
+| **Physics Core (`compute_physics_state`)** | **Pure Physics.** Calculates severity and taxonomy (e.g., `dt_type`, `lb_val`) using UAX/UTS specs. Returns only structured data/enums. | Calculated UI classes (`risk-ok`) and leaked policy data. |
+| **Bridge (`analyze_signal_processor_state`)** | **Policy Composer.** Acts as the UI layer. Merges `Physics Severity` with `Policy Severity` to determine the final header color and decides when to display the Policy Verdict. | Was a monolithic logic block. |
+| **Forensic Explainer (`explain`)** | **Policy/Narrative Engine.** Supplies the security verdict and context; ignores the physics layer's severity when calculating its own. | Unchanged in role, but greatly expanded in scope. |
+
+---
+
+## 🎯 FORENSIC & STRUCTURAL ACHIEVEMENTS
+
+### 1. Normalization Taxonomy (UAX #15 Precision)
+
+The **Dual-Atom Profile Matrix (Group 2.A)** now provides **forensically precise** structural classification:
+
+* **EQUIVALENCE (Canonical):** The tool now correctly identifies when a character changes in normalization due to **canonical equivalence** (e.g., `A` + `´` $\to$ `Á`). This is classified as a low-risk, **`EQUIV`** state.
+* **MUTATION (Compatibility):** The tool flags characters that transform due to **compatibility decomposition** (e.g., `⓼` $\to$ `8`). This is classified as a **`MUTABLE`** state, indicating a genuine transformation and data loss risk.
+* **Significance:** This moves the tool beyond a simple stability check, aligning it with the highest standards of Unicode processing.
+
+### 2. New Physics Facet: Parsing & Regex Security
+
+We introduced a fundamental new physical measurement facet based on **UTS #18 (Unicode Regular Expressions)**:
+
+* **PARSE Facet:** A new field added to the Inspector logic to warn developers of silent parsing risks.
+* **REGEX KRYPTONITE:** The system now correctly identifies and assigns high severity (Level 3/4) to **non-ASCII line terminators** (`U+2028` Line Separator, `U+2029` Paragraph Separator). These characters are a primary vector for **Trojan Source** and validation bypasses in regex-based code.
+
+### 3. Hardened Policy & Security Vector Coverage
+
+The `ForensicExplainer` (The Narrator) was hardened against specific contemporary exploit vectors:
+
+* **PUA/Steganography:** **Private Use Area (`Co`)** characters are now explicitly labeled as **CRITICAL** in the Source Code lens due to their risk as non-interoperable steganography/C2 vectors.
+* **Math Spoofing (UTR #25):** Added specific logic to distinguish between **Mathematical Operators** (syntax) and **Mathematical Alphanumeric** symbols (spoofing risk, e.g., using `𝐇` to bypass case-folding filters).
+* **Syntax Mimicry (UTR #36):** The system now globally flags **any** non-ASCII symbol or punctuation that is visually confusable with ASCII syntax (e.g., Fraction Slash, One Dot Leader), exposing a critical phishing surface.
+* **IDNA Schism:** The DNS lens was hardened to label `deviation` status (like the German Sharp S) as **CRITICAL Protocol Schism**, acknowledging the risk of differential resolution across IDNA versions.
