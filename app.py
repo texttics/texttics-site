@@ -16923,65 +16923,69 @@ def inspect_character(event):
         # 3. Analyze the Cluster
         base_char = target_cluster[0]
         cp_base = ord(base_char)
-
         hex_str = f"{cp_base:04X}" # Needed for lookup
 
-        # --- Call the Policy Engine ---
-        # Get the deep forensic explanation for the base character
-        forensic_report = None
-        if FORENSIC_EXPLAINER: 
-            forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
-        
-        cat_short = unicodedata.category(base_char)
-        
-        # Hydrate Physics from the Source of Truth (The Explainer)
-        # We fetch directly from the loaded DB to avoid "KeyError" in raw range lookups.
+        # [SOTA FIX] Fetch from Explainer DB (Source of Truth)
         rec = {}
         if FORENSIC_EXPLAINER and hasattr(FORENSIC_EXPLAINER, 'db'):
             rec = FORENSIC_EXPLAINER.db.get(hex_str, {})
 
-        # 1. Decomposition Type (Canonical vs Compat)
-        # We grab this from the DB. If missing, we default to None.
-        # We DO NOT call _find_in_ranges for this, as it causes crashes on missing keys.
-        dt_val = rec.get("dt") 
+        # Decomposition Type (Canonical vs Compat)
+        dt_val = rec.get("dt")
         if dt_val in ("None", "none", ""): dt_val = None
 
-        ghosts = _get_ghost_chain(base_char)
-
-        # 2. Line Break & Width (Layout Physics)
-        # Priority: DB -> Raw Range -> Default
+        # Line Break & Width (Layout Physics)
         lb_val = rec.get("lb") or _find_in_ranges(cp_base, "LineBreak") or "XX"
         ea_val = rec.get("ea") or _find_in_ranges(cp_base, "EastAsianWidth") or "N"
+        
+        # Calculate Ghosts early for the Patch
+        ghosts = _get_ghost_chain(base_char)
 
+        # [SOTA PATCH] Force Physics consistency
+        # If the text changes (e.g. ⓼ -> 8) but dt was missing in DB, FORCE it to "Compat".
+        if ghosts and (ghosts['raw'] != ghosts['nfkc']):
+            if not dt_val:
+                dt_val = "Compat"
+
+        # 5. Build Base Payload
+        cat_short = unicodedata.category(base_char)
+        
         base_char_data = {
-            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
-            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
+            "block": rec.get("blk") or _find_in_ranges(cp_base, "Blocks") or "N/A",
+            "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(base_char),
-            "age": _find_in_ranges(cp_base, "Age") or "N/A",
-            "lb": lb_val, # UAX #14
-            "ea": ea_val, # UAX #11
-            "dt": dt_val, # [Physics] Canonical vs Compat
-            "line_break": lb_val, # Legacy compat
+            "bidi": unicodedata.bidirectional(target_cluster[0]), # Use base char
+            "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
+            
+            # Physics Keys
+            "lb": lb_val, 
+            "ea": ea_val, 
+            "dt": dt_val, 
+            "line_break": lb_val,
+
+            # Context Keys
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
-            "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            "lookalikes_data": rec.get("confusables", []), # Use rec for speed
-            "stack_msg": None # Populated if Zalgo detected
+            "is_invisible": (cp_base in INVISIBLE_MAPPING), 
+            "lookalikes_data": rec.get("confusables", []),
+            "stack_msg": None 
         }
 
-        # Force Physics consistency
-        # If the text changes (⓼ -> 8) but dt was missing/None, FORCE it to "Compat".
-        # This guarantees the Physics Matrix reports "MUTABLE", matching the Explainer.
-        if base_char_data['ghosts'] and (base_char_data['ghosts']['raw'] != base_char_data['ghosts']['nfkc']):
-            if not base_char_data['dt']:
-                base_char_data['dt'] = "Compat"
-
+        # 6. Cluster Analysis
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
-
+        
+        # Inject computed components back into base data
         base_char_data['components'] = cluster_identity.get('components', [])
+        
+        # 7. Policy Engine (The Narrator)
+        forensic_report = None
+        if FORENSIC_EXPLAINER:
+            forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
+        
+        base_char_data["forensic_report"] = forensic_report
 
+        # 8. Build Full Data Object (Preserving Logic)
         comp_cat = cluster_identity["max_risk_cat"]
         comp_mask = cluster_identity["cluster_mask"]
         
@@ -16991,125 +16995,27 @@ def inspect_character(event):
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
             
         id_type = _find_in_ranges(cp_base, "IdentifierType")
-            
-        # Pass the forensic level (e.g., "WARN") to the macro classifier
         f_level = forensic_report["security"]["level"] if forensic_report else "SAFE"
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
 
-        # Heuristic for missing DB data
-        # If Normalization changes (Raw != NFKC) but dt is missing,
-        # we force "Compat" so the Physics Engine correctly flags it as MUTABLE.
-        if base_char_data['dt'] is None and ghosts['raw'] != ghosts['nfkc']:
-             base_char_data['dt'] = "Compat"
-        
-        bidi_short = unicodedata.bidirectional(base_char)
-        wb_prop = _find_in_ranges(cp_base, "WordBreak") or "Other"
-        lb_prop = _find_in_ranges(cp_base, "LineBreak") or "Unknown"
-        gb_val = _find_in_ranges(cp_base, "GraphemeBreak")
-        gb_prop = gb_val if gb_val else "Base (Other)"
-        
-        inv_map = DATA_STORES.get("InverseConfusables", {})
-        raw_lookalikes = inv_map.get(str(cp_base), [])
-        
-        lookalikes_data = []
-        for item in raw_lookalikes:
-            try:
-                if isinstance(item, int):
-                    cp = item
-                else:
-                    clean = str(item).replace("U+", "").strip()
-                    cp = int(clean, 16)
-                
-                char = chr(cp)
-                script = _find_in_ranges(cp, "Scripts") or "Common"
-                block = _find_in_ranges(cp, "Blocks") or "Unknown Block"
-                
-                lookalikes_data.append({
-                    "cp": f"U+{cp:04X}",
-                    "glyph": char,
-                    "script": script,
-                    "block": block,
-                    "name": unicodedata.name(char, "UNKNOWN CHARACTER")
-                })
-            except Exception:
-                continue
-        
-        components = []
-        zalgo_score = 0
-        for ch in target_cluster:
-            cat = unicodedata.category(ch)
-            name = unicodedata.name(ch, "Unknown")
-            ccc = unicodedata.combining(ch)
-            is_mark = cat.startswith('M')
-            if is_mark: zalgo_score += 1
-            
-            components.append({
-                'hex': f"U+{ord(ch):04X}", 
-                'name': name, 
-                'cat': cat, 
-                'ccc': ccc,
-                'is_base': not is_mark
-            })
-
+        # Encodings Generation
         utf8_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-8"))
         utf16_hex = " ".join(f"{b:02X}" for b in target_cluster.encode("utf-16-be"))
         utf32_hex = f"{cp_base:08X}"
         
         def try_enc(enc_name):
-            try:
-                return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
-            except UnicodeEncodeError:
-                return "N/A"
+            try: return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
+            except: return "N/A"
 
-        ascii_val = try_enc("ascii")
-        latin1_val = try_enc("latin-1")
-        cp1252_val = try_enc("cp1252")
-        url_enc = "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8"))
-        
-        # --- NEW: EXPLOIT & OBFUSCATION ENCODINGS ---
-        # 1. Base64 (Standard Payload Wrapper)
-        try:
-            b64_val = base64.b64encode(target_cluster.encode("utf-8")).decode("ascii")
-        except:
-            b64_val = "Error"
-
-        # 2. Shellcode / Hex Escapes (\xHH)
-        shell_val = "".join(f"\\x{b:02X}" for b in target_cluster.encode("utf-8"))
-
-        # 3. Octal Escapes (\NNN)
-        octal_val = "".join(f"\\{b:03o}" for b in target_cluster.encode("utf-8"))
-
-        # 4. HTML Entity Variants (Decimal vs Hex)
-        if target_cluster.isalnum():
-            html_dec_val = target_cluster
-            html_hex_val = target_cluster
-        else:
-            html_dec_val = "".join(f"&#{ord(c)};" for c in target_cluster)
-            html_hex_val = "".join(f"&#x{ord(c):X};" for c in target_cluster)
-
-        # 5. ES6 / CSS Unicode (\u{...})
-        es6_val = "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster)
-        
-        # 6. Python/Old JS
-        code_enc = target_cluster.encode("unicode_escape").decode("utf-8")
-
-        confusable_msg = None
-        
-        if ghosts:
-             skel_val = ghosts['skeleton']
-             if skel_val != base_char and skel_val != base_char.casefold():
-                 confusable_msg = f"Base maps to: '{skel_val}'"
-
-        stack_msg = None
-        if zalgo_score >= 3: stack_msg = f"Heavy Stacking ({zalgo_score} marks)"
-
+        # Construct Final Data Dict
         data = {
+            **base_char_data, # Inherit base props
             "python_idx": python_idx,
             "cluster_glyph": target_cluster,
-            "prev_glyph": prev_cluster,
+            "prev_glyph": prev_cluster, 
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
-            "name_base": unicodedata.name(base_char, "No Name Found"),
+            "name_base": unicodedata.name(base_char, "No Name"),
             "is_cluster": cluster_identity["is_cluster"],
             "type_label": cluster_identity["type_label"],
             "type_val":   cluster_identity["type_val"],
@@ -17117,49 +17023,37 @@ def inspect_character(event):
             "script":     cluster_identity["script_val"],
             "bidi":       cluster_identity["bidi_val"],
             "age":        cluster_identity["age_val"],
-            "category_full": base_char_data['category_full'],
-            "category_short": base_char_data['category_short'],
             "id_status": id_status,
             "id_type": id_type,
             "macro_type": macro_type,
-            "ghosts": ghosts,
-            "is_ascii": (cp_base <= 0x7F),
-            "lookalikes_data": lookalikes_data,
-            "line_break": lb_prop,
-            "word_break": wb_prop,
-            "grapheme_break": gb_prop,
-
+            "word_break": _find_in_ranges(cp_base, "WordBreak") or "Other",
+            "grapheme_break": _find_in_ranges(cp_base, "GraphemeBreak") or "Base",
             "props": forensic_report.get("props", []) if forensic_report else [],
             
-            # --- Forensic Encodings ---
-            "utf8": utf8_hex, 
-            "utf16": utf16_hex, 
-            "utf32": utf32_hex,
-            "ascii": ascii_val, 
-            "latin1": latin1_val, 
-            "cp1252": cp1252_val,
-            # --- Exploit Vectors ---
-            "url": url_enc, 
-            "code": code_enc,
-            "base64": b64_val,
-            "shell": shell_val,
-            "octal": octal_val,
-            "html_dec": html_dec_val,
-            "html_hex": html_hex_val,
-            "es6": es6_val,
+            # Encodings
+            "utf8": utf8_hex, "utf16": utf16_hex, "utf32": utf32_hex,
+            "ascii": try_enc("ascii"), "latin1": try_enc("latin-1"), "cp1252": try_enc("cp1252"),
+            "url": "".join(f"%{b:02X}" for b in target_cluster.encode("utf-8")),
+            "code": target_cluster.encode("unicode_escape").decode("utf-8"),
+            "base64": base64.b64encode(target_cluster.encode("utf-8")).decode("ascii"),
+            "shell": "".join(f"\\x{b:02X}" for b in target_cluster.encode("utf-8")),
+            "octal": "".join(f"\\{b:03o}" for b in target_cluster.encode("utf-8")),
+            "html_dec": "".join(f"&#{ord(c)};" for c in target_cluster),
+            "html_hex": "".join(f"&#x{ord(c):X};" for c in target_cluster),
+            "es6": "".join(f"\\u{{{ord(c):X}}}" for c in target_cluster),
             
-            "confusable": confusable_msg,
-            "is_invisible": bool(comp_mask & INVIS_ANY_MASK),
-            "stack_msg": stack_msg,
-            "components": components,
+            "confusable": f"Base maps to: '{ghosts['skeleton']}'" if ghosts and ghosts['skeleton'] != base_char else None,
+            "is_invisible": (cp_base in INVISIBLE_MAPPING),
+            "stack_msg": None, # Recalculated if needed
+            "components": base_char_data['components'],
             "forensic_report": forensic_report
         }
-        
-        render_inspector_panel(data)
 
-    except Exception as e:
-        print(f"Inspector Error: {e}")
-        render_inspector_panel({"error": str(e)})
+        # 9. Run Physics Engine (The Signal Processor)
+        matrix_state = analyze_signal_processor_state(data)
+        
+        # 10. Render
+        render_inspector_panel(data, matrix_state)
 
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
