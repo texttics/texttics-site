@@ -3877,74 +3877,237 @@ class ForensicExplainer:
 
         # --- D. NARRATIVE HIGHLIGHTS ---
         
-        # 1. Identity
+        # 1. Identity (Forensic Taxonomy)
+        # We layer Category, Block, and Functional Properties to define the "True Self".
+        
+        # A. Classification
+        id_notes = [f"{gc_name} ({gc_code})"]
+        
+        # B. Provenance (Block is critical for distinguishing "A" from "Fullwidth A")
+        blk_name = rec.get("blk", "Unknown Block")
+        id_notes.append(f"Block: {blk_name}")
+        
+        # C. Script Context (Already computed with extensions)
+        id_notes.append(f"Script: {script_detail}")
+        
+        # D. Functional Identity (What does it DO?)
+        if "Math" in props:
+            id_notes.append("Function: Mathematical Symbol")
+        elif "White_Space" in props:
+            id_notes.append("Function: Structural Whitespace")
+        elif "Alphabetic" in props:
+            pass # Implicit for letters, reduce noise
+        elif gc_code == "Co":
+            id_notes.append("Function: Private Use (System-Dependent)")
+        elif gc_code == "Cs":
+            id_notes.append("Function: Surrogate (Invalid in UTF-8)")
+
         report["highlights"].append({
             "label": "Identity",
-            "text": f"{gc_name} ({gc_code}) in {script_detail} script."
+            "text": ". ".join(id_notes) + "."
         })
 
-        # 2. Directionality
+        # 2. Directionality (Forensic Flow Logic)
         mirror = rec.get("mirror")
-        dir_msg = f"{bc_pretty} ({bc_code})."
-        if mirror: dir_msg += f" Mirrored (pairs with {mirror})."
-        elif "Bidi_Control" in props: dir_msg += " Explicit Directional Formatting Control."
+        bp = rec.get("bp") # V7+ Data: Bidi Paired Bracket {"p": "0029", "t": "c"}
+        
+        dir_notes = [f"{bc_pretty} ({bc_code})"]
+        
+        # A. Flow Mechanics (Physics)
+        if bc_code in ("L", "R", "AL"):
+            dir_notes.append("Strong directionality (Forces text flow)")
+        elif bc_code in ("EN", "AN"):
+            dir_notes.append("Weak directionality (Numeric)")
+        elif bc_code in ("WS", "ON", "ES", "CS", "ET", "NSM"):
+            dir_notes.append("Neutral (Inherits surrounding direction)")
             
+        # B. Control Vectors (Security)
+        if "Bidi_Control" in props:
+            if bc_code in ("RLO", "LRO"):
+                dir_notes.append("CRITICAL: Forces override (Trojan Source vector)")
+            elif bc_code in ("RLE", "LRE"):
+                dir_notes.append("Legacy embedding start")
+            elif bc_code in ("RLI", "LRI", "FSI"):
+                dir_notes.append("Isolate start (Isolates text from context)")
+            elif bc_code in ("PDF", "PDI"):
+                dir_notes.append("Scope terminator")
+
+        # C. Pairing Logic (Syntax)
+        if bp:
+            ptype = "Open" if bp['t'] == 'o' else "Close"
+            dir_notes.append(f"Paired Bracket: {ptype} (Matches U+{bp['p']})")
+        elif mirror:
+            dir_notes.append(f"Mirrored Glyph (Visually flips in RTL)")
+
         report["highlights"].append({
             "label": "Direction",
-            "text": dir_msg
+            "text": ". ".join(dir_notes) + "."
         })
 
-        # 3. Numeric Physics
+       # 3. Numeric Physics (Parser Safety)
         nt = rec.get("nt")
         nv = rec.get("nv")
+        
         if nt and nt != "None":
-            nt_map = {"De": "Decimal Digit", "Di": "Digit", "Nu": "Numeric"}
+            # Default to raw value if missing
+            num_desc = "Numeric"
+            safety_note = ""
+
+            if nt == "De":
+                # Decimal: 0-9 (Safe for int parsing in most engines)
+                num_desc = "Decimal Digit"
+            elif nt == "Di":
+                # Digit: Superscripts, Circled (²). visually numeric, logically text.
+                num_desc = "Typographic Digit" 
+                safety_note = " (Not a standard integer; parser risk)."
+            elif nt == "Nu":
+                # Numeric: Fractions, Roman (½). Symbolic.
+                num_desc = "Numeric Symbol"
+                safety_note = " (Non-decimal)."
+
             report["highlights"].append({
                 "label": "Numeric",
-                "text": f"{nt_map.get(nt, 'Numeric')}. Mathematical Value: {nv}."
+                "text": f"{num_desc}. Value: {nv}.{safety_note}"
             })
 
-        # 4. Normalization Structure
+        # 4. Normalization Structure (Forensic Detail)
         nfkc_qc = rec.get("nfkc_qc") or "Y"
-        norm_text = "Stable under NFKC."
-        if nfkc_qc != "Y":
-            norm_text = "Unstable. Changes/Decomposes under NFKC normalization."
+        dt = rec.get("dt") # Decomposition Type (e.g., 'Compat', 'Super')
+        
+        norm_notes = []
+        
+        if nfkc_qc == "Y":
+            norm_notes.append("Stable. Preserves identity under NFKC normalization")
+        else:
+            # [FORENSIC UPGRADE] Explain the mechanics of the change
+            norm_notes.append("Unstable under NFKC")
             
+            # Map technical types to human concepts
+            type_map = {
+                "Can": "Canonical (Equivalence)",
+                "Com": "Compatibility (Formatting)",
+                "Compat": "Compatibility",
+                "Circle": "Circled Style",
+                "Super": "Superscript",
+                "Sub": "Subscript",
+                "Font": "Font Variant",
+                "Wide": "Fullwidth",
+                "Narrow": "Halfwidth",
+                "Small": "Small Variant",
+                "Square": "Squared Layout",
+                "Fraction": "Fractional Composition"
+            }
+            
+            if dt:
+                human_type = type_map.get(dt, dt.capitalize())
+                norm_notes.append(f"Decomposes via {human_type}")
+            else:
+                norm_notes.append("Decomposes to base characters")
+
         report["highlights"].append({
             "label": "Structure",
-            "text": norm_text
+            "text": ". ".join(norm_notes) + "."
         })
 
-        # 5. Security Profile
-        sec_msg = f"{id_stat}."
-        if id_stat == "Allowed" and id_type:
-            sec_msg += f" Type: {id_type[0].capitalize()}."
+        # 5. Security Profile (Context-Aware Logic)
+        sec_notes = [f"{id_stat}"]
+        
+        # A. Type Nuance (Explaining the "Why")
+        if id_type:
+            # e.g., "Recommended", "Inclusion", "Technical", "Limited_Use"
+            p_type = id_type[0].capitalize().replace("_", " ")
+            sec_notes.append(f"Type: {p_type}")
+            
+            # Forensic Translation of Types
+            if "Technical" in p_type:
+                sec_notes.append("(Valid in programming/technical contexts, caution in general text).")
+            elif "Limited" in p_type:
+                sec_notes.append("(Valid only in specific contexts like hashtags).")
+        
+        # B. Immutable Syntax (The "Parser" Layer)
+        # Characters like ' ' or '$' or '{' are Pattern Syntax. They define structure.
+        if "Pattern_Syntax" in props or "Pattern_White_Space" in props:
+            sec_notes.append("Immutable Pattern Syntax (Reserved for parser structure).")
+
+        # C. Anchor Logic (Refined)
+        # ASCII is the "Global Baseline" for confusables. 
+        # Other scripts have anchors, but ASCII is the primary target for spoofing.
+        if id_stat == "Allowed":
+            if is_ascii:
+                sec_notes.append("Standard ASCII baseline for spoofing checks.")
+            elif "Recommended" in (t.capitalize() for t in id_type):
+                # Non-ASCII but safe (e.g., Greek 'A')
+                sec_notes.append("Stable identifier character.")
+                
+        # D. Restriction Context
         elif id_stat == "Restricted":
-            sec_msg += " Not for general use in secure strings."
+            # Add nuance if we know it
+            if "Compat" in str(rec.get("dt", "")):
+                sec_notes.append("Restricted due to Compatibility Mapping.")
+            else:
+                sec_notes.append("Excluded from secure identifier profiles.")
             
         report["highlights"].append({
             "label": "Security",
-            "text": sec_msg
+            "text": ". ".join(sec_notes)
         })
         
-        # 6. Layout
+        # 6. Layout (Forensic Geometry & Spoofing Risks)
         lb_code = rec.get("lb", "XX")
         lb_name = self._get_vocab("lb", lb_code).replace("_", " ")
         ea_code = rec.get("ea", "N")
-        
-        layout_notes = [f"Line Break: {lb_name}"]
-        if ea_code in ("F", "W"): layout_notes.append("Width: Fullwidth/Wide (2 columns).")
-        elif ea_code == "A": layout_notes.append("Width: Ambiguous.")
-        
+        vo_code = rec.get("vo", "R") # Vertical Orientation
+
+        layout_notes = []
+
+        # A. Line Break (Wrapping Logic)
+        if lb_code in ("AI", "XX"):
+            # Ambiguous/Unknown breaks can be used to hide payloads off-screen
+            layout_notes.append(f"Line Break: {lb_name} (Context-dependent wrapping)")
+        elif lb_code in ("GL", "WJ", "ZW", "CM"):
+            # Glue characters prevent breaks, creating "Long Line" DoS risks
+            layout_notes.append(f"Line Break: {lb_name} (Prohibits wrapping)")
+        else:
+            layout_notes.append(f"Line Break: {lb_name}")
+
+        # B. Width (CLI Spoofing Physics)
+        # Defines how the character renders in monospaced terminals.
+        if ea_code in ("F", "W"):
+            layout_notes.append("Visual Width: Fullwidth (Consumes 2 columns)")
+        elif ea_code == "A":
+            # [SECURITY RISK] Ambiguous width is the #1 vector for CLI spoofing
+            layout_notes.append("Visual Width: Ambiguous (1 or 2 columns; risk of terminal misalignment)")
+        elif ea_code == "H":
+            layout_notes.append("Visual Width: Halfwidth (Narrow)")
+        elif ea_code == "Na":
+            pass # Explicit Narrow is standard, no comment needed
+            
+        # C. Verticality (Rotation Risks)
+        if vo_code in ("Tr", "Tu"):
+             layout_notes.append("Orientation: Transformed (Rotated in vertical text)")
+
         report["highlights"].append({
             "label": "Layout",
-            "text": ". ".join(layout_notes)
+            "text": ". ".join(layout_notes) + "."
         })
 
-        # 7. Timeline
+        # 7. Timeline (Forensic Rendering Context)
+        age_val = rec.get("age", "NA")
+        time_msg = f"Introduced in Unicode {age_val}."
+        
+        try:
+            # Heuristic: Unicode 14.0+ (2021+) is "Modern".
+            # Risk: Likely to render as a missing glyph (Box/Question Mark) on older systems.
+            if float(age_val) >= 14.0:
+                time_msg = f"Recent addition (Unicode {age_val}). Rendering support may vary (Glyph Risk)."
+            elif float(age_val) <= 6.0:
+                time_msg = f"Legacy standard (Unicode {age_val}). Universally supported."
+        except:
+            pass # Keep default message if Age is "NA" or non-numeric
+
         report["highlights"].append({
             "label": "Timeline",
-            "text": f"Introduced in Unicode {age}."
+            "text": time_msg
         })
 
         # --- E. CONTEXT LENSES ---
@@ -14504,28 +14667,41 @@ def render_inspector_panel(data):
         pass
 
     
-    # 6B. Normalization Ghosts (Always Show if Data Exists)
+    # 6B. Normalization & Skeleton (Split for Clarity)
     ghost_html = ""
     if data['ghosts']:
         g = data['ghosts']
-        ghost_html = f"""
+        
+        # Part 1: Official Unicode Normalization
+        norm_status = "STABLE" if g['raw'] == g['nfkc'] else "UNSTABLE"
+        norm_class = "ghost-val-ok" if norm_status == "STABLE" else "ghost-val-warn"
+        
+        ghost_html += f"""
         <div class="ghost-section">
-            <div class="spec-label" style="margin-bottom:4px;">NORMALIZATION GHOSTS</div>
+            <div class="spec-label" style="margin-bottom:4px;">UNICODE NORMALIZATION</div>
             <div class="ghost-strip">
                 <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
                 <div class="ghost-arrow">→</div>
                 <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
-                <div class="ghost-arrow">→</div>
-                <div class="ghost-step">SKEL<br><span>{_escape_html(g['skeleton'])}</span></div>
+            </div>
+            <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
+                Status: <span class="{norm_class}">{norm_status}</span>
             </div>
         </div>
         """
-    else:
-        # CLEAN HTML: No inline styles. Classes control the colors.
-        ghost_html = f"""
-        <div class="ghost-section stable">
-            <span class="ghost-key">NORMALIZATION:</span>
-            <span class="ghost-val-ok">STABLE</span>
+
+        # Part 2: Security Skeleton (UTS #39)
+        # We separate this because SKEL is a Heuristic, not a Standard Form.
+        skel_val = _escape_html(g['skeleton'])
+        ghost_html += f"""
+        <div class="ghost-section" style="margin-top: 8px;">
+            <div class="spec-label" style="margin-bottom:4px;">SECURITY SKELETON (UTS #39)</div>
+            <div class="ghost-strip">
+                <div class="ghost-step" style="flex:1;">Prototype<br><span style="font-family:monospace; font-size:1.1rem;">{skel_val}</span></div>
+            </div>
+            <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
+                Used for Confusable Detection
+            </div>
         </div>
         """
 
