@@ -3944,13 +3944,50 @@ class ForensicExplainer:
             "text": " ".join(struct_notes)
         })
 
-        # 5. Timeline / Layout
-        # "Line Break: Alphabetic. Added in Unicode 1.1."
+        # 6. Layout (Forensic Geometry)
+        # We combine Line Break, Width, and Verticality into a cohesive story.
         lb_code = rec.get("lb", "XX")
-        lb_name = self._get_vocab("lb", lb_code)
+        lb_name = self._get_vocab("lb", lb_code).replace("_", " ")
+        
+        layout_notes = [f"Line Break: {lb_name}"]
+        
+        # Add Width Context (Crucial for Terminal/CLI forensics)
+        ea_code = rec.get("ea", "N")
+        if ea_code in ("F", "W"):
+            layout_notes.append("Width: Fullwidth/Wide (2 columns).")
+        elif ea_code == "A":
+            layout_notes.append("Width: Ambiguous (Context-dependent).")
+        elif ea_code == "H":
+            layout_notes.append("Width: Halfwidth.")
+            
+        # Add Vertical Context (Rare but useful)
+        vo_code = rec.get("vo", "R")
+        if vo_code == "U":
+            layout_notes.append("Vertical: Upright.")
+        elif vo_code == "Tr":
+            layout_notes.append("Vertical: Transformed (Rotated).")
+
         report["highlights"].append({
             "label": "Layout",
-            "text": f"Line Break: {lb_name}. Introduced in Unicode {age}."
+            "text": ". ".join(layout_notes) + "."
+        })
+
+        # 6. Timeline
+        # Age = "Birth Version". Characters are immutable, so there is no "Latest".
+        # We flag "New" characters as they may cause rendering issues (Boxes).
+        age_val = rec.get("age", "NA")
+        try:
+            # Simple heuristic: Unicode 14.0+ is "Modern/New"
+            if float(age_val) >= 14.0:
+                time_msg = f"Recent addition (Unicode {age_val}). Rendering support may vary."
+            else:
+                time_msg = f"Standard legacy support (Unicode {age_val})."
+        except:
+            time_msg = f"Introduced in Unicode {age_val}."
+
+        report["highlights"].append({
+            "label": "Timeline",
+            "text": time_msg
         })
 
         # --- E. CONTEXT LENSES ---
@@ -3972,7 +4009,7 @@ class ForensicExplainer:
             code_msg = "BLOCK. Source code masking risk (bidi / invisible control)."
         elif code_status == "SAFE":
             if is_xid_start:
-                code_msg = "Valid identifier start and continue character (XID_Start)."
+                code_msg = "Valid identifier start and continuation character (XID_Start / XID_Continue)."
             elif is_xid_continue:
                 code_msg = "Valid as identifier continuation (XID_Continue), but not as the first character."
             else:
