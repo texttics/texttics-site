@@ -3743,63 +3743,69 @@ class ForensicExplainer:
 
     def explain(self, hex_str):
         """
-        Returns a rich forensic report with Context Lenses and Highlights.
+        Forensic Explainer V4.0: The Narrative Engine.
+        Uses V7+ 'Gold' data (SCX, NT/NV, ID_TYPE) to generate dynamic security stories.
         """
         # 0. Safety Check
         if not FORENSIC_DB_READY:
             return {
                 "identity": "System Loading...",
                 "security": {"level": "UNKNOWN", "verdict": "Forensic Database not loaded.", "badges": ["NO-DB"]},
+                "props": [], 
                 "highlights": [], "lenses": {}, "context": []
             }
 
-        # 1. Fetch Record (Default to UNKNOWN if missing)
+        # 1. Fetch Record
         rec = self.db.get(hex_str)
         if not rec:
              return {
                 "identity": "Unknown Code Point",
                 "security": {"level": "UNKNOWN", "verdict": "No forensic record found.", "badges": ["NO-DATA"]},
-                 "props": [],
+                "props": [],
                 "highlights": [], "lenses": {}, "context": []
             }
-        
+
         props = rec.get("props", [])
-        
-        # 2. Initialize Report Structure
+
+        # 2. Initialize Report
         report = {
             "identity": "",
             "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
-            "props": props,   # [NEW] Export raw properties for logic checks
-            "highlights": [], # List of {label, text, status}
-            "lenses": {},     # Dict of {code, dns, text} -> {status, text}
-            "context": []     # Notes and Aliases
+            "props": props,
+            "highlights": [], 
+            "lenses": {}, "context": []     
         }
 
-        # --- A. IDENTITY LAYER ---
+        # --- A. IDENTITY & PROVENANCE ---
         age = rec.get("age", "NA")
         blk = rec.get("blk", "Unknown Block")
         name = rec.get("name", "Unknown")
         report["identity"] = f"{name} ({blk})"
 
-        # --- B. FORENSIC PHYSICS (Data Extraction) ---
         gc_code = rec.get("gc", "Cn")
         gc_name = self._get_vocab("gc", gc_code)
         
+        # [V4 UPGRADE] Script Extensions Logic
         script_code = rec.get("script", "Zzzz")
         script_name = self._get_vocab("sc", script_code)
+        scx = rec.get("scx", [])
         
+        script_detail = script_name
+        if script_code in ("Common", "Inherited") and scx:
+            # "Common (Used in: Latin, Greek)"
+            scx_names = [self._get_vocab("sc", s) for s in scx[:3]]
+            script_detail += f" (Used in: {', '.join(scx_names)})"
+
+        # --- B. DATA EXTRACTION ---
         id_stat = rec.get("id_stat", "Restricted")
+        id_type = rec.get("id_type", []) # [V4] List: Recommended, Technical, etc.
         idna = rec.get("idna", "disallowed")
-        props = rec.get("props", [])
-        
         bc_code = rec.get("bc", "L")
         bc_name = self._get_vocab("bc", bc_code)
-        
         confusables = rec.get("confusables", [])
         
-        # --- C. SECURITY VERDICT LOGIC (Monotonic) ---
-        
-        # 1. Base Security (Identifier Status)
+        # --- C. SECURITY VERDICT (Monotonic Logic) ---
+        # 1. Identifier Status
         if id_stat == "Restricted":
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["verdict"] = "Restricted in Identifiers (UAX #31)."
@@ -3812,14 +3818,16 @@ class ForensicExplainer:
             report["security"]["badges"].append("NO-DNS")
         elif idna == "deviation":
             report["security"]["badges"].append("DEVIATION")
+        elif idna in ("mapped", "ignored"):
+            report["security"]["badges"].append("MAPPED")
 
-        # 3. Spoofing (Confusables)
+        # 3. Spoofing
         if confusables:
             report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("SPOOF")
             report["security"]["verdict"] = f"Visual Spoof Risk ({len(confusables)} Lookalikes)."
 
-        # 4. Critical Hazards (Props)
+        # 4. Critical Hazards
         if "Bidi_Control" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
             report["security"]["verdict"] = "DANGEROUS SYNTAX: Bidi Control."
@@ -3835,99 +3843,102 @@ class ForensicExplainer:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("DEPRECATED")
 
-        # --- D. FORENSIC HIGHLIGHTS (The "Why") ---
+        # --- D. NARRATIVE HIGHLIGHTS (The Story) ---
         
-        # Highlight 1: Type & Script
-        scx = rec.get("scx", [])
-        script_detail = script_name
-        if len(scx) > 1:
-            scx_names = [self._get_vocab("sc", s) for s in scx[:3]]
-            script_detail += f" (Also used in: {', '.join(scx_names)})"
-        
+        # 1. Identity & Usage
+        # "Lowercase_Letter (Ll) in Latin script."
         report["highlights"].append({
-            "label": "Type & Script",
+            "label": "Identity",
             "text": f"{gc_name} ({gc_code}) in {script_detail} script."
         })
 
-        # Highlight 2: Directionality & Mirroring
-        mirror = rec.get("mirror")
-        bidi_text = f"{bc_name} ({bc_code})."
-        if mirror: bidi_text += f" Mirrored (pairs with {mirror})."
+        # 2. Security Profile (Rich Context)
+        # "Allowed (Recommended). Safe for identifiers."
+        sec_msg = f"{id_stat}."
+        if id_stat == "Allowed" and id_type:
+            # Capitalize first item (Recommended, Inclusion, Technical)
+            sec_msg += f" Type: {id_type[0].capitalize()}."
+        elif id_stat == "Restricted":
+            sec_msg += " Not for general use in secure strings."
+            
         report["highlights"].append({
-            "label": "Direction",
-            "text": bidi_text
+            "label": "Security",
+            "text": sec_msg
         })
 
-        # Highlight 3: Normalization Stability
-        # Logic: DB stores None by default. None implies "Y" (Stable).
+        # 3. Numeric Physics (V4 Feature)
+        # "Decimal Digit. Value: 5."
+        nt = rec.get("nt")
+        nv = rec.get("nv")
+        if nt and nt != "None":
+            nt_map = {"De": "Decimal Digit", "Di": "Digit", "Nu": "Numeric"}
+            nt_desc = nt_map.get(nt, "Numeric")
+            report["highlights"].append({
+                "label": "Numeric",
+                "text": f"{nt_desc}. Mathematical Value: {nv}."
+            })
+
+        # 4. Deep Structure (Normalization & Bidi)
+        # Combine structural facts into one dense update if interesting
         nfkc_qc = rec.get("nfkc_qc") or "Y"
+        mirror = rec.get("mirror")
         
-        norm_text = "Stable under NFKC."
+        struct_notes = []
         if nfkc_qc != "Y":
-            norm_text = "Unstable. Changes/Decomposes under NFKC normalization."
+            struct_notes.append("Unstable under NFKC (Changes/Decomposes).")
+        else:
+            struct_notes.append("Stable under NFKC.")
+            
+        if mirror:
+            struct_notes.append(f"Mirrored Bidi (pairs with {mirror}).")
+        elif "Bidi_Control" in props:
+            struct_notes.append("Invisible Directional Control (RTL/LTR).")
+            
         report["highlights"].append({
-            "label": "Normalization",
-            "text": norm_text
+            "label": "Structure",
+            "text": " ".join(struct_notes)
         })
 
-        # Highlight 4: Segmentation & Layout
+        # 5. Timeline / Layout
+        # "Line Break: Alphabetic. Added in Unicode 1.1."
         lb_code = rec.get("lb", "XX")
         lb_name = self._get_vocab("lb", lb_code)
-        ea_code = rec.get("ea", "N")
-        layout_msg = f"Line Break: {lb_name}."
-        if ea_code in ["F", "W"]: layout_msg += " Layout: Fullwidth (Visual Spoof Risk)."
         report["highlights"].append({
             "label": "Layout",
-            "text": layout_msg
+            "text": f"Line Break: {lb_name}. Introduced in Unicode {age}."
         })
 
-        # Highlight 5: Timeline
-        report["highlights"].append({
-            "label": "Timeline",
-            "text": f"Introduced in Unicode {age}."
-        })
+        # --- E. CONTEXT LENSES ---
 
-        # --- E. CONTEXT LENSES (The "Where") ---
-
-        # Lens 1: Source Code (Identifiers)
+        # Lens 1: Source Code
         is_xid_start = "XID_Start" in props
         is_xid_continue = "XID_Continue" in props
-
         code_status = "SAFE"
         code_msg = "Safe for use in identifiers."
 
-        # 1) Hard blockers / syntax characters
         if "Pattern_Syntax" in props:
             code_status = "WARN"
             code_msg = "Pattern syntax character (reserved for language grammar)."
-
-        # 2) Identifier security profile (UAX #39 / IdentifierStatus)
-        if id_stat == "Restricted":
+        elif id_stat == "Restricted":
             code_status = "WARN"
             code_msg = "Restricted in secure identifier profiles (UAX #31 / #39)."
-
-        # 3) Bidi / invisible hazards (Trojan Source)
-        if "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
+        elif "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
             code_status = "CRITICAL"
             code_msg = "BLOCK. Source code masking risk (bidi / invisible control)."
-
-        # 4) XID behaviour (only if not already escalated)
-        if code_status == "SAFE":
+        elif code_status == "SAFE":
             if is_xid_start:
-                code_msg = "Valid identifier start and continue character (XID_Start / XID_Continue)."
+                code_msg = "Valid identifier start and continue character (XID_Start)."
             elif is_xid_continue:
-                # FIX FOR DIGITS: Valid to use, just not at start.
                 code_msg = "Valid as identifier continuation (XID_Continue), but not as the first character."
             else:
                 code_status = "NOTE"
-                code_msg = "Not recommended for identifiers (no XID_Start / XID_Continue)."
+                code_msg = "Not recommended for identifiers (no XID props)."
 
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
-        # Lens 2: Domain Names (DNS)
+        # Lens 2: DNS
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
-        
         if idna == "disallowed":
             dns_status = "CRITICAL"
             dns_msg = "Banned in International Domain Names."
@@ -3943,25 +3954,19 @@ class ForensicExplainer:
             
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
 
-        # Lens 3: General Text / UI
+        # Lens 3: Text
         text_status = "SAFE"
         text_msg = "Standard visible character."
-
-        # Control / non-text categories
         if gc_code in ["Cc", "Cf", "Co", "Cn"]:
             text_status = "NOTE"
-            text_msg = "Invisible or special-purpose character. Not for plain body text."
-
-        # Emoji semantics (The "Digit 3" Fix)
+            text_msg = "Invisible or special-purpose character."
+        
         if "Emoji" in props:
-            has_emoji_presentation = "Emoji_Presentation" in props or "Extended_Pictographic" in props
-
-            if has_emoji_presentation:
-                # True emoji (😀, 🚀)
+            has_emoji_pres = "Emoji_Presentation" in props or "Extended_Pictographic" in props
+            if has_emoji_pres:
                 text_status = "NOTE"
                 text_msg = "Emoji character (default emoji presentation)."
             else:
-                # Emoji Bases (Digits 0-9, #, *)
                 if gc_code.startswith("N"):
                     text_msg = "Standard digit/number; also used as a base in emoji keycap sequences."
                 else:
@@ -3969,10 +3974,9 @@ class ForensicExplainer:
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
-        # --- F. HUMAN CONTEXT (NamesList) ---
+        # --- F. CONTEXT NOTES ---
         if rec["aliases"]:
             report["context"].append(f"Aliases: {', '.join(rec['aliases'][:3])}")
-        
         for note in rec["notes"]:
             report["context"].append(note)
 
