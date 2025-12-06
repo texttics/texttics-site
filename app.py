@@ -16919,9 +16919,11 @@ def inspect_character(event):
         # Fallback
         if not target_cluster:
             target_cluster = text[python_idx]
+
+        target_char = target_cluster
             
         # 3. Analyze the Cluster
-        base_char = target_char
+        base_char = target_char[0]
         cp_base = ord(base_char)
         hex_str = f"{cp_base:04X}" 
 
