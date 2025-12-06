@@ -3827,6 +3827,13 @@ class ForensicExplainer:
 
         # --- B. DATA EXTRACTION ---
         id_stat = rec.get("id_stat", "Restricted")
+        
+        # [SEMANTIC FIX] Unassigned Code Points (The Void)
+        if gc_code == "Cn":
+            report["security"]["level"] = "CRITICAL"
+            report["security"]["verdict"] = "Data Corruption Risk. Unassigned Code Point (Reserved/Non-Character). Should not appear in valid text."
+            report["security"]["badges"].append("VOID")
+            
         id_type = rec.get("id_type", [])
         idna = rec.get("idna", "disallowed")
         
@@ -4257,6 +4264,13 @@ class ForensicExplainer:
     def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val, dt):
         # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
         # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
+
+        # [SEMANTIC FIX] Universal Void Check
+        if gc_code == "Cn":
+            report["lenses"]["code"] = {"status": "CRITICAL", "text": "BLOCK. Undefined Character. Compiler/Interpreter behavior undefined."}
+            report["lenses"]["dns"] = {"status": "CRITICAL", "text": "Protocol Violation. Unassigned characters are banned in IDNA."}
+            report["lenses"]["text"] = {"status": "CRITICAL", "text": "Data Corruption. Character does not exist in this version of Unicode."}
+            return # Stop processing
         
         is_xid_start = "XID_Start" in props
         is_xid_continue = "XID_Continue" in props
@@ -4360,8 +4374,10 @@ class ForensicExplainer:
         # 5. Disallowed (IDNA Hard Ban)
         elif idna == "disallowed":
             dns_status = "CRITICAL"
-            if "Emoji" in props:
-                 dns_msg = "Protocol Violation. Emoji are banned in IDNA2008 (must be Punycode mapped)."
+            if "Emoji" in props or "Extended_Pictographic" in props:
+                 dns_msg = "Protocol Violation. Emoji/Pictographs are strictly banned in IDNA2008 (Must use Punycode/ToASCII)."
+            elif gc_code in ("Zl", "Zp", "Zs"):
+                 dns_msg = "Protocol Violation. Separators are strictly banned in IDNA labels."
             else:
                  dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
         
@@ -7778,12 +7794,14 @@ def compute_physics_state(data, raw_props):
         dt = data.get('dt')
         phys['dt_type'] = dt
         
-        if dt:
-            phys['struct_state'] = "MUTABLE"
-            phys['severity'] = max(phys['severity'], 2)
-            phys['syndromes'].append("COMPAT_ARTIFACT")
-        else:
-            phys['struct_state'] = "EQUIV"
+        # [SEMANTIC FIX] If raw != NFKC, it IS Mutable by definition.
+        # We enforce "MUTABLE" even if the DB is missing the specific 'dt' tag.
+        phys['struct_state'] = "MUTABLE"
+        phys['severity'] = max(phys['severity'], 2)
+        phys['syndromes'].append("COMPAT_ARTIFACT")
+        
+        # Fallback label for UI if DB entry was empty
+        if not dt: phys['dt_type'] = "Implicit"
             
     elif len(data.get('components', [])) > 1:
         phys['struct_state'] = "COMPOSITE"
