@@ -4009,47 +4009,51 @@ class ForensicExplainer:
             "text": ". ".join(norm_notes) + "."
         })
 
-        # 5. Security Profile (Context-Aware Logic)
+        # 5. Security Profile (V4.15: Unified UAX #31 Logic)
         sec_notes = [f"{id_stat}"]
-        
-        # A. Type Nuance (Explaining the "Why")
-        if id_type:
-            # e.g., "Recommended", "Inclusion", "Technical", "Limited_Use"
+
+        # A. Immutable Syntax (The "Constitution" - UAX #31)
+        # These are permanently reserved across all Unicode versions.
+        # They supersede standard identifier rules.
+        if "Pattern_Syntax" in props:
+            sec_notes.append("Immutable Pattern Syntax (Permanently reserved for operators/grammar)")
+        elif "Pattern_White_Space" in props:
+            sec_notes.append("Immutable Pattern Whitespace (Structural separator)")
+
+        # B. Identifier Type Context (Only relevant if NOT Syntax)
+        elif id_stat == "Allowed" and id_type:
             p_type = id_type[0].capitalize().replace("_", " ")
-            sec_notes.append(f"Type: {p_type}")
+            type_desc = f"Type: {p_type}"
             
             # Forensic Translation of Types
             if "Technical" in p_type:
-                sec_notes.append("(Valid in programming/technical contexts, caution in general text).")
+                type_desc += " (Valid in technical contexts; caution in general text)"
             elif "Limited" in p_type:
-                sec_notes.append("(Valid only in specific contexts like hashtags).")
-        
-        # B. Immutable Syntax (The "Parser" Layer)
-        # Characters like ' ' or '$' or '{' are Pattern Syntax. They define structure.
-        if "Pattern_Syntax" in props or "Pattern_White_Space" in props:
-            sec_notes.append("Immutable Pattern Syntax (Reserved for parser structure).")
+                type_desc += " (Valid only in specific contexts like hashtags)"
+            
+            sec_notes.append(type_desc)
 
-        # C. Anchor Logic (Refined)
-        # ASCII is the "Global Baseline" for confusables. 
-        # Other scripts have anchors, but ASCII is the primary target for spoofing.
+        # C. Anchor Logic (Spoofing Defense)
+        # Defines the character's role in the "Trust Chain"
         if id_stat == "Allowed":
             if is_ascii:
-                sec_notes.append("Standard ASCII baseline for spoofing checks.")
+                sec_notes.append("Standard ASCII baseline for spoofing checks")
             elif "Recommended" in (t.capitalize() for t in id_type):
-                # Non-ASCII but safe (e.g., Greek 'A')
-                sec_notes.append("Stable identifier character.")
-                
-        # D. Restriction Context
+                sec_notes.append("Stable international identifier character")
+
+        # D. Restriction Forensics (The "Why")
         elif id_stat == "Restricted":
-            # Add nuance if we know it
+            # If it wasn't caught by Pattern Syntax, why is it restricted?
             if "Compat" in str(rec.get("dt", "")):
-                sec_notes.append("Restricted due to Compatibility Mapping.")
-            else:
-                sec_notes.append("Excluded from secure identifier profiles.")
-            
+                sec_notes.append("Restricted due to Compatibility Mapping (NFKC Risk)")
+            elif "Default_Ignorable_Code_Point" in props:
+                sec_notes.append("Restricted due to Invisibility (Ignorable)")
+            elif not "Pattern" in str(sec_notes): 
+                sec_notes.append("Excluded from secure identifier profiles")
+
         report["highlights"].append({
             "label": "Security",
-            "text": ". ".join(sec_notes)
+            "text": ". ".join(sec_notes) + "."
         })
         
         # 6. Layout (Forensic Geometry & Spoofing Risks)
@@ -4169,36 +4173,50 @@ class ForensicExplainer:
 
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
-        # Lens 2: DNS (V4.10: Deep Protocol Forensics)
+        # Lens 2: DNS (V4.14: Deep Protocol & Context Constraints)
+        # Based on UTS #46 Version 17.0 + IDNA2008 Context Rules
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
+        # 1. Disallowed (Hard Ban)
         if idna == "disallowed":
             dns_status = "CRITICAL"
-            dns_msg = "Protocol Violation: Disallowed in IDNA2008. Valid domains cannot contain this."
+            dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
         
+        # 2. Deviation (The Transition Trap - e.g., ß, ς)
         elif idna == "deviation":
-            # e.g., 'ß' resolves to 'ss' (2003) or 'ß' (2008). 
-            # Forensic Risk: The user might land on a different server depending on browser version.
             dns_status = "WARN"
-            dns_msg = "Protocol Deviation. Resolves differently in IDNA2003 vs IDNA2008 (Ambiguous Resolution)."
+            # Insight: UTS 46 V17 deprecates transitional, but legacy libraries persist.
+            dns_msg = "Protocol Deviation. Ambiguous resolution (IDNA2003 vs IDNA2008). Modern clients accept it; legacy systems map it."
         
+        # 3. Mapped / Ignored (Identity Mutation)
         elif idna in ("mapped", "ignored"):
             if is_ascii:
-                # ASCII Mapping (A->a) is fundamental to DNS case-insensitivity.
+                # ASCII Mapping (A->a) is foundational and safe.
                 dns_status = "SAFE"
-                dns_msg = "Standard IDNA Mapping (Case-folded). Preserves identity."
+                dns_msg = "Standard IDNA Mapping (Case-folded). Preserves logical identity."
+            elif idna == "ignored":
+                # Forensically Critical: Soft Hyphens disappear silently.
+                dns_status = "CRITICAL"
+                dns_msg = "Ignored Character. Silently removed from the label. High risk of visual spoofing (0-bit difference)."
             else:
-                # Non-ASCII mapping changes the visual identity of the domain.
-                # Risk: User sees '½', Network receives '1⁄2'. Phishing vector.
+                # Non-ASCII mapping (½ -> 1/2) changes the underlying string.
                 dns_status = "WARN"
-                dns_msg = "Identity Loss. Mapped/Removed under UTS #46. The visual glyph will not appear in the DNS lookup."
+                dns_msg = "Identity Loss. Mapped under UTS #46. The user sees one glyph; the network receives a different sequence."
         
-        elif idna == "valid" and confusables and not is_ascii:
-            # Valid doesn't mean Safe.
-            dns_status = "WARN"
-            dns_msg = "Valid IDNA2008, but high Homograph Attack risk (Visual Spoofing)."
+        # 4. Valid but Conditional (Context Rules)
+        elif idna == "valid":
+            # A. ContextJ (Joiners)
+            # ZWJ/ZWNJ are 'valid' ONLY if they satisfy specific script constraints.
+            if "Join_Control" in props:
+                dns_status = "WARN"
+                dns_msg = "Conditional Validity (ContextJ). Allowed only in specific contexts (Arabic/Indic). High spoofing risk."
             
+            # B. Confusables (Visual Security)
+            elif confusables and not is_ascii:
+                dns_status = "WARN"
+                dns_msg = "Valid IDNA2008, but high Homograph Attack risk (Visual Spoofing)."
+
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
 
         # Lens 3: General Text (V4.11: Content Security & Rendering)
