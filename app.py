@@ -16947,6 +16947,20 @@ def inspect_character(event):
             if not dt_val:
                 dt_val = "Compat"
 
+        Pre-calculate components to avoid circular dependency
+        components = []
+        zalgo_score = 0
+        for ch in target_char: # Inspecting atomic char for now
+            cat = unicodedata.category(ch)
+            if cat.startswith('M'): zalgo_score += 1
+            components.append({
+                'hex': f"U+{ord(ch):04X}", 
+                'name': unicodedata.name(ch, "Unknown"), 
+                'cat': cat, 
+                'ccc': unicodedata.combining(ch),
+                'is_base': not cat.startswith('M')
+            })
+  
         # 5. Build Base Payload
         cat_short = unicodedata.category(base_char)
         
@@ -17054,6 +17068,10 @@ def inspect_character(event):
         
         # 10. Render
         render_inspector_panel(data, matrix_state)
+
+    except Exception as e:
+        print(f"Inspector Error: {e}")
+        render_inspector_panel({"error": str(e)})
 
 @create_proxy
 def cycle_hud_metric(metric_key, current_dom_pos):
