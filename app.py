@@ -3820,60 +3820,74 @@ class ForensicExplainer:
         
         confusables = rec.get("confusables", [])
         
-        # --- C. SECURITY VERDICT ---
-        # 1. Identifier Status
+        # --- C. SECURITY VERDICT (V4.7: Executive Summary) ---
+        
+        # Default Baseline
+        report["security"]["verdict"] = "Standard Literal. Safe for general interchange."
+
+        # 1. Identifier Status (The "Law")
         if id_stat == "Restricted":
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
-            report["security"]["verdict"] = "Restricted in Identifiers (UAX #31)."
             report["security"]["badges"].append("RESTRICTED")
+            
+            # Forensic Detail: Diagnose the Restriction
+            if "Compat" in str(rec.get("dt", "")):
+                report["security"]["verdict"] = "Compatibility Artifact. Restricted due to normalization instability (NFKC)."
+            else:
+                report["security"]["verdict"] = "Restricted Entity. Excluded from secure identifier profiles (UAX #31)."
+                
         elif id_stat == "Allowed":
-            if report["security"]["verdict"] == "Standard Character.":
-                report["security"]["verdict"] = "Allowed in Identifiers."
+            # Upgrade "Standard Literal" to specific endorsement
+            if report["security"]["verdict"] == "Standard Literal. Safe for general interchange.":
+                if id_type and "Technical" in id_type[0]:
+                    report["security"]["verdict"] = "Technical Syntax. Valid in specialized contexts (Math/Programming)."
+                else:
+                    report["security"]["verdict"] = "Verified Identifier. Universally accepted in secure profiles (UAX #31)."
 
-        # 2. IDNA Protocol
-        if idna == "disallowed": report["security"]["badges"].append("NO-DNS")
-        elif idna == "deviation": report["security"]["badges"].append("DEVIATION")
-        elif idna in ("mapped", "ignored"): report["security"]["badges"].append("MAPPED")
+        # 2. IDNA Protocol (Network Safety)
+        if idna == "disallowed":
+            report["security"]["badges"].append("NO-DNS")
+            if report["security"]["level"] < "CRITICAL":
+                report["security"]["verdict"] = "Protocol Violation. Strictly banned in network hostnames (IDNA2008)."
+        elif idna == "deviation":
+            report["security"]["badges"].append("DEVIATION")
+        elif idna in ("mapped", "ignored"):
+            report["security"]["badges"].append("MAPPED")
 
-        # 3. Spoofing (Confusables) - [FIX V4.4 Robust Logic]
+        # 3. Spoofing (Confusables) - [Anchor Protection Logic]
         if confusables:
             if is_ascii:
-                # ASCII Anchor: Inform, don't escalate.
+                # ASCII Anchor: The "Gold Standard" of trust
                 report["security"]["badges"].append("CONFUSABLES")
-                
-                # Check badges/level instead of string sniffing
-                is_clean = report["security"]["level"] == "SAFE" and not any(
-                    b in report["security"]["badges"] for b in ("RESTRICTED", "BIDI", "INVISIBLE", "DEPRECATED")
-                )
-                
-                if is_clean:
-                     report["security"]["verdict"] = f"ASCII character with {len(confusables)} known lookalikes."
+                report["security"]["verdict"] = f"Verified Anchor. Standard ASCII baseline for spoofing detection ({len(confusables)} imitators)."
             else:
-                # Non-ASCII Imitator: Escalate.
+                # Non-ASCII Imitator: The Risk
                 report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
                 report["security"]["badges"].append("SPOOF")
-                report["security"]["verdict"] = f"Visual Spoof Risk ({len(confusables)} Lookalikes)."
+                report["security"]["verdict"] = f"Visual Impersonator. High-risk confusable; distinct from safe ASCII anchor."
 
-        # 4. Critical Hazards
+        # 4. Critical Hazards (Active Weaponization)
         if "Bidi_Control" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
-            report["security"]["verdict"] = "DANGEROUS SYNTAX: Bidi Control."
             report["security"]["badges"].append("BIDI")
+            report["security"]["verdict"] = "Syntactic Injection Risk. Explicit directional control (Trojan Source vector)."
             
         if "Default_Ignorable_Code_Point" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("INVISIBLE")
             
-            # [FIX V4.4] Rank-Based Comparison, not String
+            # Rank-based comparison (V4.4 Logic)
             current_rank = self.SEVERITY_RANK[report["security"]["level"]]
             crit_rank = self.SEVERITY_RANK["CRITICAL"]
             
             if current_rank < crit_rank:
-                report["security"]["verdict"] = "Invisible Character (Default Ignorable)."
-                
+                report["security"]["verdict"] = "Obfuscation Artifact. Invisible character restricted in secure contexts."
+
         if "Deprecated" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("DEPRECATED")
+            if report["security"]["level"] < "CRITICAL":
+                report["security"]["verdict"] = "Deprecated Standard. Obsolete character; usage discouraged."
 
         # --- D. NARRATIVE HIGHLIGHTS ---
         
