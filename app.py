@@ -3483,51 +3483,42 @@ def _get_single_char_skeleton(s: str) -> str:
         res.append(mapped)
     return "".join(res)
 
-def _classify_macro_type(cp, cat, id_status, mask):
+def _classify_macro_type(cp, cat, id_status, mask, forensic_level="SAFE"):
     """
-    Determines the 'Macro-Type' for the Forensic HUD.
-    Refined V3 Logic: strict separation of Rot, Syntax, and Threat.
+    Forensic Macro-Classifier V3.3: Physics & Policy Fusion.
+    Determines the high-level 'Archetype' of the character for UI styling.
     """
-    is_ascii = (cp <= 0x7F)
-
-    # 0. DATA ROT (Corruption / Integrity Failures)
-    # Cn (Unassigned), Cs (Surrogate), Co (Private Use)
-    # Add FFFD and NUL to the definition of ROT
-    if cat in ('Cn', 'Cs', 'Co') or cp == 0xFFFD or cp == 0x0000: 
+    # 1. PHYSICS LAYER: Data Corruption (Highest Priority)
+    # Cn (Unassigned), Cs (Surrogate), Co (Private), FFFD, Null
+    if cat in ('Cn', 'Cs', 'Co') or cp == 0xFFFD or cp == 0x0000:
         return "ROT"
 
-    # 1. TRUE THREATS (Active Attack Vectors)
-    # Must mask specifically to Bidi, High-Risk Invisibles, or Tags
-    if mask & (INVIS_BIDI_CONTROL | INVIS_HIGH_RISK_MASK): 
-        return "THREAT"
+    # 2. PHYSICS LAYER: Active bitmasks (O(1) lookups)
+    if mask & INVIS_TAG: return "THREAT"          # Steganography
+    if mask & INVIS_BIDI_CONTROL: return "SYNTAX" # Trojan Source (Technical)
+    if mask & INVIS_DEFAULT_IGNORABLE: return "OBFUSCATION"
 
-    # 2. FORMAT / CONTROL (Context-Dependent)
-    # Cf (Format) that isn't high-risk. E.g. ZWNJ in Persian is fine.
-    if cat == 'Cf': 
-        return "COMPLEX"
+    # 3. POLICY LAYER: Security Verdicts (The Bridge)
+    # If the Forensic Explainer flagged this as dangerous, upgrade the type.
+    if forensic_level == "CRITICAL": return "THREAT"
+    if forensic_level == "SUSPICIOUS": return "SPOOF"
 
-    # 3. COMPLEX (Rich Text)
-    # Combining Marks (Mn, Mc, Me)
-    if cat.startswith('M'): 
-        return "COMPLEX"
+    # 4. POLICY LAYER: Identifier Status
+    # Captures things like ½, Ⅻ, etc.
+    if id_status == "Restricted": return "RESTRICTED"
+
+    # 5. TAXONOMY LAYER: Standard Unicode Categories
+    if cat.startswith('M'): return "MARK"         # Combining Marks
+    if cat.startswith('Z'): return "LAYOUT"       # Separators
+    if cat.startswith('N'): return "NUMBER"       # Digits & Numerics
+    if cat.startswith('P') or cat.startswith('S'): return "SYNTAX" # Symbols/Punctuation
     
-    # 4. WHITESPACE (Structural)
-    if cat.startswith('Z'):
-        return "SYNTAX"
+    # Context-dependent Format characters (e.g. ZWNJ)
+    if cat == 'Cf': return "OBFUSCATION" 
 
-    # 5. STANDARD (Safe Atoms)
-    # ASCII Letters/Digits.
-    if is_ascii and cat in ('Ll', 'Lu', 'Nd'): 
-        return "STANDARD"
-
-    # 6. SYNTAX (Technical/Punctuation)
-    # ASCII Punctuation/Symbols.
-    if is_ascii and cat.startswith(('P', 'S')):
-        return "SYNTAX"
-
-    # 7. LEGACY / EXTENDED (Everything Else)
-    # Extended Latin, Emoji, Symbols, non-ASCII punctuation.
-    return "LEGACY"
+    # 6. BASELINE (Safe Text)
+    # Letters (Ll, Lu, Lo, Lt, Lm)
+    return "BASELINE"
 
 def _get_ghost_chain(char: str):
     """
