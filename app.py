@@ -1120,7 +1120,7 @@ ASPIRATIONAL_SCRIPTS = {
 # REGEX KRYPTONITE (DEVELOPER SAFETY) CONSTANTS
 
 # 1. Threat Mechanisms (The "How")
-# Used by Block 7 to assign specific risk labels and routing.
+# Used by Block7 to assign specific risk labels and routing.
 MECH_REGEX_BREAK     = "REGEX_BREAK"      # Breaks line-based matching (e.g., /.+/)
 MECH_BIDI_CONFUSE    = "BIDI_CONFUSE"     # Reorders code display vs logic (Trojan Source)
 MECH_LOGIC_INJECT    = "LOGIC_INJECT"     # Invisible chars altering identity/tokens
@@ -7599,7 +7599,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
                 risk_meta = {"label": f["name"], "sev": "HIGH", "cat": "UNKNOWN"}
                 
                 if mech == MECH_REGEX_BREAK:
-                    # We ONLY set the label here to match Block 7.
+                    # We ONLY set the label here to match Block7.
                     # We don't need to repeat the details string.
                     risk_meta = {"label": "Regex-Breaking Line Terminator", "sev": "CRITICAL", "cat": "SYNTAX"}
                 elif mech == MECH_BIDI_CONFUSE:
@@ -7647,120 +7647,24 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V5.0 (SOTA Physics).
-    Implements UAX #15 (Normalization Taxonomy) and UTR #36 (Layout Physics).
-    Separates "Canonical Equivalence" (Safe) from "Compatibility Mutation" (Risk).
+    Forensic Matrix V7.0 (Physics/Policy Bridge).
+    Maps raw physical states to UI semantics (Classes, Icons, Verdicts).
     """
-    # 1. Unpack Context
+    # 1. Run Pure Physics
+    raw_props = data.get('props', [])
+    phys = compute_physics_state(data, raw_props)
+    
+    # 2. Get Policy Context
     report = data.get('forensic_report') or {}
     security = report.get('security', {})
-    raw_props = report.get('props', [])
-    
-    # Extract Policy Signals (Used ONLY for the Footer/Header, NOT Physics Facets)
-    policy_level_str = security.get('level', 'UNKNOWN')
-    policy_badges = security.get('badges', [])
     policy_verdict = security.get('verdict', "")
+    policy_level_str = security.get('level', 'UNKNOWN')
+    level_map = {"SAFE": 0, "NOTE": 1, "WARN": 2, "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0}
+    policy_level = level_map.get(policy_level_str, 0)
 
-    # 2. Determine Visual Risk Level (0-4)
-    level_map = {
-        "SAFE": 0, "NOTE": 1, "WARN": 2, 
-        "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0
-    }
-    level = level_map.get(policy_level_str, 0)
+    # 3. Determine UI Level
+    final_level = max(phys['severity'], policy_level)
     
-    # Physics Overrides (Zalgo)
-    stack_count = 0
-    if data.get('stack_msg'): 
-        try: stack_count = int(re.search(r'\d+', data['stack_msg']).group())
-        except: stack_count = 3
-    
-    if stack_count > 5: level = max(level, 3)
-    
-    # --- 3. FACET CALCULATIONS (PURE PHYSICS) ---
-    
-    # A. VISIBILITY (Visual Physics)
-    vis_state = "PASS"
-    vis_class = "risk-ok"
-    vis_detail = "Standard Visible"
-    vis_icon = "eye"
-    
-    if data.get('is_invisible'):
-        if "Bidi_Control" in raw_props:
-            vis_state = "CONTROL"
-            vis_class = "risk-crit"
-            vis_detail = "Flow Override"
-            vis_icon = "move"
-        elif "Join_Control" in raw_props:
-            vis_state = "FORMAT"
-            vis_class = "risk-warn"
-            vis_detail = "Layout Glue"
-            vis_icon = "minimize-2"
-        else:
-            vis_state = "HIDDEN"
-            vis_class = "risk-crit"
-            vis_detail = "Zero-Width Void"
-            vis_icon = "eye-off"
-    elif not data['is_ascii']:
-        vis_state = "EXTENDED" 
-        vis_class = "risk-info"
-        vis_detail = "Unicode Range"
-        vis_icon = "globe"
-
-    # B. STRUCTURE (Normalization Physics - UAX #15)
-    struct_state = "ATOMIC"
-    struct_class = "risk-ok"
-    struct_detail = "Single Point"
-    struct_icon = "box"
-    
-    ghosts = data.get('ghosts')
-    # Physics: Check for Physical Change (Raw != NFKC)
-    if ghosts and (ghosts['raw'] != ghosts['nfkc']):
-        dt_val = data.get('dt') # [Physics] Hydrated from DB
-        
-        if dt_val:
-            # Compatibility Mapping (e.g., ⓼ -> 8)
-            # This is a Transformation/Data Loss event.
-            struct_state = "MUTABLE"
-            struct_class = "risk-warn" 
-            struct_detail = f"Compat: {dt_val}"
-            struct_icon = "refresh-cw"
-        else:
-            # Canonical Mapping (e.g., A + ´ -> Á)
-            # This is Equivalence. Logically the same character. Safe.
-            struct_state = "EQUIV"
-            struct_class = "risk-info"
-            struct_detail = "Canonical Comp."
-            struct_icon = "copy"
-            
-    elif len(data['components']) > 1:
-        struct_state = "COMPOSITE"
-        struct_class = "risk-info"
-        struct_detail = f"{len(data['components'])} Components"
-        struct_icon = "layers"
-
-    # C. IDENTITY (Collision Physics - UTS #39)
-    ident_state = "UNIQUE"
-    ident_class = "risk-ok"
-    ident_detail = "No Lookalikes"
-    ident_icon = "fingerprint"
-    
-    lookalikes = len(data.get('lookalikes_data', []))
-    if lookalikes > 0:
-        ident_state = "NOTE"
-        ident_class = "risk-info"
-        ident_detail = f"{lookalikes} Lookalikes"
-    
-    # Physics Upgrade: Mixed-Script Confusables
-    # We infer "High Confusability" from Policy Badges ONLY if strictly necessary,
-    # but ideally we should calculate 'is_mixed_script' here.
-    # For now, sticking to the Badge Bridge is acceptable for Stage 1.5.
-    if "SPOOF" in policy_badges and level >= 3:
-        ident_state = "AMBIGUOUS"
-        ident_class = "risk-warn"
-        ident_detail = "High Confusability"
-        ident_icon = "alert-triangle"
-
-    # --- 4. THE "PHYSICS" TAXONOMY ---
     header_config = {
         0: ("BASELINE", "header-baseline"),
         1: ("NON-STD",  "header-complex"),
@@ -7768,52 +7672,99 @@ def analyze_signal_processor_state(data):
         3: ("SUSPICIOUS","header-suspicious"),
         4: ("CRITICAL", "header-critical")
     }
-    level_text, header_cls = header_config.get(level, header_config[0])
-    
-    # Refined Physics Verdicts (What is it?)
-    verdict_text = "Standard Composition"
-    
-    if struct_state == "MUTABLE":
-        verdict_text = "Compatibility Artifact" 
-    elif struct_state == "EQUIV":
-        verdict_text = "Canonical Composition"
-    elif vis_state == "HIDDEN":
-        verdict_text = "Invisible Control"
-    elif vis_state == "CONTROL":
-        verdict_text = "Directional Force"
-    elif stack_count > 2:
-        verdict_text = "High-Density Cluster"
-    elif not data['is_ascii']:
-        if data.get('macro_type') == "NUMBER":
-            verdict_text = "Non-ASCII Numeric"
-        elif "Emoji" in raw_props or "Extended_Pictographic" in raw_props:
-             verdict_text = "Pictographic Symbol"
-        else:
-            verdict_text = "Extended Script Character"
+    level_text, header_cls = header_config.get(final_level, header_config[0])
 
-    # --- 5. Footer Configuration ---
-    # Default: Show Physics
-    footer_label = "ANALYSIS"
-    footer_class = "footer-neutral"
-    footer_text = verdict_text 
+    # 4. Map Physics to UI Facets
+    # Helper to build facet dict
+    def build_facet(state, severity_hint, detail, icon):
+        # Map severity hint to color class
+        if severity_hint >= 4: cls = "risk-crit"
+        elif severity_hint >= 2: cls = "risk-warn"
+        elif severity_hint >= 1: cls = "risk-info"
+        else: cls = "risk-ok"
+        return {"state": state, "class": cls, "detail": detail, "icon": icon}
+
+    # VISIBILITY MAPPING
+    v_state = phys['vis_state']
+    v_det = "Standard Visible"
+    v_sev = 0
+    v_icon = "eye"
     
-    # Override: Show Policy if Risk is High
-    if level >= 2:
+    if "BIDI_WEAPON" in phys['syndromes']: 
+        v_det = "Flow Override"; v_sev = 4; v_icon = "move"
+    elif "WRAP_SUPPRESSION" in phys['syndromes']:
+        v_det = "No-Wrap Glue"; v_sev = 2; v_icon = "minimize-2"
+    elif "INVISIBLE" in phys['syndromes']:
+        v_det = "Stealth Void"; v_sev = 3; v_icon = "eye-off"
+    elif v_state == "FORMAT":
+        v_det = "Layout Control"; v_sev = 2; v_icon = "minimize-2"
+    elif v_state == "EXTENDED":
+        v_det = "Unicode Range"; v_sev = 1; v_icon = "globe"
+        if "AMBIG_WIDTH" in phys['syndromes']: v_det = "Ambiguous Width"
+        if "FULL_WIDTH" in phys['syndromes']: v_det = "Fullwidth"
+
+    vis_facet = build_facet(v_state, v_sev, v_det, v_icon)
+
+    # STRUCTURE MAPPING
+    s_state = phys['struct_state']
+    s_det = "Single Point"
+    s_sev = 0
+    s_icon = "box"
+    
+    if s_state == "MUTABLE":
+        s_det = f"Compat: {phys['dt_type']}"; s_sev = 2; s_icon = "refresh-cw"
+    elif s_state == "EQUIV":
+        s_det = "Canonical Eq."; s_sev = 1; s_icon = "copy"
+    elif s_state == "COMPOSITE":
+        s_det = "Cluster"; s_sev = 1; s_icon = "layers"
+        
+    struct_facet = build_facet(s_state, s_sev, s_det, s_icon)
+
+    # IDENTITY MAPPING
+    i_state = phys['ident_state']
+    i_det = "No Lookalikes"
+    i_sev = 0
+    i_icon = "fingerprint"
+    
+    look_count = len(data.get('lookalikes_data', []))
+    if i_state == "MATH":
+        i_det = "Math Alphabet"; i_sev = 2; i_icon = "sigma"
+    elif look_count > 0:
+        i_det = f"{look_count} Lookalikes"; i_sev = 1; i_state = "NOTE"
+    
+    # Policy Override for Identity (Mixed Script)
+    if "SPOOF" in policy_badges and final_level >= 3:
+        i_state = "AMBIGUOUS"; i_sev = 2; i_det = "High Confusability"; i_icon = "alert-triangle"
+
+    ident_facet = build_facet(i_state, i_sev, i_det, i_icon)
+
+    # 5. Generate Verdict Text
+    if "BIDI_WEAPON" in phys['syndromes']: phys_text = "Directional Override"
+    elif "INVISIBLE" in phys['syndromes']: phys_text = "Invisible Control"
+    elif "REGEX_KRYPTONITE" in phys['syndromes']: phys_text = "Line Break / Terminator"
+    elif "WRAP_SUPPRESSION" in phys['syndromes']: phys_text = "Layout Suppression"
+    elif "COMPAT_ARTIFACT" in phys['syndromes']: phys_text = "Compatibility Artifact"
+    elif "MATH_SPOOF" in phys['syndromes']: phys_text = "Mathematical Symbol"
+    elif v_state == "EXTENDED": phys_text = "Extended Script Character"
+    else: phys_text = "Standard Composition"
+
+    # 6. Footer Logic
+    if final_level >= 2:
         footer_label = "VERDICT"
-        footer_class = "footer-warn" if level < 4 else "footer-crit"
-        footer_text = policy_verdict or verdict_text
-    
+        footer_class = "footer-warn" if final_level < 4 else "footer-crit"
+        footer_text = policy_verdict or phys_text
+    else:
+        footer_label = "ANALYSIS"
+        footer_class = "footer-neutral"
+        footer_text = phys_text
+
     return {
-        "level": level,
-        "level_text": f"LEVEL {level}", 
+        "level": final_level,
+        "level_text": f"LEVEL {final_level}", 
         "header_class": header_cls,
-        "verdict_text": verdict_text,
-        "icon_key": "shield" if level == 0 else "alert-triangle",
-        "facets": [
-            {"state": vis_state, "class": vis_class, "detail": vis_detail, "icon": vis_icon},
-            {"state": struct_state, "class": struct_class, "detail": struct_detail, "icon": struct_icon},
-            {"state": ident_state, "class": ident_class, "detail": ident_detail, "icon": ident_icon}
-        ],
+        "verdict_text": phys_text, 
+        "icon_key": "shield" if final_level == 0 else "alert-triangle",
+        "facets": [vis_facet, struct_facet, ident_facet],
         "footer_label": footer_label,
         "footer_class": footer_class,
         "footer_text": footer_text
@@ -8443,6 +8394,120 @@ def analyze_delimited_topology(t: str) -> dict:
         "evidence_injections": list(set(injection_rows))[:10],
         "evidence_drift": drift_cols[:5] # Columns with dirty data
     }
+
+def compute_physics_state(data, raw_props):
+    """
+    [Block 6] SOTA Physics Engine (V7.0 - Spec-Aligned).
+    Pure functional analysis of Unicode physical properties.
+    Returns structured Enums/Syndromes. Zero UI logic.
+    """
+    # --- 1. DEFINE SPEC TABLES (The Laws) ---
+    # UAX #14: Line Breaking Classes that prevent wrapping
+    WRAP_SUPPRESSORS = {"GL", "WJ", "ZW", "CM", "QU"} 
+    # UTS #18: Line Terminators (subset relevant to regex parsing risks)
+    REGEX_TERMINATORS = {"BK", "CR", "LF", "NL", "ZW"} 
+    
+    phys = {
+        "severity": 0,
+        "syndromes": [],
+        # Raw States (Enums)
+        "vis_state": "PASS",
+        "struct_state": "ATOMIC",
+        "ident_state": "UNIQUE",
+        "parse_state": "SAFE",
+        # Detailed Attributes
+        "dt_type": None,
+        "width_class": "N"
+    }
+    
+    # --- 2. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
+    is_inv = data.get('is_invisible')
+    gc = data.get('category_short', 'Cn')
+    lb = data.get('lb', 'XX')
+    ea = data.get('ea', 'N')
+    
+    phys['width_class'] = ea
+    
+    if "Bidi_Control" in raw_props:
+        phys['vis_state'] = "CONTROL"
+        phys['severity'] = max(phys['severity'], 4)
+        phys['syndromes'].append("BIDI_WEAPON")
+        
+    elif is_inv:
+        if "Join_Control" in raw_props:
+            phys['vis_state'] = "FORMAT"
+            phys['severity'] = max(phys['severity'], 2)
+            phys['syndromes'].append("JOINER")
+        elif "Variation_Selector" in raw_props:
+            phys['vis_state'] = "FORMAT"
+        elif "Default_Ignorable_Code_Point" in raw_props:
+            phys['vis_state'] = "HIDDEN"
+            phys['severity'] = max(phys['severity'], 3)
+            phys['syndromes'].append("INVISIBLE")
+        else:
+            phys['vis_state'] = "HIDDEN"
+            phys['severity'] = max(phys['severity'], 2)
+            
+    elif not data['is_ascii']:
+        phys['vis_state'] = "EXTENDED"
+        phys['severity'] = max(phys['severity'], 1)
+
+    # Layout Physics (UAX #14 / #11)
+    if lb in WRAP_SUPPRESSORS:
+        phys['syndromes'].append("WRAP_SUPPRESSION")
+        if phys['severity'] < 2: phys['severity'] = 2
+        
+    if ea == "A":
+        phys['syndromes'].append("AMBIG_WIDTH")
+    elif ea in ("F", "W"):
+        phys['syndromes'].append("FULL_WIDTH")
+
+    # --- 3. FACET: STRUCTURE (UAX #15) ---
+    ghosts = data.get('ghosts')
+    if ghosts and (ghosts['raw'] != ghosts['nfkc']):
+        dt = data.get('dt')
+        phys['dt_type'] = dt
+        
+        if dt:
+            phys['struct_state'] = "MUTABLE"
+            phys['severity'] = max(phys['severity'], 2)
+            phys['syndromes'].append("COMPAT_ARTIFACT")
+        else:
+            phys['struct_state'] = "EQUIV"
+            
+    elif len(data.get('components', [])) > 1:
+        phys['struct_state'] = "COMPOSITE"
+        if data.get('stack_msg'):
+             phys['severity'] = max(phys['severity'], 2)
+
+    # --- 4. FACET: IDENTITY (UTS #39 / UTR #25) ---
+    lookalikes = len(data.get('lookalikes_data', []))
+    
+    if "Math" in raw_props and gc in ("Lu", "Ll"):
+        phys['ident_state'] = "MATH"
+        phys['severity'] = max(phys['severity'], 2)
+        phys['syndromes'].append("MATH_SPOOF")
+    elif lookalikes > 0:
+        phys['ident_state'] = "NOTE"
+
+    # --- 5. FACET: PARSING (UTS #18) ---
+    # Strict regex physics
+    is_line_term = gc in ("Zl", "Zp") or lb in REGEX_TERMINATORS
+    
+    if is_line_term:
+        if not data['is_ascii']: # Ignore standard CR/LF/NL to reduce noise in basic text
+             phys['parse_state'] = "BREAK"
+             phys['severity'] = max(phys['severity'], 3)
+             phys['syndromes'].append("REGEX_KRYPTONITE")
+             
+    elif "Pattern_White_Space" in raw_props and not data['is_ascii']:
+        phys['parse_state'] = "WS-RISK"
+        phys['severity'] = max(phys['severity'], 2)
+        
+    elif "Pattern_Syntax" in raw_props and not data['is_ascii']:
+         phys['parse_state'] = "SYNTAX"
+
+    return phys
 
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
@@ -16859,6 +16924,10 @@ def inspect_character(event):
         dt_val = _find_in_ranges(cp_base, "DecompositionType") 
         if dt_val == "None": dt_val = None # Normalize 'None' string to None type
 
+        # We need these for the Layout & Parsing Physics facets.
+        lb_val = _find_in_ranges(cp_base, "LineBreak") or "XX"
+        ea_val = _find_in_ranges(cp_base, "EastAsianWidth") or "N"
+
         base_char_data = {
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
@@ -16866,7 +16935,11 @@ def inspect_character(event):
             "category_short": cat_short,
             "bidi": unicodedata.bidirectional(base_char),
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
-            "dt": dt_val # [Physics] Used for Canonical vs Compat distinction
+            "lb": lb_val, # UAX #14
+            "ea": ea_val, # UAX #11
+            "dt": dt_val, # [Physics] Used for Canonical vs Compat distinction
+            # Redundant keys for legacy UI compatibility (optional, but safe)
+            "line_break": lb_val
         }
 
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
@@ -17557,7 +17630,7 @@ def analyze_html_metadata(raw_html_string: str):
         parser.feed(raw_html_string)
         
         # 3. THE JUDGMENT PHASE (Auditing)
-        # Pass raw physical findings to the Policy Auditor from Block 7
+        # Pass raw physical findings to the Policy Auditor from Block7
         audited_findings, ledger = _audit_metadata_findings(parser.findings)
         
         # 4. THE RENDER PHASE (View)
