@@ -3766,6 +3766,7 @@ class ForensicExplainer:
         report = {
             "identity": "",
             "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
+            "props": props,   # [NEW] Export raw properties for logic checks
             "highlights": [], # List of {label, text, status}
             "lenses": {},     # Dict of {code, dns, text} -> {status, text}
             "context": []     # Notes and Aliases
@@ -7190,12 +7191,11 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 def analyze_signal_processor_state(data):
     """
     Forensic Matrix V3.3: Hardened Physics/Policy Split.
-    Top Panel = Physical Taxonomy (The Law).
-    Bottom Panel = Security Policy (The Order).
     """
-    # 1. Unpack Context (The Truth Source)
+    # 1. Unpack Context
     report = data.get('forensic_report') or {}
     security = report.get('security', {})
+    raw_props = report.get('props', []) # [NEW] Read raw props
     
     # Extract Policy Signals
     policy_level_str = security.get('level', 'UNKNOWN')
@@ -7203,26 +7203,22 @@ def analyze_signal_processor_state(data):
     policy_verdict = security.get('verdict', "")
 
     # 2. Determine Visual Risk Level (0-4)
-    # Start with the Policy Level (The Floor)
     level_map = {
         "SAFE": 0, "NOTE": 1, "WARN": 2, 
         "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0
     }
     level = level_map.get(policy_level_str, 0)
     
-    # Apply Physics Overrides (Can only ESCALATE, never downgrade)
-    # Zalgo / Mark Density Check
+    # Physics Overrides (Zalgo)
     stack_count = 0
     if data.get('stack_msg'): 
         try: stack_count = int(re.search(r'\d+', data['stack_msg']).group())
         except: stack_count = 3
     
-    if stack_count > 5: 
-        level = max(level, 3) # Force at least SUSPICIOUS for Zalgo
+    if stack_count > 5: level = max(level, 3)
     
-    # --- 3. FACET CALCULATIONS (Physical Attributes) ---
-    
-    # A. VISIBILITY (Pixel Presence)
+    # --- 3. FACET CALCULATIONS ---
+    # A. VISIBILITY
     vis_state = "PASS"
     vis_class = "risk-ok"
     vis_detail = "Standard Visible"
@@ -7239,14 +7235,13 @@ def analyze_signal_processor_state(data):
         vis_detail = "Unicode Range"
         vis_icon = "globe"
 
-    # B. STRUCTURE (Atomic Integrity)
+    # B. STRUCTURE
     struct_state = "ATOMIC"
     struct_class = "risk-ok"
     struct_detail = "Single Point"
     struct_icon = "box"
     
     ghosts = data.get('ghosts')
-    # If Raw != NFKC, the structure is mutable
     is_norm_unstable = ghosts and (ghosts['raw'] != ghosts['nfkc'])
     
     if is_norm_unstable:
@@ -7260,7 +7255,7 @@ def analyze_signal_processor_state(data):
         struct_detail = f"{len(data['components'])} Components"
         struct_icon = "layers"
 
-    # C. IDENTITY (Visual Uniqueness)
+    # C. IDENTITY
     ident_state = "UNIQUE"
     ident_class = "risk-ok"
     ident_detail = "No Lookalikes"
@@ -7272,17 +7267,13 @@ def analyze_signal_processor_state(data):
         ident_class = "risk-info"
         ident_detail = f"{lookalikes} Lookalikes"
     
-    # Upgrade Identity Risk if Policy detected Spoofing
     if "SPOOF" in policy_badges and level >= 3:
         ident_state = "AMBIGUOUS"
         ident_class = "risk-warn"
         ident_detail = "High Confusability"
         ident_icon = "alert-triangle"
 
-    # --- 4. THE "PHYSICS" TAXONOMY (Top Panel Text) ---
-    # Describes the intrinsic nature of the character.
-    
-    # Style Config
+    # --- 4. THE "PHYSICS" TAXONOMY ---
     header_config = {
         0: ("BASELINE", "header-baseline"),
         1: ("NON-STD",  "header-complex"),
@@ -7292,13 +7283,11 @@ def analyze_signal_processor_state(data):
     }
     level_text, header_cls = header_config.get(level, header_config[0])
     
-    # Verdict Text Logic (Deterministic Physics Waterfall)
-    verdict_text = "Standard Composition" # Default
+    verdict_text = "Standard Composition"
     
     if is_norm_unstable:
         verdict_text = "Compatibility Mapping" 
     elif data.get('is_invisible'):
-        # Check specific badges to be precise
         if "BIDI" in policy_badges: verdict_text = "Directional Control"
         elif "TAG" in policy_badges: verdict_text = "Protocol Tag"
         else: verdict_text = "Invisible Format Control"
@@ -7307,27 +7296,28 @@ def analyze_signal_processor_state(data):
     elif not data['is_ascii']:
         if data.get('macro_type') == "NUMBER":
             verdict_text = "Non-ASCII Numeric"
-        elif "Emoji" in str(report.get('lenses',{})): # Safe string check on lens text
+        # [FIX] Robust check using raw props
+        elif "Emoji" in raw_props or "Extended_Pictographic" in raw_props:
              verdict_text = "Pictographic Symbol"
         else:
             verdict_text = "Extended Script Character"
 
-    # --- 5. Footer Configuration (The Bridge) ---
-    # The footer displays the Policy Decision from the Explainer.
+    # --- 5. Footer Configuration ---
     footer_label = "ANALYSIS"
     footer_class = "footer-neutral"
-    footer_text = verdict_text # Default to physics text if safe
+    footer_text = verdict_text 
     
     if level >= 2:
         footer_label = "VERDICT"
         footer_class = "footer-warn" if level < 4 else "footer-crit"
-        footer_text = policy_verdict # Use the strict policy verdict (e.g. "Restricted")
+        # [FIX] Fallback logic to prevent empty yellow boxes
+        footer_text = policy_verdict or verdict_text
     
     return {
         "level": level,
         "level_text": f"LEVEL {level}", 
         "header_class": header_cls,
-        "verdict_text": verdict_text,   # PHYSICAL DESCRIPTION (Top)
+        "verdict_text": verdict_text,
         "icon_key": "shield" if level == 0 else "alert-triangle",
         "facets": [
             {"state": vis_state, "class": vis_class, "detail": vis_detail, "icon": vis_icon},
@@ -14373,24 +14363,19 @@ def render_inspector_panel(data):
     """
 
     # 5. Bottom Grid (Technical Specs)
-    matrix_extra_cell = ""
-    if mt in ("THREAT", "ROT", "SYNTAX", "LEGACY"):
+    # [FIX V3.4] Drive styling directly from Identifier Status, not Macro Type.
+    status_cls = "id-status-allowed"
+    if data['id_status'] == "Restricted":
         status_cls = "id-status-restricted"
-        if data['id_status'] == "Allowed": status_cls = "id-status-allowed"
-        if mt == "SYNTAX": status_cls = "id-status-technical"
-        matrix_extra_cell = f"""
-            <div class="matrix-item">
-                <span class="spec-label">SECURITY</span>
-                <span class="matrix-val {status_cls}">{data['id_status']}</span>
-            </div>
-        """
-    else:
-        matrix_extra_cell = f"""
-            <div class="matrix-item">
-                <span class="spec-label">SECURITY</span>
-                <span class="matrix-val id-status-allowed">{data['id_status']}</span>
-            </div>
-        """
+    elif mt in ("ROT", "THREAT"):
+        status_cls = "id-status-restricted" # Force red for rot/threats
+    
+    matrix_extra_cell = f"""
+        <div class="matrix-item">
+            <span class="spec-label">SECURITY</span>
+            <span class="matrix-val {status_cls}">{data['id_status']}</span>
+        </div>
+    """
 
     technical_grid = f"""
         <div class="spec-matrix">
