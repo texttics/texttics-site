@@ -16980,6 +16980,7 @@ def inspect_character(event):
 
             # Context Keys
             "ghosts": ghosts,
+            "components": components,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING), 
             "lookalikes_data": rec.get("confusables", []),
