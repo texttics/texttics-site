@@ -16961,8 +16961,7 @@ def inspect_character(event):
             "lb": lb_val, # UAX #14
             "ea": ea_val, # UAX #11
             "dt": dt_val, # [Physics] Canonical vs Compat
-            "line_break": lb_val # Legacy compat,
-
+            "line_break": lb_val, # Legacy compat
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVIS_TABLE_KEYS), # Assuming this global exists
