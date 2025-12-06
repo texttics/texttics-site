@@ -7777,15 +7777,27 @@ def compute_physics_state(data, raw_props):
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V8.1 (Physics/Policy Bridge).
-    Maps raw physical states to UI semantics.
+    Forensic Matrix V8.2: Hardened against Data Corruption.
+    - Guards against 'string indices' errors if forensic_report is malformed.
+    - Guards against data input not being a dict.
     """
+    # Guard 1: Input Integrity
+    if not isinstance(data, dict):
+        # Fallback to a safe empty structure to prevent crashes
+        data = {'props': [], 'is_invisible': False, 'is_ascii': True}
+
     # 1. Run Pure Physics
     raw_props = data.get('props', [])
     phys = compute_physics_state(data, raw_props)
     
-    # 2. Get Policy Context
-    report = data.get('forensic_report') or {}
+    # 2. Get Policy Context (HARDENED)
+    report_raw = data.get('forensic_report')
+    # Guard 2: Ensure report is actually a dictionary before accessing keys
+    if isinstance(report_raw, dict):
+        report = report_raw
+    else:
+        report = {}
+        
     security = report.get('security', {})
     policy_verdict = security.get('verdict', "")
     policy_level_str = security.get('level', 'UNKNOWN')
@@ -7856,7 +7868,10 @@ def analyze_signal_processor_state(data):
     i_sev = 0
     i_icon = "fingerprint"
     
-    look_count = len(data.get('lookalikes_data', []))
+    # Guard 3: Ensure lookalikes is a list to allow len()
+    lookalikes = data.get('lookalikes_data', [])
+    look_count = len(lookalikes) if isinstance(lookalikes, list) else 0
+    
     if i_state == "MATH":
         i_det = "Math Alphabet"; i_sev = 2; i_icon = "sigma"
     elif look_count > 0:
@@ -14769,8 +14784,9 @@ def render_threat_analysis(threat_results, text_context=None):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v10.0: Synchronized Visuals & Fluid Matrix.
-    Fixes 'vis_state' error by correctly using unpacked data dictionaries.
+    Forensic Layout v10.1: Hardened Renderer.
+    - Guards lookalikes/ghosts/components loops against non-dict items.
+    - Prevents 'string indices' errors during HTML generation.
     """
     panel = document.getElementById("inspector-panel-content")
     if not panel: return
@@ -14779,34 +14795,33 @@ def render_inspector_panel(data):
         panel.innerHTML = "<div class='inspector-placeholder'>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</div>"
         return
         
-    if "error" in data:
+    if isinstance(data, dict) and "error" in data:
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
         return
 
     # --- CALL THE LOGIC ENGINE ---
     state = analyze_signal_processor_state(data)
     
-    # --- UNPACK FACETS (The Data Dictionaries) ---
+    # --- UNPACK FACETS ---
     vis_data = state['facets'][0]
     struct_data = state['facets'][1]
     ident_data = state['facets'][2]
 
     # --- ICON COLOR SYNCHRONIZATION ---
-    # Determine master color based on Header Class
     header_cls = state['header_class']
     
     if header_cls == "header-baseline":
-        global_icon_color = "#15803D" # Green-700
+        global_icon_color = "#15803D"
     elif header_cls == "header-complex":
-        global_icon_color = "#0369A1" # Sky-700
+        global_icon_color = "#0369A1"
     elif header_cls == "header-anomalous":
-        global_icon_color = "#A16207" # Yellow-700
+        global_icon_color = "#A16207"
     elif header_cls == "header-suspicious":
-        global_icon_color = "#C2410C" # Orange-700
+        global_icon_color = "#C2410C"
     elif header_cls == "header-critical":
-        global_icon_color = "#DC2626" # Red-600
+        global_icon_color = "#DC2626"
     else:
-        global_icon_color = "#6B7280" # Slate-500
+        global_icon_color = "#6B7280"
 
     # --- HTML GENERATION ---
 
@@ -14823,7 +14838,6 @@ def render_inspector_panel(data):
     """
 
     # Zone B: The Diagnostic Matrix
-    # Uses 'f_data' dicts (vis_data, etc) instead of raw variables
     def build_row(label, f_data, master_color):
         svg = get_icon(f_data['icon'], color=master_color, size=14)
         
@@ -14850,7 +14864,7 @@ def render_inspector_panel(data):
 
     # Zone C: The Footer
     footer_html = ""
-    if state['level'] >= 1 and state['footer_text']:
+    if state['level'] >= 1 and state.get('footer_text'):
         footer_html = f"""
         <div class="risk-footer">
             <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
@@ -14865,59 +14879,35 @@ def render_inspector_panel(data):
         </div>
         """
     
-    # Assemble Column 4
     signal_processor_content = risk_header_html + footer_html + matrix_html
 
-    # --- COL 5: IDENTITY (Clean Header V6) ---
+    # --- COL 5: IDENTITY ---
     
-    # 1. Header Title (Full Name)
-    # Prioritize the specific name unless it's a multi-part cluster
+    # 1. Header Title
     if data.get('is_cluster') and len(data.get('components', [])) > 1:
         header_title = "GRAPHEME CLUSTER"
         header_style = "letter-spacing: 0.05em; color: #4b5563;" 
     else:
-        header_title = data['name_base']
+        header_title = data.get('name_base', 'UNKNOWN')
         header_style = ""
 
-    # 2. Get Global Forensic Context (The Truth Source)
-    active_threats = []
-    try:
-        if hasattr(window, 'TEXTTICS_CORE_DATA') and window.TEXTTICS_CORE_DATA:
-            global_flags = window.TEXTTICS_CORE_DATA.to_py().get('forensic_flags', {})
-            current_idx = data.get('python_idx')
-            if current_idx is not None:
-                idx_marker = f"#{current_idx}"
-                for flag_name, flag_data in global_flags.items():
-                    raw_positions = flag_data.get('positions', [])
-                    if any(p == idx_marker or p.startswith(idx_marker + " ") or p.startswith(idx_marker + ",") for p in raw_positions):
-                        name_lower = flag_name.lower()
-                        if "zalgo" in name_lower or "mark" in name_lower: active_threats.append("STACK")
-                        elif "bidi" in name_lower: active_threats.append("BIDI")
-                        elif "invisible" in name_lower: active_threats.append("HIDDEN")
-                        elif "confusable" in name_lower or "drift" in name_lower: active_threats.append("SPOOF")
-                        elif "rot" in name_lower or "corrupt" in name_lower or "replacement" in name_lower: active_threats.append("ROT")
-                        elif "tag" in name_lower: active_threats.append("TAG")
-                        elif "restricted" in name_lower: active_threats.append("RESTRICTED")
-                        else: active_threats.append("RISK")
-    except Exception: pass
+    # 2. Extract Macro Type
+    mt = data.get('macro_type', 'UNKNOWN')
 
-    # 3. Extract Macro Type (CRITICAL FIX: Define 'mt' here)
-    mt = data['macro_type']
-
-    # 4. Top Grid (Identity Specs)
+    # 3. Top Grid
     type_label = data.get('type_label', 'CATEGORY')
-    type_val = data.get('type_val', data['category_full'])
+    type_val = data.get('type_val', data.get('category_full', 'N/A'))
     
     identity_grid = f"""
         <div class="spec-matrix" style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
             <div class="matrix-item">
                 <span class="spec-label">BLOCK</span>
-                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data['block']}</span>
+                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data.get('block', 'N/A')}</span>
             </div>
             <div class="matrix-item">
                 <span class="spec-label">SCRIPT</span>
                 <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">
-                    {data['script']}
+                    {data.get('script', 'N/A')}
                     <span class="matrix-sub" style="display:inline;">{f"({data['script_ext']})" if data.get('script_ext') and not data.get('is_cluster') else ""}</span>
                 </span>
             </div>
@@ -14927,15 +14917,14 @@ def render_inspector_panel(data):
             </div>
             <div class="matrix-item">
                 <span class="spec-label">AGE</span>
-                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data['age']}</span>
+                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data.get('age', 'N/A')}</span>
             </div>
         </div>
     """
 
-    # 5. Bottom Grid (Technical Specs)
-    # [FIX V3.4] Drive styling directly from Identifier Status.
+    # 4. Bottom Grid
     status_cls = "id-status-allowed"
-    if data['id_status'] == "Restricted":
+    if data.get('id_status') == "Restricted":
         status_cls = "id-status-restricted"
     elif mt in ("ROT", "THREAT"):
         status_cls = "id-status-restricted" 
@@ -14943,7 +14932,7 @@ def render_inspector_panel(data):
     matrix_extra_cell = f"""
         <div class="matrix-item">
             <span class="spec-label">SECURITY</span>
-            <span class="matrix-val {status_cls}">{data['id_status']}</span>
+            <span class="matrix-val {status_cls}">{data.get('id_status', 'N/A')}</span>
         </div>
     """
     
@@ -14951,45 +14940,44 @@ def render_inspector_panel(data):
         <div class="spec-matrix">
             <div class="matrix-item">
                 <span class="spec-label">DIRECTION</span>
-                <span class="matrix-val">{data['bidi']}</span>
+                <span class="matrix-val">{data.get('bidi', 'N/A')}</span>
             </div>
             <div class="matrix-item">
                 <span class="spec-label">SEGMENT</span>
-                <span class="matrix-val">{data['word_break']}</span>
-                <span class="matrix-sub">{data['grapheme_break']}</span>
+                <span class="matrix-val">{data.get('word_break', 'N/A')}</span>
+                <span class="matrix-sub">{data.get('grapheme_break', 'N/A')}</span>
             </div>
             <div class="matrix-item">
                 <span class="spec-label">WRAP</span>
-                <span class="matrix-val">{data['line_break']}</span>
+                <span class="matrix-val">{data.get('line_break', 'N/A')}</span>
             </div>
             {matrix_extra_cell}
         </div>
     """
 
-    # 6A. Lookalikes Section (Risk-Synchronized)
+    # 6A. Lookalikes Section (HARDENED)
     lookalike_html = ""
-    if data.get('lookalikes_data'):
-        count = len(data['lookalikes_data'])
-        
-        # Build the grid of chips
+    lookalikes = data.get('lookalikes_data')
+    
+    if lookalikes and isinstance(lookalikes, list):
+        count = len(lookalikes)
         chips_buffer = []
-        for item in data['lookalikes_data']:
-            tooltip = f"{item['name']} &#10;Block: {item['block']}"
-            chip = f"""
-            <div class="lookalike-chip" title="{tooltip}">
-                <span class="lk-glyph">{item['glyph']}</span>
-                <span class="lk-meta">
-                    <span class="lk-cp">{item['cp']}</span>
-                    <span class="lk-script">{item['script']}</span>
-                </span>
-            </div>
-            """
-            chips_buffer.append(chip)
+        for item in lookalikes:
+            # Guard against strings in the list
+            if isinstance(item, dict):
+                tooltip = f"{item.get('name', '')} &#10;Block: {item.get('block', '')}"
+                chip = f"""
+                <div class="lookalike-chip" title="{tooltip}">
+                    <span class="lk-glyph">{item.get('glyph', '')}</span>
+                    <span class="lk-meta">
+                        <span class="lk-cp">{item.get('cp', '')}</span>
+                        <span class="lk-script">{item.get('script', '')}</span>
+                    </span>
+                </div>
+                """
+                chips_buffer.append(chip)
             
         grid_html = "".join(chips_buffer)
-        
-        # Inherit the color class from the Identity Risk Facet
-        # ident_data['class'] will be 'risk-info' (Blue), 'risk-warn' (Orange), etc.
         risk_css = ident_data['class'] 
         
         lookalike_html = f"""
@@ -15000,35 +14988,22 @@ def render_inspector_panel(data):
             </div>
         </div>
         """
-    else:
-        # Optional: Show "Unique" if you want it strictly constant
-        # For now, keeping it cleaner by hiding if none exist, 
-        # but if you want it strictly constant, uncomment below:
-        # lookalike_html = f"""
-        # <div class="ghost-section lookalikes" style="margin-top: 10px; margin-bottom: -4px; border-color: #e5e7eb;">
-        #     <span class="ghost-key" style="color:#9ca3af">LOOKALIKES:</span>
-        #     <span class="lookalike-list" style="color:#9ca3af">None (Unique)</span>
-        # </div>
-        # """
-        pass
 
-    
-    # 6B. Normalization & Skeleton (Split for Clarity)
+    # 6B. Normalization & Skeleton
     ghost_html = ""
-    if data['ghosts']:
-        g = data['ghosts']
-        
-        # Part 1: Official Unicode Normalization
-        norm_status = "STABLE" if g['raw'] == g['nfkc'] else "UNSTABLE"
+    g = data.get('ghosts')
+    # Guard against ghosts being a string/None
+    if g and isinstance(g, dict):
+        norm_status = "STABLE" if g.get('raw') == g.get('nfkc') else "UNSTABLE"
         norm_class = "ghost-val-ok" if norm_status == "STABLE" else "ghost-val-warn"
         
         ghost_html += f"""
         <div class="ghost-section">
             <div class="spec-label" style="margin-bottom:4px;">UNICODE NORMALIZATION</div>
             <div class="ghost-strip">
-                <div class="ghost-step">RAW<br><span>{_escape_html(g['raw'])}</span></div>
+                <div class="ghost-step">RAW<br><span>{_escape_html(g.get('raw', ''))}</span></div>
                 <div class="ghost-arrow">→</div>
-                <div class="ghost-step">NFKC<br><span>{_escape_html(g['nfkc'])}</span></div>
+                <div class="ghost-step">NFKC<br><span>{_escape_html(g.get('nfkc', ''))}</span></div>
             </div>
             <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
                 Status: <span class="{norm_class}">{norm_status}</span>
@@ -15036,9 +15011,7 @@ def render_inspector_panel(data):
         </div>
         """
 
-        # Part 2: Security Skeleton (UTS #39)
-        # We separate this because SKEL is a Heuristic, not a Standard Form.
-        skel_val = _escape_html(g['skeleton'])
+        skel_val = _escape_html(g.get('skeleton', ''))
         ghost_html += f"""
         <div class="ghost-section" style="margin-top: 8px;">
             <div class="spec-label" style="margin-bottom:4px;">SECURITY SKELETON (UTS #39)</div>
@@ -15051,41 +15024,41 @@ def render_inspector_panel(data):
         </div>
         """
 
-    # 7. Final Assembly (NO CHIPS)
+    # 7. Final Assembly
     identity_html = f"""
         <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
-        
         {identity_grid}
         {technical_grid}
         {lookalike_html}
         {ghost_html}
     """
 
-    # --- COL 6: COMPONENTS TABLE ---
+    # --- COL 6: COMPONENTS TABLE (HARDENED) ---
     comp_rows = ""
-    for c in data['components']:
-        ccc_val = c.get('ccc', 0)
-        ccc_display = f'<span style="color:#9ca3af;">0</span>' if ccc_val == 0 else f'<b>{ccc_val}</b>'
-        is_mark_style = 'style="color: var(--color-text-muted);"' if not c['is_base'] else 'style="font-weight:600;"'
-        
-        comp_rows += f"""
-        <tr {is_mark_style}>
-            <td><code class="mini-code">{c['hex']}</code></td>
-            <td style="text-align:center;">{c['cat']}</td>
-            <td style="text-align:center;">{ccc_display}</td>
-            <td class="truncate-text" title="{c['name']}">{c['name']}</td>
-        </tr>
-        """
+    components = data.get('components', [])
+    if isinstance(components, list):
+        for c in components:
+            if isinstance(c, dict):
+                ccc_val = c.get('ccc', 0)
+                ccc_display = f'<span style="color:#9ca3af;">0</span>' if ccc_val == 0 else f'<b>{ccc_val}</b>'
+                is_mark_style = 'style="color: var(--color-text-muted);"' if not c.get('is_base') else 'style="font-weight:600;"'
+                
+                comp_rows += f"""
+                <tr {is_mark_style}>
+                    <td><code class="mini-code">{c.get('hex', '')}</code></td>
+                    <td style="text-align:center;">{c.get('cat', '')}</td>
+                    <td style="text-align:center;">{ccc_display}</td>
+                    <td class="truncate-text" title="{c.get('name', '')}">{c.get('name', '')}</td>
+                </tr>
+                """
 
     # --- FINAL HTML ASSEMBLY ---
-    prev_vis = _escape_html(data['prev_glyph']) if data['prev_glyph'] else "&nbsp;"
-    curr_vis = _escape_html(data['cluster_glyph'])
-    next_vis = _escape_html(data['next_glyph']) if data['next_glyph'] else "&nbsp;"
+    prev_vis = _escape_html(data.get('prev_glyph')) if data.get('prev_glyph') else "&nbsp;"
+    curr_vis = _escape_html(data.get('cluster_glyph', ''))
+    next_vis = _escape_html(data.get('next_glyph')) if data.get('next_glyph') else "&nbsp;"
 
-    # [VISUAL SYNC] Inject the calculated risk level (0-4) as a CSS class
     tier_class = f"risk-tier-{state['level']}"
     
-    # 1. Render the MAIN PANEL (Rigid Layout)
     main_html = f"""
     <div class="inspector-layout-v3">
         <div class="col-context col-prev">
@@ -15096,7 +15069,7 @@ def render_inspector_panel(data):
             <div class="glyph-viewport">
                 <div class="inspector-glyph">{curr_vis}</div>
             </div>
-            <div class="inspector-codepoint {tier_class}">{data['cp_hex_base']}</div>
+            <div class="inspector-codepoint {tier_class}">{data.get('cp_hex_base', 'U+????')}</div>
         </div>
         <div class="col-context col-next">
             <div class="ctx-label">NEXT</div>
@@ -15115,7 +15088,7 @@ def render_inspector_panel(data):
             <div class="section-label">
                 CLUSTER COMPONENTS
                 <span style="display:block; font-weight:600; opacity:0.99; font-size:0.7rem; margin-top:2px;">
-                    ({len(data['components'])} PARTICLE{'S' if len(data['components']) != 1 else ''})
+                    ({len(components)} PARTICLE{'S' if len(components) != 1 else ''})
                 </span>
             </div>
             <div class="structure-table-wrapper">
@@ -15136,91 +15109,96 @@ def render_inspector_panel(data):
         <div class="col-bytes">
             <div class="section-label">FORENSIC ENCODINGS</div>
             <div class="byte-grid">
-                <div class="byte-row"><span class="label">UTF-8:</span>{data['utf8']}</div>
-                <div class="byte-row"><span class="label">UTF-16:</span>{data['utf16']}</div>
-                <div class="byte-row"><span class="label">UTF-32:</span>{data['utf32']}</div>
+                <div class="byte-row"><span class="label">UTF-8:</span>{data.get('utf8', '')}</div>
+                <div class="byte-row"><span class="label">UTF-16:</span>{data.get('utf16', '')}</div>
+                <div class="byte-row"><span class="label">UTF-32:</span>{data.get('utf32', '')}</div>
                 <div class="byte-row">
                     <span class="label">ASCII:</span>
-                    <span style="color:{'#dc2626' if data['ascii'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['ascii']}</span>
+                    <span style="color:{'#dc2626' if data.get('ascii') == 'N/A' else '#16a34a'}; font-weight:700;">{data.get('ascii', '')}</span>
                 </div>
                 <div class="byte-row">
                     <span class="label">Latin-1:</span>
-                    <span style="color:{'#dc2626' if data['latin1'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['latin1']}</span>
+                    <span style="color:{'#dc2626' if data.get('latin1') == 'N/A' else '#16a34a'}; font-weight:700;">{data.get('latin1', '')}</span>
                 </div>
                 <div class="byte-row">
                     <span class="label">Win-1252:</span>
-                    <span style="color:{'#dc2626' if data['cp1252'] == 'N/A' else '#16a34a'}; font-weight:700;">{data['cp1252']}</span>
+                    <span style="color:{'#dc2626' if data.get('cp1252') == 'N/A' else '#16a34a'}; font-weight:700;">{data.get('cp1252', '')}</span>
                 </div>
                 
                 <div class="section-label" style="margin-bottom:4px; color:#374151; margin-top: 8px;">EXPLOIT VECTORS</div>
                 
-                <div class="byte-row"><span class="label">Base64:</span>{data['base64']}</div>
-                <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data['shell'])}</div>
-                <div class="byte-row"><span class="label">Octal:</span>{_escape_html(data['octal'])}</div>
-                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data['html_dec'])}</div>
-                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data['html_hex'])}</div>
-                <div class="byte-row"><span class="label">ES6/CSS:</span>{_escape_html(data['es6'])}</div>
-                <div class="byte-row"><span class="label">Py/JSON:</span>{_escape_html(data['code'])}</div>
+                <div class="byte-row"><span class="label">Base64:</span>{data.get('base64', '')}</div>
+                <div class="byte-row"><span class="label">Shell:</span>{_escape_html(data.get('shell', ''))}</div>
+                <div class="byte-row"><span class="label">Octal:</span>{_escape_html(data.get('octal', ''))}</div>
+                <div class="byte-row"><span class="label">HTML Dec:</span>{_escape_html(data.get('html_dec', ''))}</div>
+                <div class="byte-row"><span class="label">HTML Hex:</span>{_escape_html(data.get('html_hex', ''))}</div>
+                <div class="byte-row"><span class="label">ES6/CSS:</span>{_escape_html(data.get('es6', ''))}</div>
+                <div class="byte-row"><span class="label">Py/JSON:</span>{_escape_html(data.get('code', ''))}</div>
             </div>
         </div>
     </div>
     """
     
-    # 2. Render the FOOTER (Context Lenses & Highlights)
+    # 2. Render the FOOTER
     forensic_row_html = ""
-    report = data.get("forensic_report")
+    report_raw = data.get("forensic_report")
     
-    if report:
-        # 1. Verdict Colors
-        level = report["security"]["level"]
+    if report_raw and isinstance(report_raw, dict):
+        report = report_raw
+        level = report.get("security", {}).get("level", "UNKNOWN")
+        
+        # ... (Colors logic same as before) ...
         if level == "CRITICAL":
             f_bg = "#fee2e2"; f_txt = "#991b1b"; f_border = "#fca5a5"
         elif level == "SUSPICIOUS":
             f_bg = "#ffedd5"; f_txt = "#9a3412"; f_border = "#fdba74"
         elif level == "WARN":
             f_bg = "#fef9c3"; f_txt = "#854d0e"; f_border = "#fde047"
-        else: # SAFE / NOTE / UNKNOWN
+        else:
             f_bg = "#f3f4f6"; f_txt = "#374151"; f_border = "#e5e7eb"
 
-        # 2. Badges
-        badges_str = "".join([f'<span class="forensic-badge" style="border-color:{f_border}; color:{f_txt};">{b}</span>' for b in report["security"]["badges"]])
+        badges_str = "".join([f'<span class="forensic-badge" style="border-color:{f_border}; color:{f_txt};">{b}</span>' for b in report.get("security", {}).get("badges", [])])
 
-        # 3. Highlights (The "Why")
         highlights_html = ""
-        for h in report["highlights"]:
-            highlights_html += f"""
-            <div style="margin-bottom:4px; font-size:0.8rem; display:flex;">
-                <span style="font-weight:700; color:#374151; width:80px; flex-shrink:0;">{h['label']}</span>
-                <span style="color:#4b5563;">{h['text']}</span>
-            </div>
-            """
+        for h in report.get("highlights", []):
+            if isinstance(h, dict):
+                highlights_html += f"""
+                <div style="margin-bottom:4px; font-size:0.8rem; display:flex;">
+                    <span style="font-weight:700; color:#374151; width:80px; flex-shrink:0;">{h.get('label', '')}</span>
+                    <span style="color:#4b5563;">{h.get('text', '')}</span>
+                </div>
+                """
 
-        # 4. Context Lenses (Code / DNS / Text)
         lenses_html = ""
-        for key, lens in report["lenses"].items():
-            # Lens Color Logic
-            l_status = lens["status"]
-            l_bg = "#ecfdf5" if l_status == "SAFE" else "#fef2f2" if l_status == "CRITICAL" else "#fffbeb"
-            l_txt = "#047857" if l_status == "SAFE" else "#b91c1c" if l_status == "CRITICAL" else "#b45309"
-            l_border = "#a7f3d0" if l_status == "SAFE" else "#fecaca" if l_status == "CRITICAL" else "#fde68a"
-            
-            label_map = {"code": "SOURCE CODE", "dns": "DOMAIN NAMES", "text": "GENERAL TEXT"}
-            
-            lenses_html += f"""
-            <div style="flex:1; background:{l_bg}; border:1px solid {l_border}; border-radius:4px; padding:6px; min-width: 0;">
-                <div style="font-size:0.6rem; font-weight:700; letter-spacing:0.05em; color:{l_txt}; opacity:0.8; margin-bottom:2px;">{label_map[key]}</div>
-                <div style="font-size:0.75rem; font-weight:600; color:{l_txt}; margin-bottom:2px;">{l_status}</div>
-                <div style="font-size:0.7rem; color:{l_txt}; line-height:1.2;">{lens['text']}</div>
-            </div>
-            """
+        lenses = report.get("lenses", {})
+        if isinstance(lenses, dict):
+            for key, lens in lenses.items():
+                if not isinstance(lens, dict): continue
+                l_status = lens.get("status", "UNKNOWN")
+                l_bg = "#ecfdf5" if l_status == "SAFE" else "#fef2f2" if l_status == "CRITICAL" else "#fffbeb"
+                l_txt = "#047857" if l_status == "SAFE" else "#b91c1c" if l_status == "CRITICAL" else "#b45309"
+                l_border = "#a7f3d0" if l_status == "SAFE" else "#fecaca" if l_status == "CRITICAL" else "#fde68a"
+                
+                label_map = {"code": "SOURCE CODE", "dns": "DOMAIN NAMES", "text": "GENERAL TEXT"}
+                
+                lenses_html += f"""
+                <div style="flex:1; background:{l_bg}; border:1px solid {l_border}; border-radius:4px; padding:6px; min-width: 0;">
+                    <div style="font-size:0.6rem; font-weight:700; letter-spacing:0.05em; color:{l_txt}; opacity:0.8; margin-bottom:2px;">{label_map.get(key, key.upper())}</div>
+                    <div style="font-size:0.75rem; font-weight:600; color:{l_txt}; margin-bottom:2px;">{l_status}</div>
+                    <div style="font-size:0.7rem; color:{l_txt}; line-height:1.2;">{lens.get('text', '')}</div>
+                </div>
+                """
 
-        # 5. Footer Assembly
+        context_html = ""
+        if report.get("context"):
+             context_html = '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; font-size:0.75rem; color:#6b7280; font-style:italic;">' + "".join([f"<div>ℹ {c}</div>" for c in report["context"]]) + '</div>'
+
         forensic_row_html = f"""
         <div class="forensic-footer" style="border: 1px solid {f_border}; margin-top: 15px;">
             <div class="forensic-left" style="background: {f_bg}; border-right: 1px solid {f_border}; width: 160px; padding: 12px;">
                 <div class="f-label" style="color:{f_txt}">VERDICT</div>
                 <div class="f-level" style="color:{f_txt}">{level}</div>
-                <div class="f-verdict" style="color:{f_txt}">{report["security"]["verdict"]}</div>
+                <div class="f-verdict" style="color:{f_txt}">{report.get("security", {}).get("verdict", "")}</div>
                 <div class="f-badges" style="margin-top:8px;">{badges_str}</div>
             </div>
             
@@ -15231,15 +15209,11 @@ def render_inspector_panel(data):
                 </div>
 
                 <div>{highlights_html}</div>
-
-                {'<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; font-size:0.75rem; color:#6b7280; font-style:italic;">' + 
-                 "".join([f"<div>ℹ {c}</div>" for c in report["context"]]) + 
-                 '</div>' if report["context"] else ''}
+                {context_html}
             </div>
         </div>
         """
     
-    # INJECT INTO SEPARATE DOM CONTAINERS
     panel.innerHTML = main_html
     
     footer_panel = document.getElementById("inspector-forensic-footer")
@@ -16836,10 +16810,10 @@ def update_verification(event=None):
 @create_proxy
 def inspect_character(event):
     """
-    Forensic Inspector v6.0: "Physics First" Hardening.
-    - FIX: ghosts dict is initialized with local normalization (Source of Truth), preventing KeyError 'nfc'.
-    - FIX: unicodedata calls use base_char to prevent 'str' errors on clusters.
-    - FIX: Skeleton extraction guarded against type errors.
+    Forensic Inspector v10.0: Physics-First & Data-Hardened.
+    - Source of Truth: Calculates ghosts locally (NFC/NFKC) to prevent 'nfc' KeyErrors.
+    - Atomic Physics: Uses base_char for unicodedata calls to fix 'bidirectional' errors.
+    - Type Safety: Guards against Explainer returning strings/errors.
     """
     try:
         text_input = document.getElementById("text-input")
@@ -16855,7 +16829,7 @@ def inspect_character(event):
             render_inspector_panel(None)
             return
         
-        # 1. Map DOM Index to Python Index
+        # 1. Map DOM Index to Python Index (Logical Index)
         python_idx = 0
         utf16_accum = 0
         found_sync = False
@@ -16920,7 +16894,7 @@ def inspect_character(event):
 
         target_char = target_cluster
         
-        # Guard Rail: Ensure string type
+        # Guard Rail 1: Ensure string type
         if not isinstance(target_char, str) or not target_char:
             render_inspector_panel({"error": "Inspection Paused (Invalid Target)"})
             return
@@ -16941,19 +16915,19 @@ def inspect_character(event):
         ea_val = rec.get("ea") or _find_in_ranges(cp_base, "EastAsianWidth") or "N"
         
         # --- Normalization Snapshots (Physics Source of Truth) ---
-        # FIX 1: Calculate local normalization first. This guarantees keys exist.
         raw_form = target_char
         nfc_form = unicodedata.normalize("NFC", raw_form)
         nfkc_form = unicodedata.normalize("NFKC", raw_form)
 
+        # Initialize ghosts locally to guarantee keys exist
         ghosts = {
             "raw": raw_form,
             "nfc": nfc_form,
             "nfkc": nfkc_form,
-            "skeleton": nfkc_form, # Fallback skeleton
+            "skeleton": nfkc_form,
         }
         
-        # Merge external DB data if available, but trust local physics for keys
+        # Merge external DB data safely
         try:
             extra_ghosts = _get_ghost_chain(raw_form)
             if isinstance(extra_ghosts, dict):
@@ -16981,11 +16955,11 @@ def inspect_character(event):
                 "is_base": not cat.startswith("M"),
             })
 
-        # SOTA Sync: Stability
+        # Stability Logic
         is_mutable = bool(dt_val) or (raw_form != nfc_form) or (raw_form != nfkc_form)
         stability_text = "MUTABLE (Transforms on NFKC)" if is_mutable else "Stable"
         
-        # FIX 2: Use base_char for atomic properties to prevent 'str' errors on clusters
+        # Base Payload
         base_char_data = {
             "char": target_char,
             "codepoint": f"U+{hex_str}",
@@ -16994,7 +16968,7 @@ def inspect_character(event):
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(base_char), # Safe: len(base_char) == 1
+            "bidi": unicodedata.bidirectional(base_char), # Safe atomic call
             "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
             
             "lb": lb_val, "ea": ea_val, "dt": dt_val, "line_break": lb_val,
@@ -17008,6 +16982,7 @@ def inspect_character(event):
             "stability_text": stability_text,
         }
 
+        # Cluster Analysis with Guard Rail 2
         cluster_identity_raw = _compute_cluster_identity(target_char, base_char_data)
         
         if not isinstance(cluster_identity_raw, dict):
@@ -17017,9 +16992,19 @@ def inspect_character(event):
         else:
              cluster_identity = cluster_identity_raw
         
+        # Guard Rail 4: Forensic Report Type Check
         forensic_report = None
         if FORENSIC_EXPLAINER:
-            forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
+            try:
+                maybe_report = FORENSIC_EXPLAINER.explain(hex_str)
+                if isinstance(maybe_report, dict):
+                    forensic_report = maybe_report
+                else:
+                    print(f"Explainer returned non-dict: {maybe_report}")
+                    forensic_report = None
+            except Exception as e:
+                print(f"Explainer crashed: {e}")
+                forensic_report = None
         
         base_char_data["forensic_report"] = forensic_report
 
@@ -17031,7 +17016,12 @@ def inspect_character(event):
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
             
         id_type = _find_in_ranges(cp_base, "IdentifierType")
-        f_level = forensic_report["security"]["level"] if forensic_report else "SAFE"
+        
+        # Safe access to security level (now impossible to crash)
+        f_level = "SAFE"
+        if forensic_report and "security" in forensic_report:
+            f_level = forensic_report["security"].get("level", "SAFE")
+            
         comp_mask = cluster_identity.get("cluster_mask", 0) 
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
 
@@ -17043,7 +17033,7 @@ def inspect_character(event):
             try: return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
             except: return "N/A"
 
-        # FIX 3: Safe Skeleton Extraction
+        # Safe Skeleton Extraction
         skeleton_val = ghosts.get("skeleton") if isinstance(ghosts, dict) else None
         confusable_msg = f"Base maps to: '{skeleton_val}'" if skeleton_val and skeleton_val != base_char else None
 
@@ -17088,7 +17078,8 @@ def inspect_character(event):
             "stability_text": stability_text
         }
 
-        matrix_state = analyze_signal_processor_state(data)
+        # matrix_state is now safely computed inside render_inspector_panel or explicitly here
+        # But we don't need to return it, we just pass data to render.
         render_inspector_panel(data)
 
     except Exception as e:
