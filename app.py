@@ -7647,7 +7647,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V7.0 (Physics/Policy Bridge).
+    Forensic Matrix V8.0 (Physics/Policy Bridge).
     Maps raw physical states to UI semantics (Classes, Icons, Verdicts).
     """
     # 1. Run Pure Physics
@@ -7659,6 +7659,8 @@ def analyze_signal_processor_state(data):
     security = report.get('security', {})
     policy_verdict = security.get('verdict', "")
     policy_level_str = security.get('level', 'UNKNOWN')
+    policy_badges = security.get('badges', []) # [FIX: Defined variable]
+
     level_map = {"SAFE": 0, "NOTE": 1, "WARN": 2, "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0}
     policy_level = level_map.get(policy_level_str, 0)
 
@@ -8397,9 +8399,9 @@ def analyze_delimited_topology(t: str) -> dict:
 
 def compute_physics_state(data, raw_props):
     """
-    [Block 6] SOTA Physics Engine (V7.0 - Spec-Aligned).
-    Pure functional analysis of Unicode physical properties.
-    Returns structured Enums/Syndromes. Zero UI logic.
+    [Block 6] SOTA Physics Engine (V8.0 - Final).
+    Pure functional analysis. Returns Enums/Syndromes. 
+    Zero UI logic, Zero Policy.
     """
     # --- 1. DEFINE SPEC TABLES (The Laws) ---
     # UAX #14: Line Breaking Classes that prevent wrapping
@@ -8423,7 +8425,7 @@ def compute_physics_state(data, raw_props):
     # --- 2. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
     is_inv = data.get('is_invisible')
     gc = data.get('category_short', 'Cn')
-    lb = data.get('lb', 'XX')
+    lb = data.get('lb', 'XX') # [FIX: Matched Block 10 key]
     ea = data.get('ea', 'N')
     
     phys['width_class'] = ea
