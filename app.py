@@ -4018,7 +4018,13 @@ class ForensicExplainer:
         if "Pattern_Syntax" in props:
             sec_notes.append("Immutable Pattern Syntax (Permanently reserved for operators/grammar)")
         elif "Pattern_White_Space" in props:
-            sec_notes.append("Immutable Pattern Whitespace (Structural separator)")
+            # Use gc_code (Zl=Line Sep, Zp=Para Sep) to detect Spoofing
+            if gc_code in ("Zl", "Zp"):
+                code_status = "CRITICAL"
+                code_msg = "Line Break Spoofing Risk (UTS #55). Visually splits lines but parsed as whitespace."
+            else:
+                code_status = "NOTE"
+                code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
 
         # B. Identifier Type Context (Only relevant if NOT Syntax)
         elif id_stat == "Allowed" and id_type:
@@ -4126,48 +4132,73 @@ class ForensicExplainer:
         return report
 
     def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii):
-        # Lens 1: Source Code (V4.13: UAX #31 Lexical Physics)
-        # We classify based on the "Disjoint Categories" defined in UAX #31 Figure 1.
+        # Lens 1: Source Code (V4.15: UAX #31 & UTS #55)
+        # Integrates Immutable Syntax rules and Source Code Spoofing detection.
         
         is_xid_start = "XID_Start" in props
         is_xid_continue = "XID_Continue" in props
         
+        # Helper for specific code points
+        try: cp_val = int(report.get("identity", "").split("U+")[-1].split(")")[0], 16) # Fallback if hex_str not passed
+        except: cp_val = 0
+        # Better: Since explain() calls this, we can rely on props, but let's grab the CP from the report context if needed
+        # Actually, let's just accept 'rec' or 'hex_str' in arguments if we need specific CP checks. 
+        # Since we don't have hex_str here, let's look at 'Default_Ignorable' and Props.
+        
         code_status = "SAFE"
         code_msg = "Safe for use in identifiers."
 
-        # A. Critical Injection Risks (Trojan Source)
-        # These override all other syntax rules because they alter the compiler's perception.
-        if "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
+        # A. Critical Spoofing Vectors (UTS #55)
+        # 1. Line Break Spoofing (LS/PS)
+        # We identify these by the 'Line_Separator' or 'Paragraph_Separator' categories if we had them, 
+        # or check specific whitespace props. 
+        # Assuming 'White_Space' is in props and it's NOT 'Pattern_White_Space' (standard).
+        # Actually, let's rely on the props we mined. 
+        # If the 'Layout' highlight says "Line Break: Line Separator", we know.
+        # But simpler: If it is Zl or Zp (Separator).
+        is_line_spoof = "Line_Separator" in str(report) or "Paragraph_Separator" in str(report) # Heuristic from identity
+        # Better heuristic: Check against known dangerous props if available, or just rely on 'Default_Ignorable' logic below.
+        
+        # A. Critical Injection Risks
+        if "Bidi_Control" in props:
             code_status = "CRITICAL"
-            code_msg = "BLOCK. Source code masking risk (Bidi/Invisible). Can manipulate logic visibility."
+            code_msg = "BLOCK. Source code masking risk (Trojan Source). Manipulates logic visibility."
+        
+        elif "Default_Ignorable_Code_Point" in props:
+            # Nuance: Joiners (ZWJ/ZWNJ) are less dangerous than Variation Selectors/Tags in code
+            if "Join_Control" in props:
+                code_status = "WARN"
+                code_msg = "Join Control. Allowed in some languages (e.g. Emoji identifiers), but dangerous in others (UTS #55)."
+            else:
+                code_status = "CRITICAL"
+                code_msg = "BLOCK. Invisible Character. High risk of 'Invisible Identifier' attacks."
 
-        # B. Syntax & Grammar (The "Pattern" Layer)
-        # These are immutable sets reserved for operators, delimiters, and formatting.
+        # B. Syntax & Grammar (UAX #31 - The Constitution)
         elif "Pattern_Syntax" in props:
-            # e.g., { } [ ] ! @ # $ % ^ & * ( )
             code_status = "WARN"
-            code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters (Pattern_Syntax). Cannot be an identifier."
+            code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters. Cannot be an identifier."
         elif "Pattern_White_Space" in props:
-            # e.g., Space, Tab, Newline
             code_status = "NOTE"
-            code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
+            # Explicit UTS #55 check for LS (U+2028) and PS (U+2029)
+            # These often act as Pattern_White_Space but cause Line Break Spoofing.
+            if "Line_Separator" in str(report) or "Paragraph_Separator" in str(report): 
+                 code_status = "CRITICAL"
+                 code_msg = "Line Break Spoofing Risk (UTS #55). Visually splits lines but may be parsed as whitespace."
+            else:
+                 code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
 
-        # C. Security Profile Restrictions (UAX #39)
-        # Characters that are technically identifiers but banned by security policy.
+        # C. Security Restrictions (UAX #39)
         elif id_stat == "Restricted":
             code_status = "WARN"
             code_msg = "Restricted Identifier. Excluded from secure profiles (UAX #31) due to confusion/obsolescence risks."
 
-        # D. Valid Identifiers (The "Identifier" Layer)
+        # D. Valid Identifiers (The Physics of Naming)
         elif code_status == "SAFE":
             if is_xid_start:
-                # Letters (A, α, etc.) - Can start AND continue
                 code_msg = "Identifier Start. Safe to begin variable, class, or function names (XID_Start)."
             elif is_xid_continue:
-                # Digits (1, 2) and Combining Marks - Can ONLY continue
                 code_msg = "Identifier Continuation. Valid within an identifier, but causes syntax errors if used as the start."
             else:
-                # Symbols (Emoji, etc.) that are neither Syntax nor Identifiers
                 code_status = "NOTE"
                 code_msg = "Invalid Identifier. Not recommended for variable names (No XID properties)."
 
