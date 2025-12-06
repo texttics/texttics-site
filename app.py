@@ -4299,7 +4299,11 @@ class ForensicExplainer:
         # B. Syntax & Grammar (UAX #31 - The Constitution)
         elif "Pattern_Syntax" in props:
             code_status = "WARN"
-            code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters. Cannot be an identifier."
+            # [PATCH] Better message for Emojis that are technically Pattern Syntax
+            if "Emoji" in props or "Extended_Pictographic" in props:
+                code_msg = "Non-Identifier Symbol. Reserved syntax; not valid in identifiers (only strings/comments)."
+            else:
+                code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters. Cannot be an identifier."
         
         elif "Pattern_White_Space" in props:
             code_status = "NOTE"
@@ -4394,20 +4398,24 @@ class ForensicExplainer:
         # 8. Valid / Fall-through (Conditional Risk)
         # Catches 'valid', 'PVALID', or any other allowed status that reached here
         else:
+            # [PATCH] STRICT EMOJI BAN. 
+            # Even if IDNA status is 'valid', Emojis are practically unsafe/banned in hostnames.
+            if "Emoji" in props or "Extended_Pictographic" in props:
+                dns_status = "CRITICAL"
+                dns_msg = "Protocol Violation. Emoji/Pictographs are strictly banned in IDNA2008 (Must use Punycode/ToASCII)."
+
             # Check 1: Confusables (Cyrillic 'a', Greek 'A')
-            if confusables and not is_ascii:
+            elif confusables and not is_ascii:
                 dns_status = "WARN"
                 dns_msg = f"Valid IDNA2008, but High Homograph Risk. Visually mimics {len(confusables)} other character(s)."
             
             # Check 2: Compatibility Fallback (⓼)
-            # If we forced dt="Compat" earlier, we must warn here if we haven't already.
             elif dt:
                 dns_status = "WARN"
                 dns_msg = f"Identity Loss. Compatibility mapping ({dt}). The visual style is lost in IDNA/NFKC normalization."
             
             # Check 3: ASCII Safety
             elif not is_ascii and dns_status == "SAFE":
-                 # Optional: Add a note for non-ASCII that isn't a direct confusable
                  dns_msg = "Allowed in IDNA2008 (International Label)."
 
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
@@ -17069,6 +17077,16 @@ def inspect_character(event):
                 forensic_report = None
         
         base_char_data["forensic_report"] = forensic_report
+
+        # [SYNC PATCH] Cluster vs. Atomic Reality
+        # If the CLUSTER is mutable (e.g. Emoji losing VS16), we must override the 
+        # Atomic Narrative (which might say "Stable" for the base char).
+        if forensic_report and is_mutable:
+            # Find and patch the "Structure" highlight
+            for h in forensic_report.get("highlights", []):
+                if h["label"] == "Structure":
+                    h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
+                    break
 
         comp_cat = cluster_identity.get("max_risk_cat", cat_short)
         
