@@ -3791,6 +3791,8 @@ class ForensicExplainer:
             "lenses": {}, "context": []     
         }
 
+        layout_notes = []
+
         # --- A. IDENTITY & PROVENANCE ---
         age = rec.get("age", "NA")
         blk = rec.get("blk", "Unknown Block")
@@ -4407,8 +4409,12 @@ class ForensicExplainer:
                 text_status = "NOTE"
                 text_msg = "Pictographic (Emoji). Rendering varies by platform/font."
             else:
-                if gc_code.startswith("N"):
-                    text_msg = "Standard digit/number; also used as a base in emoji keycap sequences."
+                if gc_code == "Nd":
+                    text_msg = "Standard Decimal Digit (0-9). Safe for numeric parsing."
+                elif gc_code.startswith("N"):
+                    # Catch No (Other Number) and Nl (Letter Number) for ⓼, ½
+                    text_status = "NOTE"
+                    text_msg = "Numeric Symbol (Non-Decimal). Valid text, but distinct from standard 0-9 digits (Parser Risk)."
                 else:
                     text_msg = "Text character. Can participate in emoji sequences."
 
