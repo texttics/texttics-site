@@ -16963,7 +16963,14 @@ def inspect_character(event):
             "lb": lb_val, # UAX #14
             "ea": ea_val, # UAX #11
             "dt": dt_val, # [Physics] Canonical vs Compat
-            "line_break": lb_val # Legacy compat
+            "line_break": lb_val # Legacy compat,
+
+            "ghosts": ghosts,
+            "is_ascii": (cp_base <= 0x7F),
+            "is_invisible": (cp_base in INVIS_TABLE_KEYS), # Assuming this global exists
+            "lookalikes_data": rec.get("confusables", []), # Use rec for speed
+            "components": _compute_cluster_identity(target_char),
+            "stack_msg": None # Populated if Zalgo detected
         }
 
         # [SOTA PATCH] Force Physics consistency
