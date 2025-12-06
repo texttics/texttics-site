@@ -3759,9 +3759,12 @@ class ForensicExplainer:
              return {
                 "identity": "Unknown Code Point",
                 "security": {"level": "UNKNOWN", "verdict": "No forensic record found.", "badges": ["NO-DATA"]},
+                 "props": [],
                 "highlights": [], "lenses": {}, "context": []
             }
-
+        
+        props = rec.get("props", [])
+        
         # 2. Initialize Report Structure
         report = {
             "identity": "",
@@ -16503,6 +16506,8 @@ def inspect_character(event):
             "line_break": lb_prop,
             "word_break": wb_prop,
             "grapheme_break": gb_prop,
+
+            "props": forensic_report.get("props", []) if forensic_report else [],
             
             # --- Forensic Encodings ---
             "utf8": utf8_hex, 
