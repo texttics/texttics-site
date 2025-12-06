@@ -7645,6 +7645,120 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
         "skeleton_map": skeleton_map
     }
 
+def compute_physics_state(data, raw_props):
+    """
+    [Block 6] SOTA Physics Engine (V8.0 - Final).
+    Pure functional analysis. Returns Enums/Syndromes. 
+    Zero UI logic, Zero Policy.
+    """
+    # --- 1. DEFINE SPEC TABLES (The Laws) ---
+    # UAX #14: Line Breaking Classes that prevent wrapping
+    WRAP_SUPPRESSORS = {"GL", "WJ", "ZW", "CM", "QU"} 
+    # UTS #18: Line Terminators (subset relevant to regex parsing risks)
+    REGEX_TERMINATORS = {"BK", "CR", "LF", "NL", "ZW"} 
+    
+    phys = {
+        "severity": 0,
+        "syndromes": [],
+        # Raw States (Enums)
+        "vis_state": "PASS",
+        "struct_state": "ATOMIC",
+        "ident_state": "UNIQUE",
+        "parse_state": "SAFE",
+        # Detailed Attributes
+        "dt_type": None,
+        "width_class": "N"
+    }
+    
+    # --- 2. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
+    is_inv = data.get('is_invisible')
+    gc = data.get('category_short', 'Cn')
+    lb = data.get('lb', 'XX') # [FIX: Matched Block 10 key]
+    ea = data.get('ea', 'N')
+    
+    phys['width_class'] = ea
+    
+    if "Bidi_Control" in raw_props:
+        phys['vis_state'] = "CONTROL"
+        phys['severity'] = max(phys['severity'], 4)
+        phys['syndromes'].append("BIDI_WEAPON")
+        
+    elif is_inv:
+        if "Join_Control" in raw_props:
+            phys['vis_state'] = "FORMAT"
+            phys['severity'] = max(phys['severity'], 2)
+            phys['syndromes'].append("JOINER")
+        elif "Variation_Selector" in raw_props:
+            phys['vis_state'] = "FORMAT"
+        elif "Default_Ignorable_Code_Point" in raw_props:
+            phys['vis_state'] = "HIDDEN"
+            phys['severity'] = max(phys['severity'], 3)
+            phys['syndromes'].append("INVISIBLE")
+        else:
+            phys['vis_state'] = "HIDDEN"
+            phys['severity'] = max(phys['severity'], 2)
+            
+    elif not data['is_ascii']:
+        phys['vis_state'] = "EXTENDED"
+        phys['severity'] = max(phys['severity'], 1)
+
+    # Layout Physics (UAX #14 / #11)
+    if lb in WRAP_SUPPRESSORS:
+        phys['syndromes'].append("WRAP_SUPPRESSION")
+        if phys['severity'] < 2: phys['severity'] = 2
+        
+    if ea == "A":
+        phys['syndromes'].append("AMBIG_WIDTH")
+    elif ea in ("F", "W"):
+        phys['syndromes'].append("FULL_WIDTH")
+
+    # --- 3. FACET: STRUCTURE (UAX #15) ---
+    ghosts = data.get('ghosts')
+    if ghosts and (ghosts['raw'] != ghosts['nfkc']):
+        dt = data.get('dt')
+        phys['dt_type'] = dt
+        
+        if dt:
+            phys['struct_state'] = "MUTABLE"
+            phys['severity'] = max(phys['severity'], 2)
+            phys['syndromes'].append("COMPAT_ARTIFACT")
+        else:
+            phys['struct_state'] = "EQUIV"
+            
+    elif len(data.get('components', [])) > 1:
+        phys['struct_state'] = "COMPOSITE"
+        if data.get('stack_msg'):
+             phys['severity'] = max(phys['severity'], 2)
+
+    # --- 4. FACET: IDENTITY (UTS #39 / UTR #25) ---
+    lookalikes = len(data.get('lookalikes_data', []))
+    
+    if "Math" in raw_props and gc in ("Lu", "Ll"):
+        phys['ident_state'] = "MATH"
+        phys['severity'] = max(phys['severity'], 2)
+        phys['syndromes'].append("MATH_SPOOF")
+    elif lookalikes > 0:
+        phys['ident_state'] = "NOTE"
+
+    # --- 5. FACET: PARSING (UTS #18) ---
+    # Strict regex physics
+    is_line_term = gc in ("Zl", "Zp") or lb in REGEX_TERMINATORS
+    
+    if is_line_term:
+        if not data['is_ascii']: # Ignore standard CR/LF/NL to reduce noise in basic text
+             phys['parse_state'] = "BREAK"
+             phys['severity'] = max(phys['severity'], 3)
+             phys['syndromes'].append("REGEX_KRYPTONITE")
+             
+    elif "Pattern_White_Space" in raw_props and not data['is_ascii']:
+        phys['parse_state'] = "WS-RISK"
+        phys['severity'] = max(phys['severity'], 2)
+        
+    elif "Pattern_Syntax" in raw_props and not data['is_ascii']:
+         phys['parse_state'] = "SYNTAX"
+
+    return phys
+
 def analyze_signal_processor_state(data):
     """
     Forensic Matrix V8.1 (Physics/Policy Bridge).
@@ -8393,120 +8507,6 @@ def analyze_delimited_topology(t: str) -> dict:
         "evidence_injections": list(set(injection_rows))[:10],
         "evidence_drift": drift_cols[:5] # Columns with dirty data
     }
-
-def compute_physics_state(data, raw_props):
-    """
-    [Block 6] SOTA Physics Engine (V8.0 - Final).
-    Pure functional analysis. Returns Enums/Syndromes. 
-    Zero UI logic, Zero Policy.
-    """
-    # --- 1. DEFINE SPEC TABLES (The Laws) ---
-    # UAX #14: Line Breaking Classes that prevent wrapping
-    WRAP_SUPPRESSORS = {"GL", "WJ", "ZW", "CM", "QU"} 
-    # UTS #18: Line Terminators (subset relevant to regex parsing risks)
-    REGEX_TERMINATORS = {"BK", "CR", "LF", "NL", "ZW"} 
-    
-    phys = {
-        "severity": 0,
-        "syndromes": [],
-        # Raw States (Enums)
-        "vis_state": "PASS",
-        "struct_state": "ATOMIC",
-        "ident_state": "UNIQUE",
-        "parse_state": "SAFE",
-        # Detailed Attributes
-        "dt_type": None,
-        "width_class": "N"
-    }
-    
-    # --- 2. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
-    is_inv = data.get('is_invisible')
-    gc = data.get('category_short', 'Cn')
-    lb = data.get('lb', 'XX') # [FIX: Matched Block 10 key]
-    ea = data.get('ea', 'N')
-    
-    phys['width_class'] = ea
-    
-    if "Bidi_Control" in raw_props:
-        phys['vis_state'] = "CONTROL"
-        phys['severity'] = max(phys['severity'], 4)
-        phys['syndromes'].append("BIDI_WEAPON")
-        
-    elif is_inv:
-        if "Join_Control" in raw_props:
-            phys['vis_state'] = "FORMAT"
-            phys['severity'] = max(phys['severity'], 2)
-            phys['syndromes'].append("JOINER")
-        elif "Variation_Selector" in raw_props:
-            phys['vis_state'] = "FORMAT"
-        elif "Default_Ignorable_Code_Point" in raw_props:
-            phys['vis_state'] = "HIDDEN"
-            phys['severity'] = max(phys['severity'], 3)
-            phys['syndromes'].append("INVISIBLE")
-        else:
-            phys['vis_state'] = "HIDDEN"
-            phys['severity'] = max(phys['severity'], 2)
-            
-    elif not data['is_ascii']:
-        phys['vis_state'] = "EXTENDED"
-        phys['severity'] = max(phys['severity'], 1)
-
-    # Layout Physics (UAX #14 / #11)
-    if lb in WRAP_SUPPRESSORS:
-        phys['syndromes'].append("WRAP_SUPPRESSION")
-        if phys['severity'] < 2: phys['severity'] = 2
-        
-    if ea == "A":
-        phys['syndromes'].append("AMBIG_WIDTH")
-    elif ea in ("F", "W"):
-        phys['syndromes'].append("FULL_WIDTH")
-
-    # --- 3. FACET: STRUCTURE (UAX #15) ---
-    ghosts = data.get('ghosts')
-    if ghosts and (ghosts['raw'] != ghosts['nfkc']):
-        dt = data.get('dt')
-        phys['dt_type'] = dt
-        
-        if dt:
-            phys['struct_state'] = "MUTABLE"
-            phys['severity'] = max(phys['severity'], 2)
-            phys['syndromes'].append("COMPAT_ARTIFACT")
-        else:
-            phys['struct_state'] = "EQUIV"
-            
-    elif len(data.get('components', [])) > 1:
-        phys['struct_state'] = "COMPOSITE"
-        if data.get('stack_msg'):
-             phys['severity'] = max(phys['severity'], 2)
-
-    # --- 4. FACET: IDENTITY (UTS #39 / UTR #25) ---
-    lookalikes = len(data.get('lookalikes_data', []))
-    
-    if "Math" in raw_props and gc in ("Lu", "Ll"):
-        phys['ident_state'] = "MATH"
-        phys['severity'] = max(phys['severity'], 2)
-        phys['syndromes'].append("MATH_SPOOF")
-    elif lookalikes > 0:
-        phys['ident_state'] = "NOTE"
-
-    # --- 5. FACET: PARSING (UTS #18) ---
-    # Strict regex physics
-    is_line_term = gc in ("Zl", "Zp") or lb in REGEX_TERMINATORS
-    
-    if is_line_term:
-        if not data['is_ascii']: # Ignore standard CR/LF/NL to reduce noise in basic text
-             phys['parse_state'] = "BREAK"
-             phys['severity'] = max(phys['severity'], 3)
-             phys['syndromes'].append("REGEX_KRYPTONITE")
-             
-    elif "Pattern_White_Space" in raw_props and not data['is_ascii']:
-        phys['parse_state'] = "WS-RISK"
-        phys['severity'] = max(phys['severity'], 2)
-        
-    elif "Pattern_Syntax" in raw_props and not data['is_ascii']:
-         phys['parse_state'] = "SYNTAX"
-
-    return phys
 
 # ===============================================
 # BLOCK 7. THE AUDITORS (JUDGMENT LAYER)
