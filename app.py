@@ -16972,6 +16972,12 @@ def inspect_character(event):
         macro_type = _classify_macro_type(cp_base, comp_cat, id_status, comp_mask, f_level)
         
         ghosts = _get_ghost_chain(base_char)
+
+        # Heuristic for missing DB data
+        # If Normalization changes (Raw != NFKC) but dt is missing,
+        # we force "Compat" so the Physics Engine correctly flags it as MUTABLE.
+        if base_char_data['dt'] is None and ghosts['raw'] != ghosts['nfkc']:
+             base_char_data['dt'] = "Compat"
         
         bidi_short = unicodedata.bidirectional(base_char)
         wb_prop = _find_in_ranges(cp_base, "WordBreak") or "Other"
