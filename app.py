@@ -4050,13 +4050,24 @@ class ForensicExplainer:
             })
 
         # 4. Normalization Structure (SOTA Wired)
-        # We defer to the Physics Engine's state, which handles Canonical vs Compat
-        # logic more robustly (e.g. for Fraction ½).
-        # We reconstruct the narrative from the raw properties to ensure alignment.
         
+        # [PATCH] PHYSICS OVERRIDE: Calculate Truth Locally
+        # The DB might be stale or missing specific dt tags. We trust the runtime engine.
+        try:
+            char_raw = chr(cp_int)
+            nfkc_val = unicodedata.normalize('NFKC', char_raw)
+            is_physically_unstable = (char_raw != nfkc_val)
+        except:
+            is_physically_unstable = False
+
         norm_notes = []
         nfkc_qc = rec.get("nfkc_qc") or "Y"
         dt = rec.get("dt")
+        
+        # If Physics says Unstable but DB says Stable -> Trust Physics
+        # This fixes ⓼ being called "Stable"
+        if is_physically_unstable and not dt:
+            dt = "Compat"
         
         # Check raw decomposition change (Physics Truth)
         # Note: We need 'ghosts' data here, but 'explain' doesn't have it.
@@ -4350,11 +4361,24 @@ class ForensicExplainer:
              dns_status = "WARN"
              dns_msg = "Identity Loss. Mapped under UTS #46 (Visual Case Fold). User sees one glyph; network receives another."
         
-        # 8. Valid (Conditional Risk)
-        elif idna == "valid":
+        # 8. Valid / Fall-through (Conditional Risk)
+        # Catches 'valid', 'PVALID', or any other allowed status that reached here
+        else:
+            # Check 1: Confusables (Cyrillic 'a', Greek 'A')
             if confusables and not is_ascii:
                 dns_status = "WARN"
-                dns_msg = "Valid IDNA2008, but high Homograph Attack risk (Visual Spoofing)."
+                dns_msg = f"Valid IDNA2008, but High Homograph Risk. Visually mimics {len(confusables)} other character(s)."
+            
+            # Check 2: Compatibility Fallback (⓼)
+            # If we forced dt="Compat" earlier, we must warn here if we haven't already.
+            elif dt:
+                dns_status = "WARN"
+                dns_msg = f"Identity Loss. Compatibility mapping ({dt}). The visual style is lost in IDNA/NFKC normalization."
+            
+            # Check 3: ASCII Safety
+            elif not is_ascii and dns_status == "SAFE":
+                 # Optional: Add a note for non-ASCII that isn't a direct confusable
+                 dns_msg = "Allowed in IDNA2008 (International Label)."
 
         report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
         
