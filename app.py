@@ -7647,8 +7647,8 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V8.0 (Physics/Policy Bridge).
-    Maps raw physical states to UI semantics (Classes, Icons, Verdicts).
+    Forensic Matrix V8.1 (Physics/Policy Bridge).
+    Maps raw physical states to UI semantics.
     """
     # 1. Run Pure Physics
     raw_props = data.get('props', [])
@@ -7659,7 +7659,7 @@ def analyze_signal_processor_state(data):
     security = report.get('security', {})
     policy_verdict = security.get('verdict', "")
     policy_level_str = security.get('level', 'UNKNOWN')
-    policy_badges = security.get('badges', []) # [FIX: Defined variable]
+    policy_badges = security.get('badges', [])
 
     level_map = {"SAFE": 0, "NOTE": 1, "WARN": 2, "SUSPICIOUS": 3, "CRITICAL": 4, "UNKNOWN": 0}
     policy_level = level_map.get(policy_level_str, 0)
@@ -7677,9 +7677,7 @@ def analyze_signal_processor_state(data):
     level_text, header_cls = header_config.get(final_level, header_config[0])
 
     # 4. Map Physics to UI Facets
-    # Helper to build facet dict
     def build_facet(state, severity_hint, detail, icon):
-        # Map severity hint to color class
         if severity_hint >= 4: cls = "risk-crit"
         elif severity_hint >= 2: cls = "risk-warn"
         elif severity_hint >= 1: cls = "risk-info"
@@ -7734,12 +7732,11 @@ def analyze_signal_processor_state(data):
     elif look_count > 0:
         i_det = f"{look_count} Lookalikes"; i_sev = 1; i_state = "NOTE"
     
-    # Policy Override for Identity (Mixed Script)
     if "SPOOF" in policy_badges and final_level >= 3:
         i_state = "AMBIGUOUS"; i_sev = 2; i_det = "High Confusability"; i_icon = "alert-triangle"
 
     ident_facet = build_facet(i_state, i_sev, i_det, i_icon)
-
+    
     # 5. Generate Verdict Text
     if "BIDI_WEAPON" in phys['syndromes']: phys_text = "Directional Override"
     elif "INVISIBLE" in phys['syndromes']: phys_text = "Invisible Control"
@@ -16922,11 +16919,10 @@ def inspect_character(event):
         cat_short = unicodedata.category(base_char)
         
         # Extract Decomposition Type for UAX #15 Precision
-        # We use the existing lookup helper to find the property value.
         dt_val = _find_in_ranges(cp_base, "DecompositionType") 
-        if dt_val == "None": dt_val = None # Normalize 'None' string to None type
+        if dt_val == "None": dt_val = None 
 
-        # We need these for the Layout & Parsing Physics facets.
+        # [SOTA Fix] Fetch Deep Physics Properties
         lb_val = _find_in_ranges(cp_base, "LineBreak") or "XX"
         ea_val = _find_in_ranges(cp_base, "EastAsianWidth") or "N"
 
@@ -16938,10 +16934,9 @@ def inspect_character(event):
             "bidi": unicodedata.bidirectional(base_char),
             "age": _find_in_ranges(cp_base, "Age") or "N/A",
             "lb": lb_val, # UAX #14
-            "ea": ea_val, # UAX #11
-            "dt": dt_val, # [Physics] Used for Canonical vs Compat distinction
-            # Redundant keys for legacy UI compatibility (optional, but safe)
-            "line_break": lb_val
+            "ea": ea_val, # UAX #11 [CRITICAL FIX]
+            "dt": dt_val, # [Physics] Canonical vs Compat
+            "line_break": lb_val # Legacy compat
         }
 
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
