@@ -16931,8 +16931,6 @@ def inspect_character(event):
         forensic_report = None
         if FORENSIC_EXPLAINER: 
             forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
-
-        ghosts = _get_ghost_chain(base_char)
         
         cat_short = unicodedata.category(base_char)
         
@@ -16973,7 +16971,7 @@ def inspect_character(event):
             "stack_msg": None # Populated if Zalgo detected
         }
 
-        # [SOTA PATCH] Force Physics consistency
+        # Force Physics consistency
         # If the text changes (⓼ -> 8) but dt was missing/None, FORCE it to "Compat".
         # This guarantees the Physics Matrix reports "MUTABLE", matching the Explainer.
         if base_char_data['ghosts'] and (base_char_data['ghosts']['raw'] != base_char_data['ghosts']['nfkc']):
