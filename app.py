@@ -16930,29 +16930,34 @@ def inspect_character(event):
         
         cat_short = unicodedata.category(base_char)
         
-        # Extract Decomposition Type for UAX #15 Precision
-        # Try multiple keys if the data store naming varies
-        dt_val = _find_in_ranges(cp_base, "Decomposition_Type") or _find_in_ranges(cp_base, "DecompositionType")
-        
-        # Normalize explicit "None" strings from raw text files to Python None
-        if dt_val in ("None", "none", ""): 
-            dt_val = None
+        # Hydrate Physics from the Knowledge Base (The Explainer)
+        # We assume the Explainer's DB is the "Source of Truth" since it has the correct flags.
+        rec = {}
+        if FORENSIC_EXPLAINER and hasattr(FORENSIC_EXPLAINER, 'db'):
+            rec = FORENSIC_EXPLAINER.db.get(hex_str, {})
 
-        # Fetch Deep Physics Properties
-        lb_val = _find_in_ranges(cp_base, "LineBreak") or "XX"
-        ea_val = _find_in_ranges(cp_base, "EastAsianWidth") or "N"
+        # Priority 1: Get DT/LB/EA from the Knowledge Base (Fast & Accurate)
+        # Priority 2: Fallback to raw range search (Slow/Potentially missing keys)
+        dt_val = rec.get("dt")
+        if dt_val is None:
+             dt_val = _find_in_ranges(cp_base, "Decomposition_Type") or _find_in_ranges(cp_base, "DecompositionType")
+        
+        if dt_val in ("None", "none", ""): dt_val = None
+
+        lb_val = rec.get("lb") or _find_in_ranges(cp_base, "LineBreak") or "XX"
+        ea_val = rec.get("ea") or _find_in_ranges(cp_base, "EastAsianWidth") or "N"
 
         base_char_data = {
-            "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
-            "script": _find_in_ranges(cp_base, "Scripts") or "Common",
+            "block": rec.get("blk") or _find_in_ranges(cp_base, "Blocks") or "N/A",
+            "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
             "bidi": unicodedata.bidirectional(base_char),
-            "age": _find_in_ranges(cp_base, "Age") or "N/A",
-            "lb": lb_val, # UAX #14
-            "ea": ea_val, # UAX #11 [CRITICAL FIX]
-            "dt": dt_val, # [Physics] Canonical vs Compat
-            "line_break": lb_val # Legacy compat
+            "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
+            "lb": lb_val, # UAX #14 (Passed to Physics)
+            "ea": ea_val, # UAX #11 (Passed to Physics)
+            "dt": dt_val, # UAX #15 (Passed to Physics)
+            "line_break": lb_val # Legacy UI compat
         }
 
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
