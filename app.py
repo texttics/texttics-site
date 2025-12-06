@@ -3868,8 +3868,9 @@ class ForensicExplainer:
                      report["security"]["level"] = "NOTE"
                      report["security"]["verdict"] = "Protocol Violation. Strictly banned in network hostnames (IDNA2008)."
                  else:
-                     # Append context if space allows, or rely on badges
-                     pass 
+                     # We are already WARN/CRIT. Append context if meaningful.
+                     if "Protocol Violation" not in report["security"]["verdict"]:
+                          report["security"]["verdict"] += " Also banned in IDNA2008." 
 
         elif idna == "deviation":
             report["security"]["badges"].append("DEVIATION")
@@ -4066,9 +4067,14 @@ class ForensicExplainer:
             if gc_code in ("Zl", "Zp"):
                 code_status = "CRITICAL"
                 code_msg = "Line Break Spoofing Risk (UTS #55). Visually splits lines but parsed as whitespace."
+                report["security"]["badges"].append("SPOOF")
             else:
                 code_status = "NOTE"
                 code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
+
+            # Apply the calculated status and message
+            report["security"]["level"] = self._escalate(report["security"]["level"], code_status)
+            sec_notes.append(code_msg)
 
         # B. Identifier Type Context (Only relevant if NOT Syntax)
         elif id_stat == "Allowed" and id_type:
