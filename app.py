@@ -4127,7 +4127,11 @@ class ForensicExplainer:
             if is_ascii:
                 sec_notes.append("Standard ASCII baseline for spoofing checks")
             elif "Recommended" in (t.capitalize() for t in id_type):
-                sec_notes.append("Stable international identifier character")
+                # Don't call it "Recommended" if it's highly confusable
+                if report["security"]["level"] in ("SUSPICIOUS", "CRITICAL"):
+                    sec_notes.append("Technically allowed, but High Spoofing Risk (Confusable Cluster).")
+                else:
+                    sec_notes.append("Stable international identifier character")
 
         # D. Restriction Forensics (The "Why")
         elif id_stat == "Restricted":
@@ -4148,16 +4152,17 @@ class ForensicExplainer:
         lb_code = rec.get("lb", "XX")
         lb_name = self._get_vocab("lb", lb_code).replace("_", " ")
         ea_code = rec.get("ea", "N")
-        vo_code = rec.get("vo", "R") # Vertical Orientation
+        vo_code = rec.get("vo", "R")
 
         layout_notes = []
 
         # A. Line Break (Wrapping Logic)
-        if lb_code in ("AI", "XX"):
-            # Ambiguous/Unknown breaks can be used to hide payloads off-screen
+        if lb_code == "BN":
+            # Explicitly identify Boundary Neutral (RLO/LRO)
+            layout_notes.append(f"Line Break: Boundary Neutral (Ignored during wrapping; behaves like format control)")
+        elif lb_code in ("AI", "XX"):
             layout_notes.append(f"Line Break: {lb_name} (Context-dependent wrapping)")
         elif lb_code in ("GL", "WJ", "ZW", "CM"):
-            # Glue characters prevent breaks, creating "Long Line" DoS risks
             layout_notes.append(f"Line Break: {lb_name} (Prohibits wrapping)")
         else:
             layout_notes.append(f"Line Break: {lb_name}")
@@ -4300,8 +4305,15 @@ class ForensicExplainer:
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
+        # 0. Bidi & Context Rules (Priority Check)
+        # Bidi controls are technically Disallowed in IDNA, but sometimes pass as "Ignored".
+        # We must flag them explicitly as CRITICAL to override any "Safe" assumptions.
+        if "Bidi_Control" in props:
+            dns_status = "CRITICAL"
+            dns_msg = "Protocol Violation. Bidi controls (RLO, LRO, etc.) are strictly banned in International Domain Names."
+
         # 1. Disallowed (Hard Ban)
-        if idna == "disallowed":
+        elif idna == "disallowed":
             dns_status = "CRITICAL"
             dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
         
@@ -16919,10 +16931,14 @@ def inspect_character(event):
         cat_short = unicodedata.category(base_char)
         
         # Extract Decomposition Type for UAX #15 Precision
-        dt_val = _find_in_ranges(cp_base, "DecompositionType") 
-        if dt_val == "None": dt_val = None 
+        # Try multiple keys if the data store naming varies
+        dt_val = _find_in_ranges(cp_base, "Decomposition_Type") or _find_in_ranges(cp_base, "DecompositionType")
+        
+        # Normalize explicit "None" strings from raw text files to Python None
+        if dt_val in ("None", "none", ""): 
+            dt_val = None
 
-        # [SOTA Fix] Fetch Deep Physics Properties
+        # Fetch Deep Physics Properties
         lb_val = _find_in_ranges(cp_base, "LineBreak") or "XX"
         ea_val = _find_in_ranges(cp_base, "EastAsianWidth") or "N"
 
