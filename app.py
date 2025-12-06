@@ -7647,14 +7647,16 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def analyze_signal_processor_state(data):
     """
-    Forensic Matrix V3.3: Hardened Physics/Policy Split.
+    Forensic Matrix V5.0 (SOTA Physics).
+    Implements UAX #15 (Normalization Taxonomy) and UTR #36 (Layout Physics).
+    Separates "Canonical Equivalence" (Safe) from "Compatibility Mutation" (Risk).
     """
     # 1. Unpack Context
     report = data.get('forensic_report') or {}
     security = report.get('security', {})
-    raw_props = report.get('props', []) # [NEW] Read raw props
+    raw_props = report.get('props', [])
     
-    # Extract Policy Signals
+    # Extract Policy Signals (Used ONLY for the Footer/Header, NOT Physics Facets)
     policy_level_str = security.get('level', 'UNKNOWN')
     policy_badges = security.get('badges', [])
     policy_verdict = security.get('verdict', "")
@@ -7674,45 +7676,69 @@ def analyze_signal_processor_state(data):
     
     if stack_count > 5: level = max(level, 3)
     
-    # --- 3. FACET CALCULATIONS ---
-    # A. VISIBILITY
+    # --- 3. FACET CALCULATIONS (PURE PHYSICS) ---
+    
+    # A. VISIBILITY (Visual Physics)
     vis_state = "PASS"
     vis_class = "risk-ok"
     vis_detail = "Standard Visible"
     vis_icon = "eye"
     
     if data.get('is_invisible'):
-        vis_state = "HIDDEN"
-        vis_class = "risk-crit"
-        vis_detail = "Zero-Width / Control"
-        vis_icon = "eye-off"
+        if "Bidi_Control" in raw_props:
+            vis_state = "CONTROL"
+            vis_class = "risk-crit"
+            vis_detail = "Flow Override"
+            vis_icon = "move"
+        elif "Join_Control" in raw_props:
+            vis_state = "FORMAT"
+            vis_class = "risk-warn"
+            vis_detail = "Layout Glue"
+            vis_icon = "minimize-2"
+        else:
+            vis_state = "HIDDEN"
+            vis_class = "risk-crit"
+            vis_detail = "Zero-Width Void"
+            vis_icon = "eye-off"
     elif not data['is_ascii']:
         vis_state = "EXTENDED" 
         vis_class = "risk-info"
         vis_detail = "Unicode Range"
         vis_icon = "globe"
 
-    # B. STRUCTURE
+    # B. STRUCTURE (Normalization Physics - UAX #15)
     struct_state = "ATOMIC"
     struct_class = "risk-ok"
     struct_detail = "Single Point"
     struct_icon = "box"
     
     ghosts = data.get('ghosts')
-    is_norm_unstable = ghosts and (ghosts['raw'] != ghosts['nfkc'])
-    
-    if is_norm_unstable:
-        struct_state = "MUTABLE"
-        struct_class = "risk-warn" 
-        struct_detail = "Changes in NFKC"
-        struct_icon = "refresh-cw"
+    # Physics: Check for Physical Change (Raw != NFKC)
+    if ghosts and (ghosts['raw'] != ghosts['nfkc']):
+        dt_val = data.get('dt') # [Physics] Hydrated from DB
+        
+        if dt_val:
+            # Compatibility Mapping (e.g., ⓼ -> 8)
+            # This is a Transformation/Data Loss event.
+            struct_state = "MUTABLE"
+            struct_class = "risk-warn" 
+            struct_detail = f"Compat: {dt_val}"
+            struct_icon = "refresh-cw"
+        else:
+            # Canonical Mapping (e.g., A + ´ -> Á)
+            # This is Equivalence. Logically the same character. Safe.
+            struct_state = "EQUIV"
+            struct_class = "risk-info"
+            struct_detail = "Canonical Comp."
+            struct_icon = "copy"
+            
     elif len(data['components']) > 1:
         struct_state = "COMPOSITE"
         struct_class = "risk-info"
         struct_detail = f"{len(data['components'])} Components"
         struct_icon = "layers"
 
-    # C. IDENTITY
+    # C. IDENTITY (Collision Physics - UTS #39)
     ident_state = "UNIQUE"
     ident_class = "risk-ok"
     ident_detail = "No Lookalikes"
@@ -7724,6 +7750,10 @@ def analyze_signal_processor_state(data):
         ident_class = "risk-info"
         ident_detail = f"{lookalikes} Lookalikes"
     
+    # Physics Upgrade: Mixed-Script Confusables
+    # We infer "High Confusability" from Policy Badges ONLY if strictly necessary,
+    # but ideally we should calculate 'is_mixed_script' here.
+    # For now, sticking to the Badge Bridge is acceptable for Stage 1.5.
     if "SPOOF" in policy_badges and level >= 3:
         ident_state = "AMBIGUOUS"
         ident_class = "risk-warn"
@@ -7740,34 +7770,37 @@ def analyze_signal_processor_state(data):
     }
     level_text, header_cls = header_config.get(level, header_config[0])
     
+    # Refined Physics Verdicts (What is it?)
     verdict_text = "Standard Composition"
     
-    if is_norm_unstable:
-        verdict_text = "Compatibility Mapping" 
-    elif data.get('is_invisible'):
-        if "BIDI" in policy_badges: verdict_text = "Directional Control"
-        elif "TAG" in policy_badges: verdict_text = "Protocol Tag"
-        else: verdict_text = "Invisible Format Control"
+    if struct_state == "MUTABLE":
+        verdict_text = "Compatibility Artifact" 
+    elif struct_state == "EQUIV":
+        verdict_text = "Canonical Composition"
+    elif vis_state == "HIDDEN":
+        verdict_text = "Invisible Control"
+    elif vis_state == "CONTROL":
+        verdict_text = "Directional Force"
     elif stack_count > 2:
         verdict_text = "High-Density Cluster"
     elif not data['is_ascii']:
         if data.get('macro_type') == "NUMBER":
             verdict_text = "Non-ASCII Numeric"
-        # [FIX] Robust check using raw props
         elif "Emoji" in raw_props or "Extended_Pictographic" in raw_props:
              verdict_text = "Pictographic Symbol"
         else:
             verdict_text = "Extended Script Character"
 
     # --- 5. Footer Configuration ---
+    # Default: Show Physics
     footer_label = "ANALYSIS"
     footer_class = "footer-neutral"
     footer_text = verdict_text 
     
+    # Override: Show Policy if Risk is High
     if level >= 2:
         footer_label = "VERDICT"
         footer_class = "footer-warn" if level < 4 else "footer-crit"
-        # [FIX] Fallback logic to prevent empty yellow boxes
         footer_text = policy_verdict or verdict_text
     
     return {
@@ -16820,13 +16853,20 @@ def inspect_character(event):
             forensic_report = FORENSIC_EXPLAINER.explain(hex_str)
         
         cat_short = unicodedata.category(base_char)
+        
+        # Extract Decomposition Type for UAX #15 Precision
+        # We use the existing lookup helper to find the property value.
+        dt_val = _find_in_ranges(cp_base, "DecompositionType") 
+        if dt_val == "None": dt_val = None # Normalize 'None' string to None type
+
         base_char_data = {
             "block": _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
             "category_short": cat_short,
             "bidi": unicodedata.bidirectional(base_char),
-            "age": _find_in_ranges(cp_base, "Age") or "N/A"
+            "age": _find_in_ranges(cp_base, "Age") or "N/A",
+            "dt": dt_val # [Physics] Used for Canonical vs Compat distinction
         }
 
         cluster_identity = _compute_cluster_identity(target_cluster, base_char_data)
