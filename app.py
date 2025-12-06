@@ -4047,20 +4047,24 @@ class ForensicExplainer:
                 "text": f"{num_desc}. Value: {nv}.{safety_note}"
             })
 
-        # 4. Normalization Structure (Forensic Detail)
-        nfkc_qc = rec.get("nfkc_qc") or "Y"
-        dt = rec.get("dt") # Decomposition Type (e.g., 'Compat', 'Super')
+        # 4. Normalization Structure (SOTA Wired)
+        # We defer to the Physics Engine's state, which handles Canonical vs Compat
+        # logic more robustly (e.g. for Fraction ½).
+        # We reconstruct the narrative from the raw properties to ensure alignment.
         
         norm_notes = []
+        nfkc_qc = rec.get("nfkc_qc") or "Y"
+        dt = rec.get("dt")
         
-        if nfkc_qc == "Y":
-            norm_notes.append("Stable. Preserves identity under NFKC normalization")
-        else:
-            # [FORENSIC UPGRADE] Explain the mechanics of the change
-            norm_notes.append("Unstable under NFKC")
-            
-            # Map technical types to human concepts
-            type_map = {
+        # Check raw decomposition change (Physics Truth)
+        # Note: We need 'ghosts' data here, but 'explain' doesn't have it.
+        # We rely on 'dt' presence + 'nfkc_qc' as a proxy for the Physics logic.
+        
+        if nfkc_qc == "Y" and not dt:
+             norm_notes.append("Stable. Preserves identity under NFKC normalization")
+        elif dt:
+             # Compatibility (Physics: MUTABLE)
+             type_map = {
                 "Can": "Canonical (Equivalence)",
                 "Com": "Compatibility (Formatting)",
                 "Compat": "Compatibility",
@@ -4074,12 +4078,11 @@ class ForensicExplainer:
                 "Square": "Squared Layout",
                 "Fraction": "Fractional Composition"
             }
-            
-            if dt:
-                human_type = type_map.get(dt, dt.capitalize())
-                norm_notes.append(f"Decomposes via {human_type}")
-            else:
-                norm_notes.append("Decomposes to base characters")
+             human_type = type_map.get(dt, dt.capitalize())
+             norm_notes.append(f"Unstable under NFKC. Compatibility mapping ({human_type})")
+        else:
+             # Canonical (Physics: EQUIV)
+             norm_notes.append("Canonically Equivalent. Decomposes to base characters")
 
         report["highlights"].append({
             "label": "Structure",
@@ -4149,13 +4152,16 @@ class ForensicExplainer:
         })
         
         # 6. Layout (Forensic Geometry & Spoofing Risks)
+        # Initialize list immediately to prevent UnboundLocalError
+        layout_notes = []
+        
         lb_code = rec.get("lb", "XX")
-        lb_name = self._get_vocab("lb", lb_code).replace("_", " ")
+        # Handle case where vocab might be missing
+        lb_raw_name = self._get_vocab("lb", lb_code) or "Unknown"
+        lb_name = lb_raw_name.replace("_", " ")
+        
         ea_code = rec.get("ea", "N")
         vo_code = rec.get("vo", "R")
-
-        layout_notes = []
-
         # A. Line Break (Wrapping Logic)
         if lb_code == "BN":
             # Explicitly identify Boundary Neutral (RLO/LRO)
@@ -4300,57 +4306,41 @@ class ForensicExplainer:
 
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
-        # Lens 2: DNS (V4.14: Deep Protocol & Context Constraints)
-        # Based on UTS #46 Version 17.0 + IDNA2008 Context Rules
+        # Lens 2: DNS (V5.0: Domain Policy)
+        # Enforces LDH (RFC 1123) for ASCII and Strict IDNA2008 for Unicode.
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
-        # 0. Bidi & Context Rules (Priority Check)
-        # Bidi controls are technically Disallowed in IDNA, but sometimes pass as "Ignored".
-        # We must flag them explicitly as CRITICAL to override any "Safe" assumptions.
-        if "Bidi_Control" in props:
-            dns_status = "CRITICAL"
-            dns_msg = "Protocol Violation. Bidi controls (RLO, LRO, etc.) are strictly banned in International Domain Names."
+        # 0. LDH Check (Letters, Digits, Hyphen) for ASCII
+        # Real hostnames cannot contain *, _, spaces, or punctuation.
+        if is_ascii:
+            is_ldh = (0x61 <= cp_val <= 0x7A) or \
+                     (0x41 <= cp_val <= 0x5A) or \
+                     (0x30 <= cp_val <= 0x39) or \
+                     (cp_val == 0x2D) # Hyphen
+            if not is_ldh:
+                dns_status = "CRITICAL"
+                dns_msg = "Protocol Violation. Not allowed in hostnames (LDH rule); implies wildcard or configuration file."
 
-        # 1. Disallowed (Hard Ban)
+        # 1. Bidi & Invisible Controls (Priority Check)
+        elif "Bidi_Control" in props or "Default_Ignorable_Code_Point" in props:
+            dns_status = "CRITICAL"
+            dns_msg = "Protocol Violation. Invisibles/Controls are strictly banned in International Domain Names (UTS #46)."
+
+        # 2. Disallowed (IDNA Hard Ban)
         elif idna == "disallowed":
             dns_status = "CRITICAL"
             dns_msg = "Protocol Violation. Strictly banned in International Domain Names (UTS #46)."
         
-        # 2. Deviation (The Transition Trap - e.g., ß, ς)
+        # 3. Deviation (The Transition Trap)
         elif idna == "deviation":
-            dns_status = "CRITICAL" # Upgraded from WARN based on UTR #36
-            dns_msg = "Protocol Schism. Resolves to DIFFERENT destinations on transitional vs nontransitional systems. Active Hijacking Risk."
+            dns_status = "CRITICAL"
+            dns_msg = "Protocol Schism. Resolves differently on transitional vs nontransitional systems (e.g. ß -> ss)."
         
-        # 3. Mapped / Ignored (Identity Mutation)
+        # 4. Mapped / Ignored
         elif idna in ("mapped", "ignored"):
-            if is_ascii:
-                # ASCII Mapping (A->a) is foundational and safe.
-                dns_status = "SAFE"
-                dns_msg = "Standard IDNA Mapping (Case-folded). Preserves logical identity."
-            elif idna == "ignored":
-                # Forensically Critical: Soft Hyphens disappear silently.
-                dns_status = "CRITICAL"
-                dns_msg = "Ignored Character. Silently removed from the label. High risk of visual spoofing (0-bit difference)."
-            else:
-                # Non-ASCII mapping (½ -> 1/2) changes the underlying string.
-                dns_status = "WARN"
-                dns_msg = "Identity Loss. Mapped under UTS #46. The user sees one glyph; the network receives a different sequence."
-        
-        # 4. Valid but Conditional (Context Rules)
-        elif idna == "valid":
-            # A. ContextJ (Joiners)
-            # ZWJ/ZWNJ are 'valid' ONLY if they satisfy specific script constraints.
-            if "Join_Control" in props:
-                dns_status = "WARN"
-                dns_msg = "Conditional Validity (ContextJ). Allowed only in specific contexts (Arabic/Indic). High spoofing risk."
-            
-            # B. Confusables (Visual Security)
-            elif confusables and not is_ascii:
-                dns_status = "WARN"
-                dns_msg = "Valid IDNA2008, but high Homograph Attack risk (Visual Spoofing)."
-
-        report["lenses"]["dns"] = {"status": dns_status, "text": dns_msg}
+             dns_status = "WARN"
+             dns_msg = "Identity Loss. Mapped under UTS #46 (Visual Case Fold). User sees one glyph; network receives another."
 
         # Lens 3: General Text (V4.11: Content Security & Rendering)
         text_status = "SAFE"
