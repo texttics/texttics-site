@@ -4306,11 +4306,12 @@ class ForensicExplainer:
         elif "Pattern_Syntax" in props:
             # Distinguish actual grammar (operators) from reserved symbols (emojis)
             if "Emoji" in props or "Extended_Pictographic" in props:
-                code_status = "WARN"
-                code_msg = "Non-Identifier Symbol. Reserved syntax; not valid in identifiers (only strings/comments)."
+                # Emojis are never identifiers, but they aren't "Syntax Risks" like operators.
+                code_status = "NOTE" 
+                code_msg = "Non-Identifier Symbol. Reserved syntax; valid in strings/comments."
             else:
                 code_status = "WARN"
-                code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters. Cannot be an identifier."
+                code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters."
         
         elif "Pattern_White_Space" in props:
             code_status = "NOTE"
