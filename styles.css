@@ -6787,7 +6787,7 @@ details.profile-section > summary:hover::marker {
     font-size: 0.95rem;
     font-weight: 800;
     text-transform: uppercase;
-    color: var(--color-text);
+    color: var(--color-text-muted) !important; /* Changed from Black to Dark Grey (#4b5563) */
     letter-spacing: -0.01em;
 }
 
