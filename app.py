@@ -15259,19 +15259,24 @@ def render_threat_analysis(threat_results, text_context=None):
 
 def render_inspector_panel(data):
     """
-    Forensic Layout v10.1: Hardened Renderer.
-    - Guards lookalikes/ghosts/components loops against non-dict items.
-    - Prevents 'string indices' errors during HTML generation.
+    Forensic Layout v10.2: Inertia Fix.
+    - Clears Footer on reset/error states to prevent stale data.
     """
     panel = document.getElementById("inspector-panel-content")
+    footer_panel = document.getElementById("inspector-forensic-footer") # [FIX] Grab reference early
+    
     if not panel: return
 
+    # State 1: Reset / Idle (End of string or empty)
     if data is None:
         panel.innerHTML = "<div class='inspector-placeholder'>Click within the text input. Properties will be shown for the character immediately to the right of the cursor.</div>"
+        if footer_panel: footer_panel.style.display = "none" # Kill inertia immediately
         return
         
+    # State 2: Error State
     if isinstance(data, dict) and "error" in data:
         panel.innerHTML = f"<p class='status-error'>{data['error']}</p>"
+        if footer_panel: footer_panel.style.display = "none" # Kill inertia immediately
         return
 
     # --- CALL THE LOGIC ENGINE ---
