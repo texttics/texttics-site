@@ -3782,7 +3782,13 @@ class ForensicExplainer:
         # 0. Safety Check
         if not FORENSIC_DB_READY:
             return self._fallback_report("System Loading...", "Forensic Database not loaded.", "NO-DB")
-
+        
+        # Derive Physics Early (THIS MUST BE HERE)
+        try: 
+            cp_int = int(hex_str, 16)  # <--- Defined here
+        except: 
+            cp_int = 0
+        
         # 1. Fetch Record
         rec = self.db.get(hex_str)
         if not rec:
