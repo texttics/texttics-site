@@ -15501,7 +15501,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6A. Lookalikes Section (Hybrid Compatible)
+    # 6A. Lookalikes Section (Hybrid & Robust)
     lookalike_html = ""
     lookalikes_list = data.get('lookalikes_data')
     
@@ -15515,30 +15515,25 @@ def render_inspector_panel(data):
             l_cp = ""
             l_script = ""
             l_name = "Confusable"
-            l_block = "Unknown"
+            l_block = ""
 
-            # Case 1: Rich Object (Dict)
-            if isinstance(item, dict):
+            # Strategy 1: Dictionary / Proxy Access
+            try:
                 l_glyph = item.get('glyph', '?')
                 l_cp = item.get('cp', '')
                 l_script = item.get('script', '')
                 l_name = item.get('name', 'Confusable')
                 l_block = item.get('block', '')
-                
-            # Case 2: Simple String (Legacy/Compressed DB)
-            elif isinstance(item, str):
-                l_glyph = item
-                # Calculate CP on the fly
-                try:
-                    l_cp = f"U+{ord(item[0]):04X}"
-                except:
-                    l_cp = "??"
-                l_script = "Sim" 
-                l_name = "Visual Lookalike"
-            
-            # Skip invalid types
-            else:
-                continue
+            except AttributeError:
+                # Strategy 2: String Fallback (Legacy DB)
+                if isinstance(item, str):
+                    l_glyph = item
+                    l_name = "Lookalike"
+                    try:
+                        l_cp = f"U+{ord(item[0]):04X}"
+                    except: pass
+                else:
+                    continue # Skip unusable data
 
             tooltip = f"{l_name} &#10;Block: {l_block}"
             
@@ -15553,6 +15548,7 @@ def render_inspector_panel(data):
             """
             chips_buffer.append(chip)
             
+        # [FIX] Only render the container if we actually generated chips
         if chips_buffer:
             grid_html = "".join(chips_buffer)
             
