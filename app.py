@@ -16905,17 +16905,6 @@ def inspect_character(event):
         if not text:
             render_inspector_panel(None)
             return
-
-        # [SYNC PATCH: FINAL] Cluster Override
-        # If the Top Matrix sees MUTABLE (is_mutable=True), force the Text to agree.
-        # We check is_cluster_composite to avoid breaking atomic characters like ⓼.
-        is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
-        
-        if forensic_report and is_mutable and is_cluster_composite:
-            for h in forensic_report.get("highlights", []):
-                if h["label"] == "Structure":
-                    # Force the text to match the Top Matrix physics
-                    h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
     
         # 1. Map DOM Index to Python Index (Logical Index)
         python_idx = 0
@@ -17095,6 +17084,17 @@ def inspect_character(event):
                 forensic_report = None
         
         base_char_data["forensic_report"] = forensic_report
+
+        # [SYNC PATCH] Cluster Override
+        # We check is_cluster_composite to avoid breaking atomic characters like ⓼.
+        is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
+        
+        if forensic_report and is_mutable and is_cluster_composite:
+            for h in forensic_report.get("highlights", []):
+                if h["label"] == "Structure":
+                    # Force the text to match the Top Matrix physics
+                    h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
+                    break
 
         comp_cat = cluster_identity.get("max_risk_cat", cat_short)
         
