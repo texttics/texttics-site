@@ -3782,45 +3782,41 @@ class ForensicExplainer:
         # 0. Safety Check
         if not FORENSIC_DB_READY:
             return self._fallback_report("System Loading...", "Forensic Database not loaded.", "NO-DB")
-        
-        # Derive Physics Early (THIS MUST BE HERE)
-        try: 
-            cp_int = int(hex_str, 16)  # <--- Defined here
-        except: 
+
+        # 1. Initialize Critical Variables (Prevent UnboundLocalError)
+        cp_int = 0
+        try:
+            cp_int = int(hex_str, 16)
+        except:
             cp_int = 0
-        
-        # 1. Fetch Record
+            
+        is_ascii = (cp_int <= 0x7F)
+
+        # 2. Fetch Record
         rec = self.db.get(hex_str)
         if not rec:
              return self._fallback_report("Unknown Code Point", "No forensic record found.", "NO-DATA")
 
         props = rec.get("props", [])
         
-        # Derive Physics Early
-        try: cp_int = int(hex_str, 16)
-        except: cp_int = 0
-        is_ascii = (cp_int <= 0x7F)
-
-        # [HOISTED PATCH] PHYSICS OVERRIDE: Calculate Truth Locally (Global Scope)
-        # We calculate NFKC stability immediately so ALL sections (Verdict, Structure, Lenses) see the truth.
-        dt = rec.get("dt") # Start with DB value
+        # 3. Physics Override (Normalization)
+        # We calculate this early so 'dt' is accurate for all lenses
+        dt = rec.get("dt") 
         try:
             char_raw = chr(cp_int)
-            # FIX: Use the app's robust normalizer (handles ENCLOSED_MAP patches)
             nfkc_val = normalize_extended(char_raw) 
-            # If Raw != NFKC, it IS physically unstable. 
             if char_raw != nfkc_val and not dt:
                 dt = "Compat" 
         except:
             pass
 
-        # 2. Initialize Report
+        # 4. Initialize Report
         report = {
             "identity": "",
             "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
             "props": props,
             "highlights": [], 
-            "lenses": {}, "context": []     
+            "lenses": {}, "context": []      
         }
 
         layout_notes = []
