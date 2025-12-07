@@ -17617,22 +17617,25 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            # Robust Lookup Strategy (Tries Decimal, Hex, Char Keys + Handles Hex Values)
+            # Robust Lookup: Handles Ints, Decimals, Raw Hex, AND "U+" Prefixes
             "lookalikes_data": (
                 rec.get("confusables") or 
                 (lambda cp: [
-                    # Converter: Handle Int, Decimal String, or Hex String
-                    chr(int(x)) if isinstance(x, int) else
-                    chr(int(x, 10)) if x.isdigit() else
-                    chr(int(x, 16)) 
+                    # 1. Handle Integers directly
+                    chr(x) if isinstance(x, int) else
+                    # 2. Handle Strings
+                    chr(int(
+                        str(x).replace("U+", "").replace("0x", ""), # Strip prefixes
+                        16 # Parse as Base-16 (Hex covers both decimal and hex in most contexts)
+                    ))
                     for x in (
-                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal Key ("97")
-                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex Key ("0061")
-                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char Key ("a")
+                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal Key
+                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex Key
+                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char Key
                         []
                     )
-                    # Filter: Ensure x is valid data before conversion
-                    if isinstance(x, (int, str))
+                    # Safety Filter: Ensure x is valid data
+                    if x and isinstance(x, (int, str))
                 ])(cp_base)
             ),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
