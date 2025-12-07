@@ -2248,3 +2248,52 @@ The `ForensicExplainer` (The Narrator) was hardened against specific contemporar
 * **Math Spoofing (UTR #25):** Added specific logic to distinguish between **Mathematical Operators** (syntax) and **Mathematical Alphanumeric** symbols (spoofing risk, e.g., using `𝐇` to bypass case-folding filters).
 * **Syntax Mimicry (UTR #36):** The system now globally flags **any** non-ASCII symbol or punctuation that is visually confusable with ASCII syntax (e.g., Fraction Slash, One Dot Leader), exposing a critical phishing surface.
 * **IDNA Schism:** The DNS lens was hardened to label `deviation` status (like the German Sharp S) as **CRITICAL Protocol Schism**, acknowledging the risk of differential resolution across IDNA versions.
+
+---
+
+## Addendum #13: The "Trio" Architecture (Stage 1 Completion)
+
+**Session Goal:** To finalize Stage 1 by implementing a rigorous **"Physics / Policy / Narrative"** separation of concerns. This transforms the tool from a passive data logger into an active forensic consultant, verified against SOTA security standards (UAX #31, UTS #39, IDNA2008).
+
+### 1. The Core Architecture: The "Trio" Model
+We have restructured the analysis pipeline into three unidirectional layers. This ensures that objective facts are never conflated with subjective judgments.
+
+#### Layer 1: Deep Physics (The Reality Engine)
+**Role:** The Sensor Array. Measures immutable facts about text particles without applying judgment.
+* **Molecular Analysis:** No longer counts just "characters." It analyzes **Grapheme Clusters** (Molecules) to solve the "Atomic Fallacy." It distinguishes between a valid Emoji sequence (`👨‍👩‍👧‍👦`) and a malicious Zalgo stack.
+* **Quad-State Determinism:** Simultaneously analyzes text in four states (`Raw`, `NFC`, `NFKC`, `Skeleton`) to detect "Shapeshifting" attacks where a character is safe in code but dangerous in a database.
+* **Hardened Taxonomy:** Explicitly categorizes every particle into granular forensic classes:
+    * **Ontology:** `NONCHAR`, `SURROGATE`, `PUA`, `UNASSIGNED`.
+    * **Format:** `BIDI_CONTROL`, `JOINER`, `TAG`, `VARIATION_SELECTOR`, `IGNORABLE`.
+    * **Parsing:** `REGEX_KRYPTONITE` (Line terminators that break security filters).
+
+#### Layer 2: Contextual Policy (The Law)
+**Role:** The Legislator. Applies rigorous standards to physical facts based on context.
+* **Multi-Lens Analysis:** Acknowledges that "Safe" is relative. A single character is evaluated simultaneously against four distinct legal systems:
+    * **Source Code Lens (UAX #31):** Checks for Identifier safety, Trojan Source, and Syntax Spoofing.
+    * **DNS Lens (IDNA2008):** Enforces strict hostname protocols (No symbols, no emojis, specific script rules).
+    * **File System Lens (OS Rules):** **[NEW]** Checks against Windows/Unix reserved names (`COM1`, `NUL`) and traversal risks (`/`, `\`).
+    * **General Text Lens:** Evaluates rendering safety and legibility.
+* **The "Molecular Bridge":** A supreme court logic that allows valid **RGI Emoji Sequences** to bypass strict atomic restrictions, preventing false positives on modern communication.
+
+#### Layer 3: Narrative Intelligence (The Advisor)
+**Role:** The Synthesizer. Translates data into decision-support advice.
+* **Executive Summary:** A dynamically generated "One-Liner" at the top of the Inspector that explains the *relationship* between the lenses (e.g., *"Safe for text, but strictly banned in software identifiers."*).
+* **Actionable Recommendations:** Moves beyond "Warning" to "Solution."
+    * Suggests **Normalization** (`½` $\to$ `1/2`) for compatibility risks.
+    * Suggests **Manual Review** for high-fidelity homoglyphs.
+    * Suggests **Sanitization** for invisible payloads.
+* **Defensive Catch-Alls:** Explicitly flags "Unknown Invisibles" (mathematically invisible but uncategorized) to ensure no threats slip through the cracks.
+
+### 2. Key Forensic Capabilities Added
+* **Syntax Predator Engine:** Detects "Normalization Injection" attacks where safe symbols (like Fullwidth Apostrophe) transform into syntax syntax (`'`) after backend processing.
+* **Orphan Modifier Detection:** Identifies broken emoji structures (e.g., a Skin Tone applied to a Space character) as a structural defect.
+* **RGI Fuzzy Matching:** Correctly identifies "Unqualified" emoji sequences (missing Variation Selectors) as valid-but-non-standard, rather than flagging them as Restricted symbols.
+* **Zero-Trust File System Audit:** Flags characters that are valid in text but fatal to file systems (e.g., Trailing Dots, Forward Slashes, Null Bytes).
+
+### 3. Technical Implementation
+* **Global Context Memory:** A dedicated state bridge that allows the atomic Inspector to "remember" global threat contexts (like being inside a spoofed token).
+* **Hardened DOM Scraper:** The "Copy Report" feature now generates a rich, structured text report including the Executive Summary and all active Lenses.
+* **Defensive Coding:** Extensive type-checking and "Fail-Safe" defaults ensure the analysis engine never crashes, even when fed malformed Unicode sequences.
+
+**Status:** Stage 1 is now architecturally complete. It serves as a verified, deterministic ground-truth instrument for single-cluster analysis.
