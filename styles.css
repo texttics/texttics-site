@@ -6689,8 +6689,8 @@ details.profile-section > summary:hover::marker {
 }
 
 /* =========================================
-   ATOMIC PROFILE (Forensic Identity Card)
-   Design: Centered Hierarchy, Tier-Based Coloring
+   ATOMIC PROFILE (Forensic Identity Card V2)
+   Design: Hierarchical Stack, High-Contrast Triage
    ========================================= */
 
 /* The Container */
@@ -6714,7 +6714,7 @@ details.profile-section > summary:hover::marker {
     font-size: 0.65rem;
     font-weight: 800;
     letter-spacing: 0.1em;
-    padding: 8px 0;
+    padding: 10px 0;
     border-bottom: 1px solid #e2e8f0;
     text-transform: uppercase;
     text-align: center;
@@ -6722,146 +6722,148 @@ details.profile-section > summary:hover::marker {
 
 /* The Body Wrapper */
 .atomic-body {
-    padding: 12px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
-    align-items: center; /* Centers everything horizontally */
+    align-items: center;
     flex: 1;
-    gap: 12px;
+    gap: 8px; /* Spacing between the major blocks */
 }
 
-/* --- HERO CARD (Rows 2 & 3: Tier + Type) --- */
-.atomic-hero {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+/* --- BLOCK 1: TIER BOX (The Big Number) --- */
+.atomic-tier-box {
     width: 100%;
-    padding: 12px 8px;
+    padding: 10px 0;
     border-radius: 6px;
-    border: 1px solid transparent; /* Prepare for colored borders */
     text-align: center;
+    border: 1px solid transparent;
 }
 
-/* Row 2: "TIER X" */
-.hero-tier {
-    font-size: 0.7rem;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-    opacity: 0.8;
-}
-
-/* Row 3: "ANOMALY" (Big Thick Letters) */
-.hero-type {
-    font-family: var(--font-mono); /* Technical look */
-    font-size: 1.4rem;             /* Big */
-    font-weight: 800;              /* Thick */
-    line-height: 1.1;
-    text-transform: uppercase;
+.tier-label {
+    font-size: 1.6rem; /* Huge Font as requested */
+    font-weight: 900;
+    line-height: 1;
     letter-spacing: -0.02em;
+    font-family: var(--font-mono);
 }
 
-/* --- SUB-HERO (Rows 4 & 5: Archetype + Entity) --- */
-.atomic-subhero {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+/* --- BLOCK 2: VERDICT BOX (The Classification) --- */
+.atomic-verdict-box {
     width: 100%;
+    padding: 6px 0;
+    border-radius: 4px;
     text-align: center;
-    gap: 2px;
+    border: 1px solid transparent;
 }
 
-/* Row 4: "ARCHETYPE" Label */
-.subhero-label {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: #94a3b8; /* Muted Gray */
+.verdict-label {
+    font-size: 0.85rem; /* Smaller than Tier */
+    font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
-/* Row 5: "UNKNOWN ENTITY" */
-.subhero-val {
-    font-size: 0.9rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    /* Color will be inherited/set by utility classes */
-}
-
-/* --- VITALS GRID (The "Physics" at the bottom) --- */
-/* Keeps the visual/stability metrics but makes them compact */
-.atomic-vital-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+/* --- BLOCK 3: ARCHETYPE (The Role) --- */
+.atomic-archetype-group {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    text-align: center;
     width: 100%;
-    gap: 4px;
-    margin-top: auto; /* Push to bottom if space permits */
-    border-top: 1px dashed #e2e8f0;
-    padding-top: 8px;
 }
 
-.vital-item {
+.subhero-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #94a3b8; /* Muted Gray */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.subhero-val {
+    font-size: 0.95rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #000000 !important; /* FORCE BLACK as requested */
+    letter-spacing: -0.01em;
+}
+
+/* --- BLOCK 4: VITALS STACK (Rows not Columns) --- */
+.atomic-vital-stack {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
+    width: 100%;
+    gap: 8px; /* Space between rows */
+    margin-top: auto; /* Push to bottom */
+    padding-top: 12px;
+    border-top: 1px dashed #e2e8f0;
 }
 
-.vital-label {
-    font-size: 0.55rem;
-    color: #cbd5e1;
-    font-weight: 700;
-    margin-bottom: 2px;
+.vital-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    line-height: 1.2;
+}
+
+.vital-key {
+    font-weight: 600;
+    color: #cbd5e1; /* Very light gray for labels */
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .vital-val {
-    font-size: 0.65rem;
     font-weight: 700;
-    color: #64748b;
+    color: #64748b; /* Darker gray for values */
+    font-family: var(--font-mono);
 }
 
-/* --- COLOR THEMES (The "Elegant" Palette) --- */
+/* --- COLOR THEMES (Backgrounds & Text) --- */
+
+/* Theme Logic: 
+   Tier Box = Light BG + Strong Text + Border
+   Verdict Box = Very Light BG + Strong Text
+*/
 
 /* TIER 0: SAFE (Emerald) */
-.tier-theme-0 .atomic-hero {
-    background-color: #ecfdf5; /* Emerald-50 */
-    color: #047857;            /* Emerald-700 */
-    border-color: #d1fae5;
+.tier-theme-0 .atomic-tier-box {
+    background-color: #ecfdf5; border-color: #d1fae5; color: #047857;
 }
-.tier-theme-0 .subhero-val { color: #059669; opacity: 0.8; } /* Emerald-600 */
+.tier-theme-0 .atomic-verdict-box {
+    background-color: #f0fdf4; color: #059669; /* Softer Green */
+}
 
 /* TIER 1: NOTE (Blue) */
-.tier-theme-1 .atomic-hero {
-    background-color: #eff6ff; /* Blue-50 */
-    color: #1d4ed8;            /* Blue-700 */
-    border-color: #dbeafe;
+.tier-theme-1 .atomic-tier-box {
+    background-color: #eff6ff; border-color: #dbeafe; color: #1d4ed8;
 }
-.tier-theme-1 .subhero-val { color: #2563eb; opacity: 0.8; } /* Blue-600 */
+.tier-theme-1 .atomic-verdict-box {
+    background-color: #f5f8ff; color: #2563eb;
+}
 
 /* TIER 2: ANOMALY (Amber) */
-.tier-theme-2 .atomic-hero {
-    background-color: #fffbeb; /* Amber-50 */
-    color: #b45309;            /* Amber-700 */
-    border-color: #fef3c7;
+.tier-theme-2 .atomic-tier-box {
+    background-color: #fffbeb; border-color: #fef3c7; color: #b45309;
 }
-.tier-theme-2 .subhero-val { color: #d97706; opacity: 0.9; } /* Amber-600 */
+.tier-theme-2 .atomic-verdict-box {
+    background-color: #fffdf5; color: #d97706;
+}
 
 /* TIER 3: SUSPICIOUS (Orange) */
-.tier-theme-3 .atomic-hero {
-    background-color: #fff7ed; /* Orange-50 */
-    color: #c2410c;            /* Orange-700 */
-    border-color: #ffedd5;
+.tier-theme-3 .atomic-tier-box {
+    background-color: #fff7ed; border-color: #ffedd5; color: #c2410c;
 }
-.tier-theme-3 .subhero-val { color: #ea580c; opacity: 0.9; } /* Orange-600 */
+.tier-theme-3 .atomic-verdict-box {
+    background-color: #fffaf5; color: #ea580c;
+}
 
 /* TIER 4: CRITICAL (Red) */
-.tier-theme-4 .atomic-hero {
-    background-color: #fef2f2; /* Red-50 */
-    color: #b91c1c;            /* Red-700 */
-    border-color: #fee2e2;
+.tier-theme-4 .atomic-tier-box {
+    background-color: #fef2f2; border-color: #fee2e2; color: #b91c1c;
 }
-.tier-theme-4 .subhero-val { color: #dc2626; opacity: 1; } /* Red-600 */
+.tier-theme-4 .atomic-verdict-box {
+    background-color: #fff5f5; color: #dc2626;
+}
