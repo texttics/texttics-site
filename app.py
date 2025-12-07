@@ -15387,26 +15387,39 @@ def render_inspector_panel(data):
     elif tier_val == 2: tier_desc = "ANOMALY"; tier_css = "atomic-warn"
     elif tier_val == 1: tier_desc = "NOTE"; tier_css = "atomic-note"
 
-    # 6. RENDER (The "No-Read" Dashboard)
-    # CSS Strategy: Monospaced keys, Bold values, strict alignment.
-    def atomic_row(key, val, css_mod=""):
-        return f"""
-        <div class="atomic-row">
-            <span class="atomic-key">{key}</span>
-            <span class="atomic-val {css_mod}">{val}</span>
-        </div>
-        """
-
+    # 6. RENDER
+    # Using 'tier-theme-X' CSS classes defined in styles.css
+    
     signal_processor_content = f"""
-    <div class="atomic-profile-container">
+    <div class="atomic-profile-container tier-theme-{tier_val}">
         <div class="atomic-header">ATOMIC PROFILE</div>
         <div class="atomic-body">
-            {atomic_row("TIER", f"{tier_val} {tier_desc}", tier_css)}
-            {atomic_row("ARCHETYPE", archetype)}
-            <div class="atomic-divider"></div>
-            {atomic_row("VISUALS", visuals)}
-            {atomic_row("MIMICRY", mimicry)}
-            {atomic_row("STABILITY", stability)}
+            
+            <div class="atomic-hero">
+                <div class="hero-tier">TIER {tier_val}</div>
+                <div class="hero-type">{tier_desc}</div>
+            </div>
+
+            <div class="atomic-subhero">
+                <div class="subhero-label">ARCHETYPE</div>
+                <div class="subhero-val">{archetype}</div>
+            </div>
+
+            <div class="atomic-vital-grid">
+                <div class="vital-item">
+                    <span class="vital-label">VISUALS</span>
+                    <span class="vital-val">{visuals}</span>
+                </div>
+                <div class="vital-item">
+                    <span class="vital-label">STABILITY</span>
+                    <span class="vital-val">{stability}</span>
+                </div>
+                <div class="vital-item">
+                    <span class="vital-label">MIMICRY</span>
+                    <span class="vital-val">{mimicry}</span>
+                </div>
+            </div>
+
         </div>
     </div>
     """
