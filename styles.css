@@ -6787,7 +6787,7 @@ details.profile-section > summary:hover::marker {
     font-size: 0.95rem;
     font-weight: 800;
     text-transform: uppercase;
-    color: #000000 !important; /* FORCE BLACK as requested */
+    color: var(--color-text);
     letter-spacing: -0.01em;
 }
 
