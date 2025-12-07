@@ -17617,17 +17617,22 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            # Robust Lookup Strategy (Tries Decimal "97", Hex "0061", and Char "a")
-            # This ensures we find the lookalikes regardless of your JSON's key format.
+            # Robust Lookup Strategy (Tries Decimal, Hex, Char Keys + Handles Hex Values)
             "lookalikes_data": (
                 rec.get("confusables") or 
                 (lambda cp: [
-                    chr(int(x)) for x in (
-                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal ("97")
-                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex ("0061")
-                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char ("a")
+                    # Converter: Handle Int, Decimal String, or Hex String
+                    chr(int(x)) if isinstance(x, int) else
+                    chr(int(x, 10)) if x.isdigit() else
+                    chr(int(x, 16)) 
+                    for x in (
+                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal Key ("97")
+                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex Key ("0061")
+                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char Key ("a")
                         []
-                    ) if str(x).isdigit()
+                    )
+                    # Filter: Ensure x is valid data before conversion
+                    if isinstance(x, (int, str))
                 ])(cp_base)
             ),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
