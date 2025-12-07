@@ -17617,12 +17617,18 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            # Hybrid Data Source: DB -> JSON Store -> Empty
-            # Handles integers (65) AND strings ("65") safely
+            # Robust Lookup Strategy (Tries Decimal "97", Hex "0061", and Char "a")
+            # This ensures we find the lookalikes regardless of your JSON's key format.
             "lookalikes_data": (
                 rec.get("confusables") or 
-                [chr(int(c)) for c in DATA_STORES.get("InverseConfusables", {}).get(str(cp_base), []) if str(c).isdigit()] or 
-                []
+                (lambda cp: [
+                    chr(int(x)) for x in (
+                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal ("97")
+                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex ("0061")
+                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char ("a")
+                        []
+                    ) if str(x).isdigit()
+                ])(cp_base)
             ),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
             "components": components,
