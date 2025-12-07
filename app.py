@@ -15401,8 +15401,8 @@ def render_inspector_panel(data):
     <div class="atomic-profile-container">
         <div class="atomic-header">ATOMIC PROFILE</div>
         <div class="atomic-body">
-            {atomic_row("ARCHETYPE", archetype)}
             {atomic_row("TIER", f"{tier_val} ({tier_desc})", tier_css)}
+            {atomic_row("ARCHETYPE", archetype)}
             <div class="atomic-divider"></div>
             {atomic_row("VISUALS", visuals)}
             {atomic_row("STABILITY", stability)}
