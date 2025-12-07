@@ -6690,103 +6690,106 @@ details.profile-section > summary:hover::marker {
 
 /* =========================================
    ATOMIC PROFILE (Forensic Triage Column)
-   Context: Block 9, Inspector Panel
+   Design: "High-Contrast Lab Instrument"
    ========================================= */
 
-/* The Container (Replaces the old Risk Matrix) */
+/* The Container - Restoring Depth */
 .atomic-profile-container {
     display: flex;
     flex-direction: column;
     background: #ffffff;
-    border: 1px solid #e2e8f0; /* Slate-200 */
-    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px; /* Softer, modern corners */
     overflow: hidden;
-    height: 100%; /* Fills the grid cell */
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+    height: 100%;
+    /* Subtle elevation to separate from background */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+                0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
-/* The Header (Technical Label) */
+/* The Header - Technical & Anchored */
 .atomic-header {
-    background: #f8fafc; /* Slate-50 */
-    color: #64748b;      /* Slate-500 */
+    background: #f8fafc;
+    color: #64748b;
     font-family: var(--font-sans, system-ui, sans-serif);
-    font-size: 0.65rem;
+    font-size: 0.7rem; /* Slightly larger */
     font-weight: 800;
     letter-spacing: 0.08em;
-    padding: 8px 12px;
+    padding: 10px 14px;
     border-bottom: 1px solid #e2e8f0;
     text-transform: uppercase;
+    text-align: center; /* Center aligns the visual weight */
 }
 
-/* The Data Body */
+/* The Body - Breathing Room */
 .atomic-body {
-    padding: 10px 12px;
+    padding: 16px 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px; /* Breathing room between rows */
-    font-family: var(--font-mono, monospace);
+    gap: 10px; /* More space between metrics */
+    justify-content: center;
+    flex: 1;
 }
 
 /* Single Data Row */
 .atomic-row {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    line-height: 1.4;
+    align-items: center; /* Perfect vertical alignment */
+    line-height: 1.3;
 }
 
-/* The Key (Left Side - Muted) */
+/* The Key (Left Side) - Muted Context */
 .atomic-key {
-    color: #94a3b8; /* Slate-400 */
-    font-size: 0.65rem;
-    font-weight: 600;
+    color: #94a3b8;
+    font-size: 0.7rem; /* Readable but secondary */
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    flex-shrink: 0; /* Never shrink the label */
-    margin-right: 12px;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
 }
 
-/* The Value (Right Side - Data) */
+/* The Value (Right Side) - The "Data Payload" */
 .atomic-val {
-    color: #334155; /* Slate-700 */
-    font-size: 0.75rem;
+    color: #334155;
+    font-size: 0.85rem; /* Increased size for impact */
     font-weight: 700;
     text-align: right;
-    word-break: break-word; /* Safety for long strings */
+    font-family: var(--font-mono, monospace); /* Tech font implies precision */
+    letter-spacing: -0.02em;
 }
 
-/* The Divider (Semantic Break) */
+/* --- HERO TREATMENT: The Tier Row (2nd Child) --- */
+/* This makes the "Risk Level" pop like the old header did */
+.atomic-row:nth-child(2) .atomic-val {
+    font-size: 1.1rem; /* Hero sizing */
+    font-weight: 800;
+}
+
+/* The Divider */
 .atomic-divider {
     height: 1px;
-    background: #f1f5f9; /* Slate-100 */
-    margin: 4px 0;
-    border: none;
+    background: #e2e8f0;
+    margin: 6px 0;
+    width: 100%;
 }
 
-/* --- TIER COLORS (Risk Indicators) --- */
+/* --- TIER COLORS (High-Saturation for Readability) --- */
 
-/* 0: SAFE (Green) */
-.atomic-safe {
-    color: #059669; /* Emerald-600 */
-}
+/* 0: SAFE (Emerald) */
+.atomic-safe { color: #059669; }
 
-/* 1: NOTE (Blue - Informational) */
-.atomic-note {
-    color: #2563eb; /* Blue-600 */
-}
+/* 1: NOTE (Blue) */
+.atomic-note { color: #2563eb; }
 
-/* 2: ANOMALY (Amber - Warning) */
-.atomic-warn {
-    color: #d97706; /* Amber-600 */
-}
+/* 2: ANOMALY (Amber) */
+.atomic-warn { color: #d97706; }
 
-/* 3: SUSPICIOUS (Orange - High Risk) */
-.atomic-high {
-    color: #ea580c; /* Orange-600 */
-}
+/* 3: SUSPICIOUS (Orange) */
+.atomic-high { color: #ea580c; }
 
-/* 4: CRITICAL (Red - Fatal/Attack) */
-.atomic-crit {
-    color: #dc2626; /* Red-600 */
-    text-shadow: 0 0 1px rgba(220, 38, 38, 0.1); /* Subtle forensic glow */
+/* 4: CRITICAL (Red) - Adds a subtle "Alarm" glow */
+.atomic-crit { 
+    color: #dc2626;
+    text-shadow: 0 0 10px rgba(220, 38, 38, 0.15);
 }
