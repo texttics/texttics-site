@@ -2324,8 +2324,6 @@ We have restructured the analysis pipeline into three unidirectional layers. Thi
 * **Defensive Catch-Alls:** Added a fallback mechanism to flag any character mathematically defined as "Invisible" even if it lacks specific properties.
 * **Global State Bridge:** Implemented a memory slot to allow the stateless Inspector to reference global token contexts (e.g., "This character is part of a spoofed token").
 
-Here is the drafted update for your `README.md`. It captures the shift to **Stage 2.0** logic and the UI overhaul.
-
 ---
 
 ### Update: The "State-of-the-Art" (SOTA) & UX Overhaul
