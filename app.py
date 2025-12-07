@@ -4539,75 +4539,120 @@ class ForensicExplainer:
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
         # Lens 4: File Systems (OS/Storage)
-        # SOTA: Enforces the "Hierarchy of Terror" for filename safety.
-        # Now uses Physics Taxonomy (fmt_class) for robust zero-width detection.
+        # Stage 1.9 – SOTA per-codepoint cross-platform safety.
+        # Focus: Tool-breaking, path-breaking, and obfuscation risks.
         fs_status = "SAFE"
         fs_msg = "Valid filename character."
 
         ch = chr(cp_val)
-        
-        # Access Physics context if available (passed via report), otherwise infer locally
-        # Note: report['physics'] might not be populated yet if called early, so we rely on props + direct checks
-        # But we can re-derive the critical ZW-FORMAT class locally for safety.
+
+        # Helpers
+        # Newline-like characters are lethal for file lists / shell scripts:
+        #   - Zl (Line Separator), Zp (Paragraph Separator)
+        #   - LF (0x0A), CR (0x0D), NEL (0x85)
+        is_newline = gc_code in ("Zl", "Zp") or cp_val in (0x000A, 0x000D, 0x0085)
+
+        # C1 controls (0x80–0x9F): often technically allowed, but dangerous in tools.
+        is_c1 = 0x80 <= cp_val <= 0x009F
+
+        # Zero-width / format characters with strong obfuscation risk
         is_zw_format = (
-            "Zero_Width_Space" in props or 
-            "Zero_Width_Non_Joiner" in props or 
-            "Zero_Width_Joiner" in props or 
+            "Zero_Width_Space" in props or
+            "Zero_Width_Non_Joiner" in props or
+            "Zero_Width_Joiner" in props or
             cp_val in (0x200B, 0x200C, 0x200D, 0xFEFF)
         )
 
-        # A. Path Separators (Cross-platform fatal)
-        # Slash is reserved as a directory separator on Unix/Linux/macOS and is also banned in Windows filenames.
+        # A. Path separators (cross-platform fatal)
+        # Slash is reserved as directory separator on Unix/Linux/macOS
+        # and also banned inside Windows filenames.
         if ch == "/":
             fs_status = "CRITICAL"
-            fs_msg = "Directory Separator. Reserved path delimiter on Unix/Linux/macOS and invalid in Windows filenames. Cannot appear inside a single filename."
+            fs_msg = (
+                "Directory separator. Reserved path delimiter on Unix/Linux/macOS "
+                "and invalid inside Windows filenames."
+            )
 
-        # B. The "Windows Nine" (Structurally Banned)
-        # < > : " \ | ? * (Note: Forward slash handled above)
+        # B. The Windows banned set
+        # < > : " \ | ? * (Forward slash handled above)
         elif is_ascii and ch in FS_WINDOWS_BANNED:
             fs_status = "CRITICAL"
-            fs_msg = "Forbidden (Windows). Reserved character (< > : \" \\ | ? *). Prevents file creation on NTFS/FAT32."
+            fs_msg = (
+                "Forbidden in Windows filenames (< > : \" \\ | ? *). "
+                "Prevents file creation on NTFS/FAT32."
+            )
 
-        # C. Control Characters (C0 + DEL)
-        # 0x00-0x1F and 0x7F are dangerous/banned.
-        elif cp_val <= 0x1F or cp_val == 0x7F:
-            if cp_val == 0x00:
+        # C. Newline injection (shell-script killer)
+        # Catches U+2028, U+2029, NEL (0x85), LF, CR.
+        elif is_newline:
+            fs_status = "CRITICAL"
+            fs_msg = (
+                "Newline injection. Splits a single filename across multiple lines "
+                "in tools and scripts; extremely dangerous in file lists and logs."
+            )
+
+        # D. Control characters (C0, C1, DEL)
+        elif cp_val <= 0x001F or cp_val == 0x007F or is_c1:
+            if cp_val == 0x0000:
                 fs_status = "CRITICAL"
-                fs_msg = "Null Byte Injection. Fatal to C-based file systems (String Terminator)."
+                fs_msg = (
+                    "Null byte injection. Terminates C-style strings and corrupts "
+                    "file system operations."
+                )
             else:
                 fs_status = "WARN"
-                fs_msg = "Control Character. Banned on Windows; dangerous in scripts/tools on Unix (newlines break shell loops)."
+                fs_msg = (
+                    "Control character. Banned on Windows and hazardous in Unix tooling "
+                    "(can break parsers and shell scripts)."
+                )
 
-        # D. Invisible / Zero-Width / Ignorable (Obfuscation Risk)
-        # Detection of ZWSP, ZWJ, Tags, etc. in filenames is a high-severity obfuscation risk.
+        # E. Invisible / zero-width / ignorable (obfuscation & collision risk)
         elif is_zw_format or "Default_Ignorable_Code_Point" in props or "Join_Control" in props:
             fs_status = "WARN"
-            fs_msg = "Invisible or ignorable character. Filenames may look identical while comparing differently (obfuscation and collision risk)."
+            fs_msg = (
+                "Invisible or ignorable character. Filenames may look identical on screen "
+                "while comparing differently in storage (obfuscation / collision risk)."
+            )
 
-        # E. Bidi Controls (RTLO, LRO, etc.)
+        # F. Bidi controls (RTLO, LRO, etc.)
         elif "Bidi_Control" in props:
-            # Check for RLO (202E) and LRO (202D) explicitly for extension spoofing
+            # Explicitly treat RLO/LRO as critical extension-spoofing vectors
             if cp_val in (0x202E, 0x202D) or gc_code in ("RLO", "LRO"):
                 fs_status = "CRITICAL"
-                fs_msg = "Extension Spoofing Vector. Directional override can visually reorder filename segments (e.g. hiding true extension)."
+                fs_msg = (
+                    "Extension spoofing vector. Directional override can reorder filename "
+                    "segments and hide the true extension."
+                )
             else:
                 fs_status = "WARN"
-                fs_msg = "Bidirectional control. Suspicious in filenames; often used for visual obfuscation."
+                fs_msg = (
+                    "Bidirectional control. Suspicious in filenames; commonly used for "
+                    "visual obfuscation."
+                )
 
-        # F. Whitespace (Leading/Trailing Risk)
+        # G. Whitespace (leading / trailing risk)
         elif gc_code == "Zs":
             fs_status = "NOTE"
-            fs_msg = "Whitespace. Leading/trailing spaces can hide extensions or confuse path handling; Windows strips trailing spaces."
+            fs_msg = (
+                "Whitespace. Leading or trailing spaces can hide extensions or confuse "
+                "path handling; Windows strips trailing spaces."
+            )
 
-        # G. Extension Delimiter (.)
-        elif cp_val == 0x2E:  # '.'
+        # H. Extension delimiter (.)
+        elif cp_val == 0x002E:
             fs_status = "NOTE"
-            fs_msg = "Extension delimiter. Trailing dots are stripped by Windows; may be abused for 'magic dot' attacks."
-            
-        # H. Combining Marks (Visual Confusion)
+            fs_msg = (
+                "Extension delimiter. Trailing dots are stripped by Windows and may be "
+                "abused in 'magic dot' filename tricks."
+            )
+
+        # I. Combining marks (visual confusion / normalization issues)
         elif gc_code.startswith("M"):
-             fs_status = "NOTE"
-             fs_msg = "Combining mark. Filenames may look identical on screen while comparing differently in storage (Normalization collision risk)."
+            fs_status = "NOTE"
+            fs_msg = (
+                "Combining mark. Different Unicode normalizations may compare filenames "
+                "differently even when they look identical."
+            )
 
         report["lenses"]["fs"] = {"status": fs_status, "text": fs_msg}
 
