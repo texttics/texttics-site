@@ -6687,3 +6687,106 @@ details.profile-section > summary:hover::marker {
         flex-wrap: wrap;
     }
 }
+
+/* =========================================
+   ATOMIC PROFILE (Forensic Triage Column)
+   Context: Block 9, Inspector Panel
+   ========================================= */
+
+/* The Container (Replaces the old Risk Matrix) */
+.atomic-profile-container {
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid #e2e8f0; /* Slate-200 */
+    border-radius: 6px;
+    overflow: hidden;
+    height: 100%; /* Fills the grid cell */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+/* The Header (Technical Label) */
+.atomic-header {
+    background: #f8fafc; /* Slate-50 */
+    color: #64748b;      /* Slate-500 */
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    text-transform: uppercase;
+}
+
+/* The Data Body */
+.atomic-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* Breathing room between rows */
+    font-family: var(--font-mono, monospace);
+}
+
+/* Single Data Row */
+.atomic-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    line-height: 1.4;
+}
+
+/* The Key (Left Side - Muted) */
+.atomic-key {
+    color: #94a3b8; /* Slate-400 */
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0; /* Never shrink the label */
+    margin-right: 12px;
+}
+
+/* The Value (Right Side - Data) */
+.atomic-val {
+    color: #334155; /* Slate-700 */
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: right;
+    word-break: break-word; /* Safety for long strings */
+}
+
+/* The Divider (Semantic Break) */
+.atomic-divider {
+    height: 1px;
+    background: #f1f5f9; /* Slate-100 */
+    margin: 4px 0;
+    border: none;
+}
+
+/* --- TIER COLORS (Risk Indicators) --- */
+
+/* 0: SAFE (Green) */
+.atomic-safe {
+    color: #059669; /* Emerald-600 */
+}
+
+/* 1: NOTE (Blue - Informational) */
+.atomic-note {
+    color: #2563eb; /* Blue-600 */
+}
+
+/* 2: ANOMALY (Amber - Warning) */
+.atomic-warn {
+    color: #d97706; /* Amber-600 */
+}
+
+/* 3: SUSPICIOUS (Orange - High Risk) */
+.atomic-high {
+    color: #ea580c; /* Orange-600 */
+}
+
+/* 4: CRITICAL (Red - Fatal/Attack) */
+.atomic-crit {
+    color: #dc2626; /* Red-600 */
+    text-shadow: 0 0 1px rgba(220, 38, 38, 0.1); /* Subtle forensic glow */
+}
