@@ -15614,7 +15614,7 @@ def render_inspector_panel(data):
     </div>
     """
     
-    # 2. Render the FOOTER
+    # 2. Render the FOOTER (Unified "Command Bar" Layout V2.0)
     forensic_row_html = ""
     report_raw = data.get("forensic_report")
     
@@ -15632,7 +15632,7 @@ def render_inspector_panel(data):
         else:
             f_bg = "#f3f4f6"; f_txt = "#374151"; f_border = "#e5e7eb"
 
-        badges_str = "".join([f'<span class="forensic-badge" style="border-color:{f_border}; color:{f_txt};">{b}</span>' for b in report.get("security", {}).get("badges", [])])
+        badges_str = "".join([f'<span class="forensic-badge" style="border-color:{f_border}; color:{f_txt}; background:rgba(255,255,255,0.6);">{b}</span>' for b in report.get("security", {}).get("badges", [])])
 
         highlights_html = ""
         for h in report.get("highlights", []):
@@ -15644,18 +15644,18 @@ def render_inspector_panel(data):
                 </div>
                 """
 
-        # Complete Label Map including File System
+        # Complete Label Map
         label_map = {
             "code": "SOURCE CODE", 
             "dns": "DOMAIN NAMES", 
-            "fs": "FILE SYSTEM",   # <--- Added Lens Label
+            "fs": "FILE SYSTEM", 
             "text": "GENERAL TEXT"
         }
 
         lenses_html = ""
         lenses = report.get("lenses", {})
         if isinstance(lenses, dict):
-            # Explicit Order including 'fs'
+            # Explicit Order
             lens_order = ["code", "dns", "fs", "text"]
             
             for key in lens_order:
@@ -15663,10 +15663,14 @@ def render_inspector_panel(data):
                 if not lens or not isinstance(lens, dict): continue
                 
                 l_status = lens.get("status", "UNKNOWN")
+                # Lens styling
                 l_bg = "#ecfdf5" if l_status == "SAFE" else "#fef2f2" if l_status == "CRITICAL" else "#fffbeb"
                 l_txt = "#047857" if l_status == "SAFE" else "#b91c1c" if l_status == "CRITICAL" else "#b45309"
                 l_border = "#a7f3d0" if l_status == "SAFE" else "#fecaca" if l_status == "CRITICAL" else "#fde68a"
-                
+                # Text Safe color override for NOTE
+                if l_status == "NOTE":
+                     l_bg = "#f9fafb"; l_txt = "#4b5563"; l_border = "#e5e7eb"
+
                 lenses_html += f"""
                 <div style="flex:1; background:{l_bg}; border:1px solid {l_border}; border-radius:4px; padding:6px; min-width: 0;">
                     <div style="font-size:0.6rem; font-weight:700; letter-spacing:0.05em; color:{l_txt}; opacity:0.8; margin-bottom:2px;">{label_map.get(key, key.upper())}</div>
@@ -15679,40 +15683,56 @@ def render_inspector_panel(data):
         if report.get("context"):
              context_html = '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; font-size:0.75rem; color:#6b7280; font-style:italic;">' + "".join([f"<div>ℹ {c}</div>" for c in report["context"]]) + '</div>'
 
-        # [STAGE 1.9] The Synthesized Footer
+        # [STAGE 2.0] Unified Command Bar Logic (The Smart Merge)
         synthesis = report.get("synthesis", {})
         summ_text = synthesis.get("summary", "")
         action_text = synthesis.get("action", "")
+        verdict_raw = report.get("security", {}).get("verdict", "")
+
+        # A. Diagnosis Logic: Avoid Stutter
+        # Clean strings for comparison
+        v_clean = verdict_raw.strip().rstrip('.')
+        s_clean = summ_text.strip()
         
-        action_html = ""
+        diagnosis_html = ""
+        if s_clean.startswith(v_clean) or s_clean == v_clean or not verdict_raw:
+            # Scenario A: Summary already contains verdict. Use Summary only.
+            diagnosis_html = s_clean
+        else:
+            # Scenario B: Distinct information. Merge them.
+            diagnosis_html = f"<strong>{verdict_raw}</strong> {summ_text}"
+
+        # B. Prescription Logic: Dedicated Row
+        action_row = ""
         if action_text:
-            action_html = f"""
-            <div style="margin-top:8px; padding:6px 8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; color:#166534; font-size:0.75rem; font-weight:600; display:flex; align-items:center;">
-                <span style="margin-right:6px;">💡</span> {action_text}
+            action_row = f"""
+            <div style="padding: 8px 12px; background: #ffffff; border-bottom: 1px solid {f_border}; color: #15803d; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center;">
+                <span style="margin-right: 8px; font-size: 1rem;">💡</span> {action_text}
             </div>
             """
 
+        # C. Construct Unified Footer
         forensic_row_html = f"""
-        <div class="forensic-footer" style="border: 1px solid {f_border}; margin-top: 15px;">
-            <div class="forensic-left" style="background: {f_bg}; border-right: 1px solid {f_border}; width: 160px; padding: 12px;">
-                <div class="f-label" style="color:{f_txt}">VERDICT</div>
-                <div class="f-level" style="color:{f_txt}">{level}</div>
-                <div class="f-verdict" style="color:{f_txt}">{report.get("security", {}).get("verdict", "")}</div>
-                <div class="f-badges" style="margin-top:8px;">{badges_str}</div>
-            </div>
+        <div class="forensic-footer-unified" style="border: 1px solid {f_border}; border-radius: 6px; margin-top: 15px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
             
-            <div class="forensic-right" style="flex:1; padding: 12px; background: white;">
-                
-                <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #e5e7eb;">
-                    <div style="font-weight:700; color:#1f2937; font-size:0.85rem; margin-bottom:4px;">EXECUTIVE SUMMARY</div>
-                    <div style="color:#4b5563; font-size:0.8rem; line-height:1.4;">{summ_text}</div>
-                    {action_html}
+            <div style="background: {f_bg}; padding: 10px 12px; border-bottom: 1px solid {f_border};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-weight: 800; font-size: 0.7rem; letter-spacing: 0.05em; color: {f_txt}; text-transform: uppercase;">{level} DIAGNOSIS</span>
+                    </div>
+                    <div class="f-badges" style="display:flex; gap:4px;">{badges_str}</div>
                 </div>
+                <div style="color: {f_txt}; font-size: 0.9rem; line-height: 1.4;">
+                    {diagnosis_html}
+                </div>
+            </div>
 
+            {action_row}
+
+            <div style="background: white; padding: 12px;">
                 <div style="display:flex; gap:8px; margin-bottom:12px; border-bottom:1px dashed #e5e7eb; padding-bottom:12px;">
                     {lenses_html}
                 </div>
-
                 <div>{highlights_html}</div>
                 {context_html}
             </div>
