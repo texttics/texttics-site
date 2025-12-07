@@ -15306,6 +15306,18 @@ def render_inspector_panel(data):
     # Extract EARLY (Required for Atomic Profile)
     mt = data.get('macro_type', 'UNKNOWN')
     raw_props = data.get('props', [])
+
+    # Re-compute Physics for local access
+    phys = compute_physics_state(data, raw_props)
+    
+    # Extract Counts & Badges
+    lookalikes = data.get('lookalikes_data', [])
+    look_count = len(lookalikes) if isinstance(lookalikes, list) else 0
+    
+    report_raw = data.get('forensic_report')
+    policy_badges = []
+    if report_raw and isinstance(report_raw, dict):
+        policy_badges = report_raw.get("security", {}).get("badges", [])
     
     # --- HTML GENERATION ---
 
