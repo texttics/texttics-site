@@ -1044,7 +1044,7 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
     });
   }
 
- // B. Copy Inspector Data (Merged V3.2: Matrix + Footer)
+ // B. Copy Inspector Data (Merged V3.3: Matrix + Stage 1.9 Footer)
   const btnCopyInsp = document.getElementById('btn-copy-inspector');
   if (btnCopyInsp) {
     btnCopyInsp.addEventListener('click', () => {
@@ -1086,33 +1086,58 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
 
       // 3. FORENSIC CONTEXT (The Footer - If Available)
       if (footerRoot && footerRoot.style.display !== 'none') {
-          // We assume the Security Level is covered by the Matrix, 
-          // so we focus on the Lenses and Highlights here.
+          const rightPanel = footerRoot.querySelector('.forensic-right');
           
-          report += `[ FORENSIC CONTEXT ]\n`;
-          
-          // Scrape the 3 lenses (Code, DNS, Text)
-          const lenses = footerRoot.querySelectorAll('.forensic-right > div:first-child > div');
-          if (lenses.length > 0) {
-              lenses.forEach(lens => {
-                  const label = lens.children[0]?.textContent || "";
-                  const status = lens.children[1]?.textContent || "";
-                  const text = lens.children[2]?.textContent || "";
-                  report += `${label.padEnd(15, ' ')}: [${status}] ${text}\n`;
-              });
-              report += `\n`;
-          }
+          if (rightPanel && rightPanel.children.length >= 3) {
+              // --- A. EXECUTIVE SUMMARY (First Child) ---
+              const summaryContainer = rightPanel.children[0];
+              // 2nd div is text, 3rd div (optional) is action
+              const sumText = summaryContainer.children[1]?.textContent.trim();
+              const actText = summaryContainer.children[2]?.textContent.trim(); // The "💡 Replace..." text
 
-          // Scrape the Highlights
-          const highlights = footerRoot.querySelectorAll('.forensic-right > div:nth-child(2) > div');
-          if (highlights.length > 0) {
-              report += `[ HIGHLIGHTS ]\n`;
-              highlights.forEach(h => {
-                  const label = h.children[0]?.textContent || "";
-                  const text = h.children[1]?.textContent || "";
-                  report += `${label.padEnd(15, ' ')}: ${text}\n`;
-              });
-              report += `\n`;
+              if (sumText) {
+                  report += `[ EXECUTIVE SUMMARY ]\n`;
+                  report += `${sumText}\n`;
+                  if (actText) report += `ACTION: ${actText}\n`;
+                  report += `\n`;
+              }
+
+              // --- B. CONTEXT LENSES (Second Child) ---
+              const lensesContainer = rightPanel.children[1];
+              if (lensesContainer.children.length > 0) {
+                  report += `[ FORENSIC CONTEXT ]\n`;
+                  for (let lens of lensesContainer.children) {
+                      const label = lens.children[0]?.textContent || "";
+                      const status = lens.children[1]?.textContent || "";
+                      const text = lens.children[2]?.textContent || "";
+                      if (label) report += `${label.padEnd(15, ' ')}: [${status}] ${text}\n`;
+                  }
+                  report += `\n`;
+              }
+
+              // --- C. HIGHLIGHTS (Third Child) ---
+              const highlightsContainer = rightPanel.children[2];
+              if (highlightsContainer.children.length > 0) {
+                  report += `[ HIGHLIGHTS ]\n`;
+                  for (let h of highlightsContainer.children) {
+                      const label = h.children[0]?.textContent || "";
+                      const text = h.children[1]?.textContent || "";
+                      if (label) report += `${label.padEnd(15, ' ')}: ${text}\n`;
+                  }
+                  report += `\n`;
+              }
+
+              // --- D. CONTEXT NOTES (Fourth Child - Optional) ---
+              if (rightPanel.children.length > 3) {
+                  const contextContainer = rightPanel.children[3];
+                  if (contextContainer.children.length > 0) {
+                      report += `[ NOTES ]\n`;
+                      for (let note of contextContainer.children) {
+                          report += `${note.textContent.trim()}\n`;
+                      }
+                      report += `\n`;
+                  }
+              }
           }
       }
 
