@@ -1132,6 +1132,7 @@ Stage 2: Heatmap Row Classes
   padding-bottom: 0.25rem;
   white-space: nowrap;
   text-overflow: ellipsis;
+  text-align: center; /* CENTERS THE TITLE */
 }
 
 /* --- Col 6: Structure (Restored Scroll & Headers) --- */
@@ -1722,6 +1723,8 @@ tr.flag-row-crit {
   flex-direction: column;
   padding: 8px 12px; /* Add internal breathing room */
   /* Add internal borders */
+  align-items: center; /* CENTERS ITEMS HORIZONTALLY */
+  text-align: center;  /* CENTERS TEXT */
   border-bottom: 1px solid var(--color-border-light);
   border-right: 1px solid var(--color-border-light);
 }
