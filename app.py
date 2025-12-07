@@ -17173,6 +17173,11 @@ def inspect_character(event):
         else:
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
             
+        # [FIX] Molecular Override: If RGI, force Allowed status
+        # This must run AFTER the standard lookup to prevent overwriting.
+        if is_rgi_confirmed:
+            id_status = "Allowed (RGI)"
+
         id_type = _find_in_ranges(cp_base, "IdentifierType")
         
         # Safe access to security level (now impossible to crash)
