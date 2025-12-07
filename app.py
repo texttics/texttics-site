@@ -17085,16 +17085,52 @@ def inspect_character(event):
         
         base_char_data["forensic_report"] = forensic_report
 
-        # [SYNC PATCH] Cluster Override
+        # [SYNC PATCH] Cluster Override & Molecular Policy Bridge
         # We check is_cluster_composite to avoid breaking atomic characters like ⓼.
         is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
         
-        if forensic_report and is_mutable and is_cluster_composite:
-            for h in forensic_report.get("highlights", []):
-                if h["label"] == "Structure":
-                    # Force the text to match the Top Matrix physics
-                    h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
-                    break
+        if forensic_report and is_cluster_composite:
+            # 1. Structural Instability Override (Existing Fix)
+            if is_mutable:
+                for h in forensic_report.get("highlights", []):
+                    if h["label"] == "Structure":
+                        h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
+                        break
+            
+            # 2. Zalgo / Diacritic Overload Override
+            # The Atom ('a') is Safe, but the Molecule ('a' + 10 marks) is an Attack.
+            if zalgo_score >= 4:
+                forensic_report["security"]["level"] = "SUSPICIOUS" if zalgo_score < 10 else "CRITICAL"
+                forensic_report["security"]["verdict"] = f"Diacritic Overload (Zalgo). High density of combining marks ({zalgo_score}). Rendering risk."
+                forensic_report["security"]["badges"].append("DENSITY")
+
+            # 3. Emoji Sequence Logic (RGI vs Non-RGI)
+            # The Atom ('Man') is Generic, but the Molecule ('Family') is RGI.
+            if "EMOJI" in cluster_identity.get("type_label", ""):
+                rgi_set = DATA_STORES.get("RGISequenceSet", set())
+                if target_char in rgi_set:
+                    # Valid RGI: Force SAFE (or NOTE), overriding potential warnings about the base char
+                    # (e.g. preventing 'Restricted' warnings on base chars if the sequence is valid)
+                    forensic_report["security"]["level"] = "SAFE" 
+                    forensic_report["security"]["verdict"] = f"Valid RGI Emoji Sequence ({cluster_identity.get('type_val')})."
+                    # Clear negative badges if RGI valid
+                    forensic_report["security"]["badges"] = [b for b in forensic_report["security"]["badges"] if b not in ("RESTRICTED", "SPOOF")]
+                    forensic_report["security"]["badges"].append("RGI")
+                else:
+                    # Invalid Sequence: Upgrade Risk
+                    current_lvl = forensic_report["security"]["level"]
+                    if current_lvl in ("SAFE", "NOTE"):
+                        forensic_report["security"]["level"] = "WARN"
+                        forensic_report["security"]["verdict"] = "Non-RGI Emoji Sequence. Valid particles, but non-standard composition."
+                        forensic_report["security"]["badges"].append("NON-RGI")
+
+            # 4. Broken Keycap Override
+            # Logic: If base is NOT a valid keycap base, but we have a keycap mark.
+            if "\u20E3" in target_char:
+                # Valid bases: 0-9, #, * (defined in Block 2)
+                if cp_base not in VALID_KEYCAP_BASES:
+                    forensic_report["security"]["level"] = "WARN"
+                    forensic_report["security"]["verdict"] = "Broken Keycap Sequence. Base character is not a valid Keycap anchor."
 
         comp_cat = cluster_identity.get("max_risk_cat", cat_short)
         
