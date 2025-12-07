@@ -91,7 +91,7 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
-# [GAP B] File System Physics (Windows/Unix/Mac)
+# File System Physics (Windows/Unix/Mac)
 FS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL", 
     "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
@@ -100,7 +100,7 @@ FS_RESERVED_NAMES = {
 # Windows "Forbidden 9": < > : " / \ | ? * + Control Chars (0-31)
 FS_WINDOWS_BANNED = {'<', '>', ':', '"', '/', '\\', '|', '?', '*'}
 
-# [GAP B] POSIX Portable Filename Character Set (The Gold Standard)
+# POSIX Portable Filename Character Set (The Gold Standard)
 # A-Z, a-z, 0-9, . (dot), _ (underscore), - (hyphen)
 FS_PORTABLE_ASCII = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
 
@@ -3895,13 +3895,13 @@ class ForensicExplainer:
                 if id_type and "Technical" in id_type[0]:
                     report["security"]["verdict"] = "Technical Syntax. Valid in specialized contexts (Math/Programming)."
                 else:
-                    # [FIX V4.7] Softer claim ("Universally accepted" -> "Allowed in standard profiles")
+                    # Softer claim ("Universally accepted" -> "Allowed in standard profiles")
                     report["security"]["verdict"] = "Verified Identifier. Allowed in standard secure profiles (UAX #31)."
 
         # 2. IDNA Protocol (Network Safety)
         if idna == "disallowed":
             report["security"]["badges"].append("NO-DNS")
-            # [FIX V4.7] Escalate to NOTE/WARN to reflect network ban
+            # Escalate to NOTE/WARN to reflect network ban
             # We don't force WARN globally if it's safe in code, but we note the protocol violation.
             if _is_below("WARN"):
                  # Only overwrite if we are currently SAFE/NOTE. 
@@ -3929,7 +3929,7 @@ class ForensicExplainer:
                      report["security"]["verdict"] = f"Verified Anchor. Standard ASCII baseline for spoofing detection ({len(confusables)} imitators)."
             else:
                 # Non-ASCII Imitator: The Risk
-                # [FIX V4.7] Monotonic escalation
+                # Monotonic escalation
                 report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
                 report["security"]["badges"].append("SPOOF")
                 
@@ -3951,14 +3951,14 @@ class ForensicExplainer:
             report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("INVISIBLE")
             
-            # [FIX V4.7] Robust Rank Comparison
+            # Robust Rank Comparison
             if _is_below("CRITICAL"):
                 report["security"]["verdict"] = "Obfuscation Artifact. Invisible character restricted in secure contexts."
 
         if "Deprecated" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("DEPRECATED")
-            # [FIX V4.7] Robust Rank Comparison
+            # Robust Rank Comparison
             if _is_below("CRITICAL"):
                 report["security"]["verdict"] = "Deprecated Standard. Obsolete character; usage discouraged."
 
@@ -4108,7 +4108,7 @@ class ForensicExplainer:
             char_raw = chr(cp_int)
             nfc_val = unicodedata.normalize('NFC', char_raw)
             
-            # [FIX] Use robust normalizer. Handles manual patches like ⓼ -> 8
+            # Use robust normalizer. Handles manual patches like ⓼ -> 8
             nfkc_val = normalize_extended(char_raw) 
             
             if char_raw == nfkc_val:
@@ -4543,98 +4543,117 @@ class ForensicExplainer:
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
-        # [GAP B FIX] Lens 4: File Systems (OS/Storage)
-        # Stage 1.9 – SOTA per-codepoint cross-platform safety (V3.0 Portable).
-        # Focus: Tool-breaking, path-breaking, obfuscation, and PORTABILITY risks.
-        fs_status = "SAFE"
-        fs_msg = "Valid filename character. Portable and safe."
-
-        ch = chr(cp_val)
-
-        # Helpers
-        # Newline-like characters are lethal for file lists / shell scripts:
-        #   - Zl (Line Separator), Zp (Paragraph Separator)
-        #   - LF (0x0A), CR (0x0D), NEL (0x85)
-        is_newline = gc_code in ("Zl", "Zp") or cp_val in (0x000A, 0x000D, 0x0085)
-
-        # C1 controls (0x80–0x9F): often technically allowed, but dangerous in tools.
-        is_c1 = 0x80 <= cp_val <= 0x009F
-
-        # Zero-width / format characters with strong obfuscation risk
-        is_zw_format = (
-            "Zero_Width_Space" in props or
-            "Zero_Width_Non_Joiner" in props or
-            "Zero_Width_Joiner" in props or
-            cp_val in (0x200B, 0x200C, 0x200D, 0xFEFF)
-        )
-
-        # --- TIER 1: FATAL / STRUCTURAL BANS (CRITICAL) ---
+        # Lens 4: File Systems (OS/Storage)
+        # Stage 2.0 – The "Two-World" Forensic Model (Kernel vs. Safety).
+        # Implements strict separation between Structural Legality (The Bans) 
+        # and Forensic Safety (Tooling, Obfuscation, Portability).
         
-        # A. Path Separators (Cross-platform fatal)
-        if ch == "/":
+        fs_status = "SAFE"
+        fs_msg = "Gold Standard. Safe for all OSs, shells, and archives (POSIX Portable)."
+        
+        ch = chr(cp_val)
+        
+        # --- PRE-COMPUTED FORENSIC PHYSICS ---
+        
+        # 1. Structural Bans (The "Windows 9")
+        # Explicitly forbidden on NTFS/FAT32.
+        win_banned = {'<', '>', ':', '"', '/', '\\', '|', '?', '*'}
+        
+        # 2. Tooling Safety (Shell Metacharacters)
+        # Definition: ASCII chars NOT in the STRICT POSIX Set (A-Z, a-z, 0-9, _, -).
+        # NOTE: We EXCLUDE Dot (.) and Space ( ) from the Safe Set to match the Truth Table.
+        is_strict_safe = is_ascii and (ch.isalnum() or ch in "_-")
+        
+        # 3. Newline Logic (The Shell Killers)
+        # Includes ASCII (LF, CR) and Unicode (LS, PS, NEL).
+        is_newline = gc_code in ("Zl", "Zp") or cp_val in (0x000A, 0x000D, 0x0085)
+        
+        # 4. Control Logic (The Terminal Hazards)
+        # C0 (0-31), DEL (127), and C1 (80-9F).
+        is_control = (cp_val <= 0x1F) or (0x80 <= cp_val <= 0x9F) or (cp_val == 0x7F)
+        
+        # 5. Molecular Physics (Cluster Awareness)
+        # Detects if this character is part of a composite cluster (e.g. Base + Marks).
+        is_composite = physics and physics.get('struct_state') == "COMPOSITE"
+        
+        # --- TIER 1: STRUCTURAL LEGALITY (THE BANS) ---
+        # "Can I physically save this file?" -> NO.
+        
+        if ch == "/" or ch == "\\":
             fs_status = "CRITICAL"
-            fs_msg = "Directory Separator. Reserved path delimiter on Unix/Linux/macOS and invalid in Windows filenames. Cannot appear inside a single filename."
-
-        # B. The Windows Banned Set
-        # < > : " \ | ? * (Forward slash handled above)
-        elif is_ascii and ch in FS_WINDOWS_BANNED:
+            fs_msg = "Structural Ban. Path Separator (/ or \\). Fatal on Windows/Unix. Changes directory structure."
+            
+        elif cp_val == 0x00:
+            fs_status = "CRITICAL" 
+            fs_msg = "Structural Ban. Null Byte (0x00). Terminates C-strings; fatal to file system APIs."
+            
+        elif is_ascii and ch in win_banned:
             fs_status = "CRITICAL"
-            fs_msg = "Forbidden (Windows). Reserved character (< > : \" \\ | ? *). Prevents file creation on NTFS/FAT32."
+            fs_msg = "OS Ban (Windows). Reserved character (< > : \" \\ | ? *). Physically impossible on NTFS/FAT32."
 
-        # C. Newline Injection (Shell Script Killer)
+        # --- TIER 2: TOOLING & SCRIPT SAFETY (SHELL KILLERS) ---
+        # "Is it safe to script/pipe?" -> NO.
+        
         elif is_newline:
             fs_status = "CRITICAL"
-            fs_msg = "Newline Injection. Splits a single filename across multiple lines in tools and scripts; extremely dangerous in file lists and logs."
-
-        # D. Null Byte (String Terminator)
-        elif cp_val == 0x00:
-            fs_status = "CRITICAL"
-            fs_msg = "Null Byte Injection. Fatal to C-based file systems (String Terminator)."
-
-        # E. Bidi Override (Extension Spoofing)
+            fs_msg = "Script Injection Risk. Newline injection breaks shell loops, logs, and line-oriented tools."
+            
+        # Extension Spoofing (Bidi Overrides - RLO)
         elif "Bidi_Control" in props and (cp_val in (0x202E, 0x202D) or gc_code in ("RLO", "LRO")):
             fs_status = "CRITICAL"
-            fs_msg = "Extension Spoofing Vector. Directional override can visually reorder filename segments (e.g. hiding true extension)."
+            fs_msg = "Extension Spoofing. Bidi Override reverses filename display (e.g. 'exe.txt' → 'txt.exe')."
 
-        # --- TIER 2: DANGEROUS / OBFUSCATION (WARN) ---
-
-        # F. Control Characters (C0 + C1 + DEL)
-        elif cp_val <= 0x1F or cp_val == 0x7F or is_c1:
+        # Terminal Hazards
+        elif is_control:
             fs_status = "WARN"
-            fs_msg = "Control Character. Banned on Windows; dangerous in scripts/tools on Unix (breaks parsers/loops)."
+            fs_msg = "Terminal Hazard. Control character (C0/C1). Invisible or destabilizes terminal emulators/logs."
 
-        # G. Invisible / Zero-Width (Stealth Filenames)
-        elif is_zw_format or "Default_Ignorable_Code_Point" in props or "Join_Control" in props:
+        # --- TIER 3: OBFUSCATION (STEALTH VECTORS) ---
+        # "Is it hiding something?" -> YES.
+        
+        elif "Default_Ignorable_Code_Point" in props or "Join_Control" in props or "Zero_Width_Space" in props:
             fs_status = "WARN"
-            fs_msg = "Invisible or ignorable character. Filenames may look identical while comparing differently (obfuscation and collision risk)."
+            fs_msg = "Visual Collision. Invisible character creates distinct filenames that look identical (Social Engineering)."
 
-        # H. General Bidi Controls
         elif "Bidi_Control" in props:
+            # Remaining Bidi controls (ALM, LRM, Isolates) that aren't Overrides
             fs_status = "WARN"
-            fs_msg = "Bidirectional control. Suspicious in filenames; commonly used for visual obfuscation."
+            fs_msg = "Obfuscation Risk. Invisible Bidi control (context dependent)."
 
-        # --- TIER 3: NON-PORTABLE / WEIRD (NOTE) ---
-        # This catches ⓼, ❤️, and anything not in the "Boring ASCII" set.
-
-        # I. Whitespace (Leading/Trailing Risk)
-        elif gc_code == "Zs":
+        # --- TIER 4: MOLECULAR & COMPATIBILITY (THE NUANCE) ---
+        # "Will it stay the same?" -> MAYBE.
+        
+        elif dt and dt != "None":
             fs_status = "NOTE"
-            fs_msg = "Whitespace. Leading/trailing spaces can hide extensions or confuse path handling; Windows strips trailing spaces."
-
-        # J. Extension Delimiter (.)
-        elif cp_val == 0x2E:  # '.'
+            fs_msg = f"Normalization Risk. Compatibility artifact ({dt}). Decomposes/Mutates on HFS+/APFS (Mac) or when normalized."
+            
+        elif is_composite:
             fs_status = "NOTE"
-            fs_msg = "Extension delimiter. Trailing dots are stripped by Windows; may be abused for 'magic dot' attacks."
+            fs_msg = "Molecular Risk. Composite cluster (Base + Modifiers). Causes rendering glitches and normalization collisions."
 
-        # K. The "Gold Standard" Check (Portability)
-        # If it's not in the Portable Set (A-Z, a-z, 0-9, . _ -), it is risky.
-        elif is_ascii and ch not in FS_PORTABLE_ASCII:
-             fs_status = "NOTE"
-             fs_msg = "Shell Metacharacter. Technically valid, but requires quoting in scripts (e.g. & $ ! ;). Avoid in portable filenames."
-             
+        # --- TIER 5: PORTABILITY (THE GOLD STANDARD) ---
+        # "Does it work everywhere?" -> MAYBE.
+        
         elif not is_ascii:
-             fs_status = "NOTE"
-             fs_msg = "Non-Portable (Non-ASCII). Valid on modern systems (NTFS/APFS/Ext4), but may break legacy tools, archives, or cross-platform transfers."
+            # Emojis, Foreign Scripts
+            if "Emoji" in props:
+                fs_status = "NOTE"
+                fs_msg = "Non-Portable (Emoji). Valid on modern OS, but breaks legacy tools (ZIP/FAT32) and CLI rendering."
+            else:
+                fs_status = "NOTE"
+                fs_msg = "Non-Portable (Unicode). Valid on modern OS, but requires UTF-8 safe tools. Risk of encoding corruption (Mojibake)."
+                
+        elif not is_strict_safe:
+            # ASCII but special (Space, Dot, ! $ &)
+            if ch == ".":
+                fs_status = "NOTE"
+                fs_msg = "Trailing Risk. Windows strips trailing dots. Safe inside names."
+            elif ch == " ":
+                fs_status = "NOTE"
+                fs_msg = "Trailing Risk. Windows strips trailing spaces. Requires quoting in shell."
+            else:
+                fs_status = "NOTE"
+                fs_msg = "Shell Hazard. Valid filename, but requires escaping/quoting in scripts (Metacharacter)."
 
         report["lenses"]["fs"] = {"status": fs_status, "text": fs_msg}
 
@@ -11780,7 +11799,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     # --- 1. STRUCTURAL FEEDBACK LOOP ---
     struct_rows = []
     
-    # [FIXED] Call analyze_bidi_structure ONLY ONCE and unpack correctly
+    # Call analyze_bidi_structure ONLY ONCE and unpack correctly
     bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
     analyze_combining_structure(t, struct_rows)
@@ -12563,7 +12582,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
     # --- BRIDGE: Promote Adversarial Findings to Threat Flags ---
     # This ensures the "Group 3" table sees the "Group 4" discoveries.
-    # [FIX] Deduplication Logic:
+    # Deduplication Logic:
     # We now map "CRIT" -> "CRITICAL" to match the Global Auditor labels.
     # This ensures that if both engines find the same threat, the Token View (Context)
     # overwrites the Global View (Index), preventing duplicate rows.
@@ -15595,7 +15614,7 @@ def render_inspector_panel(data):
     </div>
     """
     
-    # 2. Render the FOOTER (Updated Stage 1.9 + Gap B)
+    # 2. Render the FOOTER
     forensic_row_html = ""
     report_raw = data.get("forensic_report")
     
@@ -15625,7 +15644,7 @@ def render_inspector_panel(data):
                 </div>
                 """
 
-        # [FIX] Complete Label Map including File System
+        # Complete Label Map including File System
         label_map = {
             "code": "SOURCE CODE", 
             "dns": "DOMAIN NAMES", 
@@ -15636,7 +15655,7 @@ def render_inspector_panel(data):
         lenses_html = ""
         lenses = report.get("lenses", {})
         if isinstance(lenses, dict):
-            # [FIX] Explicit Order including 'fs'
+            # Explicit Order including 'fs'
             lens_order = ["code", "dns", "fs", "text"]
             
             for key in lens_order:
@@ -16065,7 +16084,7 @@ def render_forensic_hud(t, stats):
             if not in_run: alpha_runs += 1; in_run = True
         else: in_run = False
         
-    # [FIXED] Scientific Titles Restored
+    # Scientific Titles Restored
     c0 = r_cell("ALPHANUMERIC", "LITERALS", str(alpha_chars), color_neutral(alpha_chars),
                 "RUNS", str(alpha_runs), color_neutral(alpha_runs),
                 d1="Count of Unicode alphanumeric characters.", k1="LOGIC", v1="Count(Alnum)", rk1="REF", rv1="Unicode L+N",
@@ -16632,7 +16651,7 @@ def update_all(event=None):
     # Threat Analysis (Populates Registry; Required for Threat Ledger)
     threat_results = compute_threat_analysis(t, script_run_stats)
     
-    # [GAP A FIX] Update Global Context Memory
+    # Update Global Context Memory
     # This allows the Inspector to read token risks without re-computing.
     global LATEST_THREAT_DATA
     LATEST_THREAT_DATA = threat_results
@@ -16928,7 +16947,7 @@ def update_all(event=None):
             'badge': "ZALGO"
         }
 
-    # [FIX] Smart Merge: Combine Global (Index) and Token (Context) findings
+    # Smart Merge: Combine Global (Index) and Token (Context) findings
     # Instead of blindly overwriting, we check for collisions and merge the evidence.
     for label, data in threat_results['flags'].items():
         if label in final_threat_flags:
@@ -17409,7 +17428,7 @@ def inspect_character(event):
         raw_form = target_char
         nfc_form = unicodedata.normalize("NFC", raw_form)
         
-        # [FIX] Use the app's robust normalizer (Tier 3) instead of standard lib.
+        # Use the app's robust normalizer (Tier 3) instead of standard lib.
         # This ensures we catch VS stripping (❤️ -> ❤) and Enclosed Alphanumerics (⓼ -> 8).
         nfkc_form = normalize_extended(raw_form)
 
@@ -17590,7 +17609,7 @@ def inspect_character(event):
                         h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
                         break
 
-        # [GAP A FIX] The Situational Awareness Bridge
+        # The Situational Awareness Bridge
         # Physics -> Narrative: Connects the Atom (Character) to the Token (Context).
         if forensic_report: # Only run if we have a valid report to append to
             try:
@@ -17651,7 +17670,7 @@ def inspect_character(event):
         else:
             id_status = _find_in_ranges(cp_base, "IdentifierStatus") or "Restricted"
             
-        # [FIX] Molecular Override: If RGI, force Allowed status
+        # Molecular Override: If RGI, force Allowed status
         # This must run AFTER the standard lookup to prevent overwriting.
         if is_rgi_confirmed:
             id_status = "Allowed (RGI)"
@@ -18189,7 +18208,7 @@ def sanitize_text(profile_type):
                     should_remove = True
                 
                 # PROTECT Structural Glue (ZWJ/VS) only if inside a valid Emoji
-                # [FIXED] Now includes VS15 (0xFE0E) in protection list
+                # Now includes VS15 (0xFE0E) in protection list
                 elif cp in (0x200D, 0xFE0F, 0xFE0E):
                     if i not in valid_emoji_indices:
                         should_remove = True
