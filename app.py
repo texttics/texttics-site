@@ -15510,54 +15510,52 @@ def render_inspector_panel(data):
         count = len(lookalikes_list)
         chips_buffer = []
         
-        # Limit to top 24 to prevent UI explosion on massive clusters
+        # Limit to top 24 to prevent UI explosion
         for item in lookalikes_list[:24]:
             
             # --- 1. NORMALIZE INPUT (Get the Integer) ---
             l_int = 0
-            l_glyph = "?"
             
             # Case A: Integer (The new standard from our fix)
             if isinstance(item, int):
                 l_int = item
-                l_glyph = chr(l_int)
-            # Case B: String (Legacy fallback)
-            elif isinstance(item, str) and item:
-                l_int = ord(item[0])
-                l_glyph = item
+            # Case B: String (Hex string "006C" or "U+006C")
+            elif isinstance(item, str):
+                try:
+                    clean_hex = item.replace("U+", "").replace("0x", "")
+                    l_int = int(clean_hex, 16)
+                except: continue
             # Case C: Dictionary (Old database format)
             elif isinstance(item, dict):
-                # Try to extract, fallback to ?
                 glyph_raw = item.get('glyph')
-                if glyph_raw:
-                    l_glyph = glyph_raw
-                    l_int = ord(glyph_raw[0])
-                else:
-                    continue # Skip broken records
-            else:
-                continue # Skip unknown types
+                if glyph_raw: l_int = ord(glyph_raw[0])
+                else: continue
 
-            # --- 2. ENRICH METADATA (The Missing Link) ---
-            # Now that we have the Integer (l_int), we can look up the missing facts.
+            # --- 2. ENRICH METADATA (Calculate the missing facts) ---
+            # Now that we have the Integer (l_int), we calculate the rest.
             
-            # Get Unicode Name (e.g., "LATIN SMALL LETTER A")
+            # Calculate Glyph (The visual character)
+            l_glyph = chr(l_int)
+
+            # Calculate Unicode Name (e.g., "LATIN SMALL LETTER L")
             try:
                 l_name = unicodedata.name(l_glyph, "Unknown Character")
             except:
                 l_name = "Unknown Character"
 
-            # Get Hex String (e.g., "U+0061")
+            # Format Hex String (e.g., "U+006C")
             l_cp = f"U+{l_int:04X}"
 
-            # Get Block (e.g., "Basic Latin") - Uses your global helper
+            # Calculate Block (e.g., "Basic Latin") - Uses your global helper
             l_block = _find_in_ranges(l_int, "Blocks") or "N/A"
 
-            # Get Script (e.g., "Latin") - Uses your global helper
+            # Calculate Script (e.g., "Latin") - Uses your global helper
             l_script_full = _find_in_ranges(l_int, "Scripts") or "Com"
-            # Create a short tag for the UI (first 3 chars, e.g., "LAT")
+            # Create a short tag (first 3 chars, e.g., "LAT")
             l_script = l_script_full[:3].upper() if l_script_full else "UNK"
 
-            # --- 3. RENDER (With full data) ---
+            # --- 3. RENDER ---
+            # We use the CALCULATED values for the tooltip
             tooltip = f"{l_name} &#10;Block: {l_block} &#10;Script: {l_script_full}"
             
             chip = f"""
@@ -15574,7 +15572,7 @@ def render_inspector_panel(data):
         if chips_buffer:
             grid_html = "".join(chips_buffer)
             
-            # Inherit color from Identity Risk Facet (Safe Fallback)
+            # Inherit color from Identity Risk Facet
             risk_css = ident_data.get('class', 'risk-info')
             
             lookalike_html = f"""
