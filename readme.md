@@ -2297,3 +2297,29 @@ We have restructured the analysis pipeline into three unidirectional layers. Thi
 * **Defensive Coding:** Extensive type-checking and "Fail-Safe" defaults ensure the analysis engine never crashes, even when fed malformed Unicode sequences.
 
 **Status:** Stage 1 is now architecturally complete. It serves as a verified, deterministic ground-truth instrument for single-cluster analysis.
+
+***
+
+## Update: Stage 1 Architecture Finalization (The "Trio")
+
+**Summary:** We have refactored the "Inspector Char" component into three strict layers to decouple data measurement from security judgment.
+
+### 1. The Architecture (Physics / Policy / Narrative)
+* **Physics Layer (The Measure):** Calculates objective properties of a grapheme cluster.
+    * **Molecular Analysis:** Treats Grapheme Clusters as the atomic unit, not code points.
+    * **Taxonomy Expansion:** Added explicit detection for `ZW-FORMAT` (Zero-Width), `NONCHAR` (Illegal), `SURROGATE` (Broken), and `REGEX_KRYPTONITE` (Parser-Breaking).
+    * **State Detection:** Measures `Raw`, `NFC`, `NFKC`, and `Skeleton` states simultaneously to detect normalization drifts.
+* **Policy Layer (The Judge):** Applies context-specific rules to the physical data via four "Lenses."
+    * **Source Code:** Checks UAX #31 identifier safety and Trojan Source vectors.
+    * **DNS:** Checks IDNA2008 protocol compliance.
+    * **File System (V3.0):** Checks against a "Portable ASCII" whitelist. Flags non-portable characters (like emojis or compatibility digits) as `NOTE` and dangerous characters (newlines, slashes, invisibles) as `CRITICAL` or `WARN`.
+    * **General Text:** Checks for rendering safety.
+* **Narrative Layer (The Output):** Synthesizes lens results into a structured report.
+    * **Executive Summary:** A dynamically generated sentence identifying cross-context risks (e.g., "Safe in text, forbidden in filenames").
+    * **Action Logic:** Prioritizes constructive fixes (Normalization) over destructive ones (Sanitization), except for confirmed threats.
+
+### 2. Functional Improvements
+* **Hardened File System Check:** Now correctly identifies "Technically Valid but Dangerous" characters. It flags Newline Injection, C1 Controls, and Zero-Width characters which were previously passing as "Safe."
+* **RGI Fuzzy Matching:** "Unqualified" emoji sequences (missing VS16) are now identified as valid-but-non-standard rather than broken.
+* **Defensive Catch-Alls:** Added a fallback mechanism to flag any character mathematically defined as "Invisible" even if it lacks specific properties.
+* **Global State Bridge:** Implemented a memory slot to allow the stateless Inspector to reference global token contexts (e.g., "This character is part of a spoofed token").
