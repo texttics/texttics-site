@@ -15395,27 +15395,30 @@ def render_inspector_panel(data):
         <div class="atomic-header">ATOMIC PROFILE</div>
         <div class="atomic-body">
             
-            <div class="atomic-hero">
-                <div class="hero-tier">TIER {tier_val}</div>
-                <div class="hero-type">{tier_desc}</div>
+            <div class="atomic-tier-box">
+                <div class="tier-label">TIER {tier_val}</div>
             </div>
 
-            <div class="atomic-subhero">
+            <div class="atomic-verdict-box">
+                <div class="verdict-label">{tier_desc}</div>
+            </div>
+
+            <div class="atomic-archetype-group">
                 <div class="subhero-label">ARCHETYPE</div>
                 <div class="subhero-val">{archetype}</div>
             </div>
 
-            <div class="atomic-vital-grid">
-                <div class="vital-item">
-                    <span class="vital-label">VISUALS</span>
+            <div class="atomic-vital-stack">
+                <div class="vital-row">
+                    <span class="vital-key">VISUALS</span>
                     <span class="vital-val">{visuals}</span>
                 </div>
-                <div class="vital-item">
-                    <span class="vital-label">STABILITY</span>
+                <div class="vital-row">
+                    <span class="vital-key">STABILITY</span>
                     <span class="vital-val">{stability}</span>
                 </div>
-                <div class="vital-item">
-                    <span class="vital-label">MIMICRY</span>
+                <div class="vital-row">
+                    <span class="vital-key">MIMICRY</span>
                     <span class="vital-val">{mimicry}</span>
                 </div>
             </div>
