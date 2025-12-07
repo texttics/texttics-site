@@ -4279,7 +4279,7 @@ class ForensicExplainer:
             report["context"].append(note)
 
         return report
-
+    
     def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val, dt):
         # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
         # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
@@ -4518,6 +4518,9 @@ class ForensicExplainer:
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
+        # [STAGE 1.9] Run Synthesis
+        report["synthesis"] = self._synthesize(report, cp_int, dt)
+
         # [GAP B FIX] Lens 4: File Systems (OS/Storage)
         # SOTA: Enforces the "Hierarchy of Terror" for Filename Safety.
         fs_status = "SAFE"
@@ -4568,6 +4571,78 @@ class ForensicExplainer:
 
         report["lenses"]["fs"] = {"status": fs_status, "text": fs_msg}
 
+    def _synthesize(self, report, cp_val, dt):
+        """
+        [Stage 1.9] Narrative Intelligence Engine (V2 - Quad-Lens Aware).
+        Synthesizes Code, DNS, Text, AND File System risks into an Executive Summary.
+        """
+        lenses = report.get("lenses", {})
+        code_st = lenses.get("code", {}).get("status", "UNKNOWN")
+        dns_st = lenses.get("dns", {}).get("status", "UNKNOWN")
+        text_st = lenses.get("text", {}).get("status", "UNKNOWN")
+        fs_st   = lenses.get("fs",   {}).get("status", "UNKNOWN")  # [NEW] Include FS Lens
+        
+        # 1. Detect Lens Conflict (The "Jekyll & Hyde" Factor)
+        is_safe_text = text_st in ("SAFE", "NOTE")
+        
+        # Tech Risk now includes Storage/OS risks
+        is_risky_tech = (code_st in ("WARN", "CRITICAL")) or \
+                        (dns_st  in ("WARN", "CRITICAL")) or \
+                        (fs_st   in ("WARN", "CRITICAL"))
+        
+        summary = ""
+        action = None
+        
+        # 2. Generate Executive Summary
+        if is_safe_text and is_risky_tech:
+            summary = "Context-Dependent Risk. Safe for general writing, but strictly discouraged in technical contexts (Code, DNS, or Filenames) due to syntax collisions or protocol bans."
+        
+        elif fs_st == "CRITICAL" and code_st == "SAFE":
+            # Specific case: Valid code char that breaks files (e.g. 'Aux', 'Prn', or ':')
+            summary = "OS/Storage Hazard. Valid in source code, but fatal if used in filenames (Windows/Unix reserved)."
+            
+        elif code_st == "CRITICAL" and dns_st == "CRITICAL":
+            summary = "High-Risk Artifact. Structurally dangerous in all technical environments. Likely malicious or corrupt."
+            
+        elif text_st == "CRITICAL":
+            summary = "Data Corruption. Character is invalid or broken in this encoding standard."
+            
+        else:
+            summary = report["security"]["verdict"]
+
+        # 3. Generate Recommendation (The Fix)
+        # A. Compatibility Normalization (The most common fix)
+        if dt and dt != "None":
+            # Check NFKC for the replacement
+            try:
+                char_raw = chr(cp_val)
+                nfkc = normalize_extended(char_raw)
+                if nfkc and nfkc != char_raw:
+                    action = f"Replace with NFKC form: '{nfkc}'"
+            except: pass
+            
+        # B. Confusables (ASCII Fallback)
+        elif "SPOOF" in report["security"]["badges"]:
+            # Logic: If it's a spoof, suggesting removal is safer than guessing intent
+            pass 
+
+        # C. Invisibles/Controls
+        elif "INVISIBLE" in report["security"]["badges"] or "BIDI" in report["security"]["badges"]:
+            action = "Remove character (Sanitize)."
+
+        # D. Smart Quote Fixes (Manual Heuristics)
+        elif 0x2018 <= cp_val <= 0x201F: # Smart quotes
+            action = "Replace with ASCII quotes (' or \")"
+            
+        # E. File System Fixes [NEW]
+        elif fs_st == "CRITICAL" and cp_val == 0x002F: # Forward Slash
+            action = "Replace with hyphen (-) or underscore (_) for filenames."
+
+        return {
+            "summary": summary,
+            "action": action
+        }
+    
     def _fallback_report(self, identity_msg, verdict_msg, badge_err):
         return {
             "identity": identity_msg,
@@ -15374,7 +15449,7 @@ def render_inspector_panel(data):
     </div>
     """
     
-    # 2. Render the FOOTER
+    # 2. Render the FOOTER (Updated Stage 1.9)
     forensic_row_html = ""
     report_raw = data.get("forensic_report")
     
@@ -15382,7 +15457,7 @@ def render_inspector_panel(data):
         report = report_raw
         level = report.get("security", {}).get("level", "UNKNOWN")
         
-        # ... (Colors logic same as before) ...
+        # Color Logic
         if level == "CRITICAL":
             f_bg = "#fee2e2"; f_txt = "#991b1b"; f_border = "#fca5a5"
         elif level == "SUSPICIOUS":
@@ -15404,22 +15479,27 @@ def render_inspector_panel(data):
                 </div>
                 """
 
+        # [FIX] Complete Label Map including File System
+        label_map = {
+            "code": "SOURCE CODE", 
+            "dns": "DOMAIN NAMES", 
+            "fs": "FILE SYSTEM", 
+            "text": "GENERAL TEXT"
+        }
+
         lenses_html = ""
         lenses = report.get("lenses", {})
         if isinstance(lenses, dict):
-            for key, lens in lenses.items():
-                if not isinstance(lens, dict): continue
+            # Iterate in specific order to keep UI consistent
+            lens_order = ["code", "dns", "fs", "text"]
+            for key in lens_order:
+                lens = lenses.get(key)
+                if not lens or not isinstance(lens, dict): continue
+                
                 l_status = lens.get("status", "UNKNOWN")
                 l_bg = "#ecfdf5" if l_status == "SAFE" else "#fef2f2" if l_status == "CRITICAL" else "#fffbeb"
                 l_txt = "#047857" if l_status == "SAFE" else "#b91c1c" if l_status == "CRITICAL" else "#b45309"
                 l_border = "#a7f3d0" if l_status == "SAFE" else "#fecaca" if l_status == "CRITICAL" else "#fde68a"
-                
-                label_map = {
-                    "code": "SOURCE CODE", 
-                    "dns": "DOMAIN NAMES", 
-                    "fs": "FILE SYSTEM", 
-                    "text": "GENERAL TEXT"
-                }
                 
                 lenses_html += f"""
                 <div style="flex:1; background:{l_bg}; border:1px solid {l_border}; border-radius:4px; padding:6px; min-width: 0;">
@@ -15433,6 +15513,19 @@ def render_inspector_panel(data):
         if report.get("context"):
              context_html = '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #e5e7eb; font-size:0.75rem; color:#6b7280; font-style:italic;">' + "".join([f"<div>ℹ {c}</div>" for c in report["context"]]) + '</div>'
 
+        # [STAGE 1.9] The Synthesized Footer
+        synthesis = report.get("synthesis", {})
+        summ_text = synthesis.get("summary", "")
+        action_text = synthesis.get("action", "")
+        
+        action_html = ""
+        if action_text:
+            action_html = f"""
+            <div style="margin-top:8px; padding:6px 8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; color:#166534; font-size:0.75rem; font-weight:600; display:flex; align-items:center;">
+                <span style="margin-right:6px;">💡</span> {action_text}
+            </div>
+            """
+
         forensic_row_html = f"""
         <div class="forensic-footer" style="border: 1px solid {f_border}; margin-top: 15px;">
             <div class="forensic-left" style="background: {f_bg}; border-right: 1px solid {f_border}; width: 160px; padding: 12px;">
@@ -15444,6 +15537,12 @@ def render_inspector_panel(data):
             
             <div class="forensic-right" style="flex:1; padding: 12px; background: white;">
                 
+                <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #e5e7eb;">
+                    <div style="font-weight:700; color:#1f2937; font-size:0.85rem; margin-bottom:4px;">EXECUTIVE SUMMARY</div>
+                    <div style="color:#4b5563; font-size:0.8rem; line-height:1.4;">{summ_text}</div>
+                    {action_html}
+                </div>
+
                 <div style="display:flex; gap:8px; margin-bottom:12px; border-bottom:1px dashed #e5e7eb; padding-bottom:12px;">
                     {lenses_html}
                 </div>
