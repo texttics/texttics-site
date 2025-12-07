@@ -15263,7 +15263,7 @@ def render_inspector_panel(data):
     - Clears Footer on reset/error states to prevent stale data.
     """
     panel = document.getElementById("inspector-panel-content")
-    footer_panel = document.getElementById("inspector-forensic-footer") # [FIX] Grab reference early
+    footer_panel = document.getElementById("inspector-forensic-footer") # Grab reference early
     
     if not panel: return
 
