@@ -2163,9 +2163,9 @@ To support these features, the architecture was refined to handle **Forensic Sam
 
 ---
 
-## 🛡️ Addendum #12: Stage 1.8 "The Forensic Narrator" & Deep Physics
+## 🛡️ Addendum #12: Stage 1.8 "The Forensic Narrator" & Deep Physics (V8.1)
 
-**Session Goal:** To transition the tool from a **"Passive Instrument"** (displaying raw Unicode properties) to an **"Active Narrator"** (explaining *why* a character is safe or dangerous). We implemented a rigorous **"Physics vs. Policy"** architecture that compiles authoritative UCD specifications into a deterministic security report.
+**Session Goal:** To transition the tool from a **"Passive Instrument"** (displaying raw Unicode properties) to an **"Active Forensic Narrator"** (explaining *why* a character is safe or dangerous). We implemented a rigorous **"Physics vs. Policy"** architecture and solved the "Part-for-Whole" fallacy, ensuring the tool analyzes the *structure of the cluster*, not just the base character.
 
 ### 1. Architecture: The "Grinder" Pipeline (Knowledge Engineering)
 We moved away from hardcoded Python dictionaries to a **Generated Knowledge Base**.
@@ -2178,52 +2178,35 @@ We moved away from hardcoded Python dictionaries to a **Generated Knowledge Base
         * **Identifier Profiles:** Extracts `XID_Start` and `XID_Continue` to strictly enforce UAX #31.
     * **Semantic Compression:** The grinder compiles 300,000+ records into a highly optimized JSON structure, compressed into a **~2.0 MB ZIP artifact** (`forensic_db.zip`) fetched once on load.
 
-### 2. Core Engine: The "Law vs. Order" Architecture
-We resolved the "Split-Brain" problem (where different parts of the UI gave conflicting verdicts) by enforcing a strict separation of concerns.
+### 2. Core Engine: The "Molecular Truth" Architecture (SOTA)
 
-* **Top Panel: The Physicist (The Law)**
-    * **Role:** Describes the **Intrinsic Nature** of the particle.
-    * **Vocabulary:** Uses strict Unicode terminology (e.g., "Compatibility Mapping," "Mutable Structure," "High-Density Cluster").
-    * **Source:** Direct UCD Properties (Normalization Ghosts, Combining Classes).
+We resolved the **"Part-for-Whole" Fallacy**—where the tool correctly flagged a cluster as "Zalgo" but the Inspector naïvely reported the base letter as "Safe."
 
-* **Bottom Panel: The Policy Officer (The Order)**
-    * **Role:** Describes the **Operational Context** and Security Status.
-    * **Vocabulary:** Uses security verdicts (e.g., "Restricted in Identifiers," "Mapped in IDNA," "Trojan Source Risk").
-    * **Source:** UAX #31 (Identifiers), UTS #39 (Security), UTS #46 (IDNA).
+* **The Molecular Bridge:** The Inspector now implements a logic layer that overrides Atomic Verdicts with **Molecular Verdicts**.
+    * **Zalgo Override:** If the cluster has a high mark density (e.g., `a` + 20 marks), the Inspector overrides the base character's "Safe" status to report **"CRITICAL: Diacritic Overload."**
+    * **RGI Awareness:** The engine now cross-references **UTS #51 RGI Sets**. If a sequence is a valid RGI Emoji (e.g., `❤️` or `👨‍👩‍👧‍👦`), the tool grants it **"Molecular Immunity,"** suppressing warnings about "Restricted" base characters or "Compatibility" mutations.
 
-* **Synchronization:** A master logic layer ensures that if Policy says "WARN," the Physics layer visualizes it as "ANOMALOUS" (Yellow), ensuring total cognitive coherence.
-
-### 3. Feature: The Narrative Engine (V4.0)
+### 3. Feature: The Narrative Engine (V4.5)
 We replaced static property lists with a dynamic **Forensic Explainer** (`ForensicExplainer` class) that generates context-aware sentences.
 
-* **Script Context:** Instead of just "Common," it explains usage: *"Common (Used in: Latin, Greek)."*
+* **RGI Context:** Explicitly distinguishes between "Restricted Symbols" (Atom) and "Verified RGI Sequences" (Molecule).
 * **Numeric Truth:** Explicitly states values to expose spoofing: *"Numeric. Mathematical Value: 3."*
-* **Timeline forensics:** Flags "Modern" characters (Unicode 14.0+) that may cause rendering issues vs. "Legacy" characters (Unicode 1.1).
+* **Timeline Forensics:** Flags "Modern" characters (Unicode 14.0+) that may cause rendering issues vs. "Legacy" characters (Unicode 1.1).
 * **Normalization Stability:** Explicitly flags characters that "shapeshift" under NFKC (e.g., `d` is "Stable", `½` is "Unstable").
 
 ### 4. Feature: The "Context Lenses" System
-Instead of a binary "Good/Bad," the engine evaluates safety across three distinct domains simultaneously, fixing false positives for digits and symbols.
+Instead of a binary "Good/Bad," the engine evaluates safety across three distinct domains simultaneously.
 
 * **Lens 1: Source Code (Identifiers)**
     * **Logic:** Checks `XID_Start` vs `XID_Continue`.
-    * **Nuance:** Correctly identifies that a digit (`3`) is **SAFE** as a continuation character, even though it cannot start a variable.
+    * **Nuance:** Correctly downgrades Emojis from "Syntax Warning" to **"[NOTE] Non-Identifier Symbol,"** preventing false alarms for developers.
 * **Lens 2: Domain Names (DNS)**
     * **Logic:** Checks `IDNA2008` status and `UTS #46` mappings.
     * **Nuance:** Correctly flags characters like `½` as **WARN**, explaining that they are "Mapped/Removed" and will not appear in the final URL.
 * **Lens 3: General Text**
     * **Logic:** Distinguishes between **Emoji Base** (Digit 3) and **Emoji Presentation** (😀).
-    * **Nuance:** Prevents ASCII digits from being flagged as "Emoji," while correctly identifying visual symbols.
 
-### 5. UI/UX: The "Split-Layout" Inspector
-We re-architected the **Character Inspector** to handle the depth of the new data without breaking the "Lab Instrument" aesthetic.
-
-* **The Instrument (Top Matrix):** Keeps the rigid, scrollable grid for raw metrics. Labels now reflect **Physical Taxonomy** (Atomic, Composite, Mutable).
-* **The Report (Forensic Footer):** A fluid, expanding zone that contains the Narrative and Lenses.
-* **Visual Semantics:**
-    * **Security Chips:** Badges like "SECURITY" now dynamically change color (Green/Allowed vs. Red/Restricted) based on the UAX #31 status.
-    * **Monotonic Severity:** A "Zalgo" override ensures that high-density clusters are always flagged as at least "SUSPICIOUS," regardless of their identifier status.
-
-### 6. Data Coverage (The "Treasure Chest")
+### 5. Data Coverage (The "Treasure Chest")
 The system now leverages the following UCD dimensions for analysis:
 * **Deep Segmentation:** Line Break, Word Break, Grapheme Break.
 * **Forensic Geometry:** East Asian Width (Fullwidth detection) and Vertical Orientation.
@@ -2232,40 +2215,33 @@ The system now leverages the following UCD dimensions for analysis:
 * **Normalization Qualifiers:** NFKC_QC flags for stability detection.
 * **Security Profiles:** Identifier Status, Type, Confusables, and Hidden Properties (Variation Selectors).
 
+### 6. The Physics/Policy Stratification (V8.1)
+We transitioned the entire system to a **Pure Physics Architecture**, strictly decoupling observation from judgment.
 
----
-
-### The Physics/Policy Stratification (V7.0)
-
-We transitioned the entire system to a **Pure Physics Architecture**, strictly decoupling observation from judgment. This solves the "Hybrid Monster" flaw where the analysis mixed UI concerns with structural measurement.
-
-| Component | Responsibility (V7.0) | Former State |
+| Component | Responsibility (V8.1) | SOTA Upgrade |
 | :--- | :--- | :--- |
-| **Physics Core (`compute_physics_state`)** | **Pure Physics.** Calculates severity and taxonomy (e.g., `dt_type`, `lb_val`) using UAX/UTS specs. Returns only structured data/enums. | Calculated UI classes (`risk-ok`) and leaked policy data. |
-| **Bridge (`analyze_signal_processor_state`)** | **Policy Composer.** Acts as the UI layer. Merges `Physics Severity` with `Policy Severity` to determine the final header color and decides when to display the Policy Verdict. | Was a monolithic logic block. |
-| **Forensic Explainer (`explain`)** | **Policy/Narrative Engine.** Supplies the security verdict and context; ignores the physics layer's severity when calculating its own. | Unchanged in role, but greatly expanded in scope. |
+| **Physics Core (`compute_physics_state`)** | **Pure Physics.** Calculates severity and taxonomy (e.g., `dt_type`, `lb_val`). | **RGI-Aware.** Accepts `is_rgi` flag to distinguish "Benign Mutation" (VS Stripping) from "Artifact Mutation." |
+| **Bridge (`analyze_signal_processor_state`)** | **Policy Composer.** Acts as the UI layer. Merges Physics with Policy. | **Visual Logic.** Renders "Mutable RGI" as **Blue/Safe** (VS Stripped) instead of **Yellow/Warn**. |
+| **Forensic Explainer (`explain`)** | **Policy/Narrative Engine.** Supplies the security verdict and context. | **Anchor Protection.** Ensures ASCII and RGI sequences act as trusted anchors. |
 
 ---
 
 ## 🎯 FORENSIC & STRUCTURAL ACHIEVEMENTS
 
-### 1. Normalization Taxonomy (UAX #15 Precision)
+### 1. Normalization Taxonomy (Context-Aware Precision)
+The **Dual-Atom Profile Matrix (Group 2.A)** now provides forensically precise structural classification, distinguishing between three states of change:
 
-The **Dual-Atom Profile Matrix (Group 2.A)** now provides **forensically precise** structural classification:
-
-* **EQUIVALENCE (Canonical):** The tool now correctly identifies when a character changes in normalization due to **canonical equivalence** (e.g., `A` + `´` $\to$ `Á`). This is classified as a low-risk, **`EQUIV`** state.
-* **MUTATION (Compatibility):** The tool flags characters that transform due to **compatibility decomposition** (e.g., `⓼` $\to$ `8`). This is classified as a **`MUTABLE`** state, indicating a genuine transformation and data loss risk.
-* **Significance:** This moves the tool beyond a simple stability check, aligning it with the highest standards of Unicode processing.
+* **EQUIVALENCE (Canonical):** Low-risk. Changes due to canonical equivalence (e.g., `A` + `´` $\to$ `Á`).
+* **MUTATION (Compatibility):** High-risk. Characters that transform due to compatibility decomposition (e.g., `⓼` $\to$ `8`), indicating genuine data loss.
+* **STRIPPED (Benign):** **[NEW]** Changes due to Variation Selector stripping in valid RGI Emojis (e.g., `❤️` $\to$ `❤`). This is now correctly classified as **Safe/Info** rather than a defect.
 
 ### 2. New Physics Facet: Parsing & Regex Security
-
 We introduced a fundamental new physical measurement facet based on **UTS #18 (Unicode Regular Expressions)**:
 
 * **PARSE Facet:** A new field added to the Inspector logic to warn developers of silent parsing risks.
 * **REGEX KRYPTONITE:** The system now correctly identifies and assigns high severity (Level 3/4) to **non-ASCII line terminators** (`U+2028` Line Separator, `U+2029` Paragraph Separator). These characters are a primary vector for **Trojan Source** and validation bypasses in regex-based code.
 
 ### 3. Hardened Policy & Security Vector Coverage
-
 The `ForensicExplainer` (The Narrator) was hardened against specific contemporary exploit vectors:
 
 * **PUA/Steganography:** **Private Use Area (`Co`)** characters are now explicitly labeled as **CRITICAL** in the Source Code lens due to their risk as non-interoperable steganography/C2 vectors.
