@@ -4538,135 +4538,195 @@ class ForensicExplainer:
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
-        # [GAP B FIX] Lens 4: File Systems (OS/Storage)
-        # SOTA: Enforces the "Hierarchy of Terror" for Filename Safety.
+        # Lens 4: File Systems (OS/Storage)
+        # SOTA: Enforces the "Hierarchy of Terror" for filename safety.
+        # Now uses Physics Taxonomy (fmt_class) for robust zero-width detection.
         fs_status = "SAFE"
         fs_msg = "Valid filename character."
-        
+
         ch = chr(cp_val)
+        
+        # Access Physics context if available (passed via report), otherwise infer locally
+        # Note: report['physics'] might not be populated yet if called early, so we rely on props + direct checks
+        # But we can re-derive the critical ZW-FORMAT class locally for safety.
+        is_zw_format = (
+            "Zero_Width_Space" in props or 
+            "Zero_Width_Non_Joiner" in props or 
+            "Zero_Width_Joiner" in props or 
+            cp_val in (0x200B, 0x200C, 0x200D, 0xFEFF)
+        )
 
         # A. Path Separators (Cross-platform fatal)
+        # Slash is reserved as a directory separator on Unix/Linux/macOS and is also banned in Windows filenames.
         if ch == "/":
             fs_status = "CRITICAL"
-            fs_msg = "Directory Separator. Reserved path delimiter on Unix/Linux/macOS and invalid in Windows filenames."
+            fs_msg = "Directory Separator. Reserved path delimiter on Unix/Linux/macOS and invalid in Windows filenames. Cannot appear inside a single filename."
 
         # B. The "Windows Nine" (Structurally Banned)
-        # < > : " \ | ? *
+        # < > : " \ | ? * (Note: Forward slash handled above)
         elif is_ascii and ch in FS_WINDOWS_BANNED:
             fs_status = "CRITICAL"
-            fs_msg = "Forbidden (Windows). Reserved character (< > : \" / \\ | ? *). Prevents file creation on NTFS/FAT32."
-            
-        # C. Control Characters (0x00-0x1F)
-        elif cp_val <= 0x1F:
+            fs_msg = "Forbidden (Windows). Reserved character (< > : \" \\ | ? *). Prevents file creation on NTFS/FAT32."
+
+        # C. Control Characters (C0 + DEL)
+        # 0x00-0x1F and 0x7F are dangerous/banned.
+        elif cp_val <= 0x1F or cp_val == 0x7F:
             if cp_val == 0x00:
                 fs_status = "CRITICAL"
                 fs_msg = "Null Byte Injection. Fatal to C-based file systems (String Terminator)."
             else:
                 fs_status = "WARN"
-                fs_msg = "Control Character. Banned on Windows; dangerous on Unix (breaks shell scripts/loops)."
-                
-        # D. Invisible / Ignorable / Zero-Width (Obfuscation Risk)
-        # [NEW] Explicitly catch zero-width characters that slip through as "Valid Text"
-        elif "Default_Ignorable_Code_Point" in props or "Join_Control" in props or "Zero_Width_Space" in props:
-             fs_status = "WARN"
-             fs_msg = "Invisible or ignorable character. Filenames may look identical while comparing differently (obfuscation risk)."
+                fs_msg = "Control Character. Banned on Windows; dangerous in scripts/tools on Unix (newlines break shell loops)."
+
+        # D. Invisible / Zero-Width / Ignorable (Obfuscation Risk)
+        # Detection of ZWSP, ZWJ, Tags, etc. in filenames is a high-severity obfuscation risk.
+        elif is_zw_format or "Default_Ignorable_Code_Point" in props or "Join_Control" in props:
+            fs_status = "WARN"
+            fs_msg = "Invisible or ignorable character. Filenames may look identical while comparing differently (obfuscation and collision risk)."
 
         # E. Bidi Controls (RTLO, LRO, etc.)
         elif "Bidi_Control" in props:
-            if gc_code in ("RLO", "LRO") or cp_val in (0x202E, 0x202D):
+            # Check for RLO (202E) and LRO (202D) explicitly for extension spoofing
+            if cp_val in (0x202E, 0x202D) or gc_code in ("RLO", "LRO"):
                 fs_status = "CRITICAL"
-                fs_msg = "Extension Spoofing Vector. RTLO reverses filename (e.g. 'codexe.txt' renders as 'codtxt.exe')."
+                fs_msg = "Extension Spoofing Vector. Directional override can visually reorder filename segments (e.g. hiding true extension)."
             else:
                 fs_status = "WARN"
-                fs_msg = "Bidi Control. Suspicious in filenames; often used for obfuscation."
+                fs_msg = "Bidirectional control. Suspicious in filenames; often used for visual obfuscation."
 
-        # F. Whitespace (Trailing/Leading)
+        # F. Whitespace (Leading/Trailing Risk)
         elif gc_code == "Zs":
             fs_status = "NOTE"
-            fs_msg = "Whitespace. Leading/trailing spaces or dots can hide extensions or confuse path handling (position-dependent)."
+            fs_msg = "Whitespace. Leading/trailing spaces can hide extensions or confuse path handling; Windows strips trailing spaces."
 
         # G. Extension Delimiter (.)
-        elif cp_val == 0x2E: # '.'
+        elif cp_val == 0x2E:  # '.'
             fs_status = "NOTE"
-            fs_msg = "Extension Delimiter. Trailing dots are stripped by Windows (Magic Dot attack)."
+            fs_msg = "Extension delimiter. Trailing dots are stripped by Windows; may be abused for 'magic dot' attacks."
+            
+        # H. Combining Marks (Visual Confusion)
+        elif gc_code.startswith("M"):
+             fs_status = "NOTE"
+             fs_msg = "Combining mark. Filenames may look identical on screen while comparing differently in storage (Normalization collision risk)."
 
         report["lenses"]["fs"] = {"status": fs_status, "text": fs_msg}
 
     def _synthesize(self, report, cp_val, dt):
         """
-        [Stage 1.9] Narrative Intelligence Engine (V2.2 - Domain-Aware).
+        [Stage 1.9] Narrative Intelligence Engine (V2.4 - Ultimate Synthesis).
         Synthesizes Code, DNS, Text, AND File System risks into an Executive Summary.
         """
-        lenses = report.get("lenses", {})
-        code_st = lenses.get("code", {}).get("status", "UNKNOWN")
-        dns_st  = lenses.get("dns",  {}).get("status", "UNKNOWN")
-        text_st = lenses.get("text", {}).get("status", "UNKNOWN")
-        fs_st   = lenses.get("fs",   {}).get("status", "UNKNOWN")
+        lenses   = report.get("lenses", {})
+        code_st  = lenses.get("code", {}).get("status", "UNKNOWN")
+        dns_st   = lenses.get("dns",  {}).get("status", "UNKNOWN")
+        text_st  = lenses.get("text", {}).get("status", "UNKNOWN")
+        fs_st    = lenses.get("fs",   {}).get("status", "UNKNOWN")
 
-        badges   = report.get("security", {}).get("badges", [])
-        sec_verdict = report.get("security", {}).get("verdict", "Standard Literal. Safe for general interchange.")
+        sec      = report.get("security", {})
+        badges   = sec.get("badges", [])
+        sec_verdict = sec.get("verdict", "Standard literal. Safe for general interchange.")
+
+        # Access Physics context safely
+        # Note: report['physics'] might not exist if called early, so we infer from badges/props
+        has_bidi = "BIDI" in badges
+        has_inv  = "INVISIBLE" in badges
+        has_spoof = "SPOOF" in badges
+        
+        # Helper to detect VS (Variation Selectors) to protect them from aggressive stripping
+        # We check props because fmt_class might not be in 'report' dict yet
+        props = report.get("props", [])
+        is_vs = "Variation_Selector" in props
+
+        def is_crit(v): return v == "CRITICAL"
+        def is_warn(v): return v == "WARN"
+
+        risky_code = is_warn(code_st) or is_crit(code_st)
+        risky_dns  = is_warn(dns_st)  or is_crit(dns_st)
+        risky_fs   = is_warn(fs_st)   or is_crit(fs_st)
+
+        is_safe_text  = text_st in ("SAFE", "NOTE")
+        is_risky_tech = risky_code or risky_dns or risky_fs
 
         summary = ""
         action  = None
 
-        # Helpers
-        def any_crit(*vals): return any(v == "CRITICAL" for v in vals)
-        def any_warn(*vals): return any(v == "WARN" for v in vals)
-        
-        # 1. Detect Lens Conflict (The "Jekyll & Hyde" Factor)
-        is_safe_text = text_st in ("SAFE", "NOTE")
-        is_risky_tech = any_warn(code_st, dns_st, fs_st) or any_crit(code_st, dns_st, fs_st)
+        # --- 1. Executive Summary (Risk Narrative) ---
 
-        # A. Primary hazard: data corruption / invalid text
-        if text_st == "CRITICAL":
+        # A. Directional controls (Trojan Source / extension spoofing)
+        if has_bidi:
+            ctx = []
+            if risky_code: ctx.append("source code")
+            if risky_dns:  ctx.append("domain names")
+            if risky_fs:   ctx.append("filenames")
+            ctx_str = ", ".join(ctx) if ctx else "structured text"
+            summary = f"Directional override control. Valid Unicode, but highly dangerous in {ctx_str} (Trojan Source / extension spoofing class)."
+
+        # B. Broken / non-text characters (lone surrogates, non-characters)
+        # Only flag data corruption if it's NOT a bidi control or valid invisible.
+        elif text_st == "CRITICAL" and not has_inv:
             summary = "Data Corruption. Character is invalid in this encoding or text model and should not appear in normal content."
 
-        # B. Cross-domain weapon (code + DNS + text all bad)
-        elif any_crit(code_st, dns_st) and text_st in ("WARN", "CRITICAL"):
-            summary = "High-Risk Artifact. Dangerous across text and technical environments (code, network protocols). Treat as malicious or corrupt."
+        # C. Invisible obfuscation vectors in technical domains
+        elif has_inv and is_risky_tech and not is_vs:
+            ctx = []
+            if risky_code: ctx.append("source code")
+            if risky_dns:  ctx.append("domain labels")
+            if risky_fs:   ctx.append("filenames")
+            ctx_str = ", ".join(ctx) if ctx else "sensitive tokens"
+            summary = f"Invisible obfuscation vector. Zero-width or ignorable character in {ctx_str} can make two tokens look identical while comparing differently."
 
-        # C. Context-Dependent Risk (Nuanced)
+        # D. Cross-domain structural weapon (text + technical both unhappy)
+        elif (is_crit(code_st) or is_crit(dns_st) or is_crit(fs_st)) and text_st in ("WARN", "CRITICAL"):
+            summary = "High-Risk Artifact. Dangerous across text and technical environments. Treat as malicious or corrupt unless there is a compelling reason."
+
+        # E. Context-dependent risks (Jekyll & Hyde)
         elif is_safe_text and is_risky_tech:
-            # Build specific list of risky contexts
             risk_lenses = []
-            if code_st in ("WARN","CRITICAL"): risk_lenses.append("source code")
-            if dns_st in ("WARN","CRITICAL"): risk_lenses.append("domain names / network")
-            if fs_st in ("WARN","CRITICAL"): risk_lenses.append("file names / storage")
+            if risky_code: risk_lenses.append("source code")
+            if risky_dns:  risk_lenses.append("domain names")
+            if risky_fs:   risk_lenses.append("filenames")
             lenses_str = ", ".join(risk_lenses)
-            
             summary = f"Context-Dependent Risk. Safe for plain text, but problematic in {lenses_str}."
 
-        # D. Fallback: re-use the main security verdict
+        # F. Fallback
         else:
             summary = sec_verdict
 
-        # 3. Generate Recommendation (The Fix)
+        # --- 2. Recommendation (The Fix) ---
+
         # PRIORITY 1: Compatibility Normalization (The most constructive fix)
+        # If it normalizes to something else (e.g. ⓼ -> 8), do that.
         if dt and dt != "None":
             try:
                 char_raw = chr(cp_val)
                 nfkc = normalize_extended(char_raw)
                 if nfkc and nfkc != char_raw:
                     action = f"Replace with NFKC form: '{nfkc}'"
-            except: pass
+            except Exception:
+                pass
 
         # PRIORITY 2: Homoglyph Safety (Manual Review)
-        elif "SPOOF" in badges:
+        # Do not suggest automated removal for visible characters that might be legit.
+        elif has_spoof:
             action = "Review manually for homoglyph spoofing; automatic replacement not recommended."
 
-        # PRIORITY 3: Invisibles/Controls/Zero-Width (Sanitize)
-        # [NEW] Default to Remove if FS/Code is risky due to format/invisibility
-        elif "INVISIBLE" in badges or "BIDI" in badges or fs_st in ("WARN", "CRITICAL"):
-             # If it's risky in FS and not handled above, it's likely a format control or invisible.
-             if fs_st != "SAFE" and text_st != "SAFE":
+        # PRIORITY 3: Bidi controls – always strip outside specialized markup
+        elif has_bidi:
+            action = "Remove character (Sanitize)."
+
+        # PRIORITY 4: Invisibles / zero-width / ignorable formats
+        # We strip them if they cause risk, UNLESS they are Variation Selectors (which render semantics).
+        elif has_inv and is_risky_tech:
+             if not is_vs: 
                  action = "Remove character (Sanitize)."
 
-        # PRIORITY 4: Specific Heuristics
-        elif 0x2018 <= cp_val <= 0x201F: 
-            action = "Replace with ASCII quotes (' or \")"
+        # PRIORITY 5: Smart quote fixes (Textual Compatibility)
+        elif 0x2018 <= cp_val <= 0x201F:
+            action = "Replace with ASCII quotes (' or \")."
 
+        # PRIORITY 6: File-system specific fixes
         elif fs_st == "CRITICAL" and cp_val == 0x002F:
-            action = "Replace with hyphen (-) or underscore (_) for filenames."
+            action = "Replace with hyphen (-) or underscore (_) when used in filenames."
 
         return {
             "summary": summary,
@@ -7922,7 +7982,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def compute_physics_state(data, raw_props):
     """
-    [Block 6] SOTA Physics Engine (V8.3 - Hardened Taxonomy).
+    [Block 6] SOTA Physics Engine (V2.4 - Ultimate Hardening).
     Pure functional analysis. Returns Enums/Syndromes. 
     Zero UI logic, Zero Policy.
     """
@@ -7939,9 +7999,8 @@ def compute_physics_state(data, raw_props):
         "parse_state": "SAFE",
         "dt_type": None,
         "width_class": "N",
-        # [GAP 1.2] New Explicit Taxonomy Fields
         "special_range": "NONE",  # NONCHAR, SURROGATE, PUA, UNASSIGNED
-        "format_class": "NONE"    # BIDI, TAG, JOINER, VS, IGNORABLE
+        "format_class": "NONE"    # BIDI, TAG, JOINER, VS, IGNORABLE, ZW-FORMAT
     }
     
     # --- 2. FACET: ONTOLOGY (Special Ranges) ---
@@ -7949,16 +8008,16 @@ def compute_physics_state(data, raw_props):
     
     if gc == 'Co':
         phys['special_range'] = 'PUA'
-        phys['severity'] = max(phys['severity'], 3) # Suspicious
+        phys['severity'] = max(phys['severity'], 3)
     elif gc == 'Cs':
         phys['special_range'] = 'SURROGATE'
-        phys['severity'] = max(phys['severity'], 4) # Critical (Broken Data)
+        phys['severity'] = max(phys['severity'], 4)
     elif gc == 'Cn':
         phys['special_range'] = 'UNASSIGNED'
         phys['severity'] = max(phys['severity'], 3)
     elif "Noncharacter_Code_Point" in raw_props:
         phys['special_range'] = 'NONCHAR'
-        phys['severity'] = max(phys['severity'], 4) # Critical (Internal Use Only)
+        phys['severity'] = max(phys['severity'], 4)
 
     # --- 3. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
     is_inv = data.get('is_invisible')
@@ -7975,24 +8034,45 @@ def compute_physics_state(data, raw_props):
         phys['syndromes'].append("BIDI_WEAPON")
         
     elif is_inv:
-        # Check specifically for Tags (Block check is robust)
+        # Determine Codepoint Integer for precise checks
+        try:
+            cp_val = int(data.get('codepoint', 'U+0000')[2:], 16)
+        except:
+            cp_val = 0
+
+        # Tags block (language/emoji tags)
         if data.get('block') == 'Tags':
             phys['format_class'] = "TAG"
             phys['vis_state'] = "HIDDEN"
             phys['severity'] = max(phys['severity'], 4)
             phys['syndromes'].append("TAG_INJECTION")
             
+        # Core zero-width formatting primitives (Hard-coded for robustness)
+        # 200B (ZWSP), 200C (ZWNJ), 200D (ZWJ), FEFF (BOM/ZWNBSP)
+        elif cp_val in (0x200B, 0x200C, 0x200D, 0xFEFF):
+            phys['format_class'] = "ZW-FORMAT"
+            phys['vis_state'] = "HIDDEN"
+            # Joiners are slightly higher risk than spacers due to spoofing potential
+            base_sev = 3 if cp_val in (0x200B, 0xFEFF) else 4  
+            phys['severity'] = max(phys['severity'], base_sev)
+            phys['syndromes'].append("ZERO_WIDTH")
+            if cp_val in (0x200C, 0x200D):
+                phys['syndromes'].append("JOINER")
+
+        # Join controls (Legacy path / non-standard)
         elif "Join_Control" in raw_props:
             phys['format_class'] = "JOINER"
             phys['vis_state'] = "FORMAT"
-            phys['severity'] = max(phys['severity'], 2)
+            phys['severity'] = max(phys['severity'], 3)
             phys['syndromes'].append("JOINER")
             
-        elif "Variation_Selector" in raw_props:
+        # Variation Selectors
+        elif "Variation_Selector" in raw_props or (0xFE00 <= cp_val <= 0xFE0F) or (0xE0100 <= cp_val <= 0xE01EF):
             phys['format_class'] = "VS"
             phys['vis_state'] = "FORMAT"
+            phys['severity'] = max(phys['severity'], 1)
             
-        # [NEW] Explicit Zero-Width Format Detection
+        # Generic zero-width formats via properties (Defensive)
         elif raw_props and any(p in raw_props for p in ("Zero_Width_Space", "Zero_Width_Non_Joiner", "Zero_Width_Joiner")):
             phys['format_class'] = "ZW-FORMAT"
             phys['vis_state'] = "HIDDEN"
@@ -8028,34 +8108,30 @@ def compute_physics_state(data, raw_props):
     # --- 4. FACET: STRUCTURE (UAX #15 & Emoji Logic) ---
     ghosts = data.get('ghosts')
     is_rgi = data.get('is_rgi', False) 
-
-    # [CASE 11 FIX] Orphan Modifier Detection
     components = data.get('components', [])
+
+    # Orphan Modifier Detection
     if len(components) > 1:
-        # Logic: If cluster has a modifier (Sk) but is NOT RGI, check validity.
         has_skin_tone = any(c.get('cat') == 'Sk' for c in components[1:])
-        
-        if has_skin_tone:
-            if not is_rgi:
-                phys['struct_state'] = "BROKEN"
-                phys['severity'] = max(phys['severity'], 3)
-                phys['syndromes'].append("ORPHAN_MODIFIER")
+        # Logic: If cluster has a modifier but is NOT a valid RGI sequence, it is structural noise.
+        if has_skin_tone and not is_rgi:
+            phys['struct_state'] = "BROKEN"
+            phys['severity'] = max(phys['severity'], 3)
+            phys['syndromes'].append("ORPHAN_MODIFIER")
 
     if ghosts and (ghosts['raw'] != ghosts['nfkc']):
         dt = data.get('dt')
         phys['dt_type'] = dt
-        
         phys['struct_state'] = "MUTABLE"
         
-        if is_rgi:
-             pass
-        else:
+        if not is_rgi:
              phys['severity'] = max(phys['severity'], 2)
              phys['syndromes'].append("COMPAT_ARTIFACT")
         
         if not dt: phys['dt_type'] = "Implicit"
             
     elif len(components) > 1:
+        # Only set COMPOSITE if not already flagged as BROKEN
         if phys['struct_state'] != "BROKEN":
             phys['struct_state'] = "COMPOSITE"
         
