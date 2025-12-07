@@ -15392,7 +15392,7 @@ def render_inspector_panel(data):
     
     signal_processor_content = f"""
     <div class="atomic-profile-container tier-theme-{tier_val}">
-        <div class="atomic-header">ATOMIC PROFILE</div>
+    
         <div class="atomic-body">
             
             <div class="atomic-tier-box">
