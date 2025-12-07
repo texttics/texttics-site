@@ -15505,57 +15505,59 @@ def render_inspector_panel(data):
     lookalike_html = ""
     lookalikes_list = data.get('lookalikes_data')
     
-    # Check if list exists and is not empty
     if lookalikes_list and isinstance(lookalikes_list, list):
         count = len(lookalikes_list)
         chips_buffer = []
         
-        # Limit to top 24 to prevent UI explosion
         for item in lookalikes_list[:24]:
-            
-            # --- 1. NORMALIZE INPUT (Get the Integer) ---
             l_int = 0
+            l_glyph = "?"
             
-            # Case A: Integer (The new standard from our fix)
+            # --- 1. NORMALIZE INPUT ---
+            # Case A: Integer (Clean)
             if isinstance(item, int):
                 l_int = item
-            # Case B: String (Hex string "006C" or "U+006C")
-            elif isinstance(item, str):
-                try:
-                    clean_hex = item.replace("U+", "").replace("0x", "")
-                    l_int = int(clean_hex, 16)
-                except: continue
-            # Case C: Dictionary (Old database format)
+                l_glyph = chr(l_int)
+                
+            # Case B: String (Could be Glyph "a" OR Hex "006C" OR "U+006C")
+            elif isinstance(item, str) and item:
+                # Heuristic: Is it a Hex Code? (len > 1 and mostly hex chars)
+                # This fixes the "1" showing "006C" instead of "l"
+                is_hex_code = (len(item) > 1 and all(c in "0123456789ABCDEFabcdefUu+" for c in item))
+                
+                if is_hex_code:
+                    try:
+                        clean = item.replace("U+", "").replace("u+", "").replace("0x", "")
+                        l_int = int(clean, 16)
+                        l_glyph = chr(l_int)
+                    except:
+                        # Fallback: It was just a weird word?
+                        l_int = ord(item[0])
+                        l_glyph = item
+                else:
+                    # It is a literal character (e.g. "a" or "α")
+                    l_int = ord(item[0])
+                    l_glyph = item
+
+            # Case C: Dict (Legacy)
             elif isinstance(item, dict):
                 glyph_raw = item.get('glyph')
-                if glyph_raw: l_int = ord(glyph_raw[0])
+                if glyph_raw:
+                    l_glyph = glyph_raw
+                    l_int = ord(glyph_raw[0])
                 else: continue
+            else:
+                continue
 
-            # --- 2. ENRICH METADATA (Calculate the missing facts) ---
-            # Now that we have the Integer (l_int), we calculate the rest.
-            
-            # Calculate Glyph (The visual character)
-            l_glyph = chr(l_int)
+            # --- 2. ENRICH METADATA ---
+            try: l_name = unicodedata.name(l_glyph, "Unknown Character")
+            except: l_name = "Unknown Character"
 
-            # Calculate Unicode Name (e.g., "LATIN SMALL LETTER L")
-            try:
-                l_name = unicodedata.name(l_glyph, "Unknown Character")
-            except:
-                l_name = "Unknown Character"
-
-            # Format Hex String (e.g., "U+006C")
             l_cp = f"U+{l_int:04X}"
-
-            # Calculate Block (e.g., "Basic Latin") - Uses your global helper
             l_block = _find_in_ranges(l_int, "Blocks") or "N/A"
-
-            # Calculate Script (e.g., "Latin") - Uses your global helper
             l_script_full = _find_in_ranges(l_int, "Scripts") or "Com"
-            # Create a short tag (first 3 chars, e.g., "LAT")
             l_script = l_script_full[:3].upper() if l_script_full else "UNK"
 
-            # --- 3. RENDER ---
-            # We use the CALCULATED values for the tooltip
             tooltip = f"{l_name} &#10;Block: {l_block} &#10;Script: {l_script_full}"
             
             chip = f"""
@@ -15571,16 +15573,11 @@ def render_inspector_panel(data):
             
         if chips_buffer:
             grid_html = "".join(chips_buffer)
-            
-            # Inherit color from Identity Risk Facet
             risk_css = ident_data.get('class', 'risk-info')
-            
             lookalike_html = f"""
             <div class="ghost-section lookalikes {risk_css}" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
                 <span class="ghost-key">LOOKALIKES ({count})</span>
-                <div class="lookalike-grid">
-                    {grid_html}
-                </div>
+                <div class="lookalike-grid">{grid_html}</div>
             </div>
             """
 
@@ -17629,24 +17626,21 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            # Robust Lookup: Handles Ints, Decimals, Raw Hex, AND "U+" Prefixes
+            # Robust Lookup: Expanded Key Search + Safer Value Parsing
             "lookalikes_data": (
                 rec.get("confusables") or 
                 (lambda cp: [
-                    # 1. Handle Integers directly
+                    # Converter: Handle Ints, Hex Strings ("0061"), and Prefixed Strings ("U+0061")
                     chr(x) if isinstance(x, int) else
-                    # 2. Handle Strings
-                    chr(int(
-                        str(x).replace("U+", "").replace("0x", ""), # Strip prefixes
-                        16 # Parse as Base-16 (Hex covers both decimal and hex in most contexts)
-                    ))
+                    chr(int(str(x).replace("U+", "").replace("u+", "").replace("0x", ""), 16))
                     for x in (
-                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal Key
-                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex Key
-                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char Key
+                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Key: "97"
+                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Key: "0061"
+                        DATA_STORES.get("InverseConfusables", {}).get(f"U+{cp:04X}") or # Key: "U+0061" (NEW)
+                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Key: "a"
                         []
                     )
-                    # Safety Filter: Ensure x is valid data
+                    # Filter: Ensure valid input
                     if x and isinstance(x, (int, str))
                 ])(cp_base)
             ),
