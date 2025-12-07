@@ -3821,6 +3821,8 @@ class ForensicExplainer:
             "lenses": {}, "context": []      
         }
 
+        layout_notes = []
+
         # --- A. IDENTITY & PROVENANCE ---
         age = rec.get("age", "NA")
         blk = rec.get("blk", "Unknown Block")
@@ -4219,8 +4221,6 @@ class ForensicExplainer:
         })
         
         # 6. Layout (Forensic Geometry & Spoofing Risks)
-        # Initialize list immediately to prevent UnboundLocalError
-        layout_notes = []
         
         lb_code = rec.get("lb", "XX")
         # Handle case where vocab might be missing
