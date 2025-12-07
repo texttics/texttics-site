@@ -2323,3 +2323,37 @@ We have restructured the analysis pipeline into three unidirectional layers. Thi
 * **RGI Fuzzy Matching:** "Unqualified" emoji sequences (missing VS16) are now identified as valid-but-non-standard rather than broken.
 * **Defensive Catch-Alls:** Added a fallback mechanism to flag any character mathematically defined as "Invisible" even if it lacks specific properties.
 * **Global State Bridge:** Implemented a memory slot to allow the stateless Inspector to reference global token contexts (e.g., "This character is part of a spoofed token").
+
+Here is the drafted update for your `README.md`. It captures the shift to **Stage 2.0** logic and the UI overhaul.
+
+---
+
+### Update: The "State-of-the-Art" (SOTA) & UX Overhaul
+
+**Session Goal:** To transition the tool from "Strict Verification" to **"Forensic Guidance."** We hardened the File System logic into a "Two-World Model," unified the Inspector UI to eliminate redundancy, and introduced a high-density "Atomic Profile" for rapid triage.
+
+#### 1. Stage 2.0: The "Two-World" File System Lens
+We implemented a definitive forensic specification for filename safety, rejecting the "Kernel Fallacy" (just because the OS allows it, doesn't mean it's safe). The new **Lens 4** evaluates characters against two simultaneous standards:
+* **World 1: Kernel Legality:** Physical bans (Null Bytes, Path Separators).
+* **World 2: Forensic Safety:** Tooling risks (Shell Injection, Extension Spoofing).
+
+**New Capabilities:**
+* **Tier 1 (Structural Bans):** Explicitly flags `0x00` (Null) and `/` `\` as **CRITICAL** structural breaks.
+* **Tier 2 (Tooling Safety):** Upgraded **Newline Injection** (`LF`, `CR`, `LS`) and **Bidi Overrides** (`RLO`) to **CRITICAL**. These are confirmed kill-chains for shell scripts and file extensions.
+* **Tier 5 (Gold Standard):** Enforces strict POSIX portability. Correctly downgrades "Technically Valid" characters like **Dot (`.`)** and **Space (` `)** to **NOTE** status due to Windows trailing-dot truncation and shell quoting risks.
+
+#### 2. The Unified Forensic Command Bar (Inspector Footer)
+We replaced the fragmented "Verdict vs. Summary" split layout with a unified **"Diagnosis & Prescription"** architecture.
+* **Diagnosis Row:** A single, authoritative narrative that merges the classification ("What is it?") with the context ("Where does it break?"). Includes "Smart Merge" logic to eliminate stuttering text (e.g., preventing *"Verified Identifier. Verified Identifier..."*).
+* **Prescription Row:** A dedicated, high-contrast **Action Bar** that appears *only* when a specific remedy exists (e.g., *"💡 Replace with NFKC form..."*).
+* **Inertia Fix:** Resolved the "Stale Data" bug where the footer persisted after deselection.
+
+#### 3. The Atomic Profile (Inspector Column)
+We replaced the graphical "Risk Matrix" icons with a high-density **Text-Mode Dashboard**, designed for rapid "No-Read" triage.
+* **Vocabulary Shift:** Moved from passive descriptions ("Standard Composition") to active **Forensic Archetypes** (`SEMANTIC LITERAL`, `STRUCTURAL SYNTAX`, `VOID ENTITY`, `ACTIVE THREAT`).
+* **The "Vital Signs" Monitor:**
+    * **VISUALS:** Tracks pixel footprint (`HIDDEN`, `AMBIGUOUS`).
+    * **STABILITY:** Tracks normalization decay (`STABLE`, `DECAYING`, `VOLATILE`).
+    * **MIMICRY:** Tracks visual uniqueness (`UNIQUE`, `MIMIC`, `SHADOW`).
+* **Logic Hardening:** Patched the "Low-Zalgo" gap. Composite clusters with 1-2 marks (e.g., `Z͑`) are now correctly elevated to **Tier 1 (NOTE)**, preventing them from masquerading as "Standard Text."
+* **Visual Polish:** Restored "Lab Instrument" depth with hero typography, high-contrast values, and tiered color coding.
