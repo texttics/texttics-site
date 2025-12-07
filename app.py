@@ -15305,61 +15305,85 @@ def render_inspector_panel(data):
 
     # --- HTML GENERATION ---
 
-    # Zone A: The Verdict Header
-    icon_svg = get_icon(state['icon_key'], color="currentColor", size=14)
-    risk_header_html = f"""
-        <div class="risk-header {state['header_class']}">
-            <div class="risk-header-top">
-                <span class="risk-header-icon">{icon_svg}</span>
-                <span class="risk-level-text">{state['level_text']}</span>
-            </div>
-            <div class="risk-verdict-text">{state['verdict_text']}</div>
-        </div>
-    """
-
-    # Zone B: The Diagnostic Matrix
-    def build_row(label, f_data, master_color):
-        svg = get_icon(f_data['icon'], color=master_color, size=14)
-        
-        return f"""
-        <div class="risk-row">
-            <div class="risk-facet">
-                <span class="facet-icon">{svg}</span>
-                <span class="facet-label">{label}</span>
-            </div>
-            <div class="risk-cell-right">
-                <div class="risk-status {f_data['class']}">{f_data['state']}</div>
-                <div class="risk-detail">{f_data['detail']}</div>
-            </div>
-        </div>
-        """
-
-    matrix_html = f"""
-        <div class="risk-matrix">
-            {build_row("VISIBILITY", vis_data, global_icon_color)}
-            {build_row("STRUCTURE", struct_data, global_icon_color)}
-            {build_row("IDENTITY", ident_data, global_icon_color)}
-        </div>
-    """
-
-    # Zone C: The Footer
-    footer_html = ""
-    if state['level'] >= 1 and state.get('footer_text'):
-        footer_html = f"""
-        <div class="risk-footer">
-            <div class="risk-footer-label {state['footer_class']}">{state['footer_label']}</div>
-            <div class="risk-footer-content">{state['footer_text']}</div>
-        </div>
-        """
-    elif state['level'] == 0:
-        footer_html = f"""
-        <div class="risk-footer">
-            <div class="risk-footer-label footer-neutral">ANALYSIS</div>
-            <div class="risk-footer-content">Standard Composition</div>
-        </div>
-        """
+    # [ATOMIC PROFILE ENGINE] Forensic Text-Mode Display
+    # Replaces SVGs/Icons with high-density scientific classification.
     
-    signal_processor_content = risk_header_html + footer_html + matrix_html
+    # 1. ARCHETYPE LOGIC (The Role)
+    # Maps 'macro_type' and properties to a functional species.
+    archetype = "UNKNOWN ENTITY"
+    
+    if mt == "ROT":
+        archetype = "VOID ENTITY"
+    elif mt == "THREAT":
+        archetype = "ACTIVE THREAT"
+    elif mt == "OBFUSCATION":
+        archetype = "LAYOUT CONTROL"
+    elif mt == "SYNTAX":
+        archetype = "STRUCTURAL SYNTAX"
+    elif mt == "MARK":
+        archetype = "MODIFIER"
+    elif mt == "NUMBER":
+        archetype = "NUMERIC LITERAL"
+    elif mt == "BASELINE" or mt == "EXTENDED":
+        archetype = "SEMANTIC LITERAL"
+        
+    # Overrides for precision
+    if "Variation_Selector" in raw_props: archetype = "METADATA BADGE"
+    elif "Tag" in raw_props: archetype = "METADATA CONTAINER"
+    
+    # 2. VISUALS LOGIC (The Physics)
+    # Maps phys['vis_state'] to Scannable Keywords
+    visuals = "STANDARD"
+    if phys['vis_state'] == "HIDDEN": visuals = "HIDDEN"
+    elif phys['vis_state'] == "CONTROL": visuals = "GHOST" # Affects cursor
+    elif phys['vis_state'] == "EXTENDED": visuals = "AMBIGUOUS" # Width risk
+    
+    # 3. STABILITY LOGIC (The Chemistry)
+    # Maps phys['struct_state'] to Decay Modes
+    stability = "STABLE"
+    if phys['struct_state'] == "MUTABLE": stability = "DECAYING (NFKC)"
+    elif phys['struct_state'] == "BROKEN": stability = "VOLATILE"
+    elif phys['struct_state'] == "COMPOSITE": stability = "COMPOSITE"
+    
+    # 4. MIMICRY LOGIC (The Biometrics)
+    # Maps lookalikes count to Trust Level
+    mimicry = "UNIQUE"
+    if look_count > 0: mimicry = "MIMIC"
+    if "SHADOW" in policy_badges: mimicry = "SHADOW" # Invisible influence
+
+    # 5. TIER LOGIC (The Risk)
+    tier_val = state['level']
+    tier_desc = "SAFE"
+    tier_css = "atomic-safe"
+    
+    if tier_val == 4: tier_desc = "CRITICAL"; tier_css = "atomic-crit"
+    elif tier_val == 3: tier_desc = "SUSPICIOUS"; tier_css = "atomic-high"
+    elif tier_val == 2: tier_desc = "ANOMALY"; tier_css = "atomic-warn"
+    elif tier_val == 1: tier_desc = "NOTE"; tier_css = "atomic-note"
+
+    # 6. RENDER (The "No-Read" Dashboard)
+    # CSS Strategy: Monospaced keys, Bold values, strict alignment.
+    def atomic_row(key, val, css_mod=""):
+        return f"""
+        <div class="atomic-row">
+            <span class="atomic-key">{key}</span>
+            <span class="atomic-val {css_mod}">{val}</span>
+        </div>
+        """
+
+    signal_processor_content = f"""
+    <div class="atomic-profile-container">
+        <div class="atomic-header">ATOMIC PROFILE</div>
+        <div class="atomic-body">
+            {atomic_row("ARCHETYPE", archetype)}
+            {atomic_row("TIER", f"{tier_val} ({tier_desc})", tier_css)}
+            <div class="atomic-divider"></div>
+            {atomic_row("VISUALS", visuals)}
+            {atomic_row("STABILITY", stability)}
+            {atomic_row("MIMICRY", mimicry)}
+        </div>
+    </div>
+    """
 
     # --- COL 5: IDENTITY ---
     
