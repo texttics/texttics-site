@@ -15448,22 +15448,22 @@ def render_inspector_panel(data):
         <div class="spec-matrix" style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
             <div class="matrix-item">
                 <span class="spec-label">BLOCK</span>
-                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data.get('block', 'N/A')}</span>
+                <span class="matrix-val">{data.get('block', 'N/A')}</span>
             </div>
             <div class="matrix-item">
                 <span class="spec-label">SCRIPT</span>
-                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">
+                <span class="matrix-val">
                     {data.get('script', 'N/A')}
                     <span class="matrix-sub" style="display:inline;">{f"({data['script_ext']})" if data.get('script_ext') and not data.get('is_cluster') else ""}</span>
                 </span>
             </div>
             <div class="matrix-item">
                 <span class="spec-label">{type_label}</span>
-                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{type_val}</span>
+                <span class="matrix-val">{type_val}</span>
             </div>
             <div class="matrix-item">
                 <span class="spec-label">AGE</span>
-                <span class="matrix-val" style="font-size: 0.75rem; font-weight: 600; color: #374151;">{data.get('age', 'N/A')}</span>
+                <span class="matrix-val">{data.get('age', 'N/A')}</span>
             </div>
         </div>
     """
