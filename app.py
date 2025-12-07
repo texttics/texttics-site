@@ -100,6 +100,10 @@ FS_RESERVED_NAMES = {
 # Windows "Forbidden 9": < > : " / \ | ? * + Control Chars (0-31)
 FS_WINDOWS_BANNED = {'<', '>', ':', '"', '/', '\\', '|', '?', '*'}
 
+# [GAP B] POSIX Portable Filename Character Set (The Gold Standard)
+# A-Z, a-z, 0-9, . (dot), _ (underscore), - (hyphen)
+FS_PORTABLE_ASCII = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
+
 # The "Persian Defense" Whitelist (Complex Orthography Scripts)
 # These scripts legitimately use ZWJ/ZWNJ for shaping.
 # We must NOT flag "Token Fracture" in these contexts.
@@ -4538,11 +4542,11 @@ class ForensicExplainer:
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
 
-        # Lens 4: File Systems (OS/Storage)
-        # Stage 1.9 – SOTA per-codepoint cross-platform safety.
-        # Focus: Tool-breaking, path-breaking, and obfuscation risks.
+        # [GAP B FIX] Lens 4: File Systems (OS/Storage)
+        # Stage 1.9 – SOTA per-codepoint cross-platform safety (V3.0 Portable).
+        # Focus: Tool-breaking, path-breaking, obfuscation, and PORTABILITY risks.
         fs_status = "SAFE"
-        fs_msg = "Valid filename character."
+        fs_msg = "Valid filename character. Portable and safe."
 
         ch = chr(cp_val)
 
@@ -4563,96 +4567,73 @@ class ForensicExplainer:
             cp_val in (0x200B, 0x200C, 0x200D, 0xFEFF)
         )
 
-        # A. Path separators (cross-platform fatal)
-        # Slash is reserved as directory separator on Unix/Linux/macOS
-        # and also banned inside Windows filenames.
+        # --- TIER 1: FATAL / STRUCTURAL BANS (CRITICAL) ---
+        
+        # A. Path Separators (Cross-platform fatal)
         if ch == "/":
             fs_status = "CRITICAL"
-            fs_msg = (
-                "Directory separator. Reserved path delimiter on Unix/Linux/macOS "
-                "and invalid inside Windows filenames."
-            )
+            fs_msg = "Directory Separator. Reserved path delimiter on Unix/Linux/macOS and invalid in Windows filenames. Cannot appear inside a single filename."
 
-        # B. The Windows banned set
+        # B. The Windows Banned Set
         # < > : " \ | ? * (Forward slash handled above)
         elif is_ascii and ch in FS_WINDOWS_BANNED:
             fs_status = "CRITICAL"
-            fs_msg = (
-                "Forbidden in Windows filenames (< > : \" \\ | ? *). "
-                "Prevents file creation on NTFS/FAT32."
-            )
+            fs_msg = "Forbidden (Windows). Reserved character (< > : \" \\ | ? *). Prevents file creation on NTFS/FAT32."
 
-        # C. Newline injection (shell-script killer)
-        # Catches U+2028, U+2029, NEL (0x85), LF, CR.
+        # C. Newline Injection (Shell Script Killer)
         elif is_newline:
             fs_status = "CRITICAL"
-            fs_msg = (
-                "Newline injection. Splits a single filename across multiple lines "
-                "in tools and scripts; extremely dangerous in file lists and logs."
-            )
+            fs_msg = "Newline Injection. Splits a single filename across multiple lines in tools and scripts; extremely dangerous in file lists and logs."
 
-        # D. Control characters (C0, C1, DEL)
-        elif cp_val <= 0x001F or cp_val == 0x007F or is_c1:
-            if cp_val == 0x0000:
-                fs_status = "CRITICAL"
-                fs_msg = (
-                    "Null byte injection. Terminates C-style strings and corrupts "
-                    "file system operations."
-                )
-            else:
-                fs_status = "WARN"
-                fs_msg = (
-                    "Control character. Banned on Windows and hazardous in Unix tooling "
-                    "(can break parsers and shell scripts)."
-                )
+        # D. Null Byte (String Terminator)
+        elif cp_val == 0x00:
+            fs_status = "CRITICAL"
+            fs_msg = "Null Byte Injection. Fatal to C-based file systems (String Terminator)."
 
-        # E. Invisible / zero-width / ignorable (obfuscation & collision risk)
+        # E. Bidi Override (Extension Spoofing)
+        elif "Bidi_Control" in props and (cp_val in (0x202E, 0x202D) or gc_code in ("RLO", "LRO")):
+            fs_status = "CRITICAL"
+            fs_msg = "Extension Spoofing Vector. Directional override can visually reorder filename segments (e.g. hiding true extension)."
+
+        # --- TIER 2: DANGEROUS / OBFUSCATION (WARN) ---
+
+        # F. Control Characters (C0 + C1 + DEL)
+        elif cp_val <= 0x1F or cp_val == 0x7F or is_c1:
+            fs_status = "WARN"
+            fs_msg = "Control Character. Banned on Windows; dangerous in scripts/tools on Unix (breaks parsers/loops)."
+
+        # G. Invisible / Zero-Width (Stealth Filenames)
         elif is_zw_format or "Default_Ignorable_Code_Point" in props or "Join_Control" in props:
             fs_status = "WARN"
-            fs_msg = (
-                "Invisible or ignorable character. Filenames may look identical on screen "
-                "while comparing differently in storage (obfuscation / collision risk)."
-            )
+            fs_msg = "Invisible or ignorable character. Filenames may look identical while comparing differently (obfuscation and collision risk)."
 
-        # F. Bidi controls (RTLO, LRO, etc.)
+        # H. General Bidi Controls
         elif "Bidi_Control" in props:
-            # Explicitly treat RLO/LRO as critical extension-spoofing vectors
-            if cp_val in (0x202E, 0x202D) or gc_code in ("RLO", "LRO"):
-                fs_status = "CRITICAL"
-                fs_msg = (
-                    "Extension spoofing vector. Directional override can reorder filename "
-                    "segments and hide the true extension."
-                )
-            else:
-                fs_status = "WARN"
-                fs_msg = (
-                    "Bidirectional control. Suspicious in filenames; commonly used for "
-                    "visual obfuscation."
-                )
+            fs_status = "WARN"
+            fs_msg = "Bidirectional control. Suspicious in filenames; commonly used for visual obfuscation."
 
-        # G. Whitespace (leading / trailing risk)
+        # --- TIER 3: NON-PORTABLE / WEIRD (NOTE) ---
+        # This catches ⓼, ❤️, and anything not in the "Boring ASCII" set.
+
+        # I. Whitespace (Leading/Trailing Risk)
         elif gc_code == "Zs":
             fs_status = "NOTE"
-            fs_msg = (
-                "Whitespace. Leading or trailing spaces can hide extensions or confuse "
-                "path handling; Windows strips trailing spaces."
-            )
+            fs_msg = "Whitespace. Leading/trailing spaces can hide extensions or confuse path handling; Windows strips trailing spaces."
 
-        # H. Extension delimiter (.)
-        elif cp_val == 0x002E:
+        # J. Extension Delimiter (.)
+        elif cp_val == 0x2E:  # '.'
             fs_status = "NOTE"
-            fs_msg = (
-                "Extension delimiter. Trailing dots are stripped by Windows and may be "
-                "abused in 'magic dot' filename tricks."
-            )
+            fs_msg = "Extension delimiter. Trailing dots are stripped by Windows; may be abused for 'magic dot' attacks."
 
-        # I. Combining marks (visual confusion / normalization issues)
-        elif gc_code.startswith("M"):
-            fs_status = "NOTE"
-            fs_msg = (
-                "Combining mark. Different Unicode normalizations may compare filenames "
-                "differently even when they look identical."
-            )
+        # K. The "Gold Standard" Check (Portability)
+        # If it's not in the Portable Set (A-Z, a-z, 0-9, . _ -), it is risky.
+        elif is_ascii and ch not in FS_PORTABLE_ASCII:
+             fs_status = "NOTE"
+             fs_msg = "Shell Metacharacter. Technically valid, but requires quoting in scripts (e.g. & $ ! ;). Avoid in portable filenames."
+             
+        elif not is_ascii:
+             fs_status = "NOTE"
+             fs_msg = "Non-Portable (Non-ASCII). Valid on modern systems (NTFS/APFS/Ext4), but may break legacy tools, archives, or cross-platform transfers."
 
         report["lenses"]["fs"] = {"status": fs_status, "text": fs_msg}
 
