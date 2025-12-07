@@ -17617,10 +17617,11 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            # [FIX] Hybrid Data Source: DB -> JSON Store -> Empty
+            # Hybrid Data Source: DB -> JSON Store -> Empty
+            # Handles integers (65) AND strings ("65") safely
             "lookalikes_data": (
                 rec.get("confusables") or 
-                [chr(c) for c in DATA_STORES.get("InverseConfusables", {}).get(str(cp_base), [])] or 
+                [chr(int(c)) for c in DATA_STORES.get("InverseConfusables", {}).get(str(cp_base), []) if str(c).isdigit()] or 
                 []
             ),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
