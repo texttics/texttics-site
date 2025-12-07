@@ -4132,9 +4132,9 @@ class ForensicExplainer:
         # These are permanently reserved across all Unicode versions.
         # They supersede standard identifier rules.
         if "Pattern_Syntax" in props:
-            # [PATCH] Distinguish actual grammar (operators) from reserved symbols (emojis)
+            # [PATCHED STRINGS] Removed redundant "Restricted. " prefix
             if "Emoji" in props or "Extended_Pictographic" in props:
-                 sec_notes.append("Restricted. Non-Identifier Symbol (Emoji/Pictograph). Reserved syntax.")
+                 sec_notes.append("Non-Identifier Symbol (Emoji/Pictograph). Reserved syntax.")
             else:
                  sec_notes.append("Immutable Pattern Syntax (Permanently reserved for operators/grammar)")
         
@@ -16905,7 +16905,18 @@ def inspect_character(event):
         if not text:
             render_inspector_panel(None)
             return
+
+        # [SYNC PATCH: FINAL] Cluster Override
+        # If the Top Matrix sees MUTABLE (is_mutable=True), force the Text to agree.
+        # We check is_cluster_composite to avoid breaking atomic characters like ⓼.
+        is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
         
+        if forensic_report and is_mutable and is_cluster_composite:
+            for h in forensic_report.get("highlights", []):
+                if h["label"] == "Structure":
+                    # Force the text to match the Top Matrix physics
+                    h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
+    
         # 1. Map DOM Index to Python Index (Logical Index)
         python_idx = 0
         utf16_accum = 0
@@ -17084,17 +17095,6 @@ def inspect_character(event):
                 forensic_report = None
         
         base_char_data["forensic_report"] = forensic_report
-
-        # [SYNC PATCH] Cluster vs. Atomic Reality
-        # Only override if it's a MULTI-CHAR cluster that mutates (e.g. Emoji + VS16).
-        # Atomic mutations (⓼) are already handled correctly by explain().
-        is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
-        
-        if forensic_report and is_mutable and is_cluster_composite:
-            for h in forensic_report.get("highlights", []):
-                if h["label"] == "Structure":
-                    h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
-                    break
 
         comp_cat = cluster_identity.get("max_risk_cat", cat_short)
         
