@@ -7738,25 +7738,21 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def compute_physics_state(data, raw_props):
     """
-    [Block 6] SOTA Physics Engine (V8.0 - Final).
+    [Block 6] SOTA Physics Engine (V8.1 - RGI Aware).
     Pure functional analysis. Returns Enums/Syndromes. 
     Zero UI logic, Zero Policy.
     """
     # --- 1. DEFINE SPEC TABLES (The Laws) ---
-    # UAX #14: Line Breaking Classes that prevent wrapping
     WRAP_SUPPRESSORS = {"GL", "WJ", "ZW", "CM", "QU"} 
-    # UTS #18: Line Terminators (subset relevant to regex parsing risks)
     REGEX_TERMINATORS = {"BK", "CR", "LF", "NL", "ZW"} 
     
     phys = {
         "severity": 0,
         "syndromes": [],
-        # Raw States (Enums)
         "vis_state": "PASS",
         "struct_state": "ATOMIC",
         "ident_state": "UNIQUE",
         "parse_state": "SAFE",
-        # Detailed Attributes
         "dt_type": None,
         "width_class": "N"
     }
@@ -7764,7 +7760,7 @@ def compute_physics_state(data, raw_props):
     # --- 2. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
     is_inv = data.get('is_invisible')
     gc = data.get('category_short', 'Cn')
-    lb = data.get('lb', 'XX') # [FIX: Matched Block 10 key]
+    lb = data.get('lb', 'XX')
     ea = data.get('ea', 'N')
     
     phys['width_class'] = ea
@@ -7793,7 +7789,7 @@ def compute_physics_state(data, raw_props):
         phys['vis_state'] = "EXTENDED"
         phys['severity'] = max(phys['severity'], 1)
 
-    # Layout Physics (UAX #14 / #11)
+    # Layout Physics
     if lb in WRAP_SUPPRESSORS:
         phys['syndromes'].append("WRAP_SUPPRESSION")
         if phys['severity'] < 2: phys['severity'] = 2
@@ -7805,17 +7801,24 @@ def compute_physics_state(data, raw_props):
 
     # --- 3. FACET: STRUCTURE (UAX #15) ---
     ghosts = data.get('ghosts')
+    # [NEW] RGI Awareness: Emojis naturally mutate (strip VS). This is valid.
+    is_rgi = data.get('is_rgi', False) 
+
     if ghosts and (ghosts['raw'] != ghosts['nfkc']):
         dt = data.get('dt')
         phys['dt_type'] = dt
         
-        # [SEMANTIC FIX] If raw != NFKC, it IS Mutable by definition.
-        # We enforce "MUTABLE" even if the DB is missing the specific 'dt' tag.
         phys['struct_state'] = "MUTABLE"
-        phys['severity'] = max(phys['severity'], 2)
-        phys['syndromes'].append("COMPAT_ARTIFACT")
         
-        # Fallback label for UI if DB entry was empty
+        if is_rgi:
+             # RGI Exception: We acknowledge mutability but do NOT flag it as an artifact.
+             # This prevents the 'Compatibility Artifact' verdict.
+             pass
+        else:
+             # Standard text shouldn't change. If it does, it's an artifact.
+             phys['severity'] = max(phys['severity'], 2)
+             phys['syndromes'].append("COMPAT_ARTIFACT")
+        
         if not dt: phys['dt_type'] = "Implicit"
             
     elif len(data.get('components', [])) > 1:
@@ -7823,7 +7826,7 @@ def compute_physics_state(data, raw_props):
         if data.get('stack_msg'):
              phys['severity'] = max(phys['severity'], 2)
 
-    # --- 4. FACET: IDENTITY (UTS #39 / UTR #25) ---
+    # --- 4. FACET: IDENTITY (UTS #39) ---
     lookalikes = len(data.get('lookalikes_data', []))
     
     if "Math" in raw_props and gc in ("Lu", "Ll"):
@@ -7834,11 +7837,10 @@ def compute_physics_state(data, raw_props):
         phys['ident_state'] = "NOTE"
 
     # --- 5. FACET: PARSING (UTS #18) ---
-    # Strict regex physics
     is_line_term = gc in ("Zl", "Zp") or lb in REGEX_TERMINATORS
     
     if is_line_term:
-        if not data['is_ascii']: # Ignore standard CR/LF/NL to reduce noise in basic text
+        if not data['is_ascii']:
              phys['parse_state'] = "BREAK"
              phys['severity'] = max(phys['severity'], 3)
              phys['syndromes'].append("REGEX_KRYPTONITE")
@@ -16994,6 +16996,9 @@ def inspect_character(event):
         # --- Normalization Snapshots (Physics Source of Truth) ---
         raw_form = target_char
         nfc_form = unicodedata.normalize("NFC", raw_form)
+        
+        # [FIX] Use the app's robust normalizer (Tier 3) instead of standard lib.
+        # This ensures we catch VS stripping (❤️ -> ❤) and Enclosed Alphanumerics (⓼ -> 8).
         nfkc_form = normalize_extended(raw_form)
 
         # Initialize ghosts locally to guarantee keys exist
@@ -17088,34 +17093,43 @@ def inspect_character(event):
         # [SYNC PATCH] Cluster Override & Molecular Policy Bridge
         # We check is_cluster_composite to avoid breaking atomic characters like ⓼.
         is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
+        is_rgi_confirmed = False # Track this for the Physics Engine
         
         if forensic_report and is_cluster_composite:
-            # 1. Structural Instability Override (Existing Fix)
-            if is_mutable:
-                for h in forensic_report.get("highlights", []):
-                    if h["label"] == "Structure":
-                        h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
-                        break
             
-            # 2. Zalgo / Diacritic Overload Override
-            # The Atom ('a') is Safe, but the Molecule ('a' + 10 marks) is an Attack.
+            # 1. Zalgo / Diacritic Overload Override
             if zalgo_score >= 4:
                 forensic_report["security"]["level"] = "SUSPICIOUS" if zalgo_score < 10 else "CRITICAL"
                 forensic_report["security"]["verdict"] = f"Diacritic Overload (Zalgo). High density of combining marks ({zalgo_score}). Rendering risk."
                 forensic_report["security"]["badges"].append("DENSITY")
 
-            # 3. Emoji Sequence Logic (RGI vs Non-RGI)
+            # 2. Emoji Sequence Logic (RGI vs Non-RGI)
             # The Atom ('Man') is Generic, but the Molecule ('Family') is RGI.
             if "EMOJI" in cluster_identity.get("type_label", ""):
                 rgi_set = DATA_STORES.get("RGISequenceSet", set())
+                
                 if target_char in rgi_set:
-                    # Valid RGI: Force SAFE (or NOTE), overriding potential warnings about the base char
-                    # (e.g. preventing 'Restricted' warnings on base chars if the sequence is valid)
+                    is_rgi_confirmed = True
+                    
+                    # A. Force Safe Verdict
                     forensic_report["security"]["level"] = "SAFE" 
                     forensic_report["security"]["verdict"] = f"Valid RGI Emoji Sequence ({cluster_identity.get('type_val')})."
-                    # Clear negative badges if RGI valid
-                    forensic_report["security"]["badges"] = [b for b in forensic_report["security"]["badges"] if b not in ("RESTRICTED", "SPOOF")]
+                    
+                    # B. Clean Badges (Remove 'RESTRICTED'/'SPOOF')
+                    forensic_report["security"]["badges"] = [
+                        b for b in forensic_report["security"]["badges"] 
+                        if b not in ("RESTRICTED", "SPOOF", "CONFUSABLES")
+                    ]
                     forensic_report["security"]["badges"].append("RGI")
+                    
+                    # C. Narrative Patch (Rewrite the 'highlights' to match the molecule)
+                    # We iterate and replace the atomic "Security" text.
+                    for h in forensic_report.get("highlights", []):
+                        if h["label"] == "Security":
+                            h["text"] = "Verified RGI Emoji. Standard visual symbol."
+                        elif h["label"] == "Structure" and is_mutable:
+                            h["text"] = "Standard Emoji Normalization. Visual identity preserved (VS stripping)."
+                            
                 else:
                     # Invalid Sequence: Upgrade Risk
                     current_lvl = forensic_report["security"]["level"]
@@ -17124,13 +17138,19 @@ def inspect_character(event):
                         forensic_report["security"]["verdict"] = "Non-RGI Emoji Sequence. Valid particles, but non-standard composition."
                         forensic_report["security"]["badges"].append("NON-RGI")
 
-            # 4. Broken Keycap Override
-            # Logic: If base is NOT a valid keycap base, but we have a keycap mark.
+            # 3. Broken Keycap Override
             if "\u20E3" in target_char:
-                # Valid bases: 0-9, #, * (defined in Block 2)
                 if cp_base not in VALID_KEYCAP_BASES:
                     forensic_report["security"]["level"] = "WARN"
                     forensic_report["security"]["verdict"] = "Broken Keycap Sequence. Base character is not a valid Keycap anchor."
+            
+            # 4. Structural Instability (Existing Logic - Runs if NOT RGI)
+            # If it IS RGI, we already patched the text above.
+            if is_mutable and not is_rgi_confirmed:
+                for h in forensic_report.get("highlights", []):
+                    if h["label"] == "Structure":
+                        h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
+                        break
 
         comp_cat = cluster_identity.get("max_risk_cat", cat_short)
         
@@ -17157,7 +17177,6 @@ def inspect_character(event):
             try: return " ".join(f"{b:02X}" for b in target_cluster.encode(enc_name))
             except: return "N/A"
 
-        # Safe Skeleton Extraction
         skeleton_val = ghosts.get("skeleton") if isinstance(ghosts, dict) else None
         confusable_msg = f"Base maps to: '{skeleton_val}'" if skeleton_val and skeleton_val != base_char else None
 
@@ -17199,11 +17218,10 @@ def inspect_character(event):
             "stack_msg": base_char_data["stack_msg"], 
             "components": base_char_data['components'],
             "forensic_report": forensic_report,
-            "stability_text": stability_text
+            "stability_text": stability_text,
+            "is_rgi": is_rgi_confirmed  # <--- CRITICAL: Pass the flag to the Physics Engine
         }
 
-        # matrix_state is now safely computed inside render_inspector_panel or explicitly here
-        # But we don't need to return it, we just pass data to render.
         render_inspector_panel(data)
 
     except Exception as e:
