@@ -4543,20 +4543,20 @@ class ForensicExplainer:
         fs_status = "SAFE"
         fs_msg = "Valid filename character."
         
-        # A. The "Windows Nine" (Structurally Banned)
-        # < > : " / \ | ? *
-        if is_ascii and chr(cp_val) in FS_WINDOWS_BANNED:
+        ch = chr(cp_val)
+
+        # A. Path Separators (Cross-platform fatal)
+        if ch == "/":
+            fs_status = "CRITICAL"
+            fs_msg = "Directory Separator. Reserved path delimiter on Unix/Linux/macOS and invalid in Windows filenames."
+
+        # B. The "Windows Nine" (Structurally Banned)
+        # < > : " \ | ? *
+        elif is_ascii and ch in FS_WINDOWS_BANNED:
             fs_status = "CRITICAL"
             fs_msg = "Forbidden (Windows). Reserved character (< > : \" / \\ | ? *). Prevents file creation on NTFS/FAT32."
             
-        # B. Path Separators (The Universal Ban)
-        # Forward Slash is fatal on Unix/Linux/Mac
-        elif cp_val == 0x2F: # '/'
-            fs_status = "CRITICAL"
-            fs_msg = "Directory Separator. Reserved on Unix/Linux/macOS. Creates path traversal risk."
-            
         # C. Control Characters (0x00-0x1F)
-        # Banned on Windows, highly dangerous on Unix (Newlines in filenames break scripts)
         elif cp_val <= 0x1F:
             if cp_val == 0x00:
                 fs_status = "CRITICAL"
@@ -4565,23 +4565,27 @@ class ForensicExplainer:
                 fs_status = "WARN"
                 fs_msg = "Control Character. Banned on Windows; dangerous on Unix (breaks shell scripts/loops)."
                 
-        # D. RTLO (Malware Extension Spoofing)
+        # D. Invisible / Ignorable / Zero-Width (Obfuscation Risk)
+        # [NEW] Explicitly catch zero-width characters that slip through as "Valid Text"
+        elif "Default_Ignorable_Code_Point" in props or "Join_Control" in props or "Zero_Width_Space" in props:
+             fs_status = "WARN"
+             fs_msg = "Invisible or ignorable character. Filenames may look identical while comparing differently (obfuscation risk)."
+
+        # E. Bidi Controls (RTLO, LRO, etc.)
         elif "Bidi_Control" in props:
-            if gc_code in ("RLO", "LRO"):
+            if gc_code in ("RLO", "LRO") or cp_val in (0x202E, 0x202D):
                 fs_status = "CRITICAL"
                 fs_msg = "Extension Spoofing Vector. RTLO reverses filename (e.g. 'codexe.txt' renders as 'codtxt.exe')."
             else:
                 fs_status = "WARN"
                 fs_msg = "Bidi Control. Suspicious in filenames; often used for obfuscation."
 
-        # E. Trailing/Leading Risks (Whitespace)
+        # F. Whitespace (Trailing/Leading)
         elif gc_code == "Zs":
             fs_status = "NOTE"
-            fs_msg = "Whitespace. Windows strips trailing spaces/dots. Can be used to hide extensions."
+            fs_msg = "Whitespace. Leading/trailing spaces or dots can hide extensions or confuse path handling (position-dependent)."
 
-        # F. Reserved Names Check (Contextual)
-        # Note: This is usually a whole-token check, but if the character IS the token (rare), we flag it.
-        # Ideally, this is handled by the Token Context Bridge, but we add a specific check for '.'
+        # G. Extension Delimiter (.)
         elif cp_val == 0x2E: # '.'
             fs_status = "NOTE"
             fs_msg = "Extension Delimiter. Trailing dots are stripped by Windows (Magic Dot attack)."
@@ -4590,70 +4594,78 @@ class ForensicExplainer:
 
     def _synthesize(self, report, cp_val, dt):
         """
-        [Stage 1.9] Narrative Intelligence Engine (V2.1 - Prioritized Logic).
+        [Stage 1.9] Narrative Intelligence Engine (V2.2 - Domain-Aware).
         Synthesizes Code, DNS, Text, AND File System risks into an Executive Summary.
         """
         lenses = report.get("lenses", {})
         code_st = lenses.get("code", {}).get("status", "UNKNOWN")
-        dns_st = lenses.get("dns", {}).get("status", "UNKNOWN")
+        dns_st  = lenses.get("dns",  {}).get("status", "UNKNOWN")
         text_st = lenses.get("text", {}).get("status", "UNKNOWN")
-        fs_st   = lenses.get("fs",   {}).get("status", "UNKNOWN")  # [NEW] Include FS Lens
+        fs_st   = lenses.get("fs",   {}).get("status", "UNKNOWN")
+
+        badges   = report.get("security", {}).get("badges", [])
+        sec_verdict = report.get("security", {}).get("verdict", "Standard Literal. Safe for general interchange.")
+
+        summary = ""
+        action  = None
+
+        # Helpers
+        def any_crit(*vals): return any(v == "CRITICAL" for v in vals)
+        def any_warn(*vals): return any(v == "WARN" for v in vals)
         
         # 1. Detect Lens Conflict (The "Jekyll & Hyde" Factor)
         is_safe_text = text_st in ("SAFE", "NOTE")
-        
-        # Tech Risk now includes Storage/OS risks
-        is_risky_tech = (code_st in ("WARN", "CRITICAL")) or \
-                        (dns_st  in ("WARN", "CRITICAL")) or \
-                        (fs_st   in ("WARN", "CRITICAL"))
-        
-        summary = ""
-        action = None
-        
-        # 2. Generate Executive Summary
-        if is_safe_text and is_risky_tech:
-            summary = "Context-Dependent Risk. Safe for general writing, but strictly discouraged in technical contexts (Code, DNS, or Filenames) due to syntax collisions or protocol bans."
-        
-        elif fs_st == "CRITICAL" and code_st == "SAFE":
-            # Specific case: Valid code char that breaks files (e.g. 'Aux', 'Prn', or ':')
-            summary = "OS/Storage Hazard. Valid in source code, but fatal if used in filenames (Windows/Unix reserved)."
+        is_risky_tech = any_warn(code_st, dns_st, fs_st) or any_crit(code_st, dns_st, fs_st)
+
+        # A. Primary hazard: data corruption / invalid text
+        if text_st == "CRITICAL":
+            summary = "Data Corruption. Character is invalid in this encoding or text model and should not appear in normal content."
+
+        # B. Cross-domain weapon (code + DNS + text all bad)
+        elif any_crit(code_st, dns_st) and text_st in ("WARN", "CRITICAL"):
+            summary = "High-Risk Artifact. Dangerous across text and technical environments (code, network protocols). Treat as malicious or corrupt."
+
+        # C. Context-Dependent Risk (Nuanced)
+        elif is_safe_text and is_risky_tech:
+            # Build specific list of risky contexts
+            risk_lenses = []
+            if code_st in ("WARN","CRITICAL"): risk_lenses.append("source code")
+            if dns_st in ("WARN","CRITICAL"): risk_lenses.append("domain names / network")
+            if fs_st in ("WARN","CRITICAL"): risk_lenses.append("file names / storage")
+            lenses_str = ", ".join(risk_lenses)
             
-        elif code_st == "CRITICAL" and dns_st == "CRITICAL":
-            summary = "High-Risk Artifact. Structurally dangerous in all technical environments. Likely malicious or corrupt."
-            
-        elif text_st == "CRITICAL":
-            summary = "Data Corruption. Character is invalid or broken in this encoding standard."
-            
+            summary = f"Context-Dependent Risk. Safe for plain text, but problematic in {lenses_str}."
+
+        # D. Fallback: re-use the main security verdict
         else:
-            summary = report["security"]["verdict"]
+            summary = sec_verdict
 
         # 3. Generate Recommendation (The Fix)
         # PRIORITY 1: Compatibility Normalization (The most constructive fix)
         if dt and dt != "None":
-            # Check NFKC for the replacement
             try:
                 char_raw = chr(cp_val)
                 nfkc = normalize_extended(char_raw)
                 if nfkc and nfkc != char_raw:
                     action = f"Replace with NFKC form: '{nfkc}'"
             except: pass
-            
-        # PRIORITY 2: Homoglyph Safety (The "Stop, Look, Listen" warning)
-        # We catch this BEFORE sanitization to prevent accidental deletion of valid-looking text.
-        elif "SPOOF" in report["security"]["badges"]:
-            action = "Review manually for homoglyph spoofing; automatic replacement not recommended." 
 
-        # PRIORITY 3: Invisibles/Controls (The "Nuke" option)
-        elif "INVISIBLE" in report["security"]["badges"] or "BIDI" in report["security"]["badges"]:
-            action = "Remove character (Sanitize)."
+        # PRIORITY 2: Homoglyph Safety (Manual Review)
+        elif "SPOOF" in badges:
+            action = "Review manually for homoglyph spoofing; automatic replacement not recommended."
+
+        # PRIORITY 3: Invisibles/Controls/Zero-Width (Sanitize)
+        # [NEW] Default to Remove if FS/Code is risky due to format/invisibility
+        elif "INVISIBLE" in badges or "BIDI" in badges or fs_st in ("WARN", "CRITICAL"):
+             # If it's risky in FS and not handled above, it's likely a format control or invisible.
+             if fs_st != "SAFE" and text_st != "SAFE":
+                 action = "Remove character (Sanitize)."
 
         # PRIORITY 4: Specific Heuristics
-        # Smart Quote Fixes
         elif 0x2018 <= cp_val <= 0x201F: 
             action = "Replace with ASCII quotes (' or \")"
-            
-        # File System Fixes
-        elif fs_st == "CRITICAL" and cp_val == 0x002F: # Forward Slash
+
+        elif fs_st == "CRITICAL" and cp_val == 0x002F:
             action = "Replace with hyphen (-) or underscore (_) for filenames."
 
         return {
@@ -7980,6 +7992,13 @@ def compute_physics_state(data, raw_props):
             phys['format_class'] = "VS"
             phys['vis_state'] = "FORMAT"
             
+        # [NEW] Explicit Zero-Width Format Detection
+        elif raw_props and any(p in raw_props for p in ("Zero_Width_Space", "Zero_Width_Non_Joiner", "Zero_Width_Joiner")):
+            phys['format_class'] = "ZW-FORMAT"
+            phys['vis_state'] = "HIDDEN"
+            phys['severity'] = max(phys['severity'], 3)
+            phys['syndromes'].append("ZERO_WIDTH")
+
         elif "Default_Ignorable_Code_Point" in raw_props:
             phys['format_class'] = "IGNORABLE"
             phys['vis_state'] = "HIDDEN"
@@ -7987,7 +8006,7 @@ def compute_physics_state(data, raw_props):
             phys['syndromes'].append("INVISIBLE")
             
         else:
-            # [DEFENSIVE] Catch-all for unknown invisibles (e.g. manual map hits not in props)
+            # [DEFENSIVE] Catch-all for unknown invisibles
             phys['vis_state'] = "HIDDEN"
             phys['severity'] = max(phys['severity'], 2)
             phys['syndromes'].append("UNKNOWN_INVISIBLE")
