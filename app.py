@@ -15303,8 +15303,9 @@ def render_inspector_panel(data):
     else:
         global_icon_color = "#6B7280"
 
-    # Extract Macro Type EARLY (Required for Atomic Profile)
+    # Extract EARLY (Required for Atomic Profile)
     mt = data.get('macro_type', 'UNKNOWN')
+    raw_props = data.get('props', [])
     
     # --- HTML GENERATION ---
 
