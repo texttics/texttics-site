@@ -4347,11 +4347,13 @@ class ForensicExplainer:
 
         report["lenses"]["code"] = {"status": code_status, "text": code_msg}
 
-        # Lens 2: DNS (V5.1: SOTA Domain Policy)
+        # Lens 2: DNS (V5.2: Hardened IDNA2008 Policy)
+        # SOTA: Implements "Category Whitelisting" to prevent Symbol leaks.
         dns_status = "SAFE"
         dns_msg = "Allowed in IDNA2008."
         
         # 0. LDH Check (Letters, Digits, Hyphen) for ASCII
+        # The "LDH Rule" is the bedrock of DNS.
         if is_ascii:
             is_ldh = (0x61 <= cp_val <= 0x7A) or \
                      (0x41 <= cp_val <= 0x5A) or \
@@ -4407,10 +4409,22 @@ class ForensicExplainer:
         # Catches 'valid', 'PVALID', or any other allowed status that reached here
         else:
             # [PATCH] STRICT EMOJI BAN. 
-            # Even if IDNA status is 'valid', Emojis are practically unsafe/banned in hostnames.
             if "Emoji" in props or "Extended_Pictographic" in props:
                 dns_status = "CRITICAL"
                 dns_msg = "Protocol Violation. Emoji/Pictographs are strictly banned in IDNA2008 (Must use Punycode/ToASCII)."
+
+            # [CASE 5/8 FIX] STRICT CATEGORY FILTER (The "Symbol Ban")
+            # IDNA2008 PVALID is mostly Letters, Marks, and Decimal Numbers. 
+            # Symbols (Sm, So, Sc, Sk) and Punctuation (P*) are generally DISALLOWED.
+            # We catch them here if the DB incorrectly marked them as valid.
+            elif gc_code[0] in ("S", "P", "C"):
+                 dns_status = "CRITICAL"
+                 dns_msg = f"Protocol Violation. Category '{gc_code}' (Symbols/Punctuation) is strictly banned in IDNA2008 Hostnames."
+            
+            # Catch Non-Decimal Numbers (e.g. Roman Numerals, Enclosed Digits) which are not Nd
+            elif gc_code[0] == "N" and gc_code != "Nd":
+                 dns_status = "CRITICAL"
+                 dns_msg = f"Protocol Violation. Category '{gc_code}' (Non-Decimal Number) is banned in IDNA2008."
 
             # Check 1: Confusables (Cyrillic 'a', Greek 'A')
             elif confusables and not is_ascii:
@@ -7739,7 +7753,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def compute_physics_state(data, raw_props):
     """
-    [Block 6] SOTA Physics Engine (V8.1 - RGI Aware).
+    [Block 6] SOTA Physics Engine (V8.2 - Orphan Modifier Aware).
     Pure functional analysis. Returns Enums/Syndromes. 
     Zero UI logic, Zero Policy.
     """
@@ -7800,10 +7814,32 @@ def compute_physics_state(data, raw_props):
     elif ea in ("F", "W"):
         phys['syndromes'].append("FULL_WIDTH")
 
-    # --- 3. FACET: STRUCTURE (UAX #15) ---
+    # --- 3. FACET: STRUCTURE (UAX #15 & Emoji Logic) ---
     ghosts = data.get('ghosts')
-    # [NEW] RGI Awareness: Emojis naturally mutate (strip VS). This is valid.
     is_rgi = data.get('is_rgi', False) 
+
+    # [CASE 11 FIX] Orphan Modifier Detection
+    # Logic: If cluster has a modifier (Sk) but base is NOT a valid Emoji Base, it's broken.
+    has_modifier = "Emoji_Modifier" in raw_props
+    base_props = data.get("base_props", []) # Need to pass this from inspector
+    
+    # We fallback to checking if the base is Emoji_Modifier_Base using internal data if props missing
+    # But for now, we can use the category check as a heuristic proxy or pass base_props.
+    # A robust check uses the 'components' list passed in 'data'.
+    components = data.get('components', [])
+    if len(components) > 1:
+        base_comp = components[0]
+        # Check if any non-base component is a Modifier (Sk)
+        has_skin_tone = any(c.get('cat') == 'Sk' for c in components[1:])
+        
+        if has_skin_tone:
+            # We need to know if the BASE allowed it. 
+            # Since we don't have full property access here for the base, we use RGI as the truth.
+            # If it has a skin tone but is NOT RGI, it is highly likely an Orphan.
+            if not is_rgi:
+                phys['struct_state'] = "BROKEN"
+                phys['severity'] = max(phys['severity'], 3)
+                phys['syndromes'].append("ORPHAN_MODIFIER")
 
     if ghosts and (ghosts['raw'] != ghosts['nfkc']):
         dt = data.get('dt')
@@ -7812,18 +7848,18 @@ def compute_physics_state(data, raw_props):
         phys['struct_state'] = "MUTABLE"
         
         if is_rgi:
-             # RGI Exception: We acknowledge mutability but do NOT flag it as an artifact.
-             # This prevents the 'Compatibility Artifact' verdict.
              pass
         else:
-             # Standard text shouldn't change. If it does, it's an artifact.
              phys['severity'] = max(phys['severity'], 2)
              phys['syndromes'].append("COMPAT_ARTIFACT")
         
         if not dt: phys['dt_type'] = "Implicit"
             
-    elif len(data.get('components', [])) > 1:
-        phys['struct_state'] = "COMPOSITE"
+    elif len(components) > 1:
+        # Don't overwrite BROKEN
+        if phys['struct_state'] != "BROKEN":
+            phys['struct_state'] = "COMPOSITE"
+        
         if data.get('stack_msg'):
              phys['severity'] = max(phys['severity'], 2)
 
@@ -7935,8 +7971,12 @@ def analyze_signal_processor_state(data):
     
     # [NEW] Retrieve RGI flag passed from Inspector
     is_rgi = data.get('is_rgi', False)
+
+    # [NEW] Orphan Modifier Handler
+    if "ORPHAN_MODIFIER" in phys['syndromes']:
+        s_det = "Orphan Modifier"; s_sev = 3; s_icon = "alert-circle"
     
-    if s_state == "MUTABLE":
+    elif s_state == "MUTABLE":
         if is_rgi:
             # RGI Case: Blue Badge (Info), Friendly Label
             s_det = "VS Stripped"; s_sev = 1; s_icon = "check-circle"
@@ -17120,27 +17160,47 @@ def inspect_character(event):
             if "EMOJI" in cluster_identity.get("type_label", ""):
                 rgi_set = DATA_STORES.get("RGISequenceSet", set())
                 
-                if target_char in rgi_set:
+                # [CASE 9 FIX] Fuzzy Matching Logic
+                is_exact_match = target_char in rgi_set
+                is_fuzzy_match = False
+                
+                if not is_exact_match:
+                    # Lazy-load the Stripped Index if missing
+                    if "_RGI_Stripped" not in DATA_STORES:
+                        DATA_STORES["_RGI_Stripped"] = {
+                            s.replace('\uFE0F', '').replace('\uFE0E', '') for s in rgi_set
+                        }
+                    
+                    # Check stripped input against stripped index
+                    target_stripped = target_char.replace('\uFE0F', '').replace('\uFE0E', '')
+                    if target_stripped in DATA_STORES["_RGI_Stripped"]:
+                        is_fuzzy_match = True
+
+                if is_exact_match or is_fuzzy_match:
                     is_rgi_confirmed = True
                     # [NEW] Patch the Local Variable for the Specs Table
                     id_status = "Allowed (RGI)"
                     
-                    # A. Force Safe Verdict
-                    forensic_report["security"]["level"] = "SAFE" 
-                    forensic_report["security"]["verdict"] = f"Valid RGI Emoji Sequence ({cluster_identity.get('type_val')})."
+                    # A. Force Safe/Note Verdict based on Qualification
+                    if is_exact_match:
+                        forensic_report["security"]["level"] = "SAFE" 
+                        forensic_report["security"]["verdict"] = f"Valid RGI Emoji Sequence ({cluster_identity.get('type_val')})."
+                        forensic_report["security"]["badges"].append("RGI")
+                    else:
+                        forensic_report["security"]["level"] = "NOTE"
+                        forensic_report["security"]["verdict"] = f"Unqualified RGI Sequence. Valid emoji, but missing Variation Selectors (VS16)."
+                        forensic_report["security"]["badges"].append("UNQUALIFIED")
                     
                     # B. Clean Badges (Remove 'RESTRICTED'/'SPOOF')
                     forensic_report["security"]["badges"] = [
                         b for b in forensic_report["security"]["badges"] 
                         if b not in ("RESTRICTED", "SPOOF", "CONFUSABLES")
                     ]
-                    forensic_report["security"]["badges"].append("RGI")
                     
                     # C. Narrative Patch (Rewrite the 'highlights' to match the molecule)
-                    # We iterate and replace the atomic "Security" text.
                     for h in forensic_report.get("highlights", []):
                         if h["label"] == "Security":
-                            h["text"] = "Verified RGI Emoji. Standard visual symbol."
+                            h["text"] = "Verified RGI Emoji. Standard visual symbol." if is_exact_match else "Unqualified RGI Emoji. Missing VS16, but structurally valid."
                         elif h["label"] == "Structure" and is_mutable:
                             h["text"] = "Standard Emoji Normalization. Visual identity preserved (VS stripping)."
                             
