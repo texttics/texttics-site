@@ -15501,7 +15501,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6A. Lookalikes Section (Restored & Synchronized)
+    # 6A. Lookalikes Section (Hybrid Compatible)
     lookalike_html = ""
     lookalikes_list = data.get('lookalikes_data')
     
@@ -15510,15 +15510,35 @@ def render_inspector_panel(data):
         chips_buffer = []
         
         for item in lookalikes_list:
-            # Safety: Ensure it's a dict before accessing keys, but trust the data otherwise
-            if not isinstance(item, dict): continue
+            # Initialize defaults
+            l_glyph = "?"
+            l_cp = ""
+            l_script = ""
+            l_name = "Confusable"
+            l_block = "Unknown"
 
-            # Extract fields safely (defaults prevent 'KeyError')
-            l_name = item.get('name', 'Confusable')
-            l_block = item.get('block', 'Unknown Block')
-            l_glyph = item.get('glyph', '?')
-            l_cp = item.get('cp', 'U+????')
-            l_script = item.get('script', 'Common')
+            # Case 1: Rich Object (Dict)
+            if isinstance(item, dict):
+                l_glyph = item.get('glyph', '?')
+                l_cp = item.get('cp', '')
+                l_script = item.get('script', '')
+                l_name = item.get('name', 'Confusable')
+                l_block = item.get('block', '')
+                
+            # Case 2: Simple String (Legacy/Compressed DB)
+            elif isinstance(item, str):
+                l_glyph = item
+                # Calculate CP on the fly
+                try:
+                    l_cp = f"U+{ord(item[0]):04X}"
+                except:
+                    l_cp = "??"
+                l_script = "Sim" 
+                l_name = "Visual Lookalike"
+            
+            # Skip invalid types
+            else:
+                continue
 
             tooltip = f"{l_name} &#10;Block: {l_block}"
             
@@ -15536,8 +15556,8 @@ def render_inspector_panel(data):
         if chips_buffer:
             grid_html = "".join(chips_buffer)
             
-            # Inherit color from Identity Risk Facet (calculated earlier in 'ident_data')
-            # Fallback to 'risk-info' (Blue) if variable unavailable
+            # Inherit color from Identity Risk Facet
+            # Use safe default if ident_data is missing/broken
             risk_css = ident_data.get('class', 'risk-info') if 'ident_data' in locals() else 'risk-info'
             
             lookalike_html = f"""
