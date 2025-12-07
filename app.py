@@ -3819,8 +3819,6 @@ class ForensicExplainer:
             "lenses": {}, "context": []      
         }
 
-        layout_notes = []
-
         # --- A. IDENTITY & PROVENANCE ---
         age = rec.get("age", "NA")
         blk = rec.get("blk", "Unknown Block")
@@ -3971,9 +3969,29 @@ class ForensicExplainer:
         id_notes.append(f"Script: {script_detail}")
         
         # D. Functional Identity (What does it DO?)
-        
+        # Priority 1: Special Ontology (The Void/Broken/Internal)
+        if gc_code == "Co":
+            id_notes.append("Function: Private Use Area (Local meaning only)")
+            id_notes.append("Risk: Non-interoperable. Meaning is undefined without specific font agreement (Steganography Risk).")
+        elif gc_code == "Cs":
+            id_notes.append("Function: Surrogate (Broken Encoding Artifact)")
+            id_notes.append("CRITICAL: Invalid Unicode scalar. Breaks UTF-8/JSON interchange; proves upstream data corruption.")
+        elif "Noncharacter_Code_Point" in props:
+            id_notes.append("Function: Noncharacter (Internal Use Only)")
+
+        # Priority 2: Format & Control Taxonomy (Functionality)
+        elif "Bidi_Control" in props:
+            id_notes.append("Class: Bidi Control (Directionality modifier)")
+        elif "Join_Control" in props:
+            id_notes.append("Class: Join Control (Rendering glue)")
+        elif "Variation_Selector" in props:
+            id_notes.append("Class: Variation Selector (Glyph modifier)")
+        elif "Default_Ignorable_Code_Point" in props:
+            id_notes.append("Class: Ignorable Format Control (Invisible)")
+
+        # Priority 3: Standard Functional Properties (Existing Logic)
         # [UTR #25] Math Analysis: Distinguish "Fake Text" from "Real Math"
-        if "Math" in props:
+        elif "Math" in props:
             if gc_code in ("Lu", "Ll", "Nd"):
                 id_notes.append("Function: Mathematical Alphanumeric (UTR #25)")
                 id_notes.append("Semantically distinct from ASCII; ignores standard case-folding")
@@ -3995,15 +4013,6 @@ class ForensicExplainer:
                 id_notes.append("Function: Modifier Letter (Spacing). Affects layout; frequent vector for 'homoglyph-adjacent' spoofing.")
             else:
                 pass # Implicit for standard letters (Ll, Lu, Lo), reduce noise
-
-        # [UTR #36] Non-Visual Risks (The Void)
-        elif gc_code == "Co":
-            id_notes.append("Function: Private Use Area (PUA)")
-            id_notes.append("Risk: Non-interoperable. Meaning is undefined without specific font agreement (Steganography Risk).")
-
-        elif gc_code == "Cs":
-            id_notes.append("Function: Lone Surrogate (Broken Encoding)")
-            id_notes.append("CRITICAL: Invalid Unicode scalar. Breaks UTF-8/JSON interchange; proves upstream data corruption.")
 
         # [UTR #36] Global Syntax Mimicry Detector (The Catch-All)
         # This runs for Math, Punctuation, and Symbols. 
@@ -4334,12 +4343,15 @@ class ForensicExplainer:
                 code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters."
         
         elif "Pattern_White_Space" in props:
-            code_status = "NOTE"
-            # Explicit UTS #55 check for LS (U+2028) and PS (U+2029)
-            if "Line_Separator" in str(report) or "Paragraph_Separator" in str(report): 
+            # Explicit UTS #55 check for LS (U+2028) and PS (U+2029) using robust GC code
+            if gc_code in ("Zl", "Zp"): 
                  code_status = "CRITICAL"
                  code_msg = "Line Break Spoofing Risk (UTS #55). Visually splits lines but may be parsed as whitespace."
+                 # Ensure we flag this structurally too
+                 report["security"]["badges"].append("SPOOF")
+                 report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
             else:
+                 code_status = "NOTE"
                  code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
 
         # C. Security Restrictions (UAX #39)
@@ -4576,7 +4588,7 @@ class ForensicExplainer:
 
     def _synthesize(self, report, cp_val, dt):
         """
-        [Stage 1.9] Narrative Intelligence Engine (V2 - Quad-Lens Aware).
+        [Stage 1.9] Narrative Intelligence Engine (V2.1 - Prioritized Logic).
         Synthesizes Code, DNS, Text, AND File System risks into an Executive Summary.
         """
         lenses = report.get("lenses", {})
@@ -4614,7 +4626,7 @@ class ForensicExplainer:
             summary = report["security"]["verdict"]
 
         # 3. Generate Recommendation (The Fix)
-        # A. Compatibility Normalization (The most common fix)
+        # PRIORITY 1: Compatibility Normalization (The most constructive fix)
         if dt and dt != "None":
             # Check NFKC for the replacement
             try:
@@ -4624,20 +4636,21 @@ class ForensicExplainer:
                     action = f"Replace with NFKC form: '{nfkc}'"
             except: pass
             
-        # B. Confusables (ASCII Fallback)
+        # PRIORITY 2: Homoglyph Safety (The "Stop, Look, Listen" warning)
+        # We catch this BEFORE sanitization to prevent accidental deletion of valid-looking text.
         elif "SPOOF" in report["security"]["badges"]:
-            # Logic: If it's a spoof, suggesting removal is safer than guessing intent
-            pass 
+            action = "Review manually for homoglyph spoofing; automatic replacement not recommended." 
 
-        # C. Invisibles/Controls
+        # PRIORITY 3: Invisibles/Controls (The "Nuke" option)
         elif "INVISIBLE" in report["security"]["badges"] or "BIDI" in report["security"]["badges"]:
             action = "Remove character (Sanitize)."
 
-        # D. Smart Quote Fixes (Manual Heuristics)
-        elif 0x2018 <= cp_val <= 0x201F: # Smart quotes
+        # PRIORITY 4: Specific Heuristics
+        # Smart Quote Fixes
+        elif 0x2018 <= cp_val <= 0x201F: 
             action = "Replace with ASCII quotes (' or \")"
             
-        # E. File System Fixes [NEW]
+        # File System Fixes
         elif fs_st == "CRITICAL" and cp_val == 0x002F: # Forward Slash
             action = "Replace with hyphen (-) or underscore (_) for filenames."
 
