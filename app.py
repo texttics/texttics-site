@@ -16994,7 +16994,7 @@ def inspect_character(event):
         # --- Normalization Snapshots (Physics Source of Truth) ---
         raw_form = target_char
         nfc_form = unicodedata.normalize("NFC", raw_form)
-        nfkc_form = unicodedata.normalize("NFKC", raw_form)
+        nfkc_form = normalize_extended(raw_form)
 
         # Initialize ghosts locally to guarantee keys exist
         ghosts = {
