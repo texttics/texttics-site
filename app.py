@@ -7932,8 +7932,19 @@ def analyze_signal_processor_state(data):
     s_sev = 0
     s_icon = "box"
     
+    # [NEW] Retrieve RGI flag passed from Inspector
+    is_rgi = data.get('is_rgi', False)
+    
     if s_state == "MUTABLE":
-        s_det = f"Compat: {phys['dt_type']}"; s_sev = 2; s_icon = "refresh-cw"
+        if is_rgi:
+            # RGI Case: Blue Badge (Info), Friendly Label
+            s_det = "VS Stripped"; s_sev = 1; s_icon = "check-circle"
+        else:
+            # Standard Case: Yellow Badge (Warn), "Compat" Label
+            dt_show = phys['dt_type']
+            if dt_show == "Compat": dt_show = "Implicit" # Fix "Compat: Compat" stutter
+            s_det = f"Compat: {dt_show}"; s_sev = 2; s_icon = "refresh-cw"
+            
     elif s_state == "EQUIV":
         s_det = "Canonical Eq."; s_sev = 1; s_icon = "copy"
     elif s_state == "COMPOSITE":
@@ -17110,6 +17121,8 @@ def inspect_character(event):
                 
                 if target_char in rgi_set:
                     is_rgi_confirmed = True
+                    # [NEW] Patch the Local Variable for the Specs Table
+                    id_status = "Allowed (RGI)"
                     
                     # A. Force Safe Verdict
                     forensic_report["security"]["level"] = "SAFE" 
