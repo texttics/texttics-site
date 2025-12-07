@@ -15449,7 +15449,7 @@ def render_inspector_panel(data):
     </div>
     """
     
-    # 2. Render the FOOTER (Updated Stage 1.9)
+    # 2. Render the FOOTER (Updated Stage 1.9 + Gap B)
     forensic_row_html = ""
     report_raw = data.get("forensic_report")
     
@@ -15483,15 +15483,16 @@ def render_inspector_panel(data):
         label_map = {
             "code": "SOURCE CODE", 
             "dns": "DOMAIN NAMES", 
-            "fs": "FILE SYSTEM", 
+            "fs": "FILE SYSTEM",   # <--- Added Lens Label
             "text": "GENERAL TEXT"
         }
 
         lenses_html = ""
         lenses = report.get("lenses", {})
         if isinstance(lenses, dict):
-            # Iterate in specific order to keep UI consistent
+            # [FIX] Explicit Order including 'fs'
             lens_order = ["code", "dns", "fs", "text"]
+            
             for key in lens_order:
                 lens = lenses.get(key)
                 if not lens or not isinstance(lens, dict): continue
