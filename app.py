@@ -15501,39 +15501,53 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6A. Lookalikes Section (HARDENED)
+    # 6A. Lookalikes Section (Restored & Synchronized)
     lookalike_html = ""
-    lookalikes = data.get('lookalikes_data')
+    lookalikes_list = data.get('lookalikes_data')
     
-    if lookalikes and isinstance(lookalikes, list):
-        count = len(lookalikes)
+    if lookalikes_list and isinstance(lookalikes_list, list):
+        count = len(lookalikes_list)
         chips_buffer = []
-        for item in lookalikes:
-            # Guard against strings in the list
-            if isinstance(item, dict):
-                tooltip = f"{item.get('name', '')} &#10;Block: {item.get('block', '')}"
-                chip = f"""
-                <div class="lookalike-chip" title="{tooltip}">
-                    <span class="lk-glyph">{item.get('glyph', '')}</span>
-                    <span class="lk-meta">
-                        <span class="lk-cp">{item.get('cp', '')}</span>
-                        <span class="lk-script">{item.get('script', '')}</span>
-                    </span>
-                </div>
-                """
-                chips_buffer.append(chip)
-            
-        grid_html = "".join(chips_buffer)
-        risk_css = ident_data['class'] 
         
-        lookalike_html = f"""
-        <div class="ghost-section lookalikes {risk_css}" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
-            <span class="ghost-key">LOOKALIKES ({count})</span>
-            <div class="lookalike-grid">
-                {grid_html}
+        for item in lookalikes_list:
+            # Safety: Ensure it's a dict before accessing keys, but trust the data otherwise
+            if not isinstance(item, dict): continue
+
+            # Extract fields safely (defaults prevent 'KeyError')
+            l_name = item.get('name', 'Confusable')
+            l_block = item.get('block', 'Unknown Block')
+            l_glyph = item.get('glyph', '?')
+            l_cp = item.get('cp', 'U+????')
+            l_script = item.get('script', 'Common')
+
+            tooltip = f"{l_name} &#10;Block: {l_block}"
+            
+            chip = f"""
+            <div class="lookalike-chip" title="{tooltip}">
+                <span class="lk-glyph">{l_glyph}</span>
+                <span class="lk-meta">
+                    <span class="lk-cp">{l_cp}</span>
+                    <span class="lk-script">{l_script}</span>
+                </span>
             </div>
-        </div>
-        """
+            """
+            chips_buffer.append(chip)
+            
+        if chips_buffer:
+            grid_html = "".join(chips_buffer)
+            
+            # Inherit color from Identity Risk Facet (calculated earlier in 'ident_data')
+            # Fallback to 'risk-info' (Blue) if variable unavailable
+            risk_css = ident_data.get('class', 'risk-info') if 'ident_data' in locals() else 'risk-info'
+            
+            lookalike_html = f"""
+            <div class="ghost-section lookalikes {risk_css}" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
+                <span class="ghost-key">LOOKALIKES ({count})</span>
+                <div class="lookalike-grid">
+                    {grid_html}
+                </div>
+            </div>
+            """
 
     # 6B. Normalization & Skeleton
     ghost_html = ""
