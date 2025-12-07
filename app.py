@@ -15503,7 +15503,6 @@ def render_inspector_panel(data):
 
     # 6A. Lookalikes Section (Hybrid & Robust)
     lookalike_html = ""
-    # Retrieve data safely
     lookalikes_list = data.get('lookalikes_data')
     
     # Check if list exists and is not empty
@@ -15511,7 +15510,8 @@ def render_inspector_panel(data):
         count = len(lookalikes_list)
         chips_buffer = []
         
-        for item in lookalikes_list:
+        # Limit to top 24 to prevent UI explosion on massive clusters
+        for item in lookalikes_list[:24]:
             # Initialize defaults
             l_glyph = "?"
             l_cp = ""
@@ -15519,7 +15519,7 @@ def render_inspector_panel(data):
             l_name = "Lookalike"
             l_block = ""
 
-            # Strategy 1: Dictionary (Rich Data from V7 DB)
+            # Strategy 1: Dictionary (Rich Data from DB)
             if isinstance(item, dict):
                 l_glyph = item.get('glyph', '?')
                 l_cp = item.get('cp', '')
@@ -15527,7 +15527,7 @@ def render_inspector_panel(data):
                 l_name = item.get('name', 'Confusable')
                 l_block = item.get('block', '')
                 
-            # Strategy 2: Simple String (Compressed/Legacy DB)
+            # Strategy 2: Simple String (From InverseConfusables JSON)
             elif isinstance(item, str) and item:
                 l_glyph = item
                 try:
@@ -15535,7 +15535,11 @@ def render_inspector_panel(data):
                 except:
                     l_cp = "??"
             
-            # Skip invalid types
+            # Strategy 3: Integer Codepoint (Raw Safety Fallback)
+            elif isinstance(item, int):
+                l_glyph = chr(item)
+                l_cp = f"U+{item:04X}"
+
             else:
                 continue
 
@@ -15552,12 +15556,12 @@ def render_inspector_panel(data):
             """
             chips_buffer.append(chip)
             
-        # Only render if we successfully built chips
         if chips_buffer:
             grid_html = "".join(chips_buffer)
             
             # Inherit color from Identity Risk Facet (Safe Fallback)
-            risk_css = ident_data.get('class', 'risk-info') if 'ident_data' in locals() else 'risk-info'
+            # We access the 'ident_data' dictionary safely
+            risk_css = ident_data.get('class', 'risk-info')
             
             lookalike_html = f"""
             <div class="ghost-section lookalikes {risk_css}" style="margin-top: 10px; margin-bottom: -4px; flex-direction: column; gap: 4px;">
@@ -17612,8 +17616,13 @@ def inspect_character(event):
 
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
-            "is_invisible": (cp_base in INVISIBLE_MAPPING),  
-            "lookalikes_data": rec.get("confusables", []),
+            "is_invisible": (cp_base in INVISIBLE_MAPPING),
+            # [FIX] Hybrid Data Source: DB -> JSON Store -> Empty
+            "lookalikes_data": (
+                rec.get("confusables") or 
+                [chr(c) for c in DATA_STORES.get("InverseConfusables", {}).get(str(cp_base), [])] or 
+                []
+            ),
             "stack_msg": f"Heavy Stacking ({zalgo_score} marks)" if zalgo_score >= 3 else None,
             "components": components,
             "stability_text": stability_text,
