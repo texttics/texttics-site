@@ -6689,107 +6689,179 @@ details.profile-section > summary:hover::marker {
 }
 
 /* =========================================
-   ATOMIC PROFILE (Forensic Triage Column)
-   Design: "High-Contrast Lab Instrument"
+   ATOMIC PROFILE (Forensic Identity Card)
+   Design: Centered Hierarchy, Tier-Based Coloring
    ========================================= */
 
-/* The Container - Restoring Depth */
+/* The Container */
 .atomic-profile-container {
     display: flex;
     flex-direction: column;
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 8px; /* Softer, modern corners */
+    border-radius: 8px;
     overflow: hidden;
     height: 100%;
-    /* Subtle elevation to separate from background */
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 
                 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
-/* The Header - Technical & Anchored */
+/* Row 1: Header */
 .atomic-header {
     background: #f8fafc;
     color: #64748b;
     font-family: var(--font-sans, system-ui, sans-serif);
-    font-size: 0.7rem; /* Slightly larger */
+    font-size: 0.65rem;
     font-weight: 800;
-    letter-spacing: 0.08em;
-    padding: 10px 14px;
+    letter-spacing: 0.1em;
+    padding: 8px 0;
     border-bottom: 1px solid #e2e8f0;
     text-transform: uppercase;
-    text-align: center; /* Center aligns the visual weight */
+    text-align: center;
 }
 
-/* The Body - Breathing Room */
+/* The Body Wrapper */
 .atomic-body {
-    padding: 16px 14px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 10px; /* More space between metrics */
-    justify-content: center;
+    align-items: center; /* Centers everything horizontally */
     flex: 1;
+    gap: 12px;
 }
 
-/* Single Data Row */
-.atomic-row {
+/* --- HERO CARD (Rows 2 & 3: Tier + Type) --- */
+.atomic-hero {
     display: flex;
-    justify-content: space-between;
-    align-items: center; /* Perfect vertical alignment */
-    line-height: 1.3;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 12px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent; /* Prepare for colored borders */
+    text-align: center;
 }
 
-/* The Key (Left Side) - Muted Context */
-.atomic-key {
-    color: #94a3b8;
-    font-size: 0.7rem; /* Readable but secondary */
-    font-weight: 700;
+/* Row 2: "TIER X" */
+.hero-tier {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
-    flex-shrink: 0;
+    margin-bottom: 4px;
+    opacity: 0.8;
 }
 
-/* The Value (Right Side) - The "Data Payload" */
-.atomic-val {
-    color: #334155;
-    font-size: 0.85rem; /* Increased size for impact */
-    font-weight: 700;
-    text-align: right;
-    font-family: var(--font-mono, monospace); /* Tech font implies precision */
+/* Row 3: "ANOMALY" (Big Thick Letters) */
+.hero-type {
+    font-family: var(--font-mono); /* Technical look */
+    font-size: 1.4rem;             /* Big */
+    font-weight: 800;              /* Thick */
+    line-height: 1.1;
+    text-transform: uppercase;
     letter-spacing: -0.02em;
 }
 
-/* --- HERO TREATMENT: The Tier Row (2nd Child) --- */
-/* This makes the "Risk Level" pop like the old header did */
-.atomic-row:nth-child(2) .atomic-val {
-    font-size: 1.1rem; /* Hero sizing */
-    font-weight: 800;
-}
-
-/* The Divider */
-.atomic-divider {
-    height: 1px;
-    background: #e2e8f0;
-    margin: 6px 0;
+/* --- SUB-HERO (Rows 4 & 5: Archetype + Entity) --- */
+.atomic-subhero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     width: 100%;
+    text-align: center;
+    gap: 2px;
 }
 
-/* --- TIER COLORS (High-Saturation for Readability) --- */
-
-/* 0: SAFE (Emerald) */
-.atomic-safe { color: #059669; }
-
-/* 1: NOTE (Blue) */
-.atomic-note { color: #2563eb; }
-
-/* 2: ANOMALY (Amber) */
-.atomic-warn { color: #d97706; }
-
-/* 3: SUSPICIOUS (Orange) */
-.atomic-high { color: #ea580c; }
-
-/* 4: CRITICAL (Red) - Adds a subtle "Alarm" glow */
-.atomic-crit { 
-    color: #dc2626;
-    text-shadow: 0 0 10px rgba(220, 38, 38, 0.15);
+/* Row 4: "ARCHETYPE" Label */
+.subhero-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #94a3b8; /* Muted Gray */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
+
+/* Row 5: "UNKNOWN ENTITY" */
+.subhero-val {
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    /* Color will be inherited/set by utility classes */
+}
+
+/* --- VITALS GRID (The "Physics" at the bottom) --- */
+/* Keeps the visual/stability metrics but makes them compact */
+.atomic-vital-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    width: 100%;
+    gap: 4px;
+    margin-top: auto; /* Push to bottom if space permits */
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 8px;
+}
+
+.vital-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.vital-label {
+    font-size: 0.55rem;
+    color: #cbd5e1;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.vital-val {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+/* --- COLOR THEMES (The "Elegant" Palette) --- */
+
+/* TIER 0: SAFE (Emerald) */
+.tier-theme-0 .atomic-hero {
+    background-color: #ecfdf5; /* Emerald-50 */
+    color: #047857;            /* Emerald-700 */
+    border-color: #d1fae5;
+}
+.tier-theme-0 .subhero-val { color: #059669; opacity: 0.8; } /* Emerald-600 */
+
+/* TIER 1: NOTE (Blue) */
+.tier-theme-1 .atomic-hero {
+    background-color: #eff6ff; /* Blue-50 */
+    color: #1d4ed8;            /* Blue-700 */
+    border-color: #dbeafe;
+}
+.tier-theme-1 .subhero-val { color: #2563eb; opacity: 0.8; } /* Blue-600 */
+
+/* TIER 2: ANOMALY (Amber) */
+.tier-theme-2 .atomic-hero {
+    background-color: #fffbeb; /* Amber-50 */
+    color: #b45309;            /* Amber-700 */
+    border-color: #fef3c7;
+}
+.tier-theme-2 .subhero-val { color: #d97706; opacity: 0.9; } /* Amber-600 */
+
+/* TIER 3: SUSPICIOUS (Orange) */
+.tier-theme-3 .atomic-hero {
+    background-color: #fff7ed; /* Orange-50 */
+    color: #c2410c;            /* Orange-700 */
+    border-color: #ffedd5;
+}
+.tier-theme-3 .subhero-val { color: #ea580c; opacity: 0.9; } /* Orange-600 */
+
+/* TIER 4: CRITICAL (Red) */
+.tier-theme-4 .atomic-hero {
+    background-color: #fef2f2; /* Red-50 */
+    color: #b91c1c;            /* Red-700 */
+    border-color: #fee2e2;
+}
+.tier-theme-4 .subhero-val { color: #dc2626; opacity: 1; } /* Red-600 */
