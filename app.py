@@ -4274,7 +4274,11 @@ class ForensicExplainer:
         # --- E. CONTEXT LENSES ---
         self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt)
         
-        # --- F. CONTEXT NOTES ---
+        # --- F. SYNTHESIS (Narrative Intelligence) ---
+        # Synthesis runs last so it sees all computed lens states
+        report["synthesis"] = self._synthesize(report, cp_int, dt)
+
+        # --- G. CONTEXT NOTES ---
         if rec["aliases"]:
             report["context"].append(f"Aliases: {', '.join(rec['aliases'][:3])}")
         for note in rec["notes"]:
@@ -4519,9 +4523,6 @@ class ForensicExplainer:
                     text_msg = "Text character. Can participate in emoji sequences."
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
-
-        # [STAGE 1.9] Run Synthesis
-        report["synthesis"] = self._synthesize(report, cp_int, dt)
 
         # [GAP B FIX] Lens 4: File Systems (OS/Storage)
         # SOTA: Enforces the "Hierarchy of Terror" for Filename Safety.
