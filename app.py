@@ -15313,6 +15313,9 @@ def render_inspector_panel(data):
     # Extract Counts & Badges
     lookalikes = data.get('lookalikes_data', [])
     look_count = len(lookalikes) if isinstance(lookalikes, list) else 0
+
+    components = data.get('components', [])
+    mark_count = sum(1 for c in components if c.get('cat', '').startswith('M'))
     
     report_raw = data.get('forensic_report')
     policy_badges = []
@@ -15369,6 +15372,13 @@ def render_inspector_panel(data):
 
     # 5. TIER LOGIC (The Risk)
     tier_val = state['level']
+    
+    # [LOGIC PATCH] Low-Zalgo Upgrade
+    # If the cluster contains marks (Z͑) but wasn't flagged as 'Heavy' (Tier 2),
+    # force it to at least Tier 1 (NOTE) to reflect structural complexity.
+    if mark_count > 0 and tier_val == 0:
+        tier_val = 1
+        
     tier_desc = "SAFE"
     tier_css = "atomic-safe"
     
@@ -15386,6 +15396,20 @@ def render_inspector_panel(data):
             <span class="atomic-val {css_mod}">{val}</span>
         </div>
         """
+
+    signal_processor_content = f"""
+    <div class="atomic-profile-container">
+        <div class="atomic-header">ATOMIC PROFILE</div>
+        <div class="atomic-body">
+            {atomic_row("ARCHETYPE", archetype)}
+            {atomic_row("TIER", f"{tier_val} ({tier_desc})", tier_css)}
+            <div class="atomic-divider"></div>
+            {atomic_row("VISUALS", visuals)}
+            {atomic_row("STABILITY", stability)}
+            {atomic_row("MIMICRY", mimicry)}
+        </div>
+    </div>
+    """
 
     signal_processor_content = f"""
     <div class="atomic-profile-container">
