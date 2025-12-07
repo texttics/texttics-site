@@ -15501,7 +15501,7 @@ def render_inspector_panel(data):
         </div>
     """
 
-    # 6A. Lookalikes Section (Hybrid & Robust)
+    # 6A. Lookalikes Section (Hybrid & Robust & Enriched)
     lookalike_html = ""
     lookalikes_list = data.get('lookalikes_data')
     
@@ -15512,42 +15512,57 @@ def render_inspector_panel(data):
         
         # Limit to top 24 to prevent UI explosion on massive clusters
         for item in lookalikes_list[:24]:
-            # Initialize defaults
-            l_glyph = "?"
-            l_cp = ""
-            l_script = "Sim"
-            l_name = "Lookalike"
-            l_block = ""
-
-            # Strategy 1: Dictionary (Rich Data from DB)
-            if isinstance(item, dict):
-                l_glyph = item.get('glyph', '?')
-                l_cp = item.get('cp', '')
-                l_script = item.get('script', '')
-                l_name = item.get('name', 'Confusable')
-                l_block = item.get('block', '')
-                
-            # Strategy 2: Simple String (From InverseConfusables JSON)
-            elif isinstance(item, str) and item:
-                l_glyph = item
-                try:
-                    l_cp = f"U+{ord(item[0]):04X}"
-                except:
-                    l_cp = "??"
             
-            # Strategy 3: Integer Codepoint (Raw Safety Fallback)
-            elif isinstance(item, int):
-                l_glyph = chr(item)
-                l_cp = f"U+{item:04X}"
-
+            # --- 1. NORMALIZE INPUT (Get the Integer) ---
+            l_int = 0
+            l_glyph = "?"
+            
+            # Case A: Integer (The new standard from our fix)
+            if isinstance(item, int):
+                l_int = item
+                l_glyph = chr(l_int)
+            # Case B: String (Legacy fallback)
+            elif isinstance(item, str) and item:
+                l_int = ord(item[0])
+                l_glyph = item
+            # Case C: Dictionary (Old database format)
+            elif isinstance(item, dict):
+                # Try to extract, fallback to ?
+                glyph_raw = item.get('glyph')
+                if glyph_raw:
+                    l_glyph = glyph_raw
+                    l_int = ord(glyph_raw[0])
+                else:
+                    continue # Skip broken records
             else:
-                continue
+                continue # Skip unknown types
 
-            tooltip = f"{l_name} &#10;Block: {l_block}"
+            # --- 2. ENRICH METADATA (The Missing Link) ---
+            # Now that we have the Integer (l_int), we can look up the missing facts.
+            
+            # Get Unicode Name (e.g., "LATIN SMALL LETTER A")
+            try:
+                l_name = unicodedata.name(l_glyph, "Unknown Character")
+            except:
+                l_name = "Unknown Character"
+
+            # Get Hex String (e.g., "U+0061")
+            l_cp = f"U+{l_int:04X}"
+
+            # Get Block (e.g., "Basic Latin") - Uses your global helper
+            l_block = _find_in_ranges(l_int, "Blocks") or "N/A"
+
+            # Get Script (e.g., "Latin") - Uses your global helper
+            l_script_full = _find_in_ranges(l_int, "Scripts") or "Com"
+            # Create a short tag for the UI (first 3 chars, e.g., "LAT")
+            l_script = l_script_full[:3].upper() if l_script_full else "UNK"
+
+            # --- 3. RENDER (With full data) ---
+            tooltip = f"{l_name} &#10;Block: {l_block} &#10;Script: {l_script_full}"
             
             chip = f"""
             <div class="lookalike-chip" title="{tooltip}">
-                <span class="lk-glyph">{l_glyph}</span>
+                <span class="lk-glyph">{_escape_html(l_glyph)}</span>
                 <span class="lk-meta">
                     <span class="lk-cp">{l_cp}</span>
                     <span class="lk-script">{l_script}</span>
@@ -15560,7 +15575,6 @@ def render_inspector_panel(data):
             grid_html = "".join(chips_buffer)
             
             # Inherit color from Identity Risk Facet (Safe Fallback)
-            # We access the 'ident_data' dictionary safely
             risk_css = ident_data.get('class', 'risk-info')
             
             lookalike_html = f"""
