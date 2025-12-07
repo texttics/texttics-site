@@ -4074,8 +4074,9 @@ class ForensicExplainer:
         try:
             char_raw = chr(cp_int)
             nfc_val = unicodedata.normalize('NFC', char_raw)
-            # FIX: Use robust normalizer here too, otherwise it will falsely report "Stable"
-            nfkc_val = normalize_extended(char_raw)
+            
+            # [FIX] Use robust normalizer. Handles manual patches like ⓼ -> 8
+            nfkc_val = normalize_extended(char_raw) 
             
             if char_raw == nfkc_val:
                 # Case A: Physically Stable (e.g. 'A')
@@ -4131,7 +4132,12 @@ class ForensicExplainer:
         # These are permanently reserved across all Unicode versions.
         # They supersede standard identifier rules.
         if "Pattern_Syntax" in props:
-            sec_notes.append("Immutable Pattern Syntax (Permanently reserved for operators/grammar)")
+            # [PATCH] Distinguish actual grammar (operators) from reserved symbols (emojis)
+            if "Emoji" in props or "Extended_Pictographic" in props:
+                 sec_notes.append("Restricted. Non-Identifier Symbol (Emoji/Pictograph). Reserved syntax.")
+            else:
+                 sec_notes.append("Immutable Pattern Syntax (Permanently reserved for operators/grammar)")
+        
         elif "Pattern_White_Space" in props:
             # Use gc_code (Zl=Line Sep, Zp=Para Sep) to detect Spoofing
             if gc_code in ("Zl", "Zp"):
@@ -4298,11 +4304,12 @@ class ForensicExplainer:
 
         # B. Syntax & Grammar (UAX #31 - The Constitution)
         elif "Pattern_Syntax" in props:
-            code_status = "WARN"
-            # [PATCH] Better message for Emojis that are technically Pattern Syntax
+            # Distinguish actual grammar (operators) from reserved symbols (emojis)
             if "Emoji" in props or "Extended_Pictographic" in props:
+                code_status = "WARN"
                 code_msg = "Non-Identifier Symbol. Reserved syntax; not valid in identifiers (only strings/comments)."
             else:
+                code_status = "WARN"
                 code_msg = "Syntactic Structure. Permanently reserved for operators and delimiters. Cannot be an identifier."
         
         elif "Pattern_White_Space" in props:
@@ -17079,10 +17086,11 @@ def inspect_character(event):
         base_char_data["forensic_report"] = forensic_report
 
         # [SYNC PATCH] Cluster vs. Atomic Reality
-        # If the CLUSTER is mutable (e.g. Emoji losing VS16), we must override the 
-        # Atomic Narrative (which might say "Stable" for the base char).
-        if forensic_report and is_mutable:
-            # Find and patch the "Structure" highlight
+        # Only override if it's a MULTI-CHAR cluster that mutates (e.g. Emoji + VS16).
+        # Atomic mutations (⓼) are already handled correctly by explain().
+        is_cluster_composite = (len(target_char) > 1) or (len(components) > 1)
+        
+        if forensic_report and is_mutable and is_cluster_composite:
             for h in forensic_report.get("highlights", []):
                 if h["label"] == "Structure":
                     h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
