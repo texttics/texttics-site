@@ -91,6 +91,15 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
+# [GAP B] File System Physics (Windows/Unix/Mac)
+FS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL", 
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+}
+# Windows "Forbidden 9": < > : " / \ | ? * + Control Chars (0-31)
+FS_WINDOWS_BANNED = {'<', '>', ':', '"', '/', '\\', '|', '?', '*'}
+
 # The "Persian Defense" Whitelist (Complex Orthography Scripts)
 # These scripts legitimately use ZWJ/ZWNJ for shaping.
 # We must NOT flag "Token Fracture" in these contexts.
@@ -1393,6 +1402,10 @@ FORENSIC_DB = {}  # Populated by load_forensic_db
 FORENSIC_META = {} # Holds the Vocabulary
 FORENSIC_DB_READY = False # Flag for UI safety
 FORENSIC_EXPLAINER = None # Global instance placeholder
+
+# Global Context Memory (The Bridge)
+# Stores the latest threat analysis for the Inspector to query.
+LATEST_THREAT_DATA = {}
 
 def _build_enclosed():
     """Populates the ENCLOSED_MAP with manual normalization rules."""
@@ -4276,6 +4289,7 @@ class ForensicExplainer:
             report["lenses"]["code"] = {"status": "CRITICAL", "text": "BLOCK. Undefined Character. Compiler/Interpreter behavior undefined."}
             report["lenses"]["dns"] = {"status": "CRITICAL", "text": "Protocol Violation. Unassigned characters are banned in IDNA."}
             report["lenses"]["text"] = {"status": "CRITICAL", "text": "Data Corruption. Character does not exist in this version of Unicode."}
+            report["lenses"]["fs"] = {"status": "CRITICAL", "text": "Data Corruption. Undefined character; filesystem behavior undefined."}
             return # Stop processing
         
         is_xid_start = "XID_Start" in props
@@ -4503,6 +4517,56 @@ class ForensicExplainer:
                     text_msg = "Text character. Can participate in emoji sequences."
 
         report["lenses"]["text"] = {"status": text_status, "text": text_msg}
+
+        # [GAP B FIX] Lens 4: File Systems (OS/Storage)
+        # SOTA: Enforces the "Hierarchy of Terror" for Filename Safety.
+        fs_status = "SAFE"
+        fs_msg = "Valid filename character."
+        
+        # A. The "Windows Nine" (Structurally Banned)
+        # < > : " / \ | ? *
+        if is_ascii and chr(cp_val) in FS_WINDOWS_BANNED:
+            fs_status = "CRITICAL"
+            fs_msg = "Forbidden (Windows). Reserved character (< > : \" / \\ | ? *). Prevents file creation on NTFS/FAT32."
+            
+        # B. Path Separators (The Universal Ban)
+        # Forward Slash is fatal on Unix/Linux/Mac
+        elif cp_val == 0x2F: # '/'
+            fs_status = "CRITICAL"
+            fs_msg = "Directory Separator. Reserved on Unix/Linux/macOS. Creates path traversal risk."
+            
+        # C. Control Characters (0x00-0x1F)
+        # Banned on Windows, highly dangerous on Unix (Newlines in filenames break scripts)
+        elif cp_val <= 0x1F:
+            if cp_val == 0x00:
+                fs_status = "CRITICAL"
+                fs_msg = "Null Byte Injection. Fatal to C-based file systems (String Terminator)."
+            else:
+                fs_status = "WARN"
+                fs_msg = "Control Character. Banned on Windows; dangerous on Unix (breaks shell scripts/loops)."
+                
+        # D. RTLO (Malware Extension Spoofing)
+        elif "Bidi_Control" in props:
+            if gc_code in ("RLO", "LRO"):
+                fs_status = "CRITICAL"
+                fs_msg = "Extension Spoofing Vector. RTLO reverses filename (e.g. 'codexe.txt' renders as 'codtxt.exe')."
+            else:
+                fs_status = "WARN"
+                fs_msg = "Bidi Control. Suspicious in filenames; often used for obfuscation."
+
+        # E. Trailing/Leading Risks (Whitespace)
+        elif gc_code == "Zs":
+            fs_status = "NOTE"
+            fs_msg = "Whitespace. Windows strips trailing spaces/dots. Can be used to hide extensions."
+
+        # F. Reserved Names Check (Contextual)
+        # Note: This is usually a whole-token check, but if the character IS the token (rare), we flag it.
+        # Ideally, this is handled by the Token Context Bridge, but we add a specific check for '.'
+        elif cp_val == 0x2E: # '.'
+            fs_status = "NOTE"
+            fs_msg = "Extension Delimiter. Trailing dots are stripped by Windows (Magic Dot attack)."
+
+        report["lenses"]["fs"] = {"status": fs_status, "text": fs_msg}
 
     def _fallback_report(self, identity_msg, verdict_msg, badge_err):
         return {
@@ -15310,7 +15374,12 @@ def render_inspector_panel(data):
                 l_txt = "#047857" if l_status == "SAFE" else "#b91c1c" if l_status == "CRITICAL" else "#b45309"
                 l_border = "#a7f3d0" if l_status == "SAFE" else "#fecaca" if l_status == "CRITICAL" else "#fde68a"
                 
-                label_map = {"code": "SOURCE CODE", "dns": "DOMAIN NAMES", "text": "GENERAL TEXT"}
+                label_map = {
+                    "code": "SOURCE CODE", 
+                    "dns": "DOMAIN NAMES", 
+                    "fs": "FILE SYSTEM", 
+                    "text": "GENERAL TEXT"
+                }
                 
                 lenses_html += f"""
                 <div style="flex:1; background:{l_bg}; border:1px solid {l_border}; border-radius:4px; padding:6px; min-width: 0;">
@@ -16276,7 +16345,12 @@ def update_all(event=None):
 
     # Threat Analysis (Populates Registry; Required for Threat Ledger)
     threat_results = compute_threat_analysis(t, script_run_stats)
-    window.latest_threat_data = threat_results
+    
+    # [GAP A FIX] Update Global Context Memory
+    # This allows the Inspector to read token risks without re-computing.
+    global LATEST_THREAT_DATA
+    LATEST_THREAT_DATA = threat_results
+    window.latest_threat_data = threat_results # Keep for debugging/external tools
 
     # [STAGE 1.7] THE DECODER & DEVELOPER ENGINES ------------------------------
     # 1. Regex Kryptonite (Developer Safety)
@@ -17225,6 +17299,60 @@ def inspect_character(event):
                     if h["label"] == "Structure":
                         h["text"] = f"Cluster Instability. {stability_text} (Sequence normalization differs from raw)."
                         break
+
+        # [GAP A FIX] The Situational Awareness Bridge
+        # Physics -> Narrative: Connects the Atom (Character) to the Token (Context).
+        if forensic_report: # Only run if we have a valid report to append to
+            try:
+                # 1. Access Global Memory
+                adv_data = LATEST_THREAT_DATA.get('adversarial', {}) if LATEST_THREAT_DATA else {}
+                tokens = adv_data.get('tokens', [])
+                
+                for tok in tokens:
+                    # 2. Geometric Lookup: Is the cursor inside this token?
+                    # Note: tok['start'] and tok['end'] are Logical Indices (Python), same as python_idx.
+                    if tok.get('start', -1) <= python_idx < tok.get('end', -1):
+                        
+                        # 3. Filter for Relevance (Reduce Noise)
+                        # We only flag context if the token itself is risky or interesting.
+                        verdict = tok.get('verdict', 'CLEAN')
+                        risk_score = tok.get('risk', 0)
+                        
+                        if risk_score >= 50 or verdict not in ("CLEAN", "SAFE", "BASELINE"):
+                            
+                            # 4. Construct the Narrative
+                            token_text = tok.get('token', '???')
+                            # Truncate long tokens for UI safety
+                            if len(token_text) > 20: token_text = token_text[:20] + "..."
+                            
+                            context_msg = f"Situational Risk: Part of {verdict} token '{token_text}'."
+                            
+                            badges = tok.get('badges', [])
+                            if badges:
+                                context_msg += f" Flags: {', '.join(badges)}."
+                            
+                            # 5. Inject High-Priority Highlight
+                            forensic_report["highlights"].insert(0, {
+                                "label": "Context",
+                                "text": context_msg
+                            })
+                            
+                            # 6. Escalate Security Level (Context Propagation)
+                            # If the token is CRITICAL (e.g. Mixed Script), the character inherits suspicion.
+                            if verdict in ("CRITICAL", "HIGH"):
+                                current_lvl = forensic_report["security"]["level"]
+                                # Only escalate if currently lower than SUSPICIOUS
+                                if current_lvl in ("SAFE", "NOTE", "WARN"):
+                                    forensic_report["security"]["level"] = "SUSPICIOUS"
+                                    forensic_report["security"]["badges"].append("CONTEXT")
+                                    # Append verdict nuance
+                                    if "Mixed-Script" in context_msg:
+                                        forensic_report["security"]["verdict"] += " (Part of Mixed-Script Spoof)."
+                        
+                        break # Found the containing token; stop searching.
+                        
+            except Exception as ctx_err:
+                print(f"Context Bridge Error: {ctx_err}")
 
         comp_cat = cluster_identity.get("max_risk_cat", cat_short)
         
