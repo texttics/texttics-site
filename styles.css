@@ -835,7 +835,7 @@ Stage 2: Heatmap Row Classes
 
 .inspector-glyph {
   font-family: var(--font-mono);
-  font-size: 3.5rem;
+  font-size: 4.25rem;
   line-height: 1; /* Tight line height to keep the "center" predictable */
   
   display: inline-block;
@@ -861,7 +861,7 @@ Stage 2: Heatmap Row Classes
   font-family: var(--font-mono);
   font-weight: 700;
   /* color: var(--color-primary); REMOVED to allow Python injection */
-  font-size: 1rem;
+  font-size: 1.5rem;
   
   /* Make sure the label sits ON TOP of the scrolling text */
   /* High contrast & Shadow so it pops over the text/scrollbar */
@@ -6811,8 +6811,9 @@ details.profile-section > summary:hover::marker {
 }
 
 .vital-key {
-    font-weight: 600;
-    color: #cbd5e1; /* Very light gray for labels */
+    font-weight: 700; /* Bold like 'NEXT' */
+    color: var(--color-text-muted); /* Use the same dark gray base */
+    opacity: 0.6; /* Apply the same transparency */
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
