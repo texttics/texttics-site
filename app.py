@@ -3784,12 +3784,13 @@ class ForensicExplainer:
         if not key: return default
         return self.meta.get(category, {}).get(key, default or key)
 
-    def explain(self, hex_str):
+    # Updated Signature: accepts physics
+    def explain(self, hex_str, physics=None):
         # 0. Safety Check
         if not FORENSIC_DB_READY:
             return self._fallback_report("System Loading...", "Forensic Database not loaded.", "NO-DB")
 
-        # 1. Initialize Critical Variables (Prevent UnboundLocalError)
+        # 1. Initialize Critical Variables
         cp_int = 0
         try:
             cp_int = int(hex_str, 16)
@@ -4286,8 +4287,8 @@ class ForensicExplainer:
             "text": time_msg
         })
 
-        # --- E. CONTEXT LENSES ---
-        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt)
+        # Pass physics down so lenses can see Cluster Complexity (Atomic vs Composite)
+        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt, physics)
         
         # --- F. SYNTHESIS (Narrative Intelligence) ---
         # Synthesis runs last so it sees all computed lens states
@@ -17475,6 +17476,9 @@ def inspect_character(event):
             "stability_text": stability_text,
         }
 
+        # Calculate Physics State BEFORE asking for the report
+        physics_state = compute_physics_state(base_char_data, rec.get("props", []))
+
         # Cluster Analysis with Guard Rail 2
         cluster_identity_raw = _compute_cluster_identity(target_char, base_char_data)
         
@@ -17489,7 +17493,8 @@ def inspect_character(event):
         forensic_report = None
         if FORENSIC_EXPLAINER:
             try:
-                maybe_report = FORENSIC_EXPLAINER.explain(hex_str)
+                # Pass physics to the policy engine
+                maybe_report = FORENSIC_EXPLAINER.explain(hex_str, physics=physics_state)
                 if isinstance(maybe_report, dict):
                     forensic_report = maybe_report
                 else:
