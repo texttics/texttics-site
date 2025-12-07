@@ -7817,7 +7817,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
 
 def compute_physics_state(data, raw_props):
     """
-    [Block 6] SOTA Physics Engine (V8.2 - Orphan Modifier Aware).
+    [Block 6] SOTA Physics Engine (V8.3 - Hardened Taxonomy).
     Pure functional analysis. Returns Enums/Syndromes. 
     Zero UI logic, Zero Policy.
     """
@@ -7833,33 +7833,66 @@ def compute_physics_state(data, raw_props):
         "ident_state": "UNIQUE",
         "parse_state": "SAFE",
         "dt_type": None,
-        "width_class": "N"
+        "width_class": "N",
+        # [GAP 1.2] New Explicit Taxonomy Fields
+        "special_range": "NONE",  # NONCHAR, SURROGATE, PUA, UNASSIGNED
+        "format_class": "NONE"    # BIDI, TAG, JOINER, VS, IGNORABLE
     }
     
-    # --- 2. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
-    is_inv = data.get('is_invisible')
+    # --- 2. FACET: ONTOLOGY (Special Ranges) ---
     gc = data.get('category_short', 'Cn')
+    
+    if gc == 'Co':
+        phys['special_range'] = 'PUA'
+        phys['severity'] = max(phys['severity'], 3) # Suspicious
+    elif gc == 'Cs':
+        phys['special_range'] = 'SURROGATE'
+        phys['severity'] = max(phys['severity'], 4) # Critical (Broken Data)
+    elif gc == 'Cn':
+        phys['special_range'] = 'UNASSIGNED'
+        phys['severity'] = max(phys['severity'], 3)
+    elif "Noncharacter_Code_Point" in raw_props:
+        phys['special_range'] = 'NONCHAR'
+        phys['severity'] = max(phys['severity'], 4) # Critical (Internal Use Only)
+
+    # --- 3. FACET: VISIBILITY & LAYOUT (UAX #9, #11, #14) ---
+    is_inv = data.get('is_invisible')
     lb = data.get('lb', 'XX')
     ea = data.get('ea', 'N')
     
     phys['width_class'] = ea
     
+    # Granular Format Taxonomy
     if "Bidi_Control" in raw_props:
+        phys['format_class'] = "BIDI"
         phys['vis_state'] = "CONTROL"
         phys['severity'] = max(phys['severity'], 4)
         phys['syndromes'].append("BIDI_WEAPON")
         
     elif is_inv:
-        if "Join_Control" in raw_props:
+        # Check specifically for Tags (Block check is robust)
+        if data.get('block') == 'Tags':
+            phys['format_class'] = "TAG"
+            phys['vis_state'] = "HIDDEN"
+            phys['severity'] = max(phys['severity'], 4)
+            phys['syndromes'].append("TAG_INJECTION")
+            
+        elif "Join_Control" in raw_props:
+            phys['format_class'] = "JOINER"
             phys['vis_state'] = "FORMAT"
             phys['severity'] = max(phys['severity'], 2)
             phys['syndromes'].append("JOINER")
+            
         elif "Variation_Selector" in raw_props:
+            phys['format_class'] = "VS"
             phys['vis_state'] = "FORMAT"
+            
         elif "Default_Ignorable_Code_Point" in raw_props:
+            phys['format_class'] = "IGNORABLE"
             phys['vis_state'] = "HIDDEN"
             phys['severity'] = max(phys['severity'], 3)
             phys['syndromes'].append("INVISIBLE")
+            
         else:
             phys['vis_state'] = "HIDDEN"
             phys['severity'] = max(phys['severity'], 2)
@@ -7878,28 +7911,17 @@ def compute_physics_state(data, raw_props):
     elif ea in ("F", "W"):
         phys['syndromes'].append("FULL_WIDTH")
 
-    # --- 3. FACET: STRUCTURE (UAX #15 & Emoji Logic) ---
+    # --- 4. FACET: STRUCTURE (UAX #15 & Emoji Logic) ---
     ghosts = data.get('ghosts')
     is_rgi = data.get('is_rgi', False) 
 
     # [CASE 11 FIX] Orphan Modifier Detection
-    # Logic: If cluster has a modifier (Sk) but base is NOT a valid Emoji Base, it's broken.
-    has_modifier = "Emoji_Modifier" in raw_props
-    base_props = data.get("base_props", []) # Need to pass this from inspector
-    
-    # We fallback to checking if the base is Emoji_Modifier_Base using internal data if props missing
-    # But for now, we can use the category check as a heuristic proxy or pass base_props.
-    # A robust check uses the 'components' list passed in 'data'.
     components = data.get('components', [])
     if len(components) > 1:
-        base_comp = components[0]
-        # Check if any non-base component is a Modifier (Sk)
+        # Logic: If cluster has a modifier (Sk) but is NOT RGI, check validity.
         has_skin_tone = any(c.get('cat') == 'Sk' for c in components[1:])
         
         if has_skin_tone:
-            # We need to know if the BASE allowed it. 
-            # Since we don't have full property access here for the base, we use RGI as the truth.
-            # If it has a skin tone but is NOT RGI, it is highly likely an Orphan.
             if not is_rgi:
                 phys['struct_state'] = "BROKEN"
                 phys['severity'] = max(phys['severity'], 3)
@@ -7920,14 +7942,13 @@ def compute_physics_state(data, raw_props):
         if not dt: phys['dt_type'] = "Implicit"
             
     elif len(components) > 1:
-        # Don't overwrite BROKEN
         if phys['struct_state'] != "BROKEN":
             phys['struct_state'] = "COMPOSITE"
         
         if data.get('stack_msg'):
              phys['severity'] = max(phys['severity'], 2)
 
-    # --- 4. FACET: IDENTITY (UTS #39) ---
+    # --- 5. FACET: IDENTITY (UTS #39) ---
     lookalikes = len(data.get('lookalikes_data', []))
     
     if "Math" in raw_props and gc in ("Lu", "Ll"):
@@ -7937,7 +7958,7 @@ def compute_physics_state(data, raw_props):
     elif lookalikes > 0:
         phys['ident_state'] = "NOTE"
 
-    # --- 5. FACET: PARSING (UTS #18) ---
+    # --- 6. FACET: PARSING (UTS #18) ---
     is_line_term = gc in ("Zl", "Zp") or lb in REGEX_TERMINATORS
     
     if is_line_term:
@@ -8006,20 +8027,39 @@ def analyze_signal_processor_state(data):
         else: cls = "risk-ok"
         return {"state": state, "class": cls, "detail": detail, "icon": icon}
 
-    # VISIBILITY MAPPING
+    # VISIBILITY MAPPING (Enhanced V8.3)
     v_state = phys['vis_state']
     v_det = "Standard Visible"
     v_sev = 0
     v_icon = "eye"
     
+    # Priority 1: High Threat Syndromes
     if "BIDI_WEAPON" in phys['syndromes']: 
         v_det = "Flow Override"; v_sev = 4; v_icon = "move"
+    elif "TAG_INJECTION" in phys['syndromes']:
+        v_det = "Language Tag"; v_sev = 4; v_icon = "tag"
     elif "WRAP_SUPPRESSION" in phys['syndromes']:
         v_det = "No-Wrap Glue"; v_sev = 2; v_icon = "minimize-2"
-    elif "INVISIBLE" in phys['syndromes']:
+        
+    # Priority 2: Format Classes (New Taxonomy)
+    elif phys['format_class'] == "JOINER":
+        v_det = "Join Control"; v_sev = 2; v_icon = "minimize-2"
+    elif phys['format_class'] == "IGNORABLE":
+        v_det = "Ignorable Control"; v_sev = 3; v_icon = "eye-off"
+    elif phys['format_class'] == "VS":
+        v_det = "Variation Selector"; v_sev = 1; v_icon = "sliders"
+        
+    # Priority 3: Special Ranges (New Ontology)
+    elif phys['special_range'] == "SURROGATE":
+        v_det = "Broken Surrogate"; v_sev = 4; v_icon = "zap"
+    elif phys['special_range'] == "NONCHAR":
+        v_det = "Noncharacter"; v_sev = 4; v_icon = "x-octagon"
+    elif phys['special_range'] == "PUA":
+        v_det = "Private Use"; v_sev = 3; v_icon = "user-x"
+        
+    # Priority 4: General States
+    elif v_state == "HIDDEN":
         v_det = "Stealth Void"; v_sev = 3; v_icon = "eye-off"
-    elif v_state == "FORMAT":
-        v_det = "Layout Control"; v_sev = 2; v_icon = "minimize-2"
     elif v_state == "EXTENDED":
         v_det = "Unicode Range"; v_sev = 1; v_icon = "globe"
         if "AMBIG_WIDTH" in phys['syndromes']: v_det = "Ambiguous Width"
