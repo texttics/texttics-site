@@ -1513,9 +1513,14 @@ DATA_STORES = {
     "Emoji_Modifier_Base": {"ranges": [], "starts": [], "ends": []},
     "Emoji_Component": {"ranges": [], "starts": [], "ends": []},
     "Extended_Pictographic": {"ranges": [], "starts": [], "ends": []},
-    # IDNA Buckets
     "Idna2008": {},
-    "IdnaMap": {"deviation": set(), "ignored": set(), "disallowed": set(), "mapped": set(), "nv8": set(), "xv8": set()}
+    "IdnaMap": {"deviation": set(), "ignored": set(), "disallowed": set(), "mapped": set(), "nv8": set(), "xv8": set()},
+    # [SATURATION] Foundation Layer
+    "BidiClass": {"ranges": [], "starts": [], "ends": []}, 
+    "NormalizationCorrections": set(),
+    "GeneralCategory": {"ranges": [], "starts": [], "ends": []}, # Replaces unicodedata.category
+    "CaseFolding": {}, # Replaces str.casefold
+    "NameAliases": {}  # Replaces unicodedata.name for controls
 }
 
 # ===============================================
@@ -2666,7 +2671,10 @@ async def load_unicode_data():
             "inverse_confusables.json",
             "ascii_confusables.json",
             "IdnaMappingTable.txt",
-            "Idna2008.txt"
+            "Idna2008.txt",
+            # [SATURATION]
+            "DerivedBidiClass.txt", "NormalizationCorrections.txt",
+            "DerivedGeneralCategory.txt", "CaseFolding.txt", "NameAliases.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
 
@@ -2692,7 +2700,10 @@ async def load_unicode_data():
          decomp_type_txt, derived_binary_txt, num_type_txt, 
          ea_width_txt, vert_orient_txt, bidi_brackets_txt,
          bidi_mirroring_txt, norm_props_txt, comp_ex_txt, emoji_seq_txt, emoji_zwj_seq_txt, emoji_data_txt, emoji_test_txt, 
-         inverse_json, ascii_json, idna_map_txt, idna_2008_txt) = results
+         inverse_json, ascii_json, idna_map_txt, idna_2008_txt, 
+        # [SATURATION]
+         derived_bidi_txt, norm_corrections_txt, 
+         derived_gc_txt, case_folding_txt, name_aliases_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
