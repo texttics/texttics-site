@@ -2995,7 +2995,12 @@ async def load_unicode_data():
             "Idna2008.txt",
             # [SATURATION]
             "DerivedBidiClass.txt", "NormalizationCorrections.txt",
-            "DerivedGeneralCategory.txt", "CaseFolding.txt", "NameAliases.txt"
+            "DerivedGeneralCategory.txt", "CaseFolding.txt", "NameAliases.txt",
+            # [STAGE 1.9 SATURATION]
+            "HangulSyllableType.txt", "EquivalentUnifiedIdeograph.txt", "NamedSequences.txt",
+            "IVD_Sequences.txt", "PropertyValueAliases.txt", "EmojiSources.txt",
+            "NushuSources.txt", "MathClassEx-15.txt", "DerivedJoiningType.txt",
+            "IndicPositionalCategory.txt", "IndicSyllabicCategory.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
 
@@ -3024,7 +3029,11 @@ async def load_unicode_data():
          inverse_json, ascii_json, idna_map_txt, idna_2008_txt, 
         # [SATURATION]
          derived_bidi_txt, norm_corrections_txt, 
-         derived_gc_txt, case_folding_txt, name_aliases_txt) = results
+         derived_gc_txt, case_folding_txt, name_aliases_txt,
+         # [STAGE 1.9]
+         hangul_txt, radical_txt, named_seq_txt, ivd_txt, prop_alias_txt,
+         emoji_src_txt, nushu_txt, math_class_txt, join_type_txt,
+         indic_pos_txt, indic_syl_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -3278,6 +3287,19 @@ async def load_unicode_data():
                         if code not in store:
                             store[code] = alias # Store the first alias found
                     except: pass
+
+        # --- STAGE 1.9 SATURATION HYDRATION ---
+        if hangul_txt: DATA_STORES["HangulType"] = _parse_hangul_type(hangul_txt)
+        if radical_txt: DATA_STORES["RadicalEquiv"] = _parse_equiv_ideographs(radical_txt)
+        if named_seq_txt: DATA_STORES["NamedSequences"] = _parse_named_sequences(named_seq_txt)
+        if ivd_txt: DATA_STORES["IVD_Valid"] = _parse_ivd_sequences(ivd_txt)
+        if prop_alias_txt: DATA_STORES["PropAliases"] = _parse_property_value_aliases(prop_alias_txt)
+        if emoji_src_txt: DATA_STORES["LegacyEmoji"] = _parse_emoji_sources(emoji_src_txt)
+        if nushu_txt: DATA_STORES["Nushu"] = _parse_nushu_sources(nushu_txt)
+        if math_class_txt: DATA_STORES["MathClass"] = _parse_math_class(math_class_txt)
+        if join_type_txt: DATA_STORES["JoiningType"] = _parse_joining_type(join_type_txt)
+        if indic_pos_txt: DATA_STORES["IndicPos"] = _parse_indic_position(indic_pos_txt)
+        if indic_syl_txt: DATA_STORES["IndicSyllabic"] = _parse_indic_syllabic(indic_syl_txt)
         
         # Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
@@ -13329,6 +13351,28 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     # --- CRITICAL: Define locals if they don't exist (Safety Fallback) ---
     if 'script_mix_class' not in locals(): script_mix_class = ""
     if 'skel_metrics' not in locals(): skel_metrics = {}
+
+    # --- STAGE 1.9 SATURATION ENGINE ---
+    # Runs the 11-vector physics scan and merges into threat_flags
+    try:
+        sat_findings = analyze_saturation_vectors(t)
+        for f in sat_findings:
+            # Map risk to severity
+            sev_label = "CRITICAL" if f["risk"] == "CRITICAL" else "HIGH"
+            key = f"{sev_label}: {f['desc']}"
+            
+            if key not in threat_flags:
+                threat_flags[key] = {
+                    'count': 0,
+                    'positions': [],
+                    'severity': 'crit' if f["risk"] == "CRITICAL" else 'warn'
+                }
+            threat_flags[key]['count'] += 1
+            # Add position context (convert index to string)
+            threat_flags[key]['positions'].append(f"@{f['pos']}")
+            
+    except Exception as e:
+        print(f"Error in Saturation Engine: {e}")
 
     # --- BRIDGE: Promote Adversarial Findings to Threat Flags ---
     # This ensures the "Group 3" table sees the "Group 4" discoveries.
