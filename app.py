@@ -1527,6 +1527,153 @@ DATA_STORES = {
 # BLOCK 4. DATA PARSERS & LOADERS
 # ===============================================
 
+# Stage 1.9 Parsers
+
+def _parse_hangul_type(content):
+    """Parses HangulSyllableType.txt for Jamo Gap detection."""
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        line = line.strip()
+        if not line: continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        # Format: 1100..115F ; L
+        r_part = parts[0]
+        val = parts[1] # L, V, T, LV, LVT
+        
+        if '..' in r_part:
+            start_s, end_s = r_part.split('..')
+            start = int(start_s, 16)
+            end = int(end_s, 16)
+            for cp in range(start, end + 1):
+                mapping[cp] = val
+        else:
+            mapping[int(r_part, 16)] = val
+    return mapping
+
+def _parse_equiv_ideographs(content):
+    """Parses EquivalentUnifiedIdeograph.txt for Radical Spoofing."""
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        line = line.strip()
+        if not line: continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        # Format: 2E81 ; 5382
+        # Note: The file spec says the first field can be a range, but the sample only shows singles.
+        # We handle both for robustness.
+        src_part = parts[0]
+        target_s = parts[1]
+        
+        try:
+            target = int(target_s, 16)
+            
+            if '..' in src_part:
+                start_s, end_s = src_part.split('..')
+                start = int(start_s, 16)
+                end = int(end_s, 16)
+                for cp in range(start, end + 1):
+                    mapping[cp] = target
+            else:
+                mapping[int(src_part, 16)] = target
+        except ValueError:
+            continue
+            
+    return mapping
+
+def _parse_named_sequences(content):
+    """Parses NamedSequences.txt for Entity detection."""
+    seq_map = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        line = line.strip()
+        if not line: continue
+        
+        # Format: Name; Code Point Sequence
+        parts = line.split(';')
+        if len(parts) < 2: continue
+        
+        name = parts[0].strip()
+        seq_str = parts[1].strip()
+        
+        try:
+            # "0023 FE0F 20E3" -> (35, 65039, 8419)
+            seq_tuple = tuple(int(x, 16) for x in seq_str.split())
+            seq_map[seq_tuple] = name
+        except ValueError:
+            continue
+            
+    return seq_map
+
+def _parse_ivd_sequences(content):
+    """Parses IVD_Sequences.txt for IVS Steganography check."""
+    valid_ivs = set()
+    for line in content.splitlines():
+        # IVD file has comments starting with # but not inline comments for data rows
+        if line.startswith('#'): continue 
+        line = line.strip()
+        if not line: continue
+        
+        # Format: 3402 E0100; Adobe-Japan1; CID+13698
+        parts = line.split(';')
+        if len(parts) < 2: continue
+        
+        seq_str = parts[0].strip()
+        
+        try:
+            # "3402 E0100" -> (13314, 917760)
+            base_s, vs_s = seq_str.split()
+            base = int(base_s, 16)
+            vs = int(vs_s, 16)
+            valid_ivs.add((base, vs))
+        except ValueError:
+            continue
+            
+    return valid_ivs
+
+def _parse_property_value_aliases(content):
+    """
+    Parses PropertyValueAliases.txt for Canonical Names.
+    Returns: Dict[Property, Dict[ShortName, LongName]]
+    """
+    aliases = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        line = line.strip()
+        if not line: continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        prop = parts[0] # e.g. "sc", "blk", "age"
+        
+        # We want Short -> Long mapping
+        # Format varies. Usually: prop; short; long
+        # ccc is unique: ccc; numeric; short; long
+        
+        if prop == "ccc":
+            if len(parts) >= 4:
+                short_name = parts[2]
+                long_name = parts[3]
+                if prop not in aliases: aliases[prop] = {}
+                aliases[prop][short_name] = long_name
+        else:
+            if len(parts) >= 3:
+                short_name = parts[1]
+                long_name = parts[2]
+                if prop not in aliases: aliases[prop] = {}
+                # Normalize keys for loose matching (lowercase) if needed, 
+                # but for now we stick to raw strings as the UCD is strict enough.
+                aliases[prop][short_name] = long_name
+                
+    return aliases
+
 # The Range Parsers
 def _parse_and_store_ranges(txt: str, store_key: str):
     """Generic parser for Unicode range data files (Blocks, Age, etc.)"""
