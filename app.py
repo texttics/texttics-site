@@ -17994,7 +17994,8 @@ def inspect_character(event):
             "prev_glyph": prev_cluster,  
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
-            "name_base": unicodedata.name(base_char, "No Name"),
+            # [SATURATED] Use Safe Name for Header
+            "name_base": _get_safe_name(cp_base), 
             "is_cluster": cluster_identity["is_cluster"],
             "type_label": cluster_identity.get("type_label", "N/A"),
             "type_val":  cluster_identity.get("type_val", "N/A"),
