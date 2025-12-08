@@ -3057,15 +3057,15 @@ def _get_safe_name(cp):
         cat = _get_forensic_category(chr(cp))
         
         if cat == "Cn":
-            return "<unassigned>"
+            return "(Unassigned")
         elif cat == "Cs":
-            return "<surrogate>"
+            return "(Surrogate)"
         elif cat == "Co":
-            return "<private-use>"
+            return "(Private-Use)"
         elif cat == "Cc":
-            return "<control>"
+            return "(Control)"
             
-        return "<unknown>"
+        return "(Unknown)"
 
 def _get_forensic_category(char):
     """[SATURATED] General Category lookup via DerivedGeneralCategory.txt."""
