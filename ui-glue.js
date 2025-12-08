@@ -1061,10 +1061,14 @@ window.TEXTTICS_CALC_UAX_COUNTS = (text) => {
       const cp = txt(root, '.inspector-codepoint');
       const name = txt(root, '.inspector-header');
       
+      // [STAGE 1.9] Check for Named Entity Badge
+      const isNamed = root.querySelector('.risk-status-ok')?.textContent.includes('Named Entity');
+      const entityLabel = isNamed ? " [NAMED ENTITY]" : "";
+      
       let report = `[ Character Inspector Data ]\n`;
       report += `--------------------------------------------------\n`;
       report += `TARGET:   ${glyph}  (${cp})\n`;
-      report += `NAME:     ${name}\n`;
+      report += `NAME:     ${name}${entityLabel}\n`;
       report += `--------------------------------------------------\n\n`;
 
       // 2. STRUCTURAL MATRIX (The Top Panel - Always Scrape)
