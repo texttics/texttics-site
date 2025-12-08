@@ -2426,4 +2426,59 @@ The engine was tested against specific trigger characters to confirm independenc
 * ✅ **CJK Compat (`U+F951`):** Flagged as **`Version Drift`** via the Normalization Corrections list.
 * ✅ **Capital Sharp S (`ẞ`):** Verified to expand to **`ss`** in the Identity state.
 
-**Status:** Stage 1 feature development is complete. The system now operates independently of the browser's Unicode version.
+
+## 🛡️ Addendum #14: Extended Script & Logic Analysis (Stage 1.9)
+
+**Session Goal:** Integrated support for complex script structures (Indic, Arabic, Hangul), mathematical operators, and legacy compatibility mappings defined in Unicode 17.0. This update expands the analysis scope from character properties to script-specific composition rules.
+
+### 1. New Analysis Capabilities
+We implemented detection logic for 11 specific Unicode features that affect text interpretation but were previously unmonitored.
+
+* **Logic Operators:** Detection of invisible mathematical characters (`U+2062` Invisible Times, etc.) that alter formula meaning without rendering.
+* **Vertical Layout:** Analysis of the `Vertical_Orientation` property to detect characters that rotate in vertical text flow (potential layout obfuscation).
+* **Script Structure:** Implementation of state-based validation for:
+    * **Hangul:** Identifying decomposed Jamo sequences that bypass precomposed keyword filters.
+    * **Indic:** Validating mark placement against syllable structure (e.g., preventing marks on digits).
+    * **Arabic/Syriac:** Checking cursive joining integrity (detecting non-joining characters inside words).
+
+### 2. Implementation: The Sidecar Pattern
+To handle these checks without modifying the core `update_all` loop, we implemented a modular approach:
+
+* **`analyze_saturation_vectors`:** A standalone function in **Block 6** that iterates the string once, checking the 11 new data sources.
+* **Integration:** Results are merged into the existing **Threat Flags** dictionary and selectively promoted to the **Adversarial Dashboard** if they represent high-severity anomalies (e.g., Math Syntax Spoofing).
+
+### 3. New Data Sources
+We updated `pyscript.toml` to ingest 11 additional UCD files:
+
+* **Script Logic:** `HangulSyllableType.txt` (Korean), `DerivedJoiningType.txt` (Arabic/Cursive), `IndicPositionalCategory.txt` & `IndicSyllabicCategory.txt` (Indic).
+* **Spoofing & Identity:** `EquivalentUnifiedIdeograph.txt` (Radical mapping), `NamedSequences.txt` (Standardized clusters), `MathClassEx-15.txt` (Math syntax types).
+* **Obfuscation & Legacy:** `IVD_Sequences.txt` (Ideographic Variation), `EmojiSources.txt` (Legacy Carrier mappings), `NushuSources.txt` (Rare script/Tofu risk), `VerticalOrientation.txt` (Layout).
+* **Tooling:** `PropertyValueAliases.txt` (Canonical name resolution).
+
+### 4. Forensic Logic Updates
+
+#### A. Logic & Layout
+* **Invisible Math:** Flags `U+2061`..`U+2064` as **CRITICAL** (Execution Risk).
+* **Vertical Orientation:** Flags strings containing both explicitly Upright (`U`) and explicitly Rotated (`R`) characters as **HIGH** (Layout Mismatch).
+* **Math Masquerade:** Flags characters defined as Mathematical Relations (`R`) or Fences (`O`/`C`) that appear in non-math contexts (potential syntax spoofing).
+
+#### B. Script Validation
+* **Hangul Decomposition:** Flags sequences of raw Jamo (`L`, `V`) that are not part of a precomposed syllable.
+* **Radical Spoofing:** Flags Kangxi Radicals that have a canonical Unified Ideograph equivalent.
+* **Cursive Fracture:** Flags `Non-Joining` characters appearing between two `Dual-Joining` characters.
+* **Indic Structure:** Flags dependent vowel signs applied to invalid bases (Numbers, Independent Vowels).
+
+
+
+#### C. Identity & Legacy
+* **IVS Validation:** Flags Ideographic Variation Sequences not found in the IVD registry.
+* **Legacy Carrier:** Flags Emojis that map to legacy carrier sets (DoCoMo/KDDI).
+* **Tofu Detection:** Flags Nushu characters likely to render as missing glyphs.
+
+### 5. UI Updates
+The **Character Inspector** now exposes this data directly:
+
+* **Structure:** Displays **"Named Entity"** badge for valid named sequences.
+* **Identity:** Displays specific Math Class (e.g., `Math: RELATION`) instead of generic Category.
+* **Layout:** Displays `ORIENTATION: ROTATED (R)` or `UPRIGHT (U)`.
+* **Timeline:** Adds **"Legacy Carrier"** warning for relevant Emojis.
