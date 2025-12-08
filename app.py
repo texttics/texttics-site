@@ -18798,9 +18798,13 @@ def inspect_character(event):
             "next_glyph": next_cluster,
             "cp_hex_base": f"U+{cp_base:04X}",
             # [SATURATED] Use Safe Name for Header
-            "name_base": _get_safe_name(cp_base), 
+            # If it is a Named Sequence, override the generic "GRAPHEME CLUSTER" label
+            "name_base": named_entity_name if named_entity_name else _get_safe_name(cp_base), 
+            
             "is_cluster": cluster_identity["is_cluster"],
-            "type_label": cluster_identity.get("type_label", "N/A"),
+            
+            # If Named, upgrade the Label to "NAMED ENTITY" for the text report
+            "type_label": "NAMED ENTITY" if named_entity_name else cluster_identity.get("type_label", "N/A"),
             "type_val":  cluster_identity.get("type_val", "N/A"),
             "block":     cluster_identity.get("block_val", "N/A"),
             "script":    cluster_identity.get("script_val", "N/A"),
