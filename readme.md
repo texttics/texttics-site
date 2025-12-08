@@ -2390,3 +2390,40 @@ This patch is **strictly isolated** to the UI View Layer and does not impact the
 
 * **Operation Type:**
     * The fix is purely **Read-Only**. It formats data extraction from `DATA_STORES` for display purposes without altering the underlying data structures or detection algorithms.
+
+***
+
+## 🛡️ Update: The "Forensic Saturation" Upgrade (Stage 1.8)
+
+**Session Goal:** To decouple the forensic logic from the browser's Python runtime version. We transitioned from a "Hybrid" model to a "Saturated" model that loads specific Unicode 17.0 data files to ensure consistent analysis regardless of the environment.
+
+### 1. The "Zero-Dependency" Data Layer
+We integrated five additional UCD files to handle atomic properties previously delegated to the Python standard library. This prevents discrepancies if the browser's runtime lags behind the current Unicode standard.
+
+* **`NameAliases.txt`**: Used to retrieve formal names for Control Characters (e.g., `NULL`, `BELL`) which standard Python libraries often fail to name or return errors for.
+* **`DerivedGeneralCategory.txt`**: Used to identify the Category (e.g., Unassigned `Cn`, Symbol `So`) of characters, ensuring support for new Unicode versions before the runtime updates.
+* **`DerivedBidiClass.txt`**: Used to enforce strict UAX #9 directionality definitions, critical for detecting Trojan Source vectors that rely on specific script overrides.
+* **`CaseFolding.txt`**: Used to manually map complex casing expansions (e.g., `ẞ` $\to$ `ss`), ensuring the **State 3 (Identity)** hash is consistent across environments.
+* **`NormalizationCorrections.txt`**: Used to flag historical normalization errors (e.g., `U+F951`) that behave differently across Unicode versions ("Version Drift").
+
+### 2. Logic Hardening (Physics Overrides)
+We refactored the Core Logic Engines (Block 6) to implement a **"Truth Hierarchy"** that prioritizes external data files over internal functions.
+
+* **Helper Injection:** Implemented `_get_safe_name`, `_get_forensic_category`, `_get_forensic_casefold`, and `_get_forensic_bidi_class` in Block 5.
+* **The Override:** These functions check the loaded Data Stores first. They only fall back to the Python runtime if the external data is missing.
+
+### 3. Narrative & UI Synchronization
+We resolved a synchronization issue where the Inspector's Data Table used the new logic, but the Narrative Text relied on static JSON data.
+
+* **Harmonized Narrator:** The `ForensicExplainer` engine was patched to query the Saturated Data Stores. It now generates context-aware descriptions (e.g., *"Category: Unassigned (Cn)"*) for reserved characters that do not exist in the static database.
+* **Visual Hardening:** We implemented rigorous HTML escaping for "Void" entities. The Inspector now safely renders labels like **`<unassigned>`** without the browser interpreting them as HTML tags.
+
+### 4. Verification Status
+The engine was tested against specific trigger characters to confirm independence from the runtime:
+
+* ✅ **Null Byte (`U+0000`):** Identified as **`NULL`** (vs. old `<control>`).
+* ✅ **Reserved (`U+0378`):** Identified as **`Unassigned (Cn)`** (vs. old Unknown).
+* ✅ **CJK Compat (`U+F951`):** Flagged as **`Version Drift`** via the Normalization Corrections list.
+* ✅ **Capital Sharp S (`ẞ`):** Verified to expand to **`ss`** in the Identity state.
+
+**Status:** Stage 1 feature development is complete. The system now operates independently of the browser's Unicode version.
