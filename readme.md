@@ -2459,7 +2459,7 @@ We updated `pyscript.toml` to ingest 11 additional UCD files:
 
 #### A. Logic & Layout
 * **Invisible Math:** Flags `U+2061`..`U+2064` as **CRITICAL** (Execution Risk).
-* **Vertical Orientation:** Flags strings containing both explicitly Upright (`U`) and explicitly Rotated (`R`) characters as **HIGH** (Layout Mismatch).
+* **Vertical Orientation:** Flags **Explicit Vertical Forms** (U+FE10..), **Orientation Polymorphism** (Symbols like `Tr`/`Tu` that rotate unexpectedly), and **Script Mismatches** (Upright Fullwidth Latin) as Layout Disorientation risks.
 * **Math Masquerade:** Flags characters defined as Mathematical Relations (`R`) or Fences (`O`/`C`) that appear in non-math contexts (potential syntax spoofing).
 
 #### B. Script Validation
@@ -2467,8 +2467,6 @@ We updated `pyscript.toml` to ingest 11 additional UCD files:
 * **Radical Spoofing:** Flags Kangxi Radicals that have a canonical Unified Ideograph equivalent.
 * **Cursive Fracture:** Flags `Non-Joining` characters appearing between two `Dual-Joining` characters.
 * **Indic Structure:** Flags dependent vowel signs applied to invalid bases (Numbers, Independent Vowels).
-
-
 
 #### C. Identity & Legacy
 * **IVS Validation:** Flags Ideographic Variation Sequences not found in the IVD registry.
