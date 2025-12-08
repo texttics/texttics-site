@@ -181,17 +181,39 @@ CONTEXT_LURE_PATTERNS = {
 # Domain Spoofing Artifacts (Source 2: IDN Masquerading)
 # Characters that mimic structural delimiters (Dots, Slashes, At-signs)
 PSEUDO_DELIMITERS = {
-    0x2024: "One Dot Leader",
-    0x2025: "Two Dot Leader",
-    0x2026: "Ellipsis",
-    0x3002: "Ideographic Full Stop",
-    0xFF0E: "Fullwidth Full Stop",
-    0x0589: "Armenian Full Stop",
-    0x06D4: "Arabic Full Stop",
-    0x2044: "Fraction Slash",
-    0x2215: "Division Slash",
-    0xFF0F: "Fullwidth Solidus",
-    0xFF20: "Fullwidth Commercial At"
+    # --- DOT MIMICS (Path/Extension Spoofing) ---
+    0x00B7: "Middle Dot",            # Latin-1 
+    0x0375: "Greek Lower Numeral",   # Greek
+    0x0589: "Armenian Full Stop",    # Armenian
+    0x06D4: "Arabic Full Stop",      # Arabic
+    0x16EB: "Runic Single Punct",    # Runic
+    0x2022: "Bullet",                # General Punct [cite: 425]
+    0x2024: "One Dot Leader",        # General Punct [cite: 453]
+    0x2025: "Two Dot Leader",        # General Punct [cite: 461]
+    0x2026: "Ellipsis",              # General Punct [cite: 362]
+    0x2027: "Hyphenation Point",     # General Punct (Visible dot) 
+    0x22C5: "Dot Operator",          # Math (Visually = Middle Dot) 
+    0x2E31: "Word Separator Dot",    # Supplemental Punct [cite: 1560]
+    0x2E33: "Raised Dot",            # Supplemental Punct [cite: 1581]
+    0x3002: "Ideographic Full Stop", # CJK
+    0x30FB: "Katakana Middle Dot",   # CJK 
+    0xFF0E: "Fullwidth Full Stop",   # CJK
+    0xFF65: "Halfwidth Katakana Dot",# CJK
+    
+    # --- SLASH MIMICS (Path Traversal Spoofing) ---
+    0x2044: "Fraction Slash",        # General Punct [cite: 486]
+    0x2215: "Division Slash",        # Math 
+    0x2216: "Set Minus",             # Math (Backslash mimic)
+    0x29F5: "Reverse Solidus Op",    # Math (Backslash mimic)
+    0x29F8: "Big Solidus",           # Math
+    0x29F9: "Big Reverse Solidus",   # Math (Backslash mimic)
+    0x2E4A: "Dotted Solidus",        # Supplemental Punct [cite: 1658]
+    0xFF0F: "Fullwidth Solidus",     # CJK (Forward Slash)
+    0xFF3C: "Fullwidth Rev Solidus", # CJK (Backslash)
+    
+    # --- AT-SIGN MIMICS (Email Spoofing) ---
+    0xFE6B: "Small Commercial At",   # Small Form
+    0xFF20: "Fullwidth Commercial At"# Fullwidth
 }
 
 # 4. Plane 14 Tag Block (Source 1 & 3: Phantom Text)
