@@ -53,7 +53,7 @@ files = [
     "EquivalentUnifiedIdeograph.txt",  # [Vector 5: Radical Spoofing]
     "NamedSequences.txt",              # [Vector 6: Entity Gap]
     "IVD_Sequences.txt",               # [Vector 3: Steganography]
-    "PropertyValueAliases.txt"         # [Tooling: Canonical Names]
+    "PropertyValueAliases.txt",         # [Tooling: Canonical Names]
     "EmojiSources.txt",                # [Vector 7: Legacy Carrier Shift]
     "NushuSources.txt",                # [Vector 8: Tofu Tunneling]
     "MathClassEx-15.txt"               # [Vector 9: Math Syntax Masquerade]
