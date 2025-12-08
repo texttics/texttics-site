@@ -9078,12 +9078,18 @@ def analyze_signal_processor_state(data):
     s_sev = 0
     s_icon = "box"
     
-    # [NEW] Retrieve RGI flag passed from Inspector
+    # Retrieve RGI flag passed from Inspector
     is_rgi = data.get('is_rgi', False)
 
-    # [NEW] Orphan Modifier Handler
+    # Orphan Modifier Handler
     if "ORPHAN_MODIFIER" in phys['syndromes']:
         s_det = "Orphan Modifier"; s_sev = 3; s_icon = "alert-circle"
+
+    # [STAGE 1.9] Named Entity Upgrade
+    # Tells user: "This looks complex, but it is a standard unit."
+    elif data.get('is_named'):
+        s_det = "Named Entity"; s_sev = 0; s_icon = "award" 
+        # Note: We override severity 0 (Green) because it is valid.
     
     elif s_state == "MUTABLE":
         if is_rgi:
@@ -9119,6 +9125,13 @@ def analyze_signal_processor_state(data):
     
     if "SPOOF" in policy_badges and final_level >= 3:
         i_state = "AMBIGUOUS"; i_sev = 2; i_det = "High Confusability"; i_icon = "alert-triangle"
+
+    # [STAGE 1.9] Radical Spoof Override
+    # This takes precedence over generic confusables.
+    radical_tgt = data.get('radical_spoof')
+    if radical_tgt:
+        i_state = "SPOOF (RADICAL)"; i_sev = 3; i_icon = "copy"
+        i_det = f"Mimics Ideograph U+{radical_tgt:04X}"
 
     ident_facet = build_facet(i_state, i_sev, i_det, i_icon)
     
@@ -18352,6 +18365,34 @@ def inspect_character(event):
         cp_base = ord(base_char)
         hex_str = f"{cp_base:04X}"
 
+        # [STAGE 1.9] Saturated Physics Lookups
+        # 1. Named Sequences (Entity Gap)
+        named_map = DATA_STORES.get("NamedSequences", {})
+        cluster_tuple = tuple(ord(c) for c in target_cluster)
+        named_entity_name = named_map.get(cluster_tuple)
+
+        # 2. Radical Spoofing (Visual Gap)
+        radical_map = DATA_STORES.get("RadicalEquiv", {})
+        radical_target = radical_map.get(cp_base) # Returns None or Target CP
+
+        # 3. Legacy Carrier (Interop Gap)
+        legacy_set = DATA_STORES.get("LegacyEmoji", set())
+        is_legacy_carrier = (cluster_tuple in legacy_set) or (tuple([cp_base]) in legacy_set)
+
+        # 4. Math Class (Syntax Gap)
+        math_map = DATA_STORES.get("MathClass", {})
+        math_class_code = math_map.get(cp_base)
+        math_class_names = {
+            'R': 'RELATION', 'B': 'BINARY', 'O': 'OPEN FENCE', 
+            'C': 'CLOSE FENCE', 'L': 'LARGE OP', 'P': 'PUNCTUATION'
+        }
+        math_desc = math_class_names.get(math_class_code)
+
+        # 5. Vertical Orientation (Layout Gap)
+        vo_map = DATA_STORES.get("VerticalPhysics", {})
+        vo_val = vo_map.get(cp_base, "U") # Default Upright
+        vo_desc = "ROTATED (R)" if vo_val in ('R', 'Tr') else "UPRIGHT (U)"
+
         rec = {}
         if FORENSIC_EXPLAINER and hasattr(FORENSIC_EXPLAINER, 'db'):
             rec = FORENSIC_EXPLAINER.db.get(hex_str, {})
@@ -18420,12 +18461,24 @@ def inspect_character(event):
             "name": rec.get("name") or _get_safe_name(cp_base), # [SATURATED]
             "block": rec.get("blk") or _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
-            "category_full": ALIASES.get(cat_short, "N/A"),
+            # [STAGE 1.9] Math Class Override
+            "category_full": (f"Math: {math_desc} ({math_class_code})" if math_desc 
+                              else ALIASES.get(cat_short, "N/A")),
             "category_short": cat_short,
-            "bidi": unicodedata.bidirectional(base_char), # Safe atomic call
-            "age": rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A",
+            "bidi": unicodedata.bidirectional(base_char),
             
-            "lb": lb_val, "ea": ea_val, "dt": dt_val, "line_break": lb_val,
+            # [STAGE 1.9] Timeline Warning
+            "age": (rec.get("age") or _find_in_ranges(cp_base, "Age") or "N/A") + 
+                   (" ⚠️ LEGACY CARRIER" if is_legacy_carrier else ""),
+
+            # [STAGE 1.9] Layout Enrichment
+            "lb": f"{lb_val} • ORIENTATION: {vo_desc}", 
+            "ea": ea_val, "dt": dt_val, "line_break": lb_val,
+            
+            # [STAGE 1.9] New Keys
+            "is_named": bool(named_entity_name),
+            "named_name": named_entity_name,
+            "radical_spoof": radical_target, # Truthy (int) if spoof
 
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
