@@ -32,16 +32,11 @@ LOADING_STATE = "PENDING"  # PENDING, LOADING, READY, FAILED
 # --- DEBUG FLAGS ---
 TEXTTICS_DEBUG_THREAT_BRIDGE = True
 
-# --- NORMALIZATION LIBRARY SETUP (Tier 1 vs Tier 2) ---
-# We check this ONCE at startup, not every time we normalize a string.
-try:
-    import unicodedata2 as _ud
-    NORMALIZER = "unicodedata2"
-    print("LOG: Using full 'unicodedata2' library (C-Optimized).")
-except Exception:
-    import unicodedata as _ud
-    NORMALIZER = "unicodedata"
-    print("LOG: Using standard 'unicodedata' library (Fallback).")
+# --- NORMALIZATION LIBRARY SETUP (Standard) ---
+import unicodedata
+# We define this alias to maintain compatibility with legacy function calls
+_ud = unicodedata
+NORMALIZER = "unicodedata"
 
 # Defining the 'ud' alias globally so functions using it don't crash
 ud = _ud
@@ -3572,7 +3567,7 @@ def normalize_extended(text: str) -> str:
 def _generate_uts39_skeleton(t: str, return_events=False):
     """
     Generates the UTS #39 'Skeleton' following the full forensic pipeline.
-    [HARDENED v1.1] Robust against Schema Drift in DATA_STORES.
+    [HARDENED v1.2] Uses standard unicodedata for NFC/NFD.
     
     Args:
         t (str): Input string.
@@ -3591,13 +3586,11 @@ def _generate_uts39_skeleton(t: str, return_events=False):
 
     # 1. NFKC (Compatibility Normalization)
     # Collapses fullwidth (Ａ->A) and ligatures (ﬁ->fi)
-    try:
-        s1 = unicodedata2.normalize("NFKC", t)
-    except:
-        s1 = unicodedata.normalize("NFKC", t)
+    # We use the standard library here.
+    s1 = unicodedata.normalize("NFKC", t)
 
     # 2. Casefold (Identity Normalization)
-    # [SATURATED] Uses CaseFolding.txt
+    # [SATURATED] Uses CaseFolding.txt (Block 5 Helper)
     s2 = _get_forensic_casefold(s1)
 
     # 3. Map Confusables (Visual Transformation)
@@ -3666,9 +3659,10 @@ def _generate_uts39_skeleton(t: str, return_events=False):
     # 5. NFD Normalization (Canonical Final Form)
     # Ensures combining marks are in a consistent order for string equality checks
     try:
-        final_skel = unicodedata2.normalize("NFD", s4)
-    except:
         final_skel = unicodedata.normalize("NFD", s4)
+    except:
+        # Fallback for rare edge cases
+        final_skel = s4
         
     # 6. Return Contract
     if return_events:
@@ -7233,9 +7227,9 @@ def analyze_identifier_profile(t: str) -> dict:
 
                 # B. Check Categories (The "Physics" Layer)
                 try:
-                    cat = unicodedata2.category(char)
-                except:
                     cat = unicodedata.category(char)
+                except:
+                    cat = unicodedata2.category(char)
                 
                 # Check against Block 2 Definitions
                 if cat.startswith(ID_VIOLATION_MAP["WHITESPACE"]):
