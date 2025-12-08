@@ -3057,7 +3057,7 @@ def _get_safe_name(cp):
         cat = _get_forensic_category(chr(cp))
         
         if cat == "Cn":
-            return "(Unassigned")
+            return "(Unassigned)"
         elif cat == "Cs":
             return "(Surrogate)"
         elif cat == "Co":
