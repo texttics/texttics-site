@@ -3041,13 +3041,31 @@ def _find_in_ranges(cp: int, store_key: str):
     return None
 
 def _get_safe_name(cp):
-    """[SATURATED] Name lookup handling Control Characters."""
+    """
+    [SATURATED] Robust Name lookup V2.
+    Handles Aliases, Controls, Surrogates, PUA, and Unassigned.
+    """
+    # 1. Try NameAliases (for C0/C1 Controls like NULL, BEL)
     if cp in DATA_STORES["NameAliases"]:
         return DATA_STORES["NameAliases"][cp]
+        
+    # 2. Try Standard Lookup
     try:
         return unicodedata.name(chr(cp))
     except ValueError:
-        return "<control>"
+        # 3. Fallback Forensics (When Unicode has no name)
+        cat = _get_forensic_category(chr(cp))
+        
+        if cat == "Cn":
+            return "<unassigned>"
+        elif cat == "Cs":
+            return "<surrogate>"
+        elif cat == "Co":
+            return "<private-use>"
+        elif cat == "Cc":
+            return "<control>"
+            
+        return "<unknown>"
 
 def _get_forensic_category(char):
     """[SATURATED] General Category lookup via DerivedGeneralCategory.txt."""
@@ -15767,12 +15785,15 @@ def render_inspector_panel(data):
                 ccc_display = f'<span style="color:#9ca3af;">0</span>' if ccc_val == 0 else f'<b>{ccc_val}</b>'
                 is_mark_style = 'style="color: var(--color-text-muted);"' if not c.get('is_base') else 'style="font-weight:600;"'
                 
+                # ESCAPE THE NAME TO PREVENT INVISIBLE TAGS
+                safe_name = _escape_html(c.get('name', ''))
+                
                 comp_rows += f"""
                 <tr {is_mark_style}>
                     <td><code class="mini-code">{c.get('hex', '')}</code></td>
                     <td style="text-align:center;">{c.get('cat', '')}</td>
                     <td style="text-align:center;">{ccc_display}</td>
-                    <td class="truncate-text" title="{c.get('name', '')}">{c.get('name', '')}</td>
+                    <td class="truncate-text" title="{safe_name}">{safe_name}</td>
                 </tr>
                 """
 
