@@ -1529,6 +1529,31 @@ DATA_STORES = {
 
 # Stage 1.9 Universal Physics Parsers
 
+def _parse_general_category(content):
+    """
+    Parses DerivedGeneralCategory.txt.
+    Maps codepoint -> Category (Lu, Ll, Nd, Po, Zs, etc.)
+    Format: 0020 ; Zs # ...
+    """
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        if not line.strip(): continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        r_part = parts[0]
+        val = parts[1]
+        
+        if '..' in r_part:
+            start, end = [int(x, 16) for x in r_part.split('..')]
+            for cp in range(start, end + 1):
+                mapping[cp] = val
+        else:
+            mapping[int(r_part, 16)] = val
+    return mapping
+
 def _parse_hangul_type(content):
     """Parses HangulSyllableType.txt for Jamo Gap detection."""
     mapping = {}
@@ -4200,6 +4225,212 @@ def _get_codepoint_properties(t: str):
 # ===============================================
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
+
+# [BLOCK 6 INJECTION: Saturation Physics Engine (Deep Mode)]
+
+def analyze_saturation_vectors(t):
+    """
+    [Stage 1.9] Saturation Sidecar (Deep Physics).
+    Implements state-aware forensics for 11 advanced vectors.
+    Uses Lookahead/Lookbehind and State Machines for structural validation.
+    """
+    findings = []
+    length = len(t)
+    
+    # 1. Load Data Stores
+    hangul_map = DATA_STORES.get("HangulType", {})
+    radical_map = DATA_STORES.get("RadicalEquiv", {})
+    ivd_valid = DATA_STORES.get("IVD_Valid", set())
+    nushu_set = DATA_STORES.get("Nushu", set())
+    math_map = DATA_STORES.get("MathClass", {})
+    legacy_emoji = DATA_STORES.get("LegacyEmoji", set())
+    join_map = DATA_STORES.get("JoiningType", {})
+    indic_pos = DATA_STORES.get("IndicPos", {})
+    indic_syl = DATA_STORES.get("IndicSyllabic", {})
+    
+    # 2. Physics Constants
+    invisible_math = {
+        0x2061: "FUNCTION APPLICATION", 
+        0x2062: "INVISIBLE TIMES", 
+        0x2063: "INVISIBLE SEPARATOR", 
+        0x2064: "INVISIBLE PLUS"
+    }
+    
+    # 3. State Machines
+    # Indic State: Tracks the slots filled on the current base character
+    indic_base_context = {"type": None, "filled_slots": set()} 
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        prev_cp = ord(t[i-1]) if i > 0 else 0
+        next_cp = ord(t[i+1]) if i < length - 1 else 0
+        
+        # --- [Vector 4] Hangul Jamo Physics (Decomposition) ---
+        # Logic: Detects "Raw Jamo" sequences (L+V or L+V+T) that were NOT precomposed.
+        # This is the primary vector for "Visual Homograph" attacks in Korean.
+        htype = hangul_map.get(cp)
+        if htype == "V":
+            prev_htype = hangul_map.get(prev_cp)
+            if prev_htype == "L":
+                findings.append({
+                    "type": "JAMO_DECOMPOSITION",
+                    "risk": "HIGH",
+                    "desc": "Raw Jamo Sequence (L+V). Should be Precomposed Syllable.",
+                    "pos": i
+                })
+        elif htype == "T":
+            # Check if previous was V or LV (valid bases for T)
+            prev_htype = hangul_map.get(prev_cp)
+            if prev_htype in ["V", "LV"]:
+                # Techncially allowed, but often used for spoofing if not normalized
+                pass 
+
+        # --- [Vector 5] Radical Spoofing (Ideographic Drift) ---
+        if cp in radical_map:
+            equiv = radical_map[cp]
+            findings.append({
+                "type": "RADICAL_SPOOF",
+                "risk": "HIGH",
+                "desc": f"Radical Spoofing. Character {char} visually mimics Ideograph U+{equiv:04X}.",
+                "pos": i
+            })
+
+        # --- [Vector 3] IVS Steganography (Watermarking) ---
+        if 0xE0100 <= cp <= 0xE01EF:
+            # IVS must be preceded by a valid CJK Base
+            if (prev_cp, cp) not in ivd_valid:
+                findings.append({
+                    "type": "STAY_IVS_ORPHAN", 
+                    "risk": "HIGH", 
+                    "desc": "Unregistered IVS Sequence (Fingerprinting Risk).", 
+                    "pos": i
+                })
+
+        # --- [Vector 8] Nushu Tofu Tunneling ---
+        if cp in nushu_set:
+            findings.append({
+                "type": "TOFU_TUNNEL", 
+                "risk": "HIGH", 
+                "desc": "Rare Script (Nushu). High probability of invisible rendering (Tofu).", 
+                "pos": i
+            })
+
+        # --- [Vector 9] Math Syntax Masquerade (Deep Class Check) ---
+        m_class = math_map.get(cp)
+        # Danger: 'O' (Open Fence), 'C' (Close Fence), 'R' (Relation), 'B' (Binary)
+        # If these appear outside ASCII range, they can mimic code syntax (brackets, =, <, >)
+        if m_class in ('O', 'C', 'R', 'B') and cp > 127:
+            findings.append({
+                "type": "MATH_MASQUERADE",
+                "risk": "HIGH",
+                "desc": f"Math Symbol (Class {m_class}) mimics Code Syntax.",
+                "pos": i
+            })
+
+        # --- [Vector 1 extended] Invisible Logic Injection ---
+        if cp in invisible_math:
+            findings.append({
+                "type": "INVISIBLE_LOGIC", 
+                "risk": "CRITICAL", 
+                "desc": f"Hidden Logic Operator: {invisible_math[cp]}", 
+                "pos": i
+            })
+
+        # --- [Vector 7] Legacy Emoji Carrier (Lookahead Window) ---
+        # Checks if current char starts a known legacy sequence (e.g. 0023 20E3)
+        # Optimization: We construct a candidate tuple from (curr, next)
+        if i < length - 1:
+            candidate_seq = (cp, next_cp)
+            if candidate_seq in legacy_emoji:
+                findings.append({
+                    "type": "LEGACY_CARRIER",
+                    "risk": "MED",
+                    "desc": "Legacy Carrier Sequence (Transcoding Risk).",
+                    "pos": i
+                })
+
+        # --- [Vector 10] Cursive Fracture (Arabic/Syriac Physics) ---
+        # Logic: Detects [Dual-Joining] -> [Non-Joining] -> [Dual-Joining]
+        # This breaks the cursive ligature visually but keeps the word valid logically.
+        # We ignore spaces and explicit ZWNJ (handled elsewhere).
+        # Logic: Detect Dual-Joining (D) -> Non-Joining (U) -> Dual-Joining (D)
+        
+        j_type = join_map.get(cp, "U")
+        
+        # Check: Is this a "U" (Non-Joining) character that IS NOT a valid word break?
+        # If it IS a word break (Space/Period), the connection SHOULD break. Safe.
+        # If it is NOT a word break (e.g. Symbol, Control, Number), it FRACTURES the word.
+        if j_type == "U" and not _is_cursive_break_allowed(cp):
+            
+            prev_j = join_map.get(prev_cp, "U")
+            next_j = join_map.get(next_cp, "U")
+            
+            # If surrounded by Dual-Joining characters, it's a fracture.
+            if prev_j == "D" and next_j == "D":
+                findings.append({
+                    "type": "CURSIVE_FRACTURE",
+                    "risk": "HIGH",
+                    "desc": "Cursive Ligature Fracture (Internal Non-Joining Character).",
+                    "pos": i
+                })
+
+        # --- [Vector 11] Indic Structural Invalidity (Collision Physics) ---
+        syl_type = indic_syl.get(cp, "Other")
+        pos_type = indic_pos.get(cp, "Not_Applicable")
+        
+        # 1. State Reset: If we hit a new Base (Consonant/Indep.Vowel/Number), reset state
+        if syl_type in ["Consonant", "Independent_Vowel", "Number"]:
+            indic_base_context = {"type": syl_type, "filled_slots": set()}
+        
+        # 2. Validity Check: Marks on Invalid Bases
+        # (e.g., A Vowel Sign applied to a Number or another Vowel)
+        if pos_type != "Not_Applicable":
+            if indic_base_context["type"] in ["Independent_Vowel", "Number"]:
+                findings.append({
+                    "type": "INDIC_INVALID_BASE",
+                    "risk": "HIGH",
+                    "desc": f"Structural Error: '{pos_type}' mark on '{indic_base_context['type']}'.",
+                    "pos": i
+                })
+            
+            # 3. Collision Check: Two marks competing for the same slot
+            # (e.g. Two 'Top' marks on the same consonant)
+            # Exception: 'Top_And_Right' can coexist with 'Top' in some complex scripts, 
+            # but generally, duplicate positions are suspicious.
+            if pos_type in indic_base_context["filled_slots"]:
+                 findings.append({
+                    "type": "INDIC_SLOT_COLLISION",
+                    "risk": "HIGH",
+                    "desc": f"Visual DoS: Multiple marks in '{pos_type}' slot.",
+                    "pos": i
+                })
+            
+            indic_base_context["filled_slots"].add(pos_type)
+
+    return findings
+
+def _is_cursive_break_allowed(cp):
+    """
+    [Stage 1.9] Cursive Physics Helper.
+    Determines if a character is a valid 'Word Break' that legally interrupts 
+    a cursive connection (Arabic/Syriac/N'Ko).
+    
+    True  -> Whitespace (Z*) or Punctuation (P*).
+    False -> Letters, Numbers, Symbols, or Controls (which should NOT break connections).
+    """
+    # 1. Try Saturated Store (Unicode 17.0 Truth)
+    gc_map = DATA_STORES.get("GenCat", {})
+    gc = gc_map.get(cp)
+    
+    # 2. Fallback to Python Runtime (if file missing)
+    if not gc:
+        import unicodedata
+        gc = unicodedata.category(chr(cp))
+    
+    # 3. The Laws of Cursive Writing:
+    # A word ends at a Separator (Z) or Punctuation (P).
+    # Anything else (Letter, Number, Symbol, Control) inside a word creates a Fracture.
+    return gc.startswith("Z") or gc.startswith("P")
 
 class ForensicExplainer:
     """
