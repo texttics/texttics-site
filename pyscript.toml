@@ -1,7 +1,8 @@
 # This file tells PyScript what to load
 # All files are Unicode Version 17 (& all Emoji v17).
 packages = [
-  "pyodide-http"
+  "pyodide-http",
+  "unicodedata2"
 ]
 
 # This tells PyScript to pre-load your data files
