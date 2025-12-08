@@ -13416,9 +13416,49 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                     threat_flags[key]['count'] += 1
                     # 3. Add Context
                     threat_flags[key]['positions'].append(f"in '{target['token']}'")
-    # -------------------------------------------------------
+    
+    
+    # [STAGE 1.9] UNIVERSAL PHYSICS SATURATION
+    
+    # Wires the 11 new vectors (Jamo, Radicals, IVS, Cursive, Indic, etc.)
+    # directly into the Threat Flags dictionary.
+    try:
+        sat_findings = analyze_saturation_vectors(t)
+        
+        for f in sat_findings:
+            # 1. Map Risk to Severity Class
+            # CRITICAL -> crit (Red), HIGH -> warn (Amber)
+            sev_label = "CRITICAL" if f["risk"] == "CRITICAL" else "HIGH"
+            
+            # 2. Construct the Unified Key
+            # This matches the format used by the renderer: "SEVERITY: Description"
+            key = f"{sev_label}: {f['desc']}"
+            
+            # 3. Initialize Flag Entry if New
+            if key not in threat_flags:
+                threat_flags[key] = {
+                    'count': 0,
+                    'positions': [],
+                    'severity': 'crit' if f["risk"] == "CRITICAL" else 'warn'
+                }
+            
+            # 4. Increment & Contextualize
+            threat_flags[key]['count'] += 1
+            # We use the '@Index' format for precision
+            threat_flags[key]['positions'].append(f"@{f['pos']}")
+            
+            # 5. Accumulate Global Threat Score
+            # Ensure these new vectors contribute to the top-level risk metric
+            if f["risk"] == "CRITICAL":
+                threat_score += 40
+            elif f["risk"] == "HIGH":
+                threat_score += 25
+
+    except Exception as e:
+        print(f"[Stage 1.9] Saturation Engine Warning: {e}")
+    
     # [STAGE 1.5] SOFT MERGE INTEGRATION
-    # -------------------------------------------------------
+   
     try:
         # 1. Run the Parallel Engine
         s1_5_results = compute_stage1_5_forensics(t)
