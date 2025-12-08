@@ -1799,6 +1799,30 @@ def _parse_indic_position(content):
             mapping[int(r_part, 16)] = val
     return mapping
 
+def _parse_indic_syllabic(content):
+    """
+    Parses IndicSyllabicCategory.txt.
+    Maps codepoint -> Category (Consonant, Vowel_Independent, Vowel_Dependent, Virama, etc.)
+    """
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        if not line.strip(): continue
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        # Format: 0905..0939  ; Consonant
+        r_part = parts[0]
+        val = parts[1]
+        
+        if '..' in r_part:
+            start, end = [int(x, 16) for x in r_part.split('..')]
+            for cp in range(start, end + 1):
+                mapping[cp] = val
+        else:
+            mapping[int(r_part, 16)] = val
+    return mapping
+
 # The Range Parsers
 def _parse_and_store_ranges(txt: str, store_key: str):
     """Generic parser for Unicode range data files (Blocks, Age, etc.)"""
