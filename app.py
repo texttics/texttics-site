@@ -3942,12 +3942,85 @@ class ForensicExplainer:
             
         is_ascii = (cp_int <= 0x7F)
 
-        # 2. Fetch Record
+        # --- 2. FORENSIC RECORD SYNTHESIS (The "Truth Hierarchy") ---
+        # Strategy: Start with Static DB (Richness), Overwrite with Saturated Data (Truth).
+        
+        # A. Attempt to fetch static record (Tier 2)
         rec = self.db.get(hex_str)
         if not rec:
-             return self._fallback_report("Unknown Code Point", "No forensic record found.", "NO-DATA")
+             # Case: Unknown/New Character (Tier 3 Fallback)
+             rec = {"props": [], "aliases": [], "notes": []}
 
+        # B. Ensure 'props' list exists
         props = rec.get("props", [])
+        
+        # C. [SATURATED] PHYSICS OVERRIDE (Tier 1 Authority)
+        # We enforce the laws of the loaded .txt files over the static JSON.
+        char_raw = chr(cp_int)
+        
+        # 1. Identity (Name & Category)
+        # Handles NULL, BELL, and Unassigned (Cn) correctly
+        name = _get_safe_name(cp_int)
+        rec["name"] = name
+        
+        gc_code = _get_forensic_category(char_raw)
+        rec["gc"] = gc_code
+        
+        # 2. Provenance (Block & Script)
+        # Fixes "No_Block" for new characters
+        if rec.get("blk", "No_Block") == "No_Block":
+            rec["blk"] = _find_in_ranges(cp_int, "Blocks") or "No_Block"
+            
+        # Fixes "Unknown" script
+        if rec.get("script", "Unknown") == "Unknown":
+            rec["script"] = _find_in_ranges(cp_int, "Scripts") or "Unknown"
+
+        # 3. Physics (Bidi & Age)
+        bc_code = _get_forensic_bidi_class(char_raw)
+        rec["bc"] = bc_code
+        
+        if rec.get("age", "NA") == "NA":
+            rec["age"] = _find_in_ranges(cp_int, "Age") or "NA"
+
+        # 4. Security (Identifier Status)
+        # Critical for safety: If JSON says "Allowed" but File says "Restricted", File wins.
+        file_id_stat = _find_in_ranges(cp_int, "IdentifierStatus")
+        if file_id_stat:
+            rec["id_stat"] = file_id_stat
+        elif not rec.get("id_stat"):
+            # Default to Restricted if not defined in File OR JSON
+            rec["id_stat"] = "Restricted"
+
+        # 5. Normalization Stability (The Correction List)
+        # If it's in the correction list, force the 'dt' (Decomposition Type) to Compat
+        if cp_int in DATA_STORES["NormalizationCorrections"]:
+            # If 'dt' is missing or None, label it.
+            if not rec.get("dt") or rec["dt"] == "None": 
+                rec["dt"] = "Correction"
+
+        # 6. Critical Property Injection
+        # Ensure security bits from INVIS_TABLE are reflected in 'props' logic
+        # This bridges the Gap between the O(1) Engine and the Narrative Engine
+        mask = INVIS_TABLE[cp_int] if cp_int < 1114112 else 0
+        
+        if mask & INVIS_BIDI_CONTROL and "Bidi_Control" not in props:
+            props.append("Bidi_Control")
+        if mask & INVIS_TAG and "Tag" not in props: # or "Depreciated"
+            props.append("Pattern_Syntax") # Tags are Pattern_Syntax
+        if mask & INVIS_DEFAULT_IGNORABLE and "Default_Ignorable_Code_Point" not in props:
+            props.append("Default_Ignorable_Code_Point")
+        if mask & INVIS_DO_NOT_EMIT and "DoNotEmit" not in props:
+            # Add custom prop for the explainer to read
+            props.append("DoNotEmit")
+
+        # 4. Initialize Report
+        report = {
+            "identity": "",
+            "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
+            "props": props,
+            "highlights": [], 
+            "lenses": {}, "context": []      
+        }
         
         # 3. Physics Override (Normalization)
         # We calculate this early so 'dt' is accurate for all lenses
@@ -3977,7 +4050,7 @@ class ForensicExplainer:
         name = rec.get("name", "Unknown")
         report["identity"] = f"{name} ({blk})"
 
-        gc_code = rec.get("gc", "Cn")
+        # gc_code = rec.get("gc", "Cn")
         gc_name = self._get_vocab("gc", gc_code).replace("_", " ")
         
         script_code = rec.get("script", "Zzzz")
@@ -4002,7 +4075,7 @@ class ForensicExplainer:
         id_type = rec.get("id_type", [])
         idna = rec.get("idna", "disallowed")
         
-        bc_code = rec.get("bc", "L")
+        # bc_code = rec.get("bc", "L")
         bc_pretty = BIDI_PRETTY_MAP.get(bc_code, self._get_vocab("bc", bc_code))
         
         confusables = rec.get("confusables", [])
