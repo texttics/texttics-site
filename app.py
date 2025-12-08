@@ -15767,8 +15767,11 @@ def render_inspector_panel(data):
         """
 
     # 7. Final Assembly
+    # [FIX] Escape the header to prevent invisible <tags>
+    safe_header = _escape_html(header_title)
+    
     identity_html = f"""
-        <div class="inspector-header" title="{header_title}" style="{header_style}">{header_title}</div>
+        <div class="inspector-header" title="{safe_header}" style="{header_style}">{safe_header}</div>
         {identity_grid}
         {technical_grid}
         {lookalike_html}
