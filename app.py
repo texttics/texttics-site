@@ -17626,21 +17626,22 @@ def inspect_character(event):
             "ghosts": ghosts,
             "is_ascii": (cp_base <= 0x7F),
             "is_invisible": (cp_base in INVISIBLE_MAPPING),
-            # Robust Lookup: Expanded Key Search + Safer Value Parsing
+            # Universal Lookup: Handles Decimals, Hex, and Lowercase Keys
             "lookalikes_data": (
                 rec.get("confusables") or 
                 (lambda cp: [
-                    # Converter: Handle Ints, Hex Strings ("0061"), and Prefixed Strings ("U+0061")
+                    # Converter: Smart Detection of Base 10 vs Base 16
                     chr(x) if isinstance(x, int) else
-                    chr(int(str(x).replace("U+", "").replace("u+", "").replace("0x", ""), 16))
+                    chr(int(x, 10)) if isinstance(x, str) and x.isdigit() else  # Pure digits -> Base 10 (Fixes 'a', 'i')
+                    chr(int(str(x).replace("U+", "").replace("u+", "").replace("0x", ""), 16)) # Hex -> Base 16
                     for x in (
-                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Key: "97"
-                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Key: "0061"
-                        DATA_STORES.get("InverseConfusables", {}).get(f"U+{cp:04X}") or # Key: "U+0061" (NEW)
-                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Key: "a"
+                        DATA_STORES.get("InverseConfusables", {}).get(str(cp)) or       # Try Decimal Key ("97")
+                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04X}") or   # Try Hex Key Upper ("0061")
+                        DATA_STORES.get("InverseConfusables", {}).get(f"{cp:04x}") or   # Try Hex Key Lower ("0061")
+                        DATA_STORES.get("InverseConfusables", {}).get(f"U+{cp:04X}") or # Try U+ Key
+                        DATA_STORES.get("InverseConfusables", {}).get(chr(cp)) or       # Try Char Key ("a")
                         []
                     )
-                    # Filter: Ensure valid input
                     if x and isinstance(x, (int, str))
                 ])(cp_base)
             ),
