@@ -1824,6 +1824,27 @@ def _parse_indic_position(content):
             mapping[int(r_part, 16)] = val
     return mapping
 
+def _parse_vertical_orientation_physics(content):
+    """
+    Parses VerticalOrientation.txt specifically for Physics checks.
+    Maps codepoint -> 'U', 'R', 'Tu', 'Tr'.
+    """
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        if not line.strip(): continue
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        val = parts[1] # U, R, Tu, Tr
+        if '..' in parts[0]:
+            start, end = [int(x, 16) for x in parts[0].split('..')]
+            for cp in range(start, end + 1):
+                mapping[cp] = val
+        else:
+            mapping[int(parts[0], 16)] = val
+    return mapping
+
 def _parse_indic_syllabic(content):
     """
     Parses IndicSyllabicCategory.txt.
@@ -3178,7 +3199,11 @@ async def load_unicode_data():
         if num_type_txt: _parse_and_store_ranges(num_type_txt, "NumericType")
 
         if ea_width_txt: _parse_and_store_ranges(ea_width_txt, "EastAsianWidth")
-        if vert_orient_txt: _parse_and_store_ranges(vert_orient_txt, "VerticalOrientation")
+        if vert_orient_txt: 
+            # 1. Standard Range Store (for existing tools)
+            _parse_and_store_ranges(vert_orient_txt, "VerticalOrientation")
+            # 2. [STAGE 1.9] Physics Store (for O(1) Lookups)
+            DATA_STORES["VerticalPhysics"] = _parse_vertical_orientation_physics(vert_orient_txt)
         if bidi_brackets_txt: _parse_bidi_brackets(bidi_brackets_txt)
         if bidi_mirroring_txt: _parse_bidi_mirroring(bidi_mirroring_txt)
         if comp_ex_txt: _parse_composition_exclusions(comp_ex_txt)
@@ -4428,6 +4453,46 @@ def analyze_saturation_vectors(t):
                 })
             
             indic_base_context["filled_slots"].add(pos_type)
+
+        # --- [Vector 2] Layout Disorientation (Vertical Physics) ---
+        vo_val = DATA_STORES.get("VerticalPhysics", {}).get(cp, "U")
+        
+        # Sub-Vector A: Explicit Vertical Presentation Forms (High Confidence)
+        # Characters encoded specifically for vertical text (e.g. ︐ U+FE10).
+        # Finding these in a horizontal string is a strong anomaly.
+        if (0xFE10 <= cp <= 0xFE1F) or (0xFE30 <= cp <= 0xFE4F):
+             findings.append({
+                "type": "LAYOUT_DISORIENTATION", 
+                "risk": "HIGH", 
+                "desc": "Explicit Vertical Presentation Form (Rendering Risk).", 
+                "pos": i
+             })
+
+        # Sub-Vector B: Orientation Polymorphism (The Transformer)
+        # Symbols that change orientation (Tr/Tu) relative to flow.
+        # Attackers use these to make brackets/arrows point the "wrong" way in vertical modes.
+        elif vo_val in ("Tr", "Tu"):
+             import unicodedata 
+             cat = unicodedata.category(char)
+             if cat.startswith("P") or cat.startswith("S"):
+                 findings.append({
+                    "type": "LAYOUT_DISORIENTATION", 
+                    "risk": "HIGH", 
+                    "desc": f"Orientation Polymorphism ({vo_val}). Glyph rotates in vertical flow.", 
+                    "pos": i
+                 })
+
+        # Sub-Vector C: Script-Orientation Mismatch (Fullwidth Spoofing)
+        # Latin/Greek/Cyrillic are inherently 'R' (Rotated) in vertical flow.
+        # If we see 'U' (Upright) Latin, it is likely Fullwidth/Math (Spoofing).
+        # This detects "ＰａｙＰａｌ" (Upright) vs "PayPal" (Rotated) layout attacks.
+        elif 0xFF01 <= cp <= 0xFF5E: # Fullwidth ASCII variants (Vo=U)
+             findings.append({
+                "type": "LAYOUT_DISORIENTATION",
+                "risk": "MED",
+                "desc": "Upright Latin/Symbol (Fullwidth). Disrupts vertical layout.",
+                "pos": i
+             })
 
     return findings
 
