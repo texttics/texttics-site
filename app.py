@@ -15786,7 +15786,8 @@ def render_inspector_panel(data):
                 l_border = "#a7f3d0" if l_status == "SAFE" else "#fecaca" if l_status == "CRITICAL" else "#fde68a"
                 # Text Safe color override for NOTE
                 if l_status == "NOTE":
-                     l_bg = "#f9fafb"; l_txt = "#4b5563"; l_border = "#e5e7eb"
+                    # Applying the standard light green background (#ecfdf5) for visual consistency with SAFE status.
+                    l_bg = "#ecfdf5"; l_txt = "#047857"; l_border = "#e5e7eb"
 
                 lenses_html += f"""
                 <div style="flex:1; background:{l_bg}; border:1px solid {l_border}; border-radius:4px; padding:6px; min-width: 0;">
