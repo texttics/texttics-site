@@ -41,5 +41,11 @@ files = [
     "inverse_confusables.json",
     "ascii_confusables.json",
     "IdnaMappingTable.txt",
-    "Idna2008.txt"
+    "Idna2008.txt",
+    # --- THE SATURATION PATCH (Foundation Layer) ---
+    "DerivedBidiClass.txt",        # Overrides unicodedata.bidirectional()
+    "NormalizationCorrections.txt",# Flags Version Drift
+    "DerivedGeneralCategory.txt",  # Overrides unicodedata.category()
+    "CaseFolding.txt",             # Overrides str.casefold()
+    "NameAliases.txt"              # Naming for Control Chars
 ]
