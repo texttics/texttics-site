@@ -3211,8 +3211,8 @@ def _generate_uts39_skeleton(t: str, return_events=False):
         s1 = unicodedata.normalize("NFKC", t)
 
     # 2. Casefold (Identity Normalization)
-    # Collapses case distinctions (A->a)
-    s2 = s1.casefold()
+    # [SATURATED] Uses CaseFolding.txt
+    s2 = _get_forensic_casefold(s1)
 
     # 3. Map Confusables (Visual Transformation)
     confusables_map = DATA_STORES.get("Confusables", {})
@@ -11022,7 +11022,8 @@ def compute_bidi_class_analysis(t: str):
     js_array = window.Array.from_(t)
     for char in js_array:
         try:
-            new_state = unicodedata.bidirectional(char)
+            # [SATURATED] Use Forensic Bidi Lookup
+            new_state = _get_forensic_bidi_class(char)
             if not new_state: # If the class is an empty string
                 new_state = "Unknown" # Assign a default label
         except Exception as e:
@@ -11758,7 +11759,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "vs_all": [], "invalid_vs": [], "discouraged": [], 
         "other_ctrl": [], "esc": [], "interlinear": [], 
         "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": [],
-        "zombie_ctrl": []
+        "zombie_ctrl": [], "norm_correction": []
     }
     
     decomp_type_stats = {}
@@ -11807,6 +11808,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 elif (cp & 0xFFFF) >= 0xFFFE:
                     health_issues["nonchar"].append(i)
                 if mask & INVIS_DO_NOT_EMIT: health_issues["donotemit"].append(i)
+                    # [SATURATED] Unstable Normalization History
+                if cp in DATA_STORES["NormalizationCorrections"]:
+                    legacy_indices["norm_correction"].append(i)
 
                 # --- Specific Dangerous Controls ---
                 if cp == 0x001B: legacy_indices["esc"].append(i)
@@ -12069,6 +12073,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("Flag: Deceptive Newline (NEL)", len(legacy_indices["deceptive_nel"]), legacy_indices["deceptive_nel"], "warn")
     add_row("Flag: Security Discouraged (Compatibility)", len(legacy_indices["discouraged"]), legacy_indices["discouraged"], "warn")
 
+    add_row("Flag: Unstable Normalization (Version Drift)", len(legacy_indices["norm_correction"]), legacy_indices["norm_correction"], "warn")
+
     # INFORMATIONAL
     add_row("Flag: Bidi Paired Bracket (Open)", len(legacy_indices["bidi_bracket_open"]), legacy_indices["bidi_bracket_open"], "ok")
     add_row("Flag: Bidi Paired Bracket (Close)", len(legacy_indices["bidi_bracket_close"]), legacy_indices["bidi_bracket_close"], "ok")
@@ -12238,7 +12244,8 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     try:
         # --- 2. Generate Normalized States ---
         nf_string = normalize_extended(t)
-        nf_casefold_string = nf_string.casefold()
+        # [SATURATED] Use Forensic Casefold
+        nf_casefold_string = _get_forensic_casefold(nf_string)
 
         # --- 5. Skeleton & Drift (Restored & Upgraded) ---
         # We generate the skeleton HERE so the metrics are available for the legacy flags below.
@@ -17715,17 +17722,20 @@ def inspect_character(event):
         if raw_form != nfkc_form and not dt_val:
             dt_val = "Compat"
 
-        cat_short = unicodedata.category(base_char)
+        # [SATURATED] Use Forensic Category
+        cat_short = _get_forensic_category(base_char)
 
         components = []
+        
         zalgo_score = 0
         for ch in target_char:
-            cat = unicodedata.category(ch)
+            # [SATURATED] Use Forensic Category & Name
+            cat = _get_forensic_category(ch)
             if cat.startswith('M'):
                 zalgo_score += 1
             components.append({
                 "hex": f"U+{ord(ch):04X}",
-                "name": unicodedata.name(ch, "Unknown"),
+                "name": _get_safe_name(ord(ch)), # Handles Control Chars
                 "cat": cat,
                 "ccc": unicodedata.combining(ch),
                 "is_base": not cat.startswith("M"),
@@ -17739,7 +17749,7 @@ def inspect_character(event):
         base_char_data = {
             "char": target_char,
             "codepoint": f"U+{hex_str}",
-            "name": rec.get("name") or unicodedata.name(base_char, "UNKNOWN"), 
+            "name": rec.get("name") or _get_safe_name(cp_base), # [SATURATED]
             "block": rec.get("blk") or _find_in_ranges(cp_base, "Blocks") or "N/A",
             "script": rec.get("script") or _find_in_ranges(cp_base, "Scripts") or "Common",
             "category_full": ALIASES.get(cat_short, "N/A"),
