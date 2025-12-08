@@ -2904,8 +2904,61 @@ async def load_unicode_data():
         
         # --- Add Manual Security Overrides ---
         _add_manual_data_overrides()    
+
+        # --- [SATURATION 1] Bidi Structure ---
+        if derived_bidi_txt:
+            _parse_and_store_ranges(derived_bidi_txt, "BidiClass")
+
+        # --- [SATURATION 2] Normalization History ---
+        if norm_corrections_txt:
+            store = DATA_STORES["NormalizationCorrections"]
+            store.clear()
+            for line in norm_corrections_txt.splitlines():
+                if '#' in line: line = line.split('#')[0]
+                if not line.strip(): continue
+                parts = line.split(';')
+                if len(parts) >= 1:
+                    try:
+                        store.add(int(parts[0].strip(), 16))
+                    except: pass
+
+        # --- [SATURATION 3] Atomic Identity (General Category) ---
+        if derived_gc_txt:
+            _parse_and_store_ranges(derived_gc_txt, "GeneralCategory")
+
+        # --- [SATURATION 4] Case Folding (State 3) ---
+        if case_folding_txt:
+            store = DATA_STORES["CaseFolding"]
+            for line in case_folding_txt.splitlines():
+                if not line.strip() or line.startswith('#'): continue
+                parts = line.split(';')
+                # Format: 0041; C; 0061; # LATIN CAPITAL LETTER A
+                if len(parts) >= 3:
+                    status = parts[1].strip()
+                    if status in ('C', 'F'): # Common and Full case folding
+                        try:
+                            code = int(parts[0].strip(), 16)
+                            # Casefold can be multiple chars
+                            mapping = "".join(chr(int(x, 16)) for x in parts[2].strip().split())
+                            store[code] = mapping
+                        except: pass
+
+        # --- [SATURATION 5] Control Names ---
+        if name_aliases_txt:
+            store = DATA_STORES["NameAliases"]
+            for line in name_aliases_txt.splitlines():
+                if not line.strip() or line.startswith('#'): continue
+                parts = line.split(';')
+                # Format: 0000;NULL;control
+                if len(parts) >= 2:
+                    try:
+                        code = int(parts[0].strip(), 16)
+                        alias = parts[1].strip()
+                        if code not in store:
+                            store[code] = alias # Store the first alias found
+                    except: pass
         
-        # --- NEW: Build Forensic Bitmask Table ---
+        # Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
         build_invis_table()
         
@@ -2986,6 +3039,42 @@ def _find_in_ranges(cp: int, store_key: str):
     if i >= 0 and cp <= store["ends"][i]:
         return store["ranges"][i][2] # Return the value
     return None
+
+def _get_safe_name(cp):
+    """[SATURATED] Name lookup handling Control Characters."""
+    if cp in DATA_STORES["NameAliases"]:
+        return DATA_STORES["NameAliases"][cp]
+    try:
+        return unicodedata.name(chr(cp))
+    except ValueError:
+        return "<control>"
+
+def _get_forensic_category(char):
+    """[SATURATED] General Category lookup via DerivedGeneralCategory.txt."""
+    cp = ord(char)
+    cat = _find_in_ranges(cp, "GeneralCategory")
+    if cat: return cat
+    return unicodedata.category(char)
+
+def _get_forensic_casefold(t):
+    """[SATURATED] Generates State 3 (Identity) using CaseFolding.txt."""
+    folding_map = DATA_STORES.get("CaseFolding", {})
+    if not folding_map: return t.casefold()
+    result = []
+    for char in t:
+        cp = ord(char)
+        if cp in folding_map:
+            result.append(folding_map[cp])
+        else:
+            result.append(char.lower())
+    return "".join(result)
+
+def _get_forensic_bidi_class(char):
+    """[SATURATED] Bidi Class lookup via DerivedBidiClass.txt."""
+    cp = ord(char)
+    bidi_override = _find_in_ranges(cp, "BidiClass")
+    if bidi_override: return bidi_override
+    return unicodedata.bidirectional(char)
 
 def _find_matches_with_indices(regex_key: str, text: str):
     """Uses matchAll to find all matches and their indices."""
