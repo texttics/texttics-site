@@ -282,7 +282,7 @@ The application is a pure, serverless, single-page web application. The logic is
 
 * **`index.html`**: A single, semantic HTML5 file that defines the "skeleton" of the lab instrument. It uses ARIA roles for all components to ensure full accessibility.
 * **`styles.css`**: A single, responsive CSS3 stylesheet that provides the clean, information-dense "lab instrument" aesthetic.
-* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (like `pyodide-http` and `unicodedata2`) and, crucially, the list of all **31** Unicode data files to be pre-fetched, which are grouped by purpose:
+* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (`pyodide-http`) and, crucially, the list of all **31** Unicode data files to be pre-fetched, which are grouped by purpose:
     * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`)**
     * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`)**
     * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`)**
@@ -760,7 +760,6 @@ The system is composed of five distinct, tightly coupled files that separate con
 This configuration file is the "bootloader" of the forensic engine. It defines the application's environment and ensures the forensic payload is available before the logic executes.
 
 * **Forensic Payload Definition:** The `[[fetch]]` block explicitly lists **31 Unicode Data Files** (e.g., `DerivedCoreProperties.txt`, `emoji-test.txt`, `BidiBrackets.txt`). This acts as a strict manifest. The application does not rely on the browser's internal (often outdated) Unicode tables; it virtualizes these 31 raw UCD files into the browser's file system, ensuring the tool runs on the exact Unicode version specified (currently aligned with v15.1/v16.0 standards).
-* **Dependency Injection:** It forces the loading of `unicodedata2`. This is a critical architectural decision. The standard Python `unicodedata` library in Pyodide is often stripped down or outdated. By injecting `unicodedata2`, the tool ensures access to the C-optimized, full-spec Unicode database for Tier 1 normalization.
 
 ### File 2: `index.html` (The Lab Bench Skeleton)
 This is the semantic skeleton of the application. It is designed not as a web page, but as a "Control Plane."
