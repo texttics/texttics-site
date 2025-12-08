@@ -1527,7 +1527,7 @@ DATA_STORES = {
 # BLOCK 4. DATA PARSERS & LOADERS
 # ===============================================
 
-# Stage 1.9 Parsers
+# Stage 1.9 Universal Physics Parsers
 
 def _parse_hangul_type(content):
     """Parses HangulSyllableType.txt for Jamo Gap detection."""
@@ -1673,6 +1673,131 @@ def _parse_property_value_aliases(content):
                 aliases[prop][short_name] = long_name
                 
     return aliases
+
+def _parse_emoji_sources(content):
+    """
+    Parses EmojiSources.txt to detect Legacy Carrier Mappings.
+    Format: 0023 20E3;F985;... (Semicolon delimited)
+    """
+    legacy_set = set()
+    for line in content.splitlines():
+        if line.startswith('#') or not line.strip(): continue
+        parts = line.split(';')
+        if len(parts) < 2: continue
+        
+        # Field 0: Unicode Sequence (e.g. "0023 20E3")
+        seq_str = parts[0].strip()
+        try:
+            # We only flag if the sequence HAS a mapping (Fields 1, 2, or 3 are not empty)
+            # The sample shows non-empty fields for legacy mappings.
+            # If any of the carrier fields (index 1, 2, 3) has data, it's a legacy emoji.
+            has_legacy = any(p.strip() for p in parts[1:4])
+            if has_legacy:
+                seq = tuple(int(x, 16) for x in seq_str.split())
+                legacy_set.add(seq)
+        except ValueError:
+            pass
+    return legacy_set
+
+def _parse_nushu_sources(content):
+    """
+    Parses NushuSources.txt to detect Tofu Tunneling risk.
+    Format: U+1B170<TAB>kNSHU_DubenSrc<TAB>... (Tab delimited)
+    """
+    nushu_set = set()
+    for line in content.splitlines():
+        if line.startswith('#') or not line.strip(): continue
+        
+        # The sample uses TABs or spaces. We split by whitespace to be safe.
+        parts = line.split()
+        if not parts: continue
+        
+        # Field 0: U+XXXXX
+        code_str = parts[0]
+        if code_str.startswith('U+'):
+            try:
+                cp = int(code_str[2:], 16)
+                nushu_set.add(cp)
+            except ValueError:
+                pass
+    return nushu_set
+
+def _parse_math_class(content):
+    """
+    Parses MathClassEx.txt to detect Syntax Masquerading.
+    Format: 002B;V;... (Semicolon delimited)
+    """
+    math_map = {}
+    for line in content.splitlines():
+        if line.startswith('#') or not line.strip(): continue
+        parts = line.split(';')
+        if len(parts) < 2: continue
+        
+        try:
+            # Field 0: Code (002B) or Range? Sample shows Codes.
+            # Field 1: Class (V, N, O, C, P...)
+            cp_str = parts[0].strip()
+            cls = parts[1].strip()
+            
+            # Simple single code parsing
+            if '..' not in cp_str:
+                cp = int(cp_str, 16)
+                math_map[cp] = cls
+        except ValueError:
+            pass
+    return math_map
+
+def _parse_joining_type(content):
+    """
+    Parses DerivedJoiningType.txt for Cursive Fracture.
+    Format: 0620 ; D # ... (Standard UCD)
+    """
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        if not line.strip(): continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        # Field 0: Code or Range
+        # Field 1: Type (D, C, U, etc)
+        r_part = parts[0]
+        val = parts[1]
+        
+        if '..' in r_part:
+            start, end = [int(x, 16) for x in r_part.split('..')]
+            for cp in range(start, end + 1):
+                mapping[cp] = val
+        else:
+            mapping[int(r_part, 16)] = val
+    return mapping
+
+def _parse_indic_position(content):
+    """
+    Parses IndicPositionalCategory.txt for Structural validity.
+    Format: 0903 ; Right # ... (Standard UCD)
+    """
+    mapping = {}
+    for line in content.splitlines():
+        if '#' in line: line = line[:line.index('#')]
+        if not line.strip(): continue
+        
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 2: continue
+        
+        # Field 0: Code or Range
+        # Field 1: Position (Right, Top, Bottom...)
+        r_part = parts[0]
+        val = parts[1]
+        
+        if '..' in r_part:
+            start, end = [int(x, 16) for x in r_part.split('..')]
+            for cp in range(start, end + 1):
+                mapping[cp] = val
+        else:
+            mapping[int(r_part, 16)] = val
+    return mapping
 
 # The Range Parsers
 def _parse_and_store_ranges(txt: str, store_key: str):
