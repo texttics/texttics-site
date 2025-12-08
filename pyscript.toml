@@ -56,5 +56,7 @@ files = [
     "PropertyValueAliases.txt",         # [Tooling: Canonical Names]
     "EmojiSources.txt",                # [Vector 7: Legacy Carrier Shift]
     "NushuSources.txt",                # [Vector 8: Tofu Tunneling]
-    "MathClassEx-15.txt"               # [Vector 9: Math Syntax Masquerade]
+    "MathClassEx-15.txt",               # [Vector 9: Math Syntax Masquerade]
+    "DerivedJoiningType.txt",          # [Vector 10: Cursive Fracture]
+    "IndicPositionalCategory.txt"      # [Vector 11: Indic Structural Invalidity]
 ]
