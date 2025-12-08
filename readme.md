@@ -2355,3 +2355,38 @@ We replaced the graphical "Risk Matrix" icons with a high-density **Text-Mode Da
     * **MIMICRY:** Tracks visual uniqueness (`UNIQUE`, `MIMIC`, `SHADOW`).
 * **Logic Hardening:** Patched the "Low-Zalgo" gap. Composite clusters with 1-2 marks (e.g., `Z͑`) are now correctly elevated to **Tier 1 (NOTE)**, preventing them from masquerading as "Standard Text."
 * **Visual Polish:** Restored "Lab Instrument" depth with hero typography, high-contrast values, and tiered color coding.
+
+***
+
+### 🛠️ Technical Addendum: Inspector & Data Synchronization Fix
+
+**Date:** [Current Date]
+**Subject:** Resolution of Data Format vs. Renderer Mismatch ("The Two-Front War")
+**Scope:** `inspect_character()` and `render_inspector_panel()`
+
+#### 1. Root Cause Analysis (RCA)
+A desynchronization existed between the `InverseConfusables.json` key/value schemas and the UI rendering logic, resulting in two distinct failure modes:
+
+* **The "Vanishing Acts" (Lookup Failure):** ASCII characters like `a` and `i` returned no lookalikes.
+    * *Cause:* The lookup logic strictly checked Decimal (`str(cp)`) or Uppercase Hex (`f"{cp:04X}"`). The JSON dataset utilized **Lowercase Hex** keys (e.g., `"0061"`), causing strict key misses.
+    * *Fix:* Expanded the key generation strategy to include `f"{cp:04x}"`. This "wider net" successfully bridged the lookup for ASCII characters.
+
+* **The "Weird Box" (Rendering Literalism):** The digit `1` displayed a box containing "006C" with incorrect metadata (Script: Common).
+    * *Cause:* The database returned the string `"006C"` (Hex for `l`). The Legacy Renderer treated this as a literal string. It rendered the text "006C" and calculated metadata based on the first character `'0'` (which is Common script/No Block), leading to a nonsense display.
+    * *Fix:* Implemented a **Heuristic Decoder** in the View Layer. The renderer now interrogates the string: * "Is this a Hex code?"* If yes, it decodes `int("006C", 16) → 108 → 'l'`, allowing the system to fetch the correct metadata (Script: Latin, Block: Basic Latin) for the underlying character.
+
+#### 2. Architecture & Safety Analysis (Isolation)
+This patch is **strictly isolated** to the UI View Layer and does not impact the Core Security Engine.
+
+* **Data Flow Separation:**
+    * **Global Scanners (Threat/Integrity):** Rely on the **Forward Map** (`Confusables`). Logic: *Input $\rightarrow$ Is it dangerous?*
+    * **Inspector (UI Panel):** Relies on the **Inverse Map** (`InverseConfusables`). Logic: *Input $\rightarrow$ What mimics this?*
+    * *Conclusion:* We only modified the Inverse logic path.
+
+* **Execution Context:**
+    * **Global Analysis:** Triggers on `input` events via `update_all()`.
+    * **Inspector:** Triggers only on `selectionchange` via `inspect_character()`.
+    * *Conclusion:* The `_generate_uts39_skeleton` function and global risk algorithms remain immutable. Code execution paths do not cross.
+
+* **Operation Type:**
+    * The fix is purely **Read-Only**. It formats data extraction from `DATA_STORES` for display purposes without altering the underlying data structures or detection algorithms.
