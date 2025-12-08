@@ -18805,7 +18805,7 @@ def inspect_character(event):
             
             # If Named, upgrade the Label to "NAMED ENTITY" for the text report
             "type_label": "NAMED ENTITY" if named_entity_name else cluster_identity.get("type_label", "N/A"),
-            "type_val":  cluster_identity.get("type_val", "N/A"),
+            "type_val":  named_entity_name if named_entity_name else cluster_identity.get("type_val", "N/A"),
             "block":     cluster_identity.get("block_val", "N/A"),
             "script":    cluster_identity.get("script_val", "N/A"),
             "bidi":      cluster_identity.get("bidi_val", "N/A"),
