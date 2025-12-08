@@ -13369,23 +13369,65 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     # Runs the 11-vector physics scan and merges into threat_flags
     try:
         sat_findings = analyze_saturation_vectors(t)
+        
         for f in sat_findings:
-            # Map risk to severity
+            # A. Populate Threat Flags (Existing Logic)
             sev_label = "CRITICAL" if f["risk"] == "CRITICAL" else "HIGH"
             key = f"{sev_label}: {f['desc']}"
             
             if key not in threat_flags:
                 threat_flags[key] = {
-                    'count': 0,
-                    'positions': [],
+                    'count': 0, 'positions': [],
                     'severity': 'crit' if f["risk"] == "CRITICAL" else 'warn'
                 }
             threat_flags[key]['count'] += 1
-            # Add position context (convert index to string)
             threat_flags[key]['positions'].append(f"@{f['pos']}")
             
+            # Accumulate Global Score
+            if f["risk"] == "CRITICAL": threat_score += 40
+            elif f["risk"] == "HIGH": threat_score += 25
+
+            # B. [NEW] Bridge to Suspicion Dashboard (The "Smart" Logic)
+            # We promote specific structural/logic attacks to the Dashboard Targets list
+            if f["type"] in ("MATH_MASQUERADE", "LAYOUT_DISORIENTATION", "TOFU_TUNNEL", "INDIC_STRUCTURE"):
+                
+                # 1. Determine Topology Category
+                if f["type"] == "MATH_MASQUERADE": topo = "SPOOFING"
+                elif f["type"] == "LAYOUT_DISORIENTATION": topo = "PROTOCOL"
+                elif f["type"] == "TOFU_TUNNEL": topo = "HIDDEN"
+                else: topo = "INJECTION"
+                
+                # 2. Update Dashboard Stats
+                if adversarial_data and 'topology' in adversarial_data:
+                    adversarial_data['topology'][topo] = adversarial_data['topology'].get(topo, 0) + 1
+                
+                # 3. Create Synthetic Target (Snippet)
+                # Global findings (Layout) get full string context; Local get snippets
+                if f["pos"] == 0 and f["type"] == "LAYOUT_DISORIENTATION":
+                    token_snippet = "GLOBAL_CONTEXT"
+                else:
+                    # Grab 4 chars context
+                    start = max(0, f["pos"] - 2)
+                    end = min(len(t), f["pos"] + 3)
+                    token_snippet = t[start:end]
+                
+                # 4. Inject into Targets List (High Priority)
+                if adversarial_data and 'targets' in adversarial_data:
+                    adversarial_data['targets'].insert(0, {
+                        "token": token_snippet,
+                        "verdict": f"{f['desc']} (Physics)",
+                        "stack": [{
+                            "lvl": "HIGH", 
+                            "type": topo,
+                            "desc": f.get("name", "Structural Anomaly")
+                        }],
+                        "b64": "N/A", 
+                        "hex": f"@{f['pos']}", 
+                        "score": 85 # Force to top of list
+                    })
+
     except Exception as e:
-        print(f"Error in Saturation Engine: {e}")
+        print(f"[Stage 1.9] Saturation Engine Warning: {e}")
 
     # --- BRIDGE: Promote Adversarial Findings to Threat Flags ---
     # This ensures the "Group 3" table sees the "Group 4" discoveries.
