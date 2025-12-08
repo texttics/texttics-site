@@ -739,7 +739,7 @@ CCC_ALIASES = {
     "8": "Kana Voicing",
     "9": "Virama",
 
-    # --- Fixed Position Range Markers (UAX #44) ---
+    # --- Position Range Markers (UAX #44) ---
     "10": "Start of fixed-position classes",
     "199": "End of fixed-position classes",
     
@@ -3242,7 +3242,7 @@ def _generate_uts39_skeleton(t: str, return_events=False):
             # Found a mapping!
             val = confusables_map[cp]
             
-            # [CRITICAL FIX] Schema Tolerance Logic
+            # Schema Tolerance Logic
             # We strictly extract what we need (Target, Tag) and ignore the rest.
             tgt = char # Default safe fallback
             tag = "UNK"
@@ -3601,7 +3601,7 @@ def _build_confusable_span(char: str, cp: int, confusables_map: dict) -> str:
     [HARDENED] Robust against Tuple/String schema drift in confusables_map.
     """
     try:
-        # [CRITICAL FIX] Defensive Unpacking
+        # Defensive Unpacking
         # The map might return a String ('a') or a Tuple ('a', 'MA', ...)
         val = confusables_map[cp]
         
@@ -3993,7 +3993,7 @@ class ForensicExplainer:
         # --- B. DATA EXTRACTION ---
         id_stat = rec.get("id_stat", "Restricted")
         
-        # [SEMANTIC FIX] Unassigned Code Points (The Void)
+        # Unassigned Code Points (The Void)
         if gc_code == "Cn":
             report["security"]["level"] = "CRITICAL"
             report["security"]["verdict"] = "Data Corruption Risk. Unassigned Code Point (Reserved/Non-Character). Should not appear in valid text."
@@ -4449,7 +4449,7 @@ class ForensicExplainer:
         # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
         # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
 
-        # [SEMANTIC FIX] Universal Void Check
+        # Universal Void Check
         if gc_code == "Cn":
             report["lenses"]["code"] = {"status": "CRITICAL", "text": "BLOCK. Undefined Character. Compiler/Interpreter behavior undefined."}
             report["lenses"]["dns"] = {"status": "CRITICAL", "text": "Protocol Violation. Unassigned characters are banned in IDNA."}
@@ -4595,7 +4595,7 @@ class ForensicExplainer:
                 dns_status = "CRITICAL"
                 dns_msg = "Protocol Violation. Emoji/Pictographs are strictly banned in IDNA2008 (Must use Punycode/ToASCII)."
 
-            # [CASE 5/8 FIX] STRICT CATEGORY FILTER (The "Symbol Ban")
+            # STRICT CATEGORY FILTER (The "Symbol Ban")
             # IDNA2008 PVALID is mostly Letters, Marks, and Decimal Numbers. 
             # Symbols (Sm, So, Sc, Sk) and Punctuation (P*) are generally DISALLOWED.
             # We catch them here if the DB incorrectly marked them as valid.
@@ -6435,7 +6435,7 @@ def analyze_restriction_level(t: str) -> dict:
     # but they qualify for "Moderately".
     
     for char in t:
-        # [CRITICAL FIX] Pass explicit code point to avoid TypeError
+        # Pass explicit code point to avoid TypeError
         script_raw = _get_char_script_id(char, ord(char))
         
         # Normalize Script Name
@@ -8594,7 +8594,7 @@ class ForensicContext:
 
     def _normalize_color(self, color_str: Optional[str]) -> str:
         """
-        [CRITICAL FIX] Strips whitespace to ensure 'rgb(255, 255, 255)' matches aliases.
+        Strips whitespace to ensure 'rgb(255, 255, 255)' matches aliases.
         """
         if not color_str: return ""
         # Remove all spaces and lower case
@@ -10520,7 +10520,7 @@ def compute_emoji_analysis(text: str) -> dict:
     # --- 3. Cluster Segmentation Loop ---
     segments_iter = GRAPHEME_SEGMENTER.segment(text)
     
-    # [SYNC FIX] Manual Python Index Counter
+    # Manual Python Index Counter
     current_python_idx = 0
     
     for seg in segments_iter:
@@ -10591,12 +10591,12 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["rgi_atomic"] += 1
                 if status != "fully-qualified": 
                     counts["emoji_irregular"] += 1
-                    # [INTERACTION FIX] Register Hit
+                    
                     _register_hit("emoji_irregular", idx, idx + cp_len, f"Unqualified RGI")
             else:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
-                # [INTERACTION FIX] Register Hit
+                
                 _register_hit("emoji_irregular", idx, idx + cp_len, f"Non-RGI Atom")
             
             # Sub-logic: Hybrids
@@ -10615,12 +10615,12 @@ def compute_emoji_analysis(text: str) -> dict:
                 counts["rgi_sequence"] += 1
                 if status != "fully-qualified": 
                     counts["emoji_irregular"] += 1
-                    # [INTERACTION FIX] Register Hit
+                    
                     _register_hit("emoji_irregular", idx, idx + cp_len, "Unqualified Sequence")
             else:
                 counts["non_rgi_total"] += 1
                 counts["emoji_irregular"] += 1
-                # [INTERACTION FIX] Register Hit
+                
                 _register_hit("emoji_irregular", idx, idx + cp_len, "Non-RGI Sequence")
 
         # [HUD C7 Irregular] Components
@@ -10629,7 +10629,7 @@ def compute_emoji_analysis(text: str) -> dict:
             counts["non_rgi_total"] += 1
             counts["components_leaked"] += 1
             counts["emoji_irregular"] += 1
-            # [INTERACTION FIX] Register Hit
+            
             _register_hit("emoji_irregular", idx, idx + cp_len, "Leaked Component")
             
             add_flag("Flag: Standalone Emoji Component", idx)
@@ -10668,7 +10668,7 @@ def compute_emoji_analysis(text: str) -> dict:
                 "index": idx
             })
 
-        # [SYNC FIX] Advance Python Index
+        # Advance Python Index
         current_python_idx += cp_len
 
     return {
@@ -10809,12 +10809,12 @@ def compute_grapheme_stats(t: str):
     total_mark_count = 0
     max_marks = 0
     
-    # [NEW] NFC Stability Tracker
+    # NFC Stability Tracker
     # We track graphemes that are physically different from their NFC form.
     # This detects "Decomposed" characters (e.g. e + ´ instead of é).
     non_nfc_indices = []
 
-    # [SYNC FIX] Manual Python Index for Reporting
+    # Manual Python Index for Reporting
     current_python_idx = 0
 
     for segment in segments:
@@ -12284,7 +12284,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             tgt = m['map_to']
             src_char = m['char']
             
-            # [SAFETY FIX] Ignore Identity Mappings (Noise reduction)
+            # Ignore Identity Mappings (Noise reduction)
             # This prevents flagging 'm' just because it exists in the database.
             if src_char == tgt:
                 # Correct the total count since we are discarding this event
@@ -15767,7 +15767,7 @@ def render_inspector_panel(data):
         """
 
     # 7. Final Assembly
-    # [FIX] Escape the header to prevent invisible <tags>
+    # Escape the header to prevent invisible <tags>
     safe_header = _escape_html(header_title)
     
     identity_html = f"""
@@ -17858,7 +17858,7 @@ def inspect_character(event):
             if "EMOJI" in cluster_identity.get("type_label", ""):
                 rgi_set = DATA_STORES.get("RGISequenceSet", set())
                 
-                # [CASE 9 FIX] Fuzzy Matching Logic
+                # Fuzzy Matching Logic
                 is_exact_match = target_char in rgi_set
                 is_fuzzy_match = False
                 
