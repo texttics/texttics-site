@@ -48,12 +48,10 @@ files = [
     "DerivedGeneralCategory.txt",  # Overrides unicodedata.category()
     "CaseFolding.txt",             # Overrides str.casefold()
     "NameAliases.txt",              # Naming for Control Chars
-    
-    "IVD_Sequences.txt",               # [Vector 3: Steganography]
-    "NamedSequences.txt",              # [Vector 6: Entity Gap]
+    # --- STAGE 1.9: UNIVERSAL PHYSICS ---
     "HangulSyllableType.txt",          # [Vector 4: Jamo Gap]
     "EquivalentUnifiedIdeograph.txt",  # [Vector 5: Radical Spoofing]
+    "NamedSequences.txt",              # [Vector 6: Entity Gap]
+    "IVD_Sequences.txt",               # [Vector 3: Steganography]
     "PropertyValueAliases.txt"         # [Tooling: Canonical Names]
-    
-    
 ]
