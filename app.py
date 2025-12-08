@@ -6862,7 +6862,7 @@ def analyze_idna_label(label: str):
                 "desc": "Invalid Punycode Label (Decoding Failed)"
             }]
     else:
-        # [NEW] ENCODING (Unicode -> Punycode / Wire Format)
+        # ENCODING (Unicode -> Punycode / Wire Format)
         # If the label contains non-ASCII, show how it looks on the wire.
         if not label.isascii():
             try:
