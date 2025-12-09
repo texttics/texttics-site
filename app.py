@@ -11065,7 +11065,7 @@ def audit_geometry(geometric_findings: list, threat_ledger: list):
         threat_ledger.append({
             "vector": "VISUAL_SPOOFING",
             "label": "HIGH: Visual Rotation",
-            "score": 20, # Higher risk: Requires intentional VS injection
+            "points": 20, # Higher risk: Requires intentional VS injection
             "category": "SPOOFING", # Tier 2: Identity
             "details": f"{desc} {note}",
             "count": count,
