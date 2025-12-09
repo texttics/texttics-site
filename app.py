@@ -3817,40 +3817,72 @@ def _get_script_set(token: str) -> set:
 def _get_identifier_profile(token: str) -> dict:
     """
     Checks UAX #31 Identifier Status and Type.
-    Returns: { 'status': 'Allowed'|'Restricted'|'Disallowed', 'types': {Set of types} }
+    [HARDENED v2.0 - Unicode 17.0 Compliant]
+    
+    Implements the "Han Pardon" logic:
+    - Characters with Status="Restricted" AND Type="Uncommon_Use" are treated as 
+      forensically 'Allowed' (with a NOTE) rather than 'Restricted' (WARN/CRIT).
+    - This prevents 78,000+ CJK characters from triggering false positives.
+    
+    Returns: { 
+        'status': 'Allowed'|'Restricted'|'Disallowed', 
+        'types': {Set of types found}, 
+        'banned_chars': [List of chars that triggered the restriction] 
+    }
     """
-    # Defaults
     profile = {
         "status": "Allowed", 
         "types": set(),
         "banned_chars": [] 
     }
     
-    overall_status_priority = 0 # 0=Allowed, 1=Restricted, 2=Disallowed
+    # Priority: 0=Allowed, 1=Uncommon(Note), 2=Restricted(Warn), 3=Disallowed(Crit)
+    max_severity = 0
     
     for char in token:
         cp = ord(char)
         
-        # Check Status
-        # Note: Data loader maps IdentifierStatus ranges. 
-        # Usually: "Allowed" is implicit if not Restricted? 
-        # Actually, UAX31 usually defines 'Allowed' ranges. 
-        # We assume if found in "Restricted" list it is restricted.
-        status_val = _find_in_ranges(cp, "IdentifierStatus")
+        # 1. Get Raw Properties
+        # _find_in_ranges returns None if not found, or the string value
+        status_val = _find_in_ranges(cp, "IdentifierStatus") # e.g. "Restricted", "Allowed"
+        type_val   = _find_in_ranges(cp, "IdentifierType")   # e.g. "Recommended", "Uncommon_Use", "Not_XID"
         
-        if status_val == "Restricted":
-            overall_status_priority = max(overall_status_priority, 1)
-            profile["banned_chars"].append(char)
-        
-        # Check Type (Technical, Recommended, Obsolete, etc.)
-        type_val = _find_in_ranges(cp, "IdentifierType")
+        # 2. Record the Type (Forensic Evidence)
         if type_val:
             profile["types"].add(type_val)
-            if type_val in ("Not_Recommended", "Deprecated", "Not_XID", "Obsolete"):
-                overall_status_priority = max(overall_status_priority, 1)
 
-    if overall_status_priority == 1: profile["status"] = "Restricted"
-    if overall_status_priority == 2: profile["status"] = "Disallowed"
+        # 3. Determine Risk
+        if status_val == "Restricted":
+            # --- THE HAN PARDON (Unicode 17.0) ---
+            if type_val == "Uncommon_Use":
+                # It is Restricted, but only because it is rare.
+                # We categorize this as Severity 1 (Allowed but Noted).
+                max_severity = max(max_severity, 1)
+            else:
+                # It is Restricted for other reasons (Default_Ignorable, Nonchar, etc.)
+                # This is a true violation.
+                max_severity = max(max_severity, 2)
+                profile["banned_chars"].append(char)
+                
+        elif type_val in ("Not_Recommended", "Deprecated", "Obsolete"):
+            # Allowed but discouraged
+            max_severity = max(max_severity, 1)
+            
+        elif type_val == "Not_XID":
+            # Technically allowed in ID_Start/Continue but not XID
+            # Treat as Restricted context
+            max_severity = max(max_severity, 2)
+            profile["banned_chars"].append(char)
+
+    # 4. Map Severity to Verdict
+    if max_severity == 3:
+        profile["status"] = "Disallowed"
+    elif max_severity == 2:
+        profile["status"] = "Restricted"
+    elif max_severity == 1:
+        profile["status"] = "Allowed" # Kept as Allowed to prevent dashboard noise, types set handles the "Note"
+    else:
+        profile["status"] = "Allowed"
     
     return profile
 
