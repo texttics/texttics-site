@@ -14564,28 +14564,8 @@ def render_status(message):
             status_line.innerText = message
         elif message.startswith("Ready"):
             new_class = "status-ready"
-            
-            # The Calibration Certificate (Ultimate Version)
-            # Combines Visual Confirmation (Icon) + Operational Status + Technical Calibration.
-            
-            # 1. The "Verified" Checkmark
-            icon_svg = (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" '
-                'fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" '
-                'stroke-linejoin="round" style="margin-right:6px;">'
-                '<polyline points="20 6 9 17 4 12"></polyline></svg>'
-            )
-            
-            # 2. The Semantic Layout
-            status_line.innerHTML = (
-                f'<span style="display:inline-flex; align-items:center; font-weight:700; color:#059669;">'
-                f'{icon_svg} SYSTEM READY</span>'
-                '<span style="margin:0 12px; color:#d1d5db; font-weight:300;">|</span>'
-                '<span style="font-size:0.75rem; color:#6b7280; letter-spacing:0.02em;">'
-                'CALIBRATION: <strong style="font-family:var(--font-mono); color:#374151;">UNICODE 17.0.0</strong>'
-                ' <span style="opacity:0.75;">(UAX #29/#15)</span>'
-                '</span>'
-            )
+            # Restore the SVG and full text for the "Ready" state
+            status_line.innerHTML = 'Input: Ready <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><polyline points="20 6 9 17 4 12"></polyline></svg>'
         else:
             new_class = "status-loading"
             status_line.innerText = message
