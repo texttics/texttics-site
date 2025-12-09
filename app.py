@@ -107,7 +107,8 @@ COMPLEX_ORTHOGRAPHY_SCRIPTS = {
     "Mongolian", "Phags_Pa", "Devanagari", "Bengali", 
     "Gurmukhi", "Gujarati", "Oriya", "Tamil", "Telugu", 
     "Kannada", "Malayalam", "Sinhala", "Thai", "Lao", 
-    "Tibetan", "Myanmar", "Khmer", "Adlam", "Rohingya"
+    "Tibetan", "Myanmar", "Khmer", "Adlam", "Rohingya",
+    "Tai_Yo"
 }
 
 # Human-Readable Bidi Names
@@ -723,7 +724,11 @@ ALIASES = {
     "Pi": "Initial Punct.", "Pf": "Final Punct.", "Po": "Other Punct.",
     "Sm": "Math Symbol", "Sc": "Currency Symbol", "Sk": "Modifier Symbol", "So": "Other Symbol",
     "Zs": "Space Separator", "Zl": "Line Separator", "Zp": "Paragraph Separator",
-    "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned"
+    "Cc": "Control", "Cf": "Format", "Cs": "Surrogate", "Co": "Private Use", "Cn": "Unassigned",
+    # Unicode 17.0 Line Break Definitions
+    "HH": "Unambiguous Hyphen",
+    "BA": "Break After",
+    "HY": "Hyphen"
 }
 
 CCC_ALIASES = {
@@ -2344,7 +2349,13 @@ def _parse_emoji_test(txt: str) -> dict:
                 continue
                 
             hex_codes_str = parts[0].strip()
+            
             status = parts[1].strip()
+
+            # Unicode 17.0 Compatibility
+            # Normalize 'standalone_component' to 'component' to match existing architecture
+            if status == "standalone_component": status = "component"
+            if current_group == "standalone_component": current_group = "component"
             
             # Use the status from the line if available, otherwise from the group
             final_status = status if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"} else current_group
@@ -5361,8 +5372,19 @@ class ForensicExplainer:
 
         # C. Security Restrictions (UAX #39)
         elif id_stat == "Restricted":
-            code_status = "WARN"
-            code_msg = "Restricted Identifier. Excluded from secure profiles (UAX #31) due to confusion/obsolescence risks."
+            # Han Identifier Policy
+            # If Restricted BUT just "Uncommon" (e.g. Rare Han), downgrade to NOTE
+            is_uncommon = False
+            if id_type:
+                # Check for "Uncommon_Use" or "Uncommon-Use"
+                is_uncommon = any("Uncommon" in t for t in id_type)
+
+            if is_uncommon:
+                code_status = "NOTE"
+                code_msg = "Uncommon Identifier Character. Valid syntax, but restricted by General Security Profile (UAX #31) due to rarity."
+            else:
+                code_status = "WARN"
+                code_msg = "Restricted Identifier. Excluded from secure profiles (UAX #31) due to confusion/obsolescence risks."
 
         # D. Valid Identifiers (The Physics of Naming)
         elif code_status == "SAFE":
