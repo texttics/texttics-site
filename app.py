@@ -18492,8 +18492,8 @@ def update_all(event=None):
         ),
         'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
         'prov': (
-            sum(1 for v in prov_matrix.values() if v.get('count', 0) > 0) + 
-            sum(1 for v in script_run_stats.values() if v.get('count', 0) > 0)
+            sum(1 for v in prov_matrix.values() if _has_data(v.get('count', 0))) + 
+            sum(1 for v in script_run_stats.values() if _has_data(v.get('count', 0)))
         ),
         'emoji': emoji_counts.get("total_emoji_units", 0),
         'threat': sum(1 for v in final_threat_flags.values() if (isinstance(v, dict) and v.get('count', 0) > 0) or (isinstance(v, int) and v > 0)),
