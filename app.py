@@ -10865,6 +10865,16 @@ def compute_integrity_score(inputs):
     add_entry("Broken Encoding (Surrogates)", inputs.get("surrogate", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
     add_entry("Binary Injection (Null Bytes)", inputs.get("nul", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
     
+    # [NEW] UAX #15 Stream-Safe Limit (Capacity)
+    stream_unsafe_count = inputs.get("stream_safe_violations", 0)
+    if stream_unsafe_count > 0:
+        ledger.append({
+            "vector": "PROTOCOL_VIOLATION (UAX #15)",
+            "count": stream_unsafe_count,
+            "severity": "FATAL",
+            "points": 40 # Base Fatal Score
+        })
+    
     # --- 2. FRACTURE (Structural Breaks) ---
     # Logic Gate: If Bidi structure is broken, we flag it here.
     bidi_broken = inputs.get("bidi_broken_count", 0)
@@ -10929,6 +10939,140 @@ def compute_integrity_score(inputs):
         "ledger": ledger
     }
 
+def audit_cosmology(temporal_findings: list, threat_ledger: list):
+    """
+    [Auditor A: The Historian]
+    Evaluates Temporal Risks (Time Travel).
+    
+    Philosophy: Compatibility Risk, not 'Attack'.
+    Verdict: WARN (Amber).
+    Score: Low (10pts). Just enough to signal 'Non-Standard', not enough to Weaponize.
+    """
+    if not temporal_findings: 
+        return
+
+    # 1. Physics Analysis
+    count = len(temporal_findings)
+    max_age = max((f['age'] for f in temporal_findings), default=0.0)
+    
+    # 2. Narrative Construction
+    # "Text contains characters newer than Unicode 13.0 (Age 15.0)."
+    desc = f"Text contains characters newer than Unicode {SAFE_AGE_THRESHOLD} (Max Age: {max_age})."
+    note = "Likely invisible (Tofu) or unstable on older platforms."
+    
+    # 3. Ledger Injection
+    # Vector: INTERPRETATION_GAP matches the 'Time Travel' paradox model
+    threat_ledger.append({
+        "vector": "INTERPRETATION_GAP",
+        "label": "WARN: Compatibility Risk (Future Particle)",
+        "score": 10,
+        "category": "SUSPICIOUS", # Buckets into Tier 4 (Context)
+        "details": f"{desc} {note}",
+        "count": count,
+        "indices": [f['pos'] for f in temporal_findings]
+    })
+
+def audit_financials(mass_stats: dict, threat_ledger: list):
+    """
+    [Auditor B: The Accountant]
+    Evaluates Numeric Ambiguity (Mass vs Visibility).
+    
+    Philosophy: Structural Ambiguity, not 'Fraud'.
+    Trigger: Divergence > 0 (Total Mass > Visible Digits).
+    Verdict: WARN (Amber).
+    Score: 15pts. Represents a specific structural risk to data integrity.
+    """
+    divergence = mass_stats.get("divergence", 0.0)
+    
+    # 1. Physics Analysis (Floating point tolerance)
+    if divergence > 0.001:
+        masquerade_list = mass_stats.get("masquerade_list", [])
+        count = len(masquerade_list)
+        
+        # Format values cleanly (remove trailing .0 for integers)
+        vis_val = mass_stats.get('visible_mass', 0)
+        tot_val = mass_stats.get('total_mass', 0)
+        fmt_vis = f"{vis_val:g}"
+        fmt_tot = f"{tot_val:g}"
+        
+        # 2. Narrative Construction
+        # "Text carries hidden mathematical mass. Visible: 500 | Actual: 10500"
+        desc = "Text carries hidden mathematical mass."
+        facts = f"Visible Digits: {fmt_vis} | Actual Value: {fmt_tot}"
+        note = "Risk of parser inconsistency (Smart Parser vs Regex)."
+        
+        # 3. Ledger Injection
+        # Vector: SEMANTIC_AMBIGUITY matches the 'Type Drift' model
+        threat_ledger.append({
+            "vector": "SEMANTIC_AMBIGUITY",
+            "label": "WARN: Numeric Masquerade",
+            "score": 15,
+            "category": "SUSPICIOUS", # Buckets into Tier 4
+            "details": f"{desc} [{facts}] {note}",
+            "count": count,
+            "indices": [item['pos'] for item in masquerade_list]
+        })
+
+def audit_geometry(geometric_findings: list, threat_ledger: list):
+    """
+    [Auditor C: The Architect]
+    Evaluates Geometric Physics (Orientation & Rotation).
+    
+    Philosophy: Typographic Anomaly, not 'Layout Exploit'.
+    Distinguishes between Contextual Disorientation (Vertical in Horizontal)
+    and Explicit Rotation (Variation Selectors).
+    """
+    if not geometric_findings:
+        return
+
+    # 1. Bucketize Findings (Aggregation Strategy)
+    # We aggregate first to prevent ledger flooding (e.g., 50 vertical chars = 1 entry)
+    disorientation = []
+    rotation = []
+    
+    for f in geometric_findings:
+        f_type = f.get('type')
+        if f_type == "GEOMETRIC_DISORIENTATION":
+            disorientation.append(f)
+        elif f_type == "GEOMETRIC_ROTATION":
+            rotation.append(f)
+            
+    # 2. Audit Contextual Disorientation (The "Wallbuilder")
+    if disorientation:
+        count = len(disorientation)
+        
+        # Narrative Construction
+        desc = "Vertical glyphs detected in Horizontal script context."
+        note = "May cause layout shifts or line-height expansion (Typographic Anomaly)."
+        
+        threat_ledger.append({
+            "vector": "LAYOUT_PHYSICS",
+            "label": "WARN: Geometric Anomaly",
+            "score": 10,
+            "category": "SUSPICIOUS", # Tier 4: Contextual
+            "details": f"{desc} {note}",
+            "count": count,
+            "indices": [f['pos'] for f in disorientation]
+        })
+
+    # 3. Audit Explicit Rotation (The "Glyph Swap")
+    if rotation:
+        count = len(rotation)
+        
+        # Narrative Construction
+        desc = "Variation Selector explicitly rotates glyph orientation."
+        note = "Visual appearance contradicts logical identity (Visual Spoofing risk)."
+        
+        threat_ledger.append({
+            "vector": "VISUAL_SPOOFING",
+            "label": "HIGH: Visual Rotation",
+            "score": 20, # Higher risk: Requires intentional VS injection
+            "category": "SPOOFING", # Tier 2: Identity
+            "details": f"{desc} {note}",
+            "count": count,
+            "indices": [f['pos'] for f in rotation]
+        })
+                  
 def compute_threat_score(inputs):
     """
     The Threat Auditor (Maximal Forensic Logic).
@@ -10984,6 +11128,31 @@ def compute_threat_score(inputs):
         add_entry("Syntax Spoofing (VS on Operator)", THR_BASE_EXECUTION, "EXECUTION")
         has_execution_threat = True
 
+    # --- PHYSICS AUDITORS ---
+    
+    # A. The Historian (Time)
+    # Checks for Future Particles (Compatibility Risk)
+    if inputs.get("temporal_findings"):
+        audit_cosmology(inputs["temporal_findings"], ledger)
+
+    # B. The Accountant (Mass)
+    # Checks for Numeric Masquerade (Parser Ambiguity)
+    if inputs.get("mass_stats"):
+        audit_financials(inputs["mass_stats"], ledger)
+
+    # C. The Architect (Geometry)
+    # Checks for Layout Disorientation (Vertical in Horizontal)
+    if inputs.get("geometric_findings"):
+        audit_geometry(inputs["geometric_findings"], ledger)
+        
+    # D. The Spin Doctor (Semantic Variants)
+    # Checks for Specific Math/CJK Variants (Hidden Precision)
+    if inputs.get("vs_signals"):
+        # Filter for Spin signals only (Bare/Cluster are structural)
+        spin_signals = [s for s in inputs["vs_signals"] if s['type'] == "GLYPH_VARIANT"]
+        for s in spin_signals:
+            add_entry(s['desc'], 5, "HIDDEN_STRUCTURE")
+    
     # --- PILLAR 2: SPOOFING (Target: Human / ID) ---
     # Severity: HIGH. Can lead to Phishing or Identity Theft.
     
@@ -18466,6 +18635,7 @@ def update_all(event=None):
         "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
         "dec_space": _get_f_count("Deceptive Spaces"),
         "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
+        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])),
         "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
     }
 
@@ -18630,6 +18800,10 @@ def update_all(event=None):
             emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("count", 0) +
             emoji_flags.get("Flag: Forced Text Presentation", {}).get("count", 0)
         ),
+        "temporal_findings": scan_temporal_anomalies(t),
+        "mass_stats": calculate_global_sum_v2(t),
+        "geometric_findings": scan_geometric_anomalies(t),
+        "vs_signals": scan_vs_topology(t)[1], # Index 1 is the signals list
         "noise_list": noise_list
     }
     
