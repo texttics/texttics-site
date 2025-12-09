@@ -5311,10 +5311,11 @@ class ForensicExplainer:
                 else:
                     sec_notes.append("Stable international identifier character")
 
-        # D. Restriction Forensics (The "Why")
+       # D. Restriction Forensics (The "Why")
         elif id_stat == "Restricted":
             # If it wasn't caught by Pattern Syntax, why is it restricted?
-            if "Compat" in str(rec.get("dt", "")):
+            # Use local 'dt' variable (includes Physics Override)
+            if "Compat" in str(dt or ""):
                 sec_notes.append("Restricted due to Compatibility Mapping (NFKC Risk)")
             elif "Default_Ignorable_Code_Point" in props:
                 sec_notes.append("Restricted due to Invisibility (Ignorable)")
@@ -5478,7 +5479,8 @@ class ForensicExplainer:
             else:
                 # If it wasn't caught by Pattern Syntax, why is it restricted?
                 code_status = "WARN"
-                if "Compat" in str(rec.get("dt", "")):
+                # Use 'dt' arg instead of 'rec'
+                if "Compat" in str(dt or ""):
                     code_msg = "Restricted Identifier. Compatibility Mapping (NFKC Risk)."
                 elif "Default_Ignorable_Code_Point" in props:
                     code_msg = "Restricted Identifier. Invisible/Ignorable character."
