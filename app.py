@@ -3072,7 +3072,7 @@ async def load_unicode_data():
             "HangulSyllableType.txt", "EquivalentUnifiedIdeograph.txt", "NamedSequences.txt",
             "IVD_Sequences.txt", "PropertyValueAliases.txt", "EmojiSources.txt",
             "NushuSources.txt", "MathClassEx-15.txt", "DerivedJoiningType.txt",
-            "IndicPositionalCategory.txt", "IndicSyllabicCategory.txt"
+            "IndicPositionalCategory.txt", "IndicSyllabicCategory.txt", "Unihan_NumericValues.txt"
         ]
         results = await asyncio.gather(*[fetch_file(f) for f in files_to_fetch])
 
