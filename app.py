@@ -3886,6 +3886,53 @@ def _get_identifier_profile(token: str) -> dict:
     
     return profile
 
+# 1. Update Constants (Gap 5 & Gap 2)
+# Ensure Tai Yo is treated as complex script and HH is labeled.
+if "Tai_Yo" not in COMPLEX_ORTHOGRAPHY_SCRIPTS:
+    COMPLEX_ORTHOGRAPHY_SCRIPTS.add("Tai_Yo")
+ALIASES["HH"] = "Unambiguous Hyphen"
+
+# 2. Hardened Emoji Parser (Gap 4)
+# Overwrites the Block 4 parser to handle Unicode 17.0 'standalone_component'
+def _parse_emoji_test_hardened(txt: str) -> dict:
+    """
+    [HARDENED v2.0] Parses emoji-test.txt for RGI Qualification.
+    Explicitly handles Unicode 17.0 'standalone_component' status.
+    """
+    qualification_map = {}
+    current_group = "unknown"
+    for raw in txt.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            if raw.startswith("# group:"):
+                current_group = raw.split(":", 1)[-1].strip()
+            continue
+        try:
+            parts = line.split(';', 1)
+            if len(parts) < 2: continue
+            hex_codes_str = parts[0].strip()
+            status = parts[1].strip()
+            
+            # --- UNICODE 17.0 COMPATIBILITY FIX ---
+            # Map 'standalone_component' -> 'component' to match our schema
+            if status == "standalone_component": status = "component"
+            if current_group == "standalone_component": current_group = "component"
+            
+            final_status = status if status in {"fully-qualified", "minimally-qualified", "unqualified", "component"} else current_group
+            if final_status not in {"fully-qualified", "minimally-qualified", "unqualified", "component"}:
+                continue
+
+            sequence_str = "".join([chr(int(h, 16)) for h in hex_codes_str.split()])
+            if sequence_str:
+                qualification_map[sequence_str] = final_status
+        except: pass
+    
+    print(f"Loaded {len(qualification_map)} emoji qualification statuses (Hardened).")
+    return qualification_map
+
+# Hot-swap the parser reference so load_unicode_data uses this one
+_parse_emoji_test = _parse_emoji_test_hardened
+
 def _classify_token_kind(token: str) -> str:
     """
     Heuristic classification of token type.
@@ -4585,8 +4632,8 @@ def _is_cursive_break_allowed(cp):
     """
     [Stage 1.9] Cursive Physics Helper.
     Determines if a character is a valid 'Word Break' that legally interrupts 
-    a cursive connection (Arabic/Syriac/N'Ko).
-    [FIXED] Uses correct Data Store Key and Lookup Method.
+    a cursive connection (Arabic/Syriac/N'Ko/Tai Yo).
+    [FIXED] Uses correct Data Store Key ("GeneralCategory") and Lookup Method.
     """
     # 1. Try Saturated Store (Unicode 17.0 Truth)
     # We use _find_in_ranges because the loader stores it as an Interval Tree
@@ -5414,18 +5461,24 @@ class ForensicExplainer:
         # C. Security Restrictions (UAX #39)
         elif id_stat == "Restricted":
             # Han Identifier Policy
-            # If Restricted BUT just "Uncommon" (e.g. Rare Han), downgrade to NOTE
+            # If Restricted BUT just "Uncommon", downgrade to NOTE
             is_uncommon = False
             if id_type:
-                # Check for "Uncommon_Use" or "Uncommon-Use"
+                # Check for "Uncommon_Use" or "Uncommon-Use" (robust check)
                 is_uncommon = any("Uncommon" in t for t in id_type)
 
             if is_uncommon:
                 code_status = "NOTE"
                 code_msg = "Uncommon Identifier Character. Valid syntax, but restricted by General Security Profile (UAX #31) due to rarity."
             else:
+                # If it wasn't caught by Pattern Syntax, why is it restricted?
                 code_status = "WARN"
-                code_msg = "Restricted Identifier. Excluded from secure profiles (UAX #31) due to confusion/obsolescence risks."
+                if "Compat" in str(rec.get("dt", "")):
+                    code_msg = "Restricted Identifier. Compatibility Mapping (NFKC Risk)."
+                elif "Default_Ignorable_Code_Point" in props:
+                    code_msg = "Restricted Identifier. Invisible/Ignorable character."
+                else:
+                    code_msg = "Restricted Identifier. Excluded from secure identifier profiles (UAX #31)."
 
         # D. Valid Identifiers (The Physics of Naming)
         elif code_status == "SAFE":
