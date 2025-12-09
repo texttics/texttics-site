@@ -12724,9 +12724,10 @@ def compute_provenance_stats(t: str):
             pass
 
     # --- Financial Integrity: Total Numeric Value (SOTA) ---
-    # Uses the new Unihan-aware engine to sum CJK + ASCII + Roman
-    # Note: Requires calculate_global_sum_v2 to be defined in Block 6
-    numeric_total_value, has_hidden_numerics = calculate_global_sum_v2(t)
+    # Handles the Phase 2 Physics Dictionary return
+    mass_stats = calculate_global_sum_v2(t)
+    numeric_total_value = mass_stats.get("total_mass", 0.0)
+    has_hidden_numerics = len(mass_stats.get("masquerade_list", [])) > 0
 
     if numeric_total_value > 0:
         # Format: Remove .0 if integer, otherwise show float
