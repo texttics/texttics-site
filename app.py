@@ -4803,13 +4803,15 @@ class ForensicExplainer:
 
     # Updated Signature: accepts physics
     def explain(self, hex_str, physics=None):
-        # Initialize rec immediately to prevent scope errors
-        rec = {}
+        # 1. SCOPE SAFETY: Define 'rec' immediately at root level
+        # This guarantees 'rec' exists even if we hit an early error.
+        rec = {} 
+        
         # 0. Safety Check
         if not FORENSIC_DB_READY:
             return self._fallback_report("System Loading...", "Forensic Database not loaded.", "NO-DB")
-        
-        # 1. Initialize Critical Variables
+
+        # 2. Initialize Critical Variables
         cp_int = 0
         try:
             cp_int = int(hex_str, 16)
@@ -4818,11 +4820,9 @@ class ForensicExplainer:
             
         is_ascii = (cp_int <= 0x7F)
 
-        # --- 2. FORENSIC RECORD SYNTHESIS (The "Truth Hierarchy") ---
-        # Strategy: Start with Static DB (Richness), Overwrite with Saturated Data (Truth).
+        # --- 3. FORENSIC RECORD SYNTHESIS ---
         
         # A. Attempt to fetch static record (Tier 2)
-        # [CRITICAL] Defined at top level scope
         rec = self.db.get(hex_str)
         if not rec:
              # Case: Unknown/New Character (Tier 3 Fallback)
@@ -4834,69 +4834,49 @@ class ForensicExplainer:
         # C. [SATURATED] PHYSICS OVERRIDE (Tier 1 Authority)
         char_raw = chr(cp_int)
         
-        # 1. Identity (Name & Category)
-        name = _get_safe_name(cp_int)
-        rec["name"] = name
-        
+        # Identity Overrides
+        rec["name"] = _get_safe_name(cp_int)
         gc_code = _get_forensic_category(char_raw)
         rec["gc"] = gc_code
         
-        # 2. Provenance (Block & Script)
+        # Block & Script Overrides
         if rec.get("blk", "No_Block") == "No_Block":
             rec["blk"] = _find_in_ranges(cp_int, "Blocks") or "No_Block"
             
         if rec.get("script", "Unknown") == "Unknown":
             rec["script"] = _find_in_ranges(cp_int, "Scripts") or "Unknown"
 
-        # Populate Script Extensions (scx) dynamically
-        # This prevents 'rec' NameError issues by ensuring key exists
         if "scx" not in rec:
             scx_val = _find_in_ranges(cp_int, "ScriptExtensions")
             rec["scx"] = scx_val.split() if scx_val else []
 
-        # 3. Physics (Bidi & Age)
-        bc_code = _get_forensic_bidi_class(char_raw)
-        rec["bc"] = bc_code
-        
+        # Physics Overrides
+        rec["bc"] = _get_forensic_bidi_class(char_raw)
         if rec.get("age", "NA") == "NA":
             rec["age"] = _find_in_ranges(cp_int, "Age") or "NA"
 
-        # 4. Security (Identifier Status)
-        # Critical for safety: If JSON says "Allowed" but File says "Restricted", File wins.
+        # Security & ID Status
         file_id_stat = _find_in_ranges(cp_int, "IdentifierStatus")
         if file_id_stat:
             rec["id_stat"] = file_id_stat
-        # Identifier Type Injection
-        # Essential for the Han Policy to see "Uncommon_Use"
+            
         file_id_type = _find_in_ranges(cp_int, "IdentifierType")
         if file_id_type:
-            # We wrap in list because the Policy logic expects a list of types (from JSON schema)
             rec["id_type"] = [file_id_type]
         elif not rec.get("id_stat"):
-            # Default to Restricted if not defined in File OR JSON
             rec["id_stat"] = "Restricted"
 
-        # 5. Normalization Stability (The Correction List)
-        # If it's in the correction list, force the 'dt' (Decomposition Type) to Compat
-        if cp_int in DATA_STORES["NormalizationCorrections"]:
-            # If 'dt' is missing or None, label it.
+        # Normalization Stability Correction
+        if cp_int in DATA_STORES.get("NormalizationCorrections", []):
             if not rec.get("dt") or rec["dt"] == "None": 
                 rec["dt"] = "Correction"
 
-        # 6. Critical Property Injection
-        # Ensure security bits from INVIS_TABLE are reflected in 'props' logic
-        # This bridges the Gap between the O(1) Engine and the Narrative Engine
+        # Critical Property Injection (Bitmask Bridge)
         mask = INVIS_TABLE[cp_int] if cp_int < 1114112 else 0
-        
-        if mask & INVIS_BIDI_CONTROL and "Bidi_Control" not in props:
-            props.append("Bidi_Control")
-        if mask & INVIS_TAG and "Tag" not in props: # or "Depreciated"
-            props.append("Pattern_Syntax") # Tags are Pattern_Syntax
-        if mask & INVIS_DEFAULT_IGNORABLE and "Default_Ignorable_Code_Point" not in props:
-            props.append("Default_Ignorable_Code_Point")
-        if mask & INVIS_DO_NOT_EMIT and "DoNotEmit" not in props:
-            # Add custom prop for the explainer to read
-            props.append("DoNotEmit")
+        if mask & INVIS_BIDI_CONTROL and "Bidi_Control" not in props: props.append("Bidi_Control")
+        if mask & INVIS_TAG and "Pattern_Syntax" not in props: props.append("Pattern_Syntax")
+        if mask & INVIS_DEFAULT_IGNORABLE and "Default_Ignorable_Code_Point" not in props: props.append("Default_Ignorable_Code_Point")
+        if mask & INVIS_DO_NOT_EMIT and "DoNotEmit" not in props: props.append("DoNotEmit")
 
         # 4. Initialize Report
         report = {
@@ -4906,26 +4886,15 @@ class ForensicExplainer:
             "highlights": [], 
             "lenses": {}, "context": []      
         }
-        
-        # 3. Physics Override (Normalization)
-        # We calculate this early so 'dt' is accurate for all lenses
+
+        # 5. Normalization Physics Check
         dt = rec.get("dt") 
         try:
-            char_raw = chr(cp_int)
             nfkc_val = normalize_extended(char_raw) 
             if char_raw != nfkc_val and not dt:
                 dt = "Compat" 
         except:
             pass
-
-        # 4. Initialize Report
-        report = {
-            "identity": "",
-            "security": {"level": "SAFE", "verdict": "Standard Character.", "badges": []},
-            "props": props,
-            "highlights": [], 
-            "lenses": {}, "context": []      
-        }
 
         layout_notes = []
 
@@ -4935,13 +4904,10 @@ class ForensicExplainer:
         name = rec.get("name", "Unknown")
         report["identity"] = f"{name} ({blk})"
 
-        # gc_code = rec.get("gc", "Cn")
         gc_name = self._get_vocab("gc", gc_code).replace("_", " ")
-        
         script_code = rec.get("script", "Zzzz")
         script_name = self._get_vocab("sc", script_code).replace("_", " ")
         
-        # Script Extensions
         scx = rec.get("scx", [])
         script_detail = script_name
         if script_code in ("Common", "Inherited") and scx:
@@ -4951,38 +4917,29 @@ class ForensicExplainer:
         # --- B. DATA EXTRACTION ---
         id_stat = rec.get("id_stat", "Restricted")
         
-        # Unassigned Code Points (The Void)
         if gc_code == "Cn":
             report["security"]["level"] = "CRITICAL"
-            report["security"]["verdict"] = "Data Corruption Risk. Unassigned Code Point (Reserved/Non-Character). Should not appear in valid text."
+            report["security"]["verdict"] = "Data Corruption Risk. Unassigned Code Point."
             report["security"]["badges"].append("VOID")
             
         id_type = rec.get("id_type", [])
         idna = rec.get("idna", "disallowed")
-        
-        # bc_code = rec.get("bc", "L")
+        bc_code = rec["bc"]
         bc_pretty = BIDI_PRETTY_MAP.get(bc_code, self._get_vocab("bc", bc_code))
-        
         confusables = rec.get("confusables", [])
         
-        # --- C. SECURITY VERDICT (V4.7: Monotonic & Composite) ---
-        
-        # Helper: Check if current level is below a target threshold
+        # --- C. SECURITY VERDICT LOGIC ---
         def _is_below(target_level):
             curr_rank = self.SEVERITY_RANK.get(report["security"]["level"], 0)
             target_rank = self.SEVERITY_RANK.get(target_level, 0)
             return curr_rank < target_rank
 
-        # Default Baseline
         report["security"]["verdict"] = "Standard Literal. Safe for general interchange."
 
-        # 1. Identifier Status (The Baseline)
+        # 1. Identifier Status
         if id_stat == "Restricted":
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("RESTRICTED")
-            
-            # Check for specific compatibility types (Compat, Circle, Super, etc)
-            # Standard UCD types: Com, Enc, Fin, Font, Fra, Init, Iso, Med, Nar, Nob, Sml, Sqr, Sub, Sup, Vert, Wide, Circ
             compat_types = ("Com", "Compat", "Circle", "Super", "Sub", "Font", "Wide", "Narrow", "Small", "Square", "Fraction")
             
             if dt and any(t in str(dt) for t in compat_types):
@@ -4991,27 +4948,20 @@ class ForensicExplainer:
                 report["security"]["verdict"] = "Restricted Entity. Excluded from secure identifier profiles (UAX #31)."
                 
         elif id_stat == "Allowed":
-            # Upgrade "Standard Literal" to specific endorsement
             if report["security"]["verdict"] == "Standard Literal. Safe for general interchange.":
                 if id_type and "Technical" in id_type[0]:
-                    report["security"]["verdict"] = "Technical Syntax. Valid in specialized contexts (Math/Programming)."
+                    report["security"]["verdict"] = "Technical Syntax. Valid in specialized contexts."
                 else:
-                    # Softer claim ("Universally accepted" -> "Allowed in standard profiles")
                     report["security"]["verdict"] = "Verified Identifier. Allowed in standard secure profiles (UAX #31)."
 
-        # 2. IDNA Protocol (Network Safety)
+        # 2. IDNA Protocol
         if idna == "disallowed":
             report["security"]["badges"].append("NO-DNS")
-            # Escalate to NOTE/WARN to reflect network ban
-            # We don't force WARN globally if it's safe in code, but we note the protocol violation.
             if _is_below("WARN"):
-                 # Only overwrite if we are currently SAFE/NOTE. 
-                 # If we are already WARN (Restricted), we keep that message or append.
                  if report["security"]["level"] == "SAFE":
                      report["security"]["level"] = "NOTE"
-                     report["security"]["verdict"] = "Protocol Violation. Strictly banned in network hostnames (IDNA2008)."
+                     report["security"]["verdict"] = "Protocol Violation. Strictly banned in network hostnames."
                  else:
-                     # We are already WARN/CRIT. Append context if meaningful.
                      if "Protocol Violation" not in report["security"]["verdict"]:
                           report["security"]["verdict"] += " Also banned in IDNA2008." 
 
@@ -5020,386 +4970,162 @@ class ForensicExplainer:
         elif idna in ("mapped", "ignored"):
             report["security"]["badges"].append("MAPPED")
 
-        # 3. Spoofing (Confusables) - [Anchor Protection Logic]
+        # 3. Spoofing
         if confusables:
             if is_ascii:
-                # ASCII Anchor: The "Gold Standard" of trust
                 report["security"]["badges"].append("CONFUSABLES")
-                # Append info, don't overwrite blindly
                 if "Standard" in report["security"]["verdict"] or "Allowed" in report["security"]["verdict"]:
-                     report["security"]["verdict"] = f"Verified Anchor. Standard ASCII baseline for spoofing detection ({len(confusables)} imitators)."
+                     report["security"]["verdict"] = f"Verified Anchor. Standard ASCII baseline ({len(confusables)} imitators)."
             else:
-                # Non-ASCII Imitator: The Risk
-                # Monotonic escalation
                 report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
                 report["security"]["badges"].append("SPOOF")
-                
-                # Composite Verdict: Don't hide previous warnings (like Restricted)
-                # If we are already WARN/RESTRICTED, we combine.
                 base_msg = report["security"]["verdict"]
                 if "Restricted" in base_msg:
                     report["security"]["verdict"] = f"Restricted Visual Impersonator. High-risk confusable."
                 else:
-                    report["security"]["verdict"] = f"Visual Impersonator. High-risk confusable; distinct from safe ASCII anchor."
+                    report["security"]["verdict"] = f"Visual Impersonator. High-risk confusable."
 
-        # 4. Critical Hazards (Active Weaponization)
+        # 4. Critical Hazards
         if "Bidi_Control" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "CRITICAL")
             report["security"]["badges"].append("BIDI")
-            report["security"]["verdict"] = "Syntactic Injection Risk. Explicit directional control (Trojan Source vector)."
+            report["security"]["verdict"] = "Syntactic Injection Risk. Explicit directional control."
             
         if "Default_Ignorable_Code_Point" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "SUSPICIOUS")
             report["security"]["badges"].append("INVISIBLE")
-            
-            # Robust Rank Comparison
             if _is_below("CRITICAL"):
                 report["security"]["verdict"] = "Obfuscation Artifact. Invisible character restricted in secure contexts."
 
         if "Deprecated" in props:
             report["security"]["level"] = self._escalate(report["security"]["level"], "WARN")
             report["security"]["badges"].append("DEPRECATED")
-            # Robust Rank Comparison
             if _is_below("CRITICAL"):
-                report["security"]["verdict"] = "Deprecated Standard. Obsolete character; usage discouraged."
+                report["security"]["verdict"] = "Deprecated Standard. Obsolete character."
 
         # --- D. NARRATIVE HIGHLIGHTS ---
-        
-        # 1. Identity (Forensic Taxonomy)
-        # We layer Category, Block, and Functional Properties to define the "True Self".
-        
-        # A. Classification
         id_notes = [f"{gc_name} ({gc_code})"]
-        
-        # B. Provenance (Block is critical for distinguishing "A" from "Fullwidth A")
         blk_name = rec.get("blk", "Unknown Block")
         id_notes.append(f"Block: {blk_name}")
-        
-        # C. Script Context (Already computed with extensions)
         id_notes.append(f"Script: {script_detail}")
         
-        # D. Functional Identity (What does it DO?)
-        # Priority 1: Special Ontology (The Void/Broken/Internal)
         if gc_code == "Co":
-            id_notes.append("Function: Private Use Area (Local meaning only)")
-            id_notes.append("Risk: Non-interoperable. Meaning is undefined without specific font agreement (Steganography Risk).")
+            id_notes.append("Function: Private Use Area. Steganography Risk.")
         elif gc_code == "Cs":
-            id_notes.append("Function: Surrogate (Broken Encoding Artifact)")
-            id_notes.append("CRITICAL: Invalid Unicode scalar. Breaks UTF-8/JSON interchange; proves upstream data corruption.")
+            id_notes.append("Function: Surrogate. Broken Encoding Artifact.")
         elif "Noncharacter_Code_Point" in props:
-            id_notes.append("Function: Noncharacter (Internal Use Only)")
-
-        # Priority 2: Format & Control Taxonomy (Functionality)
+            id_notes.append("Function: Noncharacter.")
         elif "Bidi_Control" in props:
-            id_notes.append("Class: Bidi Control (Directionality modifier)")
+            id_notes.append("Class: Bidi Control.")
         elif "Join_Control" in props:
-            id_notes.append("Class: Join Control (Rendering glue)")
+            id_notes.append("Class: Join Control.")
         elif "Variation_Selector" in props:
-            id_notes.append("Class: Variation Selector (Glyph modifier)")
+            id_notes.append("Class: Variation Selector.")
         elif "Default_Ignorable_Code_Point" in props:
-            id_notes.append("Class: Ignorable Format Control (Invisible)")
-
-        # Priority 3: Standard Functional Properties (Existing Logic)
-        # [UTR #25] Math Analysis: Distinguish "Fake Text" from "Real Math"
+            id_notes.append("Class: Ignorable Format Control.")
         elif "Math" in props:
-            if gc_code in ("Lu", "Ll", "Nd"):
-                id_notes.append("Function: Mathematical Alphanumeric (UTR #25)")
-                id_notes.append("Semantically distinct from ASCII; ignores standard case-folding")
-            else:
-                id_notes.append("Function: Mathematical Operator")
-
-        # [UTS #18] Whitespace Analysis: The Regex Trap
+            id_notes.append("Function: Mathematical Symbol.")
         elif "White_Space" in props:
-            id_notes.append("Function: Structural Whitespace")
-            
-            # RL1.6: Line Separator (2028) & Para Separator (2029)
-            # These break the "dot matches all" assumption in regex.
+            id_notes.append("Function: Structural Whitespace.")
             if gc_code in ("Zl", "Zp"):
-                layout_notes.append("Regex Risk: Acts as a Line Boundary in Unicode (UTS #18) but often matches '.' in regex.")
+                layout_notes.append("Regex Risk: Acts as Line Boundary but matches '.' in regex.")
 
-        # [Forensic Nuance] Structural Modifiers vs Standard Text
-        elif "Alphabetic" in props:
-            if gc_code == "Lm":
-                id_notes.append("Function: Modifier Letter (Spacing). Affects layout; frequent vector for 'homoglyph-adjacent' spoofing.")
-            else:
-                pass # Implicit for standard letters (Ll, Lu, Lo), reduce noise
-
-        # [UTR #36] Global Syntax Mimicry Detector (The Catch-All)
-        # This runs for Math, Punctuation, and Symbols. 
-        # Logic: If it is a Symbol/Punctuation but NOT reserved syntax, it is a potential spoof.
-        # We explicitly exclude ASCII to prevent flagging standard operators (+, ., /) as mimics of themselves.
         if not is_ascii and "Pattern_Syntax" not in props:
             if "Math" in props or gc_code.startswith("P") or gc_code.startswith("S"):
                  if id_stat == "Allowed":
-                     id_notes.append("Risk: Syntax Mimic (UTR #36). Visually resembles an executable operator but parses as a symbol.")
+                     id_notes.append("Risk: Syntax Mimic (UTR #36).")
 
-        report["highlights"].append({
-            "label": "Identity",
-            "text": ". ".join(id_notes) + "."
-        })
+        report["highlights"].append({"label": "Identity", "text": ". ".join(id_notes) + "."})
 
-        # 2. Directionality (Forensic Flow Logic)
+        # Directionality
         mirror = rec.get("mirror")
-        bp = rec.get("bp") # V7+ Data: Bidi Paired Bracket {"p": "0029", "t": "c"}
-        
+        bp = rec.get("bp")
         dir_notes = [f"{bc_pretty} ({bc_code})"]
         
-        # A. Flow Mechanics (Physics)
-        if bc_code in ("L", "R", "AL"):
-            dir_notes.append("Strong directionality (Forces text flow)")
-        elif bc_code in ("EN", "AN"):
-            dir_notes.append("Weak directionality (Numeric)")
-        elif bc_code in ("WS", "ON", "ES", "CS", "ET", "NSM"):
-            dir_notes.append("Neutral (Inherits surrounding direction)")
+        if bc_code in ("L", "R", "AL"): dir_notes.append("Strong directionality")
+        elif bc_code in ("EN", "AN"): dir_notes.append("Weak directionality")
+        elif bc_code in ("WS", "ON", "ES", "CS", "ET", "NSM"): dir_notes.append("Neutral")
             
-        # B. Control Vectors (Security)
         if "Bidi_Control" in props:
-            if bc_code in ("RLO", "LRO"):
-                dir_notes.append("CRITICAL: Forces override (Trojan Source vector)")
-            elif bc_code in ("RLE", "LRE"):
-                dir_notes.append("Legacy embedding start")
-            elif bc_code in ("RLI", "LRI", "FSI"):
-                dir_notes.append("Isolate start (Isolates text from context)")
-            elif bc_code in ("PDF", "PDI"):
-                dir_notes.append("Scope terminator")
+            if bc_code in ("RLO", "LRO"): dir_notes.append("CRITICAL: Forces override (Trojan Source vector)")
+            elif bc_code in ("RLI", "LRI", "FSI"): dir_notes.append("Isolate start")
+            elif bc_code in ("PDF", "PDI"): dir_notes.append("Scope terminator")
 
-        # C. Pairing Logic (Syntax)
         if bp:
             ptype = "Open" if bp['t'] == 'o' else "Close"
             dir_notes.append(f"Paired Bracket: {ptype} (Matches U+{bp['p']})")
         elif mirror:
-            dir_notes.append(f"Mirrored Glyph (Visually flips in RTL)")
+            dir_notes.append(f"Mirrored Glyph")
 
-        report["highlights"].append({
-            "label": "Direction",
-            "text": ". ".join(dir_notes) + "."
-        })
+        report["highlights"].append({"label": "Direction", "text": ". ".join(dir_notes) + "."})
 
-       # 3. Numeric Physics (Parser Safety)
+        # Numeric Physics
         nt = rec.get("nt")
         nv = rec.get("nv")
-        
         if nt and nt != "None":
-            # Default to raw value if missing
             num_desc = "Numeric"
-            safety_note = ""
+            if nt == "De": num_desc = "Decimal Digit"
+            elif nt == "Di": num_desc = "Typographic Digit" 
+            elif nt == "Nu": num_desc = "Numeric Symbol"
+            report["highlights"].append({"label": "Numeric", "text": f"{num_desc}. Value: {nv}."})
 
-            if nt == "De":
-                # Decimal: 0-9 (Safe for int parsing in most engines)
-                num_desc = "Decimal Digit"
-            elif nt == "Di":
-                # Digit: Superscripts, Circled (²). visually numeric, logically text.
-                num_desc = "Typographic Digit" 
-                safety_note = " (Not a standard integer; parser risk)."
-            elif nt == "Nu":
-                # Numeric: Fractions, Roman (½). Symbolic.
-                num_desc = "Numeric Symbol"
-                safety_note = " (Non-decimal)."
-
-            report["highlights"].append({
-                "label": "Numeric",
-                "text": f"{num_desc}. Value: {nv}.{safety_note}"
-            })
-
-        # 4. Normalization Structure (SOTA Wired: Pure Physics + Rich Descriptions)
-        
+        # Normalization Physics
         norm_notes = []
-        
         try:
-            char_raw = chr(cp_int)
             nfc_val = unicodedata.normalize('NFC', char_raw)
-            
-            # Use robust normalizer. Handles manual patches like ⓼ -> 8
-            nfkc_val = normalize_extended(char_raw) 
-            
-            if char_raw == nfkc_val:
-                # Case A: Physically Stable (e.g. 'A')
-                norm_notes.append("Stable. Preserves identity under NFKC normalization")
-                
-            elif nfc_val == nfkc_val:
-                # Case B: Canonical Equivalence (e.g. 'A' + '´' -> 'Á')
-                # NFC matches NFKC, so no compatibility loss occurred.
-                norm_notes.append("Canonically Equivalent. Decomposes to base characters")
-                
+            if char_raw == nfkc:
+                norm_notes.append("Stable. Preserves identity under NFKC.")
+            elif nfc_val == nfkc:
+                norm_notes.append("Canonically Equivalent.")
             else:
-                # Case C: Compatibility Mutation (e.g. '⓼' -> '8')
-                # NFC differs from NFKC. This proves structural transformation.
-                
-                # Restore the Rich Map for human-readable details
-                type_map = {
-                    "Can": "Canonical (Equivalence)",
-                    "Com": "Compatibility (Formatting)",
-                    "Compat": "Compatibility",
-                    "Circle": "Circled Style",
-                    "Super": "Superscript",
-                    "Sub": "Subscript",
-                    "Font": "Font Variant",
-                    "Wide": "Fullwidth",
-                    "Narrow": "Halfwidth",
-                    "Small": "Small Variant",
-                    "Square": "Squared Layout",
-                    "Fraction": "Fractional Composition"
-                }
-                
-                # If DB missed the tag, force a generic one.
-                # If DB has "Circle", we keep "Circle".
                 effective_dt = dt if dt else "Compat"
-                
-                # Update the variable so the Domain Lens sees it later!
-                dt = effective_dt 
-                
-                human_type = type_map.get(effective_dt, effective_dt.capitalize())
-                norm_notes.append(f"Unstable under NFKC. Compatibility mapping ({human_type})")
-                
-        except Exception as e:
-            norm_notes.append("Normalization check failed (Runtime Error).")
+                norm_notes.append(f"Unstable under NFKC. Compatibility mapping ({effective_dt})")
+        except:
+            pass
+        report["highlights"].append({"label": "Structure", "text": ". ".join(norm_notes) + "."})
 
-        report["highlights"].append({
-            "label": "Structure",
-            "text": ". ".join(norm_notes) + "."
-        })
-
-        # 5. Security Profile (V4.15: Unified UAX #31 Logic)
+        # Security Profile Narrative
         sec_notes = [f"{id_stat}"]
-
-        # A. Immutable Syntax (The "Constitution" - UAX #31)
-        # These are permanently reserved across all Unicode versions.
-        # They supersede standard identifier rules.
         if "Pattern_Syntax" in props:
-            # [PATCHED STRINGS] Removed redundant "Restricted. " prefix
-            if "Emoji" in props or "Extended_Pictographic" in props:
-                 sec_notes.append("Non-Identifier Symbol (Emoji/Pictograph). Reserved syntax.")
-            else:
-                 sec_notes.append("Immutable Pattern Syntax (Permanently reserved for operators/grammar)")
-        
+            sec_notes.append("Immutable Pattern Syntax.")
         elif "Pattern_White_Space" in props:
-            # Use gc_code (Zl=Line Sep, Zp=Para Sep) to detect Spoofing
-            if gc_code in ("Zl", "Zp"):
-                code_status = "CRITICAL"
-                code_msg = "Line Break Spoofing Risk (UTS #55). Visually splits lines but parsed as whitespace."
-                report["security"]["badges"].append("SPOOF")
-            else:
-                code_status = "NOTE"
-                code_msg = "Syntactic Whitespace. Structural separator; cannot be part of an identifier."
-
-            # Apply the calculated status and message
-            report["security"]["level"] = self._escalate(report["security"]["level"], code_status)
-            sec_notes.append(code_msg)
-
-        # B. Identifier Type Context (Only relevant if NOT Syntax)
-        elif id_stat == "Allowed" and id_type:
-            p_type = id_type[0].capitalize().replace("_", " ")
-            type_desc = f"Type: {p_type}"
-            
-            # Forensic Translation of Types
-            if "Technical" in p_type:
-                type_desc += " (Valid in technical contexts; caution in general text)"
-            elif "Limited" in p_type:
-                type_desc += " (Valid only in specific contexts like hashtags)"
-            
-            sec_notes.append(type_desc)
-
-        # C. Anchor Logic (Spoofing Defense)
-        # Defines the character's role in the "Trust Chain"
-        if id_stat == "Allowed":
-            if is_ascii:
-                sec_notes.append("Standard ASCII baseline for spoofing checks")
-            elif "Recommended" in (t.capitalize() for t in id_type):
-                # Don't call it "Recommended" if it's highly confusable
-                if report["security"]["level"] in ("SUSPICIOUS", "CRITICAL"):
-                    sec_notes.append("Technically allowed, but High Spoofing Risk (Confusable Cluster).")
-                else:
-                    sec_notes.append("Stable international identifier character")
-
-        # D. Restriction Forensics (The "Why")
+            sec_notes.append("Syntactic Whitespace.")
         elif id_stat == "Restricted":
-            # If it wasn't caught by Pattern Syntax, why is it restricted?
-            if "Compat" in str(rec.get("dt", "")):
-                sec_notes.append("Restricted due to Compatibility Mapping (NFKC Risk)")
-            elif "Default_Ignorable_Code_Point" in props:
-                sec_notes.append("Restricted due to Invisibility (Ignorable)")
-            elif not "Pattern" in str(sec_notes): 
-                sec_notes.append("Excluded from secure identifier profiles")
+            sec_notes.append("Excluded from secure identifier profiles.")
+        elif id_stat == "Allowed":
+            sec_notes.append("Allowed in standard profiles.")
 
-        report["highlights"].append({
-            "label": "Security",
-            "text": ". ".join(sec_notes) + "."
-        })
-        
-        # 6. Layout (Forensic Geometry & Spoofing Risks)
-        
+        report["highlights"].append({"label": "Security", "text": ". ".join(sec_notes) + "."})
+
+        # Layout
         lb_code = rec.get("lb", "XX")
-        # Handle case where vocab might be missing
         lb_raw_name = self._get_vocab("lb", lb_code) or "Unknown"
-        lb_name = lb_raw_name.replace("_", " ")
+        layout_notes.append(f"Line Break: {lb_raw_name.replace('_', ' ')}")
         
         ea_code = rec.get("ea", "N")
+        if ea_code in ("F", "W"): layout_notes.append("Visual Width: Fullwidth")
+        elif ea_code == "A": layout_notes.append("Visual Width: Ambiguous (CLI Risk)")
+        
         vo_code = rec.get("vo", "R")
-        # A. Line Break (Wrapping Logic)
-        if lb_code == "BN":
-            # Explicitly identify Boundary Neutral (RLO/LRO)
-            layout_notes.append(f"Line Break: Boundary Neutral (Ignored during wrapping; behaves like format control)")
-        elif lb_code in ("AI", "XX"):
-            layout_notes.append(f"Line Break: {lb_name} (Context-dependent wrapping)")
-        elif lb_code in ("GL", "WJ", "ZW", "CM"):
-            layout_notes.append(f"Line Break: {lb_name} (Prohibits wrapping)")
-        else:
-            layout_notes.append(f"Line Break: {lb_name}")
+        if vo_code in ("Tr", "Tu"): layout_notes.append("Orientation: Transformed (Rotated 90°).")
 
-        # B. Width (CLI Spoofing Physics)
-        # Defines how the character renders in monospaced terminals.
-        if ea_code in ("F", "W"):
-            layout_notes.append("Visual Width: Fullwidth (Consumes 2 columns)")
-        elif ea_code == "A":
-            # [SECURITY RISK] Ambiguous width is the #1 vector for CLI spoofing
-            layout_notes.append("Visual Width: Ambiguous (1 or 2 columns; risk of terminal misalignment)")
-        elif ea_code == "H":
-            layout_notes.append("Visual Width: Halfwidth (Narrow)")
-        elif ea_code == "Na":
-            pass # Explicit Narrow is standard, no comment needed
-            
-        # C. Verticality (Rotation Risks)
-        # [UAX #50] Detect Rotation Spoofing
-        if vo_code in ("Tr", "Tu"):
-             layout_notes.append("Orientation: Transformed (Rotated 90°).")
-             layout_notes.append("Risk: Delimiter spoofing in horizontal text (mimics pipes/slashes).")
+        report["highlights"].append({"label": "Layout", "text": ". ".join(layout_notes) + "."})
 
-        report["highlights"].append({
-            "label": "Layout",
-            "text": ". ".join(layout_notes) + "."
-        })
-
-        # 7. Timeline (Forensic Rendering Context)
+        # Timeline
         age_val = rec.get("age", "NA")
         time_msg = f"Introduced in Unicode {age_val}."
-        
-        try:
-            # Heuristic: Unicode 14.0+ (2021+) is "Modern".
-            # Risk: Likely to render as a missing glyph (Box/Question Mark) on older systems.
-            if float(age_val) >= 14.0:
-                time_msg = f"Recent addition (Unicode {age_val}). Rendering support may vary (Glyph Risk)."
-            elif float(age_val) <= 6.0:
-                time_msg = f"Legacy standard (Unicode {age_val}). Universally supported."
-        except:
-            pass # Keep default message if Age is "NA" or non-numeric
+        report["highlights"].append({"label": "Timeline", "text": time_msg})
 
-        report["highlights"].append({
-            "label": "Timeline",
-            "text": time_msg
-        })
-
-        # Pass physics down so lenses can see Cluster Complexity (Atomic vs Composite)
-        # Added id_type to arguments
+        # --- E. BUILD LENSES ---
         self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt, id_type, physics)
         
-        # --- F. SYNTHESIS (Narrative Intelligence) ---
-        # Synthesis runs last so it sees all computed lens states
+        # --- F. SYNTHESIS ---
         report["synthesis"] = self._synthesize(report, cp_int, dt)
 
         # --- G. CONTEXT NOTES ---
-        if rec["aliases"]:
+        if rec.get("aliases"):
             report["context"].append(f"Aliases: {', '.join(rec['aliases'][:3])}")
-        for note in rec["notes"]:
+        for note in rec.get("notes", []):
             report["context"].append(note)
 
         return report
