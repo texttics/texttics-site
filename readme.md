@@ -2484,3 +2484,42 @@ The **Character Inspector** now exposes this data directly:
 * **Identity:** Displays specific Math Class (e.g., `Math: RELATION`) instead of generic Category.
 * **Layout:** Displays `ORIENTATION: ROTATED (R)` or `UPRIGHT (U)`.
 * **Timeline:** Adds **"Legacy Carrier"** warning for relevant Emojis.
+  
+---
+
+## 🛡️ Addendum #15: The "Forensic Saturation" Upgrade (Stage 2.0 / Unicode 17.0)
+
+**Session Goal:** To transition the tool from **Binary Judgment** (Safe/Unsafe) to **Context-Aware Policy**, achieving full compliance with the hardened requirements of **Unicode 17.0**. We eliminated dependency on the browser's internal Python runtime version by implementing a "Zero-Dependency" supply chain that directly ingests authoritative forensic datasets.
+
+### 1. The "Han Pardon" & Identifier Policy (Gap 1)
+We resolved the "False Positive Storm" introduced by Unicode 17.0's restriction of 78,000+ CJK characters.
+
+* **The Problem:** Unicode 17.0 reclassified vast swathes of Han Ideographs from "Allowed" to "Restricted" based on rarity, not security risk.
+* **The Solution:** We implemented a **Tertiary Policy Engine** in the Identifier Auditor.
+    * **Allowed:** Standard characters (Green).
+    * **Restricted (Malicious):** Syntax, Emojis, and technical symbols (Red/Critical).
+    * **Uncommon (Pardoned):** Rare Han characters (Blue/Note).
+* **Forensic Value:** This ensures Chinese usernames are treated with the same nuance as Latin ones, distinguishing between "Rare" (Actuarial Risk) and "Illegal" (Security Risk).
+
+### 2. Context-Aware Orthography Defense (Gaps 3 & 5)
+We moved beyond static whitelists to **State-Based Fracture Analysis**. The "Fracture Scanner" now understands that "Invisible" does not always mean "Malicious."
+
+* **The "Hebrew Defense" (CGJ):** The engine now permits `U+034F` (Combining Grapheme Joiner) *if and only if* it appears between Hebrew or Latin characters, where it is required for correct rendering/orthography. In all other contexts (e.g., inside digits), it remains flagged as a **CRITICAL** token fracture.
+* **Complex Script Expansion:** Added **Tai Yo** (Unicode 17.0) to the "Persian Defense" whitelist, ensuring that ZWJ/ZWNJ shaping controls are respected for this new complex script.
+
+### 3. Deep Physics: Financial & Geometric (Gaps 5 & 6)
+We expanded the "Physics Engine" to detect threats that alter value or orientation without changing the underlying code point skeleton.
+
+* **Financial Integrity Engine (Unihan):**
+    * **The Gap:** Standard parsers ignore CJK "Banker's Numerals" (e.g., `壹` = 1, `万` = 10,000).
+    * **The Fix:** We ingested `Unihan_NumericValues.txt` to build a **Shadow Calculator**. The tool now sums the *actual* mathematical value of the text, exposing "Financial Spoofing" attacks where ideographs mask numeric payloads.
+* **Geometric Rotation Detector:**
+    * **The Threat:** Variation Selectors that rotate glyphs 90° (e.g., changing a Vertical Bar to a Horizontal Dash).
+    * **The Fix:** We parse `StandardizedVariants.txt` descriptions to flag **"Geometric Drift"**—characters whose visual orientation contradicts their logical identity.
+
+### 4. Layout & Protocol Hardening
+* **Unambiguous Hyphens (Gap 2):** Integrated the new **`HH`** (Unambiguous Hyphen) Line Break class to prevent terminal line-wrapping attacks.
+* **Source Code Physics (UTS #55):** Implemented a specialized scanner for **"Line Break Injection"** inside comments (`//` or `#`). This detects **Trojan Source** attacks where code is visually commented out but logically executed by the compiler due to invisible `LS`/`PS` terminators.
+
+### 5. Supply Chain "Zero-Dependency" Model
+We severed the final link to the browser's Python version. The tool now fetches and parses **40+** raw UCD files directly. This guarantees that **Text...tics** always operates on the cutting edge of Unicode security (currently v17.0), even if the user's browser runtime is years out of date.
