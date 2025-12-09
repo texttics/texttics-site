@@ -18940,7 +18940,7 @@ def update_verification(event=None):
          update_cell("vm-confusable-class", "INTERNAL INJECTION", color_override="#ef4444")
 
 # Interaction Handlers
-
+LAST_RENDERED_IDX = -1
 @create_proxy
 def inspect_character(event):
     """
@@ -18949,6 +18949,7 @@ def inspect_character(event):
     - Atomic Physics: Uses base_char for unicodedata calls to fix 'bidirectional' errors.
     - Type Safety: Guards against Explainer returning strings/errors.
     """
+global LAST_RENDERED_IDX
     try:
         text_input = document.getElementById("text-input")
         if text_input.classList.contains("reveal-active"):
@@ -18961,6 +18962,7 @@ def inspect_character(event):
         text = str(text_input.value)
         if not text:
             render_inspector_panel(None)
+            LAST_RENDERED_IDX = -1
             return
     
         # 1. Map DOM Index to Python Index (Logical Index)
@@ -18989,6 +18991,11 @@ def inspect_character(event):
         if python_idx >= len(text):
             render_inspector_panel(None)
             return
+        
+        # --- STATE CHECK: INERTIA FIX ---
+        if python_idx == LAST_RENDERED_IDX:
+            return
+        LAST_RENDERED_IDX = python_idx
         
         # 2. Hardened Segmentation
         start_search = max(0, python_idx - 50)
