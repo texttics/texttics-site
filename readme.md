@@ -282,13 +282,18 @@ The application is a pure, serverless, single-page web application. The logic is
 
 * **`index.html`**: A single, semantic HTML5 file that defines the "skeleton" of the lab instrument. It uses ARIA roles for all components to ensure full accessibility.
 * **`styles.css`**: A single, responsive CSS3 stylesheet that provides the clean, information-dense "lab instrument" aesthetic.
-* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (`pyodide-http`) and, crucially, the list of all **31** Unicode data files to be pre-fetched, which are grouped by purpose:
-    * **Core Profile (`Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`)**
-    * **Shape Profile (`LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`)**
-    * **Integrity Profile (`PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`)**
-    * **Specialized Profile (`StandardizedVariants.txt`, `DerivedCombiningClass.txt`, `DerivedDecompositionType.txt`, `DerivedNumericType.txt`, `BidiBrackets.txt`, `BidiMirroring.txt`)**
-    * **Threat-Hunting (`confusables.txt`, `IdentifierType.txt`, `IdentifierStatus.txt`, `intentional.txt`)**
-    * **UTS #51 Emoji Profile (`emoji-sequences.txt`, `emoji-zwj-sequences.txt`, `emoji-data.txt`, `emoji-test.txt`, `emoji-variation-sequences.txt`)**
+* **`pyscript.toml`**: The PyScript configuration file. It lists the required Python packages (`pyodide-http`) and, crucially, the manifest of all **52** Unicode data files. These are pre-fetched to construct a self-contained "Ground Truth" environment, grouped by forensic layer:
+    * **Core Profile:** `Blocks.txt`, `DerivedAge.txt`, `Scripts.txt`, `ScriptExtensions.txt`.
+    * **Shape & Layout:** `LineBreak.txt`, `WordBreakProperty.txt`, `SentenceBreakProperty.txt`, `GraphemeBreakProperty.txt`, `EastAsianWidth.txt`, `VerticalOrientation.txt`.
+    * **Integrity & Syntax:** `PropList.txt`, `DerivedCoreProperties.txt`, `DoNotEmit.txt`, `CompositionExclusions.txt`, `DerivedNormalizationProps.txt`, `DerivedBinaryProperties.txt`, `PropertyValueAliases.txt`.
+    * **Threat-Hunting:** `confusables.txt`, `IdentifierType.txt`, `IdentifierStatus.txt`, `intentional.txt`, `inverse_confusables.json`, `ascii_confusables.json`.
+    * **UTS #51 Emoji Powerhouse:** `emoji-sequences.txt`, `emoji-zwj-sequences.txt`, `emoji-data.txt`, `emoji-test.txt`, `emoji-variation-sequences.txt`, `EmojiSources.txt` (Legacy Carrier).
+    * **Network Protocols:** `IdnaMappingTable.txt` (UTS #46), `Idna2008.txt` (RFC 5892).
+    * **Foundation Layer (The "Saturation" Patch):** Files that override the browser's Python runtime to ensure Unicode 17.0 compliance: `DerivedBidiClass.txt`, `DerivedGeneralCategory.txt`, `CaseFolding.txt`, `NameAliases.txt`, `NormalizationCorrections.txt`.
+    * **Universal Physics (Stage 1.9 Engines):** Advanced structural data for specific vectors:
+        * **Complex Scripts:** `HangulSyllableType.txt` (Jamo Gap), `DerivedJoiningType.txt` (Cursive Fracture), `IndicPositionalCategory.txt`, `IndicSyllabicCategory.txt` (Indic Structural Invalidity).
+        * **Spoofing & Steganography:** `EquivalentUnifiedIdeograph.txt` (Radical Spoofing), `IVD_Sequences.txt` (Stego), `NushuSources.txt` (Tofu Tunneling).
+        * **Logic & Math:** `MathClassEx-15.txt` (Syntax Masquerade), `Unihan_NumericValues.txt` (Financial Spoofing), `NamedSequences.txt` (Entity Gap).
 * **`app.py`**: The Python "brain." This file contains all the application's logic.
     * It defines all data-loading, computation, and rendering functions.
     * It contains the main `update_all` orchestrator.
