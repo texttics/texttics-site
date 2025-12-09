@@ -2546,3 +2546,54 @@ Solved critical UI thrashing and crash bugs during deep inspection.
 * **State-Aware Inspector:** Implemented `LAST_RENDERED_IDX` tracking to prevent the Inspector from re-rendering (and closing detail panels) when clicking inside the tool itself.
 * **Logic Repair:** Fixed a `NameError` crash in `ForensicExplainer` that occurred when analyzing characters absent from the static database (e.g., raw combining marks).
 * **Flexbox Repair:** Fixed a CSS overflow bug in the `col-structure` that caused the Component Table to vanish when the Atomic Stack was expanded.
+
+---
+
+## 🛡️ Update: Stage 2.0 (Forensic Saturation & Physics)
+
+**Focus:** Universal Physics, Normative Compliance, and Policy Separation.
+
+This update transitions the analysis model from **Property Detection** (checking if a flag exists) to **Physical Simulation** (measuring how characters interact with time, space, and parsers). It resolves five specific functional gaps identified in the "Standard Model" of Unicode analysis.
+
+### 1. New Physics Sensors (Block 6)
+We implemented five deterministic sensors that measure abstract Unicode properties as physical dimensions.
+
+* **Cosmology Sensor (Time):**
+    * **Function:** `scan_temporal_anomalies`
+    * **Logic:** Iterates text to identify characters with an `Age` property greater than `SAFE_AGE_THRESHOLD` (set to 13.0).
+    * **Purpose:** Detects "Future Particles"—characters likely to render as Tofu (`.notdef`) on LTS systems, creating an interpretation gap between sender and receiver.
+
+* **Mass Sensor (Semantics):**
+    * **Function:** `calculate_global_sum_v2`
+    * **Logic:** Calculates a "Divergence" metric by comparing the sum of **Visible Mass** (ASCII digits 0-9) against **Total Mass** (derived from `Unihan_NumericValues.txt` and Unicode numeric properties).
+    * **Purpose:** Detects "Numeric Masquerade," where characters like CJK Numerals (`壹`, `万`) or Roman Numerals (`Ⅻ`) carry mathematical value but bypass standard digit filters.
+
+* **Geometry Sensor (Orientation):**
+    * **Function:** `scan_geometric_anomalies`
+    * **Logic:** Performs a contextual check for Vertical-only glyphs (`Vertical_Orientation=U/Tr`) appearing within strictly `HORIZONTAL_SCRIPTS` (e.g., Latin, Greek). Also detects explicit rotation via Variation Selectors.
+    * **Purpose:** Identifies layout disorientation risks ("Wallbuilder" patterns) where vertical glyphs force line-height expansion or clipping in horizontal UI inputs.
+
+* **Capacity Sensor (Compliance):**
+    * **Function:** `analyze_nsm_overload` (Upgraded)
+    * **Logic:** Implements a strict state machine to enforce **UAX #15 (Stream-Safe Text Format)**. It counts contiguous non-starters (CCC != 0) regardless of grapheme boundaries.
+    * **Purpose:** Distinguishes between visual "Zalgo" (heuristic noise) and "Protocol Violation" (normative breach >30 marks), which causes buffer overflows in conformant normalization implementations.
+
+* **Spin Sensor (Precision):**
+    * **Function:** `scan_vs_topology` (Upgraded)
+    * **Logic:** Cross-references `StandardizedVariants.txt` to detect specific base+selector combinations.
+    * **Purpose:** Detects "Semantic Spin"—cases where a Variation Selector changes the mathematical meaning of a symbol (e.g., "Slanted Equal To") rather than just its font style.
+
+### 2. Policy Auditors (Block 7)
+We enforced a strict separation between **Measurement** (Physics) and **Verdict** (Policy). The scoring engine now uses modular auditors to interpret sensor data without hyperbole.
+
+* **The Historian (`audit_cosmology`):** Flags temporal anomalies as `INTERPRETATION_GAP` (Warn).
+* **The Accountant (`audit_financials`):** Flags mass divergence as `SEMANTIC_AMBIGUITY` (Warn).
+* **The Architect (`audit_geometry`):** Flags orientation mismatches as `LAYOUT_PHYSICS` (Warn) or `VISUAL_SPOOFING` (High).
+* **Integrity Patch:** UAX #15 violations are now routed to the **Integrity Ledger** as `FATAL` errors (Score 40), reflecting data corruption rather than malice.
+
+### 3. Supply Chain & Data (Block 4)
+* **Unified Variant Parser:** Replaced dual-logic parsers with a single `_parse_standardized_variants` function that loads both valid sequences (Identity) and their descriptions (Physics) into `DATA_STORES`.
+* **Zero-Dependency:** The tool now directly ingests `StandardizedVariants.txt` and `Unihan_NumericValues.txt`, removing reliance on the browser's internal Python version for advanced property lookups.
+
+### 4. UI/UX Refinements
+* **Status Line Reversion:** Reverted the verbose "Calibration Certificate" status line to a concise `Input: Ready` state to maintain visual clarity and reduce cognitive load.
