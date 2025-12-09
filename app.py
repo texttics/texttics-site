@@ -18473,6 +18473,12 @@ def update_all(event=None):
             unique_invis_set.add(ord(char))
     unique_invis_count = len(unique_invis_set)
 
+    # Helper to safely check if a stat exists (handles String vs Int counts)
+    # This MUST be defined here, before toc_counts uses it.
+    def _has_data(val):
+        if isinstance(val, (int, float)): return val > 0
+        return bool(val) # Returns True for non-empty strings (e.g. "304.75")
+
     toc_counts = {
         'dual': (
             sum(1 for v in meta_cards.values() if (isinstance(v, (int, float)) and v > 0) or (isinstance(v, dict) and v.get('count', 0) > 0)) + 
@@ -18492,6 +18498,7 @@ def update_all(event=None):
         ),
         'integrity': sum(1 for row in forensic_rows if row.get('count', 0) > 0),
         'prov': (
+            # Use _has_data to prevent 'str' > 'int' crash
             sum(1 for v in prov_matrix.values() if _has_data(v.get('count', 0))) + 
             sum(1 for v in script_run_stats.values() if _has_data(v.get('count', 0)))
         ),
