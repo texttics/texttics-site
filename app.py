@@ -6762,10 +6762,9 @@ def analyze_nsm_overload(graphemes):
             cp = ord(ch)
 
             # --- 1. CCC LOOKUP (Physics) ---
-            # Try Derived first (Saturated), then Standard fallback
-            val_obj = _find_in_ranges(cp, "DerivedCombiningClass")
-            if not val_obj: 
-                val_obj = _find_in_ranges(cp, "CombiningClass")
+            # The data loader stores DerivedCombiningClass.txt under the key "CombiningClass".
+            # We query "CombiningClass" directly.
+            val_obj = _find_in_ranges(cp, "CombiningClass")
             
             ccc = 0
             if val_obj:
