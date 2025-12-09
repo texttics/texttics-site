@@ -86,6 +86,23 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
+# --- 1. COSMOLOGY (Time) ---
+# The "Compatibility Horizon." Characters newer than this may render as Tofu on LTS systems.
+# Based on common OS lifecycles (approx 3 years).
+SAFE_AGE_THRESHOLD = 13.0 
+
+# --- 2. GEOMETRY (Layout Physics) ---
+# Scripts that flow horizontally. Vertical glyphs here are "Rocks in the stream."
+# Used by scan_geometric_anomalies to detect Layout Disorientation.
+HORIZONTAL_SCRIPTS = {
+    'Latn', 'Grek', 'Cyrl', 'Arab', 'Hebr', 'Deva', 'Beng', 'Thai', 'Armn', 'Geor'
+}
+
+# --- 3. CAPACITY (Compliance) ---
+# UAX #15 Normative Limit for Stream-Safe Text.
+# Exceeding this is a Protocol Violation, not just "Zalgo".
+UAX15_MAX_NONSTARTERS = 30
+
 # File System Physics (Windows/Unix/Mac)
 FS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL", 
@@ -1892,28 +1909,6 @@ def _parse_unihan_numeric(content):
         except: pass
     return mapping
 
-def _parse_variants_descriptions(content):
-    """
-    Parses StandardizedVariants.txt to extract Descriptions.
-    Used to detect Geometric Rotation (Gap 5).
-    Format: 1313 FE00; ...; description
-    """
-    desc_map = {}
-    for line in content.splitlines():
-        if line.startswith('#') or not line.strip(): continue
-        parts = line.split(';')
-        if len(parts) < 3: continue
-        
-        try:
-            seq_str = parts[0].strip()
-            desc = parts[2].split('#')[0].strip().upper()
-            
-            # Convert hex string "1313 FE00" to tuple (4883, 65024)
-            seq_tuple = tuple(int(x, 16) for x in seq_str.split())
-            desc_map[seq_tuple] = desc
-        except: pass
-    return desc_map
-
 # The Range Parsers
 def _parse_and_store_ranges(txt: str, store_key: str):
     """Generic parser for Unicode range data files (Blocks, Age, etc.)"""
@@ -2258,34 +2253,39 @@ def _parse_bidi_brackets(txt: str):
         
     print(f"Loaded {len(ranges_list)} bidi bracket ranges.")
 
-def _parse_standardized_variants(txt: str):
-    """Parses StandardizedVariants.txt into two sets."""
-    # Create new, local sets instead of modifying the global one
-    base_set = set()
-    selector_set = set()
+def _parse_standardized_variants(content: str):
+    """
+    [Unified Parser] StandardizedVariants.txt
+    Parses both Identity (valid sequences) and Physics (Descriptions).
+    Format: 1313 FE00; ...; description
+    Returns: {(base_int, vs_int): "DESCRIPTION_STRING"}
+    """
+    variant_map = {}
     
-    for raw in txt.splitlines():
-        line = raw.split('#', 1)[0].strip()
-        if not line:
+    for line in content.splitlines():
+        if line.startswith('#') or not line.strip():
             continue
             
-        parts = line.split(';', 1)
-        if len(parts) < 2:
+        parts = line.split(';')
+        if len(parts) < 3:
             continue
         
-        hex_codes = parts[0].strip().split()
-        if len(hex_codes) == 2:
-            try:
-                base_cp = int(hex_codes[0], 16)
-                selector_cp = int(hex_codes[1], 16)
-                base_set.add(base_cp)
-                selector_set.add(selector_cp)
-            except ValueError:
-                pass
-                
-    print(f"Loaded {len(base_set)} variant base chars and {len(selector_set)} unique selectors.")
-    # Return the new local sets
-    return base_set, selector_set
+        try:
+            # 1. Parse Sequence
+            seq_str = parts[0].strip()
+            # Convert "1313 FE00" -> (4883, 65024)
+            seq_tuple = tuple(int(x, 16) for x in seq_str.split())
+            
+            # 2. Parse Description
+            # "CJK COMPATIBILITY IDEOGRAPH-2F80F" or "ROTATED 90 DEGREES"
+            desc = parts[2].split('#')[0].strip().upper()
+            
+            variant_map[seq_tuple] = desc
+        except (ValueError, IndexError):
+            continue
+            
+    print(f"Loaded {len(variant_map)} standardized variants (Unified).")
+    return variant_map
 
 # The Emoji Parsers (The "Powerhouse")
 
