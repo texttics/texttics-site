@@ -3161,8 +3161,16 @@ async def load_unicode_data():
         std_selector_set = set()
         emoji_base_set = set()
         
+        # Unified Standardized Variants Parsing
         if variants_txt: 
-            std_base_set, std_selector_set = _parse_standardized_variants(variants_txt)
+            # 1. Load the Map (Base, VS) -> Description
+            variant_map = _parse_standardized_variants(variants_txt)
+            DATA_STORES["standardized_variants"] = variant_map
+            
+            # 2. Extract Sets for Legacy Compatibility (VariantBase/VariantSelectors)
+            for base_cp, vs_cp in variant_map.keys():
+                std_base_set.add(base_cp)
+                std_selector_set.add(vs_cp)
         else:
             print("--- WARNING: StandardizedVariants.txt SKIPPED (file was empty or failed to load)")
             
@@ -3378,7 +3386,6 @@ async def load_unicode_data():
         if indic_syl_txt: DATA_STORES["IndicSyllabic"] = _parse_indic_syllabic(indic_syl_txt)
         # --- STAGE 2.0: FINANCIAL & GEOMETRIC PHYSICS ---
         if unihan_num_txt: DATA_STORES["UnihanNumeric"] = _parse_unihan_numeric(unihan_num_txt)
-        if variants_txt: DATA_STORES["VariantDescriptions"] = _parse_variants_descriptions(variants_txt)
         
         # Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
@@ -4687,7 +4694,9 @@ def scan_geometric_anomalies(t: str) -> list:
     Detects Variation Selectors that physically rotate glyphs (Visual Spoofing).
     """
     findings = []
-    var_desc_map = DATA_STORES.get("VariantDescriptions", {})
+    
+    # Use the unified store key
+    var_desc_map = DATA_STORES.get("standardized_variants", {})
     
     # Simple sliding window for Base + VS
     # (Optimized for speed over full regex)
