@@ -1141,6 +1141,7 @@ Stage 2: Heatmap Row Classes
   background-color: #fff;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .section-label {
   font-size: 0.8rem; /* Increased from 0.65rem */
@@ -1153,9 +1154,9 @@ Stage 2: Heatmap Row Classes
   letter-spacing: 0.02em; /* Slight spacing for readability */
 }
 .structure-table-wrapper {
-  flex-grow: 1;
-  overflow-y: auto; /* SCROLL RESTORED */
-  height: 100%;
+  flex-grow: 1;      /* Grow to fill available space */
+  overflow-y: auto;  /* Scroll internally if needed */
+  min-height: 0;     /* CRITICAL: Allows flex child to shrink below content size */
 }
 .structure-table {
   width: 100%;
