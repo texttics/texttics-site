@@ -10964,7 +10964,7 @@ def audit_cosmology(temporal_findings: list, threat_ledger: list):
     threat_ledger.append({
         "vector": "INTERPRETATION_GAP",
         "label": "WARN: Compatibility Risk (Future Particle)",
-        "score": 10,
+        "points": 10,
         "category": "SUSPICIOUS", # Buckets into Tier 4 (Context)
         "details": f"{desc} {note}",
         "count": count,
@@ -11005,7 +11005,7 @@ def audit_financials(mass_stats: dict, threat_ledger: list):
         threat_ledger.append({
             "vector": "SEMANTIC_AMBIGUITY",
             "label": "WARN: Numeric Masquerade",
-            "score": 15,
+            "points": 15,
             "category": "SUSPICIOUS", # Buckets into Tier 4
             "details": f"{desc} [{facts}] {note}",
             "count": count,
@@ -11047,7 +11047,7 @@ def audit_geometry(geometric_findings: list, threat_ledger: list):
         threat_ledger.append({
             "vector": "LAYOUT_PHYSICS",
             "label": "WARN: Geometric Anomaly",
-            "score": 10,
+            "points": 10,
             "category": "SUSPICIOUS", # Tier 4: Contextual
             "details": f"{desc} {note}",
             "count": count,
