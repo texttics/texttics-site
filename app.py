@@ -4688,34 +4688,130 @@ def audit_han_safety(token: str) -> list:
                 })
     return findings
 
-def scan_geometric_anomalies(t: str) -> list:
+def scan_temporal_anomalies(t: str) -> list:
     """
-    [Gap 5] Geometric Rotation Detector.
-    Detects Variation Selectors that physically rotate glyphs (Visual Spoofing).
+    [Gap 1] Cosmology Sensor (Time Travel).
+    Detects characters introduced in Unicode versions newer than the
+    Compatibility Horizon (SAFE_AGE_THRESHOLD).
+    
+    Forensic Physics:
+    These are "Future Particles" relative to the defined epoch.
+    They carry a high risk of rendering as Tofu (Empty Box) or
+    Replacement Characters on older operating systems/fonts.
     """
     findings = []
     
-    # Use the unified store key
-    var_desc_map = DATA_STORES.get("standardized_variants", {})
+    # 1. Safety Gate: Ensure Data Core is online
+    if LOADING_STATE != "READY": 
+        return findings
+
+    for i, char in enumerate(t):
+        cp = ord(char)
+        
+        # 2. Optimization: Fast-track ASCII (Always Age 1.1)
+        # This prevents thousands of unnecessary binary searches for standard text.
+        if cp < 128:
+            continue
+
+        # 3. Age Lookup (O(log N))
+        age_str = _find_in_ranges(cp, "Age")
+        
+        # 4. Temporal Comparison
+        if age_str and age_str != "NA":
+            try:
+                age_val = float(age_str)
+                
+                if age_val > SAFE_AGE_THRESHOLD:
+                    findings.append({
+                        "pos": i,
+                        "char": char,
+                        "age": age_val,
+                        "type": "FUTURE_PARTICLE",
+                        "risk": "MED", # Rendering integrity risk
+                        "desc": f"Compatibility Horizon Breach (Age {age_val}). Likely invisible on older systems."
+                    })
+            except ValueError:
+                # Handle potential future non-numeric age labels safely
+                pass
+                
+    return findings
+
+def scan_geometric_anomalies(t: str) -> list:
+    """
+    [Gap 5] Geometric Physics Sensor (Orientation & Rotation).
     
-    # Simple sliding window for Base + VS
-    # (Optimized for speed over full regex)
+    1. Contextual Check: Vertical glyphs (U/Tr) forced into Horizontal Scripts.
+       (The "Wallbuilder" Pattern).
+    2. Explicit Check: Variation Selectors that physically rotate glyphs.
+       (The "Glyph Swap" Pattern).
+    """
+    findings = []
+    if not t: return findings
+
+    # --- A. CONTEXTUAL ORIENTATION (The "Wallbuilder") ---
+    
+    # 1. Detect Dominant Script (Heuristic: Simple Majority)
+    # We ignore "Common" and "Inherited" to find the structural backbone.
+    script_counts = collections.Counter()
+    for char in t:
+        cp = ord(char)
+        # Fast Lookup
+        sc = _find_in_ranges(cp, "Scripts")
+        if sc and sc not in ("Common", "Inherited", "Unknown"):
+            script_counts[sc] += 1
+            
+    # If we have a dominant script, check if it's Horizontal
+    if script_counts:
+        dom_script = script_counts.most_common(1)[0][0]
+        
+        if dom_script in HORIZONTAL_SCRIPTS:
+            vo_map = DATA_STORES.get("VerticalPhysics", {})
+            
+            for i, char in enumerate(t):
+                cp = ord(char)
+                sc = _find_in_ranges(cp, "Scripts")
+                
+                # Skip Common chars (parens, punctuation) which adapt contextually
+                if sc in ("Common", "Inherited"): 
+                    continue
+                
+                # Lookup Orientation (Default R = Rotated/Horizontal-Safe)
+                vo = vo_map.get(cp, "R")
+                
+                # Violation: Upright (U) or Transformed (Tr) in a Horizontal stream
+                if vo in ("U", "Tr"):
+                    findings.append({
+                        "pos": i,
+                        "type": "GEOMETRIC_DISORIENTATION",
+                        "desc": f"Vertical Glyph ({vo}) in Horizontal Script ({dom_script}). Typographic risk.",
+                        "risk": "MED" 
+                    })
+
+    # --- B. VARIATION SELECTOR ROTATION (The "Glyph Swap") ---
+    # Detects sequences like (Base + VS) where the VS description implies rotation.
+    
+    var_map = DATA_STORES.get("standardized_variants", {})
     prev_cp = -1
     
     for i, char in enumerate(t):
         cp = ord(char)
-        if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
-            if prev_cp != -1:
-                seq = (prev_cp, cp)
-                desc = var_desc_map.get(seq, "")
-                
-                if "ROTATED" in desc or "SIDEWAYS" in desc:
-                    findings.append({
-                        "pos": i,
-                        "type": "GEOMETRIC_ROTATION",
-                        "desc": f"Visual Drift: {desc}",
-                        "risk": "HIGH"
-                    })
+        
+        # Check if current char is a Variation Selector (Standard or Ideographic)
+        is_vs = (0xFE00 <= cp <= 0xFE0F) or (0xE0100 <= cp <= 0xE01EF)
+        
+        if is_vs and prev_cp != -1:
+            seq = (prev_cp, cp)
+            desc = var_map.get(seq, "")
+            
+            # Keywords indicating physical rotation
+            if "ROTATED" in desc or "SIDEWAYS" in desc:
+                 findings.append({
+                    "pos": i,
+                    "type": "GEOMETRIC_ROTATION",
+                    "desc": f"Visual Rotation: {desc}",
+                    "risk": "HIGH"
+                 })
+                 
         prev_cp = cp
         
     return findings
@@ -4763,30 +4859,95 @@ def scan_source_code_physics(t: str) -> list:
 
 def calculate_global_sum_v2(t: str):
     """
-    [Gap 6] Financial Integrity Calculator (Unihan Aware).
-    """
-    unihan_map = DATA_STORES.get("UnihanNumeric", {})
-    total = 0.0
-    has_hidden = False
+    [Gap 6] Financial Physics (Mass vs Visibility) - Optimized.
     
-    for char in t:
+    Calculates:
+      1. Total Mass (Sum of all numeric values, including CJK/Roman).
+      2. Visible Mass (Sum of standard ASCII 0-9 digits).
+      3. Divergence (The difference).
+      4. Masquerade List (Detailed breakdown of hidden mass).
+      
+    Optimization:
+      - Uses local variable caching for O(N) performance.
+      - capturing Non-ASCII Decimal Digits (e.g. Arabic) which are technically 'Nd' 
+        but often break standard integer parsers.
+    """
+    # 1. Setup Data & Local Caches (Speed Optimization)
+    unihan_map = DATA_STORES.get("UnihanNumeric", {})
+    _get_numeric = unicodedata.numeric
+    _get_category = unicodedata.category
+    
+    total_mass = 0.0
+    visible_mass = 0.0
+    masquerade_list = []
+    
+    for i, char in enumerate(t):
         cp = ord(char)
+        
+        # --- A. FAST PATH: ASCII Digits (0-9) ---
+        # These are the only "Safe" mass particles in most systems.
+        if 0x30 <= cp <= 0x39:
+            val = float(cp - 0x30)
+            total_mass += val
+            visible_mass += val
+            continue
+            
+        # --- B. SLOW PATH: Unicode & Unihan ---
         val = None
         
-        # 1. Try Standard
-        try: val = unicodedata.numeric(char)
-        except: pass
-        
-        # 2. Try Unihan
-        if val is None:
+        # 1. Try Standard Library
+        try:
+            val = _get_numeric(char)
+        except (TypeError, ValueError):
+            # 2. Try Unihan Fallback (The "Banker's Numeral")
             val = unihan_map.get(cp)
-            if val is not None:
-                has_hidden = True
-                
-        if val is not None:
-            total += val
             
-    return total, has_hidden
+        if val is not None:
+            total_mass += val
+            
+            # Forensic Classification of the Masquerade
+            # We know it's not ASCII 0-9 (Fast Path handled that).
+            cat = _get_category(char)
+            
+            masq_type = "UNKNOWN"
+            desc = ""
+            
+            if cat == 'Nd':
+                # It is a Digit, but not ASCII (e.g., Arabic ١, Devanagari ०)
+                masq_type = "NON_ASCII_DIGIT"
+                desc = f"Decimal Digit ({val}). Valid 'Nd' but not ASCII; risk of parser rejection."
+            elif cat == 'Nl':
+                # Letter Number (e.g., Roman Numeral Ⅻ)
+                masq_type = "LETTER_NUMBER"
+                desc = f"Numeric Letter ({val}). Visually text, logically value."
+            elif cat == 'No':
+                # Other Number (e.g., Fractions ½, Superscript ²)
+                masq_type = "OTHER_NUMBER"
+                desc = f"Numeric Symbol ({val})."
+            elif cp in unihan_map:
+                # CJK Ideograph (e.g., 壹)
+                masq_type = "HAN_NUMERAL"
+                desc = f"Han Banker's Numeral ({val}). Financial spoofing vector."
+            else:
+                masq_type = "NUMERIC_MASQUERADE"
+                desc = f"Hidden Value ({val})."
+
+            masquerade_list.append({
+                "pos": i,
+                "char": char,
+                "value": val,
+                "type": masq_type,
+                "desc": desc
+            })
+            
+    divergence = total_mass - visible_mass
+            
+    return {
+        "total_mass": total_mass,
+        "visible_mass": visible_mass,
+        "divergence": divergence,
+        "masquerade_list": masquerade_list
+    }
 
 class ForensicExplainer:
     """
@@ -5922,39 +6083,62 @@ class ForensicExplainer:
 def scan_vs_topology(text: str):
     """
     [STAGE 1.5] Variation Selector Topology Engine.
-    Detects: Excessive runs (>1) and Bare VS (not preceded by valid base).
-    Source: Imperceptible Jailbreaking (VS flooding).
+    Detects: 
+    1. Excessive runs / Bare VS (Structure/Flooding).
+    2. Specific Glyph Variants (Math/CJK) using StandardizedVariants.txt.
     """
     if not text: return {}, []
     
+    # State Trackers
     vs_run_count = 0
     max_run = 0
     bare_count = 0
     total_vs = 0
     
-    # Get the valid base set (Tier 1 + Tier 3 from Data Stores)
+    # Data Access (Safe)
     valid_bases = DATA_STORES.get("VariantBase", frozenset())
+    math_variants = DATA_STORES.get("standardized_variants", {})
     
-    # Bitmask for ANY VS (Standard or Ideographic)
+    # Mask for ANY VS (Standard 1-16 or Ideographic 17-256)
     VS_MASK = INVIS_VARIATION_STANDARD | INVIS_VARIATION_IDEOG
     
     prev_cp = -1
+    signals = []
     
-    for char in text:
+    for i, char in enumerate(text):
         cp = ord(char)
         mask = INVIS_TABLE[cp] if cp < 1114112 else 0
         
+        # Is this a Variation Selector?
         if mask & VS_MASK:
             total_vs += 1
             vs_run_count += 1
             
-            # Check if Bare (Start of run check)
+            # --- A. BARE CHECK (Start of Run) ---
             if vs_run_count == 1:
-                # This is the first VS in a sequence. Check antecedent.
-                # If prev_cp is -1 (Start of string) or not in Valid Bases -> Bare
-                if prev_cp == -1 or prev_cp not in valid_bases:
+                # This is the first VS in a sequence. Check its base.
+                is_valid_base = (prev_cp != -1 and prev_cp in valid_bases)
+                
+                if not is_valid_base:
                     bare_count += 1
+                    
+                # --- B. SPIN CHECK (Semantic Variant) ---
+                # If we have a valid base, check if it's a specific Math/Standard variant.
+                # We filter for descriptions that imply "Hidden Precision" (e.g. SLANTED EQUAL).
+                if prev_cp != -1:
+                    desc = math_variants.get((prev_cp, cp))
+                    if desc:
+                        # Normalize description for display
+                        desc_title = desc.title()
+                        signals.append({
+                            "type": "GLYPH_VARIANT",
+                            "pos": i,
+                            "desc": f"Specific Variant: {desc_title}",
+                            "risk": "MED" # Informational/Precision
+                        })
+
         else:
+            # End of run
             if vs_run_count > 0:
                 max_run = max(max_run, vs_run_count)
                 vs_run_count = 0
@@ -5962,28 +6146,26 @@ def scan_vs_topology(text: str):
         prev_cp = cp
         
     # Capture trailing run
-    if vs_run_count > 0:
+    if vs_run_count > 0: 
         max_run = max(max_run, vs_run_count)
         
-    metrics = {
-        "vs_total_count": total_vs,
-        "vs_max_run_length": max_run,
-        "vs_bare_count": bare_count
+    metrics = { 
+        "vs_total_count": total_vs, 
+        "vs_max_run_length": max_run, 
+        "vs_bare_count": bare_count 
     }
     
-    signals = []
+    # Generate Structural Signals
     if bare_count > 0:
         signals.append({
-            "type": "VS_BARE",
-            "count": bare_count,
+            "type": "VS_BARE", 
+            "count": bare_count, 
             "desc": f"{bare_count} Orphaned Variation Selectors"
         })
-        
     if max_run > 1:
-        # A run of >1 is structurally redundant (Standard allows 1 per base)
         signals.append({
-            "type": "VS_CLUSTER",
-            "max_len": max_run,
+            "type": "VS_CLUSTER", 
+            "max_len": max_run, 
             "desc": f"Variation Selector Cluster (Length {max_run})"
         })
         
@@ -6542,23 +6724,31 @@ def analyze_nsm_overload(graphemes):
             "stream_safe_violations": [], 
         }
 
+    # Metric Accumulators
     total_marks = 0
     g_with_marks = 0
     max_marks = 0
     max_repeat_run = 0
 
+    # Reporting Lists
     zalgo_indices = []
     max_intensity_indices = []
-    
-    # UAX #15 Stream-Safe State Machine
     stream_unsafe_sequences = [] 
+    
+    # State Machines
+    # 1. UAX #15 State (Persists across graphemes)
     current_non_starter_run = 0
     run_start_index = 0
     UAX15_LIMIT = 30 
-
+    
+    # 2. Index Tracker
     current_cp_index = 0
+    
+    # 3. Local Cache for Speed
+    _get_cat = unicodedata.category
 
     for glyph in graphemes:
+        # Handle dict vs string input
         g_str = glyph['segment'] if isinstance(glyph, dict) and 'segment' in glyph else glyph
         
         marks_in_g = 0
@@ -6571,38 +6761,36 @@ def analyze_nsm_overload(graphemes):
         for ch in g_str:
             cp = ord(ch)
 
-            # --- [FIXED] Robust Lookup Logic ---
-            # Handles both direct values (str/int) and row tuples (list)
-            val_obj = None
-            try:
-                # Try Legacy Key
+            # --- 1. CCC LOOKUP (Physics) ---
+            # Try Derived first (Saturated), then Standard fallback
+            val_obj = _find_in_ranges(cp, "DerivedCombiningClass")
+            if not val_obj: 
                 val_obj = _find_in_ranges(cp, "CombiningClass")
-            except KeyError:
-                try:
-                    # Try UCD Key
-                    val_obj = _find_in_ranges(cp, "DerivedCombiningClass")
-                except KeyError:
-                    pass 
-                
+            
             ccc = 0
-            if val_obj is not None:
+            if val_obj:
                 try:
-                    if isinstance(val_obj, (list, tuple)):
-                        # If it's a full row [start, end, value], grab index 2
-                        # If it's short, grab the last element
-                        idx = 2 if len(val_obj) > 2 else -1
-                        ccc = int(val_obj[idx])
-                    else:
-                        # It's a direct value (String "230" or Int 230)
-                        ccc = int(val_obj)
-                except (ValueError, IndexError, TypeError):
+                    # _find_in_ranges returns the value column string (e.g., "230")
+                    # We strip just in case, though parser handles it.
+                    ccc = int(val_obj)
+                except (ValueError, TypeError):
                     ccc = 0
             
-            # --- 1. VISUAL PHYSICS (Zalgo) ---
-            is_visual_mark = (
-                unicodedata.category(ch) in ("Mn", "Me")
-                or ccc != 0
-            )
+            # --- 2. UAX #15 CHECK (Normative) ---
+            # Any character with CCC != 0 is a Non-Starter.
+            if ccc != 0:
+                if current_non_starter_run == 0:
+                    run_start_index = current_cp_index
+                current_non_starter_run += 1
+            else:
+                # If we just ended a run, check if it was a violation
+                if current_non_starter_run > UAX15_LIMIT:
+                    stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
+                current_non_starter_run = 0
+
+            # --- 3. ZALGO CHECK (Visual) ---
+            # Visual Heuristic: Category Mn/Me OR CCC!=0 (catch visible spacing marks too if they stack)
+            is_visual_mark = _get_cat(ch) in ("Mn", "Me") or ccc != 0
 
             if is_visual_mark:
                 marks_in_g += 1
@@ -6612,19 +6800,10 @@ def analyze_nsm_overload(graphemes):
                     max_g_repeat = max(max_g_repeat, current_repeat)
                     current_repeat = 1
             
-            # --- 2. NORMATIVE PHYSICS (UAX #15 Stream-Safe) ---
-            if ccc != 0:
-                if current_non_starter_run == 0:
-                    run_start_index = current_cp_index
-                current_non_starter_run += 1
-            else:
-                if current_non_starter_run > UAX15_LIMIT:
-                    stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
-                current_non_starter_run = 0
-
             last_cp = cp
             current_cp_index += 1
 
+        # Grapheme Loop End Stats
         max_g_repeat = max(max_g_repeat, current_repeat)
         total_marks += marks_in_g
 
@@ -6642,11 +6821,14 @@ def analyze_nsm_overload(graphemes):
         if marks_in_g >= 3:
             zalgo_indices.append(f"#{grapheme_start_pos}")
 
+    # --- Finalize Stream-Safe Check (Trailing Run) ---
     if current_non_starter_run > UAX15_LIMIT:
         stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
 
+    # --- Calculations ---
     mark_density = g_with_marks / total_g if total_g > 0 else 0.0
 
+    # Verdict Logic (Visual Impact)
     level = 0
     if (
         max_marks >= 7
