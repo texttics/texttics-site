@@ -17105,7 +17105,7 @@ def render_inspector_panel(data):
         # Build the HTML Block
         atomic_stack_html = f"""
         <details class="atomic-stack-details">
-            <summary class="atomic-stack-summary">Atomic Anatomy</summary>
+            <summary class="atomic-stack-summary">Encoding Hierarchy</summary>
             <div class="atomic-stack-body">
                 <div class="as-layer">
                     <div class="as-label">Perceptual (Grapheme)</div>
