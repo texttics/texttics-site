@@ -18635,7 +18635,7 @@ def update_all(event=None):
         "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
         "dec_space": _get_f_count("Deceptive Spaces"),
         "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
-        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])),
+        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
         "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
     }
 
