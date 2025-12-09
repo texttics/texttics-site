@@ -1161,7 +1161,7 @@ Stage 2: Heatmap Row Classes
   flex: 0 0 auto; 
   height: auto;
   overflow: visible; /* Don't create a double scrollbar */
-  margin-bottom: 20px; /* Breathing room at bottom */
+  margin-bottom: 10px; /* Breathing room at bottom */
 }
 .structure-table {
   width: 100%;
