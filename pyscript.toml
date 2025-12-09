@@ -59,5 +59,6 @@ files = [
     "MathClassEx-15.txt",               # [Vector 9: Math Syntax Masquerade]
     "DerivedJoiningType.txt",          # [Vector 10: Cursive Fracture]
     "IndicPositionalCategory.txt",      # [Vector 11: Indic Structural Invalidity]
-    "IndicSyllabicCategory.txt"        # [Vector 11 Extension: Indic Role Validation]
+    "IndicSyllabicCategory.txt",        # [Vector 11 Extension: Indic Role Validation]
+    "Unihan_NumericValues.txt"         # [CJK Financial Spoofing]
 ]
