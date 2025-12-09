@@ -6523,7 +6523,7 @@ def analyze_nsm_overload(graphemes):
             "count": 0,
             "positions": [],
             "max_marks_positions": [],
-            "stream_safe_violations": [], # Normative UAX #15 violations
+            "stream_safe_violations": [], 
         }
 
     total_marks = 0
@@ -6531,24 +6531,18 @@ def analyze_nsm_overload(graphemes):
     max_marks = 0
     max_repeat_run = 0
 
-    # Graphemes whose combining load crosses our "Zalgo" threshold.
     zalgo_indices = []
-
-    # Graphemes that realise the global maximum intensity.
     max_intensity_indices = []
     
     # UAX #15 Stream-Safe State Machine
-    # Tracks contiguous non-starters across grapheme boundaries.
     stream_unsafe_sequences = [] 
     current_non_starter_run = 0
     run_start_index = 0
-    UAX15_LIMIT = 30 # Normative Limit (Unicode Standard Annex #15)
+    UAX15_LIMIT = 30 
 
-    # Global codepoint index (to report positions in the same space as other flags).
     current_cp_index = 0
 
     for glyph in graphemes:
-        # If graphemes are dicts from Intl.Segmenter, extract string; else assume string
         g_str = glyph['segment'] if isinstance(glyph, dict) and 'segment' in glyph else glyph
         
         marks_in_g = 0
@@ -6561,16 +6555,20 @@ def analyze_nsm_overload(graphemes):
         for ch in g_str:
             cp = ord(ch)
 
-            # Robust combining detection: category OR non-zero CCC.
-            # We use "DerivedCombiningClass" (or alias) depending on DATA_STORES key
-            row = _find_in_ranges(cp, "DerivedCombiningClass") 
-            # Fallback for old key name if needed
-            if not row: row = _find_in_ranges(cp, "CombiningClass")
+            # --- [FIXED] Robust Lookup Logic ---
+            # Prioritize "CombiningClass" (Legacy) -> "DerivedCombiningClass" (UCD) -> None
+            row = None
+            try:
+                row = _find_in_ranges(cp, "CombiningClass")
+            except KeyError:
+                try:
+                    row = _find_in_ranges(cp, "DerivedCombiningClass")
+                except KeyError:
+                    pass # Key missing, assume CCC=0
                 
             ccc = int(row[2]) if row else 0
             
             # --- 1. VISUAL PHYSICS (Zalgo) ---
-            # Visual marks include Category Mn/Me OR non-zero CCC
             is_visual_mark = (
                 unicodedata.category(ch) in ("Mn", "Me")
                 or ccc != 0
@@ -6585,15 +6583,11 @@ def analyze_nsm_overload(graphemes):
                     current_repeat = 1
             
             # --- 2. NORMATIVE PHYSICS (UAX #15 Stream-Safe) ---
-            # "Stream-Safe" is defined strictly by Canonical Combining Class (CCC).
-            # A sequence of more than 30 non-starters (CCC != 0) is non-stream-safe.
             if ccc != 0:
-                # Non-Starter
                 if current_non_starter_run == 0:
                     run_start_index = current_cp_index
                 current_non_starter_run += 1
             else:
-                # Starter (CCC=0) -> Resets the run
                 if current_non_starter_run > UAX15_LIMIT:
                     stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
                 current_non_starter_run = 0
@@ -6607,7 +6601,6 @@ def analyze_nsm_overload(graphemes):
         if marks_in_g > 0:
             g_with_marks += 1
 
-        # Track global max intensity.
         if marks_in_g > max_marks:
             max_marks = marks_in_g
             max_intensity_indices = [f"#{grapheme_start_pos}"]
@@ -6616,25 +6609,20 @@ def analyze_nsm_overload(graphemes):
 
         max_repeat_run = max(max_repeat_run, max_g_repeat)
 
-        # Zalgo threshold: 3+ combining marks on a *single* grapheme.
         if marks_in_g >= 3:
             zalgo_indices.append(f"#{grapheme_start_pos}")
 
-    # Catch trailing non-starter run at EOF
     if current_non_starter_run > UAX15_LIMIT:
         stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
 
     mark_density = g_with_marks / total_g if total_g > 0 else 0.0
 
-    # Heuristic severity (Visual Impact):
-    #  - level 2 (strong): clearly abusive use of combining marks
-    #  - level 1 (mild): something odd but not extreme
     level = 0
     if (
-        max_marks >= 7              # one grapheme is overloaded
-        or mark_density > 0.7       # most graphemes carry marks
-        or total_marks >= 64        # global "wall of marks"
-        or max_repeat_run >= 6      # long run of same combining mark
+        max_marks >= 7
+        or mark_density > 0.7 
+        or total_marks >= 64
+        or max_repeat_run >= 6
     ):
         level = 2
     elif not (
@@ -6642,7 +6630,6 @@ def analyze_nsm_overload(graphemes):
         and mark_density <= 0.35
         and max_repeat_run <= 2
     ):
-        # Anything outside the "safe" zone but below strong threshold -> mild.
         level = 1
 
     return {
@@ -6651,15 +6638,9 @@ def analyze_nsm_overload(graphemes):
         "mark_density": round(mark_density, 2),
         "max_repeat_run": max_repeat_run,
         "total_marks": total_marks,
-
-        # What the flag row should actually show:
         "count": len(zalgo_indices),
         "positions": zalgo_indices,
-
-        # Where the worst cluster(s) live (for future use / debugging):
         "max_marks_positions": max_intensity_indices,
-        
-        # Normative UAX #15 Violations
         "stream_safe_violations": stream_unsafe_sequences 
     }
 
