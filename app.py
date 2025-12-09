@@ -4586,23 +4586,25 @@ def _is_cursive_break_allowed(cp):
     [Stage 1.9] Cursive Physics Helper.
     Determines if a character is a valid 'Word Break' that legally interrupts 
     a cursive connection (Arabic/Syriac/N'Ko).
-    
-    True  -> Whitespace (Z*) or Punctuation (P*).
-    False -> Letters, Numbers, Symbols, or Controls (which should NOT break connections).
+    [FIXED] Uses correct Data Store Key and Lookup Method.
     """
     # 1. Try Saturated Store (Unicode 17.0 Truth)
-    gc_map = DATA_STORES.get("GenCat", {})
-    gc = gc_map.get(cp)
+    # We use _find_in_ranges because the loader stores it as an Interval Tree
+    gc = _find_in_ranges(cp, "GeneralCategory")
     
-    # 2. Fallback to Python Runtime (if file missing)
+    # 2. Fallback to Python Runtime (if file missing/range not found)
     if not gc:
-        import unicodedata
-        gc = unicodedata.category(chr(cp))
+        try: 
+            gc = unicodedata.category(chr(cp))
+        except: 
+            gc = "Cn"
     
     # 3. The Laws of Cursive Writing:
     # A word ends at a Separator (Z) or Punctuation (P).
     # Anything else (Letter, Number, Symbol, Control) inside a word creates a Fracture.
-    return gc.startswith("Z") or gc.startswith("P")
+    if gc:
+        return gc.startswith("Z") or gc.startswith("P")
+    return False
 
 def audit_han_safety(token: str) -> list:
     """
