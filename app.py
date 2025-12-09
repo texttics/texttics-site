@@ -4820,6 +4820,7 @@ class ForensicExplainer:
         # Strategy: Start with Static DB (Richness), Overwrite with Saturated Data (Truth).
         
         # A. Attempt to fetch static record (Tier 2)
+        # [CRITICAL] Defined at top level scope
         rec = self.db.get(hex_str)
         if not rec:
              # Case: Unknown/New Character (Tier 3 Fallback)
@@ -4829,11 +4830,9 @@ class ForensicExplainer:
         props = rec.get("props", [])
         
         # C. [SATURATED] PHYSICS OVERRIDE (Tier 1 Authority)
-        # We enforce the laws of the loaded .txt files over the static JSON.
         char_raw = chr(cp_int)
         
         # 1. Identity (Name & Category)
-        # Handles NULL, BELL, and Unassigned (Cn) correctly
         name = _get_safe_name(cp_int)
         rec["name"] = name
         
@@ -4841,16 +4840,14 @@ class ForensicExplainer:
         rec["gc"] = gc_code
         
         # 2. Provenance (Block & Script)
-        # Fixes "No_Block" for new characters
         if rec.get("blk", "No_Block") == "No_Block":
             rec["blk"] = _find_in_ranges(cp_int, "Blocks") or "No_Block"
             
-        # Fixes "Unknown" script
         if rec.get("script", "Unknown") == "Unknown":
             rec["script"] = _find_in_ranges(cp_int, "Scripts") or "Unknown"
 
-        # Populate Script Extensions (scx) dynamically if missing
-        # This prevents the 'rec' NameError by ensuring scx is always defined.
+        # Populate Script Extensions (scx) dynamically
+        # This prevents 'rec' NameError issues by ensuring key exists
         if "scx" not in rec:
             scx_val = _find_in_ranges(cp_int, "ScriptExtensions")
             rec["scx"] = scx_val.split() if scx_val else []
