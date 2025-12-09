@@ -1117,7 +1117,7 @@ REGEX_ID_ASCII_STRICT = re.compile(r"^\w+$", re.ASCII)
 # Rejects: Whitespace (Z), Control (C), Symbols (S), Punctuation (P) (excl. _).
 REGEX_ID_GENERAL_SAFE = re.compile(r"^\w+$")
 
-# [NEW] Diagnostic Tuples (The "Why" Definitions)
+# Diagnostic Tuples (The "Why" Definitions)
 # Used by the Logic Engine to explain *why* a string failed the regex.
 # We define the forbidden physics here, not inside the function.
 ID_VIOLATION_MAP = {
@@ -6500,7 +6500,14 @@ def analyze_combining_structure(t: str, rows: list):
 
 def analyze_nsm_overload(graphemes):
     """
-    Analyze graphemes for excessive combining marks ("Zalgo"-style overload).
+    [BLOCK 6] Zalgo & Stream-Safe Detector (Physics Engine).
+    Analyzes graphemes for excessive combining marks (Visual "Zalgo") 
+    AND strictly validates UAX #15 Stream-Safe Text Format (Buffer Safety).
+    
+    Metrics:
+    1. Heuristic: "Zalgo" (Visual density > threshold).
+    2. Normative: "Stream-Safe" (UAX #15 violation: >30 non-starters).
+    
     Returns a dict with stable shape, using codepoint indices for positions.
     """
     total_g = len(graphemes)
@@ -6516,6 +6523,7 @@ def analyze_nsm_overload(graphemes):
             "count": 0,
             "positions": [],
             "max_marks_positions": [],
+            "stream_safe_violations": [], # Normative UAX #15 violations
         }
 
     total_marks = 0
@@ -6528,11 +6536,21 @@ def analyze_nsm_overload(graphemes):
 
     # Graphemes that realise the global maximum intensity.
     max_intensity_indices = []
+    
+    # UAX #15 Stream-Safe State Machine
+    # Tracks contiguous non-starters across grapheme boundaries.
+    stream_unsafe_sequences = [] 
+    current_non_starter_run = 0
+    run_start_index = 0
+    UAX15_LIMIT = 30 # Normative Limit (Unicode Standard Annex #15)
 
     # Global codepoint index (to report positions in the same space as other flags).
     current_cp_index = 0
 
     for glyph in graphemes:
+        # If graphemes are dicts from Intl.Segmenter, extract string; else assume string
+        g_str = glyph['segment'] if isinstance(glyph, dict) and 'segment' in glyph else glyph
+        
         marks_in_g = 0
         current_repeat = 1
         max_g_repeat = 0
@@ -6540,23 +6558,45 @@ def analyze_nsm_overload(graphemes):
 
         grapheme_start_pos = current_cp_index
 
-        for ch in glyph:
+        for ch in g_str:
             cp = ord(ch)
 
             # Robust combining detection: category OR non-zero CCC.
-            ccc = _find_in_ranges(cp, "CombiningClass")
-            is_comb = (
+            # We use "DerivedCombiningClass" (or alias) depending on DATA_STORES key
+            row = _find_in_ranges(cp, "DerivedCombiningClass") 
+            # Fallback for old key name if needed
+            if not row: row = _find_in_ranges(cp, "CombiningClass")
+                
+            ccc = int(row[2]) if row else 0
+            
+            # --- 1. VISUAL PHYSICS (Zalgo) ---
+            # Visual marks include Category Mn/Me OR non-zero CCC
+            is_visual_mark = (
                 unicodedata.category(ch) in ("Mn", "Me")
-                or (ccc is not None and str(ccc) != "0")
+                or ccc != 0
             )
 
-            if is_comb:
+            if is_visual_mark:
                 marks_in_g += 1
                 if cp == last_cp:
                     current_repeat += 1
                 else:
                     max_g_repeat = max(max_g_repeat, current_repeat)
                     current_repeat = 1
+            
+            # --- 2. NORMATIVE PHYSICS (UAX #15 Stream-Safe) ---
+            # "Stream-Safe" is defined strictly by Canonical Combining Class (CCC).
+            # A sequence of more than 30 non-starters (CCC != 0) is non-stream-safe.
+            if ccc != 0:
+                # Non-Starter
+                if current_non_starter_run == 0:
+                    run_start_index = current_cp_index
+                current_non_starter_run += 1
+            else:
+                # Starter (CCC=0) -> Resets the run
+                if current_non_starter_run > UAX15_LIMIT:
+                    stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
+                current_non_starter_run = 0
 
             last_cp = cp
             current_cp_index += 1
@@ -6580,9 +6620,13 @@ def analyze_nsm_overload(graphemes):
         if marks_in_g >= 3:
             zalgo_indices.append(f"#{grapheme_start_pos}")
 
+    # Catch trailing non-starter run at EOF
+    if current_non_starter_run > UAX15_LIMIT:
+        stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
+
     mark_density = g_with_marks / total_g if total_g > 0 else 0.0
 
-    # Heuristic severity:
+    # Heuristic severity (Visual Impact):
     #  - level 2 (strong): clearly abusive use of combining marks
     #  - level 1 (mild): something odd but not extreme
     level = 0
@@ -6614,6 +6658,9 @@ def analyze_nsm_overload(graphemes):
 
         # Where the worst cluster(s) live (for future use / debugging):
         "max_marks_positions": max_intensity_indices,
+        
+        # Normative UAX #15 Violations
+        "stream_safe_violations": stream_unsafe_sequences 
     }
 
 def analyze_bidi_structure(t: str, rows: list):
@@ -8089,7 +8136,7 @@ def analyze_anti_sanitization(t: str):
             "badge": "PROBE"
         }
 
-    # 5. [NEW] Structural Mutation (Overlay Attacks)
+    # 5. Structural Mutation (Overlay Attacks)
     # U+0338 (Combining Long Solidus Overlay) on Syntax Chars
     # Research Vector: '>' + U+0338 = '≯' (Masks the tag closer)
     if "\u0338" in t:
@@ -8636,9 +8683,9 @@ def compute_statistical_profile(t: str):
         # Base64: A-Z, a-z, 0-9, +, / (and URL-safe - _)
         b64_pattern = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
         hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
-        # [NEW] Charcode: 5+ CSV integers (e.g. 65,66,67...)
+        # Charcode: 5+ CSV integers (e.g. 65,66,67...)
         char_pattern = re.compile(r'^(\d{2,3},){5,}\d{2,3}$')
-        # [NEW] Percent: 5+ encoded bytes (e.g. %20%41...)
+        # Percent: 5+ encoded bytes (e.g. %20%41...)
         perc_pattern = re.compile(r'^(%[0-9A-Fa-f]{2}){5,}$')
         
         for tok in raw_tokens:
@@ -9096,7 +9143,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
         major_scripts = {s for s in scripts if s not in ("Common", "Inherited", "Unknown")}
         is_mixed_script = len(major_scripts) > 1
 
-        # G. [NEW] Regex Kryptonite (Developer Safety)
+        # G. Regex Kryptonite (Developer Safety)
         # We run the safety scanner ON THE TOKEN itself.
         krypto_report = scan_regex_safety(txt)
         krypto_risks = []
@@ -9140,7 +9187,7 @@ def analyze_adversarial_tokens(t: str, script_stats: dict) -> dict:
                 "mappings": skel_events.get('mappings', []) 
             },
             "invisibles": invis_count,
-            "krypto_risks": krypto_risks, # [NEW] Attached Risks
+            "krypto_risks": krypto_risks, # Attached Risks
             "risk": "LOW", # Placeholder, updated by Auditor
             "triggers": [] # Placeholder, updated by Auditor
         }
@@ -10709,14 +10756,14 @@ def compute_threat_score(inputs):
     
     has_execution_threat = False
     
-    # [NEW] WAF / Payload Heuristics (Module 4)
+    # WAF / Payload Heuristics (Module 4)
     # The WAF Simulator returns a raw risk score (0-100). We trust it.
     waf_score = inputs.get("waf_score", 0)
     if waf_score > 0:
         add_entry(f"Payload Detected (WAF Pattern)", waf_score, "EXECUTION")
         has_execution_threat = True
 
-    # [NEW] Normalization Injection (Syntax Predator)
+    # Normalization Injection (Syntax Predator)
     # This is a confirmed CVE vector (U+FF07 -> '). 
     norm_inj_count = inputs.get("norm_injection_count", 0)
     if norm_inj_count > 0:
@@ -10725,7 +10772,7 @@ def compute_threat_score(inputs):
         add_entry(f"Normalization-Activated Injection (x{norm_inj_count})", pts, "EXECUTION")
         has_execution_threat = True
 
-    # [NEW] Logic Bypass / Case Collision (Shapeshifter)
+    # Logic Bypass / Case Collision (Shapeshifter)
     # Detects Dotless-i / Long-S attacks on logic
     logic_bypass_count = inputs.get("logic_bypass_count", 0)
     if logic_bypass_count > 0:
@@ -11737,7 +11784,7 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
     
     _, whitespace_count = _find_matches_with_indices("Whitespace", t)
 
-    # [NEW] Populate HUD Registry for Non-Std Whitespace
+    # Populate HUD Registry for Non-Std Whitespace
     # We need to scan specifically for Non-ASCII whitespace
     ns_indices, _ = _find_matches_with_indices("Whitespace", t)
     for idx in ns_indices:
@@ -11822,7 +11869,7 @@ def compute_grapheme_stats(t: str):
         if not grapheme_str:
             continue
             
-        # --- [NEW] NFC Check ---
+        # --- NFC Check ---
         # If the grapheme changes when normalized to NFC, it is "Unstable"
         if grapheme_str != unicodedata.normalize("NFC", grapheme_str):
             non_nfc_indices.append(f"#{current_python_idx}")
@@ -11880,7 +11927,7 @@ def compute_grapheme_stats(t: str):
 
     avg_marks = (total_mark_count / total_graphemes) if total_graphemes > 0 else 0
 
-    # [NEW] Segmentation Complexity Verdict (Zalgo / Grapheme Complexity)
+    # Segmentation Complexity Verdict (Zalgo / Grapheme Complexity)
     # Ref: UTR #36 "Grapheme Cluster Security"
     seg_verdict = "LOW"
     seg_reason = "Simple clusters."
@@ -11913,7 +11960,7 @@ def compute_grapheme_stats(t: str):
         "seg_class": seg_class
     }
     
-    # [NEW] Pass the NFC data out via the stats dictionary 
+    # Pass the NFC data out via the stats dictionary 
     grapheme_forensic_stats["_non_nfc_indices"] = non_nfc_indices
 
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
@@ -12459,7 +12506,7 @@ def compute_adversarial_metrics(t: str):
         is_domain_candidate = is_plausible_domain_candidate(token_text)
         
         # =================================================================
-        # [NEW] RULE 0: REGEX KRYPTONITE (PRIORITY OVERRIDE)
+        # RULE 0: REGEX KRYPTONITE (PRIORITY OVERRIDE)
         # =================================================================
         krypto_active = False
         krypto_report = scan_regex_safety(token_text)
@@ -12532,7 +12579,7 @@ def compute_adversarial_metrics(t: str):
             token_score += 90
             token_families.add("OBFUSCATION")
 
-        # [NEW] Lexical Stutter (Unicode Evil)
+        # Lexical Stutter (Unicode Evil)
         # Logic: Check for exact doubling (e.g. "adminadmin")
         if len(token_text) >= 6:
             mid = len(token_text) // 2
@@ -12738,7 +12785,7 @@ def compute_stage1_5_forensics(text):
     # Scan Contextual Lures (Markdown/Chat/Memory) (Existing)
     all_signals.extend(scan_contextual_lures(text))
     
-    # 2. [NEW] Global Structural Scans
+    # 2. Global Structural Scans
     # A. Variation Selector Topology
     vs_metrics, vs_signals = scan_vs_topology(text)
     all_signals.extend(vs_signals)
@@ -12844,7 +12891,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 if cp == 0x001B: legacy_indices["esc"].append(i)
                 if 0xFFF9 <= cp <= 0xFFFB: legacy_indices["interlinear"].append(i)
                 
-                # [NEW] Zombie Controls (Deprecated Format)
+                # Zombie Controls (Deprecated Format)
                 # ISS (206A) -> NODS (206F)
                 if 0x206A <= cp <= 0x206F:
                     legacy_indices["zombie_ctrl"].append(i)
@@ -12976,9 +13023,38 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     # Call analyze_bidi_structure ONLY ONCE and unpack correctly
     bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
     cluster_max_len = summarize_invisible_clusters(t, struct_rows)
-    analyze_combining_structure(t, struct_rows)
+    
+    # [Zalgo & Stream-Safe Physics]
+    # We maintain the legacy local analysis for 'struct_rows' but add the new normative engine.
+    analyze_combining_structure(t, struct_rows) 
 
-    # --- [NEW] Populate Integrity Aggregator Buckets (Ranges) ---
+    # 1. Get graphemes safely from the passed argument
+    g_list_for_nsm = grapheme_stats.get("graphemes", [])
+    
+    # 2. Run the upgraded Physics Engine (Block 6)
+    nsm_stats = analyze_nsm_overload(g_list_for_nsm)
+
+    # 3. Heuristic: Excessive Combining Marks (Zalgo)
+    if nsm_stats.get("count", 0) > 0:
+        # We use the internal 'add_row' helper to ensure consistent table formatting
+        add_row("Flag: Excessive Combining Marks (Zalgo)", nsm_stats["count"], nsm_stats["positions"], "warn")
+
+    # 4. Normative: UAX #15 Stream-Safe Violation
+    # "Non-Stream-Safe" is a technical interchange error (DoS risk).
+    if nsm_stats.get("stream_safe_violations"):
+        viol_list = nsm_stats["stream_safe_violations"]
+        # Flag as CRITICAL (Red) because this violates the Unicode Standard limits
+        add_row("CRITICAL: Stream-Safe Violation (UAX #15)", len(viol_list), viol_list, "crit", badge="DoS RISK")
+        
+        # Register to HUD: This is an Integrity Fatal error (Structural Break)
+        for v_str in viol_list:
+            try:
+                # Parse index from string format "#123 (Len: 35)"
+                idx = int(v_str.split()[0].replace("#", ""))
+                _register_hit("int_fatal", idx, idx+1, "Stream-Unsafe")
+            except: pass
+
+    # --- Populate Integrity Aggregator Buckets (Ranges) ---
     for idx in health_issues["fffd"]: _register_hit("int_fatal", idx, idx+1, "U+FFFD")
     for idx in health_issues["nul"]: _register_hit("int_fatal", idx, idx+1, "NUL Byte")
     for idx in health_issues["surrogate"]: _register_hit("int_fatal", idx, idx+1, "Surrogate")
@@ -13000,7 +13076,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in health_issues["bom_mid"]: _register_hit("int_decay", idx, idx+1, "Internal BOM")
     for idx in legacy_indices["other_ctrl"]: _register_hit("int_decay", idx, idx+1, "Legacy Control")
     
-    # --- [NEW] Populate Threat Aggregator (Execution Tier) ---
+    # --- Populate Threat Aggregator (Execution Tier) ---
     for s, e, lbl in bidi_dangers: _register_hit("thr_execution", s, e, lbl)
     for idx in legacy_indices["esc"]: _register_hit("thr_execution", idx, idx+1, "Terminal Injection")
     for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
@@ -13135,10 +13211,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("Prop: Variation Selector", len(legacy_indices["vs_all"]), legacy_indices["vs_all"], "ok")
     add_row("Unassigned (Void)", len(legacy_indices["unassigned"]), legacy_indices["unassigned"], "crit")
 
-    # [NEW] Zombie Controls
+    # Zombie Controls
     add_row("CRITICAL: Deprecated Format Controls (Zombie)", len(legacy_indices["zombie_ctrl"]), legacy_indices["zombie_ctrl"], "crit")
 
-    # [NEW] NFC Stability Report (Granular)
+    # NFC Stability Report (Granular)
     non_nfc_list = grapheme_stats.get("_non_nfc_indices", [])
     if non_nfc_list:
         add_row("Flag: Normalization Instability (Not NFC)", len(non_nfc_list), non_nfc_list, "warn")
@@ -13189,7 +13265,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     forensic_flags = []
     
     # ----------------------------------------------------
-    # [NEW] Overlay Confusable Engine (Stage 1.1 - U+0334..U+0338)
+    # Overlay Confusable Engine (Stage 1.1 - U+0334..U+0338)
     # ----------------------------------------------------
     # Maps (Base_Char, Overlay_Char_Ord) -> Atomic_Visual_Twin
     # This detects when a combining overlay is used to mimic a precomposed letter.
@@ -13535,7 +13611,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             skel_events
         )
 
-        # --- [NEW] Recursive De-obfuscation & WAF Check ---
+        # --- Recursive De-obfuscation & WAF Check ---
         naked_text, layers_found = recursive_deobfuscate(t)
         waf_alerts, waf_score = analyze_waf_policy(naked_text)
         
@@ -13557,7 +13633,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 "b64": "N/A", "hex": "N/A", "score": waf_score
             })
 
-        # --- [NEW] Code Masquerade Check ---
+        # --- Code Masquerade Check ---
         masq = analyze_code_masquerade(t, script_stats or {})
         if masq:
             key = f"CRITICAL: {masq['verdict']}"
@@ -13581,12 +13657,12 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         if adversarial_data and 'targets' in adversarial_data:
             adversarial_data['targets'].sort(key=lambda x: x['score'], reverse=True)
 
-        # --- [NEW] Module 5: Predictive Attack Simulation ---
+        # --- Module 5: Predictive Attack Simulation ---
         # 1. Anti-Sanitization Flags (Legacy Heuristics)
         sanit_flags = analyze_anti_sanitization(t)
         threat_flags.update(sanit_flags)
         
-        # 1.5 [NEW] Syntax Predator (Deterministic Normalization Hazards)
+        # 1.5 Syntax Predator (Deterministic Normalization Hazards)
         # This catches dynamic threats missed by the static list above
         norm_hazard_flags = analyze_normalization_hazards(t)
         threat_flags.update(norm_hazard_flags)
@@ -13598,7 +13674,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # 3. Generate Predictive HTML Table
         predictive_html = render_predictive_normalizer(t)
 
-        # --- [NEW] Recursive De-obfuscation & WAF Check ---
+        # --- Recursive De-obfuscation & WAF Check ---
         naked_text, layers_found = recursive_deobfuscate(t)
         waf_alerts, waf_score = analyze_waf_policy(naked_text)
         
@@ -13699,7 +13775,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         else:
             final_html_report = ""
         
-        # [NEW] Inject De-obfuscation Report if layers found
+        # Inject De-obfuscation Report if layers found
         if layers_found:
             layer_badges = "".join([f"<span class='layer-badge'>{l}</span>" for l in layers_found])
             final_html_report = f"""
@@ -13719,7 +13795,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             {final_html_report}
             """
             
-        # [NEW] Inject Predictive Normalizer Table at the bottom
+        # Inject Predictive Normalizer Table at the bottom
         if predictive_html:
             final_html_report += predictive_html
         
@@ -13779,7 +13855,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
             if f["risk"] == "CRITICAL": threat_score += 40
             elif f["risk"] == "HIGH": threat_score += 25
 
-            # B. [NEW] Bridge to Suspicion Dashboard (The "Smart" Logic)
+            # B. Bridge to Suspicion Dashboard (The "Smart" Logic)
             # We promote specific structural/logic attacks to the Dashboard Targets list
             if f["type"] in ("MATH_MASQUERADE", "LAYOUT_DISORIENTATION", "TOFU_TUNNEL", "INDIC_STRUCTURE"):
                 
@@ -14199,7 +14275,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
             rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
             
-            # [NEW] Retrieve Verdict
+            # Retrieve Verdict
             verdict = stats_dict.get("seg_verdict", "LOW")
             badge_cls = stats_dict.get("seg_class", "badge-ok")
             
@@ -14228,7 +14304,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                     f'</div>'
                     f'<div class="metric-facts">'
                         f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
-                        # [NEW] Injected Row
+                        # Injected Row
                         f'<div class="fact-row">Complexity: <span class="badge {badge_cls}" style="font-size:0.7em;">{verdict}</span></div>'
                     f'</div>'
                 f'</div>'
@@ -14325,7 +14401,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             # Micro-Facts
             bpc = v / cp_count if cp_count > 0 else 0
             
-            # [NEW] Get ASCII Stats for Context
+            # Get ASCII Stats for Context
             ascii_data = stats_dict.get("ASCII-Compatible", {})
             ascii_pct = ascii_data.get("pct", 0) if ascii_data else 0
             
@@ -14362,7 +14438,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
         # Skip Astral Count (it's consumed by UTF-16 card)
         elif k == "Astral Count":
             continue
-        # [NEW] Specific Renderer for Zalgo Verdict in Detail Cards
+        # Specific Renderer for Zalgo Verdict in Detail Cards
         elif k == "Avg. Marks per Grapheme":
             verdict = stats_dict.get("seg_verdict", "")
             badge_cls = stats_dict.get("seg_class", "")
@@ -14597,7 +14673,7 @@ def render_integrity_matrix(rows, text_context=None):
                 details.appendChild(table)
                 td_ledger.appendChild(details)
             elif row["label"] == DECODE_KEY:
-                # [NEW] Description for Decode Health
+                # Description for Decode Health
                 if row['severity'] == 'ok':
                     td_ledger.textContent = "No encoding artifacts detected."
                 else:
@@ -14705,7 +14781,7 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
             
         td_kind = f'<td><span class="{k_cls}" style="{k_style}">{kind_raw}</span></td>'
         
-        # [NEW] 3. Base Category Badge
+        # 3. Base Category Badge
         cat = data.get('base_cat', 'So')
         cat_label = "SYM" if cat.startswith("S") else ("LET" if cat.startswith("L") else "OTH")
         cat_style = "background-color: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono);"
@@ -17929,7 +18005,7 @@ def update_all(event=None):
     if not t_input: return
     t = t_input.value
     
-    # --- [NEW] Populate Simple HUD Metrics ---
+    # --- Populate Simple HUD Metrics ---
     populate_hud_registry(t)
 
     # --- 1.5 PASSIVE INVISIBLE SCAN (Right Side) ---
@@ -18324,7 +18400,7 @@ def update_all(event=None):
     current_flags = threat_results.get('flags', {})
 
     score_inputs = {
-        # [NEW] WIRING
+        # WIRING
         "waf_score": threat_results.get("waf_score", 0),
         "norm_injection_count": norm_inj_count,
         "logic_bypass_count": logic_bypass_count,
@@ -18536,7 +18612,7 @@ def update_all(event=None):
     
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
-    # [NEW] Whitespace & Newline Topology (The Frankenstein Detector)
+    # Whitespace & Newline Topology (The Frankenstein Detector)
     ws_topology_html = compute_whitespace_topology(t)
     ws_container = document.getElementById("ws-topology-container")
     if ws_container:
@@ -18553,7 +18629,7 @@ def update_all(event=None):
     render_matrix_table(prov_matrix, "provenance-matrix-body", has_positions=True, text_context=t)
     render_matrix_table(script_run_stats, "script-run-matrix-body", has_positions=True, text_context=t)
 
-    # [NEW] Statistical Profile (Group 2.F)
+    # Statistical Profile (Group 2.F)
     # Note: stat_profile was computed earlier and enriched with Zalgo data.
     render_statistical_profile(stat_profile)
 
@@ -19077,7 +19153,7 @@ def inspect_character(event):
 
                 if is_exact_match or is_fuzzy_match:
                     is_rgi_confirmed = True
-                    # [NEW] Patch the Local Variable for the Specs Table
+                    # Patch the Local Variable for the Specs Table
                     id_status = "Allowed (RGI)"
                     
                     # A. Force Safe/Note Verdict based on Qualification
