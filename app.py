@@ -4849,6 +4849,12 @@ class ForensicExplainer:
         if rec.get("script", "Unknown") == "Unknown":
             rec["script"] = _find_in_ranges(cp_int, "Scripts") or "Unknown"
 
+        # Populate Script Extensions (scx) dynamically if missing
+        # This prevents the 'rec' NameError by ensuring scx is always defined.
+        if "scx" not in rec:
+            scx_val = _find_in_ranges(cp_int, "ScriptExtensions")
+            rec["scx"] = scx_val.split() if scx_val else []
+
         # 3. Physics (Bidi & Age)
         bc_code = _get_forensic_bidi_class(char_raw)
         rec["bc"] = bc_code
