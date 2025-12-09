@@ -2523,3 +2523,26 @@ We expanded the "Physics Engine" to detect threats that alter value or orientati
 
 ### 5. Supply Chain "Zero-Dependency" Model
 We severed the final link to the browser's Python version. The tool now fetches and parses **40+** raw UCD files directly. This guarantees that **Text...tics** always operates on the cutting edge of Unicode security (currently v17.0), even if the user's browser runtime is years out of date.
+
+---
+
+## 🛡️ Session Update: Closing the "Pedagogy & Compliance" Gaps
+
+**Focus:** UAX #15 Compliance, Atomic Visualization, and UI Stability.
+
+### 1. New Engine: The "Stream-Safe" Sensor (UAX #15)
+Upgraded the Zalgo detector from a visual heuristic to a normative compliance engine.
+* **Normative Check:** Implemented a state machine in `analyze_nsm_overload` to strictly enforce the **UAX #15** limit (30 contiguous non-starters).
+* **Forensic Value:** Distinguishes between "Visual Noise" (Zalgo) and "Protocol Violation" (Buffer Overflow / DoS risk), flagging the latter as a **CRITICAL** Integrity defect.
+
+### 2. New Visualization: The "Encoding Hierarchy" (Atomic Stack)
+Added a vertical "X-Ray" view to the Character Inspector to visualize the "Post-Clipboard" boundary.
+* **The Stack:** Visualizes the four realities of text: **Perceptual** (Grapheme) → **Logical** (Scalars) → **Runtime** (UTF-16) → **Physical** (UTF-8).
+* **Pedagogical Value:** Proves to the analyst *why* a single emoji consumes 4 bytes or 2 JS units, enforcing the tool's core philosophy.
+* **Implementation:** Pure CSS injection (no Canvas) integrated into the Structure Column.
+
+### 3. Stability Hardening: Inspector "Render Inertia"
+Solved critical UI thrashing and crash bugs during deep inspection.
+* **State-Aware Inspector:** Implemented `LAST_RENDERED_IDX` tracking to prevent the Inspector from re-rendering (and closing detail panels) when clicking inside the tool itself.
+* **Logic Repair:** Fixed a `NameError` crash in `ForensicExplainer` that occurred when analyzing characters absent from the static database (e.g., raw combining marks).
+* **Flexbox Repair:** Fixed a CSS overflow bug in the `col-structure` that caused the Component Table to vanish when the Atomic Stack was expanded.
