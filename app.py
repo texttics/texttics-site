@@ -4780,6 +4780,12 @@ class ForensicExplainer:
         file_id_stat = _find_in_ranges(cp_int, "IdentifierStatus")
         if file_id_stat:
             rec["id_stat"] = file_id_stat
+        # Identifier Type Injection
+        # Essential for the Han Policy to see "Uncommon_Use"
+        file_id_type = _find_in_ranges(cp_int, "IdentifierType")
+        if file_id_type:
+            # We wrap in list because the Policy logic expects a list of types (from JSON schema)
+            rec["id_type"] = [file_id_type]
         elif not rec.get("id_stat"):
             # Default to Restricted if not defined in File OR JSON
             rec["id_stat"] = "Restricted"
@@ -5297,7 +5303,8 @@ class ForensicExplainer:
         })
 
         # Pass physics down so lenses can see Cluster Complexity (Atomic vs Composite)
-        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt, physics)
+        # Added id_type to arguments
+        self._build_lenses(report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_int, dt, id_type, physics)
         
         # --- F. SYNTHESIS (Narrative Intelligence) ---
         # Synthesis runs last so it sees all computed lens states
@@ -5311,7 +5318,7 @@ class ForensicExplainer:
 
         return report
     
-    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val, dt, physics=None):
+    def _build_lenses(self, report, props, id_stat, idna, confusables, gc_code, is_ascii, cp_val, dt, id_type, physics=None):
         # Lens 1: Source Code (V5.0: UAX #31, UTS #55, UTS #39)
         # Integrates Immutable Syntax, Spoofing detection, and Identifier Profiles.
 
@@ -7397,41 +7404,51 @@ def analyze_restriction_level(t: str) -> dict:
         "score": 80 
     }
 
-def analyze_identifier_profile(t: str) -> dict:
+def analyze_identifier_profile(token: str) -> dict:
     """
-    [VP-04] UAX #31 Identifier Profile Auditor.
+    [VP-04] UAX #31 Identifier Profile Auditor (Unicode 17.0 SOTA).
     Checks compliance against standard identifier definitions.
     
-    Profiles Checked:
-    1. STRICT_ASCII: a-zA-Z0-9_ only.
-    2. GENERAL_SECURITY: Unicode Letters, Numbers, Marks, Underscore.
-       (Rejects Emoji, Spaces, Symbols, and non-connector Punctuation).
+    Upgrade: Implements 'Reason Resolution' for Restricted characters.
+    - Uncommon_Use (Han): Allowed (with note).
+    - Technical/Obsolete: Disallowed.
     """
     # 1. Fast Regex Checks (Block 2 Definitions)
-    is_strict_ascii = bool(REGEX_ID_ASCII_STRICT.match(t))
-    is_general_safe = bool(REGEX_ID_GENERAL_SAFE.match(t))
+    is_strict_ascii = bool(REGEX_ID_ASCII_STRICT.match(token))
+    is_general_safe = bool(REGEX_ID_GENERAL_SAFE.match(token))
     
     violation_type = None
     
     # 2. Forensic Diagnostics (Only run if unsafe)
     if not is_general_safe:
-        if not t:
+        if not token:
             violation_type = "EMPTY"
         else:
             # Slow Path: Iterate to find the first offender
-            for char in t:
-                # A. Check Invisibles (The "Ghost" Layer)
+            for char in token:
                 cp = ord(char)
+                
+                # A. Check Invisibles (The "Ghost" Layer)
                 if cp < 1114112:
                     if INVIS_TABLE[cp] & (INVIS_DEFAULT_IGNORABLE | INVIS_BIDI_CONTROL):
                         violation_type = "INVISIBLE/CONTROL"
                         break
 
-                # B. Check Categories (The "Physics" Layer)
+                # B. Check Identifier Status (The "Law")
+                # Unicode 17.0 Update: Check Type before condemning Restricted
+                id_status = _find_in_ranges(cp, "IdentifierStatus")
+                
+                if id_status == "Restricted":
+                    id_type = _find_in_ranges(cp, "IdentifierType")
+                    # If it's just "Uncommon" (Rare Han), it is NOT a structural violation
+                    if id_type == "Uncommon_Use":
+                        continue 
+                
+                # C. Check Categories (The "Physics" Layer)
                 try:
                     cat = unicodedata.category(char)
                 except:
-                    cat = unicodedata2.category(char)
+                    cat = "Cn" # Fallback
                 
                 # Check against Block 2 Definitions
                 if cat.startswith(ID_VIOLATION_MAP["WHITESPACE"]):
@@ -12820,13 +12837,30 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                                 legacy_indices["suspicious_syntax_vs"].append(i)
 
                 # --- Identifiers ---
+                # --- Identifiers (Han-Aware Update) ---
                 id_status_val = _find_in_ranges(cp, "IdentifierStatus")
+                specific_id_type = _find_in_ranges(cp, "IdentifierType")
+                
                 status_key = ""
+                should_flag_status = False
+
                 if id_status_val:
-                    if id_status_val not in UAX31_ALLOWED_STATUSES: status_key = f"Flag: Identifier Status: {id_status_val}"
+                    if id_status_val not in UAX31_ALLOWED_STATUSES:
+                        # [Unicode 17.0 Fix] Suppression Logic
+                        # If Restricted BUT just "Uncommon_Use", do not flag as an Integrity Defect.
+                        # We only flag if it's Restricted AND NOT Uncommon.
+                        if id_status_val == "Restricted" and specific_id_type == "Uncommon_Use":
+                            should_flag_status = False
+                        else:
+                            should_flag_status = True
+                            status_key = f"Flag: Identifier Status: {id_status_val}"
                 else:
-                    if category not in ("Cn", "Co", "Cs"): status_key = "Flag: Identifier Status: Default Restricted"
-                if status_key:
+                    # Default Restricted (e.g. Emoji, Symbols) - Always flag
+                    if category not in ("Cn", "Co", "Cs"): 
+                        should_flag_status = True
+                        status_key = "Flag: Identifier Status: Default Restricted"
+
+                if should_flag_status and status_key:
                     if status_key not in id_type_stats: id_type_stats[status_key] = {'count': 0, 'positions': []}
                     id_type_stats[status_key]['count'] += 1
                     id_type_stats[status_key]['positions'].append(f"#{i}")
