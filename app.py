@@ -17037,6 +17037,52 @@ def render_inspector_panel(data):
 
     tier_class = f"risk-tier-{state['level']}"
     
+    # [NEW] ATOMIC STACK LOGIC
+    # 1. Get the source string
+    logical_char = data.get('cluster_glyph', '')
+    atomic_stack_html = ""
+
+    if logical_char:
+        # Layer 1: Scalars
+        scalars_str = " ".join([f"U+{ord(c):04X}" for c in logical_char])
+        
+        # Layer 2: UTF-16 (Big Endian hex pairs)
+        utf16_bytes = logical_char.encode('utf-16-be')
+        utf16_units = [f"{utf16_bytes[i]:02X}{utf16_bytes[i+1]:02X}" for i in range(0, len(utf16_bytes), 2)]
+        utf16_display = " ".join(utf16_units)
+
+        # Layer 3: UTF-8 Bytes
+        utf8_bytes = logical_char.encode('utf-8')
+        utf8_str = " ".join([f"{b:02X}" for b in utf8_bytes])
+
+        # Build the HTML Block
+        atomic_stack_html = f"""
+        <details class="atomic-stack-details">
+            <summary class="atomic-stack-summary">Atomic Anatomy</summary>
+            <div class="atomic-stack-body">
+                <div class="as-layer">
+                    <div class="as-label">Perceptual (Grapheme)</div>
+                    <div class="as-value as-val-glyph">{_escape_html(logical_char)}</div>
+                </div>
+                <div class="as-arrow">↓</div>
+                <div class="as-layer">
+                    <div class="as-label">Logical (Scalars)</div>
+                    <div class="as-value as-val-scalar">{scalars_str}</div>
+                </div>
+                <div class="as-arrow">↓</div>
+                <div class="as-layer">
+                    <div class="as-label">Runtime (UTF-16)</div>
+                    <div class="as-value as-val-utf16">{utf16_display}</div>
+                </div>
+                <div class="as-arrow">↓</div>
+                <div class="as-layer">
+                    <div class="as-label">Physical (UTF-8)</div>
+                    <div class="as-value as-val-utf8">{utf8_str}</div>
+                </div>
+            </div>
+        </details>
+        """
+    
     main_html = f"""
     <div class="inspector-layout-v3">
         <div class="col-context col-prev">
@@ -17063,6 +17109,7 @@ def render_inspector_panel(data):
         </div>
 
         <div class="col-structure">
+            {atomic_stack_html}
             <div class="section-label">
                 CLUSTER COMPONENTS
                 <span style="display:block; font-weight:600; opacity:0.99; font-size:0.7rem; margin-top:2px;">
