@@ -6876,7 +6876,10 @@ details.profile-section > summary:hover::marker {
 
 /* The Collapsible Container */
 .atomic-stack-details {
-    background: #f8fafc;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 12px;
     border-bottom: 1px solid #e2e8f0;
     font-family: var(--font-sans);
 }
@@ -6891,18 +6894,30 @@ details.profile-section > summary:hover::marker {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    justify-content: center;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    background: #f1f5f9;
+    background: #ffffff; /* Was #f1f5f9 */
+    border-bottom: 1px solid transparent; /* Hidden unless open */
+    transition: all 0.2s ease;
 }
 
 .atomic-stack-summary:hover {
     color: #3b82f6; /* Blue hover */
-    background: #eff6ff;
+    background: #f8fafc;
 }
 
+/* Hide standard marker */
 .atomic-stack-summary::-webkit-details-marker { display: none; }
-.atomic-stack-summary::after { content: "+"; font-size: 1.1em; font-weight: 400; }
+
+/* Custom Plus/Minus on the RIGHT (Absolute position to keep text centered) */
+.atomic-stack-summary::after { 
+    content: "+"; 
+    position: absolute; /* Pulls it out of flow */
+    right: 12px;
+    font-size: 1.1em; 
+    font-weight: 400; 
+}
 .atomic-stack-details[open] .atomic-stack-summary::after { content: "−"; }
 
 /* The Stack Body */
