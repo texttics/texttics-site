@@ -4803,12 +4803,11 @@ class ForensicExplainer:
 
     # Updated Signature: accepts physics
     def explain(self, hex_str, physics=None):
+        # Initialize rec immediately to prevent scope errors
+        rec = {}
         # 0. Safety Check
         if not FORENSIC_DB_READY:
             return self._fallback_report("System Loading...", "Forensic Database not loaded.", "NO-DB")
-
-        # Initialize rec immediately to prevent scope errors
-        rec = {}
         
         # 1. Initialize Critical Variables
         cp_int = 0
