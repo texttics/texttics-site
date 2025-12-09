@@ -6556,17 +6556,31 @@ def analyze_nsm_overload(graphemes):
             cp = ord(ch)
 
             # --- [FIXED] Robust Lookup Logic ---
-            # Prioritize "CombiningClass" (Legacy) -> "DerivedCombiningClass" (UCD) -> None
-            row = None
+            # Handles both direct values (str/int) and row tuples (list)
+            val_obj = None
             try:
-                row = _find_in_ranges(cp, "CombiningClass")
+                # Try Legacy Key
+                val_obj = _find_in_ranges(cp, "CombiningClass")
             except KeyError:
                 try:
-                    row = _find_in_ranges(cp, "DerivedCombiningClass")
+                    # Try UCD Key
+                    val_obj = _find_in_ranges(cp, "DerivedCombiningClass")
                 except KeyError:
-                    pass # Key missing, assume CCC=0
+                    pass 
                 
-            ccc = int(row[2]) if row else 0
+            ccc = 0
+            if val_obj is not None:
+                try:
+                    if isinstance(val_obj, (list, tuple)):
+                        # If it's a full row [start, end, value], grab index 2
+                        # If it's short, grab the last element
+                        idx = 2 if len(val_obj) > 2 else -1
+                        ccc = int(val_obj[idx])
+                    else:
+                        # It's a direct value (String "230" or Int 230)
+                        ccc = int(val_obj)
+                except (ValueError, IndexError, TypeError):
+                    ccc = 0
             
             # --- 1. VISUAL PHYSICS (Zalgo) ---
             is_visual_mark = (
