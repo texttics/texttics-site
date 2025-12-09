@@ -18949,7 +18949,7 @@ def inspect_character(event):
     - Atomic Physics: Uses base_char for unicodedata calls to fix 'bidirectional' errors.
     - Type Safety: Guards against Explainer returning strings/errors.
     """
-global LAST_RENDERED_IDX
+    global LAST_RENDERED_IDX
     try:
         text_input = document.getElementById("text-input")
         if text_input.classList.contains("reveal-active"):
