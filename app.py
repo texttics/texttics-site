@@ -4633,7 +4633,7 @@ def _is_cursive_break_allowed(cp):
     [Stage 1.9] Cursive Physics Helper.
     Determines if a character is a valid 'Word Break' that legally interrupts 
     a cursive connection (Arabic/Syriac/N'Ko/Tai Yo).
-    [FIXED] Uses correct Data Store Key ("GeneralCategory") and Lookup Method.
+    Uses correct Data Store Key ("GeneralCategory") and Lookup Method.
     """
     # 1. Try Saturated Store (Unicode 17.0 Truth)
     # We use _find_in_ranges because the loader stores it as an Interval Tree
