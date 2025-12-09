@@ -1137,11 +1137,14 @@ Stage 2: Heatmap Row Classes
 
 /* --- Col 6: Structure (Restored Scroll & Headers) --- */
 .col-structure {
-  border-right: 1px solid var(--color-border-light); /* Border restored */
+  border-right: 1px solid var(--color-border-light);
   background-color: #fff;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* UNIFIED SCROLLING FIX */
+  overflow-y: auto;   /* Allow vertical scrolling */
+  overflow-x: hidden; /* Prevent horizontal drift */
+  min-height: 0;      /* Safety for flex nesting */
 }
 .section-label {
   font-size: 0.8rem; /* Increased from 0.65rem */
