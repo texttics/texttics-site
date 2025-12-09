@@ -1864,6 +1864,51 @@ def _parse_indic_syllabic(content):
             mapping[int(r_part, 16)] = val
     return mapping
 
+def _parse_unihan_numeric(content):
+    """
+    Parses Unihan_NumericValues.txt for Financial Integrity (Gap 6).
+    Format: U+3405	kPrimaryNumeric	5
+    """
+    mapping = {}
+    for line in content.splitlines():
+        if line.startswith('#') or not line.strip(): continue
+        parts = line.split('\t')
+        if len(parts) < 3: continue
+        
+        # Field 0: U+XXXX
+        # Field 1: Property (kPrimaryNumeric, kAccountingNumeric, kOtherNumeric)
+        # Field 2: Value
+        try:
+            cp_str = parts[0].strip()
+            if cp_str.startswith("U+"):
+                cp = int(cp_str[2:], 16)
+                val = float(parts[2].strip())
+                mapping[cp] = val
+        except: pass
+    return mapping
+
+def _parse_variants_descriptions(content):
+    """
+    Parses StandardizedVariants.txt to extract Descriptions.
+    Used to detect Geometric Rotation (Gap 5).
+    Format: 1313 FE00; ...; description
+    """
+    desc_map = {}
+    for line in content.splitlines():
+        if line.startswith('#') or not line.strip(): continue
+        parts = line.split(';')
+        if len(parts) < 3: continue
+        
+        try:
+            seq_str = parts[0].strip()
+            desc = parts[2].split('#')[0].strip().upper()
+            
+            # Convert hex string "1313 FE00" to tuple (4883, 65024)
+            seq_tuple = tuple(int(x, 16) for x in seq_str.split())
+            desc_map[seq_tuple] = desc
+        except: pass
+    return desc_map
+
 # The Range Parsers
 def _parse_and_store_ranges(txt: str, store_key: str):
     """Generic parser for Unicode range data files (Blocks, Age, etc.)"""
@@ -3049,7 +3094,7 @@ async def load_unicode_data():
          # [STAGE 1.9]
          hangul_txt, radical_txt, named_seq_txt, ivd_txt, prop_alias_txt,
          emoji_src_txt, nushu_txt, math_class_txt, join_type_txt,
-         indic_pos_txt, indic_syl_txt) = results
+         indic_pos_txt, indic_syl_txt, unihan_num_txt) = results
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
@@ -3320,6 +3365,9 @@ async def load_unicode_data():
         if join_type_txt: DATA_STORES["JoiningType"] = _parse_joining_type(join_type_txt)
         if indic_pos_txt: DATA_STORES["IndicPos"] = _parse_indic_position(indic_pos_txt)
         if indic_syl_txt: DATA_STORES["IndicSyllabic"] = _parse_indic_syllabic(indic_syl_txt)
+        # --- STAGE 2.0: FINANCIAL & GEOMETRIC PHYSICS ---
+        if unihan_num_txt: DATA_STORES["UnihanNumeric"] = _parse_unihan_numeric(unihan_num_txt)
+        if variants_txt: DATA_STORES["VariantDescriptions"] = _parse_variants_descriptions(variants_txt)
         
         # Build Forensic Bitmask Table ---
         # This must happen AFTER all parsing is done
@@ -4512,6 +4560,132 @@ def _is_cursive_break_allowed(cp):
     # A word ends at a Separator (Z) or Punctuation (P).
     # Anything else (Letter, Number, Symbol, Control) inside a word creates a Fracture.
     return gc.startswith("Z") or gc.startswith("P")
+
+def audit_han_safety(token: str) -> list:
+    """
+    [Gap 1] The Han Identifier Auditor.
+    Distinguishes between "Uncommon" Han (Safe/Note) and "Restricted" Han (Threat).
+    """
+    findings = []
+    
+    for char in token:
+        cp = ord(char)
+        status = _find_in_ranges(cp, "IdentifierStatus")
+        
+        # Only audit if restricted
+        if status == "Restricted":
+            id_type = _find_in_ranges(cp, "IdentifierType")
+            
+            # Unicode 17.0 Shift: "Uncommon_Use" is the new "Restricted but Valid"
+            if id_type == "Uncommon_Use":
+                # Downgrade to Note
+                pass 
+            elif id_type in ("Technical", "Not_XID", "Obsolete", "Deprecated"):
+                findings.append({
+                    "type": "RESTRICTED_ID_CHAR",
+                    "char": char,
+                    "desc": f"Illegal Identifier Character ({id_type})",
+                    "risk": "CRITICAL"
+                })
+    return findings
+
+def scan_geometric_anomalies(t: str) -> list:
+    """
+    [Gap 5] Geometric Rotation Detector.
+    Detects Variation Selectors that physically rotate glyphs (Visual Spoofing).
+    """
+    findings = []
+    var_desc_map = DATA_STORES.get("VariantDescriptions", {})
+    
+    # Simple sliding window for Base + VS
+    # (Optimized for speed over full regex)
+    prev_cp = -1
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        if 0xFE00 <= cp <= 0xFE0F or 0xE0100 <= cp <= 0xE01EF:
+            if prev_cp != -1:
+                seq = (prev_cp, cp)
+                desc = var_desc_map.get(seq, "")
+                
+                if "ROTATED" in desc or "SIDEWAYS" in desc:
+                    findings.append({
+                        "pos": i,
+                        "type": "GEOMETRIC_ROTATION",
+                        "desc": f"Visual Drift: {desc}",
+                        "risk": "HIGH"
+                    })
+        prev_cp = cp
+        
+    return findings
+
+def scan_source_code_physics(t: str) -> list:
+    """
+    [Gap 4] UTS #55 Source Code Auditor.
+    Detects Line-Break Injection inside comments (Trojan Source).
+    """
+    findings = []
+    # Regex for C-style/JS/Python single line comments
+    # Matches // or # until a SAFE newline
+    # If we find a DANGEROUS newline inside, it's a hit.
+    
+    # dangerous: LS (2028), PS (2029), NEL (0085)
+    DANGEROUS_BREAKS = {'\u2028', '\u2029', '\u0085'}
+    
+    # Simple scan: Find comment start, scan until \n or \r
+    in_comment = False
+    
+    i = 0
+    while i < len(t):
+        char = t[i]
+        
+        # Start Comment
+        if not in_comment:
+            if char == '#' or (char == '/' and i+1 < len(t) and t[i+1] == '/'):
+                in_comment = True
+                i += 1
+        
+        # Inside Comment
+        else:
+            if char in ('\n', '\r'):
+                in_comment = False
+            elif char in DANGEROUS_BREAKS:
+                findings.append({
+                    "pos": i,
+                    "type": "UTS55_INJECTION",
+                    "desc": "Line Break Injection in Comment (Trojan Source)",
+                    "risk": "CRITICAL"
+                })
+        i += 1
+        
+    return findings
+
+def calculate_global_sum_v2(t: str):
+    """
+    [Gap 6] Financial Integrity Calculator (Unihan Aware).
+    """
+    unihan_map = DATA_STORES.get("UnihanNumeric", {})
+    total = 0.0
+    has_hidden = False
+    
+    for char in t:
+        cp = ord(char)
+        val = None
+        
+        # 1. Try Standard
+        try: val = unicodedata.numeric(char)
+        except: pass
+        
+        # 2. Try Unihan
+        if val is None:
+            val = unihan_map.get(cp)
+            if val is not None:
+                has_hidden = True
+                
+        if val is not None:
+            total += val
+            
+    return total, has_hidden
 
 class ForensicExplainer:
     """
@@ -5832,11 +6006,17 @@ def scan_token_fracture_safe(token_text):
             is_valid_fracture = False
             
             for pos, ag_cp in agent_run:
-                # ZWJ/ZWNJ in Complex Scripts is Valid Orthography
+                # 1. ZWJ/ZWNJ in Complex Scripts (Persian Defense)
                 if context_script in COMPLEX_ORTHOGRAPHY_SCRIPTS and ag_cp in (0x200C, 0x200D):
-                    continue # Safe
+                    continue 
                 
-                # If we hit a non-safe agent (e.g. Emoji, Tag, or ZWSP in English), flag it!
+                # 2. CGJ in Hebrew/Latin (The "Contextual Glue" Defense)
+                # U+034F is required for correct rendering in some Hebrew/German contexts.
+                if ag_cp == 0x034F:
+                    if context_script in ("Hebrew", "Latin"):
+                        continue
+
+                # If we hit a non-safe agent, flag it!
                 is_valid_fracture = True
                 
                 # Determine type for reporting
@@ -11957,7 +12137,6 @@ def compute_provenance_stats(t: str):
     if LOADING_STATE != "READY":
         return {} # Return empty if data isn't ready
 
-    numeric_total_value = 0
     number_script_zeros = set()
     final_stats = {} # This will now hold the dicts
 
@@ -11997,23 +12176,34 @@ def compute_provenance_stats(t: str):
         if num_type:
             _add_stat(f"Numeric Type: {num_type}", i)
 
-        # --- Numeric Properties (Non-positional) ---
+        # --- Numeric System Check (Decimal Systems Only) ---
+        # This keeps the "Mixed-Number Systems" check working for standard digits (0-9)
+        # We rely on Python's unicodedata for this specific structural check.
         try:
-            value = unicodedata.numeric(char)
-            numeric_total_value += value
             gc = unicodedata.category(char)
             if gc == "Nd":
-                zero_code_point = ord(char) - int(value)
+                val = unicodedata.numeric(char)
+                zero_code_point = ord(char) - int(val)
                 number_script_zeros.add(zero_code_point)
         except (ValueError, TypeError):
             pass
 
-    # --- Add the non-positional stats (which don't need 'positions') ---
+    # --- Financial Integrity: Total Numeric Value (SOTA) ---
+    # Uses the new Unihan-aware engine to sum CJK + ASCII + Roman
+    # Note: Requires calculate_global_sum_v2 to be defined in Block 6
+    numeric_total_value, has_hidden_numerics = calculate_global_sum_v2(t)
+
     if numeric_total_value > 0:
+        # Format: Remove .0 if integer, otherwise show float
+        val_str = f"{numeric_total_value:g}"
+        if has_hidden_numerics:
+            val_str += " (Contains CJK/Hidden Numerics)"
+            
         final_stats["Total Numeric Value"] = {
-            'count': round(numeric_total_value, 4), 
-            'positions': ["(N/A)"]
+            'count': val_str, 
+            'positions': ["(Financial Integrity Audit)"]
         }
+
     if len(number_script_zeros) > 1:
         final_stats["Mixed-Number Systems"] = {
             'count': len(number_script_zeros), 
@@ -13572,6 +13762,29 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     except Exception as e:
         print(f"[Stage 1.5] Integration Warning: {e}")
     # -------------------------------------------------------
+
+    # --- [STAGE 2.0] FORENSIC SATURATION (Gap Closure) ---
+    
+    # 1. Geometric Rotation (Visual Spoofing)
+    geo_anomalies = scan_geometric_anomalies(t)
+    for g in geo_anomalies:
+        key = f"HIGH: {g['desc']}"
+        if key not in threat_flags:
+            threat_flags[key] = {'count': 0, 'positions': [], 'severity': 'warn'}
+        threat_flags[key]['count'] += 1
+        threat_flags[key]['positions'].append(f"@{g['pos']}")
+        threat_score += 25
+
+    # 2. Source Code Physics (UTS #55)
+    sc_threats = scan_source_code_physics(t)
+    for s in sc_threats:
+        key = f"CRITICAL: {s['desc']}"
+        if key not in threat_flags:
+            threat_flags[key] = {'count': 0, 'positions': [], 'severity': 'crit'}
+        threat_flags[key]['count'] += 1
+        threat_flags[key]['positions'].append(f"@{s['pos']}")
+        threat_score += 50
+    
     return {
         'flags': threat_flags,
         'hashes': hashes,
