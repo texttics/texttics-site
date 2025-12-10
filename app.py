@@ -7919,6 +7919,130 @@ def analyze_identifier_profile(token: str) -> dict:
         "violation_type": violation_type
     }
 
+def scan_physics_instability(t: str):
+    """
+    [STAGE 1.8] The Instability Sensor (Oscillator & Volatility).
+    Detects:
+    1. Recursive Drift: Text that keeps changing after multiple normalizations.
+       (Target: WAFs that normalize 'until stable').
+    2. Infinite Loops: Cycles in the normalization chain (A -> B -> A).
+    3. Thermodynamic Volatility: Text that destroys its own identity upon 
+       Bidirectional Case Round-Tripping.
+    """
+    signals = []
+    if not t: return signals
+
+    # --- A. THE OSCILLATOR (Recursive NFKC State Machine) ---
+    # We simulate a WAF that normalizes recursively.
+    # We track the 'History Stack' to distinguish Drift from Cycles.
+    
+    try:
+        history = [t]
+        MAX_DEPTH = 5
+        loop_detected = False
+        drift_depth = 0
+        
+        current = t
+        
+        for i in range(MAX_DEPTH):
+            # Use the app's robust normalizer (Tier 3)
+            next_state = normalize_extended(current)
+            
+            if next_state == current:
+                # Stable State Reached
+                break
+            
+            if next_state in history:
+                # CYCLE DETECTED (Singularity)
+                # Example: A -> B -> A
+                signals.append({
+                    "type": "NORMALIZATION_LOOP",
+                    "risk": "CRITICAL",
+                    "desc": f"Normalization Oscillator (Infinite Loop detected at depth {i+1})",
+                    "badge": "LOOP"
+                })
+                loop_detected = True
+                break
+            
+            # Record state
+            history.append(next_state)
+            current = next_state
+            drift_depth += 1
+            
+        # Analyze Linear Drift (if no loop)
+        # Depth 1 (S1->S2) is normal for Compatibility chars.
+        # Depth 2+ (S2->S3) implies recursive instability.
+        if not loop_detected and drift_depth >= 2:
+            signals.append({
+                "type": "RECURSIVE_DRIFT",
+                "risk": "HIGH",
+                "desc": f"Recursive Normalization Drift (Unstable for {drift_depth} iterations)",
+                "badge": "MUTANT"
+            })
+            
+    except Exception as e:
+        # Failsafe for runtime errors during normalization
+        print(f"Oscillator Error: {e}")
+
+    # --- B. THERMODYNAMIC VOLATILITY (Omnidirectional Case Checks) ---
+    # Identity must be preserved across state changes.
+    # We check 3 Vectors of Volatility.
+    
+    try:
+        # Vector 1: The Standard Loop (Lower -> Upper -> Lower)
+        # Expected: x.lower() == x.lower().upper().lower()
+        t_low = t.lower()
+        t_low_up = t_low.upper()
+        t_round_trip = t_low_up.lower()
+        
+        if t_low != t_round_trip:
+             diff_count = sum(1 for a, b in zip(t_low, t_round_trip) if a != b)
+             if diff_count > 0:
+                 signals.append({
+                    "type": "VOLATILITY_LUL",
+                    "risk": "MED",
+                    "desc": f"Identity Loss: Lower -> Upper -> Lower ({diff_count} chars)",
+                    "badge": "FLUID"
+                })
+
+        # Vector 2: The Inverse Loop (Upper -> Lower -> Upper)
+        # Expected: x.upper() == x.upper().lower().upper()
+        # Note: This often breaks for Greek (Sigma) and Turkish (I), flagging locale risks.
+        t_up = t.upper()
+        t_up_low = t_up.lower()
+        t_inv_trip = t_up_low.upper()
+        
+        if t_up != t_inv_trip:
+             diff_count = sum(1 for a, b in zip(t_up, t_inv_trip) if a != b)
+             if diff_count > 0:
+                 signals.append({
+                    "type": "VOLATILITY_ULU",
+                    "risk": "MED",
+                    "desc": f"Identity Loss: Upper -> Lower -> Upper ({diff_count} chars)",
+                    "badge": "FLUID"
+                })
+
+        # Vector 3: The Casefold Singularity (Fold -> Norm -> Fold)
+        # Detects if NFKC normalization breaks case-folding stability.
+        # Critical for database primary key collision attacks.
+        t_fold = t.casefold()
+        t_fold_norm = normalize_extended(t_fold)
+        t_fold_norm_fold = t_fold_norm.casefold()
+        
+        if t_fold != t_fold_norm_fold:
+             # This implies that normalizing the casefolded string changes its identity
+             signals.append({
+                "type": "CASEFOLD_INSTABILITY",
+                "risk": "HIGH",
+                "desc": "Casefold Instability (Identity shifts under Normalization)",
+                "badge": "SHIFT"
+            })
+            
+    except Exception as e:
+        print(f"Thermodynamics Error: {e}")
+    
+    return signals
+
 def analyze_normalization_hazards(t: str):
     """
     [SYNTAX PREDATOR]
@@ -14541,6 +14665,31 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         threat_flags[key]['count'] += 1
         threat_flags[key]['positions'].append(f"@{g['pos']}")
         threat_score += 25
+        
+        # [WIRED] Bridge to Dashboard (The Paranoia Link)
+        if adversarial_data and 'targets' in adversarial_data:
+            # Create synthetic target snippet
+            start = max(0, g['pos'] - 2)
+            end = min(len(t), g['pos'] + 3)
+            token_snippet = t[start:end]
+            
+            # Map to Topology
+            if 'topology' in adversarial_data:
+                adversarial_data['topology']['PROTOCOL'] = adversarial_data['topology'].get('PROTOCOL', 0) + 1
+
+            # Inject Target
+            adversarial_data['targets'].insert(0, {
+                "token": token_snippet,
+                "verdict": "GEOMETRIC SPOOF",
+                "stack": [{
+                    "lvl": "HIGH", 
+                    "type": "PROTOCOL", 
+                    "desc": g['desc']
+                }],
+                "b64": "N/A", 
+                "hex": f"@{g['pos']}", 
+                "score": 85 # High Priority
+            })
 
     # 2. Source Code Physics (UTS #55)
     sc_threats = scan_source_code_physics(t)
@@ -14551,6 +14700,89 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         threat_flags[key]['count'] += 1
         threat_flags[key]['positions'].append(f"@{s['pos']}")
         threat_score += 50
+        
+        # [WIRED] Bridge to Dashboard (The Paranoia Link)
+        if adversarial_data and 'targets' in adversarial_data:
+            # Create synthetic target snippet (Comment context)
+            start = max(0, s['pos'] - 5)
+            end = min(len(t), s['pos'] + 5)
+            token_snippet = t[start:end]
+            
+            # Map to Topology
+            if 'topology' in adversarial_data:
+                adversarial_data['topology']['INJECTION'] = adversarial_data['topology'].get('INJECTION', 0) + 1
+
+            # Inject Target
+            adversarial_data['targets'].insert(0, {
+                "token": token_snippet,
+                "verdict": "TROJAN SOURCE",
+                "stack": [{
+                    "lvl": "CRIT", 
+                    "type": "INJECTION", 
+                    "desc": s['desc']
+                }],
+                "b64": "N/A", 
+                "hex": f"@{s['pos']}", 
+                "score": 100 # Maximum Priority (Actual Exploit)
+            })
+
+    # 3. Physics Instability (The Oscillator)
+    # [WIRED] Connects to Threat Flags, Threat Score, AND Adversarial Dashboard.
+    
+    instability_signals = scan_physics_instability(t)
+    
+    for sig in instability_signals:
+        # A. Severity Mapping (Hardened)
+        # HIGH Risk (Recursive Drift) is now treated as CRITICAL because it defeats WAFs.
+        sev = "crit" if sig["risk"] in ("CRITICAL", "HIGH") else "warn"
+        
+        # B. Populate Threat Flags (Group 3 Display)
+        label = f"{sig['risk']}: {sig['desc']}"
+        if label not in threat_flags:
+            threat_flags[label] = {
+                'count': 1, 
+                'positions': ["(Global Instability Check)"], 
+                'severity': sev,
+                'badge': sig['badge']
+            }
+        
+        # C. Threat Score Calculation (Weighted)
+        score_add = 0
+        if sig["risk"] == "CRITICAL": score_add = 50   # Infinite Loop (DoS Risk)
+        elif sig["risk"] == "HIGH":   score_add = 30   # Recursive Drift (Bypass Risk)
+        elif sig["risk"] == "MED":    score_add = 15   # Volatility (Ambiguity Risk)
+        threat_score += score_add
+
+        # D. Dashboard Bridge (The Paranoia Link)
+        # If the physics are broken, we inject this into the "Suspicion Dashboard"
+        # so it appears as a Top Target alongside malicious tokens.
+        if adversarial_data and 'topology' in adversarial_data:
+            
+            # Map Badge to Topology Column
+            topo_cat = "OBFUSCATION" # Default
+            if sig['badge'] == "LOOP":     topo_cat = "INJECTION" # DoS is an attack
+            elif sig['badge'] == "FLUID":  topo_cat = "AMBIGUITY"
+            elif sig['badge'] == "SHIFT":  topo_cat = "PROTOCOL"
+            elif sig['badge'] == "MUTANT": topo_cat = "OBFUSCATION"
+            
+            # Increment Stats
+            adversarial_data['topology'][topo_cat] = adversarial_data['topology'].get(topo_cat, 0) + 1
+            
+            # Inject Synthetic Target (If High/Critical)
+            # This forces the "Paranoia Peak" to display "PHYSICS FAILURE" as the top threat.
+            if sig["risk"] in ("CRITICAL", "HIGH"):
+                adversarial_data['targets'].insert(0, {
+                    "token": "GLOBAL_PHYSICS",
+                    "verdict": sig['badge'],
+                    "stack": [{
+                        "lvl": "CRIT", 
+                        "type": topo_cat, 
+                        "desc": sig['desc']
+                    }],
+                    "b64": "N/A", 
+                    "hex": "N/A", 
+                    "score": 95 # Force near top of list
+                })
     
     return {
         'flags': threat_flags,
