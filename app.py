@@ -9500,15 +9500,26 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
     }
 
 def _calc_shannon_entropy(data: bytes) -> float:
-    """Helper for Adaptive Window: Calculates H1 of a byte chunk efficiently."""
-    if not data: return 0.0
-    counts = Counter(data)
-    total = len(data)
-    entropy = 0.0
-    for count in counts.values():
-        p = count / total
-        entropy -= p * math.log2(p)
-    return entropy
+    """
+    [Helper] Lightweight Shannon Entropy calc for the Adaptive Topology Scanner.
+    Optimization: Uses Logarithmic Identity H = log2(N) - (1/N * sum(n*log2(n)))
+    to reduce floating point division errors and improve loop speed.
+    """
+    N = len(data)
+    if N == 0: return 0.0
+    
+    # Counter is C-optimized in Python 3.12
+    counts = collections.Counter(data)
+    
+    # Optimization: Factor out the division
+    # sum(c * log2(c)) is the 'Negative Entropy Mass'
+    sum_n_log_n = sum(c * math.log2(c) for c in counts.values())
+    
+    entropy = math.log2(N) - (sum_n_log_n / N)
+    
+    # Physics Clamping: Byte entropy cannot physically exceed 8.0 bits.
+    # Prevents floating point drift (e.g. 8.00000000001) from breaking UI thresholds.
+    return max(0.0, min(8.0, entropy))
 
 def scan_adaptive_entropy_topology(t: str) -> List[Dict[str, Any]]:
     """
