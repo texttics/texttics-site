@@ -161,10 +161,44 @@ SERIALIZATION_SIGS = {
     "BMP_IMAGE": re.compile(r'^BM', re.BINARY)
 }
 
-# 2. Template Syntax Injection (Format String Grammars)
-# Detects internal attribute access attempts via string formatting.
-# Pattern: { (anything) .__class__ (anything) } or { (anything) self. (anything) }
-FORMAT_INJECTION = re.compile(r'\{.*\.__class__.*\}|\{.*self\..*\}')
+# 2. Template Syntax Injection (Format String & SSTI Grammars)
+# Detects internal attribute access, reflection, and interpolation attempts.
+# Covers: Python (f-string/format), Jinja2, Mako, Java EL, Ruby ERB, and Dict Access.
+FORMAT_INJECTION = re.compile(r"""
+    # --- VECTOR A: PYTHON REFLECTION & ATTRIBUTE ACCESS ---
+    # Matches: {0.__class__}, {x.__globals__}, {self.secret}
+    # Logic: Opening brace -> content -> hazardous keyword -> content -> closing brace
+    \{[^}]* # Opening brace + safe chars
+    (
+        \.__class__|         # Class introspection (The Root)
+        \.__globals__|       # Global scope access (The RCE)
+        \.__base__|          # Inheritance traversal
+        \.__mro__|           # Method Resolution Order traversal
+        \.__subclasses__|    # Finding gadget chains
+        \.__init__|          # Constructor access
+        self\.|              # Instance internal access
+        config\.|            # Flask/Django config leakage
+        request\.            # Web request object leakage
+    )
+    [^}]*\}                  # Closing brace
+    
+    | # --- OR ---
+
+    # --- VECTOR B: DICTIONARY/ITEM ACCESS BYPASS ---
+    # Matches: user['__class__'], data["__init__"]
+    # Logic: Bracket -> Quote -> Dunder (Double Underscore) -> Quote -> Bracket
+    \[\s*[\'"]__\w+__[\'"]\s*\]
+
+    | # --- OR ---
+
+    # --- VECTOR C: TEMPLATE ENGINE INTERPOLATION ---
+    # Matches: {{ 7*7 }}, {{ config }}, ${ 7*7 }, #{ 7*7 }, <%= %>
+    # Logic: Double braces or Sigil-Brace patterns used by Jinja2, Mako, Java EL, etc.
+    \{\{.*?\}\}              | # Jinja2 / Django / Liquid (Double Curly)
+    \$\{.*?\}                | # Mako / JSP / Shell / JS Template Literals
+    \#\{.*?\}                | # Java Expression Language (EL) / Ruby
+    \<%(=|@)?.*?%\>          # ERB / JSP / ASP tags
+""", re.VERBOSE | re.DOTALL)
 
 # --- 1. COSMOLOGY (Time) ---
 # The "Compatibility Horizon." Characters newer than this may render as Tofu on LTS systems.
@@ -4494,21 +4528,25 @@ def _get_codepoint_properties(t: str):
 
 def scan_code_injection_physics(t: str):
     """
-    [STAGE 2.1] Code Injection Physics Sensor.
-    Detects:
-    1. Serialization Bombs: Text starting with VM Magic Bytes (Pickle/Java).
-    2. Template Injection: Text matching internal attribute access syntax.
+    [STAGE 2.1] Code Injection Physics Sensor (Hyper-Spectral).
     
-    NOTE: Unlike Glitch Tokens, these are based on File Format Standards 
-    and Language Grammar, making them deterministic constants.
+    Capabilities:
+    1. Serialization Bombs: Raw VM Magic Bytes (Pickle, Java, Lua, WASM).
+    2. Native Executables: ELF, PE, Mach-O headers.
+    3. Encoded Warheads: Detects Magic Bytes hidden inside Base64/Hex strings.
+    4. Template Injection: Internal attribute access & SSTI syntax.
+    
+    Philosophy: "X-Ray Vision." It looks through the encoding to see the warhead.
     """
     signals = []
+    if not t: return signals
     
-    # 1. Serialization Signatures (The "Executable String")
+    # --- A. PHYSICS: RAW MAGIC BYTES ---
     # We check the start of the string (encoded as latin-1 bytes for signature matching)
+    # Increased buffer to 32 bytes to catch longer signatures (e.g. tar, OFFICE_OLE)
     try:
         # Optimistic encoding to check magic bytes
-        b_prefix = t[:10].encode('latin-1', errors='ignore') 
+        b_prefix = t[:32].encode('latin-1', errors='ignore') 
         for name, pattern in SERIALIZATION_SIGS.items():
             if pattern.match(b_prefix):
                 signals.append({
@@ -4519,12 +4557,48 @@ def scan_code_injection_physics(t: str):
                 })
     except: pass
 
-    # 2. Format Injection (The "Logic Leak")
-    # Checks if the string attempts to access python internals via format syntax
+    # --- B. PHYSICS: ENCODED WARHEADS (The X-Ray) ---
+    # Attackers paste Base64/Hex. We peek at the decoded header without full processing.
+    
+    # 1. Base64 Peek (Check first 40 chars to get ~30 bytes decoded)
+    # Heuristic: Valid B64 charset, no spaces, length > 8
+    if len(t) > 8 and re.match(r'^[A-Za-z0-9+/]+={0,2}', t[:40]):
+        try:
+            # Decode just the header
+            # We add padding safety to ensure decodability of partial chunks
+            header_b64 = base64.b64decode(t[:40] + "===") 
+            for name, pattern in SERIALIZATION_SIGS.items():
+                if pattern.match(header_b64):
+                    signals.append({
+                        "type": "SERIALIZED_OBJECT",
+                        "desc": f"Encoded Payload detected (Base64 -> {name}).",
+                        "risk": "CRITICAL",
+                        "badge": "HIDDEN_EXE"
+                    })
+        except: pass
+
+    # 2. Hex Peek (Check first 40 chars -> 20 bytes)
+    # Heuristic: Valid Hex charset
+    if len(t) > 8 and re.match(r'^[0-9A-Fa-f]+$', t[:40]):
+        try:
+            header_hex = binascii.unhexlify(t[:40]) 
+            for name, pattern in SERIALIZATION_SIGS.items():
+                if pattern.match(header_hex):
+                    signals.append({
+                        "type": "SERIALIZED_OBJECT",
+                        "desc": f"Encoded Payload detected (Hex -> {name}).",
+                        "risk": "CRITICAL",
+                        "badge": "HIDDEN_EXE"
+                    })
+        except: pass
+
+    # --- C. SYNTAX: TEMPLATE INJECTION (Omni-Injector) ---
+    # Uses the global FORMAT_INJECTION constant from Block 2
+    # which now covers Python, Jinja2, Java EL, Ruby, and Shell.
     if FORMAT_INJECTION.search(t):
         signals.append({
             "type": "TEMPLATE_INJECTION",
-            "desc": "Format String Injection ({obj.__class__}). Exposes runtime internals.",
+            "desc": "Format String Injection / SSTI detected.",
             "risk": "CRITICAL",
             "badge": "INJECTION"
         })
@@ -13656,7 +13730,7 @@ def compute_stage1_5_forensics(text):
         # B. Domain Scan (Existing)
         all_signals.extend(scan_domain_structure_v2(t_str))
 
-        # Code Injection Physics [NEW]
+        # Code Injection Physics
         # Scans for Magic Bytes and Format Syntax (Deterministic)
         all_signals.extend(scan_code_injection_physics(text))
 
