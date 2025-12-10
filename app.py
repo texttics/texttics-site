@@ -9525,10 +9525,14 @@ def scan_adaptive_entropy_topology(t: str) -> List[Dict[str, Any]]:
     """
     [Phase 3.5] Adaptive Entropy 'Zoom Lens'.
     Generates a multi-resolution heatmap of the file's thermodynamic topology.
-    Detects the exact byte offset where text turns into payload (Edge Detection)
-    without the performance cost of a global sliding window.
+    
+    Improvements:
+    1. Gradient Trigger: Detects phase transitions (Text -> Binary).
+    2. Singularity Trigger: Auto-zooms on Encryption (>7.8) or Padding (<1.0).
+    3. Back-Step: Rewinds the zoom to capture the exact transition edge.
     """
     try:
+        # Physical Layer: Analyze bytes, not characters
         data = t.encode("utf-8", errors="replace")
         N = len(data)
         heatmap = []
@@ -9536,32 +9540,43 @@ def scan_adaptive_entropy_topology(t: str) -> List[Dict[str, Any]]:
         # Configuration (Tunable Physics)
         COARSE_STEP = 256       # Base scan speed (Fast)
         FINE_STEP = 64          # Zoom resolution (Precise)
-        TRANSITION_THRESHOLD = 1.5 # Entropy shift (bits) that triggers a zoom
+        
+        # Triggers
+        GRADIENT_THRESHOLD = 1.2  # Delta H > 1.2 triggers zoom (Text->B64)
+        SINGULARITY_HIGH = 7.8    # Absolute H > 7.8 triggers zoom (Encryption)
+        SINGULARITY_LOW = 1.0     # Absolute H < 1.0 triggers zoom (Sleds/Nulls)
         
         cursor = 0
         while cursor < N:
-            # 1. Coarse Scan
+            # 1. Coarse Physics (Low Res)
             chunk_end = min(cursor + COARSE_STEP, N)
             chunk = data[cursor : chunk_end]
             h_current = _calc_shannon_entropy(chunk)
             
-            # Look Ahead (Gradient Detection)
+            # 2. Look Ahead (Gradient Detection)
+            # We peek into the future to see if the texture changes
             next_end = min(cursor + 2 * COARSE_STEP, N)
+            delta = 0.0
+            
             if next_end > chunk_end:
                 next_chunk = data[chunk_end : next_end]
                 h_next = _calc_shannon_entropy(next_chunk)
                 delta = abs(h_current - h_next)
-            else:
-                delta = 0.0 # End of file or too short
             
-            # 2. Adaptive Logic
-            if delta > TRANSITION_THRESHOLD:
-                # --- PHASE TRANSITION DETECTED (ZOOM IN) ---
-                # The entropy spiked. Scan this region at High Resolution.
-                # We scan slightly past the coarse block to capture the gradient edge.
-                zoom_limit = min(cursor + COARSE_STEP + FINE_STEP, N)
-                sub_cursor = cursor
+            # 3. Decision Engine
+            is_transition = delta > GRADIENT_THRESHOLD
+            is_singularity = (h_current > SINGULARITY_HIGH) or (h_current < SINGULARITY_LOW)
+            
+            if is_transition or is_singularity:
+                # --- ZOOM MODE (HIGH RES) ---
+                # Back-step slightly to catch the exact edge of the transition
+                # (e.g. if the binary started at byte 250, the coarse block 0-256 
+                # already dirtied the entropy. Rewinding ensures we see the start.)
+                zoom_start = max(0, cursor - FINE_STEP) 
+                # Scan through the current block AND the look-ahead block
+                zoom_limit = min(cursor + COARSE_STEP + COARSE_STEP, N)
                 
+                sub_cursor = zoom_start
                 while sub_cursor < zoom_limit:
                     fine_chunk = data[sub_cursor : sub_cursor + FINE_STEP]
                     if not fine_chunk: break
@@ -9574,16 +9589,20 @@ def scan_adaptive_entropy_topology(t: str) -> List[Dict[str, Any]]:
                         "r": "HI"              # Resolution: High
                     })
                     sub_cursor += FINE_STEP
+                
+                # Advance cursor past the zoomed region to avoid double-scanning
+                # We consumed up to zoom_limit (roughly 2 coarse steps)
+                cursor = zoom_limit
+                
             else:
-                # --- STABLE REGION (LOW RES) ---
-                # No change. Record the coarse value and move on.
+                # --- STABLE MODE (LOW RES) ---
+                # Texture is uniform. Record coarse metric and move on.
                 heatmap.append({
                     "o": cursor,
                     "h": round(h_current, 2),
                     "r": "LO" # Resolution: Low
                 })
-            
-            cursor += COARSE_STEP
+                cursor += COARSE_STEP
             
         return heatmap
         
