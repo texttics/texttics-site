@@ -16795,11 +16795,14 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
 def render_structural_anomalies(findings: list) -> str:
     """
-    [Stage 2.0] Structural Anomaly Renderer (Forensic Grade).
-    Uses semantic SVGs to visualize the 'Physics' of the defect.
+    [Stage 2.0] Structural Anomaly Renderer (Forensic Aggregator).
+    
+    Features:
+    - Aggregation: Groups identical findings (e.g. "Frankenstein x50") into a single card.
+    - Semantic Iconography: Uses specific vector paths for Topology, Rhythm, and Injection.
+    - Detail Expansion: Lists specific contexts for aggregated threats.
     """
     if not findings:
-        # Zero-State: A clean, low-profile watermark.
         return """
         <div class="clean-state-marker">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -16807,39 +16810,63 @@ def render_structural_anomalies(findings: list) -> str:
         </div>
         """
 
-    # --- FORENSIC ICONOGRAPHY (Vector Paths) ---
-    # 1. TOPOLOGY (Wallbuilder): A grid with a distorted section.
+    # --- 1. FORENSIC ICONOGRAPHY (Vector Paths) ---
+    # TOPOLOGY (Wallbuilder): Distorted Grid
     SVG_GRID = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>'
     
-    # 2. PROTOCOL (Desync): Two arrows missing each other / Broken Link.
+    # PROTOCOL (Desync): Broken Link / Desynchronized Arrows
     SVG_SYNC = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>'
     
-    # 3. EVASION (Smuggling): A bracket or layer being split.
+    # EVASION (Smuggling): Split Layer / Dashed Line
     SVG_SPLIT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"></path><path d="M4 5h16"></path><path d="M12 5v14"></path><path d="M2 12h20" stroke-dasharray="4 2"></path></svg>'
     
-    # 4. ANOMALY (Frankenstein): A pulse/heartbeat spiking.
+    # ANOMALY (Frankenstein): Pulse Spike
     SVG_PULSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>'
     
-    # 5. SPOOF (Geometric): An eye or dimension arrow.
+    # SPOOF (Geometric): Dimension / Resize
     SVG_DIM = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"></path><path d="M2 12l4-4"></path><path d="M2 12l4 4"></path><path d="M22 12l-4-4"></path><path d="M22 12l-4 4"></path></svg>'
-
-    # Default Alert
+    
+    # DEFAULT
     SVG_ALERT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
 
+    # --- 2. AGGREGATION LOGIC ---
+    grouped = {}
+    
+    # Use a tuple key (Label + Badge + Severity) to ensure distinct threats don't merge incorrectly
+    # But usually Label is unique enough.
+    for f in findings:
+        key = f['label']
+        if key not in grouped:
+            grouped[key] = {
+                'count': 0,
+                'severity': f.get('severity', 'warn'),
+                'badge': f.get('badge', 'STRUCT'),
+                'details': [],  # Store unique detail strings
+                'indices': []
+            }
+        
+        grouped[key]['count'] += f.get('count', 1)
+        grouped[key]['indices'].extend(f.get('indices', []))
+        
+        d = f.get('details', '')
+        if d and d not in grouped[key]['details']:
+            grouped[key]['details'].append(d)
+
+    # --- 3. RENDER LOOP ---
     html_cards = []
     
-    for finding in findings:
-        severity = finding.get("severity", "warn")
-        badge = finding.get("badge", "STRUCT")
-        label = finding["label"]
-        details = finding.get("details", "")
+    for label, data in grouped.items():
+        count = data['count']
+        details_list = data['details']
+        severity = data['severity']
+        badge = data['badge']
         
-        # 1. Determine Visual Theme
-        theme_class = "fx-warn"
-        if severity == "crit": theme_class = "fx-crit"
-        elif severity == "high": theme_class = "fx-high"
+        # Theme Logic
+        theme = "fx-warn"
+        if severity == "crit": theme = "fx-crit"
+        elif severity == "high": theme = "fx-high"
         
-        # 2. Select Semantic Icon
+        # Icon Logic
         icon = SVG_ALERT
         if badge == "TOPOLOGY": icon = SVG_GRID
         elif badge == "PROTOCOL": icon = SVG_SYNC
@@ -16847,9 +16874,28 @@ def render_structural_anomalies(findings: list) -> str:
         elif badge == "ANOMALY": icon = SVG_PULSE
         elif badge == "SPOOF": icon = SVG_DIM
         
-        # 3. Build Card
+        # Header Construction
+        count_badge = f'<span class="fal-count">×{count}</span>' if count > 1 else ""
+        
+        # Body Construction
+        if count > 1:
+            # Show top 3 unique details + "and X more"
+            limit = 3
+            items_html = "".join([f"<div>• {d}</div>" for d in details_list[:limit]])
+            
+            # If we have more details OR if the count is much higher than unique details
+            # (e.g. 50 instances of the same 2 types of splicing)
+            remaining = count - limit if count > len(details_list) else len(details_list) - limit
+            
+            if remaining > 0:
+                items_html += f"<div style='opacity:0.6; margin-top:4px; font-size:0.7rem;'>... and {remaining} more instances.</div>"
+            
+            body_html = f"<div class='fal-list'>{items_html}</div>"
+        else:
+            body_html = details_list[0] if details_list else ""
+
         card = f"""
-        <div class="forensic-alert-card {theme_class}">
+        <div class="forensic-alert-card {theme}">
             <div class="fal-gutter">
                 <div class="fal-icon">{icon}</div>
             </div>
@@ -16857,8 +16903,9 @@ def render_structural_anomalies(findings: list) -> str:
                 <div class="fal-header">
                     <span class="fal-badge">{badge}</span>
                     <span class="fal-title">{label}</span>
+                    {count_badge}
                 </div>
-                <div class="fal-body">{details}</div>
+                <div class="fal-body">{body_html}</div>
             </div>
         </div>
         """
