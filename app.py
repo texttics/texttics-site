@@ -10578,10 +10578,38 @@ def compute_statistical_profile(t: str):
     except Exception as e:
         print(f"Mechanics Error: {e}")
 
+    # --- SENSOR 13: WHITESPACE PHYSICS (Stage 3.1) ---
+        stats["mechanics"]["whitespace"] = scan_whitespace_physics(t)
+
+        # --- SENSOR 14: DISPERSION ENTROPY (Stage 3.1) ---
+        if total_bytes > 64:
+            disp_en = calc_dispersion_entropy(utf8_bytes)
+            stats["mechanics"]["dispersion"] = round(disp_en, 3)
+        else:
+            stats["mechanics"]["dispersion"] = 0.0
+
+        # --- SENSOR 15: STRUCTURAL TRANSITIONS (Placeholder) ---
+        stats["mechanics"]["transition"] = {"detected": False, "desc": "Pending"} 
+
+        # --- SENSOR 16: ROT13 CANDIDATE (Stage 3.1) ---
+        ic_val = stats["thermodynamics"]["ic_norm"]
+        tri_val = stats["mechanics"].get("trigram_overlap", 0.0)
+        
+        if ic_val > 1.5 and tri_val < 0.05:
+            stats["mechanics"]["solver"] = solve_rot13_heuristic(t, ic_val)
+        else:
+            stats["mechanics"]["solver"] = None
+
+    except Exception as e:
+        print(f"Mechanics Error: {e}")
+
     # --- SENSOR 12: ADAPTIVE TOPOLOGY (The Zoom Lens) ---
     # Only run on larger files where topology matters (>512 bytes)
     if total_bytes > 512:
-        stats["thermodynamics"]["topology_heatmap"] = scan_adaptive_entropy_topology(t)
+        heatmap = scan_adaptive_entropy_topology(t)
+        stats["thermodynamics"]["topology_heatmap"] = heatmap
+        # --- SENSOR 15: STRUCTURAL TRANSITIONS (Actual Calculation) ---
+        stats["mechanics"]["transition"] = scan_entropy_transitions(heatmap)
 
     # --- SENSOR 17: LEMPEL-ZIV COMPLEXITY ---
     # Run on raw text (not bytes) to capture semantic patterns
