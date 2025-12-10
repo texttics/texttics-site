@@ -17349,6 +17349,45 @@ def render_statistical_profile(stats):
          "Range: 0.0 (Null) to 8.0 (Random)")
     ))
 
+    # Advanced Thermodynamics (Phase 1 Physics)
+    # Visualizes the "Texture" and "Floor" of the data to detect hidden structures.
+    thermo = stats.get("thermodynamics", {})
+    if thermo and thermo.get("min_entropy", 0) > 0:
+        min_ent = thermo.get("min_entropy", 0.0)
+        ic_norm = thermo.get("ic_norm", 0.0)
+        col_ent = thermo.get("collision", 0.0)
+        gap = thermo.get("gap", 0.0)
+        
+        # Signals (Alert Badges)
+        sigs = thermo.get("signals", {})
+        alerts = []
+        if sigs.get("rough_entropy"): 
+            alerts.append('<span style="color:#d97706; font-weight:700; background:#fffbeb; border:1px solid #fcd34d; padding:1px 4px; border-radius:3px;">⚠️ Rough Entropy (Obfuscation)</span>')
+        if sigs.get("structural_floor"): 
+            alerts.append('<span style="color:#dc2626; font-weight:700; background:#fef2f2; border:1px solid #fca5a5; padding:1px 4px; border-radius:3px;">🚨 Structural Floor (Padding/Sled)</span>')
+        if sigs.get("high_gap"): 
+            alerts.append('<span style="color:#7c3aed; font-weight:700; background:#f5f3ff; border:1px solid #ddd6fe; padding:1px 4px; border-radius:3px;">🔮 High Polymorphism Gap</span>')
+            
+        alert_html = " &nbsp; ".join(alerts) if alerts else '<span style="color:#94a3b8; font-style:italic;">No thermodynamic anomalies detected.</span>'
+        
+        # Micro-Cards Grid
+        # Uses your existing micro_card helper for consistent UI
+        t_cards = f"""
+        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; width:100%; margin-bottom:6px;">
+            {micro_card("Min-Entropy", f"{min_ent:.2f}", "Safety Floor (H∞)")}
+            {micro_card("Texture (IC)", f"{ic_norm:.2f}", "Roughness (Uniform~1.0)")}
+            {micro_card("Collision", f"{col_ent:.2f}", "Renyi Entropy (H2)")}
+            {micro_card("Poly Gap", f"{gap:.2f}", "Divergence (H1 - H2)")}
+        </div>
+        """
+        
+        rows.append(make_row("Thermo. Physics", t_cards, 
+            f'<div style="font-size:0.65rem; color:#64748b; margin-top:4px;">{alert_html}</div>',
+            ("ADVANCED THERMODYNAMICS", 
+             "Deep physics scan. Min-Entropy finds NOP sleds/padding. IC measures texture (distinguishes Rot13 from AES). Gap measures polymorphic variety.", 
+             "H_inf, Normalized IC, Renyi Gap", 
+             "IC > 1.5 implies structured text. MinEnt < 1.0 implies padding.")))
+
     # 2. Encoded Payloads (Rich Heuristic Alert)
     payloads = stats.get("payloads", [])
     if payloads:
@@ -17387,6 +17426,115 @@ def render_statistical_profile(stats):
              "Regex(CharSet) + Shannon Entropy", 
              "Target: Hidden shellcode, keys, or exfiltrated data.")
         ))
+
+    # Adaptive Heatmap (The Zoom Lens)
+    # Visualizes the entropy topology. High-Res blocks appear at phase transitions.
+    topo = stats.get("thermodynamics", {}).get("topology_heatmap", [])
+    
+    if topo:
+        segments = []
+        total_segments = len(topo)
+        
+        # We need to normalize widths visually. 
+        # Coarse (LO) = 4 units width, Fine (HI) = 1 unit width.
+        # But for CSS flex, we just use flex-grow based on step size.
+        
+        for block in topo:
+            entropy = block.get("h", 0.0)
+            res = block.get("r", "LO")
+            
+            # Color Scale: Blue (Cold) -> Purple (Text) -> Red (Hot)
+            # 0-3: #eff6ff (Cold)
+            # 3-5: #e0e7ff (Text)
+            # 5-7: #fcd34d (Obfuscated)
+            # >7:  #ef4444 (Encrypted)
+            
+            bg_col = "#eff6ff" # Default Cold
+            if entropy > 7.0: bg_col = "#ef4444"
+            elif entropy > 6.0: bg_col = "#f97316"
+            elif entropy > 5.0: bg_col = "#fcd34d"
+            elif entropy > 3.0: bg_col = "#3b82f6"
+            
+            # Width logic: HI res blocks are narrower in time, but we want them visible.
+            # Flex-grow ratio: Coarse (256) = 4, Fine (64) = 1
+            flex_grow = 4 if res == "LO" else 1
+            
+            # Tooltip
+            title = f"Offset: {block['o']} | Entropy: {entropy} | Res: {res}"
+            
+            segments.append(f'<div style="flex-grow:{flex_grow}; background:{bg_col}; height:100%; border-right:1px solid rgba(255,255,255,0.2);" title="{title}"></div>')
+            
+        map_html = f"""
+        <div style="display:flex; height:12px; width:100%; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0; background:#f8fafc; margin-bottom:6px;">
+            {''.join(segments)}
+        </div>
+        """
+        
+        rows.append(make_row("Entropy Topology", map_html, "",
+            ("ADAPTIVE HEATMAP", 
+             "Visualizes entropy density across the file. Blue=Text, Orange=Code, Red=Encrypted. 'Zoom Lens' automatically increases resolution at edges (Phase Transitions).", 
+             "Adaptive Sliding Window", 
+             "Look for sharp transitions from Blue to Red (Payload injection).")))
+
+    # Structural Rhythm (Phase 2)
+    # Detects cyclic heartbeats (XOR), Base64 structural ripples, and numeric anomalies.
+    struc = stats.get("structure", {})
+    if struc:
+        rep = struc.get("repeat_ratio", {})
+        b64 = struc.get("base64_phase", {})
+        ben = struc.get("benford", {})
+        
+        # 1. Autocorrelation Highlights (Heartbeat)
+        lag1 = rep.get("lag1", 0.0)
+        lag4 = rep.get("lag4", 0.0)
+        # Alert if repetition is significant (>10%)
+        lag1_alert = lag1 > 0.1
+        lag4_alert = lag4 > 0.1
+        
+        # 2. Base64 Badge (The Phase Scanner)
+        b64_verdict = b64.get("verdict", "Neutral")
+        b64_score = b64.get("score", 0.0)
+        b64_style = "background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;" # Default
+        
+        if "Structured" in b64_verdict: 
+            b64_style = "background:#fff7ed; border:1px solid #fed7aa; color:#9a3412;" # Orange
+        elif "High-Entropy" in b64_verdict: 
+            b64_style = "background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af;" # Blue
+            
+        # 3. Benford Badge (Numeric Truth)
+        ben_verdict = ben.get("verdict", "N/A")
+        ben_score = ben.get("score", 0.0)
+        ben_style = "background:#f8fafc; border:1px solid #e2e8f0; color:#64748b;"
+        if "Artificial" in ben_verdict:
+            ben_style = "background:#fef2f2; border:1px solid #fecaca; color:#991b1b;" # Red
+        
+        r_html = f"""
+        <div style="display:flex; gap:8px; width:100%; align-items:stretch;">
+            <div style="flex:1; min-width:0;">
+                {micro_card("Repeat (Lag 1)", f"{lag1:.3f}", "Byte Stutter", lag1_alert)}
+            </div>
+            <div style="flex:1; min-width:0;">
+                {micro_card("Repeat (Lag 4)", f"{lag4:.3f}", "32-bit Cycle", lag4_alert)}
+            </div>
+            
+            <div style="flex:2; display:flex; flex-direction:column; gap:4px; justify-content:center;">
+                <div style="{b64_style} padding:4px 8px; border-radius:4px; font-size:0.7rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700; opacity:0.8; font-size:0.6rem; text-transform:uppercase;">Base64 Phase</span> 
+                    <span style="font-weight:700; font-family:var(--font-mono);">{b64_verdict}</span>
+                </div>
+                <div style="{ben_style} padding:4px 8px; border-radius:4px; font-size:0.7rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700; opacity:0.8; font-size:0.6rem; text-transform:uppercase;">Benford Law</span> 
+                    <span style="font-weight:700; font-family:var(--font-mono);">{ben_verdict}</span>
+                </div>
+            </div>
+        </div>
+        """
+        
+        rows.append(make_row("Structure & Rhythm", r_html, "",
+            ("STRUCTURAL ANALYSIS", 
+             "Detects cyclic patterns (XOR keys, buffer overflows), Base64 artifacts (Modulo-4 ripple), and numeric anomalies (Benford's Law).", 
+             "Autocorrelation & Phase Variance", 
+             "High Repeat Ratio = Cyclic Payload. Flat Benford = Fuzzed Numbers.")))
 
     # 3. Lexical Density
     ttr = float(stats.get("ttr", 0.0))
@@ -17519,6 +17667,76 @@ def render_statistical_profile(stats):
              "Strict Newline Split", 
              "Map shows length density from start to end.")))
 
+    # Deep Linguistics (Phase 3 Statistical Mechanics)
+    # Uses determinisitc models (KLD, Zipf, Trigrams) to classify "Englishness" vs "Machine Code".
+    ling = stats.get("linguistics", {})
+    if ling and ling.get("status") == "Ready":
+        tri = ling.get("trigram_overlap", 0.0) * 100
+        kld = ling.get("kld_verdict", "N/A")
+        zipf = ling.get("zipf_mse", 0.0)
+        sampen = ling.get("pair_repeat_ratio", 0.0)
+        ws_var = ling.get("whitespace_var", 0.0)
+        
+        # 1. Trigram Bar (Grammar Fit)
+        # Green if high match (English), Red if low (DGA/Code)
+        tri_col = "#22c55e" if tri > 15 else "#ef4444" 
+        tri_bg = "#dcfce7" if tri > 15 else "#fee2e2"
+        
+        tri_bar = f"""
+        <div style="flex:1; display:flex; flex-direction:column; gap:3px; padding:4px; background:{tri_bg}; border:1px solid {tri_col}40; border-radius:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:0.6rem; font-weight:700; color:#334155; text-transform:uppercase;">English Trigram Fit</span>
+                <span style="font-size:0.7rem; color:#0f172a; font-weight:700;">{tri:.1f}%</span>
+            </div>
+            <div style="height:4px; background:#fff; border-radius:2px; overflow:hidden;">
+                <div style="width:{tri:.1f}%; height:100%; background:{tri_col};"></div>
+            </div>
+        </div>
+        """
+        
+        # 2. KLD Chip (Fingerprint)
+        kld_style = "background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;"
+        if "English" in kld: 
+            kld_style = "background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;"
+        elif "Uniform" in kld:
+            kld_style = "background:#fef2f2; color:#991b1b; border:1px solid #fecaca;"
+            
+        kld_chip = f"""
+        <div style="{kld_style} padding:6px 8px; border-radius:4px; font-size:0.75rem; font-weight:700; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+            <span style="font-size:0.55rem; text-transform:uppercase; opacity:0.8;">Distribution Profile</span>
+            {kld}
+        </div>
+        """
+        
+        # 3. Stego Warning (Dark Matter)
+        stego_html = ""
+        if ws_var > 2.0:
+            stego_html = f"""
+            <div style="margin-top:6px; background:#faf5ff; border:1px solid #d8b4fe; color:#6b21a8; padding:6px; border-radius:4px; font-size:0.7rem; display:flex; align-items:center; gap:8px;">
+                <span style="font-size:1.0rem;">👻</span> 
+                <span><b>Dark Matter Alert:</b> High Whitespace Variance ({ws_var:.2f}). Possible SNOW Steganography detected.</span>
+            </div>
+            """
+
+        # Layout Assembly
+        l_html = f"""
+        <div style="display:flex; gap:8px; align-items:stretch; margin-bottom:6px;">
+            {tri_bar}
+            <div style="flex:0 0 130px; display:flex;">{kld_chip}</div>
+        </div>
+        <div style="display:flex; gap:6px;">
+            {micro_card("Zipf Fit (MSE)", f"{zipf:.4f}", "Power Law Error")}
+            {micro_card("Pair Repeat", f"{sampen:.4f}", "Regularity Ratio")}
+        </div>
+        {stego_html}
+        """
+        
+        rows.append(make_row("Deep Linguistics", l_html, "",
+            ("STATISTICAL MECHANICS", 
+             "Classifies structure using fixed mathematical models (KLD, Zipf, Trigrams).", 
+             "Distribution Distance & Probability", 
+             "Distinguishes Natural Language from Code/Gibberish. 'Pair Repeat' detects algorithmic regularity in random-looking streams.")))
+
     # 7. Phonotactics (8 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
     if ph.get("is_valid", False):
@@ -17618,6 +17836,9 @@ def render_statistical_profile(stats):
              "Participants sorted by stack height.")))
              
     container.innerHTML = "".join(rows)
+
+    
+
     # --- APPEND CONSOLE & LEGEND (Outside Table) ---
     # We find the parent details element to append this to the bottom
     parent_details = container.closest("details")
