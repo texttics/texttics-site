@@ -86,6 +86,25 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
+# CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
+
+# 1. Serialization Magic Signatures (Hex/Byte Headers)
+# Detects executable objects masquerading as text strings.
+# Sources: Python Pickle Spec, Java Object Serialization Spec, GZIP Spec.
+SERIALIZATION_SIGS = {
+    # Pickle Protocols 0-5 (Explicit Opcode Starts)
+    "PICKLE_VM": re.compile(r'^(\x80[\x03\x04\x05]|\x80\x02|cnumpy|cposix)', re.BINARY),
+    # Python Marshalled Bytecode (Magic Header)
+    "PYTHON_BYTECODE": re.compile(r'^\x03\xf3\x0d\x0a', re.BINARY),
+    # Java Serialized Object (Magic Header)
+    "JAVA_SERIAL": re.compile(r'^\xac\xed\x00\x05', re.BINARY)
+}
+
+# 2. Template Syntax Injection (Format String Grammars)
+# Detects internal attribute access attempts via string formatting.
+# Pattern: { (anything) .__class__ (anything) } or { (anything) self. (anything) }
+FORMAT_INJECTION = re.compile(r'\{.*\.__class__.*\}|\{.*self\..*\}')
+
 # --- 1. COSMOLOGY (Time) ---
 # The "Compatibility Horizon." Characters newer than this may render as Tofu on LTS systems.
 # Based on common OS lifecycles (approx 3 years).
@@ -4411,6 +4430,45 @@ def _get_codepoint_properties(t: str):
 # ===============================================
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
+
+def scan_code_injection_physics(t: str):
+    """
+    [STAGE 2.1] Code Injection Physics Sensor.
+    Detects:
+    1. Serialization Bombs: Text starting with VM Magic Bytes (Pickle/Java).
+    2. Template Injection: Text matching internal attribute access syntax.
+    
+    NOTE: Unlike Glitch Tokens, these are based on File Format Standards 
+    and Language Grammar, making them deterministic constants.
+    """
+    signals = []
+    
+    # 1. Serialization Signatures (The "Executable String")
+    # We check the start of the string (encoded as latin-1 bytes for signature matching)
+    try:
+        # Optimistic encoding to check magic bytes
+        b_prefix = t[:10].encode('latin-1', errors='ignore') 
+        for name, pattern in SERIALIZATION_SIGS.items():
+            if pattern.match(b_prefix):
+                signals.append({
+                    "type": "SERIALIZED_OBJECT",
+                    "desc": f"Active Code Payload detected ({name}). RCE Risk.",
+                    "risk": "CRITICAL",
+                    "badge": "PAYLOAD"
+                })
+    except: pass
+
+    # 2. Format Injection (The "Logic Leak")
+    # Checks if the string attempts to access python internals via format syntax
+    if FORMAT_INJECTION.search(t):
+        signals.append({
+            "type": "TEMPLATE_INJECTION",
+            "desc": "Format String Injection ({obj.__class__}). Exposes runtime internals.",
+            "risk": "CRITICAL",
+            "badge": "INJECTION"
+        })
+
+    return signals
 
 def scan_container_physics(t: Any) -> list:
     """
@@ -10961,6 +11019,29 @@ def audit_stage1_5_signals(signals):
             "badge": "SEMANTIC"
         }
 
+    # --- 8. CODE INJECTION PHYSICS ---
+    
+    # A. Serialization Payload
+    if "SERIALIZED_OBJECT" in sig_map:
+        payloads = [s['desc'] for s in sig_map["SERIALIZED_OBJECT"]]
+        key = "CRITICAL: Serialized Object Payload"
+        flags[key] = {
+            "count": len(payloads),
+            "positions": payloads, # Show specific type (Pickle/Java)
+            "severity": "crit",
+            "badge": "RCE"
+        }
+
+    # B. Format Injection
+    if "TEMPLATE_INJECTION" in sig_map:
+         key = "CRITICAL: Format String Injection"
+         flags[key] = {
+            "count": 1,
+            "positions": ["(Python/Jinja2 Internal Access Pattern)"],
+            "severity": "crit",
+            "badge": "INJECTION"
+        }
+
     return {"flags": flags}
 
 def _evaluate_adversarial_risk(intermediate_data):
@@ -13513,6 +13594,10 @@ def compute_stage1_5_forensics(text):
         
         # B. Domain Scan (Existing)
         all_signals.extend(scan_domain_structure_v2(t_str))
+
+        # Code Injection Physics [NEW]
+        # Scans for Magic Bytes and Format Syntax (Deterministic)
+        all_signals.extend(scan_code_injection_physics(text))
 
     # 4. Audit Signals
     return audit_stage1_5_signals(all_signals)
