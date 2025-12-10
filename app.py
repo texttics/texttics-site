@@ -5032,10 +5032,17 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
     current_ws_len = 0
     current_ws_is_heavy = False
     in_ws_run = False
+
+    # Trackers for Mixed Spacing
+    has_ascii = False
+    has_nbsp = False
     
     # Native iteration for speed
     for char in t:
         cp = ord(char)
+        # Check for Space vs NBSP
+        if cp == 0x0020: has_ascii = True
+        elif cp == 0x00A0: has_nbsp = True
         # Check if character is Separator (Z*), Tab, or BOM (often used as glue)
         # We manually check category to avoid dependency on external regex
         cat = unicodedata.category(char)
@@ -5157,6 +5164,17 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
         # Simple heuristic: If ratios are wildly off, it's messy.
         # We skip adding a finding here to reduce noise, unless requested.
         pass
+
+    # Restores the specific detection of ASCII mixed with NBSP
+    if has_ascii and has_nbsp:
+        findings.append({
+            "label": "Mixed Spacing: ASCII + NBSP",
+            "severity": "high", 
+            "badge": "SPOOF",
+            "details": "Standard Space mixed with Non-Breaking Space. Common phishing signature.",
+            "count": 1, 
+            "indices": []
+        })
 
     return findings
 
