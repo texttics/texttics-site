@@ -9499,6 +9499,87 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
         "lens_data": { "match_range": (match_start_idx, match_end_idx), "overlap_pct": overlap_pct } 
     }
 
+def _calc_shannon_entropy(data: bytes) -> float:
+    """Helper for Adaptive Window: Calculates H1 of a byte chunk efficiently."""
+    if not data: return 0.0
+    counts = Counter(data)
+    total = len(data)
+    entropy = 0.0
+    for count in counts.values():
+        p = count / total
+        entropy -= p * math.log2(p)
+    return entropy
+
+def scan_adaptive_entropy_topology(t: str) -> List[Dict[str, Any]]:
+    """
+    [Phase 3.5] Adaptive Entropy 'Zoom Lens'.
+    Generates a multi-resolution heatmap of the file's thermodynamic topology.
+    Detects the exact byte offset where text turns into payload (Edge Detection)
+    without the performance cost of a global sliding window.
+    """
+    try:
+        data = t.encode("utf-8", errors="replace")
+        N = len(data)
+        heatmap = []
+        
+        # Configuration (Tunable Physics)
+        COARSE_STEP = 256       # Base scan speed (Fast)
+        FINE_STEP = 64          # Zoom resolution (Precise)
+        TRANSITION_THRESHOLD = 1.5 # Entropy shift (bits) that triggers a zoom
+        
+        cursor = 0
+        while cursor < N:
+            # 1. Coarse Scan
+            chunk_end = min(cursor + COARSE_STEP, N)
+            chunk = data[cursor : chunk_end]
+            h_current = _calc_shannon_entropy(chunk)
+            
+            # Look Ahead (Gradient Detection)
+            next_end = min(cursor + 2 * COARSE_STEP, N)
+            if next_end > chunk_end:
+                next_chunk = data[chunk_end : next_end]
+                h_next = _calc_shannon_entropy(next_chunk)
+                delta = abs(h_current - h_next)
+            else:
+                delta = 0.0 # End of file or too short
+            
+            # 2. Adaptive Logic
+            if delta > TRANSITION_THRESHOLD:
+                # --- PHASE TRANSITION DETECTED (ZOOM IN) ---
+                # The entropy spiked. Scan this region at High Resolution.
+                # We scan slightly past the coarse block to capture the gradient edge.
+                zoom_limit = min(cursor + COARSE_STEP + FINE_STEP, N)
+                sub_cursor = cursor
+                
+                while sub_cursor < zoom_limit:
+                    fine_chunk = data[sub_cursor : sub_cursor + FINE_STEP]
+                    if not fine_chunk: break
+                    
+                    h_fine = _calc_shannon_entropy(fine_chunk)
+                    
+                    heatmap.append({
+                        "o": sub_cursor,       # Offset
+                        "h": round(h_fine, 2), # Entropy
+                        "r": "HI"              # Resolution: High
+                    })
+                    sub_cursor += FINE_STEP
+            else:
+                # --- STABLE REGION (LOW RES) ---
+                # No change. Record the coarse value and move on.
+                heatmap.append({
+                    "o": cursor,
+                    "h": round(h_current, 2),
+                    "r": "LO" # Resolution: Low
+                })
+            
+            cursor += COARSE_STEP
+            
+        return heatmap
+        
+    except Exception as e:
+        print(f"Adaptive Topo Error: {e}")
+        return []
+
 def compute_statistical_profile(t: str):
     """
     [Stage 3.0] Statistical & Lexical Profile (Thermodynamics Engine).
@@ -9583,7 +9664,7 @@ def compute_statistical_profile(t: str):
             max_p = max_count / total_bytes
             min_entropy = -math.log2(max_p) if max_p > 0 else 0.0
 
-            # --- [NEW] SENSOR 3: COLLISION (Renyi H2) ---
+            # ---  SENSOR 3: COLLISION (Renyi H2) ---
             # Measures repetition probability.
             sum_squares = sum((c / total_bytes) ** 2 for c in byte_counts.values())
             collision_entropy = -math.log2(sum_squares) if sum_squares > 0 else 0.0
@@ -9591,34 +9672,51 @@ def compute_statistical_profile(t: str):
             # --- VECTOR ANALYSIS ---
             entropy_gap = abs(entropy - collision_entropy)
 
-            # --- FORENSIC TRIGGERS (Probabilistic) ---
+            # --- CONTINUOUS FORENSIC SCORING (Unified v2.0) ---
+            # Replaces binary flags with analog severity gauges.
             
-            # 1. Rough High Entropy (Obfuscation Signal)
-            # High Energy (Entropy) but High Roughness (IC).
-            # Indicates Rot13, XOR, or Base64 rather than AES.
-            is_rough = (entropy > 5.0) and (ic_norm > 1.5) and (total_bytes > 64)
+            # 1. Fake Randomness Score (Obfuscation vs Encryption)
+            # Theory: Encryption has High Entropy (~8.0) but Low Texture (IC ~ 1.0).
+            # Obfuscation (Rot13/Base64) has High Entropy (>5.0) AND High Texture (IC > 1.2).
+            # Formula: Excess Entropy * Excess Texture.
+            fake_score = 0.0
+            if total_bytes > 64:
+                excess_entropy = max(0.0, entropy - 5.0)
+                excess_texture = max(0.0, ic_norm - 1.2)
+                fake_score = excess_entropy * excess_texture * 2.0 
+            # Result: 0.0 (Clean) to ~5.0+ (Critical Obfuscation)
 
-            # 2. Structural Floor (Padding/Sled Signal)
-            # Normal Energy (Shannon) but Zero Floor (Min-Entropy).
-            # Indicates huge blocks of repeated bytes (0x90, 0x00) hidden in noise.
-            is_floored = (entropy > 3.5) and (min_entropy < 1.5) and (total_bytes > 128)
+            # 2. Structural Floor Score (Sleds/Padding)
+            # Theory: Normal Entropy (>3.5) but Collapsed Floor (<1.0 MinEnt).
+            # Indicates huge blocks of repeated bytes (e.g. 0x90 NOPs) hidden in noise.
+            floor_score = 0.0
+            if total_bytes > 128 and entropy > 3.5:
+                 # Invert MinEnt (lower is worse). Avoid div/0.
+                 safe_min_ent = max(0.1, min_entropy)
+                 floor_ratio = 1.0 / safe_min_ent
+                 # Trigger if min_entropy drops below ~1.25
+                 floor_score = (entropy - 3.0) * max(0.0, floor_ratio - 0.8)
+            # Result: 0.0 (Natural) to ~10.0+ (Massive NOP Sled)
 
-            # 3. High Gap (Polymorphism Signal)
-            # Wide divergence between Average and Collision entropy.
-            # Indicates heavy-tailed distributions (polymorphic loops).
-            is_gapped = (entropy_gap > 1.2) and (total_bytes > 64)
+            # 3. Polymorphism Score (Renyi Gap)
+            # Theory: Gap > 0.5 indicates heavy-tailed distribution (code loops).
+            poly_score = 0.0
+            if total_bytes > 64:
+                poly_score = max(0.0, entropy_gap - 0.5) * 2.0
+            # Result: 0.0 (Uniform) to ~3.0+ (Polymorphic)
 
-            # Store Physics Payload
+            # Store Physics Payload (Continuous)
             stats["thermodynamics"] = {
                 "shannon": round(entropy, 2),
                 "min_entropy": round(min_entropy, 2),
                 "collision": round(collision_entropy, 2),
                 "ic_norm": round(ic_norm, 3),
                 "gap": round(entropy_gap, 2),
-                "signals": {
-                    "rough_entropy": is_rough,
-                    "structural_floor": is_floored,
-                    "high_gap": is_gapped
+                # New Scoring Dictionary
+                "scores": {
+                    "fake_randomness": round(fake_score, 2),
+                    "structural_floor": round(floor_score, 2),
+                    "polymorphism": round(poly_score, 2)
                 }
             }
 
@@ -10181,6 +10279,11 @@ def compute_statistical_profile(t: str):
 
     except Exception as e:
         print(f"Linguistics Error: {e}")
+
+    # --- SENSOR 12: ADAPTIVE TOPOLOGY (The Zoom Lens) ---
+    # Only run on larger files where topology matters (>512 bytes)
+    if total_bytes > 512:
+        stats["thermodynamics"]["topology_heatmap"] = scan_adaptive_entropy_topology(t)
     
     return stats
 
