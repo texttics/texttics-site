@@ -9735,18 +9735,27 @@ def compute_statistical_profile(t: str):
                 poly_score = max(0.0, entropy_gap - 0.5) * 2.0
             # Result: 0.0 (Uniform) to ~3.0+ (Polymorphic)
 
-            # Store Physics Payload (Continuous)
+            # Store Physics Payload (Continuous + Boolean Signals)
             stats["thermodynamics"] = {
                 "shannon": round(entropy, 2),
                 "min_entropy": round(min_entropy, 2),
                 "collision": round(collision_entropy, 2),
                 "ic_norm": round(ic_norm, 3),
                 "gap": round(entropy_gap, 2),
-                # New Scoring Dictionary
+                
+                # 1. Continuous Scores (For nuances)
                 "scores": {
                     "fake_randomness": round(fake_score, 2),
                     "structural_floor": round(floor_score, 2),
                     "polymorphism": round(poly_score, 2)
+                },
+                
+                # 2. Boolean Signals (For Phase 2 Logic & Renderer Badges)
+                # Restores the missing 'signals' key that caused the crash.
+                "signals": {
+                    "rough_entropy": fake_score > 4.0,      # Threshold for "Fake Randomness"
+                    "structural_floor": floor_score > 2.0,  # Threshold for "Padding"
+                    "high_gap": poly_score > 2.0            # Threshold for "Polymorphism"
                 }
             }
 
