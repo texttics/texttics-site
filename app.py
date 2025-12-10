@@ -18146,47 +18146,68 @@ def render_statistical_profile(stats):
              "DispEn, Whitespace Entropy", 
              "Metrics describe physical structure, not intent. Thresholds are heuristic.")))
 
-    # --- Complexity & Stylometry (Stage 3.2) ---
+    # --- Complexity & Stylometry (Stage 3.2 Refined v2) ---
+    # Updates: Centered alignment, darker text for stylometry, added punctuation profile.
     mech_row_3 = ""
     
-    # 1. Lempel-Ziv (Algorithmic Complexity)
+    # 1. Lempel-Ziv (Centered)
     lz = mech.get("lz_complexity", {})
     if lz.get("score", 0) > 0:
         ratio = lz['ratio']
-        # Style: Green=Structured, Red=Random/Complex
+        # Style: Added flex centering settings
         lz_style = "background:#f0fdf4; color:#15803d; border-color:#bbf7d0;"
         if ratio > 0.8: lz_style = "background:#fff7ed; color:#c2410c; border-color:#fed7aa;"
         
+        # Added: display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;
         mech_row_3 += f"""
-        <div style="{lz_style} border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px; flex:1;">
+        <div style="{lz_style} border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px; flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
             <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; margin-bottom:2px;">Lempel-Ziv Complexity</div>
-            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{ratio:.3f} <span style="font-weight:400; font-size:0.6rem;">(Normalized)</span></div>
+            <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700;">{ratio:.3f} <span style="font-weight:400; font-size:0.6rem;">(Norm)</span></div>
             <div style="font-size:0.65rem;">{lz['verdict']}</div>
         </div>
         """
 
-    # 2. Stylometry (Descriptive)
+    # 2. Stylometry (Centered, Darker, More Info)
     sty = mech.get("stylometry", {})
     if sty:
         wl = sty['avg_word_len']
         sl = sty['avg_sent_len']
         pd = sty['punct_density']
         
+        # New: Process Punctuation Profile for display (Top 4 marks)
+        pp = sty.get('punct_profile', {})
+        top_punct = sorted(pp.items(), key=lambda x: x[1], reverse=True)[:4]
+        punct_parts = []
+        for p_char, p_count in top_punct:
+             # Use monospace font for the actual marks
+             punct_parts.append(f"<span style='font-family:var(--font-mono);'><b>{_escape_html(p_char)}</b>:{p_count}</span>")
+        punct_summ = ", ".join(punct_parts) if punct_parts else "None"
+        
+        # Changed main color from #64748b to #334155 (darker slate)
+        # Added flex column layout to stack the main stats over the new detail row
         mech_row_3 += f"""
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; border-radius:4px; padding:6px 8px; flex:2; display:flex; justify-content:space-around;">
-            <div style="text-align:center;">
-                <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Word Len</div>
-                <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{wl}</div>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; color:#334155; border-radius:4px; padding:6px 8px; flex:2; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+            
+            <div style="display:flex; justify-content:space-around; width:100%; align-items:center; text-align:center; margin-bottom:4px;">
+                <div>
+                    <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; color:#64748b;">Word Avg</div>
+                    <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700;">{wl}</div>
+                </div>
+                # Vertical dividers with explicit height
+                <div style="border-left:1px solid #e2e8f0; height:20px; margin:0 8px;"></div>
+                <div>
+                    <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; color:#64748b;">Sent. Avg</div>
+                    <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700;">{sl}</div>
+                </div>
+                <div style="border-left:1px solid #e2e8f0; height:20px; margin:0 8px;"></div>
+                <div>
+                    <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; color:#64748b;">Punct %</div>
+                    <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700;">{pd}%</div>
+                </div>
             </div>
-            <div style="border-left:1px solid #e2e8f0; width:1px;"></div>
-            <div style="text-align:center;">
-                <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Sent. Len</div>
-                <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{sl}</div>
-            </div>
-            <div style="border-left:1px solid #e2e8f0; width:1px;"></div>
-            <div style="text-align:center;">
-                <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Punct %</div>
-                <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{pd}%</div>
+
+            <div style="border-top:1px dashed #e2e8f0; width:100%; padding-top:4px; font-size:0.65rem; color:#475569; text-align:center;">
+                <span style="text-transform:uppercase; font-weight:700; font-size:0.55rem;">Top Marks:</span> {punct_summ}
             </div>
         </div>
         """
@@ -18194,8 +18215,8 @@ def render_statistical_profile(stats):
     if mech_row_3:
         rows.append(make_row("Complexity & Style", f'<div style="display:flex; gap:8px;">{mech_row_3}</div>', "",
             ("ALGORITHMIC COMPLEXITY", 
-             "Lempel-Ziv (LZC) measures pattern uniqueness (Compressibility). Stylometry profiles word/sentence structure. High LZC = Random/Encrypted. Low LZC = Structured Text.", 
-             "LZ76 Complexity, Avg Lengths", 
+             "Lempel-Ziv (LZC) measures pattern uniqueness (Compressibility). Stylometry profiles structure and punctuation usage. High LZC = Random/Encrypted. Low LZC = Structured Text.", 
+             "LZ76 Complexity, Avg Lengths, Top Punctuation", 
              "Provides a compression-based complexity axis orthogonal to entropy.")))
 
     # 7. Phonotactics (8 Cards + Stacked Bar)
