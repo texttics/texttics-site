@@ -17468,52 +17468,65 @@ def render_statistical_profile(stats):
 
     # Adaptive Heatmap (The Zoom Lens)
     # Visualizes the entropy topology. High-Res blocks appear at phase transitions.
-    topo = stats.get("thermodynamics", {}).get("topology_heatmap", [])
+    ttopo = stats.get("thermodynamics", {}).get("topology_heatmap", [])
     
     if topo:
         segments = []
-        total_segments = len(topo)
         
-        # We need to normalize widths visually. 
-        # Coarse (LO) = 4 units width, Fine (HI) = 1 unit width.
-        # But for CSS flex, we just use flex-grow based on step size.
+        # 1. Calculate Topology Metrics (Forensic Context)
+        # We need to describe the shape of the data, not just draw it.
+        h_values = [b.get("h", 0.0) for b in topo]
+        min_h = min(h_values) if h_values else 0.0
+        max_h = max(h_values) if h_values else 0.0
+        avg_h = sum(h_values) / len(h_values) if h_values else 0.0
         
+        # Count "Zoom Events" (High Res chunks)
+        hi_res_count = sum(1 for b in topo if b.get("r") == "HI")
+        
+        # Color Scale Logic (Blue -> Yellow -> Red)
         for block in topo:
             entropy = block.get("h", 0.0)
             res = block.get("r", "LO")
             
-            # Color Scale: Blue (Cold) -> Purple (Text) -> Red (Hot)
-            # 0-3: #eff6ff (Cold)
-            # 3-5: #e0e7ff (Text)
-            # 5-7: #fcd34d (Obfuscated)
-            # >7:  #ef4444 (Encrypted)
+            bg_col = "#eff6ff" # Default Cold (Text)
+            if entropy > 7.0: bg_col = "#ef4444"   # Encryption
+            elif entropy > 6.0: bg_col = "#f97316" # Compressed
+            elif entropy > 5.0: bg_col = "#fcd34d" # Code/Obfuscated
+            elif entropy > 3.0: bg_col = "#3b82f6" # Standard Text
             
-            bg_col = "#eff6ff" # Default Cold
-            if entropy > 7.0: bg_col = "#ef4444"
-            elif entropy > 6.0: bg_col = "#f97316"
-            elif entropy > 5.0: bg_col = "#fcd34d"
-            elif entropy > 3.0: bg_col = "#3b82f6"
-            
-            # Width logic: HI res blocks are narrower in time, but we want them visible.
-            # Flex-grow ratio: Coarse (256) = 4, Fine (64) = 1
             flex_grow = 4 if res == "LO" else 1
-            
-            # Tooltip
             title = f"Offset: {block['o']} | Entropy: {entropy} | Res: {res}"
-            
             segments.append(f'<div style="flex-grow:{flex_grow}; background:{bg_col}; height:100%; border-right:1px solid rgba(255,255,255,0.2);" title="{title}"></div>')
             
+        # 2. Build The Visual Bar
         map_html = f"""
-        <div style="display:flex; height:12px; width:100%; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0; background:#f8fafc; margin-bottom:6px;">
+        <div style="display:flex; height:14px; width:100%; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0; background:#f8fafc; margin-bottom:8px;">
             {''.join(segments)}
         </div>
         """
-        
-        rows.append(make_row("Entropy Topology", map_html, "",
+
+        # 3. Build The Data Context (Legend + Metrics)
+        # We add a legend so the user understands the colors, and stats to explain the structure.
+        legend_html = """
+        <div style="display:flex; justify-content:space-between; align-items:end; font-size:0.65rem; color:#64748b;">
+            <div style="display:flex; gap:10px;">
+                <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; background:#3b82f6; border-radius:2px;"></span> Text (3-5)</span>
+                <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; background:#fcd34d; border-radius:2px;"></span> Code (5-6)</span>
+                <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; background:#ef4444; border-radius:2px;"></span> Encrypted (>7)</span>
+            </div>
+            <div style="text-align:right; font-family:var(--font-mono);">
+                <span title="Minimum / Maximum Entropy in File">Range: <b>{min_h:.2f}</b> - <b>{max_h:.2f}</b></span>
+                <span style="margin-left:8px; opacity:0.5;">|</span>
+                <span style="margin-left:8px;" title="Zoom Events (Edge Detections)">Transitions: <b>{hi_res_count}</b></span>
+            </div>
+        </div>
+        """
+
+        rows.append(make_row("Entropy Topology", map_html + legend_html, "",
             ("ADAPTIVE HEATMAP", 
-             "Visualizes entropy density across the file. Blue=Text, Orange=Code, Red=Encrypted. 'Zoom Lens' automatically increases resolution at edges (Phase Transitions).", 
+             "Visualizes entropy density. Blue=Text, Yellow=Code, Red=Encrypted. The 'Zoom Lens' automatically increases resolution (High Res) at phase transitions to detect payload edges.", 
              "Adaptive Sliding Window", 
-             "Look for sharp transitions from Blue to Red (Payload injection).")))
+             "Look for sharp transitions (Blue->Red) indicating injected payloads.")))
 
     # Structural Rhythm (Phase 2)
     # Detects cyclic heartbeats (XOR), Base64 structural ripples, and numeric anomalies.
@@ -17580,46 +17593,66 @@ def render_statistical_profile(stats):
     ttr_seg = stats.get("ttr_segmented", None)
     tok_total = int(stats.get("total_tokens", 0))
     uniq = int(stats.get("unique_tokens", 0))
+    
+    # Visual Bar
     ttr_pct = min(100, max(0, ttr * 100))
     ttr_grad = "linear-gradient(90deg, #f87171 0%, #fbbf24 30%, #2dd4bf 100%)"
     
     vis_ttr = f"""
-    <div style="display:flex; align-items:center; gap:12px;">
-        <div style="flex:1; height:6px; background:#f1f5f9; border-radius:3px; overflow:hidden; border:1px solid #e2e8f0;">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <div style="flex:1; height:8px; background:#f1f5f9; border-radius:4px; overflow:hidden; border:1px solid #e2e8f0;">
             <div style="width:{ttr_pct:.1f}%; height:100%; background:{ttr_grad};"></div>
         </div>
         <div style="text-align:right; min-width:50px; font-family:var(--font-mono); font-weight:700; font-size:0.85rem; color:#1e293b;">{ttr:.2f}</div>
     </div>"""
     
-    # Forensic TTR Scales (Calibrated for N > 50)
+    # Forensic Interpretation (The "Verdict")
+    ttr_verdict = "Unknown"
+    verdict_col = "#64748b"
+    verdict_bg = "#f1f5f9"
+    
     if tok_total < 50:
-        ttr_hint = "Unstable (Short Text - Ignore Metric)"
+        ttr_verdict = "Sample Too Small"
     elif ttr < 0.20:
-        ttr_hint = "Critical Repetition (Machine / Flood)"
+        ttr_verdict = "🤖 Machine Repetition (Keyword Flood)"
+        verdict_col = "#991b1b"; verdict_bg = "#fef2f2"
     elif ttr < 0.40:
-        ttr_hint = "Low Variety (Simple / Bot-like)"
+        ttr_verdict = "📉 Low Variety (Simple / Bot-like)"
+        verdict_col = "#9a3412"; verdict_bg = "#fff7ed"
     elif ttr < 0.60:
-        ttr_hint = "Standard Prose (Natural Language)"
+        ttr_verdict = "📝 Standard Prose (Natural)"
+        verdict_col = "#166534"; verdict_bg = "#f0fdf4"
     elif ttr < 0.80:
-        ttr_hint = "Rich Vocabulary (Complex / Literary)"
-    elif ttr < 0.95:
-        ttr_hint = "High Density (Lists / Identifiers)"
+        ttr_verdict = "📚 Complex Vocabulary (Literary)"
+        verdict_col = "#1e40af"; verdict_bg = "#eff6ff"
     else:
-        ttr_hint = "Unique Stream (Rainbow / UUIDs)"
-    
-    seg_html = f" <span title='Segmented TTR (Length-Adjusted)'>Seg: <b>{ttr_seg:.2f}</b></span>" if ttr_seg else ""
-    
-    # Detailed Metadata Line
-    meta_ttr = f"""
-    <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.65rem; color:#6b7280;">
-        <div>{uniq} unique / {tok_total} total tokens{seg_html}</div>
-        <div>{_escape_html(ttr_hint)}</div>
+        ttr_verdict = "🎲 Unique Stream (UUIDs / Hash)"
+        verdict_col = "#6b21a8"; verdict_bg = "#faf5ff"
+
+    # Stability Logic: Compare Raw vs Segmented
+    stability_html = ""
+    if ttr_seg:
+        # If Segmented TTR is significantly higher than Raw TTR, the text is repetitive over time
+        drift = abs(ttr - ttr_seg)
+        stab_lbl = "Stable" if drift < 0.1 else "Drifting"
+        stability_html = f"<span title='Segmented TTR: {ttr_seg:.2f} (Length-Adjusted)'>Stability: <b>{stab_lbl}</b></span>"
+
+    # Layout: Grid for Metadata
+    meta_grid = f"""
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:0.7rem; color:#475569;">
+        <div style="background:{verdict_bg}; color:{verdict_col}; border:1px solid {verdict_col}40; border-radius:4px; padding:4px 8px; font-weight:700; text-align:center;">
+            {ttr_verdict}
+        </div>
+        <div style="display:flex; flex-direction:column; justify-content:center; align-items:flex-end; line-height:1.3;">
+            <span><b>{uniq}</b> Unique / <b>{tok_total}</b> Total</span>
+            <span style="color:#94a3b8; font-size:0.65rem;">{stability_html}</span>
+        </div>
     </div>
     """
 
-    rows.append(make_row("Lexical Density", vis_ttr, "", 
+    rows.append(make_row("Lexical Density", vis_ttr + meta_grid, "", 
         ("TYPE-TOKEN RATIO (TTR)", 
-         "Measures vocabulary uniqueness. Low (<0.4): Repetitive logs/bots. Mid (0.4-0.7): Natural prose. High (>0.8): Dense lists, UUIDs, or short text.", 
+         "Measures vocabulary richness. Low (<0.4): Repetitive logs/bots. Mid (0.4-0.7): Natural prose. High (>0.8): Dense lists, UUIDs, or short text.", 
          "Unique / Total", 
          "Length Sensitive: Decreases naturally as text gets longer.")))
 
