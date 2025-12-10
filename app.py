@@ -17194,174 +17194,267 @@ def render_statistical_profile(stats):
 
 def render_predictive_normalizer(t: str):
     """
-    [STAGE 3.0] Interaction Lab (High-Fidelity).
-    Visualizes Future States with Physics Derivation and Vector Iconography.
+    [STAGE 3.0] Interaction Lab (SOTA Visuals).
+    A high-fidelity forensic instrument for visualizing Normalization Physics.
+    Features: CSS-in-JS style injection, Semantic Border coding, and Vector Iconography.
     """
     if not t: return ""
     
     # Limit processing
     sample = t[:100]
     
-    # Normalization Calculations
     forms = {
         "NFC": unicodedata.normalize("NFC", sample),
         "NFKC": unicodedata.normalize("NFKC", sample)
     }
 
-    # --- FORENSIC ICONOGRAPHY (Vector Paths) ---
+    # --- ADVANCED CSS INJECTION (The "Lab" Skin) ---
+    style_block = """
+    <style>
+        .lab-wrapper {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin-top: 24px;
+            margin-bottom: 24px;
+        }
+        .lab-header {
+            background: #f8fafc;
+            padding: 12px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .lab-title {
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            color: #475569;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .lab-icon {
+            color: #6366f1; /* Indigo */
+            display: flex;
+        }
+        .lab-badge {
+            background: #e0e7ff;
+            color: #4338ca;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid #c7d2fe;
+        }
+        .lab-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .lab-row {
+            border-bottom: 1px solid #f1f5f9;
+            transition: all 0.2s ease;
+        }
+        .lab-row:last-child { border-bottom: none; }
+        .lab-row:hover { background: #f8fafc; }
+
+        /* Semantic State Styling */
+        .state-fusion { 
+            background: linear-gradient(90deg, rgba(59,130,246,0.04) 0%, transparent 100%);
+            border-left: 4px solid #3b82f6; 
+        }
+        .state-mutant { 
+            background: linear-gradient(90deg, rgba(245,158,11,0.06) 0%, transparent 100%);
+            border-left: 4px solid #f59e0b; 
+        }
+        .state-crit { 
+            background: linear-gradient(90deg, rgba(220,38,38,0.06) 0%, transparent 100%);
+            border-left: 4px solid #dc2626; 
+        }
+        .state-stable { 
+            border-left: 4px solid transparent; 
+            opacity: 0.65;
+        }
+
+        /* Cells */
+        .lc-form {
+            padding: 16px 20px;
+            width: 80px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #64748b;
+            vertical-align: top;
+        }
+        .lc-result {
+            padding: 16px 10px;
+            font-family: 'Menlo', monospace;
+            font-size: 0.9rem;
+            color: #1e293b;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+        .lc-meta {
+            padding: 16px 20px;
+            width: 220px;
+            text-align: right;
+            vertical-align: top;
+        }
+
+        /* Badges */
+        .meta-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            letter-spacing: 0.02em;
+        }
+        .mb-fusion { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .mb-mutant { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+        .mb-crit   { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .mb-stable { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        
+        .meta-desc {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: #94a3b8;
+        }
+        
+        /* Highlight High-Risk Diff */
+        .diff-hi { 
+            background: #fee2e2; 
+            color: #991b1b; 
+            padding: 0 2px;
+            border-radius: 2px;
+            font-weight: 700;
+            border-bottom: 1px dashed #b91c1c;
+        }
+    </style>
+    """
+
+    # --- FORENSIC ICONOGRAPHY ---
     ICONS = {
-        # Fusion (Composition) - Arrows merging in
-        "composition": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>',
-        # Reordering (CCC Physics) - Swap arrows
-        "reorder": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17H4"/><path d="M4 17l4 4"/><path d="M4 17l4-4"/><path d="M4 7h16"/><path d="M20 7l-4-4"/><path d="M20 7l-4 4"/></svg>',
-        # Collapse (Compatibility) - Arrows compressing
-        "collapse": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
-        # Stable (Check) - Shield
-        "stable": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
-        # Hazard (Alert) - Triangle
-        "hazard": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+        # Fusion: Arrows converging
+        "fusion": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>',
+        # Mutation: Alert / Change
+        "mutation": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+        # Stable: Shield Check
+        "stable": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
+        # Hazard: Triangle
+        "hazard": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        # Header: Lab Flask
+        "lab": '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"/><path d="M14 2v7.31"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>'
     }
 
     rows = []
     
-    # --- ROW 1: NFC (Canonical Equivalence) ---
+    # 1. NFC (Canonical)
     if forms["NFC"] != sample:
+        # Physics: Composition or Reordering?
         is_shorter = len(forms["NFC"]) < len(sample)
+        label = "FUSION" if is_shorter else "PHYSICS"
+        desc = "Canonical Composition" if is_shorter else "Canonical Reordering"
         
-        # Derivation Logic
-        if is_shorter:
-            label = "FUSION"
-            desc = "Canonical Composition"
-            icon = ICONS["composition"]
-            css = "badge-fusion" # Blue/Purple
-        else:
-            label = "PHYSICS"
-            desc = "Canonical Reordering (CCC)"
-            icon = ICONS["reorder"]
-            css = "badge-physics" # Cyan/Teal
-
         rows.append(f"""
-        <tr class="pred-row pred-changed">
-            <td class="pred-form">NFC</td>
-            <td class="pred-val">{_escape_html(forms["NFC"])}</td>
-            <td class="pred-meta">
-                <span class="pred-badge {css}">{icon} {label}</span>
-                <span class="pred-detail">{desc}</span>
+        <tr class="lab-row state-fusion">
+            <td class="lc-form">NFC</td>
+            <td class="lc-result">{_escape_html(forms["NFC"])}</td>
+            <td class="lc-meta">
+                <span class="meta-badge mb-fusion">{ICONS['fusion']} {label}</span>
+                <span class="meta-desc">{desc}</span>
             </td>
         </tr>
         """)
     else:
         rows.append(f"""
-        <tr class="pred-row">
-            <td class="pred-form">NFC</td>
-            <td class="pred-val" style="opacity:0.6;">{_escape_html(sample)}</td>
-            <td class="pred-meta">
-                <span class="pred-badge badge-stable">{ICONS['stable']} STABLE</span>
-                <span class="pred-detail">Canonical Identity Preserved</span>
+        <tr class="lab-row state-stable">
+            <td class="lc-form">NFC</td>
+            <td class="lc-result">{_escape_html(sample)}</td>
+            <td class="lc-meta">
+                <span class="meta-badge mb-stable">{ICONS['stable']} STABLE</span>
+                <span class="meta-desc">Canonical Identity Preserved</span>
             </td>
         </tr>
         """)
 
-    # --- ROW 2: NFKC (Compatibility) ---
+    # 2. NFKC (Compatibility)
     if forms["NFKC"] != sample:
         # Derivation Logic
         reason = "Decomposition"
-        
-        # Specific Detection
-        if any("\u2024" <= c <= "\u2026" for c in sample): reason = "Punctuation"
+        if any("\u2024" <= c <= "\u2026" for c in sample): reason = "Punctuation Norm"
         elif any("\u2460" <= c <= "\u24FF" for c in sample): reason = "Enclosed Alphanumeric"
         elif any(0xFF00 <= ord(c) <= 0xFFEF for c in sample): reason = "Fullwidth Collapse"
         elif "\u00A0" in sample: reason = "Whitespace Mutation"
         
-        # Check for Injection Risk in Result
-        is_hazardous = any(c in forms["NFKC"] for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"])
-        
-        if is_hazardous:
-            badge = f'<span class="pred-badge badge-crit">{ICONS["hazard"]} INJECTION RISK</span>'
-            row_css = "pred-crit"
+        # Highlighting Dangerous Changes
+        # If the result contains syntax chars not in original, highlight them
+        safe_res = _escape_html(forms["NFKC"])
+        if any(c in forms["NFKC"] for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"]):
+             # Highlight dangerous syntax injection
+             safe_res = safe_res.replace("&lt;", "<span class='diff-hi'>&lt;</span>")
+             safe_res = safe_res.replace("&gt;", "<span class='diff-hi'>&gt;</span>")
+             safe_res = safe_res.replace("'", "<span class='diff-hi'>'</span>")
+             
+             rows.append(f"""
+            <tr class="lab-row state-crit">
+                <td class="lc-form">NFKC</td>
+                <td class="lc-result">{safe_res}</td>
+                <td class="lc-meta">
+                    <span class="meta-badge mb-crit">{ICONS['hazard']} INJECTION</span>
+                    <span class="meta-desc">Risk: {reason}</span>
+                </td>
+            </tr>
+            """)
         else:
-            badge = f'<span class="pred-badge badge-warn">{ICONS["collapse"]} MUTATION</span>'
-            row_css = "pred-warn"
-
-        rows.append(f"""
-        <tr class="pred-row {row_css}">
-            <td class="pred-form">NFKC</td>
-            <td class="pred-val">{_escape_html(forms["NFKC"])}</td>
-            <td class="pred-meta">
-                {badge}
-                <span class="pred-detail">Compatibility: {reason}</span>
-            </td>
-        </tr>
-        """)
+            rows.append(f"""
+            <tr class="lab-row state-mutant">
+                <td class="lc-form">NFKC</td>
+                <td class="lc-result">{safe_res}</td>
+                <td class="lc-meta">
+                    <span class="meta-badge mb-mutant">{ICONS['mutation']} MUTATION</span>
+                    <span class="meta-desc">Compat: {reason}</span>
+                </td>
+            </tr>
+            """)
     else:
-         rows.append(f"""
-        <tr class="pred-row">
-            <td class="pred-form">NFKC</td>
-            <td class="pred-val" style="opacity:0.6;">{_escape_html(sample)}</td>
-            <td class="pred-meta">
-                <span class="pred-badge badge-stable">{ICONS['stable']} STABLE</span>
-                <span class="pred-detail">Visual Identity Preserved</span>
+        rows.append(f"""
+        <tr class="lab-row state-stable">
+            <td class="lc-form">NFKC</td>
+            <td class="lc-result">{_escape_html(sample)}</td>
+            <td class="lc-meta">
+                <span class="meta-badge mb-stable">{ICONS['stable']} STABLE</span>
+                <span class="meta-desc">Visual Identity Preserved</span>
             </td>
         </tr>
         """)
 
-    # --- RENDER TABLE ---
-    # Note: We include CSS styles inline here for portability, or you can move to styles.css
     return f"""
-    <div class="predictive-wrapper">
-        <div class="pred-header">
-            <span class="pred-icon">🔮</span> Interaction Lab
-            <span class="pred-sub">Physics Derivation Engine</span>
+    {style_block}
+    <div class="lab-wrapper">
+        <div class="lab-header">
+            <div class="lab-title">
+                <span class="lab-icon">{ICONS['lab']}</span>
+                INTERACTION LAB
+                <span style="opacity:0.4; font-weight:400; text-transform:none; letter-spacing:0; margin-left:4px;">| Physics Derivation Engine</span>
+            </div>
+            <div class="lab-badge">STAGE 3.0</div>
         </div>
-        <table class="pred-table">
-            <thead>
-                <tr>
-                    <th style="width:8%">Form</th>
-                    <th style="width:45%">Result State</th>
-                    <th style="width:47%">Derivation Logic</th>
-                </tr>
-            </thead>
+        <table class="lab-table">
             <tbody>{''.join(rows)}</tbody>
         </table>
     </div>
-    
-    <style>
-        .pred-header {{
-            display: flex; align-items: center; gap: 8px;
-            font-size: 0.85rem; font-weight: 700; color: #4b5563;
-            text-transform: uppercase; letter-spacing: 0.05em;
-            margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;
-        }}
-        .pred-sub {{ 
-            margin-left: auto; font-weight: 400; color: #9ca3af; font-size: 0.7rem; 
-        }}
-        .pred-table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; }}
-        .pred-table th {{ text-align: left; color: #9ca3af; font-weight: 600; font-size: 0.7rem; padding-bottom: 8px; }}
-        .pred-row td {{ padding: 10px 4px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }}
-        .pred-row:last-child td {{ border-bottom: none; }}
-        
-        .pred-form {{ font-family: var(--font-mono); font-weight: 700; color: #6b7280; font-size: 0.8rem; }}
-        .pred-val {{ font-family: var(--font-mono); color: #111827; word-break: break-all; }}
-        
-        .pred-meta {{ display: flex; flex-direction: column; gap: 4px; }}
-        .pred-detail {{ font-size: 0.7rem; color: #6b7280; line-height: 1.3; }}
-        
-        /* Badges */
-        .pred-badge {{ 
-            display: inline-flex; align-items: center; gap: 6px; 
-            font-size: 0.7rem; font-weight: 700; padding: 2px 8px; 
-            border-radius: 4px; width: fit-content;
-        }}
-        .badge-stable {{ background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }}
-        .badge-fusion {{ background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }}
-        .badge-physics {{ background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }}
-        .badge-warn   {{ background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }}
-        .badge-crit   {{ background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }}
-        
-        /* Row States */
-        .pred-crit .pred-val {{ background: #fee2e2; color: #991b1b; padding: 2px 4px; border-radius: 2px; }}
-        .pred-warn .pred-val {{ background: #fff7ed; color: #9a3412; padding: 2px 4px; border-radius: 2px; }}
-    </style>
     """
 
 def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
