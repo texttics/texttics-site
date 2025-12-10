@@ -17924,13 +17924,20 @@ def render_statistical_profile(stats):
                 <span style="display:flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#475569;"></span> Consonants ({int(c_pct)}%)</span>
             </div>
 
-            <div style="display:flex; gap:8px; align-items:center;">
-                <span title="Frequency Fit (Etaoin Shrdlu)" style="color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 6px; border-radius:4px;">
-                    {freq_desc}
-                </span>
-                <span title="Overall Phonotactic Status" style="background:{s_bg}; color:{s_col}; border:1px solid {s_bd}; padding:2px 8px; border-radius:4px; font-weight:700;">
-                    {status_lbl}
-                </span>
+            <div style="display:flex; gap:12px; align-items:center;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="color:#94a3b8; font-weight:700; font-size:0.6rem; text-transform:uppercase;">Freq Fit:</span>
+                    <span title="Unigram Fit ({int(uni)}%)" style="color:#475569; background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 6px; border-radius:4px; font-family:var(--font-mono);">
+                        {freq_desc} <span style="opacity:0.6; font-size:0.65rem;">({int(uni)}%)</span>
+                    </span>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="color:#94a3b8; font-weight:700; font-size:0.6rem; text-transform:uppercase;">Status:</span>
+                    <span title="Vowel/Consonant Ratio Check" style="background:{s_bg}; color:{s_col}; border:1px solid {s_bd}; padding:2px 8px; border-radius:4px; font-weight:700;">
+                        {status_lbl}
+                    </span>
+                </div>
             </div>
         </div>
         """
