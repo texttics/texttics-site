@@ -21613,6 +21613,55 @@ def update_all(event=None):
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
     bidi_run_stats = compute_bidi_class_analysis(t)
+    
+    wb_run_stats = compute_wordbreak_analysis(t)
+    sb_run_stats = compute_sentencebreak_analysis(t)
+    gb_run_stats = compute_graphemebreak_analysis(t)
+    eaw_run_stats = compute_eastasianwidth_analysis(t)
+    vo_run_stats = compute_verticalorientation_analysis(t)
+
+    # Integrity Analysis (Populates Registry)
+    # Passing grapheme_forensics for NFC data
+    forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
+    forensic_map = {row['label']: row for row in forensic_rows}
+
+    # Reconstruct the inputs dict needed by the Auditor from the UI map
+    def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
+    
+    integrity_inputs = {
+        "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
+        "surrogate": _get_f_count("Surrogates (Broken)"),
+        "nul": _get_f_count("Flag: NUL (U+0000)"),
+        "bidi_broken_count": _get_f_count("Flag: Unclosed Bidi Sequence") + _get_f_count("Flag: Unmatched PDF/PDI"),
+        "broken_keycap": _get_f_count("Flag: Broken Keycap Sequence"),
+        "hidden_marks": _get_f_count("Flag: Marks on Non-Visual Base"),
+        "tags": _get_f_count("Flag: Unicode Tags (Plane 14)"),
+        "nonchar": _get_f_count("Noncharacter"),
+        "invalid_vs": _get_f_count("Flag: Invalid Variation Selector"),
+        "donotemit": _get_f_count("Prop: Discouraged (DoNotEmit)"),
+        "max_cluster_len": _get_f_count("Max Invisible Run Length"),
+        "bom": _get_f_count("Flag: Internal BOM (U+FEFF)"),
+        "pua": _get_f_count("Flag: Private Use Area (PUA)"),
+        "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
+        "dec_space": _get_f_count("Deceptive Spaces"),
+        "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
+        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
+        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
+    }
+
+    
+    # Provenance & Scripts (Required for Threat Analysis)
+    provenance_stats = compute_provenance_stats(t)
+    script_run_stats = compute_script_run_analysis(t)
+
+    # Statistical Profile (Required for Anomaly Ledger)
+    stat_profile = compute_statistical_profile(t)
+
+    # Threat Analysis (Populates Registry; Required for Threat Ledger)
+    threat_results = compute_threat_analysis(t, script_run_stats)
+
+    # We pull the existing flags from the threat engine, or start a new dict.
+    final_threat_flags = threat_results.get('flags', {})
 
     # [STAGE 2.0] STRUCTURAL FORENSICS SUITE
     # Executes the four physics sidecars: Topology, Rhythm, Smuggling, Geometry.
@@ -21698,52 +21747,6 @@ def update_all(event=None):
         elif badge == "SPOOF":
             # Geometric Drift -> Authenticity Risk
             register_finding_indices("auth_spoof", finding, "Visual Spoofing")
-    
-    wb_run_stats = compute_wordbreak_analysis(t)
-    sb_run_stats = compute_sentencebreak_analysis(t)
-    gb_run_stats = compute_graphemebreak_analysis(t)
-    eaw_run_stats = compute_eastasianwidth_analysis(t)
-    vo_run_stats = compute_verticalorientation_analysis(t)
-
-    # Integrity Analysis (Populates Registry)
-    # Passing grapheme_forensics for NFC data
-    forensic_rows, audit_result = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
-    forensic_map = {row['label']: row for row in forensic_rows}
-
-    # Reconstruct the inputs dict needed by the Auditor from the UI map
-    def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
-    
-    integrity_inputs = {
-        "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
-        "surrogate": _get_f_count("Surrogates (Broken)"),
-        "nul": _get_f_count("Flag: NUL (U+0000)"),
-        "bidi_broken_count": _get_f_count("Flag: Unclosed Bidi Sequence") + _get_f_count("Flag: Unmatched PDF/PDI"),
-        "broken_keycap": _get_f_count("Flag: Broken Keycap Sequence"),
-        "hidden_marks": _get_f_count("Flag: Marks on Non-Visual Base"),
-        "tags": _get_f_count("Flag: Unicode Tags (Plane 14)"),
-        "nonchar": _get_f_count("Noncharacter"),
-        "invalid_vs": _get_f_count("Flag: Invalid Variation Selector"),
-        "donotemit": _get_f_count("Prop: Discouraged (DoNotEmit)"),
-        "max_cluster_len": _get_f_count("Max Invisible Run Length"),
-        "bom": _get_f_count("Flag: Internal BOM (U+FEFF)"),
-        "pua": _get_f_count("Flag: Private Use Area (PUA)"),
-        "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
-        "dec_space": _get_f_count("Deceptive Spaces"),
-        "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
-        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
-        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
-    }
-
-    
-    # Provenance & Scripts (Required for Threat Analysis)
-    provenance_stats = compute_provenance_stats(t)
-    script_run_stats = compute_script_run_analysis(t)
-
-    # Statistical Profile (Required for Anomaly Ledger)
-    stat_profile = compute_statistical_profile(t)
-
-    # Threat Analysis (Populates Registry; Required for Threat Ledger)
-    threat_results = compute_threat_analysis(t, script_run_stats)
     
     # Update Global Context Memory
     # This allows the Inspector to read token risks without re-computing.
