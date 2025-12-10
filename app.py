@@ -4518,6 +4518,388 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def scan_structural_rhythm(t: str) -> list:
+    """
+    [Stage 2.0] Structural Rhythm Analyst (The "Jitter Meter").
+    
+    Analyzes the sequence of abstract category transitions to detect:
+    1. "Frankenstein" Splicing: Abrupt shifts from Prose Rhythm to Code Rhythm.
+    2. "Segmentation Smuggling": Invisible characters injected INSIDE tokens.
+    
+    Inputs:
+        t (str): The raw text.
+    
+    Returns:
+        List of forensic finding dictionaries.
+    """
+    findings = []
+    if not t:
+        return findings
+
+    import unicodedata 
+
+    # ==========================================
+    # 1. PHYSICS CONSTANTS & TAXONOMY
+    # ==========================================
+    
+    # RHYTHM CLASSES (Simplifying 30 categories into 5 physics types)
+    # A = Alpha (Flow)
+    # D = Digit (Data)
+    # S = Syntax (Chaos/Stop)
+    # G = Gap (Separation)
+    # V = Void (Invisible/Control)
+    
+    # "The Sandwich Set": Categories that are FATAL if found inside a token.
+    # Cf (Format), Cc (Control), Zl/Zp (Line Breaks)
+    DANGEROUS_VOID = {'Cf', 'Cc', 'Zl', 'Zp'}
+    
+    # "The Linguistic Set": Marks that bond naturally (Zalgo, but not Smuggling).
+    LINGUISTIC_VOID = {'Mn', 'Mc', 'Me'}
+    
+    # "Frankenstein" Thresholds
+    # A window of 8 runs is roughly 1-2 sentences or 1 line of code.
+    CHAOS_WINDOW_SIZE = 8       
+    # If >50% of runs in the window are Syntax/Digits, it's a "High Jitter" zone.
+    CHAOS_THRESHOLD = 0.5       
+
+    # Helper: Map Unicode Category to Rhythm Class
+    # Optimized for O(1) lookup speed
+    def get_rhythm_type(cat):
+        if cat.startswith('L'): return 'ALPHA'
+        if cat.startswith('N'): return 'DIGIT'
+        if cat.startswith('Z'): return 'GAP' # Zs, Zl, Zp
+        if cat.startswith('P') or cat.startswith('S'): return 'SYNTAX'
+        if cat in DANGEROUS_VOID: return 'VOID_BAD'
+        if cat in LINGUISTIC_VOID: return 'VOID_MARK'
+        return 'UNKNOWN' # Co, Cn, Cs
+
+    # ==========================================
+    # 2. SKELETON EXTRACTION (O(N) Compression)
+    # ==========================================
+    # We build a specific RLE list that tracks Rhythm Class, not just Category.
+    # Structure: {'type': 'ALPHA', 'start': 0, 'len': 5, 'cat_sample': 'Ll'}
+    
+    skeleton = []
+    curr_type = None
+    curr_start = 0
+    curr_len = 0
+    curr_cat_sample = ""
+    
+    for i, char in enumerate(t):
+        cat = unicodedata.category(char)
+        
+        # Physics Correction: Treat Specific Chars as specific types
+        # Zl/Zp are technically Separators (Z) in Unicode, but VOID_BAD for us.
+        if cat in DANGEROUS_VOID:
+            r_type = 'VOID_BAD'
+        else:
+            r_type = get_rhythm_type(cat)
+            
+        if r_type == curr_type:
+            curr_len += 1
+        else:
+            if curr_type:
+                skeleton.append({
+                    'type': curr_type,
+                    'start': curr_start,
+                    'len': curr_len,
+                    'cat': curr_cat_sample
+                })
+            curr_type = r_type
+            curr_start = i
+            curr_len = 1
+            curr_cat_sample = cat
+            
+    # Append final run
+    if curr_type:
+        skeleton.append({
+            'type': curr_type, 
+            'start': curr_start, 
+            'len': curr_len, 
+            'cat': curr_cat_sample
+        })
+
+    # ==========================================
+    # 3. ANALYST A: The Smuggler (Sandwich Detector)
+    # ==========================================
+    # Logic: [TOKEN] -> [VOID_BAD] -> [TOKEN]
+    # Tokens are ALPHA or DIGIT.
+    # Note: We ignore GAP (Spaces) or SYNTAX (Punctuation) as valid separators.
+    
+    TOKEN_TYPES = {'ALPHA', 'DIGIT'}
+    
+    # We need at least 3 runs to make a sandwich
+    if len(skeleton) >= 3:
+        for i in range(1, len(skeleton) - 1):
+            curr = skeleton[i]
+            
+            if curr['type'] == 'VOID_BAD':
+                prev = skeleton[i-1]
+                next_run = skeleton[i+1]
+                
+                # The Sandwich Logic
+                if (prev['type'] in TOKEN_TYPES) and (next_run['type'] in TOKEN_TYPES):
+                    
+                    # Refinement: Create a specific label based on the void type
+                    lbl = "Invisible Format"
+                    if curr['cat'] == 'Cf': lbl = "Format Control (e.g. ZWSP)"
+                    elif curr['cat'] == 'Cc': lbl = "Binary Control"
+                    
+                    # HIT FOUND
+                    findings.append({
+                        "label": "Segmentation Smuggling (Intra-Token Injection)",
+                        "severity": "crit", 
+                        "badge": "EVASION",
+                        "details": f"Broken Token at #{curr['start']}. Pattern: {prev['type']}->{lbl}->{next_run['type']}",
+                        "count": 1,
+                        "indices": [f"#{curr['start']}"]
+                    })
+
+    # ==========================================
+    # 4. ANALYST B: The Frankenstein (Arrhythmia)
+    # ==========================================
+    # Logic: Detect "Square Waves" in structural entropy.
+    # We slide a window over the RLE SKELETON.
+    
+    if len(skeleton) > CHAOS_WINDOW_SIZE:
+        
+        in_chaos_zone = False
+        chaos_start_idx = -1
+        
+        # Slide the window
+        for i in range(len(skeleton) - CHAOS_WINDOW_SIZE):
+            window = skeleton[i : i + CHAOS_WINDOW_SIZE]
+            
+            # Measure Jitter: Count runs that are SYNTAX or DIGIT (High Frequency)
+            # Prose is dominated by ALPHA and GAP.
+            jitter_count = 0
+            for run in window:
+                if run['type'] in {'SYNTAX', 'DIGIT'}:
+                    jitter_count += 1
+            
+            chaos_density = jitter_count / CHAOS_WINDOW_SIZE
+            
+            # State Machine: Edge Detection
+            if chaos_density >= CHAOS_THRESHOLD:
+                if not in_chaos_zone:
+                    # RISING EDGE (Prose -> Code)
+                    in_chaos_zone = True
+                    chaos_start_idx = window[0]['start']
+            else:
+                if in_chaos_zone:
+                    # FALLING EDGE (Code -> Prose)
+                    in_chaos_zone = False
+                    
+                    # Filter: Only report if the zone was substantial
+                    # We calculate the byte-length of the suspected injection
+                    chaos_end_idx = window[0]['start']
+                    zone_len = chaos_end_idx - chaos_start_idx
+                    
+                    # Heuristic: < 8 chars might be a phone number or date. Ignore.
+                    # > 8 chars of high-jitter structure is likely a payload.
+                    if zone_len > 8:
+                        findings.append({
+                            "label": "Structural Discontinuity (Frankenstein Splicing)",
+                            "severity": "high",
+                            "badge": "ANOMALY",
+                            "details": f"Rhythm Shift (Prose -> Syntax) at #{chaos_start_idx}. Len: {zone_len}",
+                            "count": 1,
+                            "indices": [f"#{chaos_start_idx}"]
+                        })
+        
+        # Handle case where text ends in chaos
+        if in_chaos_zone:
+             # Calculate length to end of text
+             last_run = skeleton[-1]
+             end_pos = last_run['start'] + last_run['len']
+             zone_len = end_pos - chaos_start_idx
+             
+             if zone_len > 8:
+                 findings.append({
+                    "label": "Structural Discontinuity (Frankenstein Splicing)",
+                    "severity": "high",
+                    "badge": "ANOMALY",
+                    "details": f"Rhythm Shift (Prose -> Syntax) at #{chaos_start_idx}. Len: {zone_len}",
+                    "count": 1,
+                    "indices": [f"#{chaos_start_idx}"]
+                })
+
+    return findings
+
+def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
+    """
+    [Stage 2.0] Structural Topology Sidecar (Hardened V2).
+    Analyzes the 'Physics of Spacing' using normalized statistical moments 
+    to detect Layout Attacks and Protocol Desynchronization.
+    
+    Inputs:
+        t (str): The raw text.
+        lb_counts (dict): Result from compute_linebreak_analysis.
+        
+    Returns:
+        List of forensic finding dictionaries.
+    """
+    findings = []
+    import math # Required for sqrt/std_dev
+
+    # ==========================================
+    # 1. PHYSICS CONSTANTS (Hardened)
+    # ==========================================
+    # Wallbuilder Physics
+    # 80 chars is the standard terminal width. A run > 80 is physically suspicious.
+    WALL_ABSOLUTE_MIN = 40      
+    # Coefficient of Variation (CV) Threshold. 
+    # Natural prose CV ≈ 0.5-1.0. Code CV ≈ 1.5-2.0. Walls > 3.0.
+    WALL_CV_THRESHOLD = 3.0     
+    
+    # Protocol Sets (UAX #14 & EBCDIC Mapping)
+    # Standard: Interpreted as Newline by OS/Shell
+    HARD_BREAKS = {'LF', 'CR', 'BK', 'NL'} 
+    # Ambiguous: Interpreted as Whitespace by some, Newline by others (The Danger)
+    INJECTION_BREAKS = {'LS', 'PS'} 
+    
+    # Exotic Spaces that define "Heavy Walls"
+    # U+3000 (IDSP), U+2003 (EM), U+FF00 (Fullwidth)
+    HEAVY_SPACE_SET = {0x3000, 0x2003, 0xFF00}
+
+    # ==========================================
+    # 2. RLE EXTRACTION (The Physics Scanner)
+    # ==========================================
+    # We scan O(N) to build a distribution of whitespace run lengths.
+    # We also track the "Mass" (Are they wide?)
+    
+    ws_run_lengths = []
+    current_ws_len = 0
+    current_ws_is_heavy = False
+    in_ws_run = False
+    
+    # Native iteration for speed
+    for char in t:
+        cp = ord(char)
+        # Check if character is Separator (Z*), Tab, or BOM (often used as glue)
+        # We manually check category to avoid dependency on external regex
+        cat = unicodedata.category(char)
+        is_ws = cat.startswith('Z') or char == '\t' or char == '\ufeff'
+        
+        if is_ws:
+            current_ws_len += 1
+            if cp in HEAVY_SPACE_SET:
+                current_ws_is_heavy = True
+            in_ws_run = True
+        else:
+            if in_ws_run:
+                # End of run: Commit data
+                # We store tuple: (Length, IsHeavy)
+                ws_run_lengths.append((current_ws_len, current_ws_is_heavy))
+                current_ws_len = 0
+                current_ws_is_heavy = False
+                in_ws_run = False
+                
+    # Capture tail run
+    if in_ws_run:
+        ws_run_lengths.append((current_ws_len, current_ws_is_heavy))
+
+    # ==========================================
+    # 3. ANALYST A: The Wallbuilder Check (Statistical Mechanics)
+    # ==========================================
+    
+    if ws_run_lengths:
+        # Extract pure lengths for math
+        lengths = [x[0] for x in ws_run_lengths]
+        count = len(lengths)
+        
+        # 3.A: Calculate Statistical Moments
+        max_run = max(lengths)
+        
+        # Optimization: Don't do expensive math if the Max is trivial
+        if max_run >= WALL_ABSOLUTE_MIN and count > 1:
+            total_len = sum(lengths)
+            mean = total_len / count
+            
+            # Variance & StdDev
+            sum_sq_diff = sum((x - mean) ** 2 for x in lengths)
+            variance = sum_sq_diff / count
+            std_dev = math.sqrt(variance)
+            
+            # Coefficient of Variation (CV) = Sigma / Mu
+            # This normalizes the variance. A CV > 3.0 means the 'Spread' is 3x the 'Average'.
+            # This is the signature of a Wallbuilder (tiny spaces mixed with massive blocks).
+            cv = std_dev / (mean + 0.0001) # Avoid div/0
+            
+            # 3.B: Identify the "Heavy" Factor
+            # Did the longest run contain heavy (wide) spaces?
+            # Find the max run object
+            max_obj = max(ws_run_lengths, key=lambda x: x[0])
+            is_heavy_wall = max_obj[1]
+            
+            # 3.C: The Forensic Verdict
+            if cv > WALL_CV_THRESHOLD:
+                severity = "crit" if is_heavy_wall else "high"
+                badge = "WIDE-WALL" if is_heavy_wall else "LAYOUT-WALL"
+                
+                findings.append({
+                    "label": f"Layout Attack: {badge} Pattern",
+                    "severity": severity,
+                    "badge": "TOPOLOGY",
+                    "details": f"Max Run: {max_run}, CV: {cv:.2f} (Norm > {WALL_CV_THRESHOLD})",
+                    "count": 1,
+                    "indices": [] 
+                })
+
+    # ==========================================
+    # 4. ANALYST B: The Protocol Desynchronization Check
+    # ==========================================
+    # Logic Refinement: We distinguish between "Messy" (CR+LF) and "Dangerous" (LF+LS).
+    
+    found_breaks = set(lb_counts.keys())
+    
+    # Intersect with our defined sets
+    has_hard = bool(found_breaks & HARD_BREAKS)
+    has_injection = bool(found_breaks & INJECTION_BREAKS)
+    
+    if has_injection:
+        if has_hard:
+            # CASE 1: Mixed Environment (The Exploit)
+            # Example: "User\u2028Admin" vs "User\nAdmin"
+            # Browser sees new lines, Shell sees one line. 
+            findings.append({
+                "label": "Consistency Failure: Mixed Line Endings",
+                "severity": "crit", 
+                "badge": "PROTOCOL",
+                "details": "Standard (LF/CR) mixed with Ambiguous (LS/PS). Active desync risk.",
+                "count": 1,
+                "indices": [] 
+            })
+        else:
+            # CASE 2: Pure Exotic (The Obfuscation)
+            # Text uses ONLY LS/PS. This is extremely rare in legitimate data 
+            # (unless it's a raw dump from InDesign or obscure mainframes).
+            findings.append({
+                "label": "Non-Standard Line Endings (Exotic Only)",
+                "severity": "warn",
+                "badge": "ANOMALY",
+                "details": "Text relies exclusively on LS/PS separators.",
+                "count": 1,
+                "indices": []
+            })
+            
+    # CASE 3: The "Legacy Chaos" Check (CR vs LF)
+    # Detects CRLF mixed with bare CR or bare LF. Not a security threat, but data hygiene.
+    has_cr = 'CR' in found_breaks
+    has_lf = 'LF' in found_breaks
+    # If we rely on UAX#14 logic, CRLF might be distinct or counted as CR+LF. 
+    # We assume lb_counts comes from compute_linebreak_analysis which splits them.
+    # Note: This is lower priority, so we only flag if significant.
+    if has_cr and has_lf and not has_injection:
+        # Check counts to see if it's systematic mixing
+        c_cr = lb_counts.get('CR', 0)
+        c_lf = lb_counts.get('LF', 0)
+        # Simple heuristic: If ratios are wildly off, it's messy.
+        # We skip adding a finding here to reduce noise, unless requested.
+        pass
+
+    return findings
+
 def calc_lempel_ziv_complexity(s: str) -> dict:
     """
     [Stage 3.2] Sensor 17: Lempel-Ziv Complexity (LZC).
@@ -20971,6 +21353,71 @@ def update_all(event=None):
     minor_seq_stats = compute_minor_sequence_stats(t)
     lb_run_stats = compute_linebreak_analysis(t)
     bidi_run_stats = compute_bidi_class_analysis(t)
+
+    # [STAGE 2.0] STRUCTURAL TOPOLOGY SIDECAR
+    # We feed the computed line break stats into the new topology engine
+    topology_findings = scan_structural_topology_v2(t, lb_run_stats)
+    
+    # Merge findings into the display lists
+    # We treat these as High-Level Threat Flags
+    for finding in topology_findings:
+        label = finding["label"]
+        final_threat_flags[label] = {
+            "count": finding["count"],
+            "positions": finding["indices"], # Empty for global topology
+            "severity": finding.get("severity", "warn"),
+            "badge": finding.get("badge", "STRUCT"),
+            "details": finding.get("details", "")
+        }
+        
+        # Register for HUD Aggregators
+        if finding["severity"] == "crit":
+            # Add to Threat Hero Count
+            _register_hit("thr_execution", 0, 0, "Topology Failure")
+        elif finding["severity"] == "high":
+             _register_hit("thr_obfuscation", 0, 0, "Wallbuilder")
+
+    # [STAGE 2.0] RHYTHM ANALYST SIDECAR
+    # Analyzes the structural skeleton for splicing and smuggling
+    rhythm_findings = scan_structural_rhythm(t)
+    
+    # Merge findings into the display lists
+    for finding in rhythm_findings:
+        label = finding["label"]
+        
+        # If the flag already exists (rare collision), we merge counts/positions
+        if label in final_threat_flags:
+            existing = final_threat_flags[label]
+            existing["count"] += finding["count"]
+            existing["positions"].extend(finding["indices"])
+            # Keep the higher severity if mixed
+            if finding["severity"] == "crit": existing["severity"] = "crit"
+        else:
+            final_threat_flags[label] = {
+                "count": finding["count"],
+                "positions": finding["indices"],
+                "severity": finding["severity"], # crit/high
+                "badge": finding["badge"],       # EVASION/ANOMALY
+                "details": finding["details"]
+            }
+            
+        # Register for HUD Aggregators (The "Two-Number" System)
+        if finding["badge"] == "EVASION":
+             # Smuggling is an "Obfuscation" threat
+             for pos in finding["indices"]:
+                 try: 
+                     idx = int(pos.replace("#", ""))
+                     _register_hit("thr_obfuscation", idx, idx+1, "Smuggling")
+                 except: pass
+                 
+        elif finding["badge"] == "ANOMALY":
+             # Frankenstein is a "Suspicious" threat
+             for pos in finding["indices"]:
+                 try:
+                     idx = int(pos.replace("#", ""))
+                     _register_hit("thr_suspicious", idx, idx+1, "Splicing")
+                 except: pass
+    
     wb_run_stats = compute_wordbreak_analysis(t)
     sb_run_stats = compute_sentencebreak_analysis(t)
     gb_run_stats = compute_graphemebreak_analysis(t)
