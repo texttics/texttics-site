@@ -6988,14 +6988,18 @@ details.profile-section > summary:hover::marker {
     margin: 2px 0;
 }
 
-/* FORENSIC ALERT SYSTEM (Stage 2.0) */
+
+/* =========================================
+   FORENSIC ALERT SYSTEM (Stage 2.0)
+   Target: Structural Anomalies & Aggregated Findings
+   ========================================= */
 
 .forensic-alert-grid {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-bottom: 16px;
-    padding: 0 4px;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 0 2px;
 }
 
 .forensic-alert-card {
@@ -7004,46 +7008,84 @@ details.profile-section > summary:hover::marker {
     border: 1px solid;
     border-radius: 6px;
     overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    font-family: var(--font-sans);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    min-height: 52px;
 }
 
+.forensic-alert-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.08);
+}
+
+/* Icon Gutter (Left Side) */
 .fal-gutter {
-    width: 36px;
+    width: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-right: 1px solid rgba(0,0,0,0.05);
+    border-right: 1px solid rgba(0,0,0,0.06);
     flex-shrink: 0;
 }
 
+.fal-icon svg {
+    display: block; /* Removes baseline gap */
+}
+
+/* Main Content Area */
 .fal-content {
     padding: 8px 12px;
     flex-grow: 1;
+    min-width: 0; /* Forces text truncation to work */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
+/* Header: Badge + Title + Counter */
 .fal-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 4px;
 }
 
 .fal-badge {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 800;
     letter-spacing: 0.05em;
-    padding: 1px 5px;
-    border-radius: 3px;
+    padding: 2px 6px;
+    border-radius: 4px;
     text-transform: uppercase;
+    flex-shrink: 0;
+    border: 1px solid transparent; /* Defined in themes */
 }
 
 .fal-title {
+    font-family: var(--font-sans);
     font-size: 0.85rem;
     font-weight: 700;
     color: #1f2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: auto; /* Pushes counter to far right */
 }
 
+/* The "×50" Counter Pill */
+.fal-count {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: rgba(0,0,0,0.06);
+    color: #374151;
+    padding: 1px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.05);
+    flex-shrink: 0;
+}
+
+/* Body / Details */
 .fal-body {
     font-size: 0.8rem;
     font-family: var(--font-mono);
@@ -7051,45 +7093,66 @@ details.profile-section > summary:hover::marker {
     line-height: 1.4;
 }
 
-/* THEMES */
+/* Aggregated List Styling */
+.fal-list {
+    margin-top: 2px;
+}
+.fal-list div {
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 8px;
+    border-left: 2px solid rgba(0,0,0,0.1);
+}
+.fal-list div:last-child {
+    margin-bottom: 0;
+}
 
-/* CRITICAL (Red) */
+/* --- SEVERITY THEMES --- */
+
+/* CRITICAL (Red): Immediate Action Required */
 .fx-crit {
     border-color: #fca5a5;
     background: #fef2f2;
 }
 .fx-crit .fal-gutter { background: #fee2e2; color: #b91c1c; }
-.fx-crit .fal-badge { background: #b91c1c; color: white; }
+.fx-crit .fal-badge { background: #b91c1c; color: white; border-color: #991b1b; }
 .fx-crit .fal-title { color: #991b1b; }
+.fx-crit .fal-count { color: #7f1d1d; background: #fecaca; border-color: #fca5a5; }
 
-/* HIGH (Orange) */
+/* HIGH (Orange): Obfuscation / Evasion */
 .fx-high {
     border-color: #fdba74;
     background: #fff7ed;
 }
 .fx-high .fal-gutter { background: #ffedd5; color: #c2410c; }
-.fx-high .fal-badge { background: #ea580c; color: white; }
+.fx-high .fal-badge { background: #ea580c; color: white; border-color: #c2410c; }
 .fx-high .fal-title { color: #9a3412; }
+.fx-high .fal-count { color: #7c2d12; background: #fed7aa; border-color: #fdba74; }
 
-/* WARNING (Yellow) */
+/* WARNING (Yellow): Anomalies / Protocol Issues */
 .fx-warn {
     border-color: #fde047;
     background: #fefce8;
 }
 .fx-warn .fal-gutter { background: #fef9c3; color: #a16207; }
-.fx-warn .fal-badge { background: #ca8a04; color: white; }
+.fx-warn .fal-badge { background: #ca8a04; color: white; border-color: #a16207; }
 .fx-warn .fal-title { color: #854d0e; }
+.fx-warn .fal-count { color: #713f12; background: #fde68a; border-color: #fcd34d; }
 
-/* CLEAN STATE */
+/* CLEAN STATE MARKER (The Ghost Placeholder) */
 .clean-state-marker {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
+    padding: 10px 14px;
     background: #f8fafc;
-    border: 1px dashed #e2e8f0;
+    border: 1px dashed #cbd5e1;
     border-radius: 6px;
     color: #94a3b8;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 500;
     font-family: var(--font-mono);
+    user-select: none;
     margin-bottom: 12px;
 }
