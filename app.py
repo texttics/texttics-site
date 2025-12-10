@@ -88,69 +88,69 @@ def _debug_threat_bridge(t: str, hit: tuple):
 
 # CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
 
-# 1. Serialization & Container Magic Signatures (Fixed)
+# 1. Serialization & Container Magic Signatures
 # Detects executable objects, binary containers, and code artifacts masquerading as text.
-# Note: Patterns are bytes (b'...') to match the encoded prefix.
+# NOTE: We use rb'...' (Raw Bytes) to prevent Python 3.12 SyntaxWarnings on regex escapes like \s or \{
 SERIALIZATION_SIGS = {
     # --- TIER 1: DIRECT CODE EXECUTION (Virtual Machines) ---
     # Python (Pickle & Bytecode)
-    "PICKLE_VM": re.compile(b'^(\x80[\x02\x03\x04\x05]|cnumpy|cposix|cos)'),
-    "PYTHON_PYC": re.compile(b'^[\x00-\xff]{2}\r\n'), # .pyc magic
+    "PICKLE_VM": re.compile(rb'^(\x80[\x02\x03\x04\x05]|cnumpy|cposix|cos)'),
+    "PYTHON_PYC": re.compile(rb'^[\x00-\xff]{2}\r\n'), # .pyc magic
 
     # Java / JVM
-    "JAVA_SERIAL": re.compile(b'^\xac\xed\x00\x05'), # Serialized Object
-    "JAVA_CLASS": re.compile(b'^\xca\xfe\xba\xbe'),  # .class Bytecode
+    "JAVA_SERIAL": re.compile(rb'^\xac\xed\x00\x05'), # Serialized Object
+    "JAVA_CLASS": re.compile(rb'^\xca\xfe\xba\xbe'),  # .class Bytecode
     
     # Lua
-    "LUA_BYTECODE": re.compile(b'^\x1bLua'),
+    "LUA_BYTECODE": re.compile(rb'^\x1bLua'),
     
     # Erlang
-    "ERLANG_BEAM": re.compile(b'^FOR1....BEAM', re.DOTALL),
+    "ERLANG_BEAM": re.compile(rb'^FOR1....BEAM', re.DOTALL),
     
     # WebAssembly
-    "WASM_BINARY": re.compile(b'^\x00asm'),
+    "WASM_BINARY": re.compile(rb'^\x00asm'),
     
     # Flash
-    "FLASH_SWF": re.compile(b'^[CFZ]WS'),
+    "FLASH_SWF": re.compile(rb'^[CFZ]WS'),
 
     # --- TIER 2: NATIVE EXECUTABLES (Compiled Languages) ---
-    "PE_BINARY": re.compile(b'^MZ'),       # Windows EXE/DLL
-    "ELF_BINARY": re.compile(b'^\x7fELF'), # Linux Binaries
-    "MACHO_BINARY": re.compile(b'^(\xfe\xed\xfa\xce|\xce\xfa\xed\xfe|\xfe\xed\xfa\xcf|\xcf\xfa\xed\xfe)'),
-    "DEX_BINARY": re.compile(b'^dex\n'),   # Android
+    "PE_BINARY": re.compile(rb'^MZ'),       # Windows EXE/DLL
+    "ELF_BINARY": re.compile(rb'^\x7fELF'), # Linux Binaries
+    "MACHO_BINARY": re.compile(rb'^(\xfe\xed\xfa\xce|\xce\xfa\xed\xfe|\xfe\xed\xfa\xcf|\xcf\xfa\xed\xfe)'),
+    "DEX_BINARY": re.compile(rb'^dex\n'),   # Android
 
     # --- TIER 3: SCRIPT HEADERS ---
-    "SHEBANG_SCRIPT": re.compile(b'^#!'),
-    "PHP_SCRIPT": re.compile(b'^<\?php', re.IGNORECASE),
-    "POSTSCRIPT": re.compile(b'^%!'),
+    "SHEBANG_SCRIPT": re.compile(rb'^#!'),
+    "PHP_SCRIPT": re.compile(rb'^<\?php', re.IGNORECASE), # Fixes \? warning
+    "POSTSCRIPT": re.compile(rb'^%!'),
 
     # --- TIER 4: DATA CONTAINERS & MACROS ---
-    "SQLITE_DB": re.compile(b'^SQLite format 3\x00'),
-    "OFFICE_OLE": re.compile(b'^\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'),
-    "HTML_DOC": re.compile(b'^\s*<!DOCTYPE', re.IGNORECASE),
-    "XML_DOC": re.compile(b'^\s*<\?xml'),
+    "SQLITE_DB": re.compile(rb'^SQLite format 3\x00'),
+    "OFFICE_OLE": re.compile(rb'^\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'),
+    "HTML_DOC": re.compile(rb'^\s*<!DOCTYPE', re.IGNORECASE), # Fixes \s warning
+    "XML_DOC": re.compile(rb'^\s*<\?xml'), # Fixes \s warning
 
     # --- TIER 5: ARCHIVES & COMPRESSION ---
-    "ZIP_ARCHIVE": re.compile(b'^PK\x03\x04'),
-    "RAR_ARCHIVE": re.compile(b'^Rar!\x1a\x07'),
-    "SEVEN_ZIP": re.compile(b'^7z\xbc\xaf\x27\x1c'),
-    "GZIP_STREAM": re.compile(b'^\x1f\x8b\x08'),
-    "BZIP2_STREAM": re.compile(b'^BZh'),
-    "TAR_ARCHIVE": re.compile(b'.{257}ustar', re.DOTALL),
-    "XZ_STREAM": re.compile(b'^\xfd7zXZ\x00'),
+    "ZIP_ARCHIVE": re.compile(rb'^PK\x03\x04'),
+    "RAR_ARCHIVE": re.compile(rb'^Rar!\x1a\x07'),
+    "SEVEN_ZIP": re.compile(rb'^7z\xbc\xaf\x27\x1c'),
+    "GZIP_STREAM": re.compile(rb'^\x1f\x8b\x08'),
+    "BZIP2_STREAM": re.compile(rb'^BZh'),
+    "TAR_ARCHIVE": re.compile(rb'.{257}ustar', re.DOTALL),
+    "XZ_STREAM": re.compile(rb'^\xfd7zXZ\x00'),
     
     # --- TIER 6: MEDIA STEGANOGRAPHY ---
-    "PDF_DOC": re.compile(b'^%PDF-'),
-    "RTF_DOC": re.compile(b'^\{\\rtf'),
-    "PNG_IMAGE": re.compile(b'^\x89PNG\r\n\x1a\n'),
-    "JPEG_IMAGE": re.compile(b'^\xff\xd8\xff'),
-    "GIF_IMAGE": re.compile(b'^GIF8(7|9)a'),
-    "WEBP_IMAGE": re.compile(b'^RIFF.{4}WEBP', re.DOTALL),
-    "BMP_IMAGE": re.compile(b'^BM'),
-    "ICO_ICON": re.compile(b'^\x00\x00\x01\x00'),
+    "PDF_DOC": re.compile(rb'^%PDF-'),
+    "RTF_DOC": re.compile(rb'^\{\\rtf'), # Fixes \{ warning
+    "PNG_IMAGE": re.compile(rb'^\x89PNG\r\n\x1a\n'),
+    "JPEG_IMAGE": re.compile(rb'^\xff\xd8\xff'),
+    "GIF_IMAGE": re.compile(rb'^GIF8(7|9)a'),
+    "WEBP_IMAGE": re.compile(rb'^RIFF.{4}WEBP', re.DOTALL),
+    "BMP_IMAGE": re.compile(rb'^BM'),
+    "ICO_ICON": re.compile(rb'^\x00\x00\x01\x00'),
     
     # --- DATA STORES ---
-    "PARQUET_DATA": re.compile(b'^PAR1')
+    "PARQUET_DATA": re.compile(rb'^PAR1')
 }
 
 # 2. Template Syntax Injection (Format String & SSTI Grammars)
