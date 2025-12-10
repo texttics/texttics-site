@@ -2652,3 +2652,55 @@ With these updates, the system coverage is forensically complete regarding the *
 * **Dynamics:** Covered by Instability Sensor.
 
 *(Note: Visual rendering verification remains out of scope due to the "No-Canvas/Privacy" architectural constraint.)*
+
+---
+
+## 🛡️ Addendum #17: Stage 2.1 "Total Paranoia" (Reality & Semantics)
+
+**Session Goal:** To implement a "Zero Trust" architecture that audits the **Container**, the **Runtime Physics**, and **Encoded Payloads**. This moves the tool beyond text analysis into "Object Forensics," ensuring that the tool itself cannot be compromised by malformed Python objects or memory corruption vectors.
+
+### 1. New Core Engine: The Reality Sensor (Container Physics)
+Implemented a pre-flight check that audits the Python object before character analysis begins. This defends against attacks that exploit the browser-to-WASM bridge or Python's internal memory management.
+
+* **Function:** `scan_container_physics(t: Any)`
+* **Logic:**
+    * **Type Confusion:** Rejects non-string input (Object Injection protection).
+    * **Structural Dissociation ("Ghost Length"):** Validates that `len(t)` matches the physical iteration count. Detects C++/WASM buffer desyncs.
+    * **Radioactive Matter:** Performs trial normalization on a sample to catch data that triggers `UnicodeError` or runtime segfaults.
+* **Verdict:** Triggers **FATAL** Integrity error (Score 100).
+
+### 2. Logic Hardening: The Event Horizon Telescope
+Expanded the bounds checking logic to classify specific memory failure modes based on integer magnitude.
+
+* **Function:** `scan_event_horizon(cp)`
+* **New Vectors:**
+    * **Sub-Zero:** Detects negative integers (Signed Integer Underflow).
+    * **Memory Singularity:** Detects values `> 0x7FFFFFFF` (32-bit Signed Overflow).
+    * **Vacuum Decay:** Detects arbitrary large values (Heap Corruption).
+
+### 3. New Logic Engine: Hyper-Spectral Injection Sensor
+Upgraded the binary detection logic to "Look Through" encodings. The tool now peeks inside Base64 and Hex strings to identify binary headers without requiring full user de-obfuscation.
+
+* **Function:** `scan_code_injection_physics(t)`
+* **Signatures:** Integrated a comprehensive `SERIALIZATION_SIGS` registry covering:
+    * **Execution:** Pickle, Java Serial, Lua Bytecode, WebAssembly.
+    * **Native:** PE (Windows), ELF (Linux), Mach-O (macOS), DEX (Android).
+    * **Containers:** Zip, Tar, Gzip, PDF, OLE (Office Macros).
+* **Syntax:** Integrated an "Omni-Injector" regex (`FORMAT_INJECTION`) catching SSTI vectors in Python, Java, Ruby, and JS.
+
+### 4. New Physics Engine: The Instability Sensor (Oscillator)
+Implemented a state machine to detect text that fails to converge under recursive operations.
+
+* **Function:** `scan_physics_instability(t)`
+* **Recursive Drift:** Applies `NFKC` recursively to detect **Infinite Loops** ($A \to B \to A$) or asymptotic drift.
+* **Thermodynamic Volatility:** Checks bidirectional case round-tripping (`Lower` $\to$ `Upper` $\to$ `Lower`) to flag characters with fluid identity (Authentication Bypass risk).
+
+### 5. New Logic Engine: The Terminal Physicist
+Replaced generic escape character flagging with semantic parsing of ANSI sequences.
+
+* **Function:** `scan_terminal_physics(text)`
+* **Logic:** Parses CSI parameters to distinguish between **Styling** (Color) and **Sabotage** (Screen Wipe `[2J`, Log Redaction `[K`, Cursor Hiding `[?25l`).
+
+### 6. Architectural Integration
+* **Auditor Update:** The Integrity Auditor now accepts `hyper_astral` and `reality_failure` inputs, allowing "Impossible" runtime states to force a **CORRUPT** verdict regardless of text content.
+* **Dashboard Wiring:** All new sensors (Instability, Injection, Terminal Physics) are wired to the **Adversarial Dashboard**. High-risk findings (like "Infinite Normalization Loop" or "Hidden PE Binary") automatically populate the "Paranoia Peak" target list.
