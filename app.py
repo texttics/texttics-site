@@ -13797,7 +13797,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
     # --- 2. INTEGRITY AUDITOR ---
-    integrity_inputs = {
+    auditor_inputs = {
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
