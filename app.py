@@ -17468,7 +17468,7 @@ def render_statistical_profile(stats):
 
     # Adaptive Heatmap (The Zoom Lens)
     # Visualizes the entropy topology. High-Res blocks appear at phase transitions.
-    ttopo = stats.get("thermodynamics", {}).get("topology_heatmap", [])
+    topo = stats.get("thermodynamics", {}).get("topology_heatmap", [])
     
     if topo:
         segments = []
