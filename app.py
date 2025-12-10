@@ -10195,6 +10195,16 @@ def compute_statistical_profile(t: str):
         "status": "Ready"
     }
 
+    stats["mechanics"] = {
+        "trigram_overlap": 0.0,
+        "zipf_mse": 0.0,
+        "kld_values": {"d_eng": 0.0, "d_rand": 0.0},
+        "kld_verdict": "Indeterminate",
+        "pair_repeat_ratio": 0.0,
+        "whitespace_var": 0.0,
+        "status": "Ready"
+    }
+
     try:
         # --- CONSTANTS: THE GOLD STANDARDS (Hardcoded Truth) ---
         
