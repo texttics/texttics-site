@@ -13697,12 +13697,10 @@ def compute_stage1_5_forensics(text):
     """
     all_signals = []
     
-    # 1. Scan Global Injection Patterns (Existing)
+    # 1. Global Structural Scans (Run ONCE on full text)
     all_signals.extend(scan_injection_vectors(text))
-    # Scan Contextual Lures (Markdown/Chat/Memory) (Existing)
     all_signals.extend(scan_contextual_lures(text))
     
-    # 2. Global Structural Scans
     # A. Variation Selector Topology
     vs_metrics, vs_signals = scan_vs_topology(text)
     all_signals.extend(vs_signals)
@@ -13715,12 +13713,15 @@ def compute_stage1_5_forensics(text):
     # C. Delimiter Masking (Extension Hiding)
     all_signals.extend(scan_delimiter_masking(text))
 
+    # D. Code Injection Physics (Global Header Check)
+    # Checks for Magic Bytes at the very start of the paste
+    all_signals.extend(scan_code_injection_physics(text))
+
     # 3. Token-Level Scans
-    # We use the existing forensic tokenizer helper
     tokens = tokenize_forensic(text)
     
     for tok_obj in tokens:
-        # Defensive extraction (handle dict vs str legacy)
+        # Defensive extraction
         if isinstance(tok_obj, dict):
             t_str = tok_obj.get('token', '')
         else:
@@ -13728,15 +13729,17 @@ def compute_stage1_5_forensics(text):
             
         if not t_str: continue
         
-        # A. Fracture Scan (Uses the Upgraded Function from Block 2)
+        # A. Fracture Scan
         all_signals.extend(scan_token_fracture_safe(t_str))
         
-        # B. Domain Scan (Existing)
+        # B. Domain Scan
         all_signals.extend(scan_domain_structure_v2(t_str))
 
-        # Code Injection Physics
-        # Scans for Magic Bytes and Format Syntax (Deterministic)
-        all_signals.extend(scan_code_injection_physics(text))
+        # C. Code Injection Physics (Token Level)
+        # Checks if a SPECIFIC token is a payload (e.g. valid Base64 blob)
+        # FIX: Pass 't_str' (The Token), NOT 'text' (The Global String)
+        if len(t_str) > 8: # Optimization: Don't scan short words for complex payloads
+            all_signals.extend(scan_code_injection_physics(t_str))
 
     # 4. Audit Signals
     return audit_stage1_5_signals(all_signals)
