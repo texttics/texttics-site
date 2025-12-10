@@ -17507,7 +17507,7 @@ def render_statistical_profile(stats):
 
         # 3. Build The Data Context (Legend + Metrics)
         # We add a legend so the user understands the colors, and stats to explain the structure.
-        legend_html = """
+        legend_html = f"""
         <div style="display:flex; justify-content:space-between; align-items:end; font-size:0.65rem; color:#64748b;">
             <div style="display:flex; gap:10px;">
                 <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px; height:8px; background:#3b82f6; border-radius:2px;"></span> Text (3-5)</span>
@@ -17606,44 +17606,50 @@ def render_statistical_profile(stats):
         <div style="text-align:right; min-width:50px; font-family:var(--font-mono); font-weight:700; font-size:0.85rem; color:#1e293b;">{ttr:.2f}</div>
     </div>"""
     
-    # Forensic Interpretation (The "Verdict")
-    ttr_verdict = "Unknown"
-    verdict_col = "#64748b"
-    verdict_bg = "#f1f5f9"
-    
+    # Define Verdicts AND Explanations (Refined Scale)
     if tok_total < 50:
         ttr_verdict = "Sample Too Small"
+        ttr_expl = "Results unstable < 50 tokens."
     elif ttr < 0.20:
-        ttr_verdict = "🤖 Machine Repetition (Keyword Flood)"
+        ttr_verdict = "Machine Repetition"
+        ttr_expl = "Keyword flooding, logs, or bot output."
         verdict_col = "#991b1b"; verdict_bg = "#fef2f2"
-    elif ttr < 0.40:
-        ttr_verdict = "📉 Low Variety (Simple / Bot-like)"
+    elif ttr < 0.45:
+        ttr_verdict = "Low Variety"
+        ttr_expl = "Simple commands or repetitive chat."
         verdict_col = "#9a3412"; verdict_bg = "#fff7ed"
-    elif ttr < 0.60:
-        ttr_verdict = "📝 Standard Prose (Natural)"
+    elif ttr < 0.65:
+        ttr_verdict = "Standard Prose"
+        ttr_expl = "Natural language balance."
         verdict_col = "#166534"; verdict_bg = "#f0fdf4"
     elif ttr < 0.80:
-        ttr_verdict = "📚 Complex Vocabulary (Literary)"
-        verdict_col = "#1e40af"; verdict_bg = "#eff6ff"
+        ttr_verdict = "Rich Vocabulary"
+        ttr_expl = "Literary, academic, or complex texture."
+        verdict_col = "#1d4ed8"; verdict_bg = "#eff6ff"
+    elif ttr < 0.95:
+        ttr_verdict = "High Density"
+        ttr_expl = "Technical lists, code, or concise data."
+        verdict_col = "#4338ca"; verdict_bg = "#eef2ff"
     else:
-        ttr_verdict = "🎲 Unique Stream (UUIDs / Hash)"
-        verdict_col = "#6b21a8"; verdict_bg = "#faf5ff"
+        ttr_verdict = "Synthetic / Unique"
+        ttr_expl = "UUIDs, hashes, or randomized sequence."
+        verdict_col = "#7e22ce"; verdict_bg = "#faf5ff"
 
-    # Stability Logic: Compare Raw vs Segmented
-    stability_html = ""
+    # Stability Logic (Right Side - Row 2)
+    stability_html = "<span style='opacity:0.5'>--</span>"
     if ttr_seg:
-        # If Segmented TTR is significantly higher than Raw TTR, the text is repetitive over time
         drift = abs(ttr - ttr_seg)
         stab_lbl = "Stable" if drift < 0.1 else "Drifting"
-        stability_html = f"<span title='Segmented TTR: {ttr_seg:.2f} (Length-Adjusted)'>Stability: <b>{stab_lbl}</b></span>"
+        stability_html = f"<span title='Segmented TTR: {ttr_seg:.2f}'>Stability: <b>{stab_lbl}</b></span>"
 
-    # Layout: Grid for Metadata
+    # Layout: Balanced 2-Column Grid (Text Left, Data Right)
     meta_grid = f"""
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:0.7rem; color:#475569;">
-        <div style="background:{verdict_bg}; color:{verdict_col}; border:1px solid {verdict_col}40; border-radius:4px; padding:4px 8px; font-weight:700; text-align:center;">
-            {ttr_verdict}
+    <div style="display:grid; grid-template-columns: 1fr auto; gap:16px; font-size:0.7rem; color:#475569; align-items:center;">
+        <div style="display:flex; flex-direction:column; line-height:1.4;">
+            <span style="font-weight:700; color:#334155; font-size:0.75rem;">{ttr_verdict}</span>
+            <span style="color:#64748b; font-size:0.65rem;">{ttr_expl}</span>
         </div>
-        <div style="display:flex; flex-direction:column; justify-content:center; align-items:flex-end; line-height:1.3;">
+        <div style="display:flex; flex-direction:column; align-items:flex-end; line-height:1.4;">
             <span><b>{uniq}</b> Unique / <b>{tok_total}</b> Total</span>
             <span style="color:#94a3b8; font-size:0.65rem;">{stability_html}</span>
         </div>
