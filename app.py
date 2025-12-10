@@ -4518,6 +4518,150 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def scan_whitespace_physics(t: str) -> dict:
+    """
+    [Stage 3.1] Sensor 13: Whitespace Channel Analysis.
+    Measures the physics of invisible characters (Space, Tab, NBSP, ZWSP).
+    Reframed to be purely descriptive.
+    """
+    lines = t.splitlines()
+    total_chars = len(t)
+    eol_ws_count = 0
+    if lines:
+        for line in lines:
+            stripped = line.rstrip()
+            eol_ws_count += (len(line) - len(stripped))
+    
+    eol_density = (eol_ws_count / max(1, total_chars)) * 100
+
+    ws_stream = [c for c in t if c in (' ', '\t', '\u00A0', '\u200B')]
+    count = len(ws_stream)
+    
+    entropy = 0.0
+    ratio = 0.0
+    
+    if count > 8:
+        ratio = count / max(1, total_chars)
+        counts = Counter(ws_stream)
+        for c in counts.values():
+            p = c / count
+            entropy -= p * math.log2(p)
+
+    # Verdicts: Neutral physical descriptions
+    verdict = "Normal Distribution"
+    if eol_density > 5.0:
+        verdict = f"High EOL Density ({eol_density:.1f}%)"
+    elif entropy > 0.8 and ratio > 0.1:
+        verdict = "High Entropy Channel" # Removed "(Mixed Types)" to be terser
+    elif ratio > 0.4:
+        verdict = "Low Density Channel" # Replaces "Sparse Content (Padding)"
+
+    return {
+        "channel_entropy": round(entropy, 3),
+        "channel_ratio": round(ratio, 3),
+        "eol_density": round(eol_density, 2),
+        "count": count,
+        "verdict": verdict
+    }
+
+def calc_dispersion_entropy(data: bytes, m=2, c=3) -> float:
+    """
+    [Stage 3.1] Sensor 14: Dispersion Entropy (Rhythm).
+    Measures ordinal pattern irregularity.
+    Value: Descriptive statistic for signal rhythm.
+    """
+    N = len(data)
+    if N < 10: return 0.0
+    
+    u = []
+    for b in data:
+        u.append(math.floor((b / 256) * c))
+        
+    patterns = {}
+    for i in range(N - (m - 1)):
+        key = tuple(u[i : i+m])
+        patterns[key] = patterns.get(key, 0) + 1
+        
+    p_sum = 0.0
+    total_patterns = N - (m - 1)
+    
+    for count in patterns.values():
+        p = count / total_patterns
+        p_sum += p * math.log2(p)
+        
+    return -p_sum
+
+def scan_entropy_transitions(heatmap: list) -> dict:
+    """
+    [Stage 3.1] Sensor 15: Structural Transition Scanner.
+    Detects sharp 'Valley -> Plateau' transitions in entropy topology.
+    Value: Structural heuristic for boundary detection.
+    """
+    if not heatmap or len(heatmap) < 2: 
+        return {"detected": False, "desc": "N/A"}
+    
+    # Heuristics (Documented as arbitrary)
+    VALLEY_MAX = 1.5 
+    PLATEAU_MIN = 5.5
+    
+    in_valley = False
+    transition_found = False
+    
+    for block in heatmap:
+        h = block.get('h', 0)
+        if h < VALLEY_MAX:
+            in_valley = True
+        elif h > PLATEAU_MIN and in_valley:
+            transition_found = True
+            break
+        else:
+            in_valley = False
+            
+    if transition_found:
+        return {"detected": True, "desc": "Low-to-High Entropy Shift"}
+    
+    return {"detected": False, "desc": "Uniform Topology"}
+
+def solve_rot13_heuristic(t: str, ic_norm: float) -> dict:
+    """
+    [Stage 3.1] Sensor 16: Rot13 Candidate Solver.
+    Heuristic: High IC (English-like) + Low Trigram Fit.
+    """
+    if ic_norm < 1.5 or len(t) < 30: return None
+
+    rotated = []
+    for char in t:
+        c_val = ord(char)
+        if 'a' <= char <= 'z':
+            rotated.append(chr((c_val - 97 + 13) % 26 + 97))
+        elif 'A' <= char <= 'Z':
+            rotated.append(chr((c_val - 65 + 13) % 26 + 65))
+        else:
+            rotated.append(char)
+    
+    dec_str = "".join(rotated)
+    
+    # Check Trigram Fit
+    TOP_TRIGRAMS = {"THE", "AND", "THA", "ENT", "ING", "ION", "TIO", "FOR"}
+    clean_dec = dec_str.upper()
+    alpha_stream = [c for c in clean_dec if "A" <= c <= "Z"]
+    alpha_str = "".join(alpha_stream)
+    
+    hits = 0
+    if len(alpha_str) > 10:
+        for i in range(len(alpha_str) - 2):
+            if alpha_str[i:i+3] in TOP_TRIGRAMS: hits += 1
+            
+        score = hits / len(alpha_str)
+        if score > 0.10: 
+            return {
+                "detected": True,
+                "preview": dec_str[:40] + "..." if len(dec_str)>40 else dec_str,
+                "score": round(score, 2)
+            }
+            
+    return None
+
 def scan_code_injection_physics(t: str):
     """
     [STAGE 2.1] Code Injection Physics Sensor (Hyper-Spectral).
@@ -17850,6 +17994,70 @@ def render_statistical_profile(stats):
              "Deterministic measurement of distribution shape. KLD measures Relative Entropy (distance) from a language model. Zipf MSE measures deviation from Power Law.", 
              "Kullback-Leibler, Markov, MSE", 
              "D_eng > 0.5 indicates the text is statistically divergent from English.")))
+
+    # --- Structural & Invisible Physics (Stage 3.1 Refined) ---
+    mech_row_2 = ""
+    
+    # 1. Whitespace Physics
+    ws_data = mech.get("whitespace", {})
+    if ws_data.get("count", 0) > 0:
+        ws_ent = ws_data['channel_entropy']
+        eol_dens = ws_data['eol_density']
+        ws_verd = ws_data['verdict']
+        
+        # Soft Warning Color (Orange) for anomalies, never Red
+        ws_style = "background:#f8fafc; color:#64748b;"
+        if eol_dens > 5.0 or "High Entropy" in ws_verd: 
+            ws_style = "background:#fff7ed; color:#c2410c; border-color:#fed7aa;"
+        
+        mech_row_2 += f"""
+        <div style="{ws_style} border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px; flex:1;">
+            <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; margin-bottom:2px;">Whitespace Physics</div>
+            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">H:{ws_ent:.2f} <span style="font-weight:400; font-size:0.6rem; opacity:0.8;">(EOL: {eol_dens}%)</span></div>
+            <div style="font-size:0.65rem;">{ws_verd}</div>
+        </div>
+        """
+
+    # 2. Dispersion Entropy
+    disp_en = mech.get("dispersion", 0.0)
+    if disp_en > 0:
+        mech_row_2 += f"""
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; border-radius:4px; padding:6px 8px; flex:1;">
+            <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; margin-bottom:2px;">Dispersion (Rhythm)</div>
+            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{disp_en:.3f}</div>
+            <div style="font-size:0.65rem;">Pattern Regularity</div>
+        </div>
+        """
+
+    # 3. Transition Sensor
+    trans = mech.get("transition", {})
+    if trans.get("detected"):
+        # Downgraded from Red to Amber to signal "Anomaly" not "Threat"
+        mech_row_2 += f"""
+        <div style="background:#fffbeb; border:1px solid #fcd34d; color:#b45309; border-radius:4px; padding:6px 8px; flex:1;">
+            <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; margin-bottom:2px;">Topology Event</div>
+            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">Entropy Transition</div>
+            <div style="font-size:0.65rem;">{trans['desc']}</div>
+        </div>
+        """
+
+    # 4. Rot13 Candidate
+    solver = mech.get("solver")
+    if solver:
+        mech_row_2 += f"""
+        <div style="background:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; border-radius:4px; padding:6px 8px; flex:1;">
+            <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Heuristic Candidate</div>
+            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">Rot13 Match</div>
+            <div style="font-size:0.65rem; font-style:italic;">"{_escape_html(solver['preview'])}"</div>
+        </div>
+        """
+
+    if mech_row_2:
+        rows.append(make_row("Structural Physics", f'<div style="display:flex; gap:8px;">{mech_row_2}</div>', "",
+            ("STRUCTURAL MEASUREMENTS", 
+             "Advanced structural properties. 'Whitespace Physics' measures density/entropy of invisible characters. 'Dispersion' measures rhythm. 'Topology' scans for entropy shifts (Low->High).", 
+             "DispEn, Whitespace Entropy", 
+             "Metrics describe physical structure, not intent. Thresholds are heuristic.")))
 
     # 7. Phonotactics (8 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
