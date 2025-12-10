@@ -4518,6 +4518,86 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def calc_lempel_ziv_complexity(s: str) -> dict:
+    """
+    [Stage 3.2] Sensor 17: Lempel-Ziv Complexity (LZC).
+    Measures algorithmic complexity by counting the number of unique patterns
+    needed to reconstruct the string from left to right.
+    Value: Orthogonal to Entropy. Differentiates "Random" (High Ent, High LZC) 
+    from "Repetitive" (Low Ent, Low LZC) and "Structure" (Mid).
+    """
+    if not s: return {"score": 0.0, "ratio": 0.0}
+    
+    n = len(s)
+    if n < 10: return {"score": 0.0, "ratio": 0.0}
+    
+    # Lempel-Ziv Production History (LZ76 simplified)
+    # Counts number of new sub-patterns
+    c = 1
+    l = 1
+    i = 0
+    k = 1
+    k_max = 1
+    
+    # Efficient O(N) implementation set-based check
+    # (Simplified LZC for speed in Python)
+    seen = set()
+    complexity = 0
+    w = ""
+    for char in s:
+        w += char
+        if w not in seen:
+            seen.add(w)
+            complexity += 1
+            w = ""
+    
+    # Normalized LZC (b/n where b = n/log_n)
+    # Ratio approach 1.0 for random strings
+    if n > 1:
+        norm = (complexity * math.log2(n)) / n
+    else:
+        norm = 0.0
+        
+    return {
+        "score": complexity,
+        "ratio": round(norm, 3), # 1.0 = Max Complexity (Random)
+        "verdict": "High Complexity" if norm > 0.8 else "Structured/Simple"
+    }
+
+def scan_stylometric_profile(t: str) -> dict:
+    """
+    [Stage 3.2] Sensor 18: Structural Stylometry.
+    Measures Sentence Length, Word Length, and Punctuation Density.
+    Value: Descriptive profile for authorship stability (without ML).
+    """
+    if not t: return {}
+    
+    # 1. Punctuation Profile
+    punct_map = {'.': 0, ',': 0, '!': 0, '?': 0, ';': 0, ':': 0}
+    total_punct = 0
+    for char in t:
+        if char in punct_map:
+            punct_map[char] += 1
+            total_punct += 1
+            
+    # 2. Word Length Stats
+    words = [len(w) for w in re.split(r'\s+', t) if w]
+    word_count = len(words)
+    avg_word_len = sum(words) / word_count if word_count else 0
+    
+    # 3. Sentence Length Stats (Approximate via delimiters)
+    # Split by . ! ? 
+    sentences = [len(s.split()) for s in re.split(r'[.!?]+', t) if s.strip()]
+    sent_count = len(sentences)
+    avg_sent_len = sum(sentences) / sent_count if sent_count else 0
+    
+    return {
+        "avg_word_len": round(avg_word_len, 2),
+        "avg_sent_len": round(avg_sent_len, 1),
+        "punct_density": round((total_punct / max(1, len(t))) * 100, 2),
+        "punct_profile": punct_map
+    }
+
 def scan_whitespace_physics(t: str) -> dict:
     """
     [Stage 3.1] Sensor 13: Whitespace Channel Analysis.
@@ -10326,7 +10406,7 @@ def compute_statistical_profile(t: str):
         print(f"Phono Error: {e}")
         pass
 
-    # PHASE 3: DEEP LINGUISTICS (Statistical Mechanics)
+    # PHASE 3: Statistical Mechanics
     # Uses fixed mathematical models (Trigrams, Zipf, KLD) to classify structure.
     # Deterministic. No external calls. O(N) or capped O(N^2).
 
@@ -10502,6 +10582,13 @@ def compute_statistical_profile(t: str):
     # Only run on larger files where topology matters (>512 bytes)
     if total_bytes > 512:
         stats["thermodynamics"]["topology_heatmap"] = scan_adaptive_entropy_topology(t)
+
+    # --- SENSOR 17: LEMPEL-ZIV COMPLEXITY ---
+    # Run on raw text (not bytes) to capture semantic patterns
+    stats["mechanics"]["lz_complexity"] = calc_lempel_ziv_complexity(t[:5000]) # Cap for perf if needed
+
+    # --- SENSOR 18: STYLOMETRY ---
+    stats["mechanics"]["stylometry"] = scan_stylometric_profile(t)
     
     return stats
 
@@ -18058,6 +18145,58 @@ def render_statistical_profile(stats):
              "Advanced structural properties. 'Whitespace Physics' measures density/entropy of invisible characters. 'Dispersion' measures rhythm. 'Topology' scans for entropy shifts (Low->High).", 
              "DispEn, Whitespace Entropy", 
              "Metrics describe physical structure, not intent. Thresholds are heuristic.")))
+
+    # --- Complexity & Stylometry (Stage 3.2) ---
+    mech_row_3 = ""
+    
+    # 1. Lempel-Ziv (Algorithmic Complexity)
+    lz = mech.get("lz_complexity", {})
+    if lz.get("score", 0) > 0:
+        ratio = lz['ratio']
+        # Style: Green=Structured, Red=Random/Complex
+        lz_style = "background:#f0fdf4; color:#15803d; border-color:#bbf7d0;"
+        if ratio > 0.8: lz_style = "background:#fff7ed; color:#c2410c; border-color:#fed7aa;"
+        
+        mech_row_3 += f"""
+        <div style="{lz_style} border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px; flex:1;">
+            <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; margin-bottom:2px;">Lempel-Ziv Complexity</div>
+            <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{ratio:.3f} <span style="font-weight:400; font-size:0.6rem;">(Normalized)</span></div>
+            <div style="font-size:0.65rem;">{lz['verdict']}</div>
+        </div>
+        """
+
+    # 2. Stylometry (Descriptive)
+    sty = mech.get("stylometry", {})
+    if sty:
+        wl = sty['avg_word_len']
+        sl = sty['avg_sent_len']
+        pd = sty['punct_density']
+        
+        mech_row_3 += f"""
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; border-radius:4px; padding:6px 8px; flex:2; display:flex; justify-content:space-around;">
+            <div style="text-align:center;">
+                <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Word Len</div>
+                <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{wl}</div>
+            </div>
+            <div style="border-left:1px solid #e2e8f0; width:1px;"></div>
+            <div style="text-align:center;">
+                <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Sent. Len</div>
+                <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{sl}</div>
+            </div>
+            <div style="border-left:1px solid #e2e8f0; width:1px;"></div>
+            <div style="text-align:center;">
+                <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase;">Punct %</div>
+                <div style="font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">{pd}%</div>
+            </div>
+        </div>
+        """
+
+    if mech_row_3:
+        rows.append(make_row("Complexity & Style", f'<div style="display:flex; gap:8px;">{mech_row_3}</div>', "",
+            ("ALGORITHMIC COMPLEXITY", 
+             "Lempel-Ziv (LZC) measures pattern uniqueness (Compressibility). Stylometry profiles word/sentence structure. High LZC = Random/Encrypted. Low LZC = Structured Text.", 
+             "LZ76 Complexity, Avg Lengths", 
+             "Provides a compression-based complexity axis orthogonal to entropy.")))
 
     # 7. Phonotactics (8 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
