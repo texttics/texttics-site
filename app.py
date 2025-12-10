@@ -18227,17 +18227,14 @@ def render_statistical_profile(stats):
         sl = sty['avg_sent_len']
         pd = sty['punct_density']
         
-        # New: Process Punctuation Profile for display (Top 4 marks)
+        # New: Process Punctuation Profile
         pp = sty.get('punct_profile', {})
         top_punct = sorted(pp.items(), key=lambda x: x[1], reverse=True)[:4]
         punct_parts = []
         for p_char, p_count in top_punct:
-             # Use monospace font for the actual marks
              punct_parts.append(f"<span style='font-family:var(--font-mono);'><b>{_escape_html(p_char)}</b>:{p_count}</span>")
         punct_summ = ", ".join(punct_parts) if punct_parts else "None"
         
-        # Changed main color from #64748b to #334155 (darker slate)
-        # Added flex column layout to stack the main stats over the new detail row
         mech_row_3 += f"""
         <div style="background:#f8fafc; border:1px solid #e2e8f0; color:#334155; border-radius:4px; padding:6px 8px; flex:2; display:flex; flex-direction:column; justify-content:center; align-items:center;">
             
@@ -18246,7 +18243,6 @@ def render_statistical_profile(stats):
                     <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; color:#64748b;">Word Avg</div>
                     <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700;">{wl}</div>
                 </div>
-                # Vertical dividers with explicit height
                 <div style="border-left:1px solid #e2e8f0; height:20px; margin:0 8px;"></div>
                 <div>
                     <div style="font-size:0.55rem; font-weight:700; text-transform:uppercase; color:#64748b;">Sent. Avg</div>
