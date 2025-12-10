@@ -13693,7 +13693,8 @@ def compute_stage1_5_forensics(text):
     """
     [STAGE 1.5] Orchestrator.
     Runs the Sidecar Engines and feeds the Auditor.
-    Updated to include VS Topology, Tag Decoding, and Extension Masking.
+    Updated to include VS Topology, Tag Decoding, Extension Masking, 
+    and Signal Deduplication (Global vs Token overlap).
     """
     all_signals = []
     
@@ -13714,14 +13715,12 @@ def compute_stage1_5_forensics(text):
     all_signals.extend(scan_delimiter_masking(text))
 
     # D. Code Injection Physics (Global Header Check)
-    # Checks for Magic Bytes at the very start of the paste
     all_signals.extend(scan_code_injection_physics(text))
 
     # 3. Token-Level Scans
     tokens = tokenize_forensic(text)
     
     for tok_obj in tokens:
-        # Defensive extraction
         if isinstance(tok_obj, dict):
             t_str = tok_obj.get('token', '')
         else:
@@ -13736,13 +13735,27 @@ def compute_stage1_5_forensics(text):
         all_signals.extend(scan_domain_structure_v2(t_str))
 
         # C. Code Injection Physics (Token Level)
-        # Checks if a SPECIFIC token is a payload (e.g. valid Base64 blob)
-        # FIX: Pass 't_str' (The Token), NOT 'text' (The Global String)
-        if len(t_str) > 8: # Optimization: Don't scan short words for complex payloads
+        # Scan tokens if they look like potential encoded strings
+        if len(t_str) > 8:
             all_signals.extend(scan_code_injection_physics(t_str))
 
-    # 4. Audit Signals
-    return audit_stage1_5_signals(all_signals)
+    # 4. Deduplication Logic
+    # Remove exact duplicate signals (same type, description, and risk)
+    # This prevents double-counting when Global and Token scanners catch the same entity.
+    unique_signals = []
+    seen_hashes = set()
+    
+    for sig in all_signals:
+        # Create a unique signature for the signal
+        # We use a tuple of immutable values: (type, desc, risk)
+        sig_hash = (sig.get('type'), sig.get('desc'), sig.get('risk'))
+        
+        if sig_hash not in seen_hashes:
+            seen_hashes.add(sig_hash)
+            unique_signals.append(sig)
+
+    # 5. Audit Signals
+    return audit_stage1_5_signals(unique_signals)
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict, grapheme_stats: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
