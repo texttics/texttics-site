@@ -88,16 +88,77 @@ def _debug_threat_bridge(t: str, hit: tuple):
 
 # CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
 
-# 1. Serialization Magic Signatures (Hex/Byte Headers)
-# Detects executable objects masquerading as text strings.
-# Sources: Python Pickle Spec, Java Object Serialization Spec, GZIP Spec.
+# 1. Serialization & Container Magic Signatures
+# Detects executable objects, binary containers, and code artifacts masquerading as text.
 SERIALIZATION_SIGS = {
-    # Pickle Protocols 0-5 (Explicit Opcode Starts)
-    "PICKLE_VM": re.compile(r'^(\x80[\x03\x04\x05]|\x80\x02|cnumpy|cposix)', re.BINARY),
-    # Python Marshalled Bytecode (Magic Header)
-    "PYTHON_BYTECODE": re.compile(r'^\x03\xf3\x0d\x0a', re.BINARY),
-    # Java Serialized Object (Magic Header)
-    "JAVA_SERIAL": re.compile(r'^\xac\xed\x00\x05', re.BINARY)
+    # --- TIER 1: DIRECT CODE EXECUTION (Virtual Machines) ---
+    # Python (Pickle & Bytecode)
+    "PICKLE_VM": re.compile(r'^(\x80[\x02\x03\x04\x05]|cnumpy|cposix|cos)', re.BINARY),
+    "PYTHON_PYC": re.compile(r'^[\x00-\xff]{2}\r\n', re.BINARY), # .pyc magic
+
+    # Java / JVM (Java, Groovy, Kotlin, Scala)
+    "JAVA_SERIAL": re.compile(r'^\xac\xed\x00\x05', re.BINARY), # Serialized Object
+    "JAVA_CLASS": re.compile(r'^\xca\xfe\xba\xbe', re.BINARY),  # .class Bytecode
+    
+    # Lua (Lua)
+    "LUA_BYTECODE": re.compile(r'^\x1bLua', re.BINARY),
+    
+    # Erlang / Elixir (Erlang)
+    "ERLANG_BEAM": re.compile(r'^FOR1....BEAM', re.BINARY | re.DOTALL),
+    
+    # WebAssembly (Wasm)
+    "WASM_BINARY": re.compile(r'^\x00asm', re.BINARY),
+    
+    # Flash / ActionScript (SWF)
+    "FLASH_SWF": re.compile(r'^[CFZ]WS', re.BINARY),
+
+    # --- TIER 2: NATIVE EXECUTABLES (Compiled Languages) ---
+    # Covers: C, C++, C#, Go, Rust, Swift, Ada, Pascal, Fortran, Assembly, Haskell, VB.NET
+    # These languages compile to machine code containers.
+    
+    "PE_BINARY": re.compile(r'^MZ', re.BINARY),       # Windows EXE/DLL (ASP.NET, C#)
+    "ELF_BINARY": re.compile(r'^\x7fELF', re.BINARY), # Linux Binaries (Go, Rust, C)
+    "MACHO_BINARY": re.compile(r'^(\xfe\xed\xfa\xce|\xce\xfa\xed\xfe|\xfe\xed\xfa\xcf|\xcf\xfa\xed\xfe)', re.BINARY), # macOS
+    "DEX_BINARY": re.compile(r'^dex\n', re.BINARY),   # Android (Java/Kotlin)
+
+    # --- TIER 3: SCRIPT HEADERS (Interpreted Languages) ---
+    # Covers: Bash, Perl, Ruby, Python (Script), Tcl, R
+    # Checks for the universal "Shebang" (#!)
+    "SHEBANG_SCRIPT": re.compile(r'^#!', re.BINARY),
+    
+    # PHP (Server-Side)
+    "PHP_SCRIPT": re.compile(r'^<\?php', re.BINARY | re.IGNORECASE),
+    
+    # PostScript (PostScript)
+    "POSTSCRIPT": re.compile(r'^%!', re.BINARY),
+
+    # --- TIER 4: DATA CONTAINERS & MACROS ---
+    # SQL (SQLite format)
+    "SQLITE_DB": re.compile(r'^SQLite format 3\x00', re.BINARY),
+    
+    # VBA / Visual Basic (Office Macros) -> Stored in OLE Compound Files
+    "OFFICE_OLE": re.compile(r'^\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1', re.BINARY),
+    
+    # HTML / XML (DocTypes)
+    "HTML_DOC": re.compile(r'^\s*<!DOCTYPE', re.BINARY | re.IGNORECASE),
+    "XML_DOC": re.compile(r'^\s*<\?xml', re.BINARY),
+
+    # --- TIER 5: ARCHIVES & COMPRESSION (Polyglot Vectors) ---
+    "ZIP_ARCHIVE": re.compile(r'^PK\x03\x04', re.BINARY), # Zip, Jar, APK, Docx
+    "RAR_ARCHIVE": re.compile(r'^Rar!\x1a\x07', re.BINARY),
+    "SEVEN_ZIP": re.compile(r'^7z\xbc\xaf\x27\x1c', re.BINARY),
+    "GZIP_STREAM": re.compile(r'^\x1f\x8b\x08', re.BINARY),
+    "BZIP2_STREAM": re.compile(r'^BZh', re.BINARY),
+    "TAR_ARCHIVE": re.compile(r'.{257}ustar', re.BINARY | re.DOTALL),
+    
+    # --- TIER 6: MEDIA STEGANOGRAPHY (Payload Hiding) ---
+    "PDF_DOC": re.compile(r'^%PDF-', re.BINARY),
+    "RTF_DOC": re.compile(r'^\{\\rtf', re.BINARY),
+    "PNG_IMAGE": re.compile(r'^\x89PNG\r\n\x1a\n', re.BINARY),
+    "JPEG_IMAGE": re.compile(r'^\xff\xd8\xff', re.BINARY),
+    "GIF_IMAGE": re.compile(r'^GIF8(7|9)a', re.BINARY),
+    "WEBP_IMAGE": re.compile(r'^RIFF.{4}WEBP', re.BINARY | re.DOTALL),
+    "BMP_IMAGE": re.compile(r'^BM', re.BINARY)
 }
 
 # 2. Template Syntax Injection (Format String Grammars)
