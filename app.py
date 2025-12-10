@@ -6498,6 +6498,48 @@ def scan_contextual_lures(text):
 
 # B. Structural Analyzers (Macro Physics)
 
+def scan_event_horizon(cp: int):
+    """
+    [PARANOIA] Event Horizon Telescope (Physics Engine).
+    Classifies 'Hyper-Astral' code points that breach the Unicode limit (U+10FFFF).
+    Detects specific runtime failures based on the magnitude of the violation.
+    """
+    # 0. The Event Horizon (Unicode limit)
+    if cp <= 0x10FFFF:
+        return None
+
+    # 1. Zone A: The "Near Void" (Allocated but Illegal)
+    # Range: 0x110000 - 0x1FFFFF
+    # Diagnosis: Likely a logic error in a custom parser attempting to use 21-bit space.
+    if cp <= 0x1FFFFF:
+        return {
+            "type": "DIMENSIONAL_BREACH",
+            "desc": f"Hyper-Astral Particle (U+{cp:X}). Exceeds 17 Planes.",
+            "risk": 100,
+            "badge": "BREACH"
+        }
+
+    # 2. Zone B: Signed 32-bit Overflow (The Integer Limit)
+    # Range: > 0x7FFFFFFF
+    # Diagnosis: Signed Integer Overflow detected. Critical variable corruption.
+    if cp > 0x7FFFFFFF:
+        return {
+            "type": "MEMORY_SINGULARITY",
+            "desc": f"Signed Integer Overflow detected (Val: {cp}). Runtime Instability.",
+            "risk": 100,
+            "badge": "OVERFLOW"
+        }
+
+    # 3. Zone C: The "Deep Void" (Arbitrary Memory Leak)
+    # Range: Anything else.
+    # Diagnosis: Pointer dereference error or raw memory leak interpreted as char.
+    return {
+        "type": "VACUUM_DECAY",
+        "desc": f"Raw Memory Leak / Heap Corruption (U+{cp:X}).",
+        "risk": 100,
+        "badge": "LEAK"
+    }
+
 def analyze_invisible_clusters(t: str):
     """
     Walks the text once and returns a list of invisible clusters.
@@ -10860,6 +10902,18 @@ def compute_integrity_score(inputs):
         })
 
     # --- 1. FATAL (Data Death) ---
+    
+    # [PARANOIA] Hyper-Astral Breaches
+    # We penalize EVERY breach because it indicates active runtime instability.
+    hyper_count = inputs.get("hyper_astral_count", 0)
+    if hyper_count > 0:
+        ledger.append({
+            "vector": "RUNTIME_REALITY_FAILURE",
+            "count": hyper_count,
+            "severity": "FATAL",
+            "points": 100 # Maximum Score Cap (Instant Corrupt)
+        })
+
     add_entry("Data Corruption (U+FFFD)", inputs.get("fffd", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
     add_entry("Broken Encoding (Surrogates)", inputs.get("surrogate", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
     add_entry("Binary Injection (Null Bytes)", inputs.get("nul", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
@@ -13229,7 +13283,25 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             try:
                 cp = ord(char)
                 category = unicodedata.category(char)
-                mask = INVIS_TABLE[cp] if cp < 1114112 else 0
+                
+                # [PARANOIA] Event Horizon Sensor (The Guard Rail)
+                # If cp exceeds the Universe (0x10FFFF), we engage the Telescope.
+                if cp > 0x10FFFF:
+                    # 1. Analyze the anomaly
+                    void_data = scan_event_horizon(cp)
+                    
+                    # 2. Log the specific failure mode
+                    # We store the FULL object, not just the index, for rich reporting
+                    health_issues.setdefault("hyper_complex", []).append({
+                        "idx": i,
+                        "data": void_data
+                    })
+                    
+                    # 3. Safe Fallback (Prevent Index Error in Bitmask)
+                    mask = 0 
+                else:
+                    # Standard Physics
+                    mask = INVIS_TABLE[cp]
 
                 # --- Decode Health ---
                 if cp == 0xFFFD: health_issues["fffd"].append(i)
@@ -13444,7 +13516,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     for idx in legacy_indices["suspicious_syntax_vs"]: _register_hit("thr_execution", idx, idx+1, "Syntax Spoofing")
 
     # --- 2. INTEGRITY AUDITOR ---
-    auditor_inputs = {
+    integrity_inputs = {
+        "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
         "nul": len(health_issues["nul"]),
@@ -13515,6 +13588,26 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     })
 
     # FATAL
+    # FATAL
+    # [PARANOIA] Event Horizon Reporting
+    hyper_events = health_issues.get("hyper_complex", [])
+    if hyper_events:
+        # Group by Failure Type
+        for event in hyper_events:
+            e_data = event["data"]
+            e_idx = event["idx"]
+            
+            # Dynamic Label based on Physics Analysis
+            label = f"FATAL: {e_data['desc']}"
+            
+            add_row(
+                label, 
+                1, 
+                [f"#{e_idx}"], 
+                "crit", 
+                badge=e_data['badge']
+            )
+
     add_row("DANGER: Terminal Injection (ESC)", len(legacy_indices["esc"]), legacy_indices["esc"], "crit")
     add_row("Flag: Replacement Char (U+FFFD)", len(health_issues["fffd"]), health_issues["fffd"], "crit")
     add_row("Flag: NUL (U+0000)", len(health_issues["nul"]), health_issues["nul"], "crit")
