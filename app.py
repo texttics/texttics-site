@@ -4518,6 +4518,385 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def scan_geometric_drift(t: str) -> list:
+    """
+    [Stage 2.0] Geometric Drift Analyst (Hardened V2.1).
+    
+    Detects 'Visual Spoofing' (Homographs) where characters switch width
+    (Narrow vs Fullwidth) within a single token to trick users.
+    
+    Physics:
+    1. Modal Locking: The first definitive character establishes the token's geometry.
+    2. Neutral Transparency: Accents/Marks (Neutral width) do not break the lock.
+    3. Latin Hardening: Mixing widths in Latin script is treated as CRITICAL.
+    
+    Inputs:
+        t (str): The raw text.
+    
+    Returns:
+        List of forensic finding dictionaries.
+    """
+    findings = []
+    if not t:
+        return findings
+
+    import unicodedata
+
+    # ==========================================
+    # 1. PHYSICS CONSTANTS
+    # ==========================================
+    # We define "Token" strictly as Letters and Numbers.
+    # Mixing widths in Punctuation/Symbols is often just bad formatting, not spoofing.
+    TOKEN_CATS = {'L', 'N'} 
+    
+    # Width Mapping
+    # NARROW: Na (Narrow), H (Halfwidth) -> e.g. ASCII 'a'
+    # WIDE:   W (Wide), F (Fullwidth)    -> e.g. 'ａ' (U+FF41)
+    # NEUTRAL: A (Ambiguous), N (Neutral) -> Ignored (Transparent to lock)
+    
+    def get_geo_mode(char):
+        w = unicodedata.east_asian_width(char)
+        if w in ('Na', 'H'): return 'NARROW'
+        if w in ('W', 'F'): return 'WIDE'
+        return 'NEUTRAL' # Includes 'A' (Ambiguous) for safety
+
+    # Helper: Check if a character is Latin Script (for Severity upgrade)
+    # Used to distinguish "High Risk Phishing" from "Bad CJK Formatting".
+    def is_latin_script(char):
+        try:
+            cp = ord(char)
+            # Basic Latin + Supplement + Extended A/B
+            if 0x0000 <= cp <= 0x024F: return True
+            # Fullwidth Latin
+            if 0xFF00 <= cp <= 0xFFEF: return True
+            return False
+        except:
+            return False
+
+    # ==========================================
+    # 2. THE MODAL SCANNER (O(N))
+    # ==========================================
+    
+    token_lock_mode = None  # The established geometry for the current token
+    token_is_latin = False  # Track if token contains Latin characters
+    in_token = False
+    
+    for i, char in enumerate(t):
+        
+        # 1. Get Physics Properties
+        cat_major = unicodedata.category(char)[0] # L, N, Z, P...
+        geo_mode = get_geo_mode(char)
+        
+        # 2. Check Token Status
+        # A token is a contiguous run of Letters or Numbers.
+        is_token_char = cat_major in TOKEN_CATS
+        
+        if is_token_char:
+            
+            # Track Script Context (for Severity logic)
+            if not token_is_latin and is_latin_script(char):
+                token_is_latin = True
+            
+            if not in_token:
+                # START NEW TOKEN
+                in_token = True
+                token_is_latin = is_latin_script(char) # Reset script tracker
+                
+                # Try to set the Lock immediately
+                if geo_mode != 'NEUTRAL':
+                    token_lock_mode = geo_mode
+                else:
+                    token_lock_mode = None # Wait for first definitive char
+            else:
+                # CONTINUE TOKEN
+                
+                # We only perform checks if we encounter a DEFINITIVE geometry.
+                # Neutral chars (accents, marks) are transparent.
+                if geo_mode != 'NEUTRAL':
+                    
+                    if token_lock_mode is None:
+                        # Late Locking: First char was Neutral (e.g. '´' then 'a')
+                        token_lock_mode = geo_mode
+                        
+                    elif token_lock_mode != "BROKEN" and geo_mode != token_lock_mode:
+                        # --- DRIFT DETECTED ---
+                        # The current char violates the established lock.
+                        # e.g. Lock=NARROW (p), Curr=WIDE (ａ)
+                        
+                        # Heuristic: Severity Upgrade
+                        # Mixed geometry in Latin (e.g. PayPal) is CRITICAL.
+                        # Mixed geometry in CJK (e.g. Kanji + Digit) is HIGH/WARN.
+                        severity = "crit" if token_is_latin else "high"
+                        
+                        findings.append({
+                            "label": "Geometric Drift (Visual Spoofing)",
+                            "severity": severity,
+                            "badge": "SPOOF",
+                            "details": f"Width Mismatch ({token_lock_mode} mixed with {geo_mode}) at #{i}",
+                            "count": 1,
+                            "indices": [f"#{i}"]
+                        })
+                        
+                        # Break the lock to prevent flooding findings for this token.
+                        # We flag the token once, then ignore it until the next token starts.
+                        token_lock_mode = "BROKEN"
+                        
+        else:
+            # END TOKEN (Space, Punctuation, Symbol)
+            # Reset state for the next word
+            in_token = False
+            token_lock_mode = None
+            token_is_latin = False
+
+    return findings
+
+def scan_structural_rhythm(t: str) -> list:
+    """
+    [Stage 2.0] Structural Rhythm Analyst (Hardened V2.1).
+    
+    Analyzes the sequence of abstract category transitions to detect:
+    1. "Frankenstein" Splicing: Abrupt shifts from Prose Rhythm to Code Rhythm.
+    2. "Segmentation Smuggling": Invisible characters injected INSIDE tokens (Context-Aware).
+    
+    Inputs:
+        t (str): The raw text.
+    
+    Returns:
+        List of forensic finding dictionaries.
+    """
+    findings = []
+    if not t:
+        return findings
+
+    # ==========================================
+    # 1. PHYSICS CONSTANTS & KNOWLEDGE BASE
+    # ==========================================
+    
+    # RHYTHM CLASSES (Simplifying 30 categories into 5 physics types)
+    # A = Alpha (Flow)
+    # D = Digit (Data)
+    # S = Syntax (Chaos/Stop)
+    # G = Gap (Separation)
+    # V = Void (Invisible/Control)
+    
+    # "The Sandwich Set": Categories that are FATAL if found inside a token.
+    # Cf (Format), Cc (Control), Zl/Zp (Line Breaks)
+    DANGEROUS_VOID = {'Cf', 'Cc', 'Zl', 'Zp'}
+    
+    # "The Linguistic Set": Marks that bond naturally (Zalgo). Ignored here.
+    LINGUISTIC_VOID = {'Mn', 'Mc', 'Me'}
+    
+    # "The Persian Defense": Scripts where ZWJ/ZWNJ/Format chars are valid grammar.
+    # We whitelist these to prevent false positives on legitimate orthography.
+    COMPLEX_ORTHOGRAPHY_SCRIPTS = {
+        'Arabic', 'Syriac', 'Nko', 'Adlam', 'Mongolian', 
+        'Phags_Pa', 'Manichaean', 'Psalter_Pahlavi', 
+        'Han', 'Hiragana', 'Katakana', 'Hangul', 'Thai', 'Lao', 'Khmer', 'Myanmar'
+    }
+    
+    # "Frankenstein" Thresholds
+    # A window of 8 runs is roughly 1-2 sentences or 1 line of code.
+    CHAOS_WINDOW_SIZE = 8       
+    # If >50% of runs in the window are Syntax/Digits, it's a "High Jitter" zone.
+    CHAOS_THRESHOLD = 0.5       
+
+    # Helper: Map Unicode Category to Rhythm Class (O(1))
+    def get_rhythm_type(cat):
+        if cat.startswith('L'): return 'ALPHA'
+        if cat.startswith('N'): return 'DIGIT'
+        if cat.startswith('Z'): return 'GAP' # Zs, Zl, Zp
+        if cat.startswith('P') or cat.startswith('S'): return 'SYNTAX'
+        if cat in DANGEROUS_VOID: return 'VOID_BAD'
+        if cat in LINGUISTIC_VOID: return 'VOID_MARK'
+        return 'UNKNOWN' # Co, Cn, Cs
+
+    # Helper: Check if character is a specific evasion type
+    # (Replaces complex regex for speed)
+    def classify_void_subtype(cp):
+        if 0xE0000 <= cp <= 0xE007F: return "TAG"
+        # RLO, LRO, LRE, RLE, PDF, LRI, RLI, FSI, PDI
+        if cp in {0x202E, 0x202D, 0x202A, 0x202B, 0x202C, 0x2066, 0x2067, 0x2068, 0x2069}: return "BIDI"
+        if cp == 0x00AD: return "SHY"
+        return "GENERIC"
+
+    # ==========================================
+    # 2. SKELETON EXTRACTION (O(N) Compression)
+    # ==========================================
+    # We build a specific RLE list that tracks Rhythm Class, not just Category.
+    
+    skeleton = []
+    curr_type = None
+    curr_start = 0
+    curr_len = 0
+    curr_cat_sample = ""
+    
+    for i, char in enumerate(t):
+        cat = unicodedata.category(char)
+        
+        # Physics Correction: Treat Specific Chars as specific types
+        if cat in DANGEROUS_VOID:
+            r_type = 'VOID_BAD'
+        else:
+            r_type = get_rhythm_type(cat)
+            
+        if r_type == curr_type:
+            curr_len += 1
+        else:
+            if curr_type:
+                skeleton.append({
+                    'type': curr_type,
+                    'start': curr_start,
+                    'len': curr_len,
+                    'cat': curr_cat_sample
+                })
+            curr_type = r_type
+            curr_start = i
+            curr_len = 1
+            curr_cat_sample = cat
+            
+    # Append final run
+    if curr_type:
+        skeleton.append({
+            'type': curr_type, 
+            'start': curr_start, 
+            'len': curr_len, 
+            'cat': curr_cat_sample
+        })
+
+    # ==========================================
+    # 3. ANALYST A: The Context-Aware Smuggler
+    # ==========================================
+    # Logic: [TOKEN] -> [VOID_BAD] -> [TOKEN]
+    
+    TOKEN_TYPES = {'ALPHA', 'DIGIT'}
+    
+    if len(skeleton) >= 3:
+        for i in range(1, len(skeleton) - 1):
+            curr = skeleton[i]
+            
+            if curr['type'] == 'VOID_BAD':
+                prev = skeleton[i-1]
+                next_run = skeleton[i+1]
+                
+                # Check for Sandwich Topology
+                if (prev['type'] in TOKEN_TYPES) and (next_run['type'] in TOKEN_TYPES):
+                    
+                    # --- DEEP FORENSICS (Context Analysis) ---
+                    is_threat = True
+                    severity = "crit"
+                    badge = "EVASION"
+                    spec_msg = ""
+                    
+                    # 1. Get the atomic evidence
+                    void_char_idx = curr['start']
+                    void_char = t[void_char_idx]
+                    void_cp = ord(void_char)
+                    subtype = classify_void_subtype(void_cp)
+                    
+                    # 2. Strict Liability Check (Tags/Bidi)
+                    if subtype == "TAG":
+                        spec_msg = "Plane 14 Tag Injection"
+                    elif subtype == "BIDI":
+                        spec_msg = "Intra-Token Bidi Override"
+                    else:
+                        # 3. Contextual Check (Format Controls)
+                        # We must check the Script of the surrounding text (the "Bread")
+                        # We look at the character immediately preceding the void run
+                        bread_char = t[prev['start']]
+                        bread_cp = ord(bread_char)
+                        
+                        # Reuse existing script lookup helper if available, else fallback
+                        # Assuming _find_in_ranges exists from Block 5
+                        script_val = _find_in_ranges(bread_cp, "Scripts") or "Unknown"
+                        
+                        if script_val in COMPLEX_ORTHOGRAPHY_SCRIPTS:
+                            # THE PERSIAN DEFENSE: Downgrade or Ignore
+                            # ZWNJ is valid in Persian/Arabic. ZWSP valid in Thai.
+                            is_threat = False 
+                        else:
+                            # Latin/Cyrillic/Greek/Numbers DO NOT need Format chars inside words.
+                            spec_msg = f"Format Control in Simple Script ({script_val})"
+                            
+                            # Downgrade Soft Hyphen (SHY) to Warning
+                            if subtype == "SHY":
+                                severity = "warn"
+                                badge = "OBFUSCATION" # Not quite evasion, but messy
+                                spec_msg = "Soft Hyphen (Possible Obfuscation)"
+
+                    # 4. Reporting
+                    if is_threat:
+                        findings.append({
+                            "label": "Segmentation Smuggling (Intra-Token Injection)",
+                            "severity": severity, 
+                            "badge": badge,
+                            "details": f"Token Fracture detected: {spec_msg}",
+                            "count": 1,
+                            "indices": [f"#{curr['start']}"]
+                        })
+
+    # ==========================================
+    # 4. ANALYST B: The Frankenstein (Arrhythmia)
+    # ==========================================
+    # Logic: Detect "Square Waves" in structural entropy.
+    
+    if len(skeleton) > CHAOS_WINDOW_SIZE:
+        
+        in_chaos_zone = False
+        chaos_start_idx = -1
+        
+        for i in range(len(skeleton) - CHAOS_WINDOW_SIZE):
+            window = skeleton[i : i + CHAOS_WINDOW_SIZE]
+            
+            # Measure Jitter: Count runs that are SYNTAX or DIGIT
+            jitter_count = 0
+            for run in window:
+                if run['type'] in {'SYNTAX', 'DIGIT'}:
+                    jitter_count += 1
+            
+            chaos_density = jitter_count / CHAOS_WINDOW_SIZE
+            
+            if chaos_density >= CHAOS_THRESHOLD:
+                if not in_chaos_zone:
+                    # RISING EDGE (Prose -> Code)
+                    in_chaos_zone = True
+                    chaos_start_idx = window[0]['start']
+            else:
+                if in_chaos_zone:
+                    # FALLING EDGE (Code -> Prose)
+                    in_chaos_zone = False
+                    
+                    # Filter: Only report if payload > 8 chars (Ignore timestamps)
+                    chaos_end_idx = window[0]['start']
+                    zone_len = chaos_end_idx - chaos_start_idx
+                    
+                    if zone_len > 8:
+                        findings.append({
+                            "label": "Structural Discontinuity (Frankenstein Splicing)",
+                            "severity": "high",
+                            "badge": "ANOMALY",
+                            "details": f"Rhythm Shift (Prose -> Syntax) at #{chaos_start_idx}. Len: {zone_len}",
+                            "count": 1,
+                            "indices": [f"#{chaos_start_idx}"]
+                        })
+        
+        # Handle trailing chaos
+        if in_chaos_zone:
+             last_run = skeleton[-1]
+             end_pos = last_run['start'] + last_run['len']
+             zone_len = end_pos - chaos_start_idx
+             
+             if zone_len > 8:
+                 findings.append({
+                    "label": "Structural Discontinuity (Frankenstein Splicing)",
+                    "severity": "high",
+                    "badge": "ANOMALY",
+                    "details": f"Rhythm Shift (Prose -> Syntax) at #{chaos_start_idx}. Len: {zone_len}",
+                    "count": 1,
+                    "indices": [f"#{chaos_start_idx}"]
+                })
+
+    return findings
+
 def scan_structural_rhythm(t: str) -> list:
     """
     [Stage 2.0] Structural Rhythm Analyst (The "Jitter Meter").
@@ -21385,6 +21764,46 @@ def update_all(event=None):
     for finding in rhythm_findings:
         label = finding["label"]
         
+        # Merge Logic (Handle duplicates/collisions)
+        if label in final_threat_flags:
+            existing = final_threat_flags[label]
+            existing["count"] += finding["count"]
+            # Deduplicate positions
+            existing["positions"] = list(set(existing["positions"] + finding["indices"]))
+            # Elevate severity if new finding is critical
+            if finding["severity"] == "crit": existing["severity"] = "crit"
+        else:
+            final_threat_flags[label] = {
+                "count": finding["count"],
+                "positions": finding["indices"],
+                "severity": finding["severity"],
+                "badge": finding["badge"],
+                "details": finding["details"]
+            }
+            
+        # Register for HUD Aggregators
+        if finding["badge"] == "EVASION":
+             for pos in finding["indices"]:
+                 try: 
+                     idx = int(pos.replace("#", ""))
+                     _register_hit("thr_obfuscation", idx, idx+1, "Smuggling")
+                 except: pass
+                 
+        elif finding["badge"] == "ANOMALY":
+             for pos in finding["indices"]:
+                 try:
+                     idx = int(pos.replace("#", ""))
+                     _register_hit("thr_suspicious", idx, idx+1, "Splicing")
+                 except: pass
+
+    # [STAGE 2.0] RHYTHM ANALYST SIDECAR
+    # Analyzes the structural skeleton for splicing and smuggling
+    rhythm_findings = scan_structural_rhythm(t)
+    
+    # Merge findings into the display lists
+    for finding in rhythm_findings:
+        label = finding["label"]
+        
         # If the flag already exists (rare collision), we merge counts/positions
         if label in final_threat_flags:
             existing = final_threat_flags[label]
@@ -21417,6 +21836,38 @@ def update_all(event=None):
                      idx = int(pos.replace("#", ""))
                      _register_hit("thr_suspicious", idx, idx+1, "Splicing")
                  except: pass
+
+    # [STAGE 2.0] GEOMETRIC DRIFT SIDECAR
+    # Analyzes alphanumeric tokens for width consistency (Homograph Detection)
+    geo_findings = scan_geometric_drift(t)
+    
+    # Merge findings into the Threat Flags
+    for finding in geo_findings:
+        label = finding["label"]
+        
+        if label in final_threat_flags:
+            existing = final_threat_flags[label]
+            existing["count"] += finding["count"]
+            existing["positions"].extend(finding["indices"])
+            # Elevate severity if we find a CRITICAL instance (Latin Spoof)
+            if finding["severity"] == "crit":
+                existing["severity"] = "crit"
+        else:
+            final_threat_flags[label] = {
+                "count": finding["count"],
+                "positions": finding["indices"],
+                "severity": finding["severity"],
+                "badge": finding["badge"],
+                "details": finding["details"]
+            }
+            
+        # Register for Authenticity Aggregator (The "Identity" Axis)
+        # Spoofing attacks go to "Authenticity" signals in the HUD
+        for pos in finding["indices"]:
+             try:
+                 idx = int(pos.replace("#", ""))
+                 _register_hit("auth_spoof", idx, idx+1, "Visual Drift")
+             except: pass
     
     wb_run_stats = compute_wordbreak_analysis(t)
     sb_run_stats = compute_sentencebreak_analysis(t)
