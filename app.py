@@ -88,77 +88,69 @@ def _debug_threat_bridge(t: str, hit: tuple):
 
 # CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
 
-# 1. Serialization & Container Magic Signatures
+# 1. Serialization & Container Magic Signatures (Fixed)
 # Detects executable objects, binary containers, and code artifacts masquerading as text.
+# Note: Patterns are bytes (b'...') to match the encoded prefix.
 SERIALIZATION_SIGS = {
     # --- TIER 1: DIRECT CODE EXECUTION (Virtual Machines) ---
     # Python (Pickle & Bytecode)
-    "PICKLE_VM": re.compile(r'^(\x80[\x02\x03\x04\x05]|cnumpy|cposix|cos)', re.BINARY),
-    "PYTHON_PYC": re.compile(r'^[\x00-\xff]{2}\r\n', re.BINARY), # .pyc magic
+    "PICKLE_VM": re.compile(b'^(\x80[\x02\x03\x04\x05]|cnumpy|cposix|cos)'),
+    "PYTHON_PYC": re.compile(b'^[\x00-\xff]{2}\r\n'), # .pyc magic
 
-    # Java / JVM (Java, Groovy, Kotlin, Scala)
-    "JAVA_SERIAL": re.compile(r'^\xac\xed\x00\x05', re.BINARY), # Serialized Object
-    "JAVA_CLASS": re.compile(r'^\xca\xfe\xba\xbe', re.BINARY),  # .class Bytecode
+    # Java / JVM
+    "JAVA_SERIAL": re.compile(b'^\xac\xed\x00\x05'), # Serialized Object
+    "JAVA_CLASS": re.compile(b'^\xca\xfe\xba\xbe'),  # .class Bytecode
     
-    # Lua (Lua)
-    "LUA_BYTECODE": re.compile(r'^\x1bLua', re.BINARY),
+    # Lua
+    "LUA_BYTECODE": re.compile(b'^\x1bLua'),
     
-    # Erlang / Elixir (Erlang)
-    "ERLANG_BEAM": re.compile(r'^FOR1....BEAM', re.BINARY | re.DOTALL),
+    # Erlang
+    "ERLANG_BEAM": re.compile(b'^FOR1....BEAM', re.DOTALL),
     
-    # WebAssembly (Wasm)
-    "WASM_BINARY": re.compile(r'^\x00asm', re.BINARY),
+    # WebAssembly
+    "WASM_BINARY": re.compile(b'^\x00asm'),
     
-    # Flash / ActionScript (SWF)
-    "FLASH_SWF": re.compile(r'^[CFZ]WS', re.BINARY),
+    # Flash
+    "FLASH_SWF": re.compile(b'^[CFZ]WS'),
 
     # --- TIER 2: NATIVE EXECUTABLES (Compiled Languages) ---
-    # Covers: C, C++, C#, Go, Rust, Swift, Ada, Pascal, Fortran, Assembly, Haskell, VB.NET
-    # These languages compile to machine code containers.
-    
-    "PE_BINARY": re.compile(r'^MZ', re.BINARY),       # Windows EXE/DLL (ASP.NET, C#)
-    "ELF_BINARY": re.compile(r'^\x7fELF', re.BINARY), # Linux Binaries (Go, Rust, C)
-    "MACHO_BINARY": re.compile(r'^(\xfe\xed\xfa\xce|\xce\xfa\xed\xfe|\xfe\xed\xfa\xcf|\xcf\xfa\xed\xfe)', re.BINARY), # macOS
-    "DEX_BINARY": re.compile(r'^dex\n', re.BINARY),   # Android (Java/Kotlin)
+    "PE_BINARY": re.compile(b'^MZ'),       # Windows EXE/DLL
+    "ELF_BINARY": re.compile(b'^\x7fELF'), # Linux Binaries
+    "MACHO_BINARY": re.compile(b'^(\xfe\xed\xfa\xce|\xce\xfa\xed\xfe|\xfe\xed\xfa\xcf|\xcf\xfa\xed\xfe)'),
+    "DEX_BINARY": re.compile(b'^dex\n'),   # Android
 
-    # --- TIER 3: SCRIPT HEADERS (Interpreted Languages) ---
-    # Covers: Bash, Perl, Ruby, Python (Script), Tcl, R
-    # Checks for the universal "Shebang" (#!)
-    "SHEBANG_SCRIPT": re.compile(r'^#!', re.BINARY),
-    
-    # PHP (Server-Side)
-    "PHP_SCRIPT": re.compile(r'^<\?php', re.BINARY | re.IGNORECASE),
-    
-    # PostScript (PostScript)
-    "POSTSCRIPT": re.compile(r'^%!', re.BINARY),
+    # --- TIER 3: SCRIPT HEADERS ---
+    "SHEBANG_SCRIPT": re.compile(b'^#!'),
+    "PHP_SCRIPT": re.compile(b'^<\?php', re.IGNORECASE),
+    "POSTSCRIPT": re.compile(b'^%!'),
 
     # --- TIER 4: DATA CONTAINERS & MACROS ---
-    # SQL (SQLite format)
-    "SQLITE_DB": re.compile(r'^SQLite format 3\x00', re.BINARY),
-    
-    # VBA / Visual Basic (Office Macros) -> Stored in OLE Compound Files
-    "OFFICE_OLE": re.compile(r'^\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1', re.BINARY),
-    
-    # HTML / XML (DocTypes)
-    "HTML_DOC": re.compile(r'^\s*<!DOCTYPE', re.BINARY | re.IGNORECASE),
-    "XML_DOC": re.compile(r'^\s*<\?xml', re.BINARY),
+    "SQLITE_DB": re.compile(b'^SQLite format 3\x00'),
+    "OFFICE_OLE": re.compile(b'^\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'),
+    "HTML_DOC": re.compile(b'^\s*<!DOCTYPE', re.IGNORECASE),
+    "XML_DOC": re.compile(b'^\s*<\?xml'),
 
-    # --- TIER 5: ARCHIVES & COMPRESSION (Polyglot Vectors) ---
-    "ZIP_ARCHIVE": re.compile(r'^PK\x03\x04', re.BINARY), # Zip, Jar, APK, Docx
-    "RAR_ARCHIVE": re.compile(r'^Rar!\x1a\x07', re.BINARY),
-    "SEVEN_ZIP": re.compile(r'^7z\xbc\xaf\x27\x1c', re.BINARY),
-    "GZIP_STREAM": re.compile(r'^\x1f\x8b\x08', re.BINARY),
-    "BZIP2_STREAM": re.compile(r'^BZh', re.BINARY),
-    "TAR_ARCHIVE": re.compile(r'.{257}ustar', re.BINARY | re.DOTALL),
+    # --- TIER 5: ARCHIVES & COMPRESSION ---
+    "ZIP_ARCHIVE": re.compile(b'^PK\x03\x04'),
+    "RAR_ARCHIVE": re.compile(b'^Rar!\x1a\x07'),
+    "SEVEN_ZIP": re.compile(b'^7z\xbc\xaf\x27\x1c'),
+    "GZIP_STREAM": re.compile(b'^\x1f\x8b\x08'),
+    "BZIP2_STREAM": re.compile(b'^BZh'),
+    "TAR_ARCHIVE": re.compile(b'.{257}ustar', re.DOTALL),
+    "XZ_STREAM": re.compile(b'^\xfd7zXZ\x00'),
     
-    # --- TIER 6: MEDIA STEGANOGRAPHY (Payload Hiding) ---
-    "PDF_DOC": re.compile(r'^%PDF-', re.BINARY),
-    "RTF_DOC": re.compile(r'^\{\\rtf', re.BINARY),
-    "PNG_IMAGE": re.compile(r'^\x89PNG\r\n\x1a\n', re.BINARY),
-    "JPEG_IMAGE": re.compile(r'^\xff\xd8\xff', re.BINARY),
-    "GIF_IMAGE": re.compile(r'^GIF8(7|9)a', re.BINARY),
-    "WEBP_IMAGE": re.compile(r'^RIFF.{4}WEBP', re.BINARY | re.DOTALL),
-    "BMP_IMAGE": re.compile(r'^BM', re.BINARY)
+    # --- TIER 6: MEDIA STEGANOGRAPHY ---
+    "PDF_DOC": re.compile(b'^%PDF-'),
+    "RTF_DOC": re.compile(b'^\{\\rtf'),
+    "PNG_IMAGE": re.compile(b'^\x89PNG\r\n\x1a\n'),
+    "JPEG_IMAGE": re.compile(b'^\xff\xd8\xff'),
+    "GIF_IMAGE": re.compile(b'^GIF8(7|9)a'),
+    "WEBP_IMAGE": re.compile(b'^RIFF.{4}WEBP', re.DOTALL),
+    "BMP_IMAGE": re.compile(b'^BM'),
+    "ICO_ICON": re.compile(b'^\x00\x00\x01\x00'),
+    
+    # --- DATA STORES ---
+    "PARQUET_DATA": re.compile(b'^PAR1')
 }
 
 # 2. Template Syntax Injection (Format String & SSTI Grammars)
