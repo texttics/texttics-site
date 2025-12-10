@@ -9521,7 +9521,7 @@ def compute_statistical_profile(t: str):
         "ascii_density": 0.0,
         "payloads": [],
         
-        # [NEW] Phase 1 Thermodynamics Payload
+        # Phase 1 Thermodynamics Payload
         "thermodynamics": {
             "shannon": 0.0,
             "min_entropy": 0.0,
@@ -9588,10 +9588,10 @@ def compute_statistical_profile(t: str):
             sum_squares = sum((c / total_bytes) ** 2 for c in byte_counts.values())
             collision_entropy = -math.log2(sum_squares) if sum_squares > 0 else 0.0
 
-            # --- [NEW] VECTOR ANALYSIS ---
+            # --- VECTOR ANALYSIS ---
             entropy_gap = abs(entropy - collision_entropy)
 
-            # --- [NEW] FORENSIC TRIGGERS (Probabilistic) ---
+            # --- FORENSIC TRIGGERS (Probabilistic) ---
             
             # 1. Rough High Entropy (Obfuscation Signal)
             # High Energy (Entropy) but High Roughness (IC).
@@ -9624,6 +9624,158 @@ def compute_statistical_profile(t: str):
 
     except Exception as e:
         print(f"Thermodynamics Error: {e}")
+
+    # PHASE 2: RHYTHM & PATTERN (The "Structure" Layer)
+    # Detects Cyclic patterns, Structural Phases, and Numeric Anomalies.
+    
+    stats["structure"] = {
+        "repeat_ratio":    {"lag1": 0.0, "lag4": 0.0, "score": 0.0},
+        "base64_phase":    {"score": 0.0, "verdict": "Neutral"},
+        "benford":         {"score": 0.0, "verdict": "N/A"}
+    }
+
+    try:
+        if total_bytes > 0:
+            # --- SENSOR 4: REPEAT RATIO (The Heartbeat) ---
+            # Physics: Hamming match ratio. Detects cyclic repetition (XOR keys, Sleds).
+            # Logic: Only run if text is "Hot" (>4.5) or "Floored" (<1.5 MinEnt) to reduce noise.
+            is_hot = stats["thermodynamics"]["shannon"] > 4.5
+            is_structured = stats["thermodynamics"]["signals"]["structural_floor"]
+            
+            if (total_bytes > 64) and (is_hot or is_structured):
+                # A. Lag 1 (Immediate Stutter: "AAAA...")
+                match_count_1 = 0
+                # Using range len-1 ensures we don't go out of bounds
+                for i in range(total_bytes - 1):
+                    if utf8_bytes[i] == utf8_bytes[i+1]:
+                        match_count_1 += 1
+                lag1_ratio = match_count_1 / (total_bytes - 1)
+
+                # B. Lag 4 (32-bit Stride: "DEADBEEF...")
+                match_count_4 = 0
+                if total_bytes > 5:
+                    for i in range(total_bytes - 4):
+                        if utf8_bytes[i] == utf8_bytes[i+4]:
+                            match_count_4 += 1
+                    lag4_ratio = match_count_4 / (total_bytes - 4)
+                else:
+                    lag4_ratio = 0.0
+
+                stats["structure"]["repeat_ratio"] = {
+                    "lag1": round(lag1_ratio, 3),
+                    "lag4": round(lag4_ratio, 3),
+                    # Score is simply the max signal found
+                    "score": round(max(lag1_ratio, lag4_ratio), 3)
+                }
+
+            # --- SENSOR 5: BASE64 PHASE SCANNER (The Structure) ---
+            # Physics: Base64 encodes 3 bytes -> 4 chars. Creates modulo-4 ripple.
+            # Logic: Identify contiguous B64 runs (>32 chars) and analyze modulo-4 distribution LOCALLY.
+            
+            B64_SET = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
+            
+            runs = []
+            current_run = []
+            
+            # 1. Isolate contiguous runs (Preserve Phase Alignment)
+            for char in t:
+                if char in B64_SET:
+                    current_run.append(char)
+                else:
+                    if len(current_run) >= 32: # Minimum viable run
+                        runs.append(current_run)
+                    current_run = []
+            if len(current_run) >= 32: runs.append(current_run)
+            
+            if runs:
+                total_phase_variance = 0.0
+                valid_run_count = 0
+                
+                for run in runs:
+                    # Bucket by local index modulo 4
+                    buckets = [[], [], [], []]
+                    for i, char in enumerate(run):
+                        buckets[i % 4].append(char)
+                    
+                    # Calculate Variance of Entropy between the 4 buckets
+                    # If random text: Entropies are equal (Variance ~ 0)
+                    # If Base64: Entropies differ (Variance > 0)
+                    entropies = []
+                    for b in buckets:
+                        # Micro-Shannon Calc
+                        if not b: 
+                            entropies.append(0.0)
+                            continue
+                        counts = Counter(b)
+                        h = 0.0
+                        total = len(b)
+                        for c in counts.values():
+                            p = c / total
+                            h -= p * math.log2(p)
+                        entropies.append(h)
+                    
+                    if len(entropies) == 4:
+                        run_variance = statistics.variance(entropies)
+                        total_phase_variance += run_variance
+                        valid_run_count += 1
+                
+                avg_variance = total_phase_variance / valid_run_count if valid_run_count > 0 else 0.0
+                
+                # Forensic Verdict
+                b64_verdict = "Neutral"
+                if avg_variance > 0.05:
+                    b64_verdict = "Structured Payload (Text/Code)"
+                elif avg_variance < 0.001:
+                    b64_verdict = "High-Entropy Payload (Encrypted)"
+                    
+                stats["structure"]["base64_phase"] = {
+                    "score": round(avg_variance, 5),
+                    "verdict": b64_verdict
+                }
+
+            # --- SENSOR 6: BENFORD VIOLATION (Numeric Truth) ---
+            # Physics: Natural magnitudes follow Benford. Fuzzed IDs/Randoms follow Uniform.
+            # Logic: Extract leading digits 1-9. Requires N > 30.
+            
+            # Pre-compile regex for digits if not global (using re.findall directly)
+            digits_found = re.findall(r'\d+', t)
+            leading_digits = []
+            
+            for num_str in digits_found:
+                first = num_str[0]
+                # Skip leading zeros (0.5, 007)
+                if first != '0':
+                    leading_digits.append(int(first))
+            
+            if len(leading_digits) >= 30:
+                digit_counts = Counter(leading_digits)
+                total_digits = len(leading_digits)
+                
+                # Ideal Benford Distribution (1-9)
+                benford_ideal = {1:0.301, 2:0.176, 3:0.125, 4:0.097, 5:0.079, 6:0.067, 7:0.058, 8:0.051, 9:0.046}
+                deviation_sum = 0.0
+                
+                for d in range(1, 10):
+                    obs = digit_counts[d] / total_digits
+                    ideal = benford_ideal[d]
+                    deviation_sum += abs(obs - ideal)
+                    
+                # Soft Verdicts
+                ben_verdict = "Natural Distribution"
+                if deviation_sum > 0.5:
+                    ben_verdict = "Artificial (Uniform/Random)"
+                elif deviation_sum > 0.25:
+                    ben_verdict = "Mixed / Weak Fit"
+                    
+                stats["structure"]["benford"] = {
+                    "score": round(deviation_sum, 2),
+                    "verdict": ben_verdict
+                }
+            else:
+                stats["structure"]["benford"]["verdict"] = "Insufficient Data (<30)"
+
+    except Exception as e:
+        print(f"Phase 2 Rhythm Error: {e}")
 
     # --- 2. LEXICAL & PAYLOAD ANALYSIS (Existing) ---
     try:
