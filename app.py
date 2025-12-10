@@ -4412,7 +4412,67 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
-# [BLOCK 6 INJECTION: Saturation Physics Engine (Deep Mode)]
+def scan_container_physics(t: Any) -> list:
+    """
+    [PARANOIA] The Reality Sensor.
+    Audits the Python Object container for VM-level corruption.
+    Detects:
+    1. Type Confusion (Object Injection).
+    2. Structural Dissociation (Length vs Iteration desync).
+    3. Radioactive Matter (Normalization crashes).
+    """
+    signals = []
+    
+    # 1. Type Physics (The Material Check)
+    if not isinstance(t, str):
+        signals.append({
+            "type": "TYPE_CONFUSION",
+            "desc": f"Input is not a String (Got {type(t).__name__}). Object Injection Risk.",
+            "risk": "FATAL",
+            "badge": "TYPE"
+        })
+        return signals # Cannot proceed
+
+    # 2. Structural Integrity (The Dimension Check)
+    # Does the claimed length match the physical atom count?
+    # This detects buffer desyncs in the C++/WASM bridge.
+    try:
+        claimed_len = len(t)
+        # We define a safety cap for O(N) iteration check to prevent DOS on massive files
+        # If > 1MB, we trust the header to avoid freezing the UI.
+        if claimed_len < 1_000_000:
+            physical_len = sum(1 for _ in t)
+            if claimed_len != physical_len:
+                signals.append({
+                    "type": "GHOST_LENGTH",
+                    "desc": f"Structural Dissociation: Header says {claimed_len}, found {physical_len} atoms.",
+                    "risk": "FATAL",
+                    "badge": "DESYNC"
+                })
+    except Exception as e:
+        signals.append({
+            "type": "CONTAINER_FRACTURE",
+            "desc": f"Object Iteration Failed: {str(e)}",
+            "risk": "FATAL",
+            "badge": "ERROR"
+        })
+
+    # 3. Radioactive Matter (The Stability Check)
+    # Does touching this data crash the standard library?
+    try:
+        # Attempt minimal normalization (NFC)
+        _ = unicodedata.normalize("NFC", t[:100]) # Sample check
+    except Exception as e:
+        signals.append({
+            "type": "RADIOACTIVE_MATTER",
+            "desc": f"Standard Library Crash (UnicodeError): {str(e)}",
+            "risk": "FATAL",
+            "badge": "CRASH"
+        })
+
+    return signals
+
+# Saturation Physics Engine (Deep Mode)
 
 def analyze_saturation_vectors(t):
     """
@@ -6581,16 +6641,23 @@ def scan_contextual_lures(text):
 def scan_event_horizon(cp: int):
     """
     [PARANOIA] Event Horizon Telescope (Physics Engine).
-    Classifies 'Hyper-Astral' code points that breach the Unicode limit (U+10FFFF).
-    Detects specific runtime failures based on the magnitude of the violation.
+    Classifies 'Hyper-Astral' (Overflow) and 'Sub-Zero' (Underflow) violations.
     """
+    # 1. Zone Z: Sub-Zero (Integer Underflow)
+    if cp < 0:
+        return {
+            "type": "DIMENSIONAL_UNDERFLOW",
+            "desc": f"Sub-Zero Particle ({cp}). Signed Integer Underflow.",
+            "risk": 100,
+            "badge": "NEG_VAL"
+        }
+
     # 0. The Event Horizon (Unicode limit)
     if cp <= 0x10FFFF:
         return None
 
+    # ... (Keep existing Logic for Zone A, B, C) ...
     # 1. Zone A: The "Near Void" (Allocated but Illegal)
-    # Range: 0x110000 - 0x1FFFFF
-    # Diagnosis: Likely a logic error in a custom parser attempting to use 21-bit space.
     if cp <= 0x1FFFFF:
         return {
             "type": "DIMENSIONAL_BREACH",
@@ -6600,8 +6667,6 @@ def scan_event_horizon(cp: int):
         }
 
     # 2. Zone B: Signed 32-bit Overflow (The Integer Limit)
-    # Range: > 0x7FFFFFFF
-    # Diagnosis: Signed Integer Overflow detected. Critical variable corruption.
     if cp > 0x7FFFFFFF:
         return {
             "type": "MEMORY_SINGULARITY",
@@ -6610,14 +6675,13 @@ def scan_event_horizon(cp: int):
             "badge": "OVERFLOW"
         }
 
-    # 3. Zone C: The "Deep Void" (Arbitrary Memory Leak)
-    # Range: Anything else.
-    # Diagnosis: Pointer dereference error or raw memory leak interpreted as char.
+    # 3. Zone C: The "Deep Void"
     return {
         "type": "VACUUM_DECAY",
         "desc": f"Raw Memory Leak / Heap Corruption (U+{cp:X}).",
         "risk": 100,
         "badge": "LEAK"
+    }
     }
 
 def analyze_invisible_clusters(t: str):
@@ -18876,6 +18940,15 @@ def update_all(event=None):
     t_input = document.getElementById("text-input")
     if not t_input: return
     t = t_input.value
+
+    # [PARANOIA] The Reality Check (Container Physics)
+    # We must audit the container before processing content.
+    
+    reality_signals = scan_container_physics(t)
+    
+    # If the Container is broken, we cannot trust any downstream analysis.
+    # We inject these signals into the Master Ledger as FATAL errors.
+    # (Note: We pass these to audit_master_ledgers later via a new argument)
     
     # --- Populate Simple HUD Metrics ---
     populate_hud_registry(t)
@@ -19209,12 +19282,26 @@ def update_all(event=None):
     final_score = compute_threat_score(score_inputs)
 
     # THE MASTER AUDITOR (New Logic from Block 7)
+    
+    # Convert reality signals to Integrity Format
+    reality_items = []
+    for sig in reality_signals:
+        reality_items.append({
+            "vector": sig["type"],
+            "label": f"FATAL: {sig['desc']}",
+            "score": 100,
+            "details": sig["desc"],
+            "count": 1,
+            "indices": [] # Global error, no position
+        })
+
+    # Pass to Auditor (Merge Reality Items into Integrity)
     master_ledgers = audit_master_ledgers(
         inputs=integrity_inputs, 
         stats_inputs=stat_profile, 
         stage1_5_data=stage1_5_data, 
         threat_output=final_score,
-        extra_integrity=new_integrity_items,
+        extra_integrity=new_integrity_items + reality_items,
         extra_threat=new_threat_items,
         extra_authenticity=new_authenticity_items
     )
