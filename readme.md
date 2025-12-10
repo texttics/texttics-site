@@ -2704,3 +2704,44 @@ Replaced generic escape character flagging with semantic parsing of ANSI sequenc
 ### 6. Architectural Integration
 * **Auditor Update:** The Integrity Auditor now accepts `hyper_astral` and `reality_failure` inputs, allowing "Impossible" runtime states to force a **CORRUPT** verdict regardless of text content.
 * **Dashboard Wiring:** All new sensors (Instability, Injection, Terminal Physics) are wired to the **Adversarial Dashboard**. High-risk findings (like "Infinite Normalization Loop" or "Hidden PE Binary") automatically populate the "Paranoia Peak" target list.
+
+---
+
+## 🛡️ Addendum #18: Stage 3.0 "The Simulator" (Deep Interaction Physics)
+
+**Session Goal:** To transition the tool from **Static Forensics** (measuring properties that *exist*) to **Dynamic Simulation** (predicting how forces *interact*). We are trying to close the remaining gaps in the Unicode Physical Model by implementing state machines that simulate Atomic Bonding, Cursive Shaping, and Bidirectional Gravity.
+
+### 1. New Core Engine: The Indic Bonding Simulator
+We moved beyond checking for "Invalid Bases" to simulating the **Atomic Bonding** of complex scripts.
+* **The Physics:** In Indic scripts (Devanagari, Bengali, etc.), a **Virama** (Killer) has a specific valency: it must bond a Consonant to a Consonant to form a Conjunct.
+* **The Detection:** `analyze_indic_syllable_structure` simulates this bonding process.
+* **The Threat:** Detects **Broken Conjuncts** (e.g., `Consonant` + `Virama` + `Space`). These are not just typos; they are "Rendering DoS" vectors that break search indexing and crash legacy font engines.
+
+### 2. New Core Engine: The Cursive Flux Simulator
+We implemented a shaping engine to detect **Impossible Connections** in Arabic and Syriac scripts.
+* **The Physics:** Characters have a `Joining_Type` (Right, Left, Dual, Non-Joining). A Right-Joining character (like 'Alef') physically cannot connect to the Left.
+* **The Detection:** `analyze_cursive_flux` simulates the shaping stream.
+* **The Threat:** Detects **Visual Spoofing**. It flags sequences where a Join-Causing character (ZWJ) forces a connection that violates the laws of the script (e.g., forcing an Initial form at the end of a word), creating visual tokens that look like one word but parse as another.
+
+### 3. New Core Engine: The Bidi Gravity Simulator
+We upgraded the Bidi analysis from a "Bad Character Scanner" (looking for RLO/LRO) to a **Gravity Field Simulator**.
+* **The Physics:** The Unicode Bidirectional Algorithm (UBA) assigns an **Embedding Level** (Depth) to every character.
+* **The Detection:** `analyze_bidi_gravity` calculates the resolved embedding depth without full rendering.
+* **The Threat:**
+    * **Gravity Wells:** Detects nesting depths > 5 (Buffer Overflow / DoS risk).
+    * **Visual Reordering:** Identifies text flows where characters move against the gravity of the paragraph (e.g., Latin text inside an RTL isolate), proving visual manipulation without explicit overrides.
+
+### 4. UI Upgrade: The Interaction Lab (SOTA Visuals)
+We replaced the tabular "Predictive Normalizer" with a **High-Fidelity Forensic Instrument**.
+* **Concept:** It visualizes **Derivation**, not just **Effect**. It explains *why* a character changed.
+* **New Semantics:**
+    * **FUSION (Blue):** Canonical Composition (Bytes merge, Identity preserved).
+    * **PHYSICS (Teal):** Canonical Reordering (Marks swapped by CCC weight).
+    * **MUTATION (Amber):** Compatibility Decomposition (Data loss, e.g., `⓼` $\to$ `8`).
+    * **INJECTION (Red):** Syntax Hazards (e.g., Fullwidth Apostrophe `＇` $\to$ SQL Quote `'`).
+* **Visuals:** Implements CSS-in-JS injection for "Lab" styling, utilizing semantic borders (Left-Bar coding) and vector iconography to distinguish safe transformations from dangerous ones.
+
+### 5. Architectural Hardening: Orchestration & Deduplication
+* **Signal Deduplication:** We fixed a "Double Counting" bug in the Tokenizer/Global overlap. The `compute_stage1_5_forensics` orchestrator now hashes signals `(type, desc, risk)` to ensure that if a threat is found by both the Global Sensor and the Token Sensor, it is reported exactly once.
+* **Pipeline Integration:** The new Stage 3.0 engines are wired into the `compute_stage1_5_forensics` sidecar, ensuring they run in $O(N)$ time alongside the existing injection scanners.
+
