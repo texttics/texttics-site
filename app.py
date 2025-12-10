@@ -10079,31 +10079,57 @@ def compute_statistical_profile(t: str):
     except Exception as e:
         print(f"Layout Calc Error: {e}")
 
-    # --- 5. PHONOTACTICS (Existing) ---
+    # --- 5. PHONOTACTICS (Refined) ---
+    # Scans the ASCII Latin layer for pronunciation probability.
+    # Uses Emory University frequency tables to validate "English-ness".
     try:
+        # Filter for pure ASCII Latin letters (A-Z)
         ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
         letter_count = len(ascii_letters)
         
+        # Gate: Only run if we have enough letters (10+) and reasonable density (>30% of file)
+        # This prevents running phonotactics on binary blobs or CJK text.
         if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
+            
+            # 1. Vowel Analysis (The Ratio)
             vowels = set("aeiou")
             v_count = sum(1 for c in ascii_letters if c in vowels)
             c_count = letter_count - v_count
+            v_ratio = v_count / letter_count
             
+            # 2. Letter Entropy (Bits per Phoneme)
             l_counts = Counter(ascii_letters)
             l_ent = 0.0
             for cnt in l_counts.values():
                 p = cnt / letter_count
                 l_ent -= p * math.log2(p)
             
+            # 3. Gold Standard Sets (Source: Emory University / Cornell)
+            # Top 12 Unigrams (covers ~80% of English text)
             top_uni = set("etaoinshrdlu")
-            top_bi = {"th", "he", "in", "er", "an", "re", "nd", "at", "on", "nt", "ha", "es", "st", "en", "ed", "to", "it", "ou", "ea", "hi"}
-            top_tri = {"the", "and", "ing", "ent", "ion", "her", "for", "tha", "nth", "int", "ere", "tio", "ter", "est", "ers", "ati", "hat", "ate", "all", "eth"}
             
+            # Top 28 Bigrams (Emory)
+            top_bi = {
+                "th", "he", "in", "en", "nt", "re", "er", "an", "ti", "es", 
+                "on", "at", "se", "nd", "or", "ar", "al", "te", "co", "de", 
+                "to", "ra", "et", "ed", "it", "sa", "em", "ro"
+            }
+            
+            # Top 16 Trigrams (Emory)
+            top_tri = {
+                "the", "and", "tha", "ent", "ing", "ion", "tio", "for", 
+                "nde", "has", "nce", "edt", "tis", "oft", "sth", "men"
+            }
+            
+            # 4. Scoring (Hit Ratios)
+            # Unigram Hit Rate (Frequency Fit)
             uni_hits = sum(1 for c in ascii_letters if c in top_uni)
             uni_score = (uni_hits / letter_count) * 100
             
+            # Construct string once for N-Gram scanning
             letter_str = "".join(ascii_letters)
             
+            # Bigram Hit Rate
             bi_hits = 0
             if letter_count >= 2:
                 total_bi = letter_count - 1
@@ -10113,6 +10139,7 @@ def compute_statistical_profile(t: str):
             else:
                 bi_score = 0.0
 
+            # Trigram Hit Rate
             tri_hits = 0
             if letter_count >= 3:
                 total_tri = letter_count - 2
@@ -10122,8 +10149,24 @@ def compute_statistical_profile(t: str):
             else:
                 tri_score = 0.0
 
+            # 5. Forensic Verdict
+            # Determine status based on V/C ratio and Entropy
+            status_lbl = "Typical"
+            
+            if 0.35 <= v_ratio <= 0.45: 
+                status_lbl = "Natural Balance" # Optimal English range
+            elif v_ratio < 0.25: 
+                status_lbl = "Consonant-Heavy (Machine)" # Base64/Keys often dip here
+            elif v_ratio > 0.55: 
+                status_lbl = "Vowel-Heavy (Padding)"
+            
+            # Cross-Check: High Entropy + Low Unigram Fit = Randomized
+            # (If it has high information density but doesn't use common letters)
+            if l_ent > 4.5 and uni_score < 60:
+                status_lbl = "Uniform / Randomized"
+
             stats["phonotactics"].update({
-                "vowel_ratio": round(v_count / letter_count, 2),
+                "vowel_ratio": round(v_ratio, 2),
                 "count": letter_count,
                 "is_valid": True,
                 "v_count": v_count,
@@ -10131,14 +10174,10 @@ def compute_statistical_profile(t: str):
                 "bits_per_phoneme": round(l_ent, 2),
                 "uni_score": round(uni_score, 1),
                 "bi_score": round(bi_score, 1),
-                "tri_score": round(tri_score, 1)
+                "tri_score": round(tri_score, 1),
+                "status": status_lbl
             })
             
-            r = stats["phonotactics"]["vowel_ratio"]
-            if 0.30 <= r <= 0.50: stats["phonotactics"]["status"] = "Balanced"
-            elif r < 0.20: stats["phonotactics"]["status"] = "Vowel-Poor"
-            elif r > 0.60: stats["phonotactics"]["status"] = "Vowel-Heavy"
-            else: stats["phonotactics"]["status"] = "Typical"
     except Exception as e: 
         print(f"Phono Error: {e}")
         pass
@@ -10159,19 +10198,43 @@ def compute_statistical_profile(t: str):
     try:
         # --- CONSTANTS: THE GOLD STANDARDS (Hardcoded Truth) ---
         
-        # A. Top 30 English Trigrams (Source: Google N-Gram Corpus)
+        # A. Top 16 English Trigrams (Source: Emory/Oxford & Wikipedia Corpus)
+        # Note: Includes boundary-spanning trigrams (e.g. 'nde' from 'uNDEer')
         TOP_TRIGRAMS = {
-            "THE", "AND", "ING", "ENT", "ION", "HER", "FOR", "THA", "NTH", "INT",
-            "ERE", "TIO", "TER", "EST", "ERS", "ATI", "HAT", "ATE", "ALL", "ETH",
-            "HES", "VER", "HIS", "OFT", "ITH", "FTH", "STH", "OTH", "RES", "ONT"
+            "THE", "AND", "THA", "ENT", "ING", "ION", "TIO", "FOR", 
+            "NDE", "HAS", "NCE", "EDT", "TIS", "OFT", "STH", "MEN"
         }
 
         # B. English Letter Frequency (A-Z probability vector)
-        # Min probability clamped to 0.001 to avoid log(0) errors.
+        # Source: Emory University Math Center (Oxford)
+        # Precision: 5 decimal places. A=0, B=1 ... Z=25.
         ENGLISH_PROBS = [
-            0.082, 0.015, 0.028, 0.043, 0.127, 0.022, 0.020, 0.061, 0.070, 0.002, # A-J
-            0.008, 0.040, 0.024, 0.067, 0.075, 0.019, 0.001, 0.060, 0.063, 0.091, # K-T
-            0.028, 0.010, 0.024, 0.002, 0.020, 0.001                              # U-Z
+            0.08167, # A
+            0.01492, # B
+            0.02782, # C
+            0.04253, # D
+            0.12702, # E (King)
+            0.02228, # F
+            0.02015, # G
+            0.06094, # H
+            0.06966, # I
+            0.00153, # J
+            0.00772, # K
+            0.04025, # L
+            0.02406, # M
+            0.06749, # N
+            0.07507, # O
+            0.01929, # P
+            0.00095, # Q
+            0.05987, # R
+            0.06327, # S
+            0.09056, # T
+            0.02758, # U
+            0.00978, # V
+            0.02360, # W
+            0.00150, # X
+            0.01974, # Y
+            0.00074  # Z
         ]
         UNIFORM_PROB = 1.0 / 26.0
 
@@ -10181,14 +10244,10 @@ def compute_statistical_profile(t: str):
         alpha_stream = [c for c in clean_text if "A" <= c <= "Z"]
         alpha_len = len(alpha_stream)
 
-        # --- SENSOR 7: TRIGRAM OVERLAP (English Filter) ---
-        # Physics: Organic English text has high intersection with the Gold Set.
+        # --- SENSOR 7: TRIGRAM OVERLAP (Markov Probability) ---
         if alpha_len > 32:
             grams_total = 0
             grams_found = 0
-            
-            # Iterate sliding window
-            # Optimization: Convert list to string once for slicing
             alpha_str = "".join(alpha_stream)
             
             for i in range(alpha_len - 2):
@@ -10198,126 +10257,92 @@ def compute_statistical_profile(t: str):
                 grams_total += 1
 
             overlap_score = grams_found / grams_total if grams_total > 0 else 0.0
-            stats["linguistics"]["trigram_overlap"] = round(overlap_score, 3)
+            stats["mechanics"]["trigram_overlap"] = round(overlap_score, 3)
         else:
-            stats["linguistics"]["status"] = "Insufficient Alpha"
+            stats["mechanics"]["status"] = "Insufficient Alpha"
 
-        # --- SENSOR 8: KULLBACK-LEIBLER DIVERGENCE (Distribution Distance) ---
-        # Physics: Measure 'distance' between input histogram and Reference Vectors.
+        # --- SENSOR 8: KULLBACK-LEIBLER DIVERGENCE (Relative Entropy) ---
+        # Measures the "surprise" of the input distribution relative to a model.
         if alpha_len > 64:
             # 1. Calculate Input Distribution (P)
             input_counts = Counter(alpha_stream)
             input_probs = []
             
-            # Iterate A..Z (65..90)
             for char_code in range(65, 91):
                 char = chr(char_code)
                 count = input_counts.get(char, 0)
-                # Add epsilon to prevent log(0)
                 prob = (count + 1e-9) / alpha_len
                 input_probs.append(prob)
 
-            # 2. Calculate Distance to English (Q_eng)
-            dist_eng = 0.0
+            # 2. Calculate Distances
+            d_eng = 0.0
+            d_rand = 0.0
             for i in range(26):
                 p = input_probs[i]
-                q = ENGLISH_PROBS[i]
-                dist_eng += p * math.log(p / q)
+                q_eng = ENGLISH_PROBS[i]
+                d_eng += p * math.log(p / q_eng)
+                d_rand += p * math.log(p / UNIFORM_PROB)
 
-            # 3. Calculate Distance to Uniform (Q_uni)
-            dist_rand = 0.0
-            for i in range(26):
-                p = input_probs[i]
-                dist_rand += p * math.log(p / UNIFORM_PROB)
-
-            # 4. Forensic Verdict (Soft Hint)
-            kld_verdict = "Indeterminate"
-            margin = 0.1
+            # 3. Objective Verdict (Absolute Thresholds)
+            # FIX: No longer allows "English-Like" just because it's closer than random.
+            # It must actually be close (Low D_eng).
+            verdict = "Divergent / Mixed" # Default for high chaos
             
-            if dist_eng + margin < dist_rand:
-                kld_verdict = "English-Like"
-            elif dist_rand + margin < dist_eng:
-                kld_verdict = "Uniform-Like / High Entropy"
-                
-            stats["linguistics"]["kld_verdict"] = kld_verdict
+            if d_eng < 0.25: verdict = "Natural English Fit"
+            elif d_eng < 0.60: verdict = "Weak Correlation (Text)"
+            elif d_rand < 0.10: verdict = "Uniform Distribution"
+            
+            stats["mechanics"]["kld_values"] = {
+                "d_eng": round(d_eng, 2),
+                "d_rand": round(d_rand, 2)
+            }
+            stats["mechanics"]["kld_verdict"] = verdict
 
-        # --- SENSOR 6: ZIPFIAN FIT (Distribution Shape) ---
-        # Physics: Natural language follows a Power Law. Random data is flat.
-        
-        # We assume tokens are already calculated in Phase 1 or 2.
-        # If not, we re-calculate quickly.
+        # --- SENSOR 6: ZIPFIAN FIT (MSE) ---
         if stats["total_tokens"] > 0:
-            # We need the frequencies of the tokens, not the tokens themselves
-            # Re-generate counts if not available in scope
-            # (To be safe and atomic, we re-tokenize simply here)
             local_tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
             local_counts = Counter(local_tokens)
-            
             token_freqs = sorted(local_counts.values(), reverse=True)
             freq_len = len(token_freqs)
 
-            # Gate: Avoid degenerate cases (1 repeating token)
             if freq_len > 5 and len(local_tokens) >= 30:
-                mse = 0.0
                 total_tok = len(local_tokens)
                 actual_probs = [f / total_tok for f in token_freqs]
                 
-                # Generate Ideal Zipf Probs for this length
-                # Ideal: 1/1, 1/2, 1/3... normalized
+                # Ideal Power Law
                 zipf_raw = [1.0 / (r + 1) for r in range(freq_len)]
                 zipf_sum = sum(zipf_raw)
                 ideal_probs = [z / zipf_sum for z in zipf_raw]
                 
-                # Calculate Mean Squared Error
-                diff_sum = 0.0
-                for i in range(freq_len):
-                    diff = actual_probs[i] - ideal_probs[i]
-                    diff_sum += diff * diff
-                
-                mse = diff_sum / freq_len
-                stats["linguistics"]["zipf_mse"] = round(mse, 5)
+                diff_sum = sum((actual_probs[i] - ideal_probs[i]) ** 2 for i in range(freq_len))
+                stats["mechanics"]["zipf_mse"] = round(diff_sum / freq_len, 5)
 
-        # --- SENSOR 5: PAIR REPEAT RATIO (Algorithmic Regularity) ---
-        # Physics: Detects "patterns" in data that looks random but isn't.
-        # Gate: Only run on "Hot" data (>4.5 entropy) to find PRNGs/DGA.
-        
+        # --- SENSOR 5: PAIR REPEAT RATIO ---
         if stats["thermodynamics"]["shannon"] > 4.5 and total_bytes >= 64:
-            # Cap analysis to first 256 bytes to prevent browser freeze (O(N^2))
             sample_bytes = utf8_bytes[:256]
             N = len(sample_bytes)
-            
             matches = 0
-            # Simple pairwise comparison
             for i in range(N - 1):
                 template_a = sample_bytes[i]
                 template_b = sample_bytes[i+1]
-                
-                # Search forward
                 for j in range(i + 1, N - 1):
                     if sample_bytes[j] == template_a and sample_bytes[j+1] == template_b:
                         matches += 1
                         
-            # Normalize
             possible_pairs = (N * (N - 1)) / 2
             regularity_ratio = matches / possible_pairs if possible_pairs > 0 else 0.0
-            stats["linguistics"]["pair_repeat_ratio"] = round(regularity_ratio, 5)
+            stats["mechanics"]["pair_repeat_ratio"] = round(regularity_ratio, 5)
 
-        # --- SENSOR 11: WHITESPACE VARIANCE (Stego Risk) ---
-        # Physics: Humans type 1 space. Stego algos vary counts.
-        
+        # --- SENSOR 11: WHITESPACE VARIANCE ---
         ws_runs = re.findall(r'[ \t]+', t)
         run_lengths = [len(r) for r in ws_runs]
-
         if len(run_lengths) > 5:
-            # Calculate Variance manually (no dependency)
             mean_len = sum(run_lengths) / len(run_lengths)
             variance_sum = sum((x - mean_len) ** 2 for x in run_lengths)
-            ws_variance = variance_sum / len(run_lengths)
-            
-            stats["linguistics"]["whitespace_var"] = round(ws_variance, 2)
+            stats["mechanics"]["whitespace_var"] = round(variance_sum / len(run_lengths), 2)
 
     except Exception as e:
-        print(f"Linguistics Error: {e}")
+        print(f"Mechanics Error: {e}")
 
     # --- SENSOR 12: ADAPTIVE TOPOLOGY (The Zoom Lens) ---
     # Only run on larger files where topology matters (>512 bytes)
@@ -17745,75 +17770,76 @@ def render_statistical_profile(stats):
              "Strict Newline Split", 
              "Map shows length density from start to end.")))
 
-    # Deep Linguistics (Phase 3 Statistical Mechanics)
-    # Uses determinisitc models (KLD, Zipf, Trigrams) to classify "Englishness" vs "Machine Code".
-    ling = stats.get("linguistics", {})
-    if ling and ling.get("status") == "Ready":
-        tri = ling.get("trigram_overlap", 0.0) * 100
-        kld = ling.get("kld_verdict", "N/A")
-        zipf = ling.get("zipf_mse", 0.0)
-        sampen = ling.get("pair_repeat_ratio", 0.0)
-        ws_var = ling.get("whitespace_var", 0.0)
+    # --- Statistical Mechanics (Phase 3) ---
+    # Replaces "Deep Linguistics" with rigorous physical measurement.
+    # Reads from the new 'mechanics' key populated by the hardened compute_statistical_profile.
+    
+    mech = stats.get("mechanics", {})
+    # Fallback to 'linguistics' if mechanics is missing (backward compatibility during transition)
+    if not mech: mech = stats.get("linguistics", {})
+
+    if mech and mech.get("status") == "Ready":
+        tri_pct = mech.get("trigram_overlap", 0.0) * 100
         
-        # 1. Trigram Bar (Grammar Fit)
-        # Green if high match (English), Red if low (DGA/Code)
-        tri_col = "#22c55e" if tri > 15 else "#ef4444" 
-        tri_bg = "#dcfce7" if tri > 15 else "#fee2e2"
+        # Robust KLD Data Extraction (Handle legacy vs new structure)
+        kld_data = mech.get("kld_values", {"d_eng": 0.0, "d_rand": 0.0})
+        # If legacy string verdict exists, use it, else default
+        kld_verdict = mech.get("kld_verdict", "N/A")
         
-        tri_bar = f"""
-        <div style="flex:1; display:flex; flex-direction:column; gap:3px; padding:4px; background:{tri_bg}; border:1px solid {tri_col}40; border-radius:4px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:0.6rem; font-weight:700; color:#334155; text-transform:uppercase;">English Trigram Fit</span>
-                <span style="font-size:0.7rem; color:#0f172a; font-weight:700;">{tri:.1f}%</span>
-            </div>
-            <div style="height:4px; background:#fff; border-radius:2px; overflow:hidden;">
-                <div style="width:{tri:.1f}%; height:100%; background:{tri_col};"></div>
-            </div>
-        </div>
-        """
+        zipf = mech.get("zipf_mse", 0.0)
+        sampen = mech.get("pair_repeat_ratio", 0.0)
+        ws_var = mech.get("whitespace_var", 0.0)
         
-        # 2. KLD Chip (Fingerprint)
-        kld_style = "background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0;"
-        if "English" in kld: 
-            kld_style = "background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;"
-        elif "Uniform" in kld:
-            kld_style = "background:#fef2f2; color:#991b1b; border:1px solid #fecaca;"
+        # Clinical Data Grid (4-Quadrant Physics)
+        mech_html = f"""
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:8px;">
             
-        kld_chip = f"""
-        <div style="{kld_style} padding:6px 8px; border-radius:4px; font-size:0.75rem; font-weight:700; text-align:center; display:flex; flex-direction:column; justify-content:center;">
-            <span style="font-size:0.55rem; text-transform:uppercase; opacity:0.8;">Distribution Profile</span>
-            {kld}
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="font-size:0.55rem; color:#64748b; font-weight:700; text-transform:uppercase;">Trigram Overlap</span>
+                    <span style="font-family:var(--font-mono); font-size:0.75rem; color:#0f172a; font-weight:700;">{tri_pct:.1f}%</span>
+                </div>
+                <div style="height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden;">
+                    <div style="width:{tri_pct}%; height:100%; background:#475569;"></div>
+                </div>
+            </div>
+
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px; display:flex; flex-direction:column; justify-content:center;">
+                <div style="font-size:0.55rem; color:#64748b; font-weight:700; text-transform:uppercase;">KLD Divergence</div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                    <span style="font-family:var(--font-mono); font-size:0.75rem; color:#0f172a; font-weight:700;" title="Distance to English Model (Lower is closer)">D_eng: {kld_data['d_eng']}</span>
+                    <span style="font-size:0.6rem; color:#475569; text-align:right;">{kld_verdict}</span>
+                </div>
+            </div>
+
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px;">
+                <div style="font-size:0.55rem; color:#64748b; font-weight:700; text-transform:uppercase;">Zipf Fit (MSE)</div>
+                <div style="font-family:var(--font-mono); font-size:0.75rem; color:#0f172a; font-weight:700;">{zipf:.5f}</div>
+                <div style="font-size:0.6rem; color:#94a3b8;">Power Law Error</div>
+            </div>
+
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:6px 8px;">
+                <div style="font-size:0.55rem; color:#64748b; font-weight:700; text-transform:uppercase;">Pair Repeat</div>
+                <div style="font-family:var(--font-mono); font-size:0.75rem; color:#0f172a; font-weight:700;">{sampen:.5f}</div>
+                <div style="font-size:0.6rem; color:#94a3b8;">Regularity Ratio</div>
+            </div>
         </div>
         """
         
-        # 3. Stego Warning (Dark Matter)
-        stego_html = ""
-        if ws_var > 2.0:
-            stego_html = f"""
-            <div style="margin-top:6px; background:#faf5ff; border:1px solid #d8b4fe; color:#6b21a8; padding:6px; border-radius:4px; font-size:0.7rem; display:flex; align-items:center; gap:8px;">
-                <span style="font-size:1.0rem;">👻</span> 
-                <span><b>Dark Matter Alert:</b> High Whitespace Variance ({ws_var:.2f}). Possible SNOW Steganography detected.</span>
+        # Stego Warning (Only if strictly anomalous)
+        if ws_var > 3.0:
+            mech_html += f"""
+            <div style="border-top:1px solid #e2e8f0; padding-top:6px; font-size:0.7rem; color:#475569;">
+                <span style="font-weight:700;">Whitespace Variance:</span> <span style="font-family:var(--font-mono);">{ws_var:.2f}</span>
+                <span style="color:#ef4444; margin-left:8px;">(High variance suggests SNOW-style steganography)</span>
             </div>
             """
 
-        # Layout Assembly
-        l_html = f"""
-        <div style="display:flex; gap:8px; align-items:stretch; margin-bottom:6px;">
-            {tri_bar}
-            <div style="flex:0 0 130px; display:flex;">{kld_chip}</div>
-        </div>
-        <div style="display:flex; gap:6px;">
-            {micro_card("Zipf Fit (MSE)", f"{zipf:.4f}", "Power Law Error")}
-            {micro_card("Pair Repeat", f"{sampen:.4f}", "Regularity Ratio")}
-        </div>
-        {stego_html}
-        """
-        
-        rows.append(make_row("Deep Linguistics", l_html, "",
-            ("STATISTICAL MECHANICS", 
-             "Classifies structure using fixed mathematical models (KLD, Zipf, Trigrams).", 
-             "Distribution Distance & Probability", 
-             "Distinguishes Natural Language from Code/Gibberish. 'Pair Repeat' detects algorithmic regularity in random-looking streams.")))
+        rows.append(make_row("Statistical Mechanics", mech_html, "",
+            ("DISTRIBUTION & PROBABILITY", 
+             "Deterministic measurement of distribution shape. KLD measures Relative Entropy (distance) from a language model. Zipf MSE measures deviation from Power Law.", 
+             "Kullback-Leibler, Markov, MSE", 
+             "D_eng > 0.5 indicates the text is statistically divergent from English.")))
 
     # 7. Phonotactics (8 Cards + Stacked Bar)
     ph = stats.get("phonotactics", {})
@@ -17856,17 +17882,55 @@ def render_statistical_profile(stats):
             <div style="width:{v_pct}%; background:#86efac;"></div>
             <div style="width:{c_pct}%; background:#475569;"></div>
         </div>
-        <div style="display:flex; gap:12px; font-size:0.65rem; color:#64748b; margin-top:4px;">
-            <span style="display:flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#86efac;"></span> Vowels ({int(v_pct)}%)</span>
-            <span style="display:flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#475569;"></span> Consonants ({int(c_pct)}%)</span>
+        """
+
+        # --- NEW: Forensic Synthesis Row (Executive Summary) ---
+        # Extracts the calculated 'status' and interprets the Frequency Fit.
+        
+        # 1. Retrieve the Verdict (Calculated in Logic Phase)
+        status_lbl = ph.get("status", "Unknown")
+        
+        # 2. Verdict Styling
+        s_bg = "#f1f5f9"; s_col = "#475569"; s_bd = "#e2e8f0"
+        if "Natural" in status_lbl: 
+            s_bg = "#f0fdf4"; s_col = "#15803d"; s_bd = "#bbf7d0" # Green
+        elif "Machine" in status_lbl or "Random" in status_lbl: 
+            s_bg = "#fef2f2"; s_col = "#b91c1c"; s_bd = "#fecaca" # Red
+        elif "Vowel" in status_lbl:
+            s_bg = "#fffbeb"; s_col = "#b45309"; s_bd = "#fde68a" # Amber
+
+        # 3. Frequency Analysis (Interpreting Unigram Score)
+        # uni_score = % of letters that are in 'etaoinshrdlu'
+        freq_desc = "Alien Distribution"
+        if uni > 75: freq_desc = "Standard English Freq."
+        elif uni > 60: freq_desc = "Deviant Frequency"
+        elif uni > 40: freq_desc = "Weak Correlation"
+        
+        summary_html = f"""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0; font-size:0.7rem;">
+            
+            <div style="display:flex; gap:12px; color:#64748b;">
+                <span style="display:flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#86efac;"></span> Vowels ({int(v_pct)}%)</span>
+                <span style="display:flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#475569;"></span> Consonants ({int(c_pct)}%)</span>
+            </div>
+
+            <div style="display:flex; gap:8px; align-items:center;">
+                <span title="Frequency Fit (Etaoin Shrdlu)" style="color:#64748b; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 6px; border-radius:4px;">
+                    {freq_desc}
+                </span>
+                <span title="Overall Phonotactic Status" style="background:{s_bg}; color:{s_col}; border:1px solid {s_bd}; padding:2px 8px; border-radius:4px; font-weight:700;">
+                    {status_lbl}
+                </span>
+            </div>
         </div>
         """
         
-        rows.append(make_row("ASCII Phonotactics", cards_html + bar_html, "", 
+        rows.append(make_row("ASCII Phonotactics", cards_html + bar_html + summary_html, "", 
             ("PHONOTACTIC BALANCE", 
              "Measures the Vowel/Consonant rhythm of Latin letters. Natural English stabilizes ~40% vowels. Low ratio (<20%) indicates consonant-heavy machine code, Base64, or random keys. High ratio (>60%) indicates vowel-heavy padding or non-English structure.", 
              "Vowels / Total Letters", 
              "Natural: 0.35-0.50 | Machine: <0.20 | High: >0.60 | NOTE: ASCII Only. Not a language classifier.")))
+             
     # 8. Structural Anomalies (The "Participants" List)
     z_parts = stats.get("zalgo_participants", [])
     
