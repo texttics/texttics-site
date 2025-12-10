@@ -10006,6 +10006,182 @@ def compute_statistical_profile(t: str):
         print(f"Phono Error: {e}")
         pass
 
+    # PHASE 3: DEEP LINGUISTICS (Statistical Mechanics)
+    # Uses fixed mathematical models (Trigrams, Zipf, KLD) to classify structure.
+    # Deterministic. No external calls. O(N) or capped O(N^2).
+
+    stats["linguistics"] = {
+        "trigram_overlap": 0.0,   # Was "markov_score"
+        "zipf_mse": 0.0,          # Was "zipf_score"
+        "kld_verdict": "N/A",     # Distribution Profile
+        "pair_repeat_ratio": 0.0, # Was "sampen_score"
+        "whitespace_var": 0.0,    # Steganography Risk
+        "status": "Ready"
+    }
+
+    try:
+        # --- CONSTANTS: THE GOLD STANDARDS (Hardcoded Truth) ---
+        
+        # A. Top 30 English Trigrams (Source: Google N-Gram Corpus)
+        TOP_TRIGRAMS = {
+            "THE", "AND", "ING", "ENT", "ION", "HER", "FOR", "THA", "NTH", "INT",
+            "ERE", "TIO", "TER", "EST", "ERS", "ATI", "HAT", "ATE", "ALL", "ETH",
+            "HES", "VER", "HIS", "OFT", "ITH", "FTH", "STH", "OTH", "RES", "ONT"
+        }
+
+        # B. English Letter Frequency (A-Z probability vector)
+        # Min probability clamped to 0.001 to avoid log(0) errors.
+        ENGLISH_PROBS = [
+            0.082, 0.015, 0.028, 0.043, 0.127, 0.022, 0.020, 0.061, 0.070, 0.002, # A-J
+            0.008, 0.040, 0.024, 0.067, 0.075, 0.019, 0.001, 0.060, 0.063, 0.091, # K-T
+            0.028, 0.010, 0.024, 0.002, 0.020, 0.001                              # U-Z
+        ]
+        UNIFORM_PROB = 1.0 / 26.0
+
+        # Pre-process: Clean Upper Alpha Stream
+        clean_text = t.upper()
+        # Filter only A-Z to create a pure "Phonetic Stream"
+        alpha_stream = [c for c in clean_text if "A" <= c <= "Z"]
+        alpha_len = len(alpha_stream)
+
+        # --- SENSOR 7: TRIGRAM OVERLAP (English Filter) ---
+        # Physics: Organic English text has high intersection with the Gold Set.
+        if alpha_len > 32:
+            grams_total = 0
+            grams_found = 0
+            
+            # Iterate sliding window
+            # Optimization: Convert list to string once for slicing
+            alpha_str = "".join(alpha_stream)
+            
+            for i in range(alpha_len - 2):
+                trigram = alpha_str[i : i+3]
+                if trigram in TOP_TRIGRAMS:
+                    grams_found += 1
+                grams_total += 1
+
+            overlap_score = grams_found / grams_total if grams_total > 0 else 0.0
+            stats["linguistics"]["trigram_overlap"] = round(overlap_score, 3)
+        else:
+            stats["linguistics"]["status"] = "Insufficient Alpha"
+
+        # --- SENSOR 8: KULLBACK-LEIBLER DIVERGENCE (Distribution Distance) ---
+        # Physics: Measure 'distance' between input histogram and Reference Vectors.
+        if alpha_len > 64:
+            # 1. Calculate Input Distribution (P)
+            input_counts = Counter(alpha_stream)
+            input_probs = []
+            
+            # Iterate A..Z (65..90)
+            for char_code in range(65, 91):
+                char = chr(char_code)
+                count = input_counts.get(char, 0)
+                # Add epsilon to prevent log(0)
+                prob = (count + 1e-9) / alpha_len
+                input_probs.append(prob)
+
+            # 2. Calculate Distance to English (Q_eng)
+            dist_eng = 0.0
+            for i in range(26):
+                p = input_probs[i]
+                q = ENGLISH_PROBS[i]
+                dist_eng += p * math.log(p / q)
+
+            # 3. Calculate Distance to Uniform (Q_uni)
+            dist_rand = 0.0
+            for i in range(26):
+                p = input_probs[i]
+                dist_rand += p * math.log(p / UNIFORM_PROB)
+
+            # 4. Forensic Verdict (Soft Hint)
+            kld_verdict = "Indeterminate"
+            margin = 0.1
+            
+            if dist_eng + margin < dist_rand:
+                kld_verdict = "English-Like"
+            elif dist_rand + margin < dist_eng:
+                kld_verdict = "Uniform-Like / High Entropy"
+                
+            stats["linguistics"]["kld_verdict"] = kld_verdict
+
+        # --- SENSOR 6: ZIPFIAN FIT (Distribution Shape) ---
+        # Physics: Natural language follows a Power Law. Random data is flat.
+        
+        # We assume tokens are already calculated in Phase 1 or 2.
+        # If not, we re-calculate quickly.
+        if stats["total_tokens"] > 0:
+            # We need the frequencies of the tokens, not the tokens themselves
+            # Re-generate counts if not available in scope
+            # (To be safe and atomic, we re-tokenize simply here)
+            local_tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
+            local_counts = Counter(local_tokens)
+            
+            token_freqs = sorted(local_counts.values(), reverse=True)
+            freq_len = len(token_freqs)
+
+            # Gate: Avoid degenerate cases (1 repeating token)
+            if freq_len > 5 and len(local_tokens) >= 30:
+                mse = 0.0
+                total_tok = len(local_tokens)
+                actual_probs = [f / total_tok for f in token_freqs]
+                
+                # Generate Ideal Zipf Probs for this length
+                # Ideal: 1/1, 1/2, 1/3... normalized
+                zipf_raw = [1.0 / (r + 1) for r in range(freq_len)]
+                zipf_sum = sum(zipf_raw)
+                ideal_probs = [z / zipf_sum for z in zipf_raw]
+                
+                # Calculate Mean Squared Error
+                diff_sum = 0.0
+                for i in range(freq_len):
+                    diff = actual_probs[i] - ideal_probs[i]
+                    diff_sum += diff * diff
+                
+                mse = diff_sum / freq_len
+                stats["linguistics"]["zipf_mse"] = round(mse, 5)
+
+        # --- SENSOR 5: PAIR REPEAT RATIO (Algorithmic Regularity) ---
+        # Physics: Detects "patterns" in data that looks random but isn't.
+        # Gate: Only run on "Hot" data (>4.5 entropy) to find PRNGs/DGA.
+        
+        if stats["thermodynamics"]["shannon"] > 4.5 and total_bytes >= 64:
+            # Cap analysis to first 256 bytes to prevent browser freeze (O(N^2))
+            sample_bytes = utf8_bytes[:256]
+            N = len(sample_bytes)
+            
+            matches = 0
+            # Simple pairwise comparison
+            for i in range(N - 1):
+                template_a = sample_bytes[i]
+                template_b = sample_bytes[i+1]
+                
+                # Search forward
+                for j in range(i + 1, N - 1):
+                    if sample_bytes[j] == template_a and sample_bytes[j+1] == template_b:
+                        matches += 1
+                        
+            # Normalize
+            possible_pairs = (N * (N - 1)) / 2
+            regularity_ratio = matches / possible_pairs if possible_pairs > 0 else 0.0
+            stats["linguistics"]["pair_repeat_ratio"] = round(regularity_ratio, 5)
+
+        # --- SENSOR 11: WHITESPACE VARIANCE (Stego Risk) ---
+        # Physics: Humans type 1 space. Stego algos vary counts.
+        
+        ws_runs = re.findall(r'[ \t]+', t)
+        run_lengths = [len(r) for r in ws_runs]
+
+        if len(run_lengths) > 5:
+            # Calculate Variance manually (no dependency)
+            mean_len = sum(run_lengths) / len(run_lengths)
+            variance_sum = sum((x - mean_len) ** 2 for x in run_lengths)
+            ws_variance = variance_sum / len(run_lengths)
+            
+            stats["linguistics"]["whitespace_var"] = round(ws_variance, 2)
+
+    except Exception as e:
+        print(f"Linguistics Error: {e}")
+    
     return stats
 
 def analyze_trojan_context(token: str):
