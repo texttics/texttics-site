@@ -9501,64 +9501,142 @@ def compute_verification_verdict(suspect_str: str, trusted_str: str) -> dict:
 
 def compute_statistical_profile(t: str):
     """
-    Stage 1.5 'Chemistry': local statistical properties.
-    ULTIMATE VERSION: Combines Sparklines, Detailed Layout Cards, Expanded Tokens,
-    Honest Fingerprint, and ASCII/Payload metrics.
+    [Stage 3.0] Statistical & Lexical Profile (Thermodynamics Engine).
+    
+    Upgrades:
+    1. Thermodynamics: Adds Min-Entropy (Safety Floor), IC (Texture), and Collision (Renyi).
+    2. Phase 1 Sensors: Detects 'Fake Randomness' and 'Structural Padding'.
     """
+    # 1. Initialize complete stats structure with defaults
     stats = {
+        # Legacy / Compatibility Keys
         "entropy": 0.0, "entropy_n": 0, "entropy_norm": 0.0, "entropy_conf": "unknown",
         "ttr": 0.0, "ttr_segmented": None,
-        "total_tokens": 0, "unique_tokens": 0, "top_tokens": [], "top_shares": {"top1": 0.0, "top3": 0.0},
+        "total_tokens": 0, "unique_tokens": 0, 
+        "top_tokens": [], "top_shares": {"top1": 0.0, "top3": 0.0},
         "top_chars": [],
         "char_dist": {"letters": 0.0, "digits": 0.0, "ws": 0.0, "sym": 0.0},
         "line_stats": {"count": 0, "min": 0, "max": 0, "avg": 0, "p90": 0, "median": 0, "empty": 0, "sparkline": ""},
         "phonotactics": {"vowel_ratio": 0.0, "status": "N/A", "count": 0, "is_valid": False, "v_count": 0, "c_count": 0},
         "ascii_density": 0.0,
-        "payloads": []
+        "payloads": [],
+        
+        # [NEW] Phase 1 Thermodynamics Payload
+        "thermodynamics": {
+            "shannon": 0.0,
+            "min_entropy": 0.0,
+            "collision": 0.0,
+            "ic_norm": 0.0,
+            "gap": 0.0,
+            "signals": {
+                "rough_entropy": False,      # Obfuscation vs Encryption
+                "structural_floor": False,   # Padding/Sleds
+                "high_gap": False            # Polymorphism
+            }
+        }
     }
     
     if not t: return stats
 
-    # 1. Entropy & ASCII Density
+    # --- 1. THERMODYNAMICS ENGINE (Phase 1) ---
     try:
         utf8_bytes = t.encode("utf-8", errors="replace")
         total_bytes = len(utf8_bytes)
         stats["entropy_n"] = total_bytes
+        
         if total_bytes > 0:
             byte_counts = Counter(utf8_bytes)
+            
+            # A. Shannon Entropy (H1) - Average Disorder
             entropy = 0.0
             for count in byte_counts.values():
                 p = count / total_bytes
                 entropy -= p * math.log2(p)
-            stats["entropy"] = round(max(0.0, min(8.0, entropy)), 2)
+            
+            # Clamp and store legacy keys
+            entropy = max(0.0, min(8.0, entropy))
+            stats["entropy"] = round(entropy, 2)
             
             k = max(1, len(byte_counts))
             h_max = min(8.0, math.log2(k)) if k > 1 else 0.0
             stats["entropy_norm"] = round(entropy / h_max, 3) if h_max > 0 else 0.0
             
+            # Confidence (Legacy)
             if total_bytes < 128: stats["entropy_conf"] = "low"
             elif total_bytes < 1024: stats["entropy_conf"] = "medium"
             else: stats["entropy_conf"] = "high"
 
+            # ASCII Density
             ascii_bytes = sum(1 for b in utf8_bytes if b <= 0x7F)
             stats["ascii_density"] = round((ascii_bytes / total_bytes) * 100, 1)
-    except: pass
 
+            # --- [NEW] SENSOR 1: TEXTURE (Index of Coincidence) ---
+            # Measures "roughness". Uniform ~ 1.0. English ~ 1.73 (scaled).
+            numerator = sum(c * (c - 1) for c in byte_counts.values())
+            denominator = total_bytes * (total_bytes - 1)
+            ic_raw = (numerator / denominator) if denominator > 0 else 0.0
+            ic_norm = ic_raw * 256.0 # Normalize against uniform alphabet (256)
+
+            # --- [NEW] SENSOR 2: SAFETY FLOOR (Min-Entropy H_inf) ---
+            # Measures worst-case predictability (Mode).
+            max_count = max(byte_counts.values())
+            max_p = max_count / total_bytes
+            min_entropy = -math.log2(max_p) if max_p > 0 else 0.0
+
+            # --- [NEW] SENSOR 3: COLLISION (Renyi H2) ---
+            # Measures repetition probability.
+            sum_squares = sum((c / total_bytes) ** 2 for c in byte_counts.values())
+            collision_entropy = -math.log2(sum_squares) if sum_squares > 0 else 0.0
+
+            # --- [NEW] VECTOR ANALYSIS ---
+            entropy_gap = abs(entropy - collision_entropy)
+
+            # --- [NEW] FORENSIC TRIGGERS (Probabilistic) ---
+            
+            # 1. Rough High Entropy (Obfuscation Signal)
+            # High Energy (Entropy) but High Roughness (IC).
+            # Indicates Rot13, XOR, or Base64 rather than AES.
+            is_rough = (entropy > 5.0) and (ic_norm > 1.5) and (total_bytes > 64)
+
+            # 2. Structural Floor (Padding/Sled Signal)
+            # Normal Energy (Shannon) but Zero Floor (Min-Entropy).
+            # Indicates huge blocks of repeated bytes (0x90, 0x00) hidden in noise.
+            is_floored = (entropy > 3.5) and (min_entropy < 1.5) and (total_bytes > 128)
+
+            # 3. High Gap (Polymorphism Signal)
+            # Wide divergence between Average and Collision entropy.
+            # Indicates heavy-tailed distributions (polymorphic loops).
+            is_gapped = (entropy_gap > 1.2) and (total_bytes > 64)
+
+            # Store Physics Payload
+            stats["thermodynamics"] = {
+                "shannon": round(entropy, 2),
+                "min_entropy": round(min_entropy, 2),
+                "collision": round(collision_entropy, 2),
+                "ic_norm": round(ic_norm, 3),
+                "gap": round(entropy_gap, 2),
+                "signals": {
+                    "rough_entropy": is_rough,
+                    "structural_floor": is_floored,
+                    "high_gap": is_gapped
+                }
+            }
+
+    except Exception as e:
+        print(f"Thermodynamics Error: {e}")
+
+    # --- 2. LEXICAL & PAYLOAD ANALYSIS (Existing) ---
     try:
         raw_tokens = t.split()
         
         # Payload Heuristics (Base64 / Hex)
         payload_candidates = []
-        # Base64: A-Z, a-z, 0-9, +, / (and URL-safe - _)
         b64_pattern = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
         hex_pattern = re.compile(r'^[0-9A-Fa-f]{16,}$')
-        # Charcode: 5+ CSV integers (e.g. 65,66,67...)
         char_pattern = re.compile(r'^(\d{2,3},){5,}\d{2,3}$')
-        # Percent: 5+ encoded bytes (e.g. %20%41...)
         perc_pattern = re.compile(r'^(%[0-9A-Fa-f]{2}){5,}$')
         
         for tok in raw_tokens:
-            # Lowered threshold to 14 to catch short %XX runs (5*3=15 chars)
             if len(tok) > 14:
                 p_type = None
                 if b64_pattern.match(tok): p_type = "Base64"
@@ -9567,8 +9645,7 @@ def compute_statistical_profile(t: str):
                 elif perc_pattern.match(tok): p_type = "URL-Enc"
                 
                 if p_type:
-                    # Calculate Local Entropy for this specific token
-                    # This distinguishes "padding" from "encrypted data"
+                    # Local Entropy check for the payload
                     b_counts = Counter(tok)
                     p_ent = 0.0
                     for count in b_counts.values():
@@ -9584,7 +9661,7 @@ def compute_statistical_profile(t: str):
 
         if payload_candidates: stats["payloads"] = payload_candidates[:5]
 
-        # Normalized Tokens
+        # Normalized Tokens (Lexical Density)
         tokens = [tok.lower() for tok in re.split(r'[\s\.,;!?()\[\]{}"«»„“”]+', t) if tok]
         stats["total_tokens"] = len(tokens)
         if stats["total_tokens"] > 0:
@@ -9593,7 +9670,6 @@ def compute_statistical_profile(t: str):
             stats["ttr"] = round(len(unique_tokens) / stats["total_tokens"], 3)
 
             token_counts = Counter(tokens)
-            # FETCH 12 TOKENS FOR UI
             top_n_tokens = token_counts.most_common(12) 
 
             if top_n_tokens:
@@ -9618,7 +9694,7 @@ def compute_statistical_profile(t: str):
                     stats["ttr_segmented"] = round(sum(seg_ttrs) / len(seg_ttrs), 3)
     except: pass
 
-    # 3. Honest Fingerprint
+    # --- 3. HONEST FINGERPRINT (Existing) ---
     try:
         total_chars = len(t)
         if total_chars > 0:
@@ -9654,7 +9730,7 @@ def compute_statistical_profile(t: str):
             }
     except: pass
 
-    # 4. Layout Physics (STRICT VISUAL SPLIT + SPARKLINE)
+    # --- 4. LAYOUT PHYSICS (Existing) ---
     try:
         normalized_t = t.replace('\r\n', '\n').replace('\r', '\n')
         lines = normalized_t.split('\n')
@@ -9672,7 +9748,6 @@ def compute_statistical_profile(t: str):
             stats["line_stats"]["avg"] = round(sum(line_lens) / n, 1)
             stats["line_stats"]["empty"] = sum(1 for l in line_lens if l == 0)
             
-            # Helper for percentiles (Pure Python, no deps)
             def get_perc(p, d):
                 pos = p * (len(d) - 1)
                 lower = int(pos)
@@ -9683,11 +9758,10 @@ def compute_statistical_profile(t: str):
 
             stats["line_stats"]["p25"] = get_perc(0.25, sorted_lens)
             stats["line_stats"]["median"] = get_perc(0.50, sorted_lens)
-            stats["line_stats"]["p50"] = stats["line_stats"]["median"] # Alias
+            stats["line_stats"]["p50"] = stats["line_stats"]["median"]
             stats["line_stats"]["p75"] = get_perc(0.75, sorted_lens)
             stats["line_stats"]["p90"] = get_perc(0.90, sorted_lens)
             
-            # --- MASS DISTRIBUTION MAP (Stacked Bar Data) ---
             total_mass = sum(line_lens)
             if total_mass == 0: total_mass = 1
             
@@ -9716,40 +9790,31 @@ def compute_statistical_profile(t: str):
     except Exception as e:
         print(f"Layout Calc Error: {e}")
 
-    # 5. Phonotactics (8-Point Analysis)
+    # --- 5. PHONOTACTICS (Existing) ---
     try:
-        # Filter for just the letters to analyze phonemes
         ascii_letters = [c.lower() for c in t if 'a' <= c.lower() <= 'z']
         letter_count = len(ascii_letters)
         
-        # Gate: Need enough data to be meaningful
         if letter_count > 10 and (letter_count / max(1, len(t))) > 0.3:
             vowels = set("aeiou")
             v_count = sum(1 for c in ascii_letters if c in vowels)
             c_count = letter_count - v_count
             
-            # 1. Bits Per Phoneme (Letter Entropy)
-            # H = -Sum(p * log2(p)) for the letter stream
             l_counts = Counter(ascii_letters)
             l_ent = 0.0
             for cnt in l_counts.values():
                 p = cnt / letter_count
                 l_ent -= p * math.log2(p)
             
-            # 2. Heuristic Frequency Scoring (Simulated N-Grams)
-            # Top English frequencies (Approximate)
-            top_uni = set("etaoinshrdlu") # ~80% of English
+            top_uni = set("etaoinshrdlu")
             top_bi = {"th", "he", "in", "er", "an", "re", "nd", "at", "on", "nt", "ha", "es", "st", "en", "ed", "to", "it", "ou", "ea", "hi"}
             top_tri = {"the", "and", "ing", "ent", "ion", "her", "for", "tha", "nth", "int", "ere", "tio", "ter", "est", "ers", "ati", "hat", "ate", "all", "eth"}
             
-            # Unigram Score: Density of High-Freq Letters
             uni_hits = sum(1 for c in ascii_letters if c in top_uni)
             uni_score = (uni_hits / letter_count) * 100
             
-            # Bigram/Trigram Generation
             letter_str = "".join(ascii_letters)
             
-            # Bigram Score
             bi_hits = 0
             if letter_count >= 2:
                 total_bi = letter_count - 1
@@ -9759,7 +9824,6 @@ def compute_statistical_profile(t: str):
             else:
                 bi_score = 0.0
 
-            # Trigram Score
             tri_hits = 0
             if letter_count >= 3:
                 total_tri = letter_count - 2
