@@ -4548,18 +4548,24 @@ def scan_code_injection_physics(t: str):
     except: pass
 
     # --- B. PHYSICS: ENCODED WARHEADS (The X-Ray) ---
-    
-    # 1. Base64 Peek (Smart Padding)
-    # Check first 40 chars. Heuristic: Valid B64 charset, length > 8.
-    prefix_b64 = t[:40]
-    if len(t) > 8 and re.match(r'^[A-Za-z0-9+/]+={0,2}', prefix_b64):
+    # Robust Logic: Don't just slice t[:40]. Use regex to EXTRACT the valid
+    # encoded sequence, ignoring trailing newlines or junk.
+
+    # 1. Base64 Peek
+    # Regex: Start with 8+ B64 chars, optional padding. 
+    # We capture ONLY the B64 part.
+    b64_match = re.match(r'^([A-Za-z0-9+/]{8,})(={0,2})', t[:64])
+    if b64_match:
         try:
-            # FIX: Calculate exact padding to ensure length % 4 == 0
-            pad = len(prefix_b64) % 4
+            # Reassemble just the valid B64 part
+            clean_b64 = b64_match.group(1) + b64_match.group(2)
+            
+            # Padding Safety: Ensure length is divisible by 4
+            pad = len(clean_b64) % 4
             if pad > 0:
-                prefix_b64 += "=" * (4 - pad)
+                clean_b64 += "=" * (4 - pad)
                 
-            header_b64 = base64.b64decode(prefix_b64)
+            header_b64 = base64.b64decode(clean_b64)
             
             for name, pattern in SERIALIZATION_SIGS.items():
                 if pattern.match(header_b64):
@@ -4571,15 +4577,17 @@ def scan_code_injection_physics(t: str):
                     })
         except: pass
 
-    # 2. Hex Peek (First 40 chars -> 20 bytes)
-    # Heuristic: Valid Hex charset
-    if len(t) > 8 and re.match(r'^[0-9A-Fa-f]+$', t[:40]):
+    # 2. Hex Peek
+    # Regex: Start with 8+ Hex chars.
+    hex_match = re.match(r'^([0-9A-Fa-f]{8,})', t[:64])
+    if hex_match:
         try:
-            # Only take even number of chars to avoid "Odd-length string" error
-            hex_len = len(t[:40])
-            if hex_len % 2 != 0: hex_len -= 1
+            clean_hex = hex_match.group(1)
+            # Ensure even length for unhexlify
+            if len(clean_hex) % 2 != 0: 
+                clean_hex = clean_hex[:-1]
             
-            header_hex = binascii.unhexlify(t[:hex_len]) 
+            header_hex = binascii.unhexlify(clean_hex) 
             for name, pattern in SERIALIZATION_SIGS.items():
                 if pattern.match(header_hex):
                     signals.append({
@@ -4591,6 +4599,7 @@ def scan_code_injection_physics(t: str):
         except: pass
 
     # --- C. SYNTAX: TEMPLATE INJECTION (Omni-Injector) ---
+    # Scans the entire string for SSTI patterns like {self.__class__}
     if FORMAT_INJECTION.search(t):
         signals.append({
             "type": "TEMPLATE_INJECTION",
