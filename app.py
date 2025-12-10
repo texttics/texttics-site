@@ -16775,6 +16775,79 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 # BLOCK 9. RENDERERS (THE VIEW)
 # ===============================================
 
+def render_structural_anomalies(findings: list) -> str:
+    """
+    [Stage 2.0] Structural Anomaly Renderer (Forensic Grade).
+    Uses semantic SVGs to visualize the 'Physics' of the defect.
+    """
+    if not findings:
+        # Zero-State: A clean, low-profile watermark.
+        return """
+        <div class="clean-state-marker">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span style="margin-left:8px;">Structural Topology: Stable</span>
+        </div>
+        """
+
+    # --- FORENSIC ICONOGRAPHY (Vector Paths) ---
+    # 1. TOPOLOGY (Wallbuilder): A grid with a distorted section.
+    SVG_GRID = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>'
+    
+    # 2. PROTOCOL (Desync): Two arrows missing each other / Broken Link.
+    SVG_SYNC = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>'
+    
+    # 3. EVASION (Smuggling): A bracket or layer being split.
+    SVG_SPLIT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"></path><path d="M4 5h16"></path><path d="M12 5v14"></path><path d="M2 12h20" stroke-dasharray="4 2"></path></svg>'
+    
+    # 4. ANOMALY (Frankenstein): A pulse/heartbeat spiking.
+    SVG_PULSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>'
+    
+    # 5. SPOOF (Geometric): An eye or dimension arrow.
+    SVG_DIM = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"></path><path d="M2 12l4-4"></path><path d="M2 12l4 4"></path><path d="M22 12l-4-4"></path><path d="M22 12l-4 4"></path></svg>'
+
+    # Default Alert
+    SVG_ALERT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+
+    html_cards = []
+    
+    for finding in findings:
+        severity = finding.get("severity", "warn")
+        badge = finding.get("badge", "STRUCT")
+        label = finding["label"]
+        details = finding.get("details", "")
+        
+        # 1. Determine Visual Theme
+        theme_class = "fx-warn"
+        if severity == "crit": theme_class = "fx-crit"
+        elif severity == "high": theme_class = "fx-high"
+        
+        # 2. Select Semantic Icon
+        icon = SVG_ALERT
+        if badge == "TOPOLOGY": icon = SVG_GRID
+        elif badge == "PROTOCOL": icon = SVG_SYNC
+        elif badge == "EVASION": icon = SVG_SPLIT
+        elif badge == "ANOMALY": icon = SVG_PULSE
+        elif badge == "SPOOF": icon = SVG_DIM
+        
+        # 3. Build Card
+        card = f"""
+        <div class="forensic-alert-card {theme_class}">
+            <div class="fal-gutter">
+                <div class="fal-icon">{icon}</div>
+            </div>
+            <div class="fal-content">
+                <div class="fal-header">
+                    <span class="fal-badge">{badge}</span>
+                    <span class="fal-title">{label}</span>
+                </div>
+                <div class="fal-body">{details}</div>
+            </div>
+        </div>
+        """
+        html_cards.append(card)
+        
+    return f'<div class="forensic-alert-grid">{"".join(html_cards)}</div>'
+
 # Core UI Helpers
 
 def _create_position_link(val, text_context=None):
@@ -22203,11 +22276,22 @@ def update_all(event=None):
     
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
+    
     # Whitespace & Newline Topology (The Frankenstein Detector)
-    ws_topology_html = compute_whitespace_topology(t)
-    ws_container = document.getElementById("ws-topology-container")
-    if ws_container:
-        ws_container.innerHTML = ws_topology_html
+    # [STAGE 2.0] STRUCTURAL ANOMALIES (Topology + Rhythm + Smuggling + Geometry)
+    
+    struct_html = render_structural_anomalies(all_structural_findings)
+    
+    # Target the new container (ensure index.html has <div id="structural-anomalies-body">)
+    struct_container = document.getElementById("structural-anomalies-body")
+    if struct_container:
+        struct_container.innerHTML = struct_html
+        
+    # DEPRECATION: Clear the old container to avoid "Ghost Renders"
+    old_ws_container = document.getElementById("ws-topology-container")
+    if old_ws_container:
+        old_ws_container.innerHTML = ""
+        
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
     render_matrix_table(bidi_run_stats, "bidi-run-matrix-body")
     render_matrix_table(wb_run_stats, "wordbreak-run-matrix-body")
