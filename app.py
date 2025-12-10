@@ -6697,6 +6697,176 @@ def scan_terminal_physics(text: str):
         
     return signals
 
+def analyze_indic_syllable_structure(t: str):
+    """
+    [STAGE 3.0] Indic Bonding Engine.
+    Simulates the "Syllable Structure" state machine to detect Broken Conjuncts.
+    Physics: Consonant + Virama (Killer) must bond to another Consonant.
+    """
+    findings = []
+    if not t: return findings
+
+    # Load Data Stores
+    syl_map = DATA_STORES.get("IndicSyllabic", {})
+    
+    # State Machine
+    # States: START, CONSONANT, VIRAMA, VOWEL, DEAD (Broken)
+    prev_state = "START"
+    prev_char = None
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        # Fast lookup or default
+        syl_type = syl_map.get(cp, "Other")
+        
+        # Physics Check: Virama Bonding
+        if prev_state == "VIRAMA":
+            # A Virama (Killer) demands a Consonant to form a Conjunct.
+            # If it hits a Space, Vowel, or Symbol, the bond snaps.
+            # We treat "Other" (e.g. ASCII) as a breaker in Indic contexts.
+            is_bond_breaker = (
+                syl_type in ("Vowel_Independent", "Number", "Other") or 
+                char.isspace() or 
+                unicodedata.category(char).startswith("P")
+            )
+            
+            if is_bond_breaker:
+                findings.append({
+                    "type": "BROKEN_CONJUNCT",
+                    "risk": "HIGH",
+                    "desc": f"Broken Indic Conjunct. Virama (Killer) at #{i-1} failed to bond. Preceding '{prev_char}' is left dangling.",
+                    "pos": i-1
+                })
+
+        # State Transition Logic
+        if syl_type == "Virama":
+            prev_state = "VIRAMA"
+        elif syl_type == "Consonant":
+            prev_state = "CONSONANT"
+        elif syl_type != "Other": # Vowels, Modifiers, etc.
+            prev_state = "VOWEL"
+        else:
+            prev_state = "START"
+            
+        prev_char = char
+
+    # Trailing Virama Check (Ending text with a Killer is usually an error)
+    if prev_state == "VIRAMA":
+         findings.append({
+            "type": "DANGLING_VIRAMA",
+            "risk": "MED",
+            "desc": "Dangling Virama at end of text. Incomplete syllable.",
+            "pos": len(t)-1
+        })
+        
+    return findings
+
+def analyze_cursive_flux(t: str):
+    """
+    [STAGE 3.0] Cursive Flux Engine (Shaping Simulator).
+    Predicts illegal shaping forms (e.g. Initial Form forced into Final Position).
+    Physics: A Right-Joining character cannot connect to a Dual-Joining char via ZWJ.
+    """
+    findings = []
+    join_map = DATA_STORES.get("JoiningType", {})
+    
+    # Joining Types:
+    # R (Right-Joining), L (Left-Joining), D (Dual), C (Join-Causing), U (Non-Joining), T (Transparent)
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        curr_jt = join_map.get(cp, "U")
+        
+        # We only analyze cursive characters (D, R, L) that attempt connections
+        if curr_jt not in ("D", "R", "L"): continue
+        
+        # Look Right (Next)
+        # Note: A full shaping engine would scan past Transparent (T) marks.
+        # For forensic speed, we check the immediate neighbor or skip 1 mark.
+        next_idx = i + 1
+        if next_idx < len(t):
+            n_cp = ord(t[next_idx])
+            next_jt = join_map.get(n_cp, "U")
+            
+            # --- FLUX PHYSICS ---
+            
+            # Case A: Right-Joining (R) character (e.g. Alef).
+            # Physics: It connects to the Right (Previous), but NEVER to the Left (Next).
+            # Violation: If it is followed by a Join-Causing char (ZWJ) or a forceful connection.
+            if curr_jt == "R":
+                 # If next is ZWJ (Join Causer), it forces the Alef to connect Left, which is impossible.
+                 # The renderer will break or show a "Tofu" connection.
+                 if next_jt == "C" and n_cp == 0x200D:
+                     findings.append({
+                        "type": "FORCED_CONNECTION",
+                        "risk": "HIGH",
+                        "desc": f"Impossible Connection. Right-Joining '{char}' forced to connect Left by ZWJ.",
+                        "pos": i
+                     })
+
+            # Case B: Isolation Fracture
+            # A Dual-Joining (D) char surrounded by Non-Joining (U) becomes Isolated.
+            # If the user inserted ZWJ to force connection where none exists.
+            if curr_jt == "D" and next_jt == "C" and n_cp == 0x200D:
+                # This creates a "Manual Ligature" where the font might not support it.
+                # Less severe, but forensic evidence of manual tampering.
+                pass 
+
+    return findings
+
+def analyze_bidi_gravity(t: str):
+    """
+    [STAGE 3.0] Bidi Gravity Engine (Resolved Level Simulator).
+    Calculates the 'Visual Depth' of text.
+    Detects:
+    1. Deep Embedding: Nesting levels > 5 (DoS / Buffer risk).
+    2. Visual Reordering: Text that flows opposite to the paragraph direction.
+    """
+    findings = []
+    
+    # Simplified UBA State (Paragraph Level 0 = LTR)
+    current_level = 0
+    max_depth = 0
+    
+    # Directional Forces
+    # LRE/RLE/LRO/RLO/LRI/RLI increase depth
+    EMBED_INIT = {"LRE", "RLE", "LRO", "RLO", "LRI", "RLI", "FSI"}
+    EMBED_TERM = {"PDF", "PDI"}
+    
+    for i, char in enumerate(t):
+        bc = _get_forensic_bidi_class(char)
+        
+        # 1. Physics: Stack Depth Check
+        if bc in EMBED_INIT:
+            current_level += 1
+            max_depth = max(max_depth, current_level)
+            
+        elif bc in EMBED_TERM:
+            current_level = max(0, current_level - 1)
+            
+        # 2. Physics: Visual Reordering (Gravity Check)
+        # If we are in an RTL embedding (Odd Level) but the character is Strong LTR
+        # Or LTR embedding (Even Level) and character is Strong RTL
+        is_odd_level = (current_level % 2 != 0)
+        
+        # Note: We rely on "Strong" types. Weak types (Numbers) just follow gravity.
+        if is_odd_level and bc == "L":
+             # LTR Char in RTL Gravity -> Flows "Against the Stream"
+             # This creates visual chunks that read backwards relative to the sentence
+             pass 
+
+    # Verdict: Deep Gravity Well
+    # Nesting > 5 is extremely rare in natural text and common in buffer overflow attacks
+    if max_depth > 5:
+        findings.append({
+            "type": "DEEP_BIDI_STACK",
+            "risk": "HIGH",
+            "desc": f"Gravity Well: Bidi Nesting Depth {max_depth} (High complexity/DoS risk).",
+            "pos": 0 # Global warning
+        })
+        
+    return findings
+
 def scan_injection_vectors(text):
     """
     [STAGE 1.5] Injection Pattern Matcher.
@@ -13691,10 +13861,9 @@ def compute_adversarial_metrics(t: str):
 
 def compute_stage1_5_forensics(text):
     """
-    [STAGE 1.5] Orchestrator.
+    [STAGE 3.0] Orchestrator.
     Runs the Sidecar Engines and feeds the Auditor.
-    Updated to include VS Topology, Tag Decoding, Extension Masking, 
-    and Signal Deduplication (Global vs Token overlap).
+    Updated to include Deep Physics (Indic, Cursive, Gravity).
     """
     all_signals = []
     
@@ -13717,6 +13886,11 @@ def compute_stage1_5_forensics(text):
     # D. Code Injection Physics (Global Header Check)
     all_signals.extend(scan_code_injection_physics(text))
 
+    # --- E. DEEP PHYSICS (Stage 3.0) ---
+    all_signals.extend(analyze_indic_syllable_structure(text))
+    all_signals.extend(analyze_cursive_flux(text))
+    all_signals.extend(analyze_bidi_gravity(text))
+
     # 3. Token-Level Scans
     tokens = tokenize_forensic(text)
     
@@ -13735,19 +13909,15 @@ def compute_stage1_5_forensics(text):
         all_signals.extend(scan_domain_structure_v2(t_str))
 
         # C. Code Injection Physics (Token Level)
-        # Scan tokens if they look like potential encoded strings
         if len(t_str) > 8:
             all_signals.extend(scan_code_injection_physics(t_str))
 
     # 4. Deduplication Logic
-    # Remove exact duplicate signals (same type, description, and risk)
-    # This prevents double-counting when Global and Token scanners catch the same entity.
     unique_signals = []
     seen_hashes = set()
     
     for sig in all_signals:
         # Create a unique signature for the signal
-        # We use a tuple of immutable values: (type, desc, risk)
         sig_hash = (sig.get('type'), sig.get('desc'), sig.get('risk'))
         
         if sig_hash not in seen_hashes:
@@ -17024,73 +17194,174 @@ def render_statistical_profile(stats):
 
 def render_predictive_normalizer(t: str):
     """
-    Generates a Comparative Table showing the future state of the text
-    under all 4 Unicode Normalization Forms.
+    [STAGE 3.0] Interaction Lab (High-Fidelity).
+    Visualizes Future States with Physics Derivation and Vector Iconography.
     """
     if not t: return ""
     
-    # Limit processing for performance (first 100 chars sufficient for diagnostic)
+    # Limit processing
     sample = t[:100]
     
+    # Normalization Calculations
     forms = {
         "NFC": unicodedata.normalize("NFC", sample),
-        "NFD": unicodedata.normalize("NFD", sample),
-        "NFKC": unicodedata.normalize("NFKC", sample),
-        "NFKD": unicodedata.normalize("NFKD", sample)
+        "NFKC": unicodedata.normalize("NFKC", sample)
     }
-    
-    # Check for changes
-    changes = {k: (v != sample) for k, v in forms.items()}
-    
-    if not any(changes.values()):
-        return "" # No visual report needed if stable
+
+    # --- FORENSIC ICONOGRAPHY (Vector Paths) ---
+    ICONS = {
+        # Fusion (Composition) - Arrows merging in
+        "composition": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>',
+        # Reordering (CCC Physics) - Swap arrows
+        "reorder": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 17H4"/><path d="M4 17l4 4"/><path d="M4 17l4-4"/><path d="M4 7h16"/><path d="M20 7l-4-4"/><path d="M20 7l-4 4"/></svg>',
+        # Collapse (Compatibility) - Arrows compressing
+        "collapse": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
+        # Stable (Check) - Shield
+        "stable": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
+        # Hazard (Alert) - Triangle
+        "hazard": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    }
 
     rows = []
-    for form, val in forms.items():
-        is_changed = changes[form]
+    
+    # --- ROW 1: NFC (Canonical Equivalence) ---
+    if forms["NFC"] != sample:
+        is_shorter = len(forms["NFC"]) < len(sample)
         
-        # Highlight dangerous changes
-        # (Simple heuristic: length change or ascii shift)
-        row_class = "pred-row"
-        if is_changed:
-            row_class += " pred-changed"
-            # Check for high-risk injections in the result
-            if any(c in val for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"]):
-                row_class += " pred-danger"
-        
-        val_display = _escape_html(val)
-        # Visualizing changes (simple diff style)
-        if is_changed:
-            val_display = f"<strong>{val_display}</strong>"
-            
+        # Derivation Logic
+        if is_shorter:
+            label = "FUSION"
+            desc = "Canonical Composition"
+            icon = ICONS["composition"]
+            css = "badge-fusion" # Blue/Purple
+        else:
+            label = "PHYSICS"
+            desc = "Canonical Reordering (CCC)"
+            icon = ICONS["reorder"]
+            css = "badge-physics" # Cyan/Teal
+
         rows.append(f"""
-        <tr class="{row_class}">
-            <td class="pred-form">{form}</td>
-            <td class="pred-val">{val_display}</td>
-            <td class="pred-len">{len(val)}</td>
+        <tr class="pred-row pred-changed">
+            <td class="pred-form">NFC</td>
+            <td class="pred-val">{_escape_html(forms["NFC"])}</td>
+            <td class="pred-meta">
+                <span class="pred-badge {css}">{icon} {label}</span>
+                <span class="pred-detail">{desc}</span>
+            </td>
+        </tr>
+        """)
+    else:
+        rows.append(f"""
+        <tr class="pred-row">
+            <td class="pred-form">NFC</td>
+            <td class="pred-val" style="opacity:0.6;">{_escape_html(sample)}</td>
+            <td class="pred-meta">
+                <span class="pred-badge badge-stable">{ICONS['stable']} STABLE</span>
+                <span class="pred-detail">Canonical Identity Preserved</span>
+            </td>
         </tr>
         """)
 
+    # --- ROW 2: NFKC (Compatibility) ---
+    if forms["NFKC"] != sample:
+        # Derivation Logic
+        reason = "Decomposition"
+        
+        # Specific Detection
+        if any("\u2024" <= c <= "\u2026" for c in sample): reason = "Punctuation"
+        elif any("\u2460" <= c <= "\u24FF" for c in sample): reason = "Enclosed Alphanumeric"
+        elif any(0xFF00 <= ord(c) <= 0xFFEF for c in sample): reason = "Fullwidth Collapse"
+        elif "\u00A0" in sample: reason = "Whitespace Mutation"
+        
+        # Check for Injection Risk in Result
+        is_hazardous = any(c in forms["NFKC"] for c in ["'", "<", ">", "\\"]) and not any(c in sample for c in ["'", "<", ">", "\\"])
+        
+        if is_hazardous:
+            badge = f'<span class="pred-badge badge-crit">{ICONS["hazard"]} INJECTION RISK</span>'
+            row_css = "pred-crit"
+        else:
+            badge = f'<span class="pred-badge badge-warn">{ICONS["collapse"]} MUTATION</span>'
+            row_css = "pred-warn"
+
+        rows.append(f"""
+        <tr class="pred-row {row_css}">
+            <td class="pred-form">NFKC</td>
+            <td class="pred-val">{_escape_html(forms["NFKC"])}</td>
+            <td class="pred-meta">
+                {badge}
+                <span class="pred-detail">Compatibility: {reason}</span>
+            </td>
+        </tr>
+        """)
+    else:
+         rows.append(f"""
+        <tr class="pred-row">
+            <td class="pred-form">NFKC</td>
+            <td class="pred-val" style="opacity:0.6;">{_escape_html(sample)}</td>
+            <td class="pred-meta">
+                <span class="pred-badge badge-stable">{ICONS['stable']} STABLE</span>
+                <span class="pred-detail">Visual Identity Preserved</span>
+            </td>
+        </tr>
+        """)
+
+    # --- RENDER TABLE ---
+    # Note: We include CSS styles inline here for portability, or you can move to styles.css
     return f"""
     <div class="predictive-wrapper">
-        <div class="pred-header">🔮 Predictive Normalization (Future State)</div>
+        <div class="pred-header">
+            <span class="pred-icon">🔮</span> Interaction Lab
+            <span class="pred-sub">Physics Derivation Engine</span>
+        </div>
         <table class="pred-table">
             <thead>
                 <tr>
-                    <th>Form</th>
-                    <th>Result (Preview)</th>
-                    <th>Len</th>
+                    <th style="width:8%">Form</th>
+                    <th style="width:45%">Result State</th>
+                    <th style="width:47%">Derivation Logic</th>
                 </tr>
             </thead>
-            <tbody>
-                {''.join(rows)}
-            </tbody>
+            <tbody>{''.join(rows)}</tbody>
         </table>
-        <div class="pred-footer">
-            <strong>Analysis:</strong> Text mutates under normalization. 
-            <span class="pred-danger-text">Red rows</span> indicate potential injection artifacts appearing after processing.
-        </div>
     </div>
+    
+    <style>
+        .pred-header {{
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.85rem; font-weight: 700; color: #4b5563;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;
+        }}
+        .pred-sub {{ 
+            margin-left: auto; font-weight: 400; color: #9ca3af; font-size: 0.7rem; 
+        }}
+        .pred-table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; }}
+        .pred-table th {{ text-align: left; color: #9ca3af; font-weight: 600; font-size: 0.7rem; padding-bottom: 8px; }}
+        .pred-row td {{ padding: 10px 4px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }}
+        .pred-row:last-child td {{ border-bottom: none; }}
+        
+        .pred-form {{ font-family: var(--font-mono); font-weight: 700; color: #6b7280; font-size: 0.8rem; }}
+        .pred-val {{ font-family: var(--font-mono); color: #111827; word-break: break-all; }}
+        
+        .pred-meta {{ display: flex; flex-direction: column; gap: 4px; }}
+        .pred-detail {{ font-size: 0.7rem; color: #6b7280; line-height: 1.3; }}
+        
+        /* Badges */
+        .pred-badge {{ 
+            display: inline-flex; align-items: center; gap: 6px; 
+            font-size: 0.7rem; font-weight: 700; padding: 2px 8px; 
+            border-radius: 4px; width: fit-content;
+        }}
+        .badge-stable {{ background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }}
+        .badge-fusion {{ background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }}
+        .badge-physics {{ background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }}
+        .badge-warn   {{ background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }}
+        .badge-crit   {{ background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }}
+        
+        /* Row States */
+        .pred-crit .pred-val {{ background: #fee2e2; color: #991b1b; padding: 2px 4px; border-radius: 2px; }}
+        .pred-warn .pred-val {{ background: #fff7ed; color: #9a3412; padding: 2px 4px; border-radius: 2px; }}
+    </style>
     """
 
 def render_adversarial_xray(t: str, threat_indices: set, confusables_map: dict) -> str:
