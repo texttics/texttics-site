@@ -2597,3 +2597,58 @@ We enforced a strict separation between **Measurement** (Physics) and **Verdict*
 
 ### 4. UI/UX Refinements
 * **Status Line Reversion:** Reverted the verbose "Calibration Certificate" status line to a concise `Input: Ready` state to maintain visual clarity and reduce cognitive load.
+
+***
+
+## 🛡️ Addendum #16: Stage 1 Finalization (Paranoia & Physics Limits)
+
+**Session Goal:** To close the remaining theoretical gaps in the detection engine by implementing sensors for "Impossible" values (Runtime Corruption), "Recursive" anomalies (Algorithmic Instability), and "Semantic" payloads (Terminal Control). This brings the tool into 100% alignment with the definable "Physics" of the Unicode Standard Model (excluding non-deterministic rendering).
+
+### 1. New Physics Engine: The Event Horizon Sensor
+Implemented detection for integer values exceeding the Unicode Codespace limit ($0 \dots 10FFFF_{16}$). Since these values cannot exist in valid UTF-16/UTF-32, their presence indicates a failure in the browser's runtime environment or memory corruption.
+
+* **Function:** `scan_event_horizon(cp)`
+* **Logic:** Bypass `INVIS_TABLE` lookup for out-of-bounds integers to prevent `IndexError`.
+* **Classification:**
+    * **Dimensional Breach:** `0x110000`–`0x1FFFFF` (Logic error in 21-bit allocation).
+    * **Memory Singularity:** `> 0x7FFFFFFF` (Signed 32-bit integer overflow).
+    * **Vacuum Decay:** Arbitrary large values (Heap corruption/Pointer dereference).
+* **Verdict:** Triggers **FATAL** Integrity error (Score 100).
+
+### 2. New Physics Engine: The Instability Sensor (Oscillator)
+Implemented a state machine to detect text that fails to converge or retains identity under recursive normalization.
+
+* **Function:** `scan_physics_instability(t)`
+* **Recursive Drift:** Applies `NFKC` up to 5 times. Detects linear drift (text continues changing) or cycles (text loops between states $A \to B \to A$).
+    * *Target:* WAFs that normalize "until stable" (DoS vector).
+* **Thermodynamic Volatility:** Validates bidirectional case round-tripping. Checks if `lower(upper(x)) == lower(x)`.
+    * *Target:* Case-insensitive authentication systems where character identity is fluid.
+
+### 3. New Logic Engine: The Terminal Physicist (ANSI Decoder)
+Replaced generic ANSI escape detection with semantic parsing of CSI (Control Sequence Introducer) sequences.
+
+* **Function:** `scan_terminal_physics(text)`
+* **Logic:** Regex parsing of `\x1b[` parameters and command bytes.
+* **differentiation:**
+    * **Benign:** Color/Style (`m`).
+    * **Malicious:** Screen Wipe (`2J`), Line Erase (`K`), Cursor Hiding (`?25l`), Cursor Repositioning (`H`).
+* **Verdict:** Maps specific commands to **CRITICAL** (Log Poisoning/Evidence Destruction) or **HIGH** (UI Spoofing) in the Threat Ledger.
+
+### 4. Orchestration & Wiring Updates
+Refactored `compute_threat_analysis` to integrate high-value structural signals directly into the **Adversarial Dashboard (Group 4)**.
+
+* **Paranoia Peak:** The following vectors now generate synthetic "Target" cards with forced high risk scores, ensuring visibility at the top of the dashboard:
+    * **Normalization Loops:** Flagged as **INJECTION** (DoS).
+    * **Trojan Source:** "Line Break in Comment" vectors flagged as **INJECTION** (Score 100).
+    * **Geometric Spoofing:** Rotation vectors flagged as **PROTOCOL** (Score 85).
+* **Topology Stats:** Dashboard counters now accurately reflect these vectors (e.g., an Infinite Loop increments the "Injection" counter).
+
+### 5. Architectural Alignment
+With these updates, the system coverage is forensically complete regarding the **Physical Model of Unicode**:
+* **Codespace:** Enforced by Event Horizon Sensor.
+* **Time/Provenance:** Covered by Cosmology Sensor.
+* **Forces:** Covered by Bidi Stack Machine & Zalgo Physics.
+* **Semantics:** Covered by ANSI/Tag Decoders.
+* **Dynamics:** Covered by Instability Sensor.
+
+*(Note: Visual rendering verification remains out of scope due to the "No-Canvas/Privacy" architectural constraint.)*
