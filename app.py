@@ -6875,7 +6875,6 @@ def scan_event_horizon(cp: int):
         "risk": 100,
         "badge": "LEAK"
     }
-    }
 
 def analyze_invisible_clusters(t: str):
     """
