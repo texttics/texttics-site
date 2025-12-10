@@ -2745,3 +2745,50 @@ We replaced the tabular "Predictive Normalizer" with a **High-Fidelity Forensic 
 * **Signal Deduplication:** We fixed a "Double Counting" bug in the Tokenizer/Global overlap. The `compute_stage1_5_forensics` orchestrator now hashes signals `(type, desc, risk)` to ensure that if a threat is found by both the Global Sensor and the Token Sensor, it is reported exactly once.
 * **Pipeline Integration:** The new Stage 3.0 engines are wired into the `compute_stage1_5_forensics` sidecar, ensuring they run in $O(N)$ time alongside the existing injection scanners.
 
+---
+
+## 🛡️ Addendum #19: Stage 3.0 "Forensic Thermodynamics" (The Hyper-Spectral Upgrade)
+
+**Session Goal:** To transition the tool from **Static Property Analysis** (checking flags) to **Statistical Mechanics** (measuring the "physics" of data distribution). We implemented a "Hyper-Spectral" sensor array that analyzes the text's entropy, rhythm, and probability distribution to distinguish between Natural Language, Encrypted Payloads, and Obfuscated Code.
+
+### 1. New Core Architecture: The "Thermodynamic 11" Sensor Array
+We replaced the basic Entropy counter with a multi-phase **Statistical Mechanics Engine** inside `compute_statistical_profile`. This engine operates on the principle that "Malice has a Texture." It uses 11 deterministic sensors to quantify that texture without relying on semantic understanding or AI models.
+
+#### Phase 1: Thermodynamics (The Energy Layer)
+**Goal:** Distinguish "True Randomness" (Encryption) from "Fake Randomness" (Obfuscation).
+* **Min-Entropy ($H_{\infty}$):** Measures the probability of the *most frequent* byte. Provides a "Safety Floor" to detect NOP sleds (e.g., `0x90` repeating) or zero-padding that standard Shannon entropy averages out.
+* **Index of Coincidence (IC):** Measures the "roughness" of the byte distribution.
+    * **Forensic Value:** Differentiates between **Rot13/Substitution** (High IC, ~1.73) and **AES/Compression** (Low IC, ~1.0).
+* **Renyi Entropy Vector ($H_2$):** Calculates "Collision Entropy" to measure the "peakiness" of the distribution.
+    * **Forensic Value:** Large gaps between $H_1$ (Shannon) and $H_2$ (Collision) indicate **Polymorphism**—high variety with underlying repetitive structures.
+
+#### Phase 2: Rhythm & Structure (The Cyclic Layer)
+**Goal:** Detect algorithmic generation and hidden periodic structures.
+* **Repeat Ratio (Autocorrelation):** Measures the Hamming match ratio of the string against itself at Lag 1 and Lag 4.
+    * **Forensic Value:** Detects **Cyclic Patterns** (XOR keys, buffer overflows) that are invisible to entropy sensors.
+* **Base64 Phase Scanner:** Analyzes character frequency buckets modulo 4.
+    * **Forensic Value:** Detects the statistical "ripple" artifact created by Base64 encoding (3 bytes $\to$ 4 chars). Distinguishes **Machine-Generated Payloads** (Strong Phase) from random text using the Base64 alphabet (Weak Phase).
+* **Benford’s Law Violation:** Analyzes the leading digit histogram of numeric sequences.
+    * **Forensic Value:** Flags **Artificial Numerics** (Fuzzing/Random generation) which violate the natural power law distribution of organic data (Logs/Financials).
+
+#### Phase 3: Deep Linguistics (Statistical Mechanics)
+**Goal:** Classify structure using deterministic probability models.
+* **Trigram Overlap:** Measures the intersection of input trigrams against a hardcoded "Gold Set" of the top 30 English trigrams.
+    * **Forensic Value:** A deterministic filter for "English-like" structure vs. DGA (Domain Generation Algorithms).
+* **Zipfian Fit (MSE):** Calculates the Mean Squared Error between the token frequency rank and an ideal Power Law curve ($1/x$).
+    * **Forensic Value:** Validates if the vocabulary distribution is organic. High error indicates **"Machine Stutter"** (Word Salad).
+* **Kullback-Leibler Divergence (KLD):** Measures the distributional distance ($D_{KL}$) between the input and two reference profiles (English vs. Uniform).
+    * **Forensic Value:** Provides a definitive classification label (e.g., "Uniform-Like") based on the byte frequency profile.
+* **Pair Repeat Ratio (Regularity):** A lightweight proxy for Sample Entropy. Counts repeating 2-byte sequences in high-entropy streams.
+    * **Forensic Value:** Differentiates **Algorithmic Randomness** (PRNGs/DGA) from **Chaotic Randomness** (True Crypto).
+
+### 2. New Engine: The "Zoom Lens" (Adaptive Topology)
+We implemented a recursive, multi-resolution scanning engine (`scan_adaptive_entropy_topology`) to solve the "Dilution Problem" of fixed sliding windows.
+* **Mechanism:** Scans the file in coarse chunks (256 bytes). If a sharp entropy gradient ($\Delta H > 1.5$) is detected, it recursively "zooms in" to scan that specific region at high resolution (64 bytes).
+* **Output:** Generates an **Entropy Heatmap** that pinpoint the exact byte offset of "Phase Transitions" (e.g., the boundary where a text file turns into a binary payload).
+
+### 3. Forensic Philosophy: "Mechanics over Semantics"
+This update strictly adheres to the **Asemantic Physics** doctrine.
+* **No AI:** "Linguistic" checks use fixed probability tables, not LLMs.
+* **No Heuristics:** We do not guess "Is this malicious?"; we measure "Does this violate Benford's Law?"
+* **Continuous Scoring:** Binary flags (`True/False`) were replaced with continuous scores (`0.0`–`10.0`), allowing the UI to represent threat intensity rather than just presence.
