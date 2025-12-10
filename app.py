@@ -4535,9 +4535,7 @@ def scan_code_injection_physics(t: str):
     
     # --- A. PHYSICS: RAW MAGIC BYTES ---
     # We check the start of the string (encoded as latin-1 bytes for signature matching)
-    # Increased buffer to 32 bytes to catch longer signatures (e.g. tar, OFFICE_OLE)
     try:
-        # Optimistic encoding to check magic bytes
         b_prefix = t[:32].encode('latin-1', errors='ignore') 
         for name, pattern in SERIALIZATION_SIGS.items():
             if pattern.match(b_prefix):
@@ -4550,15 +4548,19 @@ def scan_code_injection_physics(t: str):
     except: pass
 
     # --- B. PHYSICS: ENCODED WARHEADS (The X-Ray) ---
-    # Attackers paste Base64/Hex. We peek at the decoded header without full processing.
     
-    # 1. Base64 Peek (Check first 40 chars to get ~30 bytes decoded)
-    # Heuristic: Valid B64 charset, no spaces, length > 8
-    if len(t) > 8 and re.match(r'^[A-Za-z0-9+/]+={0,2}', t[:40]):
+    # 1. Base64 Peek (Smart Padding)
+    # Check first 40 chars. Heuristic: Valid B64 charset, length > 8.
+    prefix_b64 = t[:40]
+    if len(t) > 8 and re.match(r'^[A-Za-z0-9+/]+={0,2}', prefix_b64):
         try:
-            # Decode just the header
-            # We add padding safety to ensure decodability of partial chunks
-            header_b64 = base64.b64decode(t[:40] + "===") 
+            # FIX: Calculate exact padding to ensure length % 4 == 0
+            pad = len(prefix_b64) % 4
+            if pad > 0:
+                prefix_b64 += "=" * (4 - pad)
+                
+            header_b64 = base64.b64decode(prefix_b64)
+            
             for name, pattern in SERIALIZATION_SIGS.items():
                 if pattern.match(header_b64):
                     signals.append({
@@ -4569,11 +4571,15 @@ def scan_code_injection_physics(t: str):
                     })
         except: pass
 
-    # 2. Hex Peek (Check first 40 chars -> 20 bytes)
+    # 2. Hex Peek (First 40 chars -> 20 bytes)
     # Heuristic: Valid Hex charset
     if len(t) > 8 and re.match(r'^[0-9A-Fa-f]+$', t[:40]):
         try:
-            header_hex = binascii.unhexlify(t[:40]) 
+            # Only take even number of chars to avoid "Odd-length string" error
+            hex_len = len(t[:40])
+            if hex_len % 2 != 0: hex_len -= 1
+            
+            header_hex = binascii.unhexlify(t[:hex_len]) 
             for name, pattern in SERIALIZATION_SIGS.items():
                 if pattern.match(header_hex):
                     signals.append({
@@ -4585,8 +4591,6 @@ def scan_code_injection_physics(t: str):
         except: pass
 
     # --- C. SYNTAX: TEMPLATE INJECTION (Omni-Injector) ---
-    # Uses the global FORMAT_INJECTION constant from Block 2
-    # which now covers Python, Jinja2, Java EL, Ruby, and Shell.
     if FORMAT_INJECTION.search(t):
         signals.append({
             "type": "TEMPLATE_INJECTION",
