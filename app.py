@@ -6352,24 +6352,104 @@ def scan_token_fracture_safe(token_text):
 
     return signals
 
-def scan_injection_vectors(text):
+def scan_terminal_physics(text: str):
     """
-    [STAGE 1.5] Injection Pattern Matcher.
-    Detects: ANSI Escapes, Tag Sequences, and Imperative Overrides.
-    Returns: Neutral signals (facts), not verdicts.
+    [STAGE 1.8] The Terminal Physicist (ANSI Decoder).
+    Decodes the *intent* of Escape Sequences.
+    Distinguishes between 'Color' (Low Risk) and 'Sabotage' (Log Poisoning).
     """
     signals = []
     
-    # 1. ANSI Escape Sequences (Source 1)
-    # \x1b followed by [
+    # 1. Physics Definitions (CSI Sequences)
+    # Map trailing character to forensic intent.
+    ANSI_PHYSICS = {
+        "A": "CURSOR_UP (Log Overwrite Risk)",
+        "B": "CURSOR_DOWN",
+        "C": "CURSOR_FORWARD",
+        "D": "CURSOR_BACK",
+        "E": "CURSOR_NEXT_LINE",
+        "F": "CURSOR_PREV_LINE",
+        "G": "CURSOR_HORIZONTAL_ABS",
+        "H": "CURSOR_POSITION (Layout Spoofing)",
+        "J": "ERASE_DISPLAY (Evidence Destruction)",
+        "K": "ERASE_LINE (Log redaction)",
+        "S": "SCROLL_UP",
+        "T": "SCROLL_DOWN",
+        "f": "CURSOR_POSITION",
+        "m": "SGR (Color/Style)", # Usually benign, but used for hiding
+        "s": "SAVE_POS",
+        "u": "RESTORE_POS",
+        "l": "MODE_RESET (Cursor Hiding)",
+        "h": "MODE_SET"
+    }
+
+    # 2. The Scanner
+    # Regex: ESC [ (params) (terminator)
+    ansi_pattern = re.compile(r'\x1b\[([0-9;]*)([a-zA-Z])')
+    
+    matches = ansi_pattern.finditer(text)
+    
+    for m in matches:
+        params = m.group(1)
+        cmd = m.group(2)
+        start = m.start()
+        
+        definition = ANSI_PHYSICS.get(cmd, "UNKNOWN_ANSI_CMD")
+        
+        # 3. Forensic Severity Grading
+        risk = "HIGH"
+        badge = "CONTROL"
+        
+        if cmd == "J": # Erase Screen
+            desc = "CRITICAL: Screen Wipe (Evidence Destruction)"
+            risk = "CRITICAL"
+            badge = "WIPE"
+        elif cmd == "K": # Erase Line
+            desc = "CRITICAL: Line Deletion (Log Poisoning)"
+            risk = "CRITICAL"
+            badge = "REDACT"
+        elif cmd in ("A", "H", "f"): # Cursor Movement
+            desc = f"HIGH: Cursor Jump ({definition})"
+            risk = "HIGH"
+            badge = "SPOOF"
+        elif cmd == "l" and "25" in params: # Hide Cursor (?25l)
+            desc = "HIGH: Hide Cursor (UI Sabotage)"
+            risk = "HIGH"
+            badge = "STEALTH"
+        elif cmd == "m": # Color
+            # Check for "Hidden" style (8) or "Same Color" (White on White)
+            if ";8" in params or "^8" in params or params == "8":
+                desc = "HIGH: Invisible Text Style (ANSI Hidden)"
+                badge = "HIDDEN"
+            else:
+                desc = "MED: Terminal Styling (Color/Bold)"
+                risk = "MED"
+                badge = "STYLE"
+        else:
+            desc = f"ANSI Command: {definition}"
+
+        signals.append({
+            "type": "ANSI_PHYSICS",
+            "count": 1,
+            "desc": desc,
+            "risk": risk,
+            "badge": badge,
+            "pos": start
+        })
+        
+    return signals
+
+def scan_injection_vectors(text):
+    """
+    [STAGE 1.5] Injection Pattern Matcher.
+    Detects: ANSI Escapes (via Physicist), Tag Sequences, and Imperative Overrides.
+    """
+    signals = []
+    
+    # 1. ANSI Physics (Upgraded)
     if "\x1b[" in text:
-        matches = INJECTION_PATTERNS["ANSI_ESCAPE"].findall(text)
-        if matches:
-            signals.append({
-                "type": "ANSI_SEQUENCE",
-                "count": len(matches),
-                "example": matches[0][:10] # Snippet
-            })
+        ansi_signals = scan_terminal_physics(text)
+        signals.extend(ansi_signals)
 
     # 2. Plane 14 Tag Characters (Source 1 & 3)
     # Range: U+E0000 - U+E007F
@@ -10560,16 +10640,29 @@ def audit_stage1_5_signals(signals):
 
     # --- 5. INJECTION SIGNATURES (Syntax Physics) ---
     
-    # A. ANSI Sequences
-    if "ANSI_SEQUENCE" in sig_map:
-        total_ansi = sum(s['count'] for s in sig_map["ANSI_SEQUENCE"])
-        key = f"HIGH: ANSI Control Sequences ({total_ansi})"
-        flags[key] = {
-            "count": total_ansi,
-            "positions": ["(Terminal Emulation Controls Detected)"],
-            "severity": "crit",
-            "badge": "CONTROL"
-        }
+    # A. ANSI Physics (Detailed)
+    if "ANSI_PHYSICS" in sig_map:
+        # Group by description to avoid spamming the same error
+        ansi_groups = collections.Counter()
+        ansi_risks = {}
+        
+        for s in sig_map["ANSI_PHYSICS"]:
+            ansi_groups[s['desc']] += 1
+            ansi_risks[s['desc']] = (s['risk'], s['badge'])
+            
+        for desc, count in ansi_groups.items():
+            risk_sev, badge = ansi_risks[desc]
+            # Map Risk Level to CSS Severity
+            sev_class = "crit" if risk_sev == "CRITICAL" else "warn" if risk_sev == "HIGH" else "ok"
+            
+            # Construct the Dashboard Key
+            key = f"{risk_sev}: {desc}"
+            flags[key] = {
+                "count": count,
+                "positions": ["(Terminal Control Sequence)"],
+                "severity": sev_class,
+                "badge": badge
+            }
 
     # B. Imperative Syntax (Override)
     has_override = "IMPERATIVE_OVERRIDE" in sig_map
