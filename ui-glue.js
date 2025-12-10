@@ -776,29 +776,28 @@ function buildStructuredReport() {
       report.push(revealed);
   }
 
-  // Statistical & Lexical Profile
-  if (window.py_get_stat_report_text) {
-      try {
-          report.push('\n[ Statistical & Lexical Profile ]');
-          const statBody = document.getElementById('statistical-profile-body');
-          if (statBody) {
-              statBody.querySelectorAll('tr').forEach(row => {
-                  const th = row.querySelector('th')?.textContent.trim();
-                  const td = row.querySelector('td');
-                  if (th && td) {
-                      let clone = td.cloneNode(true);
-                      clone.querySelectorAll('button').forEach(b => {
-                          b.replaceWith(b.textContent + " "); 
-                      });
-                      
-                      let text = clone.textContent.replace(/\s+/g, ' ').trim();
-                      report.push(`  ${th}: ${text}`);
-                  }
-              });
+  // Statistical & Lexical Profile (Stage 3.2 Scraper)
+  const statBody = document.getElementById('statistical-profile-body');
+  if (statBody && !statBody.querySelector('.placeholder-text')) {
+      report.push('\n[ Statistical & Lexical Profile ]');
+      
+      Array.from(statBody.children).forEach(row => {
+          if (row.tagName !== 'TR') return;
+          
+          const title = row.querySelector('th')?.textContent.trim();
+          const td = row.querySelector('td');
+          
+          if (title && td) {
+              // Flatten the data for the main single-column report
+              // We replace newlines with pipes " | " to save vertical space in the full report
+              let text = td.innerText.replace(/\n\s*\n/g, ' | ').replace(/\n/g, ' | ').trim();
+              
+              // Cleanup edge cases (like trailing pipes)
+              text = text.replace(/\|\s*\|/g, '|'); 
+              
+              report.push(`  ${title}: ${text}`);
           }
-      } catch (e) {
-          console.warn("Stat Profile scrape failed:", e);
-      }
+      });
   }
 
   return report.join('\n');
@@ -1868,16 +1867,41 @@ window.updateStatConsole = function(row) {
       copyToClipboard(r.join('\n'), 'btn-p-threat');
   });
 
-  // --- 8. Stats ---
+  // --- 8. Stats (Stage 3.2 DOM Scraper) ---
   const btnStat = document.getElementById('btn-p-stat');
-  if(btnStat) btnStat.addEventListener('click', () => {
-      if (window.py_get_stat_report_text) {
-          const text = window.py_get_stat_report_text();
-          copyToClipboard(text, 'btn-p-stat');
-      } else {
-          copyToClipboard("Stats not ready.", 'btn-p-stat');
-      }
-  });
+  if (btnStat) {
+      btnStat.addEventListener('click', () => {
+          const tbody = document.getElementById('statistical-profile-body');
+          if (!tbody || tbody.children.length === 0 || tbody.querySelector('.placeholder-text')) {
+              copyToClipboard("Stats not ready.", 'btn-p-stat');
+              return;
+          }
+
+          let r = ["[ Statistical & Lexical Profile ]"];
+          
+          Array.from(tbody.children).forEach(row => {
+              if (row.tagName !== 'TR') return;
+              
+              // 1. Get Header (e.g., "Thermodynamics")
+              const title = row.querySelector('th')?.textContent.trim() || "METRIC";
+              
+              // 2. Get Data Cell
+              const td = row.querySelector('td');
+              if (td) {
+                  // Use innerText to preserve the visual line breaks of Cards/Grids
+                  let content = td.innerText.trim();
+                  
+                  // Polish: Indent the data lines for readability in text format
+                  // and remove excessive blank lines caused by flexbox spacing
+                  content = content.replace(/\n\s*\n/g, '\n').replace(/\n/g, '\n    ');
+                  
+                  r.push(`-- ${title} --\n    ${content}`);
+              }
+          });
+
+          copyToClipboard(r.join('\n\n'), 'btn-p-stat');
+      });
+  }
 
 // ==========================================
 // 15. METADATA WORKBENCH BRIDGE (Dynamic & Debounced)
