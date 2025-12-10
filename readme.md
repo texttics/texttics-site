@@ -2792,3 +2792,59 @@ This update strictly adheres to the **Asemantic Physics** doctrine.
 * **No AI:** "Linguistic" checks use fixed probability tables, not LLMs.
 * **No Heuristics:** We do not guess "Is this malicious?"; we measure "Does this violate Benford's Law?"
 * **Continuous Scoring:** Binary flags (`True/False`) were replaced with continuous scores (`0.0`–`10.0`), allowing the UI to represent threat intensity rather than just presence.
+
+***
+
+## 🛡️ Addendum #20: Stage 3.0 – 3.2 "Forensic Thermodynamics" Upgrade
+
+**Session Goal:** To transition the **Statistical & Lexical Profile (Group 2.F)** from a passive set of counters to an active **"Hyper-Spectral Physics Engine."** This update moves beyond simple Shannon Entropy to measure the texture, rhythm, complexity, and invisible structure of text using deterministic statistical mechanics.
+
+### 1. The "Thermodynamic 11" Sensor Array (Stage 3.0)
+We implemented a multi-phase sensor array (`compute_statistical_profile`) that analyzes the "Energy" and "Texture" of the byte stream to distinguish between Natural Language, Encrypted Payloads, and Obfuscated Code without semantic parsing.
+
+* **Phase 1: Thermodynamics (Energy)**
+    * **Min-Entropy ($H_{\infty}$):** Measures the probability of the *most frequent* byte (the Mode). Provides a "Safety Floor" to detect NOP sleds or zero-padding that standard Shannon entropy averages out.
+    * **Index of Coincidence (IC):** Measures the "roughness" of the byte distribution. Distinguishes **Substitution Ciphers/Rot13** (High IC, $\approx 1.73$) from **AES/Compression** (Low IC, $\approx 1.0$).
+    * **Renyi Entropy Gap ($H_1 - H_2$):** Calculates the divergence between Shannon ($H_1$) and Collision ($H_2$) entropy to detect **Polymorphism** (high variety with underlying repetitive structures).
+
+* **Phase 2: Rhythm & Structure (Cycles)**
+    * **Autocorrelation (Lag 1/4):** Measures the Hamming match ratio of the string against itself. Detects **Cyclic Patterns** (XOR keys, buffer overflows) that appear random to entropy sensors.
+    * **Base64 Phase Scanner:** Analyzes character frequency buckets modulo 4. Detects the statistical "ripple" artifact created by Base64 encoding, distinguishing **Structured Payloads** from random text using the Base64 alphabet.
+    * **Benford’s Law Violation:** Analyzes the leading digit histogram of numeric sequences to flag **Artificial Numerics** (Fuzzing/Random IDs).
+
+* **Phase 3: Deep Linguistics (Probability)**
+    * **Kullback-Leibler Divergence (KLD):** Measures the relative entropy ($D_{KL}$) between the input and an English letter frequency model. Provides a definitive "Distance to Language" metric.
+    * **Zipf Fit (MSE):** Calculates the Mean Squared Error between the token frequency rank and an ideal Power Law curve ($1/x$). Quantifies "Machine Stutter" (Word Salad).
+
+### 2. The "Dark Matter" Sensors (Stage 3.1)
+We addressed the "Invisible Physics" gap by implementing sensors for data that exists outside the visible spectrum.
+
+* **Whitespace Channel Physics:**
+    * **The Concept:** Treats Space, Tab, NBSP, and ZWSP as a dedicated communication channel.
+    * **Metrics:** Calculates the **Channel Entropy** (Is there a complex mix of Tabs/Spaces?) and **Positional Density** (Are they clustered at the End-of-Line?).
+    * **Forensic Value:** Detects anomalies consistent with **SNOW Steganography** or erratic formatting without asserting intent.
+* **Dispersion Entropy ($DispEn$):**
+    * **The Upgrade:** A robust alternative to Sample Entropy ($O(N)$ vs $O(N^2)$).
+    * **Metric:** Maps bytes to symbolic classes (Low/Mid/High) and measures the irregularity of patterns.
+    * **Forensic Value:** Detects **Rhythmic Irregularities** typical of machine-generated text or polymorphic code that attempts to mimic natural entropy.
+* **Entropy Topology (The Zoom Lens):**
+    * **Mechanism:** A recursive scanner (`scan_adaptive_entropy_topology`) that increases resolution (from 256B to 64B) when it detects a sharp entropy gradient.
+    * **Transition Sensor:** A state machine that scans the heatmap for **"Valley $\to$ Plateau"** transitions (Low $\to$ High), a structural heuristic for payload boundaries (e.g., Padding $\to$ Shellcode).
+
+### 3. Complexity & Stylometry (Stage 3.2)
+We closed the "Academic Gap" by implementing standard linguistic complexity metrics.
+
+* **Lempel-Ziv Complexity (LZC):**
+    * **Metric:** Counts the number of unique patterns needed to reconstruct the string (LZ76 algorithm).
+    * **Forensic Value:** Provides a **Compressibility Axis** orthogonal to Entropy. Differentiates "Random" (High Ent, High LZC) from "Repetitive" (Low Ent, Low LZC).
+* **Structural Stylometry:**
+    * **Metric:** Descriptive profiling of Average Word Length, Sentence Length, and Punctuation Density.
+    * **Forensic Value:** Establishes a "Fingerprint" of the text's structure for authorship consistency checks (without ML).
+
+### 4. Visualization Upgrade: The "Scientific Instrument"
+The **Statistical Profile (Group 2.F)** UI was completely re-architected to handle high-density data.
+
+* **The Scientific Console:** A dynamic footer that updates on hover (`mouseenter`) to display the **Logic** (Formula), **Norms** (Expected values), and **Definition** of the metric under the cursor.
+* **Micro-Cards:** High-density flexbox containers that display a primary metric, a normalized secondary metric, and a qualitative verdict in a single compact box.
+* **Adaptive Heatmap:** A visual bar that physically expands (via `flex-grow`) to show high-resolution detail only where entropy transitions occur.
+* **Neutral Alert System:** Replaced "Threat Red" with "Anomaly Amber" for heuristic findings (like Topology Transitions), strictly reserving Red for proven integrity failures (like Null bytes).
