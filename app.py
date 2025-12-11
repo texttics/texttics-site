@@ -3476,7 +3476,35 @@ async def load_unicode_data():
     
         # Parse each file
         if blocks_txt: _parse_and_store_ranges(blocks_txt, "Blocks")
-        if age_txt: _parse_and_store_ranges(age_txt, "Age")
+        if age_txt: 
+            _parse_and_store_ranges(age_txt, "Age")
+            
+            # Hydrate Forensic Age Map (O(1) Lookup for EmojiForensics)
+            age_map_temp = {}
+            for line in age_txt.splitlines():
+                if "#" in line: line = line.split("#")[0]
+                line = line.strip()
+                if not line: continue
+                
+                parts = line.split(";")
+                if len(parts) >= 2:
+                    try:
+                        ver = float(parts[1].strip())
+                        rng = parts[0].strip()
+                        
+                        if ".." in rng:
+                            start_hex, end_hex = rng.split("..")
+                            start = int(start_hex, 16)
+                            end = int(end_hex, 16)
+                            for cp in range(start, end + 1):
+                                age_map_temp[cp] = ver
+                        else:
+                            age_map_temp[int(rng, 16)] = ver
+                    except: 
+                        pass
+            
+            DATA_STORES["AgeMap"] = age_map_temp
+            print(f"Hydrated AgeMap with {len(age_map_temp)} entries.")
         if id_type_txt: _parse_and_store_ranges(id_type_txt, "IdentifierType")
         if id_status_txt: _parse_and_store_ranges(id_status_txt, "IdentifierStatus")
         if intentional_txt: _parse_intentional(intentional_txt)
