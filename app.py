@@ -14881,12 +14881,21 @@ def compute_emoji_analysis(text: str) -> dict:
             elif cluster[1] == "\uFE0F" and not is_emoji_pres: add_flag("Flag: Forced Emoji Presentation", idx)
 
         if kind.startswith("emoji"):
+            # We run the classifier here to get the sharp labels for the UI Table
+            # regardless of what the counting logic above decided.
+            diagnosis = EmojiForensics.classify(cluster, is_rgi=rgi_status)
+            
+            # We override the generic 'kind' and 'status' with the specific forensic ones
+            forensic_kind = diagnosis['kind']     # e.g. "COMP_REGIONAL"
+            forensic_base = diagnosis['base']     # e.g. "FLAG"
+            forensic_status = diagnosis['status'] # e.g. "FLAG_FRAGMENT"
+
             emoji_details_list.append({
                 "sequence": cluster,
-                "kind": kind,
+                "kind": forensic_kind,      # REPLACES generic "emoji-component"
                 "rgi": rgi_status,
-                "status": status,
-                "base_cat": base_cat, 
+                "status": forensic_status,  # REPLACES generic "component"
+                "base_cat": forensic_base,  # REPLACES "So"/"SYM" with "FLAG"/"BODY"
                 "index": idx
             })
 
