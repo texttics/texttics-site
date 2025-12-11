@@ -209,6 +209,10 @@ HORIZONTAL_SCRIPTS = {
 # Exceeding this is a Protocol Violation, not just "Zalgo".
 UAX15_MAX_NONSTARTERS = 30
 
+# Define Spacing Physics
+ASCII_SPACE = 0x0020
+NBSP_SPACE  = 0x00A0
+
 # File System Physics (Windows/Unix/Mac)
 FS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL", 
