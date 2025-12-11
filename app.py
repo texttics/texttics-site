@@ -4522,6 +4522,136 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def scan_markov_physics(t: str) -> list:
+    """
+    [Stage 2.2] Markov Transition Analyst (SOTA).
+    
+    Implements 'Feature 1: Metric_Frankenstein_Signal' from v2.0 Research.
+    Analyzes the probability of Category Transitions to fingerprint 'Code' 
+    disguised as 'Prose'.
+    
+    Physics:
+    - Natural Text (Prose) flows: L->L, L->Z, Z->L, N->N.
+    - Synthetic Text (Code) flows: L->N, N->L, S->L, L->S.
+    
+    Inputs:
+        t (str): Raw text.
+        
+    Returns:
+        List of forensic finding dictionaries.
+    """
+    findings = []
+    if not t: return findings
+
+    import unicodedata
+
+    # 1. PHYSICS CONSTANTS (The Transition Matrix)
+    # We map transitions to 'Surprise Penalties' (Log-Likelihood approximation).
+    # 0 = Natural, 5 = Suspicious, 20 = Highly Unnatural (Code Signature)
+    
+    # Categories: L=Alpha, N=Digit, S=Syntax(P/S), Z=Gap, C=Control
+    
+    TRANSITION_PENALTIES = {
+        # --- The "Code" Signatures (High Surprise) ---
+        ('L', 'N'): 15,  # var1 (Identifier)
+        ('N', 'L'): 20,  # 1var (Illegal in most prose)
+        ('L', 'S'): 10,  # func( (Function call)
+        ('S', 'L'): 10,  # ) { (Block start) or .prop
+        ('N', 'S'): 5,   # 12;
+        ('S', 'N'): 5,   # [0]
+        
+        # --- The "Obfuscation" Signatures (Critical Surprise) ---
+        ('L', 'C'): 50,  # Char -> Invisible (Smuggling)
+        ('N', 'C'): 50,  # Num -> Invisible
+        ('S', 'C'): 50,  # Sym -> Invisible
+        
+        # --- The "Natural" Flows (Zero/Low Surprise) ---
+        ('L', 'L'): 0,   # word
+        ('L', 'Z'): 0,   # word end
+        ('Z', 'L'): 0,   # word start
+        ('N', 'N'): 0,   # 123
+        ('Z', 'N'): 0,   # space 1
+        ('N', 'Z'): 0,   # 1 space
+        ('P', 'Z'): 0,   # . space
+    }
+    
+    # 2. HELPER: Fast Category Mapper
+    def get_markov_cat(char):
+        cat = unicodedata.category(char)
+        if cat.startswith('L'): return 'L'
+        if cat.startswith('N'): return 'N'
+        if cat.startswith('Z'): return 'Z'
+        if cat.startswith('P') or cat.startswith('S'): return 'S'
+        if cat.startswith('C'): return 'C'
+        return '?'
+
+    # 3. THE MARKOV SCANNER (Sliding Window of Entropy)
+    # Window size 8 (approx 1-2 tokens) is sensitive to local injection.
+    WINDOW_SIZE = 8
+    THRESHOLD_PERPLEXITY = 40 # If window accumulates >40 penalty points -> FLAG
+    
+    # We perform a single pass, tracking the window sum
+    window_penalties = [] 
+    current_window_sum = 0
+    prev_cat = None
+    
+    in_anomaly_zone = False
+    anomaly_start = -1
+    
+    for i, char in enumerate(t):
+        curr_cat = get_markov_cat(char)
+        
+        penalty = 0
+        if prev_cat:
+            # Lookup transition (Default to 5 if unknown transition like ?->?)
+            penalty = TRANSITION_PENALTIES.get((prev_cat, curr_cat), 5)
+        
+        # Add to window logic
+        window_penalties.append(penalty)
+        current_window_sum += penalty
+        
+        # Slide the window (remove oldest)
+        if len(window_penalties) > WINDOW_SIZE:
+            removed = window_penalties.pop(0)
+            current_window_sum -= removed
+            
+        # 4. THRESHOLD CHECK
+        if current_window_sum > THRESHOLD_PERPLEXITY:
+            if not in_anomaly_zone:
+                in_anomaly_zone = True
+                anomaly_start = i - WINDOW_SIZE + 1 # Approximate start
+        else:
+            if in_anomaly_zone:
+                # FALLING EDGE (End of Anomaly)
+                in_anomaly_zone = False
+                zone_len = i - anomaly_start
+                
+                # Filter noise
+                if zone_len > 4:
+                    findings.append({
+                        "label": "High Structural Perplexity (Markov Signal)",
+                        "severity": "high",
+                        "badge": "ANOMALY",
+                        "details": f"Unnatural character transitions detected (Score: {current_window_sum}). Probable Code/Obfuscation.",
+                        "count": 1,
+                        "indices": [f"#{anomaly_start}"]
+                    })
+        
+        prev_cat = curr_cat
+
+    # Handle trailing anomaly
+    if in_anomaly_zone:
+         findings.append({
+            "label": "High Structural Perplexity (Markov Signal)",
+            "severity": "high",
+            "badge": "ANOMALY",
+            "details": f"Unnatural character transitions detected (Score: {current_window_sum}).",
+            "count": 1,
+            "indices": [f"#{anomaly_start}"]
+        })
+
+    return findings
+
 def scan_logic_fracture(t: str) -> list:
     """
     [Stage 2.1] Logic Fracture Analyst (The Missing Link).
@@ -4558,8 +4688,20 @@ def scan_logic_fracture(t: str) -> list:
     # We flag STerm characters that are chemically bonded to Alphanumerics.
     
     # Simple check for the most dangerous Log Splitters (Ambiguous Terminators)
-    # U+2047 (⁇), U+203D (‽), U+2048 (⁈), U+2049 (⁉)
+    # A. Log Splitters (Ambiguous Terminators)
+    # Characters that act as ? or ! but might break log parsers.
     LOG_SPLITTERS = {'\u2047', '\u203D', '\u2048', '\u2049'}
+    
+    # B. Mimic Delimiters (Path/Protocol Spoofing)
+    # Research Part 5.1: Characters that look like structural syntax (/, ., :) 
+    # but are ignored by parsers, allowing URL/Path spoofing.
+    MIMIC_DELIMITERS = {
+        '\uFF0F': '/',  # Fullwidth Solidus
+        '\u2215': '/',  # Division Slash
+        '\uFF0E': '.',  # Fullwidth Full Stop
+        '\u2024': '.',  # One Dot Leader
+        '\uFF1A': ':',  # Fullwidth Colon (Protocol Spoofing)
+    }}
     
     # O(N) Scan
     for i, char in enumerate(t):
@@ -4571,6 +4713,17 @@ def scan_logic_fracture(t: str) -> list:
                 "severity": "crit",
                 "badge": "EVASION",
                 "details": f"Explicit Directional Override detected: {BIDI_LOCKS[char]}",
+                "count": 1,
+                "indices": [f"#{i}"]
+            })
+
+        # Check Logic Fractures
+        elif char in MIMIC_DELIMITERS:
+             findings.append({
+                "label": "Mimic Delimiter (Path Spoofing)",
+                "severity": "crit", # Critical because it alters URL/File logic
+                "badge": "SPOOF",
+                "details": f"Structural Spoof: '{char}' mimics '{MIMIC_DELIMITERS[char]}'",
                 "count": 1,
                 "indices": [f"#{i}"]
             })
