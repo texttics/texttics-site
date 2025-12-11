@@ -7156,3 +7156,115 @@ details.profile-section > summary:hover::marker {
     user-select: none;
     margin-bottom: 12px;
 }
+
+/* --- Whitespace Topology Panel --- */
+.ws-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding-bottom: 12px; /* Pad bottom */
+}
+
+/* Metrics Row */
+.ws-metrics-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 0 12px;
+}
+.ws-metric {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.wm-lbl {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.wm-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 4px;
+}
+
+/* Spectrum Bar (The Visual Strip) */
+.ws-spectrum-bar {
+    height: 8px;
+    width: calc(100% - 24px); /* Minus padding */
+    margin: 0 12px;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    background: #f1f5f9;
+}
+
+/* Pills Container */
+.ws-spectrum-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 12px;
+}
+
+/* The Pill Itself */
+.ws-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: 'Inter', sans-serif;
+    border: 1px solid transparent;
+    transition: all 0.1s;
+}
+
+/* Pill Colors (Backgrounds) */
+.bg-sp   { background: #f1f5f9; color: #475569; border-color: #cbd5e1; } /* Standard Space */
+.bg-lf   { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; } /* Blue (LF/CR) */
+.bg-tab  { background: #fefce8; color: #854d0e; border-color: #fde047; } /* Yellow (Tab) */
+.bg-nbsp { background: #fff7ed; color: #9a3412; border-color: #fed7aa; } /* Orange (NBSP) */
+.bg-wide { background: #faf5ff; color: #6b21a8; border-color: #e9d5ff; } /* Purple (Wide) */
+.bg-inv  { background: #fef2f2; color: #991b1b; border-color: #fecaca; } /* Red (Invisible) */
+
+.ws-key { font-weight: 600; }
+.ws-val { 
+    font-family: 'JetBrains Mono', monospace; 
+    font-weight: 700; 
+    opacity: 0.8;
+    background: rgba(255,255,255,0.5);
+    padding: 0 4px;
+    border-radius: 3px;
+}
+
+/* Alerts */
+.ws-alert-box {
+    padding: 0 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ws-alert {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ws-alert.crit { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.ws-alert.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.icon { font-size: 1.1em; }
