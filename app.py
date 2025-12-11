@@ -18484,22 +18484,47 @@ def render_integrity_matrix(rows, text_context=None):
 
 def render_emoji_qualification_table(emoji_list, text_context=None):
     """
-    Renders the Forensic Emoji Profile (V2.1).
-    Columns: Seq | Kind | Base | RGI | Status | AGE | DEPTH | Count | Pos
+    Renders the Forensic Emoji Profile (V2.2).
+    Includes Header Injection to ensure columns align.
     """
-    element = document.getElementById("emoji-qualification-body")
-    if not element: return
+    body_element = document.getElementById("emoji-qualification-body")
+    if not body_element: return
+
+    # [FIX] INJECT THE CORRECT HEADERS DYNAMICALLY
+    # We grab the parent table to fix the <thead>
+    try:
+        table = body_element.closest("table")
+        thead = table.querySelector("thead")
+        if thead:
+            # Force the headers to match our new 9-column layout
+            thead.innerHTML = """
+                <tr>
+                    <th style="text-align:left;">SEQUENCE</th>
+                    <th style="text-align:left;">KIND</th>
+                    <th style="text-align:left;">BASE</th>
+                    <th style="text-align:left;">RGI?</th>
+                    <th style="text-align:left;">STATUS</th>
+                    <th style="text-align:left;">AGE</th>
+                    <th style="text-align:left;">DEPTH</th>
+                    <th style="text-align:left;">COUNT</th>
+                    <th style="text-align:left;">POSITIONS</th>
+                </tr>
+            """
+    except Exception:
+        pass # Fail silently if structure is different
+
     if not emoji_list:
-        element.innerHTML = "<tr><td colspan='9' class='placeholder-text'>No emoji sequences found.</td></tr>"
+        body_element.innerHTML = "<tr><td colspan='9' class='placeholder-text'>No emoji sequences found.</td></tr>"
         return
 
-    # Group by sequence string
+    # Group by sequence
     grouped = {}
     for item in emoji_list:
         seq = item.get("sequence", "?")
         if seq not in grouped:
-            # Calculate Depth on the fly (number of scalar code points)
+            # [CALCULATE METRICS ONCE]
             depth_val = len([ord(c) for c in seq])
+            age_val = EmojiForensics.get_version(seq)
             
             grouped[seq] = {
                 'status': item.get("status", "unknown"),
@@ -18507,22 +18532,22 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
                 'rgi': item.get("rgi", False),
                 'base_cat': item.get("base_cat", "Unknown"), 
                 'hex': item.get("hex", ""),
-                'age': item.get("age", "-"),     # Placeholder for Age
-                'depth': depth_val,              # Calculated Depth
+                'age': age_val,
+                'depth': depth_val,
                 'count': 0, 
                 'indices': []
             }
         grouped[seq]['count'] += 1
         grouped[seq]['indices'].append(item.get("index", 0))
 
-    # Sort by count desc, then sequence
+    # Sort
     sorted_keys = sorted(grouped.keys(), key=lambda k: (-grouped[k]['count'], k))
 
     html = []
     for seq in sorted_keys:
         data = grouped[seq]
         
-        # 1. Sequence + Hex Fingerprint
+        # 1. Sequence + Hex
         hex_print = data.get('hex', '')
         td_seq = f'''
         <td>
@@ -18533,21 +18558,19 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         </td>
         '''
         
-        # 2. Kind Badge
+        # 2. Kind
         kind_raw = data['kind'].replace("emoji-", "").upper()
-        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Default ATOM
-        if 'SEQ' in kind_raw:
-             k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue
-        elif 'COMP' in kind_raw:
-             k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red
+        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;"
+        if 'SEQ' in kind_raw: k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;"
+        elif 'COMP' in kind_raw: k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;"
         td_kind = f'<td><span class="legend-badge" style="{k_style}">{kind_raw}</span></td>'
         
-        # 3. Base Origin
+        # 3. Base
         origin_raw = data.get('base_cat', 'UNKNOWN').replace("_", " ")
         cat_style = "background-color: #f8fafc; color: #475569; border: 1px solid #e2e8f0; font-size: 0.65rem; padding: 3px 6px; border-radius: 4px; font-family: var(--font-mono); text-transform: uppercase; white-space: nowrap;"
-        td_base = f'<td><span style="{cat_style}" title="Unicode Block Origin">{origin_raw}</span></td>'
+        td_base = f'<td><span style="{cat_style}" title="Unicode Block">{origin_raw}</span></td>'
         
-        # 4. RGI Badge
+        # 4. RGI
         if data['rgi']:
             r_style = "background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0;"
             r_text = "YES"
@@ -18556,28 +18579,26 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
             r_text = "NO"
         td_rgi = f'<td><span class="legend-badge" style="{r_style}">{r_text}</span></td>'
 
-        # 5. Status Pill
+        # 5. Status
         status_raw = data['status']
         s_text = status_raw.replace('_', ' ').replace(' · ', '<br>').title()
         s_cls = "legend-pill legend-pill-neutral"
-        
-        if "fully" in status_raw.lower(): 
-            s_cls = "legend-pill legend-pill-ok"
+        if "fully" in status_raw.lower(): s_cls = "legend-pill legend-pill-ok"
         elif any(x in status_raw for x in ["FRAGMENT", "SHATTERED", "ORPHAN", "LEAK", "DANGLING"]):
             s_cls = "legend-pill legend-pill-error"
             s_text = f'<span style="color: #dc2626; font-weight: 700;">{s_text}</span>'
-        elif "unqualified" in status_raw.lower() or "ambiguous" in status_raw.lower():
-            s_cls = "legend-pill legend-pill-warn"
+        elif "unqualified" in status_raw.lower(): s_cls = "legend-pill legend-pill-warn"
         td_status = f'<td><span class="{s_cls}" style="font-size: 0.75rem;">{s_text}</span></td>'
 
-        # 6. AGE Column
+        # 6. AGE (Real Data)
         age_val = data['age']
+        # Highlight modern particles (Risk of incompatibility)
         age_style = "color: #6b7280; font-family: var(--font-mono); font-size: 0.8rem;"
+        if float(age_val.replace("v","")) >= 12.0: age_style = "color: #b45309; font-weight:bold; font-family: var(--font-mono); font-size: 0.8rem;"
         td_age = f'<td style="{age_style}">{age_val}</td>'
 
-        # 7. DEPTH Column
+        # 7. DEPTH
         depth_val = data['depth']
-        # Styling: Bold if high depth (Zalgo risk)
         d_style = "font-family: var(--font-mono); font-weight: 600; color: #374151;"
         if depth_val > 5: d_style += " color: #dc2626;"
         td_depth = f'<td style="{d_style}">{depth_val}</td>'
@@ -18592,50 +18613,28 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         if len(links_list) > 5:
             visible = ", ".join(links_list[:5])
             hidden = ", ".join(links_list[5:])
-            pos_html = (
-                f'<details style="cursor: pointer;">'
-                f'<summary>{visible} ... ({len(links_list)})</summary>'
-                f'<div style="padding-top: 4px;">{hidden}</div>'
-                f'</details>'
-            )
+            pos_html = f'<details style="cursor: pointer;"><summary>{visible} ... ({len(links_list)})</summary><div style="padding-top: 4px;">{hidden}</div></details>'
         else:
             pos_html = ", ".join(links_list)
         td_pos = f'<td>{pos_html}</td>'
 
         html.append(f'<tr>{td_seq}{td_kind}{td_base}{td_rgi}{td_status}{td_age}{td_depth}{td_count}{td_pos}</tr>')
 
-    # Forensic Legend (Updated for V2.1)
+    # Legend
     legend_html = """
     <tr>
         <td colspan="9" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
-                <div>
-                    <strong>KIND (Structure):</strong><br>
-                    • <b>ATOM:</b> Single unit.<br>
-                    • <b>SEQ:</b> Sequence.<br>
-                    • <b>COMP:</b> Component.
-                </div>
-                <div>
-                    <strong>STATUS (Forensics):</strong><br>
-                    • <span style="color:#dc2626"><b>Shattered:</b></span> Broken logic.<br>
-                    • <span style="color:#b45309"><b>Unqualified:</b></span> Var missing.
-                </div>
-                <div>
-                    <strong>METRICS:</strong><br>
-                    • <b>AGE:</b> Unicode Ver.<br>
-                    • <b>DEPTH:</b> Code Points.
-                </div>
-                 <div>
-                    <strong>ORIGIN:</strong><br>
-                    • <b>Block:</b> Source map.<br>
-                    • <b>Hex:</b> Fingerprint.
-                </div>
+                <div><strong>KIND:</strong><br>ATOM/SEQ/COMP</div>
+                <div><strong>STATUS:</strong><br>RGI/Unqualified/Shattered</div>
+                <div><strong>METRICS:</strong><br>AGE (v6.0+)/DEPTH (Pts)</div>
+                <div><strong>ORIGIN:</strong><br>Block/Hex</div>
             </div>
         </td>
     </tr>
     """
     
-    element.innerHTML = "".join(html) + legend_html
+    body_element.innerHTML = "".join(html) + legend_html
 
 def render_emoji_summary(emoji_counts, emoji_list):
     """
