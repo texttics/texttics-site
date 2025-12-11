@@ -4701,7 +4701,7 @@ def scan_logic_fracture(t: str) -> list:
         '\uFF0E': '.',  # Fullwidth Full Stop
         '\u2024': '.',  # One Dot Leader
         '\uFF1A': ':',  # Fullwidth Colon (Protocol Spoofing)
-    }}
+    }
     
     # O(N) Scan
     for i, char in enumerate(t):
