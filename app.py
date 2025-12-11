@@ -22365,14 +22365,6 @@ def update_all(event=None):
     render_matrix_table(shape_matrix, "shape-matrix-body")
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     
-    # Whitespace & Newline Topology (The Frankenstein Detector)
-
-    # Whitespace & Newline Topology (The Frankenstein Detector)
-    ws_topology_html = compute_whitespace_topology(t)
-    ws_container = document.getElementById("ws-topology-container")
-    if ws_container:
-        ws_container.innerHTML = ws_topology_html
-    
     # [STAGE 2.0] STRUCTURAL ANOMALIES (Topology + Rhythm + Smuggling + Geometry)
     
     struct_html = render_structural_anomalies(all_structural_findings)
@@ -22381,11 +22373,12 @@ def update_all(event=None):
     struct_container = document.getElementById("structural-anomalies-body")
     if struct_container:
         struct_container.innerHTML = struct_html
-        
-    # DEPRECATION: Clear the old container to avoid "Ghost Renders"
-    old_ws_container = document.getElementById("ws-topology-container")
-    if old_ws_container:
-        old_ws_container.innerHTML = ""
+
+    # Whitespace & Newline Topology (The Frankenstein Detector)
+    ws_topology_html = compute_whitespace_topology(t)
+    ws_container = document.getElementById("ws-topology-container")
+    if ws_container:
+        ws_container.innerHTML = ws_topology_html
         
     render_matrix_table(lb_run_stats, "linebreak-run-matrix-body")
     render_matrix_table(bidi_run_stats, "bidi-run-matrix-body")
