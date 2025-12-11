@@ -17195,8 +17195,9 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
-    [Stage 2.3] Whitespace Topology Renderer (High Fidelity).
-    Visualizes: Metrics Grid, Visual Spectrum Bar, and Detail Pills.
+    [Stage 2.3] Whitespace Topology Renderer (Dual-Stack).
+    Splits visualization into 'Standard' (Layout) and 'Exotic' (Injection) 
+    to prevent large counts from hiding small threats.
     """
     metrics = physics_data.get("metrics", {})
     stats = physics_data.get("stats", {})
@@ -17212,18 +17213,31 @@ def render_whitespace_topology(physics_data: dict) -> str:
         break_list = ", ".join(breaks)
         alerts.append(f'<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Desync:</strong> {break_list}</div>')
 
-    # 2. Spectrum Data Prep
-    sorted_stats = sorted(stats.items(), key=lambda x: -x[1])
-    total = sum(stats.values())
+    # 2. Bucketing Logic (Standard vs Exotic)
+    standard_stats = {}
+    exotic_stats = {}
     
-    spectrum_bar_segments = []
-    pills_html = ""
-    
-    if total > 0:
-        for k, v in sorted_stats:
+    for k, v in stats.items():
+        # Heuristic: Check for standard keys defined in Block 6
+        if "ASCII" in k or "LF (" in k or "CR (" in k or "TAB" in k:
+            standard_stats[k] = v
+        else:
+            exotic_stats[k] = v
+
+    # 3. Section Builder Helper
+    def build_spectrum_section(label, data_dict, is_exotic):
+        if not data_dict: return ""
+        
+        # Sort by count desc
+        sorted_items = sorted(data_dict.items(), key=lambda x: -x[1])
+        total = sum(data_dict.values())
+        
+        segments = []
+        pills = []
+        
+        for k, v in sorted_items:
             # Color Mapping
-            # LF/CR = Blue, Space = Gray, Tab = Yellow, Exotic = Orange/Red
-            color_hex = "#94a3b8" # Default Gray
+            color_hex = "#94a3b8" 
             cls = "bg-sp"
             
             if "LF" in k or "CR" in k: 
@@ -17237,24 +17251,42 @@ def render_whitespace_topology(physics_data: dict) -> str:
             elif "QUAD" in k or "EM" in k: 
                 cls = "bg-wide"; color_hex = "#8b5cf6" # Purple
             
-            # A. Build Spectrum Bar Segment
+            # Bar Segment
             pct = (v / total) * 100
-            if pct > 0:
-                # Use inline style for width to be precise
-                spectrum_bar_segments.append(f'<div style="width:{pct}%; background-color:{color_hex};" title="{k}: {v}"></div>')
-
-            # B. Build Pill
-            pills_html += f"""
+            segments.append(f'<div style="width:{pct}%; background-color:{color_hex};" title="{k}: {v}"></div>')
+            
+            # Pill
+            pills.append(f"""
             <div class="ws-pill {cls}">
                 <span class="ws-key">{k}</span>
                 <span class="ws-val">{v}</span>
             </div>
-            """
-    else:
-        pills_html = '<div class="placeholder-text">No whitespace detected.</div>'
-        spectrum_bar_segments.append('<div style="width:100%; background-color:#f1f5f9;"></div>')
+            """)
+            
+        header_cls = "ws-group-header-crit" if is_exotic else "ws-group-header"
+        
+        return f"""
+        <div class="ws-group">
+            <div class="{header_cls}">
+                {label} <span class="ws-group-count">{total}</span>
+            </div>
+            <div class="ws-spectrum-bar">
+                {''.join(segments)}
+            </div>
+            <div class="ws-spectrum-pills">
+                {''.join(pills)}
+            </div>
+        </div>
+        """
 
-    # 3. Metrics Grid
+    # 4. Generate Sections
+    std_html = build_spectrum_section("Standard Substrate", standard_stats, False)
+    exo_html = build_spectrum_section("Exotic / Injection", exotic_stats, True)
+    
+    if not std_html and not exo_html:
+        std_html = '<div class="placeholder-text">No whitespace detected.</div>'
+
+    # 5. Metrics Grid
     metrics_html = f"""
     <div class="ws-metrics-row">
         <div class="ws-metric">
@@ -17272,7 +17304,7 @@ def render_whitespace_topology(physics_data: dict) -> str:
     </div>
     """
 
-    # 4. Final Assembly
+    # 6. Final Assembly
     status_cls = "crit" if alerts else "ok"
     status_lbl = "ANOMALY" if alerts else "STABLE"
     
@@ -17289,12 +17321,9 @@ def render_whitespace_topology(physics_data: dict) -> str:
         
         {metrics_html}
         
-        <div class="ws-spectrum-bar">
-            {''.join(spectrum_bar_segments)}
-        </div>
-        
-        <div class="ws-spectrum-pills">
-            {pills_html}
+        <div class="ws-stacks-container">
+            {exo_html}
+            {std_html}
         </div>
     </div>
     """
