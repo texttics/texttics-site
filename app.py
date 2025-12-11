@@ -4873,7 +4873,7 @@ def scan_geometric_drift(t: str) -> list:
                     "count": 1,
                     "indices": [f"#{i}"]
                 })
-                token_vo_mode = None # Break lock to prevent flooding
+            token_vo_mode = None # Break lock to prevent flooding
         
         # 2. Check Token Status
         # A token is a contiguous run of Letters or Numbers.
