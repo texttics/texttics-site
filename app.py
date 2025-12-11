@@ -21889,6 +21889,22 @@ def update_all(event=None):
             # Geometric Drift -> Authenticity Risk
             register_finding_indices("auth_spoof", finding, "Visual Spoofing")
     
+    # 1. Generate the Alerts (The "Red/Orange" cards)
+    alerts_html = render_structural_anomalies(all_structural_findings)
+    
+    # 2. Generate the Spectrum Bar (The "Elegant Display")
+    # We call the function that was previously ignored
+    spectrum_html = compute_whitespace_topology(t)
+    
+    # 3. Combine them
+    # Stack alerts on top, spectrum bar below
+    final_struct_html = alerts_html + spectrum_html
+    
+    # 4. Inject into the DOM
+    struct_container = document.getElementById("structural-anomalies-body")
+    if struct_container:
+        struct_container.innerHTML = final_struct_html
+    
     # Update Global Context Memory
     # This allows the Inspector to read token risks without re-computing.
     global LATEST_THREAT_DATA
