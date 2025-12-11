@@ -5179,10 +5179,11 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
                 "indices": []
             })
             
-    # 4. HYGIENE & CONSISTENCY ANALYST (Consolidated)
-    
+    # 4. HYGIENE & CONSISTENCY ANALYST (Direct Atomic Scan)
+    # We scan 't' directly to ensure 100% parity with the whitespace profile,
+    # bypassing potential key-name mismatches in lb_counts.
+
     # A. Mixed Spacing (Phishing Heuristic)
-    # Replaces the fragmented "Restores detection..." block
     if has_ascii and has_nbsp:
         findings.append({
             "label": "Mixed Spacing: ASCII + NBSP",
@@ -5193,13 +5194,34 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
             "indices": []
         })
 
-    # B. Line Ending Consistency (Protocol Desynchronization)
-    # Replaces the "Legacy Chaos" check with a rigorous multi-standard check
-    TRACKED_NEWLINES = {'LF', 'CR', 'CRLF', 'NEL', 'LS', 'PS'}
-    present_types = {k for k, v in lb_counts.items() if k in TRACKED_NEWLINES and v > 0}
+    # B. Line Ending Consistency
+    # Detect standards directly from the physics of the string
+    detected_standards = set()
     
-    if len(present_types) > 1:
-        mixed_list = ", ".join(sorted(present_types))
+    # Check for CRLF (Windows)
+    if '\r\n' in t: detected_standards.add('CRLF')
+    
+    # Check for Bare LF (Unix) - remove CRLF first to avoid double counting
+    if '\n' in t.replace('\r\n', ''): detected_standards.add('LF')
+    
+    # Check for Bare CR (Legacy Mac)
+    if '\r' in t.replace('\r\n', ''): detected_standards.add('CR')
+    
+    # Check for Exotic (Unicode)
+    exotic_breaks = []
+    if '\u0085' in t: 
+        detected_standards.add('NEL')
+        exotic_breaks.append('NEL')
+    if '\u2028' in t: 
+        detected_standards.add('LS')
+        exotic_breaks.append('LS')
+    if '\u2029' in t: 
+        detected_standards.add('PS')
+        exotic_breaks.append('PS')
+
+    # Alert 1: Consistency Failure (Mixed Standards)
+    if len(detected_standards) > 1:
+        mixed_list = ", ".join(sorted(detected_standards))
         findings.append({
             "label": "Consistency Failure: Mixed Line Endings",
             "severity": "crit", 
@@ -5209,11 +5231,9 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
             "indices": [] 
         })
 
-    # C. Unicode Newlines (Exotic Char Detection)
-    # Adds the previously missing specific alert for LS/PS/NEL
-    unicode_newlines = present_types.intersection({'NEL', 'LS', 'PS'})
-    if unicode_newlines:
-        found_uni = ", ".join(sorted(unicode_newlines))
+    # Alert 2: Unicode Newlines (Exotic Char Detection)
+    if exotic_breaks:
+        found_uni = ", ".join(sorted(exotic_breaks))
         findings.append({
             "label": "Unicode Newlines Detected",
             "severity": "info", # Info only (unless mixed, which triggers Crit above)
