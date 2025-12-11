@@ -22366,6 +22366,13 @@ def update_all(event=None):
     render_matrix_table(minor_seq_stats, "minor-shape-matrix-body", aliases=ALIASES)
     
     # Whitespace & Newline Topology (The Frankenstein Detector)
+
+    # Whitespace & Newline Topology (The Frankenstein Detector)
+    ws_topology_html = compute_whitespace_topology(t)
+    ws_container = document.getElementById("ws-topology-container")
+    if ws_container:
+        ws_container.innerHTML = ws_topology_html
+    
     # [STAGE 2.0] STRUCTURAL ANOMALIES (Topology + Rhythm + Smuggling + Geometry)
     
     struct_html = render_structural_anomalies(all_structural_findings)
