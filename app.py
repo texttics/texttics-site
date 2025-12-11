@@ -4580,12 +4580,64 @@ def scan_geometric_drift(t: str) -> list:
     token_lock_mode = None  # The established geometry for the current token
     token_is_latin = False  # Track if token contains Latin characters
     in_token = False
+
+    token_vo_mode = None    # [HARDENING] Vertical Orientation Lock
+    
+    # [HARDENING] Access Global Lookup (Safe Fallback)
+    # We attempt to use your global _find_in_ranges for VO data.
+    # If unavailable, we skip the VO check to prevent crashes.
+    def get_vo_mode(cp):
+        try:
+            # Uses your existing Block 5 lookup
+            vo = _find_in_ranges(cp, "VerticalOrientation")
+            return vo if vo else "R" # Default to Rotated (Standard)
+        except:
+            return None
     
     for i, char in enumerate(t):
         
         # 1. Get Physics Properties
         cat_major = unicodedata.category(char)[0] # L, N, Z, P...
         geo_mode = get_geo_mode(char)
+
+        # [HARDENING] 1. Normalization Hazard Scan (Trojan Horse Detector)
+        # Detects characters that mutate into dangerous syntax under NFKC.
+        # e.g. U+FE15 (Vertical !) -> U+0021 (!)
+        dt = unicodedata.decomposition(char)
+        if dt and ("<compat>" in dt or "<vertical>" in dt):
+            # Check if it decomposes to ASCII Syntax
+            norm = unicodedata.normalize('NFKC', char)
+            if any(ord(c) < 128 and not c.isalnum() for c in norm):
+                 findings.append({
+                    "label": "Normalization Hazard (Trojan Character)",
+                    "severity": "crit", # CRITICAL: This is an active evasion attempt
+                    "badge": "EVASION",
+                    "details": f"Character {char} normalizes to dangerous ASCII: '{norm}'",
+                    "count": 1,
+                    "indices": [f"#{i}"]
+                })
+
+        # [HARDENING] 2. Vertical Orientation Scan (UI Redress Detector)
+        cp = ord(char)
+        vo_mode = get_vo_mode(cp)
+        
+        # Only lock if we have valid VO data and are inside a token
+        if in_token and vo_mode and token_vo_mode is None and vo_mode in ('U', 'R', 'Tu', 'Tr'):
+             token_vo_mode = vo_mode
+        
+        elif in_token and token_vo_mode and vo_mode:
+            # Check for Orientation Drift (e.g., Upright char inside Rotated text)
+            # We ignore Neutral (N) or undefined to prevent noise.
+            if vo_mode != token_vo_mode and vo_mode in ('U', 'R'):
+                 findings.append({
+                    "label": "Vertical Orientation Drift",
+                    "severity": "high",
+                    "badge": "TOPOLOGY", 
+                    "details": f"Orientation Mismatch ({token_vo_mode} mixed with {vo_mode}) at #{i}",
+                    "count": 1,
+                    "indices": [f"#{i}"]
+                })
+                token_vo_mode = None # Break lock to prevent flooding
         
         # 2. Check Token Status
         # A token is a contiguous run of Letters or Numbers.
@@ -4601,6 +4653,7 @@ def scan_geometric_drift(t: str) -> list:
                 # START NEW TOKEN
                 in_token = True
                 token_is_latin = is_latin_script(char) # Reset script tracker
+                token_vo_mode = None # [HARDENING] Reset VO Lock
                 
                 # Try to set the Lock immediately
                 if geo_mode != 'NEUTRAL':
