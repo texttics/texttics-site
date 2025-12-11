@@ -184,7 +184,31 @@ class EmojiForensics:
         
         return "UNKNOWN_BLOCK"
 
-    # 3. THE CLASSIFIER LOGIC
+    # 4. AGE ESTIMATOR (Real Unicode 17.0 Data)
+    
+    @staticmethod
+    def get_version(sequence: str):
+        """
+        Look up the exact Unicode Version from the loaded DerivedAge.txt.
+        """
+        # Access the global store we populated in load_unicode_data
+        age_db = DATA_STORES.get("AgeMap", {}) 
+        
+        if not sequence: return "-"
+        if not age_db: return "DB_ERR" # Fallback if file failed to load
+        
+        max_ver = 0.0
+        
+        for char in sequence:
+            cp = ord(char)
+            # Default to 0.0 if not found (e.g. unassigned or private use)
+            ver = age_db.get(cp, 0.0)
+            if ver > max_ver:
+                max_ver = ver
+            
+        return f"v{max_ver}"
+
+    # 4. THE CLASSIFIER LOGIC
     
     @staticmethod
     def classify(sequence: str, is_rgi: bool = False):
@@ -1838,6 +1862,54 @@ DATA_STORES = {
 # ===============================================
 # BLOCK 4. DATA PARSERS & LOADERS
 # ===============================================
+
+def parse_unicode_age_file(filename="DerivedAge.txt"):
+    """
+    Parses the official DerivedAge.txt into a fast lookup dictionary.
+    Returns: { codepoint_int: version_float }
+    """
+    age_map = {}
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            for line in f:
+                # Strip comments and whitespace
+                if "#" in line:
+                    line = line.split("#")[0]
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Format: START..END ; VERSION  OR  START ; VERSION
+                parts = line.split(";")
+                if len(parts) != 2:
+                    continue
+                
+                range_str = parts[0].strip()
+                version_str = parts[1].strip()
+                
+                try:
+                    # Convert "1.1" -> 1.1, "13.0" -> 13.0
+                    version_val = float(version_str)
+                    
+                    if ".." in range_str:
+                        start_hex, end_hex = range_str.split("..")
+                        start = int(start_hex, 16)
+                        end = int(end_hex, 16)
+                        # Map the range
+                        for cp in range(start, end + 1):
+                            age_map[cp] = version_val
+                    else:
+                        cp = int(range_str, 16)
+                        age_map[cp] = version_val
+                except ValueError:
+                    continue
+                    
+        print(f"Loaded Real Age Data: {len(age_map)} codepoints.")
+        return age_map
+
+    except Exception as e:
+        print(f"CRITICAL: Could not load {filename}: {e}")
+        return {}
 
 # Stage 1.9 Universal Physics Parsers
 
