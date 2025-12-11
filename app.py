@@ -192,40 +192,47 @@ class EmojiForensics:
         depth = len(codepoints)
         primary_cp = codepoints[0]
         
+        # 1. BASE RESOLUTION (The Origin)
+        # We calculate this ONCE and DO NOT overwrite it. 
+        # This ensures the 'Base' column always shows the Unicode Block (e.g., 'EMOTICONS').
+        base = EmojiForensics._resolve_block_name(primary_cp)
+        
         # Defaults
         kind = "ATOM"
-        base = EmojiForensics._resolve_block_name(primary_cp) # <--- Using New Resolver
         status_flags = []
         is_component = False
 
         # A. SINGLE COMPONENT LOOKUP (Trojan Check)
         if depth == 1:
-            # Check Singles O(1)
             if primary_cp in EmojiForensics.COMPONENT_SINGLES:
-                k, b, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
-                kind, base = k, b
+                k, b_override, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
+                kind = k
+                base = b_override # Exception: Components define their own semantic base
                 status_flags.append(s)
                 is_component = True
-            # Check Ranges O(N)
             else:
-                for start, end, k, b, s in EmojiForensics.COMPONENT_RANGES:
+                for start, end, k, b_override, s in EmojiForensics.COMPONENT_RANGES:
                     if start <= primary_cp <= end:
-                        kind, base = k, b
+                        kind = k
+                        base = b_override
                         status_flags.append(s)
                         is_component = True
                         break
 
         # B. SEQUENCE ANALYSIS
         if not is_component and depth > 1:
+            # We determine KIND based on structure, but keep BASE as the Origin Block.
             if 0x200D in codepoints:
                 kind = "SEQ_ZWJ"
-                base = "COMPLEX_SEQUENCE"
+                # Forensic Check: Does it END with a ZWJ? (The "Cliffhanger" Error)
+                if codepoints[-1] == 0x200D:
+                    status_flags.append("TRAILING_GLUE_ERROR")
             elif any(0x1F1E6 <= cp <= 0x1F1FF for cp in codepoints):
                 kind = "SEQ_FLAG"
-                base = "FLAG_SEQUENCE"
+                # Refinement: If it's a flag, we can be specific about the base
+                base = "REGIONAL_INDICATOR_PAIR" 
             elif any(0x1F3FB <= cp <= 0x1F3FF for cp in codepoints):
                 kind = "SEQ_MODIFIER" 
-                base = "MODIFIED_BODY"
             else:
                 kind = "SEQ_OTHER"
 
@@ -233,7 +240,7 @@ class EmojiForensics:
         if is_rgi:
             status_flags.insert(0, "FULLY_QUALIFIED_RGI")
         elif is_component:
-            pass # We already have the specific forensic error (e.g. SHATTERED_GLUE)
+            pass 
         else:
             status_flags.append("UNQUALIFIED")
 
