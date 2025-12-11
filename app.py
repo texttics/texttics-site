@@ -18384,8 +18384,8 @@ def render_integrity_matrix(rows, text_context=None):
 
 def render_emoji_qualification_table(emoji_list, text_context=None):
     """
-    Renders the Emoji Qualification Profile table with Forensic Legend and Base Category.
-    Columns: Sequence | Kind | Base | RGI? | Status | Count | Positions
+    Renders the Forensic Emoji Profile (V2.0).
+    Now includes: Hex Fingerprint, Unicode Block Origin, and Structural Diagnostics.
     """
     element = document.getElementById("emoji-qualification-body")
     if not element: return
@@ -18402,7 +18402,10 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
                 'status': item.get("status", "unknown"),
                 'kind': item.get("kind", "unknown"),
                 'rgi': item.get("rgi", False),
-                'base_cat': item.get("base_cat", "So"),
+                # [STEP 3] Capture the precise forensic base (e.g. 'ENCLOSED_ALPHANUM')
+                'base_cat': item.get("base_cat", "Unknown"), 
+                # [STEP 4] Capture the Hex Fingerprint
+                'hex': item.get("hex", ""),
                 'count': 0, 
                 'indices': []
             }
@@ -18416,43 +18419,64 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     for seq in sorted_keys:
         data = grouped[seq]
         
-        # 1. Sequence
-        td_seq = f'<td style="font-size: 1.5rem; font-family: var(--font-mono);">{seq}</td>'
+        # 1. Sequence + [STEP 4] Hex Fingerprint
+        # We display the Hex below the glyph to prove identity
+        hex_print = data.get('hex', '')
+        td_seq = f'''
+        <td>
+            <div style="display: flex; flex-direction: column;">
+                <span style="font-size: 1.5rem; line-height: 1.2;">{seq}</span>
+                <span style="font-size: 0.7rem; color: #9ca3af; font-family: var(--font-mono); margin-top: 2px;">{hex_print}</span>
+            </div>
+        </td>
+        '''
         
         # 2. Kind Badge
-        k_cls = "legend-badge"
         kind_raw = data['kind'].replace("emoji-", "").upper()
-        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;"
-        if kind_raw == 'SEQUENCE':
-            k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;"
-        elif kind_raw == 'COMPONENT':
-            k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;"
+        # Visual Mapping for Kind
+        k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Default ATOM
+        if 'SEQ' in kind_raw:
+             k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue for Seq
+        elif 'COMP' in kind_raw:
+             k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red for Comp
             
-        td_kind = f'<td><span class="{k_cls}" style="{k_style}">{kind_raw}</span></td>'
+        td_kind = f'<td><span class="legend-badge" style="{k_style}">{kind_raw}</span></td>'
         
-        # 3. Base Category Badge
-        cat = data.get('base_cat', 'So')
-        cat_label = "SYM" if cat.startswith("S") else ("LET" if cat.startswith("L") else "OTH")
-        cat_style = "background-color: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono);"
-        td_base = f'<td><span style="{cat_style}" title="General Category: {cat}">{cat_label}</span></td>'
+        # 3. [STEP 3] Base Origin (Precise Block Name)
+        # We display the raw block name (e.g., "ENCLOSED_ALPHANUM") instead of "SYM"
+        origin_raw = data.get('base_cat', 'UNKNOWN').replace("_", " ")
+        # Forensic styling: monospaced, small, technical
+        cat_style = "background-color: #f8fafc; color: #475569; border: 1px solid #e2e8f0; font-size: 0.65rem; padding: 3px 6px; border-radius: 4px; font-family: var(--font-mono); text-transform: uppercase; white-space: nowrap;"
+        td_base = f'<td><span style="{cat_style}" title="Unicode Block Origin">{origin_raw}</span></td>'
         
         # 4. RGI Badge
-        r_cls = "legend-badge"
         if data['rgi']:
             r_style = "background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0;"
             r_text = "YES"
         else:
             r_style = "background-color: #fffbeb; color: #b45309; border-color: #fcd34d;"
             r_text = "NO"
-        td_rgi = f'<td><span class="{r_cls}" style="{r_style}">{r_text}</span></td>'
+        td_rgi = f'<td><span class="legend-badge" style="{r_style}">{r_text}</span></td>'
 
-        # 5. Status Pill
-        s_text = data['status'].replace('-', ' ').title()
+        # 5. [STEP 2] Status Pill (Forensic State)
+        # Logic to color-code the new forensic labels
+        status_raw = data['status']
+        s_text = status_raw.replace('_', ' ').replace(' · ', '<br>').title() # Split complex status
+        
         s_cls = "legend-pill legend-pill-neutral"
-        if data['status'] == "fully-qualified": s_cls = "legend-pill legend-pill-ok"
-        elif data['status'] == "unqualified": s_cls = "legend-pill legend-pill-warn"
-        elif data['status'] == "component": s_cls = "legend-pill legend-pill-warn"
-        td_status = f'<td><span class="{s_cls}">{s_text}</span></td>'
+        # Green Conditions
+        if "fully" in status_raw.lower(): 
+            s_cls = "legend-pill legend-pill-ok"
+        # Red Conditions (Forensic Errors)
+        elif any(x in status_raw for x in ["FRAGMENT", "SHATTERED", "ORPHAN", "LEAK", "DANGLING"]):
+            s_cls = "legend-pill legend-pill-error" # Defined in CSS or fallback to warn
+            # Manual override if class missing:
+            s_text = f'<span style="color: #dc2626; font-weight: 700;">{s_text}</span>'
+        # Yellow Conditions
+        elif "unqualified" in status_raw.lower() or "ambiguous" in status_raw.lower():
+            s_cls = "legend-pill legend-pill-warn"
+
+        td_status = f'<td><span class="{s_cls}" style="font-size: 0.75rem;">{s_text}</span></td>'
 
         # 6. Count
         td_count = f'<td>{data["count"]}</td>'
@@ -18477,28 +18501,26 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
 
         html.append(f'<tr>{td_seq}{td_kind}{td_base}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
 
-    # Forensic Legend
+    # Forensic Legend (Updated for V2.0)
     legend_html = """
     <tr>
         <td colspan="7" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
                 <div>
                     <strong>KIND (Structure):</strong><br>
-                    • <b>ATOMIC:</b> Single code point.<br>
-                    • <b>SEQUENCE:</b> Multi-char unit.<br>
-                    • <b>COMPONENT:</b> Leaked part.
+                    • <b>ATOM:</b> Single unit.<br>
+                    • <b>SEQ:</b> Combined sequence.<br>
+                    • <b>COMP:</b> Technical component.
                 </div>
                 <div>
-                    <strong>BASE (Category):</strong><br>
-                    • <b>SYM:</b> Symbol (S*).<br>
-                    • <b>LET:</b> Letter (L*).<br>
-                    • <b>OTH:</b> Other/Mark.
+                    <strong>BASE (Origin):</strong><br>
+                    • Precise <b>Unicode Block</b> identifying the character's source (e.g., Emoticons vs Transport).
                 </div>
                 <div>
-                    <strong>STATUS (Integrity):</strong><br>
-                    • <b>RGI YES:</b> Standard.<br>
-                    • <b>Unqualified:</b> Non-std/Missing VS.<br>
-                    • <b>Component:</b> Fragment.
+                    <strong>STATUS (Forensics):</strong><br>
+                    • <span style="color:#dc2626"><b>Shattered/Fragment:</b></span> Broken logic.<br>
+                    • <span style="color:#b45309"><b>Unqualified:</b></span> Display variation.<br>
+                    • <span style="color:#15803d"><b>RGI:</b></span> Industry Standard.
                 </div>
             </div>
         </td>
