@@ -8748,149 +8748,193 @@ def analyze_bidi_structure(t: str, rows: list):
                      
     return penalty_count, fracture_ranges, danger_ranges
 
-def compute_whitespace_topology(t):
+def compute_whitespace_physics(t: str) -> dict:
     """
-    Analyzes Whitespace & Line Ending Topology.
-    Design: Substrate Analysis (Spectrum Bar).
+    [Stage 2.3] Whitespace Physicist (Research Grade).
+    
+    Replaces visualizer logic with deep metric analysis.
+    Implements: GCS (Wallbuilder), WCI (Smuggling), LBE (Desync).
+    Tracks: All 25 Unicode White_Space chars + 5 Invisible Layout controls.
+    
+    Returns:
+        dict: Structured physics data (metrics + stats).
     """
-    # --- 1. THE PHYSICS (Counting Logic Restored) ---
-    ws_stats = collections.Counter()
-    prev_was_cr = False
-    
-    # Flags
-    has_lf = False
-    has_cr = False
-    has_crlf = False
-    has_nel = False
-    has_ls_ps = False
+    import math
+    import unicodedata
+    import collections
 
-    for ch in t:
-        # Newline State Machine
-        if ch == '\n':
-            if prev_was_cr:
-                ws_stats['CRLF (Windows)'] += 1
-                has_crlf = True
-                prev_was_cr = False
-            else:
-                ws_stats['LF (Unix)'] += 1
-                has_lf = True
-        elif ch == '\r':
-            if prev_was_cr:
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-            prev_was_cr = True
-        elif ch == '\u0085':
-            ws_stats['NEL (Next Line)'] += 1
-            has_nel = True
-            prev_was_cr = False
-        elif ch == '\u2028':
-            ws_stats['LS (Line Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        elif ch == '\u2029':
-            ws_stats['PS (Para Sep)'] += 1
-            has_ls_ps = True
-            prev_was_cr = False
-        else:
-            # Dangling CR check
-            if prev_was_cr:
-                ws_stats['CR (Legacy Mac)'] += 1
-                has_cr = True
-                prev_was_cr = False
-            
-            # Spacing Check
-            if ch == '\u0020': ws_stats['SPACE (ASCII)'] += 1
-            elif ch == '\u00A0': ws_stats['NBSP (Non-Breaking)'] += 1
-            elif ch == '\t': ws_stats['TAB'] += 1
-            elif ch == '\u3000': ws_stats['IDEOGRAPHIC SPACE'] += 1
-            elif unicodedata.category(ch) == 'Zs':
-                try: name = unicodedata.name(ch, 'UNKNOWN SPACE')
-                except: name = 'UNKNOWN SPACE'
-                ws_stats[f"{name} (U+{ord(ch):04X})"] += 1
-
-    # Final dangling CR
-    if prev_was_cr:
-        ws_stats['CR (Legacy Mac)'] += 1
-        has_cr = True
-
-    # --- 2. THE RENDERER (Visuals) ---
+    # --- 1. THE PHYSICS MODEL (Universe Definition) ---
     
-    # A. Alerts
-    alerts = []
+    # A. The 25 Official White_Space Characters (Unicode v17)
+    # Grouped by Physics Role
     
-    # Mixed Line Endings Logic
-    newline_types_count = sum([has_lf, has_cr, has_crlf, has_nel, has_ls_ps])
-    if newline_types_count > 1:
-        alerts.append('<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Consistency Failure:</strong> Mixed Line Endings</div>')
-    
-    # Unicode Newlines Logic
-    if has_nel or has_ls_ps:
-        alerts.append('<div class="ws-alert info"><span class="icon">ℹ️</span> <strong>Unicode Newlines:</strong> LS/PS/NEL Detected</div>')
-
-    # Deceptive Spacing Logic
-    if ws_stats['SPACE (ASCII)'] > 0 and ws_stats['NBSP (Non-Breaking)'] > 0:
-        alerts.append('<div class="ws-alert warn"><span class="icon">⚠️</span> <strong>Mixed Spacing:</strong> ASCII + NBSP (Phishing Risk)</div>')
-
-    # B. Spectrum Bar
-    total = sum(ws_stats.values())
-    spectrum_html = ""
-    legend_html = ""
-    
-    # Color Mapping (Forensic Palette)
-    KEY_MAP = {
-        'SPACE (ASCII)': ('bg-sp', '#cbd5e1'),   # Slate-300
-        'LF (Unix)': ('bg-lf', '#3b82f6'),       # Blue-500
-        'CRLF (Windows)': ('bg-crlf', '#a855f7'),# Purple-500
-        'TAB': ('bg-tab', '#eab308'),            # Yellow-500
-        'LS (Line Sep)': ('bg-ls', '#ef4444'),   # Red-500
-        'PS (Para Sep)': ('bg-ls', '#ef4444'),   # Red-500
-        'NEL (Next Line)': ('bg-ls', '#ef4444'), # Red-500
-        'NBSP (Non-Breaking)': ('bg-ls', '#f97316') # Orange-500
+    # Group 1: Vertical / Breaks (The Terminators)
+    WS_BREAKS = {
+        0x000A: 'LF (Line Feed)',
+        0x000B: 'VT (Vertical Tab)',
+        0x000C: 'FF (Form Feed)',
+        0x000D: 'CR (Carriage Return)',
+        0x0085: 'NEL (Next Line)',
+        0x2028: 'LS (Line Separator)',
+        0x2029: 'PS (Para Separator)',
     }
+    
+    # Group 2: Horizontal / Tabs (The Spacers)
+    WS_SPACERS = {
+        0x0009: 'TAB (Horizontal)',
+        0x0020: 'SPACE (ASCII)',
+        0x00A0: 'NBSP (Non-Break)',
+        0x1680: 'OGHAM SPACE MARK',
+        0x2000: 'EN QUAD',
+        0x2001: 'EM QUAD',
+        0x2002: 'EN SPACE',
+        0x2003: 'EM SPACE',
+        0x2004: 'THREE-PER-EM SPACE',
+        0x2005: 'FOUR-PER-EM SPACE',
+        0x2006: 'SIX-PER-EM SPACE',
+        0x2007: 'FIGURE SPACE',
+        0x2008: 'PUNCTUATION SPACE',
+        0x2009: 'THIN SPACE',
+        0x200A: 'HAIR SPACE',
+        0x202F: 'NARROW NO-BREAK SPACE',
+        0x205F: 'MEDIUM MATH SPACE',
+        0x3000: 'IDEOGRAPHIC SPACE',
+    }
+    
+    # Group 3: The "Ghosts" (Space-like but not White_Space=Yes)
+    # Critical for Layout Topology but technically different property.
+    WS_GHOSTS = {
+        0x180E: 'MVS (Mongolian Vowel Sep)',
+        0x200B: 'ZWSP (Zero Width Space)',
+        0x200C: 'ZWNJ (Zero Width Non-Joiner)',
+        0x200D: 'ZWJ (Zero Width Joiner)',
+        0x2060: 'WJ (Word Joiner)',
+        0xFEFF: 'BOM (Zero Width No-Break)',
+    }
+    
+    # B. Standard vs Exotic (For WCI Metric)
+    # Standard = ASCII Space + Tab + LF + CR
+    STANDARD_SET = {0x0020, 0x0009, 0x000A, 0x000D}
 
-    if total > 0:
-        # Sort by count desc
-        for k, v in ws_stats.most_common():
-            pct = (v / total) * 100
-            # Default styling for unknowns
-            cls, hex_col = KEY_MAP.get(k, ('bg-sp', '#94a3b8'))
+    # --- 2. RAW DATA COLLECTION (The Scan) ---
+    
+    ws_stats = collections.Counter()
+    line_widths = []  # For GCS (Wallbuilder)
+    break_types = []  # For LBE (Entropy)
+    
+    current_line_width = 0
+    total_ws_count = 0   # Count of Spacers + Ghosts
+    exotic_ws_count = 0  # Count of non-Standard Spacers
+    
+    for char in t:
+        cp = ord(char)
+        cat = unicodedata.category(char)
+        
+        # --- A. Line Width Logic (East Asian Width) ---
+        # UAX #11: Wide(W)/Full(F) = 2, Others = 1, Marks = 0
+        eaw = unicodedata.east_asian_width(char)
+        if cat.startswith('M'): 
+            width = 0
+        elif eaw in ('W', 'F'): 
+            width = 2
+        else: 
+            width = 1
             
-            # 1. Bar Segment
-            spectrum_html += f'<div class="ws-seg {cls}" style="width:{pct}%" title="{k}: {v}"></div>'
+        current_line_width += width
+        
+        # --- B. Identification Logic ---
+        
+        is_break = False
+        is_spacer = False
+        
+        if cp in WS_BREAKS:
+            # It is a terminator
+            key = WS_BREAKS[cp]
+            ws_stats[key] += 1
+            break_types.append(key)
+            is_break = True
             
-            # 2. Legend Item
-            label = k.split('(')[0].strip()
-            legend_html += f"""
-            <div class="wl-item">
-                <span class="wl-dot {cls}"></span>
-                <span class="wl-key">{label}</span>
-                <span class="wl-val">{v}</span>
-            </div>
-            """
-    else:
-        spectrum_html = '<div class="ws-seg bg-sp" style="width:100%; opacity:0.1"></div>'
-        legend_html = '<span style="color:#94a3b8; font-style:italic;">No whitespace detected.</span>'
+        elif cp in WS_SPACERS:
+            # It is a visible space
+            key = WS_SPACERS[cp]
+            ws_stats[key] += 1
+            is_spacer = True
+            
+        elif cp in WS_GHOSTS:
+            # It is an invisible structural spacer
+            key = WS_GHOSTS[cp]
+            ws_stats[key] += 1
+            is_spacer = True # Treat as spacer for stats
+            
+        # Fallback for future Unicode versions (if new Zs appears)
+        elif cat == 'Zs':
+            try: name = unicodedata.name(char).split(' ')[-1]
+            except: name = 'UNKNOWN'
+            key = f"{name} (U+{cp:04X})"
+            ws_stats[key] += 1
+            is_spacer = True
+            
+        # --- C. Metric Accumulation ---
+        
+        if is_break:
+            line_widths.append(current_line_width)
+            current_line_width = 0
+            # Breaks are not usually counted in "Whitespace Complexity" denominator
+            # unless we consider them structural. We exclude them to focus on *spacing*.
+            
+        if is_spacer:
+            total_ws_count += 1
+            if cp not in STANDARD_SET:
+                exotic_ws_count += 1
 
-    return f"""
-    <div class="fx-card ws-panel">
-        <div class="fx-header">
-            <span>Whitespace Topology</span>
-            <span class="fx-badge { 'crit' if alerts else 'ok' }">{ 'ANOMALY' if alerts else 'STABLE' }</span>
-        </div>
+    # Capture last line width
+    line_widths.append(current_line_width)
+
+    # --- 3. PHYSICS CALCULATIONS (The Formulas) ---
+    
+    # Metric 1: Grid Consistency Score (GCS)
+    # Target: Wallbuilder Attacks
+    # Logic: 1.0 = Perfect Block (Code/Wall), 0.0 = High Jitter (Prose)
+    gcs = 0.0
+    raggedness = 0.0
+    if len(line_widths) > 1:
+        mean_w = sum(line_widths) / len(line_widths)
+        variance = sum((x - mean_w) ** 2 for x in line_widths) / len(line_widths)
+        std_dev = math.sqrt(variance)
         
-        <div class="ws-alert-box">
-            {''.join(alerts)}
-        </div>
-        
-        <div class="ws-spectrum">
-            {spectrum_html}
-        </div>
-        
-        <div class="ws-legend">
-            {legend_html}
-        </div>
-    </div>
-    """
+        # Raggedness (Coefficient of Variation)
+        raggedness = std_dev / (mean_w + 0.001)
+        # GCS = Inverse Raggedness (Normalized)
+        gcs = 1.0 / (1.0 + raggedness)
+
+    # Metric 2: Whitespace Complexity Index (WCI)
+    # Target: Smuggling / Evasion
+    # Logic: Ratio of Exotic to Total Spacers
+    wci = 0.0
+    if total_ws_count > 0:
+        wci = exotic_ws_count / total_ws_count
+
+    # Metric 3: Line Break Entropy (LBE)
+    # Target: Desynchronization
+    # Logic: Shannon Entropy of break types
+    lbe = 0.0
+    total_breaks = len(break_types)
+    if total_breaks > 0:
+        counts = collections.Counter(break_types)
+        for k in counts:
+            p = counts[k] / total_breaks
+            lbe -= p * math.log2(p)
+
+    return {
+        "metrics": {
+            "gcs": round(gcs, 3),        # Grid Consistency
+            "wci": round(wci, 3),        # Complexity
+            "lbe": round(lbe, 3),        # Break Entropy
+            "raggedness": round(raggedness, 3)
+        },
+        "stats": dict(ws_stats),         # Raw counts for Spectrum Bar
+        "breaks": list(set(break_types)) # Unique break types found
+    }
 
 # C. Scientific Threat Intelligence (The Papers)
 
