@@ -88,58 +88,48 @@ def _debug_threat_bridge(t: str, hit: tuple):
 
 class EmojiForensics:
     """
-    Implements the 'Forensic Upgrade Plan' taxonomy for emoji analysis.
-    Distinguishes between Structural Kind, Semantic Base, and Forensic Status.
-    Source: Unicode Emoji_Component property (UTS #51) + Forensic Semantics.
+    Forensic Taxonomy Engine v2.0
+    - AXIS 1 (KIND): Structural mechanism (Component vs Atom vs Sequence)
+    - AXIS 2 (BASE): Precise Unicode Block Origin (Map/Transport vs Emoticon vs Enclosed)
+    - AXIS 3 (STATUS): Forensic State (Shattered, Orphan, Fragment, Leaked)
     """
+
+    # 1. FORENSIC DICTIONARIES
     
-    # 1. THE FORENSIC DICTIONARY (Taxonomy Definitions)
-    
-    # Range-based Component Rules (Official Emoji_Component ranges + Forensic Status)
-    # Format: (Start, End, Kind, Base, Default_Orphan_Status)
+    # Range-based Component Rules
     COMPONENT_RANGES = [
-        # Regional Indicator letters (U+1F1E6..U+1F1FF) - The "Flag Letters"
-        (0x1F1E6, 0x1F1FF, "COMP_INDICATOR_REGIONAL", "REGIONAL", "FRAGMENT_FLAG_LEAK"),
+        # Regional Indicators (The "Flag Letters") -> ENCLOSED_ALPHANUM block context
+        (0x1F1E6, 0x1F1FF, "COMP_INDICATOR_REGIONAL", "ENCLOSED_ALPHANUM", "FRAGMENT_FLAG_LEAK"),
 
-        # Skin tone modifiers (U+1F3FB..U+1F3FF) - Fitzpatrick Types
-        (0x1F3FB, 0x1F3FF, "COMP_MODIFIER_SKIN",      "BODY",     "ORPHAN_SKIN_TONE"),
+        # Skin Tones -> MISC_SYMBOLS context
+        (0x1F3FB, 0x1F3FF, "COMP_MODIFIER_SKIN",      "BODY_MODIFIERS",  "ORPHAN_SKIN_TONE"),
 
-        # Hairstyle components (U+1F9B0..U+1F9B3) - Red, Curly, Bald, White
-        (0x1F9B0, 0x1F9B3, "COMP_HAIR",               "BODY",     "ORPHAN_HAIR_COMPONENT"),
+        # Hair Components -> SYMBOLS_EXT_A context
+        (0x1F9B0, 0x1F9B3, "COMP_HAIR",               "BODY_MODIFIERS",  "ORPHAN_HAIR_COMPONENT"),
 
-        # Tag characters (U+E0020..U+E007E) - Sub-region flags / IDs
-        (0xE0020, 0xE007E, "COMP_TAG",                "TAG",      "INVISIBLE_TAG_FRAGMENT"),
+        # Tags -> SPECIAL tags block
+        (0xE0020, 0xE007E, "COMP_TAG",                "TAG_SPECIFIERS",  "INVISIBLE_TAG_FRAGMENT"),
     ]
 
-    # Single Character Component Rules (The "Singleton Specials")
-    # Format: Codepoint: (Kind, Base, Default_Orphan_Status)
+    # Single Character Rules (The "Singleton Specials")
     COMPONENT_SINGLES = {
-        # --- GLUE / META CONTROLS ---------------------------------------------
+        # --- THE SHATTERED GLUE (ZWJ) ---
+        # If we see this alone, a sequence has definitely "Shattered"
         0x200D: (
             "COMP_JOINER_ZWJ", 
-            "CTRL", 
-            "DANGLING_JOINER"         # ZWJ appearing without neighbors
+            "CTRL_FORMAT", 
+            "SHATTERED_GLUE"          # <--- Explicit Forensic Diagnosis
         ),
-        0xFE0F: (
-            "COMP_SELECTOR_EMOJI", 
-            "CTRL", 
-            "STRAY_SELECTOR_EMOJI"    # VS16 without a base
-        ),
-        0xFE0E: (
-            "COMP_SELECTOR_TEXT", 
-            "CTRL", 
-            "STRAY_SELECTOR_TEXT"     # VS15 forcing text style
-        ),
-        0x20E3: (
-            "COMP_KEYCAP_MARK", 
-            "MARK", 
-            "ORPHAN_KEYCAP_MARK"      # Keycap enclosing mark without a digit
-        ),
-        0xE007F: (
-            "COMP_TAG_END", 
-            "TAG", 
-            "ORPHAN_TAG_END"          # Cancel Tag not attached to sequence
-        ),
+        
+        # --- SELECTORS ---
+        0xFE0F: ("COMP_SELECTOR_EMOJI", "CTRL_VARIATION", "STRAY_SELECTOR_EMOJI"),
+        0xFE0E: ("COMP_SELECTOR_TEXT",  "CTRL_VARIATION", "STRAY_SELECTOR_TEXT"),
+        
+        # --- KEYCAP GLUE ---
+        0x20E3: ("COMP_KEYCAP_MARK",    "MARK_ENCLOSING", "ORPHAN_KEYCAP_MARK"),
+        
+        # --- TAG END ---
+        0xE007F: ("COMP_TAG_END",       "TAG_CTRL",       "ORPHAN_TAG_END"),
 
         # --- KEYCAP BASES (Official Emoji_Component) --------------------------
         # Symbols
@@ -166,79 +156,91 @@ class EmojiForensics:
         "NONE": "AMBIGUOUS"
     }
 
-    # 2. THE RESOLVER LOGIC
+
+    # 2. ORIGIN TRACING (Block Resolver)
 
     @staticmethod
+    def _resolve_block_name(cp):
+        """
+        Maps a codepoint to its precise Unicode Block for forensic context.
+        Replaces vague 'SYM' with forensic specificity.
+        """
+        # Emoji-relevant blocks
+        if 0x1F600 <= cp <= 0x1F64F: return "EMOTICONS"
+        if 0x1F300 <= cp <= 0x1F5FF: return "MISC_SYMBOLS_PICT"
+        if 0x1F680 <= cp <= 0x1F6FF: return "TRANSPORT_MAP"
+        if 0x2600  <= cp <= 0x26FF:  return "MISC_SYMBOLS"
+        if 0x2700  <= cp <= 0x27BF:  return "DINGBATS"
+        if 0x1F900 <= cp <= 0x1F9FF: return "SYMBOLS_EXT_A"
+        if 0x1FA70 <= cp <= 0x1FAFF: return "SYMBOLS_EXT_B"
+        
+        # Enclosed / Regional Indicators often leak here
+        if 0x1F100 <= cp <= 0x1F1FF: return "ENCLOSED_ALPHANUM_SUP" 
+        if 0x2460  <= cp <= 0x24FF:  return "ENCLOSED_ALPHANUM"
+        
+        # Fallback to standard generic categories
+        if cp <= 0x7F: return "ASCII"
+        if 0x80 <= cp <= 0xFF: return "LATIN_1_SUP"
+        
+        return "UNKNOWN_BLOCK"
+
+    # 3. THE CLASSIFIER LOGIC
+    
+    @staticmethod
     def classify(sequence: str, is_rgi: bool = False):
-        """
-        Diagnoses a single emoji unit (grapheme cluster).
-        Returns specific Kind, Base, and Status forensics.
-        """
         codepoints = [ord(c) for c in sequence]
         depth = len(codepoints)
         primary_cp = codepoints[0]
         
-        # --- AXIS 1: KIND & BASE ---
-        kind = "ATOM"          # Default
-        base = "SYMBOL"        # Default
+        # Defaults
+        kind = "ATOM"
+        base = EmojiForensics._resolve_block_name(primary_cp) # <--- Using New Resolver
         status_flags = []
-
-        # A. Check if it's a known Component (The "Trojan" check)
         is_component = False
-        
-        # Check Singles (Dictionary Lookup - O(1))
-        if depth == 1 and primary_cp in EmojiForensics.COMPONENT_SINGLES:
-            k, b, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
-            kind, base = k, b
-            status_flags.append(s) # It is alone, so it assumes the orphan status
-            is_component = True
-            
-        # Check Ranges (Iterative Lookup - O(N))
-        elif depth == 1:
-            for start, end, k, b, s in EmojiForensics.COMPONENT_RANGES:
-                if start <= primary_cp <= end:
-                    kind, base = k, b
-                    status_flags.append(s)
-                    is_component = True
-                    break
 
-        # B. Handle Sequences (If not a single component)
+        # A. SINGLE COMPONENT LOOKUP (Trojan Check)
+        if depth == 1:
+            # Check Singles O(1)
+            if primary_cp in EmojiForensics.COMPONENT_SINGLES:
+                k, b, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
+                kind, base = k, b
+                status_flags.append(s)
+                is_component = True
+            # Check Ranges O(N)
+            else:
+                for start, end, k, b, s in EmojiForensics.COMPONENT_RANGES:
+                    if start <= primary_cp <= end:
+                        kind, base = k, b
+                        status_flags.append(s)
+                        is_component = True
+                        break
+
+        # B. SEQUENCE ANALYSIS
         if not is_component and depth > 1:
             if 0x200D in codepoints:
                 kind = "SEQ_ZWJ"
-                base = "COMPLEX" # ideally needs CLDR lookup
+                base = "COMPLEX_SEQUENCE"
             elif any(0x1F1E6 <= cp <= 0x1F1FF for cp in codepoints):
                 kind = "SEQ_FLAG"
-                base = "FLAG"
+                base = "FLAG_SEQUENCE"
             elif any(0x1F3FB <= cp <= 0x1F3FF for cp in codepoints):
                 kind = "SEQ_MODIFIER" 
-                base = "BODY"
+                base = "MODIFIED_BODY"
             else:
                 kind = "SEQ_OTHER"
 
-        # --- AXIS 2: STATUS (Forensic Diagnosis) ---
-        
-        # 1. Conformance Layer
+        # C. STATUS DIAGNOSIS
         if is_rgi:
             status_flags.insert(0, "FULLY_QUALIFIED_RGI")
         elif is_component:
-            pass # Already added the specific diagnostic (e.g., FLAG_FRAGMENT)
+            pass # We already have the specific forensic error (e.g. SHATTERED_GLUE)
         else:
             status_flags.append("UNQUALIFIED")
 
-        # 2. Presentation Layer (Axis 3)
-        presentation = "AMBIGUOUS"
-        if 0xFE0F in codepoints:
-            presentation = "EMOJI_LOCKED"
-        elif 0xFE0E in codepoints:
-            presentation = "TEXT_LOCKED"
-        
-        status_flags.append(presentation)
-
-        # 3. Risk Overlay (Axis 4 - Age/Depth)
-        # (Simplified age check for demonstration)
-        if depth > 5:
-            status_flags.append("HIGH_DENSITY")
+        # D. PRESENTATION LOCKS
+        if 0xFE0F in codepoints: status_flags.append("EMOJI_LOCKED")
+        elif 0xFE0E in codepoints: status_flags.append("TEXT_LOCKED")
+        else: status_flags.append("AMBIGUOUS")
 
         return {
             "sequence": sequence,
