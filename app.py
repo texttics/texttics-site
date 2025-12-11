@@ -5179,22 +5179,10 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
                 "indices": []
             })
             
-    # CASE 3: The "Legacy Chaos" Check (CR vs LF)
-    # Detects CRLF mixed with bare CR or bare LF. Not a security threat, but data hygiene.
-    has_cr = 'CR' in found_breaks
-    has_lf = 'LF' in found_breaks
-    # If we rely on UAX#14 logic, CRLF might be distinct or counted as CR+LF. 
-    # We assume lb_counts comes from compute_linebreak_analysis which splits them.
-    # Note: This is lower priority, so we only flag if significant.
-    if has_cr and has_lf and not has_injection:
-        # Check counts to see if it's systematic mixing
-        c_cr = lb_counts.get('CR', 0)
-        c_lf = lb_counts.get('LF', 0)
-        # Simple heuristic: If ratios are wildly off, it's messy.
-        # We skip adding a finding here to reduce noise, unless requested.
-        pass
-
-    # Restores the specific detection of ASCII mixed with NBSP
+    # 4. HYGIENE & CONSISTENCY ANALYST (Consolidated)
+    
+    # A. Mixed Spacing (Phishing Heuristic)
+    # Replaces the fragmented "Restores detection..." block
     if has_ascii and has_nbsp:
         findings.append({
             "label": "Mixed Spacing: ASCII + NBSP",
@@ -5202,6 +5190,36 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
             "badge": "SPOOF",
             "details": "Standard Space mixed with Non-Breaking Space. Common phishing signature.",
             "count": 1, 
+            "indices": []
+        })
+
+    # B. Line Ending Consistency (Protocol Desynchronization)
+    # Replaces the "Legacy Chaos" check with a rigorous multi-standard check
+    TRACKED_NEWLINES = {'LF', 'CR', 'CRLF', 'NEL', 'LS', 'PS'}
+    present_types = {k for k, v in lb_counts.items() if k in TRACKED_NEWLINES and v > 0}
+    
+    if len(present_types) > 1:
+        mixed_list = ", ".join(sorted(present_types))
+        findings.append({
+            "label": "Consistency Failure: Mixed Line Endings",
+            "severity": "crit", 
+            "badge": "PROTOCOL",
+            "details": f"Active Desynchronization Risk. Standards mixed: {mixed_list}",
+            "count": 1, 
+            "indices": [] 
+        })
+
+    # C. Unicode Newlines (Exotic Char Detection)
+    # Adds the previously missing specific alert for LS/PS/NEL
+    unicode_newlines = present_types.intersection({'NEL', 'LS', 'PS'})
+    if unicode_newlines:
+        found_uni = ", ".join(sorted(unicode_newlines))
+        findings.append({
+            "label": "Unicode Newlines Detected",
+            "severity": "info", # Info only (unless mixed, which triggers Crit above)
+            "badge": "ANOMALY",
+            "details": f"Exotic line separators detected: {found_uni}",
+            "count": 1,
             "indices": []
         })
 
