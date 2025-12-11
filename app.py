@@ -22382,9 +22382,12 @@ def update_all(event=None):
     # 1. Generate the Alerts (The "Red/Orange" cards)
     alerts_html = render_structural_anomalies(all_structural_findings)
     
-    # 2. Generate the Spectrum Bar (The "Elegant Display")
-    # We call the function that was previously ignored
-    spectrum_html = compute_whitespace_topology(t)
+    # 2. Generate the Spectrum Bar (The "Physicist")
+    # A. Calculate Physics Metrics (Block 6)
+    ws_physics_data = compute_whitespace_physics(t)
+    
+    # B. Render Visuals (Block 9)
+    spectrum_html = render_whitespace_topology(ws_physics_data)
     
     # 3. Combine them
     # Stack alerts on top, spectrum bar below
