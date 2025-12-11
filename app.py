@@ -18579,16 +18579,33 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
             r_text = "NO"
         td_rgi = f'<td><span class="legend-badge" style="{r_style}">{r_text}</span></td>'
 
-        # 5. Status
+        # 5. Status Pills (Fixed Casing & Stacking)
         status_raw = data['status']
-        s_text = status_raw.replace('_', ' ').replace(' · ', '<br>').title()
-        s_cls = "legend-pill legend-pill-neutral"
-        if "fully" in status_raw.lower(): s_cls = "legend-pill legend-pill-ok"
-        elif any(x in status_raw for x in ["FRAGMENT", "SHATTERED", "ORPHAN", "LEAK", "DANGLING"]):
-            s_cls = "legend-pill legend-pill-error"
-            s_text = f'<span style="color: #dc2626; font-weight: 700;">{s_text}</span>'
-        elif "unqualified" in status_raw.lower(): s_cls = "legend-pill legend-pill-warn"
-        td_status = f'<td><span class="{s_cls}" style="font-size: 0.75rem;">{s_text}</span></td>'
+        # Split "Status · Presentation" into separate badges
+        parts = status_raw.split(' · ')
+        pills_html = []
+
+        for p in parts:
+            # Fix text: Title case, then force Acronyms back to UPPER
+            txt = p.replace('_', ' ').lower().title()
+            txt = txt.replace("Rgi", "RGI").replace("Vs16", "VS16")
+            
+            # Determine Color Class
+            cls = "legend-pill legend-pill-neutral"
+            if "fully" in p.lower(): 
+                cls = "legend-pill legend-pill-ok"
+            elif any(x in p.upper() for x in ["FRAGMENT", "SHATTERED", "ORPHAN", "LEAK", "DANGLING"]):
+                cls = "legend-pill legend-pill-error"
+            elif "unqualified" in p.lower() or "ambiguous" in p.lower():
+                cls = "legend-pill legend-pill-warn"
+            
+            # Render as individual block-level badges with spacing
+            # We use 'display: table' or 'block' to force them to stack nicely without cutting
+            style = "display: inline-block; margin-bottom: 3px; font-size: 0.7rem; white-space: nowrap; line-height: 1.2;"
+            pills_html.append(f'<span class="{cls}" style="{style}">{txt}</span>')
+
+        # Join with breaks just in case, though blocks handle layout better
+        td_status = f'<td style="vertical-align: middle;">{"<br>".join(pills_html)}</td>'
 
         # 6. AGE (Real Data)
         age_val = data['age']
@@ -18620,15 +18637,38 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
 
         html.append(f'<tr>{td_seq}{td_kind}{td_base}{td_rgi}{td_status}{td_age}{td_depth}{td_count}{td_pos}</tr>')
 
-    # Legend
+    # Forensic Legend (Professional Layout)
     legend_html = """
     <tr>
-        <td colspan="9" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
-                <div><strong>KIND:</strong><br>ATOM/SEQ/COMP</div>
-                <div><strong>STATUS:</strong><br>RGI/Unqualified/Shattered</div>
-                <div><strong>METRICS:</strong><br>AGE (v6.0+)/DEPTH (Pts)</div>
-                <div><strong>ORIGIN:</strong><br>Block/Hex</div>
+        <td colspan="9" style="padding: 0; border-top: 1px solid #e5e7eb;">
+            <div style="background: #f8fafc; padding: 16px; font-family: var(--font-mono); font-size: 0.75rem; color: #475569; display: flex; gap: 32px; flex-wrap: wrap;">
+                
+                <div style="flex: 1; min-width: 150px;">
+                    <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Structure (Kind)</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center;"><span style="width:8px; height:8px; background:#d1d5db; border-radius:2px; margin-right:8px;"></span><b>ATOM:</b>&nbsp;Single Code Point</div>
+                        <div style="display: flex; align-items: center;"><span style="width:8px; height:8px; background:#bfdbfe; border-radius:2px; margin-right:8px;"></span><b>SEQ:</b>&nbsp;Multi-char Sequence</div>
+                        <div style="display: flex; align-items: center;"><span style="width:8px; height:8px; background:#fecaca; border-radius:2px; margin-right:8px;"></span><b>COMP:</b>&nbsp;Leaked Component</div>
+                    </div>
+                </div>
+                
+                <div style="flex: 1; min-width: 150px;">
+                     <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Forensic Integrity</div>
+                     <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="color: #15803d;"><b>RGI:</b>&nbsp;Recommended (Standard)</div>
+                        <div style="color: #b45309;"><b>Unqualified:</b>&nbsp;Missing VS16 / Non-Std</div>
+                        <div style="color: #dc2626;"><b>Shattered:</b>&nbsp;Broken Logic / Orphan</div>
+                     </div>
+                </div>
+
+                <div style="flex: 1; min-width: 150px;">
+                     <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Deep Metrics</div>
+                     <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;">
+                        <b>AGE:</b> <span>Unicode Version (Heuristic)</span>
+                        <b>DEPTH:</b> <span>Scalar Value Count</span>
+                        <b>BASE:</b> <span>Unicode Block Origin</span>
+                     </div>
+                </div>
             </div>
         </td>
     </tr>
