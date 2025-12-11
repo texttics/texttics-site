@@ -17193,6 +17193,99 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 # BLOCK 9. RENDERERS (THE VIEW)
 # ===============================================
 
+def render_whitespace_topology(physics_data: dict) -> str:
+    """
+    [Stage 2.3] Whitespace Topology Renderer.
+    Visualizes the Physics Data (GCS, WCI, LBE) and the Spectrum Bar.
+    """
+    metrics = physics_data.get("metrics", {})
+    stats = physics_data.get("stats", {})
+    breaks = physics_data.get("breaks", [])
+    
+    # 1. Generate Alerts based on Physics Thresholds
+    alerts = []
+    
+    # A. Wallbuilder Alert (GCS > 0.8 is artificial)
+    if metrics.get("gcs", 0) > 0.8:
+        alerts.append('<div class="ws-alert crit"><span class="icon">🧱</span> <strong>Wallbuilder Detected:</strong> Artificial Grid Consistency</div>')
+        
+    # B. Smuggling Alert (WCI > 0.1 is suspicious)
+    if metrics.get("wci", 0) > 0.1:
+        alerts.append('<div class="ws-alert warn"><span class="icon">🌫️</span> <strong>Whitespace Injection:</strong> High Complexity Index</div>')
+        
+    # C. Desync Alert (LBE > 0 and Mixed Breaks)
+    if len(breaks) > 1:
+        break_list = ", ".join(breaks)
+        alerts.append(f'<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Protocol Desync:</strong> Mixed Line Endings ({break_list})</div>')
+
+    # 2. Generate Spectrum Bar (Pill Shapes)
+    # Sort by count desc
+    sorted_stats = sorted(stats.items(), key=lambda x: -x[1])
+    
+    spectrum_html = ""
+    total = sum(stats.values())
+    
+    if total > 0:
+        for k, v in sorted_stats:
+            # Color Logic
+            cls = "bg-sp"
+            if "LF" in k or "CR" in k: cls = "bg-lf"
+            elif "TAB" in k: cls = "bg-tab"
+            elif "NBSP" in k: cls = "bg-nbsp"
+            elif "ZW" in k or "TAG" in k: cls = "bg-inv" # Invisibles
+            elif "QUAD" in k or "EM" in k: cls = "bg-wide" # Wide spaces
+            
+            # Pill Renderer
+            spectrum_html += f"""
+            <div class="ws-pill {cls}" title="{k}">
+                <span class="ws-key">{k}</span>
+                <span class="ws-val">{v}</span>
+            </div>
+            """
+    else:
+        spectrum_html = '<div class="placeholder-text">No whitespace detected.</div>'
+
+    # 3. Physics Metrics Row (The Lab Instrument)
+    metrics_html = f"""
+    <div class="ws-metrics-row">
+        <div class="ws-metric" title="Grid Consistency Score (1.0 = Wall)">
+            <span class="wm-lbl">GCS</span>
+            <span class="wm-val">{metrics.get('gcs', 0):.2f}</span>
+        </div>
+        <div class="ws-metric" title="Whitespace Complexity Index">
+            <span class="wm-lbl">WCI</span>
+            <span class="wm-val">{metrics.get('wci', 0):.2f}</span>
+        </div>
+        <div class="ws-metric" title="Line Break Entropy">
+            <span class="wm-lbl">LBE</span>
+            <span class="wm-val">{metrics.get('lbe', 0):.2f}</span>
+        </div>
+    </div>
+    """
+
+    # 4. Final Assembly
+    status_cls = "crit" if alerts else "ok"
+    status_lbl = "ANOMALY" if alerts else "STABLE"
+    
+    return f"""
+    <div class="fx-card ws-panel">
+        <div class="fx-header">
+            <span>Whitespace Topology</span>
+            <span class="fx-badge {status_cls}">{status_lbl}</span>
+        </div>
+        
+        <div class="ws-alert-box">
+            {''.join(alerts)}
+        </div>
+        
+        {metrics_html}
+        
+        <div class="ws-spectrum-pills">
+            {spectrum_html}
+        </div>
+    </div>
+    """
+
 def render_structural_anomalies(findings: list) -> str:
     """
     [Stage 2.0] Structural Anomaly Renderer (Forensic Aggregator).
@@ -22767,8 +22860,14 @@ def update_all(event=None):
     if struct_container:
         struct_container.innerHTML = struct_html
 
-    # Whitespace & Newline Topology (The Frankenstein Detector)
-    ws_topology_html = compute_whitespace_topology(t)
+    # Whitespace & Newline Topology (The Physicist)
+    # 1. Calculate Physics (Block 6)
+    ws_physics_data = compute_whitespace_physics(t)
+    
+    # 2. Render View (Block 9)
+    ws_topology_html = render_whitespace_topology(ws_physics_data)
+    
+    # 3. Inject
     ws_container = document.getElementById("ws-topology-container")
     if ws_container:
         ws_container.innerHTML = ws_topology_html
