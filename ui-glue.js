@@ -1729,18 +1729,73 @@ window.updateStatConsole = function(row) {
       copyToClipboard(r.join('\n'), 'btn-p-dual');
   });
 
-  // --- 2. Structural Shape ---
+  // --- 2. Structural Shape (Updated for V2.1 SOTA) ---
   const btnShape = document.getElementById('btn-p-shape');
   if(btnShape) btnShape.addEventListener('click', () => {
       let r = [`[ Structural Shape Profile ]`];
+      
+      // A. Scrape Anomalies (The Red/Orange Alerts)
+      const anomalyBody = document.getElementById('structural-anomalies-body');
+      if (anomalyBody) {
+          const alerts = anomalyBody.querySelectorAll('.forensic-alert-card');
+          if (alerts.length > 0) {
+              r.push('\n-- STRUCTURAL ALERTS --');
+              alerts.forEach(card => {
+                  const title = card.querySelector('.fal-title')?.textContent.trim() || "ALERT";
+                  const badge = card.querySelector('.fal-badge')?.textContent.trim() || "";
+                  const count = card.querySelector('.fal-count')?.textContent.trim() || "";
+                  
+                  r.push(`  [${badge}] ${title} ${count}`);
+                  
+                  // Get details
+                  const bodyText = card.querySelector('.fal-body')?.innerText.trim();
+                  if (bodyText) {
+                      // Format bullet points nicely
+                      const cleanBody = bodyText.replace(/\n/g, '\n    ');
+                      r.push(`    ${cleanBody}`);
+                  }
+              });
+          }
+      }
+
+      // B. Scrape Whitespace Topology (The New Panel)
+      const wsContainer = document.getElementById('ws-topology-container');
+      if (wsContainer) {
+          r.push('\n-- WHITESPACE TOPOLOGY --');
+          
+          // 1. Scrape Metrics (GCS, WCI, LBE)
+          const metrics = wsContainer.querySelectorAll('.ws-metric');
+          const metricLine = [];
+          metrics.forEach(m => {
+              const k = m.querySelector('.wm-lbl')?.textContent.trim();
+              const v = m.querySelector('.wm-val')?.textContent.trim();
+              if (k && v) metricLine.push(`${k}: ${v}`);
+          });
+          if (metricLine.length) r.push(`  METRICS: ${metricLine.join(' | ')}`);
+          
+          // 2. Scrape Groups (Standard vs Exotic)
+          const groups = wsContainer.querySelectorAll('.ws-group');
+          groups.forEach(group => {
+              const header = group.querySelector('[class^="ws-group-header"]')?.textContent.trim();
+              r.push(`  GROUP: ${header}`);
+              
+              const pills = group.querySelectorAll('.ws-pill');
+              pills.forEach(pill => {
+                  const k = pill.querySelector('.ws-key')?.textContent.trim();
+                  const v = pill.querySelector('.ws-val')?.textContent.trim();
+                  r.push(`    ${k}: ${v}`);
+              });
+          });
+      }
+
+      // C. Scrape Legacy Tables (Run Analysis)
       const sections = [
           'shape-matrix-body', 'minor-shape-matrix-body', 'linebreak-run-matrix-body',
           'bidi-run-matrix-body', 'wordbreak-run-matrix-body', 'sentencebreak-run-matrix-body',
           'graphemebreak-run-matrix-body', 'eawidth-run-matrix-body', 'vo-run-matrix-body'
       ];
+      
       sections.forEach(id => {
-          // We assume table titles are implicit or handled by the general scraper logic
-          // But for this specific button, let's just grab the rows
           const rows = scrapeTableLocal(id, null); 
           if(rows.length) {
               const secTitle = id.replace('-body','').replace('-run-matrix','').replace('-matrix','').toUpperCase();
@@ -1748,6 +1803,7 @@ window.updateStatConsole = function(row) {
               r.push(...rows);
           }
       });
+      
       copyToClipboard(r.join('\n'), 'btn-p-shape');
   });
 
