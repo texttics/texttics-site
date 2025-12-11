@@ -14899,12 +14899,16 @@ def compute_emoji_analysis(text: str) -> dict:
             forensic_base = diagnosis['base']     # e.g. "FLAG"
             forensic_status = diagnosis['status'] # e.g. "FLAG_FRAGMENT"
 
+            # Capture the Hex Fingerprint (e.g., "U+1F1FA")
+            forensic_hex = diagnosis['hex']
+
             emoji_details_list.append({
                 "sequence": cluster,
                 "kind": forensic_kind,      # REPLACES generic "emoji-component"
                 "rgi": rgi_status,
                 "status": forensic_status,  # REPLACES generic "component"
                 "base_cat": forensic_base,  # REPLACES "So"/"SYM" with "FLAG"/"BODY"
+                "hex": forensic_hex,
                 "index": idx
             })
 
