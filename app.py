@@ -17195,116 +17195,153 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
-    [Stage 2.3] Whitespace Topology Renderer (Dual-Stack).
-    Splits visualization into 'Standard' (Layout) and 'Exotic' (Injection) 
-    to prevent large counts from hiding small threats.
+    [Stage 2.3] Whitespace Topology Renderer (High-Res).
+    Visualizes: Full Physics Metrics, Dual-Stack Spectrum, and Rich Definitions.
     """
     metrics = physics_data.get("metrics", {})
     stats = physics_data.get("stats", {})
     breaks = physics_data.get("breaks", [])
     
-    # 1. Alerts Logic
+    # 1.1 Forensic Iconography (Vector Definitions)
+    # Style: 24x24, 2px stroke, Rounded linecaps
+    
+    # [WALLBUILDER] A solid brick wall structure
+    SVG_WALL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21v-7"/><path d="M19 21v-7"/><path d="M5 10v4"/><path d="M19 10v4"/><path d="M5 6v4"/><path d="M19 6v4"/><path d="M3 10h18"/><path d="M3 6h18"/><path d="M3 14h18"/></svg>'
+    
+    # [INJECTION] A dotted/hidden character symbol (The "Ghost")
+    SVG_FOG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>'
+    
+    # [DESYNC] A broken link chain (Symbolizing broken protocol)
+    SVG_DESYNC = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+
+    # 1.2. Alerts Logic (Using SVGs)
     alerts = []
+    
+    # A. Wallbuilder Alert
     if metrics.get("gcs", 0) > 0.8:
-        alerts.append('<div class="ws-alert crit"><span class="icon">🧱</span> <strong>Wallbuilder:</strong> High Grid Consistency</div>')
+        alerts.append(f'<div class="ws-alert crit"><span class="icon">{SVG_WALL}</span> <strong>Wallbuilder:</strong> High Grid Consistency</div>')
+        
+    # B. Smuggling Alert
     if metrics.get("wci", 0) > 0.1:
-        alerts.append('<div class="ws-alert warn"><span class="icon">🌫️</span> <strong>Injection:</strong> High Complexity</div>')
+        alerts.append(f'<div class="ws-alert warn"><span class="icon">{SVG_FOG}</span> <strong>Injection:</strong> High Complexity</div>')
+        
+    # C. Desync Alert
     if len(breaks) > 1:
         break_list = ", ".join(breaks)
-        alerts.append(f'<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Desync:</strong> {break_list}</div>')
+        alerts.append(f'<div class="ws-alert crit"><span class="icon">{SVG_DESYNC}</span> <strong>Desync:</strong> {break_list}</div>')
 
-    # 2. Bucketing Logic (Standard vs Exotic)
+    # 2. Bucketing Logic
     standard_stats = {}
     exotic_stats = {}
-    
     for k, v in stats.items():
-        # Heuristic: Check for standard keys defined in Block 6
         if "ASCII" in k or "LF (" in k or "CR (" in k or "TAB" in k:
             standard_stats[k] = v
         else:
             exotic_stats[k] = v
 
-    # 3. Section Builder Helper
-    def build_spectrum_section(label, data_dict, is_exotic):
-        if not data_dict: return ""
-        
-        # Sort by count desc
-        sorted_items = sorted(data_dict.items(), key=lambda x: -x[1])
-        total = sum(data_dict.values())
-        
-        segments = []
-        pills = []
-        
-        for k, v in sorted_items:
-            # Color Mapping
-            color_hex = "#94a3b8" 
-            cls = "bg-sp"
-            
-            if "LF" in k or "CR" in k: 
-                cls = "bg-lf"; color_hex = "#3b82f6" # Blue
-            elif "TAB" in k: 
-                cls = "bg-tab"; color_hex = "#eab308" # Yellow
-            elif "NBSP" in k: 
-                cls = "bg-nbsp"; color_hex = "#f97316" # Orange
-            elif "ZW" in k or "TAG" in k: 
-                cls = "bg-inv"; color_hex = "#ef4444" # Red
-            elif "QUAD" in k or "EM" in k: 
-                cls = "bg-wide"; color_hex = "#8b5cf6" # Purple
-            
-            # Bar Segment
-            pct = (v / total) * 100
-            segments.append(f'<div style="width:{pct}%; background-color:{color_hex};" title="{k}: {v}"></div>')
-            
-            # Pill
-            pills.append(f"""
-            <div class="ws-pill {cls}">
-                <span class="ws-key">{k}</span>
-                <span class="ws-val">{v}</span>
-            </div>
-            """)
-            
-        header_cls = "ws-group-header-crit" if is_exotic else "ws-group-header"
-        
-        return f"""
-        <div class="ws-group">
-            <div class="{header_cls}">
-                {label} <span class="ws-group-count">{total}</span>
-            </div>
-            <div class="ws-spectrum-bar">
-                {''.join(segments)}
-            </div>
-            <div class="ws-spectrum-pills">
-                {''.join(pills)}
-            </div>
-        </div>
-        """
+    # 3. Helper: Pop-up Content Generator
+    def get_metric_meta(key, val):
+        if key == "GCS":
+            return (
+                "Grid Consistency Score",
+                f"[ PHYSICS DEFINITION ]\n"
+                f"Measures the artificial regularity of the visual text grid.\n"
+                f"Detects 'Wallbuilder' attacks where text is forced into a rigid block to hide warnings.\n\n"
+                f"[ FORMULA ]\n"
+                f"GCS = 1.0 / (1.0 + CV)\n"
+                f"where CV (Raggedness) = StdDev / Mean Width\n\n"
+                f"[ BENCHMARKS ]\n"
+                f"• > 0.80: Wallbuilder / Block Code (Suspicious)\n"
+                f"• < 0.50: Natural Prose (Safe)\n"
+                f"• Current: {val:.2f}"
+            )
+        if key == "WCI":
+            return (
+                "Whitespace Complexity Index",
+                f"[ PHYSICS DEFINITION ]\n"
+                f"The purity ratio of the spacing substrate.\n"
+                f"Measures the density of exotic, invisible, or width-modifying spaces relative to standard ASCII spacing.\n\n"
+                f"[ FORMULA ]\n"
+                f"WCI = Count(Exotic) / Count(Total Spacers)\n\n"
+                f"[ BENCHMARKS ]\n"
+                f"• > 0.10: High Injection Risk (Fuzzing/Smuggling)\n"
+                f"• 0.00: Pure Standard Spacing\n"
+                f"• Current: {val:.2f}"
+            )
+        if key == "LBE":
+            return (
+                "Line Break Entropy",
+                f"[ PHYSICS DEFINITION ]\n"
+                f"Shannon Entropy of line termination characters.\n"
+                f"Detects 'Protocol Desynchronization' where multiple newline standards are mixed to confuse parsers.\n\n"
+                f"[ FORMULA ]\n"
+                f"H = -Σ p(x) log2 p(x)\n\n"
+                f"[ BENCHMARKS ]\n"
+                f"• 0.00: Synchronized (Single Standard)\n"
+                f"• > 0.00: Desynchronized (Active Risk)\n"
+                f"• Current: {val:.2f} bits"
+            )
+        return key, ""
 
-    # 4. Generate Sections
-    std_html = build_spectrum_section("Standard Substrate", standard_stats, False)
-    exo_html = build_spectrum_section("Exotic / Injection", exotic_stats, True)
-    
-    if not std_html and not exo_html:
-        std_html = '<div class="placeholder-text">No whitespace detected.</div>'
+    # 4. Metrics Grid Construction
+    gcs_lbl, gcs_tip = get_metric_meta("GCS", metrics.get('gcs', 0))
+    wci_lbl, wci_tip = get_metric_meta("WCI", metrics.get('wci', 0))
+    lbe_lbl, lbe_tip = get_metric_meta("LBE", metrics.get('lbe', 0))
 
-    # 5. Metrics Grid
     metrics_html = f"""
     <div class="ws-metrics-row">
-        <div class="ws-metric">
-            <span class="wm-lbl">GCS (GRID)</span>
+        <div class="ws-metric" title="{gcs_tip}">
+            <div class="wm-header">
+                <span class="wm-lbl">{gcs_lbl}</span>
+                <span class="wm-info">ⓘ</span>
+            </div>
             <span class="wm-val">{metrics.get('gcs', 0):.2f}</span>
         </div>
-        <div class="ws-metric">
-            <span class="wm-lbl">WCI (CMPX)</span>
+        <div class="ws-metric" title="{wci_tip}">
+            <div class="wm-header">
+                <span class="wm-lbl">{wci_lbl}</span>
+                <span class="wm-info">ⓘ</span>
+            </div>
             <span class="wm-val">{metrics.get('wci', 0):.2f}</span>
         </div>
-        <div class="ws-metric">
-            <span class="wm-lbl">LBE (ENT)</span>
+        <div class="ws-metric" title="{lbe_tip}">
+            <div class="wm-header">
+                <span class="wm-lbl">{lbe_lbl}</span>
+                <span class="wm-info">ⓘ</span>
+            </div>
             <span class="wm-val">{metrics.get('lbe', 0):.2f}</span>
         </div>
     </div>
     """
 
-    # 6. Final Assembly
+    # 5. Spectrum Builder (Same as before)
+    def build_spectrum_section(label, data_dict, is_exotic):
+        if not data_dict: return ""
+        sorted_items = sorted(data_dict.items(), key=lambda x: -x[1])
+        total = sum(data_dict.values())
+        segments = []
+        pills = []
+        for k, v in sorted_items:
+            color_hex = "#94a3b8" 
+            cls = "bg-sp"
+            if "LF" in k or "CR" in k: cls = "bg-lf"; color_hex = "#3b82f6"
+            elif "TAB" in k: cls = "bg-tab"; color_hex = "#eab308"
+            elif "NBSP" in k: cls = "bg-nbsp"; color_hex = "#f97316"
+            elif "ZW" in k or "TAG" in k: cls = "bg-inv"; color_hex = "#ef4444"
+            elif "QUAD" in k or "EM" in k: cls = "bg-wide"; color_hex = "#8b5cf6"
+            
+            pct = (v / total) * 100
+            segments.append(f'<div style="width:{pct}%; background-color:{color_hex};" title="{k}: {v}"></div>')
+            pills.append(f'<div class="ws-pill {cls}"><span class="ws-key">{k}</span><span class="ws-val">{v}</span></div>')
+            
+        header_cls = "ws-group-header-crit" if is_exotic else "ws-group-header"
+        return f'<div class="ws-group"><div class="{header_cls}">{label} <span class="ws-group-count">{total}</span></div><div class="ws-spectrum-bar">{"".join(segments)}</div><div class="ws-spectrum-pills">{"".join(pills)}</div></div>'
+
+    std_html = build_spectrum_section("Standard Structure (Layout)", standard_stats, False)
+    exo_html = build_spectrum_section("Exotic / Injection (Hidden)", exotic_stats, True)
+    
+    if not std_html and not exo_html: std_html = '<div class="placeholder-text">No whitespace detected.</div>'
+
     status_cls = "crit" if alerts else "ok"
     status_lbl = "ANOMALY" if alerts else "STABLE"
     
@@ -17314,17 +17351,9 @@ def render_whitespace_topology(physics_data: dict) -> str:
             <span>Whitespace Topology</span>
             <span class="fx-badge {status_cls}">{status_lbl}</span>
         </div>
-        
-        <div class="ws-alert-box">
-            {''.join(alerts)}
-        </div>
-        
+        <div class="ws-alert-box">{''.join(alerts)}</div>
         {metrics_html}
-        
-        <div class="ws-stacks-container">
-            {exo_html}
-            {std_html}
-        </div>
+        <div class="ws-stacks-container">{exo_html}{std_html}</div>
     </div>
     """
 
