@@ -18384,13 +18384,13 @@ def render_integrity_matrix(rows, text_context=None):
 
 def render_emoji_qualification_table(emoji_list, text_context=None):
     """
-    Renders the Forensic Emoji Profile (V2.0).
-    Now includes: Hex Fingerprint, Unicode Block Origin, and Structural Diagnostics.
+    Renders the Forensic Emoji Profile (V2.1).
+    Columns: Seq | Kind | Base | RGI | Status | AGE | DEPTH | Count | Pos
     """
     element = document.getElementById("emoji-qualification-body")
     if not element: return
     if not emoji_list:
-        element.innerHTML = "<tr><td colspan='7' class='placeholder-text'>No emoji sequences found.</td></tr>"
+        element.innerHTML = "<tr><td colspan='9' class='placeholder-text'>No emoji sequences found.</td></tr>"
         return
 
     # Group by sequence string
@@ -18398,14 +18398,17 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     for item in emoji_list:
         seq = item.get("sequence", "?")
         if seq not in grouped:
+            # Calculate Depth on the fly (number of scalar code points)
+            depth_val = len([ord(c) for c in seq])
+            
             grouped[seq] = {
                 'status': item.get("status", "unknown"),
                 'kind': item.get("kind", "unknown"),
                 'rgi': item.get("rgi", False),
-                # [STEP 3] Capture the precise forensic base (e.g. 'ENCLOSED_ALPHANUM')
                 'base_cat': item.get("base_cat", "Unknown"), 
-                # [STEP 4] Capture the Hex Fingerprint
                 'hex': item.get("hex", ""),
+                'age': item.get("age", "-"),     # Placeholder for Age
+                'depth': depth_val,              # Calculated Depth
                 'count': 0, 
                 'indices': []
             }
@@ -18419,8 +18422,7 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     for seq in sorted_keys:
         data = grouped[seq]
         
-        # 1. Sequence + [STEP 4] Hex Fingerprint
-        # We display the Hex below the glyph to prove identity
+        # 1. Sequence + Hex Fingerprint
         hex_print = data.get('hex', '')
         td_seq = f'''
         <td>
@@ -18433,19 +18435,15 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         
         # 2. Kind Badge
         kind_raw = data['kind'].replace("emoji-", "").upper()
-        # Visual Mapping for Kind
         k_style = "background-color: #f3f4f6; color: #374151; border-color: #d1d5db;" # Default ATOM
         if 'SEQ' in kind_raw:
-             k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue for Seq
+             k_style = "background-color: #eff6ff; color: #1e40af; border-color: #bfdbfe;" # Blue
         elif 'COMP' in kind_raw:
-             k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red for Comp
-            
+             k_style = "background-color: #fef2f2; color: #991b1b; border-color: #fecaca;" # Red
         td_kind = f'<td><span class="legend-badge" style="{k_style}">{kind_raw}</span></td>'
         
-        # 3. [STEP 3] Base Origin (Precise Block Name)
-        # We display the raw block name (e.g., "ENCLOSED_ALPHANUM") instead of "SYM"
+        # 3. Base Origin
         origin_raw = data.get('base_cat', 'UNKNOWN').replace("_", " ")
-        # Forensic styling: monospaced, small, technical
         cat_style = "background-color: #f8fafc; color: #475569; border: 1px solid #e2e8f0; font-size: 0.65rem; padding: 3px 6px; border-radius: 4px; font-family: var(--font-mono); text-transform: uppercase; white-space: nowrap;"
         td_base = f'<td><span style="{cat_style}" title="Unicode Block Origin">{origin_raw}</span></td>'
         
@@ -18458,30 +18456,36 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
             r_text = "NO"
         td_rgi = f'<td><span class="legend-badge" style="{r_style}">{r_text}</span></td>'
 
-        # 5. [STEP 2] Status Pill (Forensic State)
-        # Logic to color-code the new forensic labels
+        # 5. Status Pill
         status_raw = data['status']
-        s_text = status_raw.replace('_', ' ').replace(' · ', '<br>').title() # Split complex status
-        
+        s_text = status_raw.replace('_', ' ').replace(' · ', '<br>').title()
         s_cls = "legend-pill legend-pill-neutral"
-        # Green Conditions
+        
         if "fully" in status_raw.lower(): 
             s_cls = "legend-pill legend-pill-ok"
-        # Red Conditions (Forensic Errors)
         elif any(x in status_raw for x in ["FRAGMENT", "SHATTERED", "ORPHAN", "LEAK", "DANGLING"]):
-            s_cls = "legend-pill legend-pill-error" # Defined in CSS or fallback to warn
-            # Manual override if class missing:
+            s_cls = "legend-pill legend-pill-error"
             s_text = f'<span style="color: #dc2626; font-weight: 700;">{s_text}</span>'
-        # Yellow Conditions
         elif "unqualified" in status_raw.lower() or "ambiguous" in status_raw.lower():
             s_cls = "legend-pill legend-pill-warn"
-
         td_status = f'<td><span class="{s_cls}" style="font-size: 0.75rem;">{s_text}</span></td>'
 
-        # 6. Count
+        # 6. AGE Column
+        age_val = data['age']
+        age_style = "color: #6b7280; font-family: var(--font-mono); font-size: 0.8rem;"
+        td_age = f'<td style="{age_style}">{age_val}</td>'
+
+        # 7. DEPTH Column
+        depth_val = data['depth']
+        # Styling: Bold if high depth (Zalgo risk)
+        d_style = "font-family: var(--font-mono); font-weight: 600; color: #374151;"
+        if depth_val > 5: d_style += " color: #dc2626;"
+        td_depth = f'<td style="{d_style}">{depth_val}</td>'
+
+        # 8. Count
         td_count = f'<td>{data["count"]}</td>'
 
-        # 7. Positions
+        # 9. Positions
         indices = data['indices']
         links_list = [_create_position_link(idx, text_context) for idx in indices]
         
@@ -18496,31 +18500,35 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
             )
         else:
             pos_html = ", ".join(links_list)
-
         td_pos = f'<td>{pos_html}</td>'
 
-        html.append(f'<tr>{td_seq}{td_kind}{td_base}{td_rgi}{td_status}{td_count}{td_pos}</tr>')
+        html.append(f'<tr>{td_seq}{td_kind}{td_base}{td_rgi}{td_status}{td_age}{td_depth}{td_count}{td_pos}</tr>')
 
-    # Forensic Legend (Updated for V2.0)
+    # Forensic Legend (Updated for V2.1)
     legend_html = """
     <tr>
-        <td colspan="7" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+        <td colspan="9" style="padding: 1rem; background: #f9fafb; border-top: 2px solid #e5e7eb; font-size: 0.85rem; color: #6b7280;">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
                 <div>
                     <strong>KIND (Structure):</strong><br>
                     • <b>ATOM:</b> Single unit.<br>
-                    • <b>SEQ:</b> Combined sequence.<br>
-                    • <b>COMP:</b> Technical component.
-                </div>
-                <div>
-                    <strong>BASE (Origin):</strong><br>
-                    • Precise <b>Unicode Block</b> identifying the character's source (e.g., Emoticons vs Transport).
+                    • <b>SEQ:</b> Sequence.<br>
+                    • <b>COMP:</b> Component.
                 </div>
                 <div>
                     <strong>STATUS (Forensics):</strong><br>
-                    • <span style="color:#dc2626"><b>Shattered/Fragment:</b></span> Broken logic.<br>
-                    • <span style="color:#b45309"><b>Unqualified:</b></span> Display variation.<br>
-                    • <span style="color:#15803d"><b>RGI:</b></span> Industry Standard.
+                    • <span style="color:#dc2626"><b>Shattered:</b></span> Broken logic.<br>
+                    • <span style="color:#b45309"><b>Unqualified:</b></span> Var missing.
+                </div>
+                <div>
+                    <strong>METRICS:</strong><br>
+                    • <b>AGE:</b> Unicode Ver.<br>
+                    • <b>DEPTH:</b> Code Points.
+                </div>
+                 <div>
+                    <strong>ORIGIN:</strong><br>
+                    • <b>Block:</b> Source map.<br>
+                    • <b>Hex:</b> Fingerprint.
                 </div>
             </div>
         </td>
