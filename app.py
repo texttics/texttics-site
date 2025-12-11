@@ -86,6 +86,182 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
+class EmojiForensics:
+    """
+    Implements the 'Forensic Upgrade Plan' taxonomy for emoji analysis.
+    Distinguishes between Structural Kind, Semantic Base, and Forensic Status.
+    Source: Unicode Emoji_Component property (UTS #51) + Forensic Semantics.
+    """
+    
+    # 1. THE FORENSIC DICTIONARY (Taxonomy Definitions)
+    
+    # Range-based Component Rules (Official Emoji_Component ranges + Forensic Status)
+    # Format: (Start, End, Kind, Base, Default_Orphan_Status)
+    COMPONENT_RANGES = [
+        # Regional Indicator letters (U+1F1E6..U+1F1FF) - The "Flag Letters"
+        (0x1F1E6, 0x1F1FF, "COMP_INDICATOR_REGIONAL", "REGIONAL", "FRAGMENT_FLAG_LEAK"),
+
+        # Skin tone modifiers (U+1F3FB..U+1F3FF) - Fitzpatrick Types
+        (0x1F3FB, 0x1F3FF, "COMP_MODIFIER_SKIN",      "BODY",     "ORPHAN_SKIN_TONE"),
+
+        # Hairstyle components (U+1F9B0..U+1F9B3) - Red, Curly, Bald, White
+        (0x1F9B0, 0x1F9B3, "COMP_HAIR",               "BODY",     "ORPHAN_HAIR_COMPONENT"),
+
+        # Tag characters (U+E0020..U+E007E) - Sub-region flags / IDs
+        (0xE0020, 0xE007E, "COMP_TAG",                "TAG",      "INVISIBLE_TAG_FRAGMENT"),
+    ]
+
+    # Single Character Component Rules (The "Singleton Specials")
+    # Format: Codepoint: (Kind, Base, Default_Orphan_Status)
+    COMPONENT_SINGLES = {
+        # --- GLUE / META CONTROLS ---------------------------------------------
+        0x200D: (
+            "COMP_JOINER_ZWJ", 
+            "CTRL", 
+            "DANGLING_JOINER"         # ZWJ appearing without neighbors
+        ),
+        0xFE0F: (
+            "COMP_SELECTOR_EMOJI", 
+            "CTRL", 
+            "STRAY_SELECTOR_EMOJI"    # VS16 without a base
+        ),
+        0xFE0E: (
+            "COMP_SELECTOR_TEXT", 
+            "CTRL", 
+            "STRAY_SELECTOR_TEXT"     # VS15 forcing text style
+        ),
+        0x20E3: (
+            "COMP_KEYCAP_MARK", 
+            "MARK", 
+            "ORPHAN_KEYCAP_MARK"      # Keycap enclosing mark without a digit
+        ),
+        0xE007F: (
+            "COMP_TAG_END", 
+            "TAG", 
+            "ORPHAN_TAG_END"          # Cancel Tag not attached to sequence
+        ),
+
+        # --- KEYCAP BASES (Official Emoji_Component) --------------------------
+        # Symbols
+        0x0023: ("COMP_KEYCAP_BASE", "ASCII_SYMBOL", "ORPHAN_KEYCAP_BASE"),  # '#'
+        0x002A: ("COMP_KEYCAP_BASE", "ASCII_SYMBOL", "ORPHAN_KEYCAP_BASE"),  # '*'
+        
+        # Digits 0-9
+        0x0030: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '0'
+        0x0031: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '1'
+        0x0032: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '2'
+        0x0033: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '3'
+        0x0034: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '4'
+        0x0035: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '5'
+        0x0036: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '6'
+        0x0037: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '7'
+        0x0038: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '8'
+        0x0039: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '9'
+    }
+
+    # Presentation Lock States
+    PRESENTATION_STATES = {
+        "VS16": "EMOJI_LOCKED",
+        "VS15": "TEXT_LOCKED",
+        "NONE": "AMBIGUOUS"
+    }
+
+    # 2. THE RESOLVER LOGIC
+
+    @staticmethod
+    def classify(sequence: str, is_rgi: bool = False):
+        """
+        Diagnoses a single emoji unit (grapheme cluster).
+        Returns specific Kind, Base, and Status forensics.
+        """
+        codepoints = [ord(c) for c in sequence]
+        depth = len(codepoints)
+        primary_cp = codepoints[0]
+        
+        # --- AXIS 1: KIND & BASE ---
+        kind = "ATOM"          # Default
+        base = "SYMBOL"        # Default
+        status_flags = []
+
+        # A. Check if it's a known Component (The "Trojan" check)
+        is_component = False
+        
+        # Check Singles (Dictionary Lookup - O(1))
+        if depth == 1 and primary_cp in EmojiForensics.COMPONENT_SINGLES:
+            k, b, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
+            kind, base = k, b
+            status_flags.append(s) # It is alone, so it assumes the orphan status
+            is_component = True
+            
+        # Check Ranges (Iterative Lookup - O(N))
+        elif depth == 1:
+            for start, end, k, b, s in EmojiForensics.COMPONENT_RANGES:
+                if start <= primary_cp <= end:
+                    kind, base = k, b
+                    status_flags.append(s)
+                    is_component = True
+                    break
+
+        # B. Handle Sequences (If not a single component)
+        if not is_component and depth > 1:
+            if 0x200D in codepoints:
+                kind = "SEQ_ZWJ"
+                base = "COMPLEX" # ideally needs CLDR lookup
+            elif any(0x1F1E6 <= cp <= 0x1F1FF for cp in codepoints):
+                kind = "SEQ_FLAG"
+                base = "FLAG"
+            elif any(0x1F3FB <= cp <= 0x1F3FF for cp in codepoints):
+                kind = "SEQ_MODIFIER" 
+                base = "BODY"
+            else:
+                kind = "SEQ_OTHER"
+
+        # --- AXIS 2: STATUS (Forensic Diagnosis) ---
+        
+        # 1. Conformance Layer
+        if is_rgi:
+            status_flags.insert(0, "FULLY_QUALIFIED_RGI")
+        elif is_component:
+            pass # Already added the specific diagnostic (e.g., FLAG_FRAGMENT)
+        else:
+            status_flags.append("UNQUALIFIED")
+
+        # 2. Presentation Layer (Axis 3)
+        presentation = "AMBIGUOUS"
+        if 0xFE0F in codepoints:
+            presentation = "EMOJI_LOCKED"
+        elif 0xFE0E in codepoints:
+            presentation = "TEXT_LOCKED"
+        
+        status_flags.append(presentation)
+
+        # 3. Risk Overlay (Axis 4 - Age/Depth)
+        # (Simplified age check for demonstration)
+        if depth > 5:
+            status_flags.append("HIGH_DENSITY")
+
+        return {
+            "sequence": sequence,
+            "hex": " ".join([f"U+{cp:04X}" for cp in codepoints]),
+            "kind": kind,
+            "base": base,
+            "status": " · ".join(status_flags),
+            "depth": depth
+        }
+
+# 3. FORENSIC TEST (Running your specific 'U' case)
+
+# The "U" from your image (Regional Indicator Symbol Letter U)
+u_char = "\U0001F1FA" 
+
+diagnosis = EmojiForensics.classify(u_char, is_rgi=False)
+
+print(f"SEQUENCE: {diagnosis['sequence']}")
+print(f"HEX:      {diagnosis['hex']}")
+print(f"KIND:     {diagnosis['kind']}")
+print(f"BASE:     {diagnosis['base']}")
+print(f"STATUS:   {diagnosis['status']}")
+
 # CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
 
 # 1. Serialization & Container Magic Signatures
