@@ -5041,8 +5041,11 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
     for char in t:
         cp = ord(char)
         # Check for Space vs NBSP
-        if cp == 0x0020: has_ascii = True
-        elif cp == 0x00A0: has_nbsp = True
+        if cp == ASCII_SPACE: 
+            has_ascii = True
+        elif cp == NBSP_SPACE: 
+            has_nbsp = True
+    
         # Check if character is Separator (Z*), Tab, or BOM (often used as glue)
         # We manually check category to avoid dependency on external regex
         cat = unicodedata.category(char)
