@@ -4990,6 +4990,52 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
     findings = []
     import math # Required for sqrt/std_dev
 
+    # 1. Line Ending Consistency
+    # We map the lb_counts keys to our tracked types
+    # Corresponds to: has_lf, has_cr, has_crlf, has_nel, has_ls_ps
+    TRACKED_NEWLINES = {'LF', 'CR', 'CRLF', 'NEL', 'LS', 'PS'}
+    present_types = {k for k, v in lb_counts.items() if k in TRACKED_NEWLINES and v > 0}
+    
+    # A. Mixed Line Endings Alert (CRITICAL)
+    if len(present_types) > 1:
+        mixed_list = ", ".join(sorted(present_types))
+        findings.append({
+            "label": "Consistency Failure: Mixed Line Endings",
+            "severity": "crit", 
+            "badge": "PROTOCOL",
+            "details": f"Active Desynchronization Risk. Standards mixed: {mixed_list}",
+            "count": 1, 
+            "indices": [] 
+        })
+
+    # B. Unicode Newlines Alert (INFO)
+    unicode_newlines = present_types.intersection({'NEL', 'LS', 'PS'})
+    if unicode_newlines:
+        found_uni = ", ".join(sorted(unicode_newlines))
+        findings.append({
+            "label": "Unicode Newlines Detected",
+            "severity": "info",
+            "badge": "ANOMALY",
+            "details": f"Exotic line separators detected: {found_uni}",
+            "count": 1,
+            "indices": []
+        })
+
+    # 2. Phishing Heuristics (Space vs NBSP)
+    # Quick check for the "Mixed Spacing" signature
+    has_ascii = ' ' in t
+    has_nbsp = '\u00A0' in t
+    
+    if has_ascii and has_nbsp:
+        findings.append({
+            "label": "Mixed Spacing: ASCII + NBSP",
+            "severity": "high", 
+            "badge": "SPOOF",
+            "details": "Standard Space mixed with Non-Breaking Space (Phishing Risk).",
+            "count": 1, 
+            "indices": []
+        })
+    
     # 1. PHYSICS CONSTANTS (Hardened)
     # Wallbuilder Physics
     # 80 chars is the standard terminal width. A run > 80 is physically suspicious.
