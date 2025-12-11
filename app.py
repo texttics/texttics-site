@@ -17195,69 +17195,78 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
-    [Stage 2.3] Whitespace Topology Renderer.
-    Visualizes the Physics Data (GCS, WCI, LBE) and the Spectrum Bar.
+    [Stage 2.3] Whitespace Topology Renderer (High Fidelity).
+    Visualizes: Metrics Grid, Visual Spectrum Bar, and Detail Pills.
     """
     metrics = physics_data.get("metrics", {})
     stats = physics_data.get("stats", {})
     breaks = physics_data.get("breaks", [])
     
-    # 1. Generate Alerts based on Physics Thresholds
+    # 1. Alerts Logic
     alerts = []
-    
-    # A. Wallbuilder Alert (GCS > 0.8 is artificial)
     if metrics.get("gcs", 0) > 0.8:
-        alerts.append('<div class="ws-alert crit"><span class="icon">🧱</span> <strong>Wallbuilder Detected:</strong> Artificial Grid Consistency</div>')
-        
-    # B. Smuggling Alert (WCI > 0.1 is suspicious)
+        alerts.append('<div class="ws-alert crit"><span class="icon">🧱</span> <strong>Wallbuilder:</strong> High Grid Consistency</div>')
     if metrics.get("wci", 0) > 0.1:
-        alerts.append('<div class="ws-alert warn"><span class="icon">🌫️</span> <strong>Whitespace Injection:</strong> High Complexity Index</div>')
-        
-    # C. Desync Alert (LBE > 0 and Mixed Breaks)
+        alerts.append('<div class="ws-alert warn"><span class="icon">🌫️</span> <strong>Injection:</strong> High Complexity</div>')
     if len(breaks) > 1:
         break_list = ", ".join(breaks)
-        alerts.append(f'<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Protocol Desync:</strong> Mixed Line Endings ({break_list})</div>')
+        alerts.append(f'<div class="ws-alert crit"><span class="icon">⚡</span> <strong>Desync:</strong> {break_list}</div>')
 
-    # 2. Generate Spectrum Bar (Pill Shapes)
-    # Sort by count desc
+    # 2. Spectrum Data Prep
     sorted_stats = sorted(stats.items(), key=lambda x: -x[1])
-    
-    spectrum_html = ""
     total = sum(stats.values())
+    
+    spectrum_bar_segments = []
+    pills_html = ""
     
     if total > 0:
         for k, v in sorted_stats:
-            # Color Logic
+            # Color Mapping
+            # LF/CR = Blue, Space = Gray, Tab = Yellow, Exotic = Orange/Red
+            color_hex = "#94a3b8" # Default Gray
             cls = "bg-sp"
-            if "LF" in k or "CR" in k: cls = "bg-lf"
-            elif "TAB" in k: cls = "bg-tab"
-            elif "NBSP" in k: cls = "bg-nbsp"
-            elif "ZW" in k or "TAG" in k: cls = "bg-inv" # Invisibles
-            elif "QUAD" in k or "EM" in k: cls = "bg-wide" # Wide spaces
             
-            # Pill Renderer
-            spectrum_html += f"""
-            <div class="ws-pill {cls}" title="{k}">
+            if "LF" in k or "CR" in k: 
+                cls = "bg-lf"; color_hex = "#3b82f6" # Blue
+            elif "TAB" in k: 
+                cls = "bg-tab"; color_hex = "#eab308" # Yellow
+            elif "NBSP" in k: 
+                cls = "bg-nbsp"; color_hex = "#f97316" # Orange
+            elif "ZW" in k or "TAG" in k: 
+                cls = "bg-inv"; color_hex = "#ef4444" # Red
+            elif "QUAD" in k or "EM" in k: 
+                cls = "bg-wide"; color_hex = "#8b5cf6" # Purple
+            
+            # A. Build Spectrum Bar Segment
+            pct = (v / total) * 100
+            if pct > 0:
+                # Use inline style for width to be precise
+                spectrum_bar_segments.append(f'<div style="width:{pct}%; background-color:{color_hex};" title="{k}: {v}"></div>')
+
+            # B. Build Pill
+            pills_html += f"""
+            <div class="ws-pill {cls}">
                 <span class="ws-key">{k}</span>
                 <span class="ws-val">{v}</span>
             </div>
             """
     else:
-        spectrum_html = '<div class="placeholder-text">No whitespace detected.</div>'
+        pills_html = '<div class="placeholder-text">No whitespace detected.</div>'
+        spectrum_bar_segments.append('<div style="width:100%; background-color:#f1f5f9;"></div>')
 
-    # 3. Physics Metrics Row (The Lab Instrument)
+    # 3. Metrics Grid
     metrics_html = f"""
     <div class="ws-metrics-row">
-        <div class="ws-metric" title="Grid Consistency Score (1.0 = Wall)">
-            <span class="wm-lbl">GCS</span>
+        <div class="ws-metric">
+            <span class="wm-lbl">GCS (GRID)</span>
             <span class="wm-val">{metrics.get('gcs', 0):.2f}</span>
         </div>
-        <div class="ws-metric" title="Whitespace Complexity Index">
-            <span class="wm-lbl">WCI</span>
+        <div class="ws-metric">
+            <span class="wm-lbl">WCI (CMPX)</span>
             <span class="wm-val">{metrics.get('wci', 0):.2f}</span>
         </div>
-        <div class="ws-metric" title="Line Break Entropy">
-            <span class="wm-lbl">LBE</span>
+        <div class="ws-metric">
+            <span class="wm-lbl">LBE (ENT)</span>
             <span class="wm-val">{metrics.get('lbe', 0):.2f}</span>
         </div>
     </div>
@@ -17280,8 +17289,12 @@ def render_whitespace_topology(physics_data: dict) -> str:
         
         {metrics_html}
         
+        <div class="ws-spectrum-bar">
+            {''.join(spectrum_bar_segments)}
+        </div>
+        
         <div class="ws-spectrum-pills">
-            {spectrum_html}
+            {pills_html}
         </div>
     </div>
     """
