@@ -4522,6 +4522,89 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def scan_logic_fracture(t: str) -> list:
+    """
+    [Stage 2.1] Logic Fracture Analyst (The Missing Link).
+    
+    Detects attacks that exploit 'Logic Boundaries' rather than 'Token Boundaries'.
+    1. Global Orientation Locking (Prefix/Suffix Bidi).
+    2. Log Splitting (Sentence Terminators inside Identifiers).
+    
+    Inputs:
+        t (str): Raw text.
+        
+    Returns:
+        List of forensic finding dictionaries.
+    """
+    findings = []
+    if not t: return findings
+
+    import unicodedata
+
+    # 1. GLOBAL ORIENTATION LOCKING (Strict Liability)
+    # The Research (Part 5.3) states: "The presence of ANY RLO/LRO is a critical anomaly."
+    # We do not care if it is inside a token or not.
+    
+    BIDI_LOCKS = {
+        '\u202E': 'RLO (Right-to-Left Override)',
+        '\u202D': 'LRO (Left-to-Right Override)',
+        '\u2066': 'LRI (Left-to-Right Isolate)',
+        '\u2067': 'RLI (Right-to-Left Isolate)',
+        '\u2068': 'FSI (First Strong Isolate)',
+    }
+
+    # 2. LOG SPLITTING (Sentence Terminators)
+    # The Research (Part 4.2) warns of STerm chars (?! etc) injected into identifiers.
+    # We flag STerm characters that are chemically bonded to Alphanumerics.
+    
+    # Simple check for the most dangerous Log Splitters (Ambiguous Terminators)
+    # U+2047 (⁇), U+203D (‽), U+2048 (⁈), U+2049 (⁉)
+    LOG_SPLITTERS = {'\u2047', '\u203D', '\u2048', '\u2049'}
+    
+    # O(N) Scan
+    for i, char in enumerate(t):
+        
+        # A. Check Bidi Locks (Global Ban)
+        if char in BIDI_LOCKS:
+            findings.append({
+                "label": "Global Orientation Lock (Extension Spoofing)",
+                "severity": "crit",
+                "badge": "EVASION",
+                "details": f"Explicit Directional Override detected: {BIDI_LOCKS[char]}",
+                "count": 1,
+                "indices": [f"#{i}"]
+            })
+
+        # B. Check Log Splitting (Context-Aware)
+        elif char in LOG_SPLITTERS or (char in {'?', '!'} and i > 0 and i < len(t)-1):
+            
+            # Logic: If STerm is sandwiched between Alphanumerics, it's a Log Splitter.
+            # e.g. "User?Agent" -> Suspicious. "Hello? Yes." -> Safe.
+            
+            # Optimization: Only run context check for Splitters
+            is_splitter = False
+            if char in LOG_SPLITTERS:
+                is_splitter = True # Always suspicious
+            else:
+                # For ? and !, check immediate neighbors
+                # If Left is Alpha/Digit AND Right is Alpha/Digit -> FRACTURE
+                prev_c = t[i-1]
+                next_c = t[i+1]
+                if prev_c.isalnum() and next_c.isalnum():
+                     is_splitter = True
+            
+            if is_splitter:
+                findings.append({
+                    "label": "Log Splitting (Sentence Injection)",
+                    "severity": "high",
+                    "badge": "INJECTION",
+                    "details": f"Sentence Terminator ({char}) injected inside Identifier.",
+                    "count": 1,
+                    "indices": [f"#{i}"]
+                })
+
+    return findings
+
 def scan_geometric_drift(t: str) -> list:
     """
     [Stage 2.0] Geometric Drift Analyst (Hardened V2.1).
