@@ -4546,9 +4546,7 @@ def scan_geometric_drift(t: str) -> list:
 
     import unicodedata
 
-    # ==========================================
     # 1. PHYSICS CONSTANTS
-    # ==========================================
     # We define "Token" strictly as Letters and Numbers.
     # Mixing widths in Punctuation/Symbols is often just bad formatting, not spoofing.
     TOKEN_CATS = {'L', 'N'} 
@@ -4577,9 +4575,7 @@ def scan_geometric_drift(t: str) -> list:
         except:
             return False
 
-    # ==========================================
     # 2. THE MODAL SCANNER (O(N))
-    # ==========================================
     
     token_lock_mode = None  # The established geometry for the current token
     token_is_latin = False  # Track if token contains Latin characters
@@ -4679,9 +4675,7 @@ def scan_segmentation_smuggling(t: str) -> list:
 
     import unicodedata
 
-    # ==========================================
     # 1. FORENSIC KNOWLEDGE BASE
-    # ==========================================
     
     # Scripts where ZWJ/ZWNJ/Format chars are valid grammar.
     # We whitelist these to prevent false positives on legitimate orthography.
@@ -4718,9 +4712,7 @@ def scan_segmentation_smuggling(t: str) -> list:
         if cp == 0x00AD: return "SHY"
         return "GENERIC"
 
-    # ==========================================
     # 2. SKELETON EXTRACTION (Localized O(N))
-    # ==========================================
     # We build a focused RLE list tracking only relevant types.
     
     skeleton = []
@@ -4749,9 +4741,7 @@ def scan_segmentation_smuggling(t: str) -> list:
     if curr_type:
         skeleton.append({'type': curr_type, 'start': curr_start})
 
-    # ==========================================
     # 3. THE ANALYST (Context-Aware Sandwich)
-    # ==========================================
     # Logic: [TOKEN] -> [VOID_BAD] -> [TOKEN]
     
     TOKEN_TYPES = {'ALPHA', 'DIGIT'}
@@ -4855,9 +4845,7 @@ def scan_structural_rhythm(t: str) -> list:
 
     import unicodedata 
 
-    # ==========================================
     # 1. PHYSICS CONSTANTS
-    # ==========================================
     
     # RHYTHM CLASSES (Simplifying 30 categories into 5 physics types)
     # A = Alpha (Flow)
@@ -4885,9 +4873,7 @@ def scan_structural_rhythm(t: str) -> list:
         if cat in LINGUISTIC_VOID: return 'VOID_MARK'
         return 'UNKNOWN' # Co, Cn, Cs
 
-    # ==========================================
     # 2. SKELETON EXTRACTION (O(N) Compression)
-    # ==========================================
     
     skeleton = []
     curr_type = None
@@ -4924,9 +4910,7 @@ def scan_structural_rhythm(t: str) -> list:
             'len': curr_len
         })
 
-    # ==========================================
     # 3. ANALYST B: The Frankenstein (Arrhythmia)
-    # ==========================================
     # Logic: Detect "Square Waves" in structural entropy.
     # We slide a window over the RLE SKELETON.
     
@@ -5006,9 +4990,7 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
     findings = []
     import math # Required for sqrt/std_dev
 
-    # ==========================================
     # 1. PHYSICS CONSTANTS (Hardened)
-    # ==========================================
     # Wallbuilder Physics
     # 80 chars is the standard terminal width. A run > 80 is physically suspicious.
     WALL_ABSOLUTE_MIN = 40      
@@ -5026,9 +5008,7 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
     # U+3000 (IDSP), U+2003 (EM), U+FF00 (Fullwidth)
     HEAVY_SPACE_SET = {0x3000, 0x2003, 0xFF00}
 
-    # ==========================================
     # 2. RLE EXTRACTION (The Physics Scanner)
-    # ==========================================
     # We scan O(N) to build a distribution of whitespace run lengths.
     # We also track the "Mass" (Are they wide?)
     
@@ -5073,9 +5053,7 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
     if in_ws_run:
         ws_run_lengths.append((current_ws_len, current_ws_is_heavy))
 
-    # ==========================================
     # 3. ANALYST A: The Wallbuilder Check (Statistical Mechanics)
-    # ==========================================
     
     if ws_run_lengths:
         # Extract pure lengths for math
@@ -5120,9 +5098,7 @@ def scan_structural_topology_v2(t: str, lb_counts: dict) -> list:
                     "indices": [] 
                 })
 
-    # ==========================================
     # 4. ANALYST B: The Protocol Desynchronization Check
-    # ==========================================
     # Logic Refinement: We distinguish between "Messy" (CR+LF) and "Dangerous" (LF+LS).
     
     found_breaks = set(lb_counts.keys())
