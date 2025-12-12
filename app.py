@@ -22914,7 +22914,7 @@ def update_all(event=None):
         render_matrix_table({}, "eawidth-run-matrix-body")
         render_matrix_table({}, "vo-run-matrix-body")
         render_emoji_qualification_table([])
-        render_physics_report(emoji_list)
+        render_physics_report([])
         render_emoji_summary({}, [])
         render_threat_analysis({}) 
         render_toc_counts({})
