@@ -689,27 +689,43 @@
         </table>
       </details>
 
-      <details class="fingerprint-section profile-section" id="emoji-forensics" aria-labelledby="emoji-title">
+     <details class="fingerprint-section profile-section" id="emoji-forensics" aria-labelledby="emoji-title">
         <summary><h2 id="emoji-title" class="section-title">Emoji Qualification Profile</h2></summary>
+        
         <h3 class="subsection-title">Emoji Unit Qualification</h3>
         <p id="emoji-summary" class="emoji-summary"></p>
+        
         <table class="matrix" id="emoji-qualification-matrix">
           <caption>Qualification status for all detected emoji units</caption>
-          <thead><tr><th scope="col">Sequence</th><th scope="col">Kind</th><th scope="col">Base</th><th scope="col">RGI?</th><th scope="col">Status</th><th scope="col">Count</th><th scope="col">Positions</th></tr></thead>
+          <thead>
+            <tr>
+              <th scope="col" style="text-align:left;">Sequence</th>
+              <th scope="col" style="text-align:left;">Kind</th>
+              <th scope="col" style="text-align:left;">Base</th>
+              <th scope="col" style="text-align:left;">RGI?</th>
+              <th scope="col" style="text-align:left;">Status</th>
+              <th scope="col" style="text-align:left;">Age</th>
+              <th scope="col" style="text-align:left;">Depth</th>
+              <th scope="col" style="text-align:left;">Count</th>
+              <th scope="col" style="text-align:left;">Positions</th>
+            </tr>
+          </thead>
           <tbody id="emoji-qualification-body"></tbody>
         </table>
-<div class="card mt-4">
-    <div class="card-header">
-        <h3> Structural Physics Report </h3>
-        <span class="badge-neutral">Forensic Analysis</span>
-    </div>
-    <div class="card-body">
-        <table class="table-forensic" style="width: 100%; border-collapse: collapse;">
-            <tbody id="emoji-physics-body">
-                </tbody>
-        </table>
-    </div>
-</div>
+
+        <div class="card mt-4" style="margin-top: 2rem; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+            <div class="card-header" style="background: #f8fafc; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; font-size: 1rem; color: #1e293b;">Structural Physics Report</h3>
+                <span style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Forensic Analysis</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <table class="table-forensic" style="width: 100%; border-collapse: collapse;">
+                    <tbody id="emoji-physics-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
       </details>
 
       <details class="fingerprint-section profile-section" id="structural-shape" aria-labelledby="shape-title">
