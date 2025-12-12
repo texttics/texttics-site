@@ -1567,8 +1567,8 @@ LATEST_THREAT_DATA = {}
 
 class EmojiPhysicsEngine:
     """
-    Implementation of Feature Specification v2.0: Structural Physics Engine.
-    Analyzes Molecular Structure: Mass, Valency, Tags, Time, and Presentation.
+    Implementation of Feature Specification v2.1: Topological Physics Engine.
+    Analyzes Molecular Structure: Mass, Bond Topology, Tags, Time, and Spin.
     """
 
     @staticmethod
@@ -1581,150 +1581,174 @@ class EmojiPhysicsEngine:
         report = {
             "vectors": {},
             "verdict": "STABLE",
-            "risk_score": 0.0
+            "risk_score": 0.0,
+            "diagnosis": []
         }
 
-        # --- VECTOR 1: Z-AXIS (Cluster Mass) ---
-        # Metric: Cluster_Mass_Index (CMI)
+        # --- VECTOR 1: Z-AXIS (Atomic Mass & Weight) ---
+        # Metric: Scalar_Count (Atoms) & Byte_Size (Weight)
         mass = len(codepoints)
+        weight = len(sequence.encode('utf-8'))
+        
         cmi_risk = "SAFE"
         if mass > 30: 
-            cmi_risk = "CRITICAL (Event Horizon Breach)" #
+            cmi_risk = "CRITICAL"
             report["risk_score"] += 1.0
+            report["diagnosis"].append("Event Horizon Breach")
         elif mass > 15:
-            cmi_risk = "SUSPICIOUS (High Density)" #
+            cmi_risk = "HIGH_DENSITY"
             report["risk_score"] += 0.5
+            report["diagnosis"].append("High Atomic Density")
             
         report["vectors"]["Z_AXIS"] = {
-            "metric": f"D_u={mass}",
+            "metric": f"Z={mass}",
+            "sub_metric": f"{weight}b",
             "status": cmi_risk,
-            "details": "Recursive Depth Check"
+            "details": f"Mass: {mass} | Weight: {weight}b"
         }
 
-        # --- VECTOR 2: VALENCY & GRAMMAR (Chemical Bonds) ---
-        # Metric: Valency_State_Integrity
-        # Heuristic check for Modifier Leakage (Electron without Nucleus)
-        # We check if a Skin Tone follows a character that is likely NOT a base.
+        # --- VECTOR 2: VALENCY (Bond Topology) ---
+        # Metric: Bond_Integrity
+        # Logic: Tracks 'Covalent' (ZWJ) and 'Ionic' (Modifier) bonds.
         valency_status = "VALID"
-        valency_details = "Bonds Intact"
+        bond_map = []
+        has_broken_chain = False
         
         for i, cp in enumerate(codepoints):
-            # Check for Orphaned/Illegal Electron (Skin Tone)
+            # 1. Check Ionic Bonds (Modifiers)
             if 0x1F3FB <= cp <= 0x1F3FF: 
+                bond_map.append("ION")
                 if i == 0:
                     valency_status = "VIOLATION"
-                    valency_details = "Orphaned Electron (Start)"
+                    report["diagnosis"].append("Free Radical (Orphan Modifier)")
                     report["risk_score"] += 0.4
                 else:
                     prev = codepoints[i-1]
-                    # Simple heuristic: If prev is ASCII or non-emoji symbol, it's an illegal bond.
-                    # (Ideally requires full Emoji_Modifier_Base property lookup)
+                    # Heuristic: Modifiers bond to Bases (>U+2600)
                     if prev < 0x2600: 
                         valency_status = "VIOLATION"
-                        valency_details = "Illegal Bond (Modifier on Weak Base)" #
+                        report["diagnosis"].append("Weak Ionic Bond (Invalid Base)")
                         report["risk_score"] += 0.6
+            
+            # 2. Check Covalent Bonds (ZWJ)
+            elif cp == 0x200D:
+                bond_map.append("COV")
+                # Dangling Bond Check
+                if i == len(codepoints) - 1:
+                    valency_status = "VIOLATION"
+                    report["diagnosis"].append("Dangling Bond (Trailing ZWJ)")
+                    report["risk_score"] += 0.5
+                    has_broken_chain = True
+                # Double Bond Check (ZWJ+ZWJ)
+                elif i > 0 and codepoints[i-1] == 0x200D:
+                    valency_status = "VIOLATION"
+                    report["diagnosis"].append("Double Bond Violation")
+                    report["risk_score"] += 0.5
 
-            # Check for Dangling Bond (Trailing ZWJ)
-            if cp == 0x200D and i == len(codepoints) - 1:
-                valency_status = "VIOLATION"
-                valency_details = "Dangling Bond (Trailing ZWJ)"
-                report["risk_score"] += 0.5
-
+        # Synthetic Molecule Check (Valid structure but Non-RGI context implies synthesis)
+        # Note: True RGI check is done in EmojiForensics, here we check physics.
+        zwj_count = bond_map.count("COV")
+        
         report["vectors"]["VALENCY"] = {
             "metric": valency_status,
+            "sub_metric": f"Σb={len(bond_map)}", # Total Bonds
             "status": "CRITICAL" if valency_status == "VIOLATION" else "SAFE",
-            "details": valency_details
+            "details": f"Covalent: {zwj_count} | Ionic: {bond_map.count('ION')}"
         }
 
         # --- VECTOR 3: GHOST TAGS (Attribute Injection) ---
         # Metric: Plane14_Visibility_Index
         tag_count = sum(1 for cp in codepoints if 0xE0000 <= cp <= 0xE007F)
         tag_status = "CLEAN"
-        tag_msg = "No Tags"
         
         if tag_count > 0:
-            # Check Base: Must be Waving Black Flag (U+1F3F4)
-            if codepoints[0] != 0x1F3F4:
+            if codepoints[0] != 0x1F3F4: # Waving Black Flag
                 tag_status = "INJECTION"
-                tag_msg = "Ghost Tag Injection (Invalid Base)"
+                report["diagnosis"].append("Ghost Tag Injection")
                 report["risk_score"] += 0.9
-            # Check Payload Mass
             elif tag_count > 10:
                 tag_status = "SUSPECT"
-                tag_msg = "Payload Suspect (>10 Tags)"
+                report["diagnosis"].append("Heavy Payload (>10 Tags)")
                 report["risk_score"] += 0.7
             else:
                 tag_status = "VALID"
-                tag_msg = f"RGI Tag Sequence ({tag_count})"
 
         report["vectors"]["GHOST_TAGS"] = {
-            "metric": f"Tags={tag_count}",
+            "metric": f"T={tag_count}",
             "status": tag_status,
-            "details": tag_msg
+            "details": f"Payload: {tag_count} tags"
         }
 
         # --- VECTOR 4: TEMPORAL FORENSICS (Frankenstein) ---
-        # Metric: Max_Unicode_Age & Age_Gradient
-        # We reuse your existing EmojiForensics.get_version() logic here manually
-        # to calculate the Gradient (Min vs Max).
         versions = []
         for char in sequence:
-            v_str = EmojiForensics.get_version(char).replace("v", "")
-            try: versions.append(float(v_str))
+            # Safe version extraction
+            try:
+                v_raw = EmojiForensics.get_version(char)
+                v_str = v_raw.replace("v", "").replace("E", "")
+                versions.append(float(v_str))
             except: pass
             
+        t_metric = "N/A"
+        t_status = "SAFE"
+        
         if versions:
             min_v, max_v = min(versions), max(versions)
             gradient = max_v - min_v
+            t_metric = f"v{max_v}"
             
-            t_status = "CONSISTENT"
-            t_msg = f"Gradient: {gradient:.1f}"
-            
-            # Check for Frankenstein Sequence (Gap > 5.0)
             if gradient > 5.0:
                 t_status = "ANACHRONISM"
-                t_msg = f"Frankenstein Seq (Gap {gradient:.1f})"
+                report["diagnosis"].append(f"Frankenstein Seq (Gap {gradient:.1f})")
                 report["risk_score"] += 0.3
-            # Check Compatibility Horizon (e.g., > v15.0)
-            if max_v >= 15.0:
-                 t_msg += " (Modern)"
-                 
+            
             report["vectors"]["TEMPORAL"] = {
-                "metric": f"v{max_v} (Δ{gradient:.1f})",
+                "metric": t_metric,
+                "sub_metric": f"Δ{gradient:.1f}",
                 "status": "WARNING" if t_status == "ANACHRONISM" else "SAFE",
-                "details": t_msg
+                "details": f"Epoch: v{min_v}-v{max_v}"
             }
         else:
-             report["vectors"]["TEMPORAL"] = {"metric": "N/A", "status": "SAFE", "details": "No Data"}
+             report["vectors"]["TEMPORAL"] = {"metric": "N/A", "sub_metric": "-", "status": "SAFE", "details": "No Data"}
 
-        # --- VECTOR 5: PRESENTATION (Steganography) ---
-        # Metric: Presentation_Coherence
+        # --- VECTOR 5: SPIN (Presentation & Selector Physics) ---
+        # Metric: Spin_State
+        # Logic: Distinguish Active Spin (VS15/16) from Keycap glue (20E3)
         vs_count = sum(1 for cp in codepoints if cp in (0xFE0E, 0xFE0F))
+        keycap_count = codepoints.count(0x20E3)
         
         p_status = "NORMAL"
-        p_msg = "Standard"
+        spin_label = "Neutral"
         
-        if len(codepoints) > 0:
-            stego_risk = vs_count / len(codepoints)
-            # Threshold: > 10% density
-            if stego_risk > 0.1 and len(codepoints) > 3:
+        if vs_count > 0:
+            spin_label = "Active"
+            stego_density = vs_count / max(1, len(codepoints))
+            
+            if stego_density > 0.5 and len(codepoints) > 2:
                 p_status = "SUSPECT"
-                p_msg = f"Stego Risk ({int(stego_risk*100)}%)"
+                report["diagnosis"].append(f"High Spin Density ({int(stego_density*100)}%)")
                 report["risk_score"] += 0.6
             elif vs_count > 2:
                 p_status = "REDUNDANT"
-                p_msg = "Over-Qualification"
+                report["diagnosis"].append("Redundant Selector")
 
         report["vectors"]["PRESENTATION"] = {
             "metric": f"VS={vs_count}",
+            "sub_metric": f"K={keycap_count}",
             "status": "WARNING" if p_status == "SUSPECT" else "SAFE",
-            "details": p_msg
+            "details": spin_label
         }
         
-        # Final Verdict Calculation
-        if report["risk_score"] >= 1.0: report["verdict"] = "UNSTABLE"
-        elif report["risk_score"] >= 0.5: report["verdict"] = "VOLATILE"
+        # --- FINAL VERDICT ---
+        if report["risk_score"] >= 1.0: 
+            report["verdict"] = "UNSTABLE"
+        elif report["risk_score"] >= 0.5: 
+            report["verdict"] = "VOLATILE"
         
+        # Fallback diagnosis
+        if not report["diagnosis"]:
+            report["diagnosis"].append("Stable Structure")
+            
         return report
 
 class EmojiForensics:
@@ -17651,30 +17675,29 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 def render_physics_report(emoji_list):
     """
     Renders the 'Structural Physics Report' as a clean 8-column scientific table.
-    Columns: Molecule | Stability | Mass | Bond | Tags | Time | Pres | Diagnosis
+    Columns: Molecule | Stability | Mass (Z) | Bond | Tags | Time (Age) | Spin | Diagnosis
     """
     element = document.getElementById("emoji-physics-body")
     if not element: return
 
-    # Injection of the correct headers for the Physics Table dynamically
+    # Dynamic Header Injection (Ensures columns match data)
     try:
         table = element.closest("table")
         thead = table.querySelector("thead")
         if not thead:
-            # Create header if missing
             thead = document.createElement("thead")
             table.insertBefore(thead, element)
             
         thead.innerHTML = """
-            <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-transform: uppercase; font-size: 0.7rem; color: #475569; letter-spacing: 0.05em;">
-                <th style="padding: 12px; text-align: left;">Molecule</th>
-                <th style="padding: 12px; text-align: left;">Stability</th>
-                <th style="padding: 12px; text-align: left;">Mass (Z)</th>
-                <th style="padding: 12px; text-align: left;">Bond</th>
-                <th style="padding: 12px; text-align: left;">Tags</th>
-                <th style="padding: 12px; text-align: left;">Time (Age)</th>
-                <th style="padding: 12px; text-align: left;">Pres</th>
-                <th style="padding: 12px; text-align: left;">Primary Diagnosis</th>
+            <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-transform: uppercase; font-size: 0.7rem; color: #64748b; letter-spacing: 0.05em;">
+                <th style="padding: 12px; width: 10%;">Molecule</th>
+                <th style="padding: 12px; width: 10%;">Stability</th>
+                <th style="padding: 12px; width: 10%;">Mass (Z)</th>
+                <th style="padding: 12px; width: 10%;">Bond</th>
+                <th style="padding: 12px; width: 8%;">Tags</th>
+                <th style="padding: 12px; width: 10%;">Time (Age)</th>
+                <th style="padding: 12px; width: 10%;">Spin</th>
+                <th style="padding: 12px; width: 32%;">Primary Diagnosis</th>
             </tr>
         """
     except: pass
@@ -17691,12 +17714,12 @@ def render_physics_report(emoji_list):
         if seq in seen_seqs: continue
         seen_seqs.add(seq)
         
-        # Run Physics Engine
+        # Run Topological Physics Engine
         report = EmojiPhysicsEngine.analyze_sequence(seq)
         v = report["vectors"]
         
         # 1. Molecule
-        td_mol = f'<td style="font-size: 1.6rem; padding: 10px;">{seq}</td>'
+        td_mol = f'<td style="font-size: 1.6rem; padding: 10px; line-height: 1;">{seq}</td>'
         
         # 2. Stability Badge
         verdict = report["verdict"]
@@ -17705,62 +17728,79 @@ def render_physics_report(emoji_list):
         elif verdict == "VOLATILE": v_cls = "legend-pill legend-pill-warn"
         td_stab = f'<td><span class="{v_cls}">{verdict}</span></td>'
         
-        # 3. Mass (Z-Axis)
-        mass_val = v['Z_AXIS']['metric'].replace("D_u=", "")
+        # 3. Mass (Z-Axis) -> Show Mass + Weight
+        mass_val = v['Z_AXIS']['metric'].replace("Z=", "")
+        weight_val = v['Z_AXIS'].get('sub_metric', '')
+        
         m_style = "font-weight: 700; color: #334155;"
         if "CRITICAL" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #dc2626;"
-        td_mass = f'<td style="font-family: var(--font-mono); {m_style}">{mass_val}</td>'
+        elif "HIGH" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #b45309;"
         
-        # 4. Bond (Valency)
-        bond_val = v['VALENCY']['metric'] # VALID / VIOLATION
+        td_mass = f'''<td style="font-family: var(--font-mono);">
+            <div style="{m_style}">{mass_val}</div>
+            <div style="font-size: 0.7rem; color: #94a3b8;">{weight_val}</div>
+        </td>'''
+        
+        # 4. Bond (Valency) -> Show Status + Count
+        bond_status = v['VALENCY']['metric']
+        bond_count = v['VALENCY'].get('sub_metric', '')
+        
         b_style = "color: #15803d;"
-        if bond_val == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
-        td_bond = f'<td style="font-family: var(--font-mono); font-size: 0.8rem; {b_style}">{bond_val}</td>'
+        if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
+        
+        td_bond = f'''<td style="font-family: var(--font-mono);">
+            <div style="{b_style}">{bond_status}</div>
+            <div style="font-size: 0.7rem; color: #94a3b8;">{bond_count}</div>
+        </td>'''
 
         # 5. Tags
-        tag_val = v['GHOST_TAGS']['metric'].replace("Tags=", "")
-        t_style = "color: #94a3b8;" # Grey if 0
+        tag_val = v['GHOST_TAGS']['metric'].replace("T=", "")
+        t_style = "color: #94a3b8;" 
         if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
         td_tags = f'<td style="font-family: var(--font-mono); {t_style}">{tag_val}</td>'
 
-        # 6. Time (Temporal) - Restored Gradient
-        # The metric string is like "v15.0 (Δ5.0)"
-        full_time_metric = v['TEMPORAL']['metric']
+        # 6. Time (Temporal) -> Version + Gradient
+        time_ver = v['TEMPORAL']['metric']
+        time_delta = v['TEMPORAL'].get('sub_metric', '-')
         
-        # Split it to style the delta differently
-        if "(" in full_time_metric:
-            version, delta = full_time_metric.split(" ", 1)
-            # Make the delta smaller/lighter unless it's a warning
-            delta_style = "color: #94a3b8; font-size: 0.7rem;"
-            if "ANACHRONISM" in v['TEMPORAL']['status']: 
-                delta_style = "color: #b45309; font-weight: 700;" # Orange warning for high gap
-            
-            time_html = f'{version} <span style="{delta_style}">{delta}</span>'
-        else:
-            time_html = full_time_metric
+        delta_style = "color: #94a3b8;"
+        if "ANACHRONISM" in v['TEMPORAL']['status']: 
+            delta_style = "color: #dc2626; font-weight: 700;"
+        
+        td_time = f'''<td style="font-family: var(--font-mono);">
+            <div style="color: #475569;">{time_ver}</div>
+            <div style="font-size: 0.7rem; {delta_style}">{time_delta}</div>
+        </td>'''
 
-        tm_style = "color: #475569;"
-        td_time = f'<td style="font-family: var(--font-mono); font-size: 0.85rem; {tm_style}">{time_html}</td>'
-
-        # 7. Presentation
-        pres_val = v['PRESENTATION']['metric'].replace("VS=", "")
+        # 7. Spin (Presentation) -> VS + Keycaps
+        spin_val = v['PRESENTATION']['metric'].replace("VS=", "")
+        key_val = v['PRESENTATION'].get('sub_metric', '')
+        
         p_style = "color: #94a3b8;"
-        if int(pres_val) > 0: p_style = "color: #3b82f6;"
-        td_pres = f'<td style="font-family: var(--font-mono); {p_style}">{pres_val}</td>'
-
-        # 8. Diagnosis
-        # Find the most serious issue
-        diagnosis = '<span style="color:#cbd5e1;">Stable Structure</span>'
-        for k, vec in v.items():
-            if "CRITICAL" in vec['status'] or "INJECTION" in vec['status'] or "VIOLATION" in vec['status']:
-                diagnosis = f'<span style="color:#dc2626; font-weight:600;">{vec["details"]}</span>'
-                break
-            elif "SUSPICIOUS" in vec['status'] or "WARNING" in vec['status']:
-                diagnosis = f'<span style="color:#b45309;">{vec["details"]}</span>'
+        if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600;"
         
-        td_diag = f'<td style="font-size: 0.8rem;">{diagnosis}</td>'
+        td_spin = f'''<td style="font-family: var(--font-mono);">
+            <div style="{p_style}">{spin_val}</div>
+            <div style="font-size: 0.7rem; color: #94a3b8;">{key_val}</div>
+        </td>'''
 
-        html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_pres}{td_diag}</tr>')
+        # 8. Diagnosis (Prioritized List)
+        # We take the first diagnosis as primary, or "Stable Structure"
+        diag_list = report.get("diagnosis", ["Stable Structure"])
+        primary_diag = diag_list[0]
+        
+        d_color = "#64748b" # Default Slate
+        d_weight = "400"
+        
+        if "CRITICAL" in str(report) or "Breach" in primary_diag or "Injection" in primary_diag:
+            d_color = "#dc2626"
+            d_weight = "600"
+        elif "WARNING" in str(report) or "Risk" in primary_diag or "Frankenstein" in primary_diag:
+            d_color = "#b45309"
+        
+        td_diag = f'<td style="font-size: 0.8rem; color: {d_color}; font-weight: {d_weight};">{primary_diag}</td>'
+
+        html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_spin}{td_diag}</tr>')
 
     element.innerHTML = "".join(html_rows)
 
