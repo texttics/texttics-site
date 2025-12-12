@@ -17790,6 +17790,10 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # If the physics are broken, we inject this into the "Suspicion Dashboard"
         # so it appears as a Top Target alongside malicious tokens.
         if adversarial_data and 'topology' in adversarial_data:
+
+            # Defensive Initialization: Ensure 'targets' list exists
+            if 'targets' not in adversarial_data:
+                adversarial_data['targets'] = []
             
             # Map Badge to Topology Column
             topo_cat = "OBFUSCATION" # Default
