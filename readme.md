@@ -2888,3 +2888,49 @@ Previous versions of Group 2.B calculated totals (e.g., "40 Format Characters").
     * **Topology** issues route to the **Obfuscation** and **Execution** ledgers.
     * **Rhythm** anomalies route to the **Suspicious** ledger.
     * **Smuggling** and **Geometric** anomalies route to the **Obfuscation** and **Authenticity** ledgers, respectively.
+
+***
+
+### ⚛️ Forensic Emoji Profile (v2.0 – v2.2)
+
+We have transitioned the emoji analysis engine from simple dictionary validation ("Is this allowed?") to a **Molecular Physics Engine** ("Is this chemically and structurally sound?"). This major upgrade introduces two distinct layers of forensic analysis, transforming the tool into a high-assurance instrument compliant with **UTS #51** and **UAX #15**.
+
+#### 1. The Qualification Profile (Taxonomy Layer)
+*Refined the standard "Qualification Table" to expose the precise origin and nature of every glyph.*
+
+* **Deep Taxonomy (KIND):** We now distinguish between **ATOMIC** (single units), **SEQUENCE** (bound clusters), and **COMPONENT** (technical parts).
+* **Origin Tracing (BASE):** Replaced generic `SYM` labels with precise **Unicode Block** origins (e.g., `ENCLOSED_ALPHANUM`, `TRANSPORT_MAP`, `EMOTICONS`). This instantly exposes homoglyph attacks where distinct blocks are mixed.
+* **Status Diagnosis:** Replaced redundant labels with actionable forensic states:
+    * **SHATTERED:** A sequence that failed to bond (e.g., a ZWJ appearing alone).
+    * **FRAGMENT:** A Regional Indicator appearing without a valid partner.
+    * **ORPHAN:** A Modifier (Skin/Hair) appearing without a valid base.
+* **Visual Fingerprint:** Every glyph now displays its **Hex Codepoint** (e.g., `U+1F1FA`) to prevent visual spoofing.
+* **Metrics:** Added **AGE** (Unicode Version) and **DEPTH** (Scalar Count) to visualize compatibility risks.
+
+#### 2. The Structural Physics Report (Forensic Layer)
+*A dedicated engine (`EmojiPhysicsEngine`) that treats emoji sequences as molecules and analyzes them across 5 threat vectors, visualized with a microscopic "Bill of Materials."*
+
+**A. Visual Forensics (The Schematic)**
+* **Bill of Materials (BOM):** We replaced static glyph rendering with a **Dynamic Micro-Schematic**. Under every emoji, the report now visualizes the exact atomic chain (e.g., `[👨]` `+` `[❤]` `[VS]` `[💋]` `+` `[👨]`), exposing the hidden glue and selector characters that define the structure.
+
+**B. The 5-Vector Physics Engine**
+1.  **Z-Axis (Cluster Mass):** Enforces normative compliance limits.
+    * **UAX #15 Violation:** Explicitly flags `D_u > 30` as a **Stream-Safe Protocol Violation** (DoS Risk), upgrading it from a heuristic warning to a compliance failure.
+    * **Molecular Weight:** Tracks UTF-8 byte size alongside scalar count to detect "Heavy" clusters.
+2.  **Valency & Grammar:** Validates the "Chemical Bonds" between atoms using a topological scanner.
+    * **Heterogeneous Injection:** Detects non-emoji characters (ASCII/Text) injected into ZWJ sequences to shatter tokenizers (Token Explosion).
+    * **RI Parity Check:** Detects "Boundary Straddling" attacks using odd numbers of Regional Indicators.
+    * **Dangling Bond:** Detects trailing ZWJs that leave the parser in an open state.
+3.  **Ghost Tag Vector:** Scans for **Attribute Injection** via Plane 14 Tags.
+    * **Bleeding State:** Flags tag sequences missing the Cancel Tag (`U+E007F`), which leaks state into subsequent text.
+    * **Injection:** Flags tags attached to invalid bases (anything other than `U+1F3F4` Black Flag).
+4.  **Temporal Forensics:** Calculates the "Age Gradient" ($\Delta$) of a sequence.
+    * **Frankenstein Sequence:** Detects anomalies where an ancient Base (v6.0) is bonded to a modern Component (v15.0+), a signature of "Tofu Tunneling" attacks.
+5.  **Spin State (Presentation Locking):** Monitors Variation Selector topology.
+    * **Text Washing:** Explicitly distinguishes **VS15** (Forced Text) from **VS16**. Flags VS15 applied to Emoji-only characters as an obfuscation attempt.
+    * **Stego Risk:** Tightened the density threshold to **>10%**, detecting low-density steganographic payloads.
+
+#### Technical Architecture
+* **`EmojiForensics`:** A static taxonomy engine for O(1) classification of component types.
+* **`EmojiPhysicsEngine`:** A topological logic engine that runs the 5-vector analysis.
+* **Real-Time Age Hydration:** The system parses the official Unicode `DerivedAge.txt` file into memory, enabling accurate, version-aware forensic dating for every character.
