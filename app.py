@@ -17823,7 +17823,6 @@ def render_physics_legend():
 def render_physics_report(emoji_list):
     """
     Renders the 'Structural Physics Report' as a clean 8-column scientific table.
-    Columns: Molecule | Stability | Mass (Z) | Bond | Tags | Time (Age) | Spin | Diagnosis
     """
     element = document.getElementById("emoji-physics-body")
     if not element: return
@@ -17831,21 +17830,24 @@ def render_physics_report(emoji_list):
     # Dynamic Header Injection (Ensures columns match data)
     try:
         table = element.closest("table")
+        # FORCE FULL WIDTH
+        table.style.width = "100%" 
         thead = table.querySelector("thead")
         if not thead:
             thead = document.createElement("thead")
             table.insertBefore(thead, element)
             
+        # REMOVED FIXED WIDTHS below to allow fluid layout
         thead.innerHTML = """
             <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-transform: uppercase; font-size: 0.7rem; color: #64748b; letter-spacing: 0.05em;">
-                <th style="padding: 12px; width: 10%; text-align: left;">Molecule</th>
-                <th style="padding: 12px; width: 10%; text-align: left;">Stability</th>
-                <th style="padding: 12px; width: 10%; text-align: left;">Mass (Z)</th>
-                <th style="padding: 12px; width: 10%; text-align: left;">Bond</th>
-                <th style="padding: 12px; width: 8%; text-align: left;">Tags</th>
-                <th style="padding: 12px; width: 10%; text-align: left;">Time (Age)</th>
-                <th style="padding: 12px; width: 10%; text-align: left;">Spin</th>
-                <th style="padding: 12px; width: 32%; text-align: left;">Primary Diagnosis</th>
+                <th style="padding: 12px; text-align: left;">Molecule</th>
+                <th style="padding: 12px; text-align: left;">Stability</th>
+                <th style="padding: 12px; text-align: left;">Mass (Z)</th>
+                <th style="padding: 12px; text-align: left;">Bond</th>
+                <th style="padding: 12px; text-align: left;">Tags</th>
+                <th style="padding: 12px; text-align: left;">Time (Age)</th>
+                <th style="padding: 12px; text-align: left;">Spin</th>
+                <th style="padding: 12px; text-align: left;">Primary Diagnosis</th>
             </tr>
         """
     except: pass
@@ -17866,8 +17868,7 @@ def render_physics_report(emoji_list):
         report = EmojiPhysicsEngine.analyze_sequence(seq)
         v = report["vectors"]
         
-        # 1. Molecule (Updated with Bill of Materials Schematic)
-        # We decompose the sequence into a list of "Chips"
+        # 1. Molecule
         bom_html = []
         for cp_val in [ord(c) for c in seq]:
             if cp_val == 0x200D:
@@ -17885,7 +17886,8 @@ def render_physics_report(emoji_list):
             bom_html.append(chip)
         
         bom_str = "".join(bom_html)
-        td_mol = f'''<td style="padding: 10px; width: 10%;">
+        # Removed width:10%
+        td_mol = f'''<td style="padding: 10px;">
             <div style="display:flex; flex-direction:column; gap:4px;">
                 <span style="font-size: 1.8rem; line-height: 1;">{seq}</span>
                 <div style="display:flex; flex-wrap:wrap; gap:2px; font-family:var(--font-mono); font-size:0.7rem; align-items:center;">
@@ -17894,65 +17896,71 @@ def render_physics_report(emoji_list):
             </div>
         </td>'''
         
-        # 2. Stability (10%)
+        # 2. Stability
         verdict = report["verdict"]
         v_cls = "legend-pill legend-pill-ok"
         if verdict == "UNSTABLE": v_cls = "legend-pill legend-pill-error"
         elif verdict == "VOLATILE": v_cls = "legend-pill legend-pill-warn"
-        td_stab = f'<td style="width: 10%;"><span class="{v_cls}">{verdict}</span></td>'
+        # Removed width:10%
+        td_stab = f'<td><span class="{v_cls}">{verdict}</span></td>'
         
-        # 3. Mass (10%)
+        # 3. Mass
         mass_val = v['Z_AXIS']['metric'].replace("Z=", "")
         weight_val = v['Z_AXIS'].get('sub_metric', '')
         m_style = "font-weight: 700; color: #334155;"
         if "CRITICAL" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #dc2626;"
         elif "HIGH" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #b45309;"
         
-        td_mass = f'''<td style="font-family: var(--font-mono); width: 10%;">
+        # Removed width:10%
+        td_mass = f'''<td style="font-family: var(--font-mono);">
             <div style="{m_style}">{mass_val}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{weight_val}</div>
         </td>'''
         
-        # 4. Bond (10%)
+        # 4. Bond
         bond_status = v['VALENCY']['metric']
         bond_count = v['VALENCY'].get('sub_metric', '')
         b_style = "color: #15803d;"
         if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
         
-        td_bond = f'''<td style="font-family: var(--font-mono); width: 10%;">
+        # Removed width:10%
+        td_bond = f'''<td style="font-family: var(--font-mono);">
             <div style="{b_style}">{bond_status}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{bond_count}</div>
         </td>'''
 
-        # 5. Tags (8%)
+        # 5. Tags
         tag_val = v['GHOST_TAGS']['metric'].replace("T=", "")
         t_style = "color: #94a3b8;" 
         if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
-        td_tags = f'<td style="font-family: var(--font-mono); {t_style}; width: 8%;">{tag_val}</td>'
+        # Removed width:8%
+        td_tags = f'<td style="font-family: var(--font-mono); {t_style};">{tag_val}</td>'
 
-        # 6. Time (10%)
+        # 6. Time
         time_ver = v['TEMPORAL']['metric']
         time_delta = v['TEMPORAL'].get('sub_metric', '-')
         delta_style = "color: #94a3b8;"
         if "ANACHRONISM" in v['TEMPORAL']['status']: delta_style = "color: #dc2626; font-weight: 700;"
         
-        td_time = f'''<td style="font-family: var(--font-mono); width: 10%;">
+        # Removed width:10%
+        td_time = f'''<td style="font-family: var(--font-mono);">
             <div style="color: #475569;">{time_ver}</div>
             <div style="font-size: 0.7rem; {delta_style}">{time_delta}</div>
         </td>'''
 
-        # 7. Spin (10%)
+        # 7. Spin
         spin_val = v['PRESENTATION']['metric'].replace("VS=", "")
         key_val = v['PRESENTATION'].get('sub_metric', '')
         p_style = "color: #94a3b8;"
         if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600;"
         
-        td_spin = f'''<td style="font-family: var(--font-mono); width: 10%;">
+        # Removed width:10%
+        td_spin = f'''<td style="font-family: var(--font-mono);">
             <div style="{p_style}">{spin_val}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{key_val}</div>
         </td>'''
 
-        # 8. Diagnosis (32%)
+        # 8. Diagnosis
         diag_list = report.get("diagnosis", ["Stable Structure"])
         primary_diag = diag_list[0]
         d_color = "#64748b"
@@ -17962,11 +17970,23 @@ def render_physics_report(emoji_list):
         elif "WARNING" in str(report) or "Risk" in primary_diag or "Frankenstein" in primary_diag:
             d_color = "#b45309"
         
-        td_diag = f'<td style="font-size: 0.8rem; color: {d_color}; font-weight: {d_weight}; width: 32%;">{primary_diag}</td>'
+        # Removed width:32%
+        td_diag = f'<td style="font-size: 0.8rem; color: {d_color}; font-weight: {d_weight};">{primary_diag}</td>'
 
         html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_spin}{td_diag}</tr>')
 
-    element.innerHTML = "".join(html_rows)
+    # Embed the Legend INSIDE the table structure 
+    # This prevents the table from collapsing and ensures proper width.
+    # The 'render_physics_legend' function will find this ID and populate it.
+    legend_row = """
+    <tr>
+        <td colspan="8" style="padding: 0; border-top: 1px solid #e2e8f0;">
+            <div id="emoji-physics-legend"></div>
+        </td>
+    </tr>
+    """
+    
+    element.innerHTML = "".join(html_rows) + legend_row
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
