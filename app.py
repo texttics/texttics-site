@@ -16259,24 +16259,41 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
         # [HOMOGLYPH]
-        # Initialize conf_data safely
+        # 1. Standard Density Scan
         conf_data = analyze_confusion_density(token_text, confusables_map)
         
+        # 2. Whole-Script Masquerade Scan (Decoupled)
+        # Check if token is 100% Foreign but looks 100% Latin
+        script_set = _get_script_set(token_text)
+        masq_detected = False
+        
+        if len(script_set) == 1:
+            sc = list(script_set)[0]
+            if sc not in ("Latin", "Common", "Inherited"):
+                # It's a foreign script. Check if it's purely confusable with Latin.
+                # We do a quick manual check of the skeleton if conf_data didn't trigger.
+                is_all_confusable = True
+                for c in token_text:
+                    if ord(c) not in confusables_map:
+                        is_all_confusable = False
+                        break
+                        
+                if is_all_confusable:
+                    masq_desc = f"Whole-Script {sc} Masquerade"
+                    if conf_data:
+                        conf_data['desc'] += f" ({masq_desc})"
+                        conf_data['risk'] = 100
+                    else:
+                        # Create synthetic conf_data if the original returned None
+                        conf_data = {'risk': 100, 'desc': masq_desc}
+                    masq_detected = True
+
         if conf_data:
             if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
-                conf_data['desc'] += " (Start-Char)"
-            
-            # --- WHOLE SCRIPT MASQUERADE ---
-            script_set = _get_script_set(token_text)
-            if len(script_set) == 1:
-                sc = list(script_set)[0]
-                if sc not in ("Latin", "Common", "Inherited") and conf_data['risk'] > 80:
-                    conf_data['desc'] += f" (Whole-Script {sc} Masquerade)"
-                    conf_data['risk'] = 100 # Force CRITICAL
-            # -------------------------------
+                if "Start-Char" not in conf_data['desc']:
+                    conf_data['desc'] += " (Start-Char)"
 
-            # Ensure these lines are strictly inside the 'if conf_data' block
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
@@ -17036,10 +17053,21 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # Use the new name compute_adversarial_metrics (v11)
         adversarial_data = compute_adversarial_metrics(t)
 
-        # Merges Modulo Overflow findings into the Adversarial Dashboard
+        # Truncation Physics (Stage 2.1)
         trunc_findings = analyze_truncation_risk(t)
+        
         if trunc_findings:
-            # 1. Add to Findings List
+            # Ensure topology exists
+            if 'topology' not in adversarial_data:
+                adversarial_data['topology'] = {}
+            # Ensure targets list exists
+            if 'targets' not in adversarial_data:
+                adversarial_data['targets'] = []
+
+            # 1. Update Stats
+            adversarial_data["topology"]["INJECTION"] = adversarial_data["topology"].get("INJECTION", 0) + len(trunc_findings)
+            
+            # 2. Add to Findings
             for f in trunc_findings:
                 adversarial_data["findings"].append({
                     'family': '[OVERFLOW]', 
@@ -17048,18 +17076,16 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                     'severity': 'crit' 
                 })
             
-            # 2. Update Topology Counters
-            adversarial_data["topology"]["INJECTION"] = adversarial_data["topology"].get("INJECTION", 0) + len(trunc_findings)
-            
-            # 3. Create a Synthetic Target for Visibility
-            if trunc_findings:
-                top_threat = trunc_findings[0]
-                adversarial_data["targets"].append({
-                    'token': f"{top_threat['src']} -> {top_threat['target']}",
-                    'score': 100,
-                    'verdict': "Memory Corruption Risk",
-                    'stack': [{'lvl': 'CRIT', 'type': 'OVERFLOW', 'desc': top_threat['desc']}]
-                })
+            # 3. Create Synthetic Target (Force Visibility)
+            top_threat = trunc_findings[0]
+            adversarial_data["targets"].insert(0, {
+                'token': f"{top_threat['src']} -> {top_threat['target']}",
+                'score': 100,
+                'verdict': "OVERFLOW RISK",
+                'stack': [{'lvl': 'CRIT', 'type': 'OVERFLOW', 'desc': top_threat['desc']}],
+                'b64': "N/A", 'hex': "N/A"
+            })
+        # -------------------------------------------------
 
     except Exception as e:
         print(f"CRITICAL ERROR in Adversarial Engine: {e}")
