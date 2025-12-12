@@ -10540,11 +10540,10 @@ def analyze_idna_label(label: str):
             
     return findings
 
-# E. Deobfuscation & Simulation
-
 def recursive_deobfuscate(text: str, depth=0, max_depth=5):
     """
-    Recursively strips encoding layers (URL -> HTML -> Base64 -> Escapes -> SQL CHAR).
+    [Stage 1.7] Deep-Dive Normalizer.
+    Recursively strips encoding layers: URL -> HTML -> Escapes -> SQL -> PUA -> Base64 -> Hex.
     Returns: (final_decoded_text, list_of_layers_found)
     """
     if depth >= max_depth or not text:
@@ -10575,13 +10574,10 @@ def recursive_deobfuscate(text: str, depth=0, max_depth=5):
     if "\\" in current:
         try:
             # A. Try Standard Python Decode
-            # This handles \u0041, \x41, and some octal
-            
             # Suppress DeprecationWarning for invalid escapes like \z
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
-                # We encode to latin-1 to preserve bytes, then decode escape
-                # (Standard approach, but utf-8 is also fine if input is str)
+                # Encode to utf-8 then decode unicode_escape to handle \u and \x
                 decoded = current.encode('utf-8').decode('unicode_escape')
             
             if decoded != current:
@@ -10589,7 +10585,6 @@ def recursive_deobfuscate(text: str, depth=0, max_depth=5):
                 layers.append("Escape-Sequence")
             
             # B. Explicit Octal Pattern (e.g. \141\142) if Python missed it
-            # Matches \1 to \7 followed by two digits
             octal_pattern = re.compile(r'\\([0-7]{1,3})')
             if octal_pattern.search(current):
                 def oct_sub(match):
@@ -10603,46 +10598,81 @@ def recursive_deobfuscate(text: str, depth=0, max_depth=5):
         except: pass
 
     # 4. SQL CHAR() De-obfuscation (The "Concat" Pattern)
-    # Matches: CHAR(83) or CHAR(0x53), optionally joined by + or || or spaces
-    # Regex: CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)
-    sql_pattern = re.compile(r'CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)', re.IGNORECASE)
+    # Matches: CHAR(83), CHAR(0x53)
     if "CHAR" in current.upper():
+        sql_pattern = re.compile(r'CHAR\s*\(\s*(0x[0-9a-fA-F]+|[0-9]+)\s*\)', re.IGNORECASE)
         def sql_sub(match):
             val = match.group(1)
             try:
-                # Handle Hex (0x...) or Decimal
                 code = int(val, 16) if val.lower().startswith("0x") else int(val)
                 return chr(code)
             except: return match.group(0)
             
-        # We also need to strip the '+' concatenation if present between CHARs
-        # Simplified approach: Replace CHAR(...) -> X, then cleanup artifacts? 
-        # Better: decode in place.
         decoded_sql = sql_pattern.sub(sql_sub, current)
-        
         if decoded_sql != current:
-            # Cleanup SQL concatenation noise (e.g., 'S'+'E'+'L' -> 'SEL')
-            # This is a heuristic cleanup for '+' and '||' between decoded chars
-            # Ideally, the user sees "S+E+L+E+C+T", which is readable enough to flag.
+            # Heuristic cleanup for concatenation ('+' or '||')
+            decoded_sql = decoded_sql.replace("'+'", "").replace("'||'", "")
             current = decoded_sql
             layers.append("SQL-CHAR")
 
-    # 5. Base64 Heuristic (The False Positive Hazard)
-    # Logic: Must be > 16 chars, valid B64 charsets, and decode to meaningful text
-    if len(current) > 16 and re.match(r'^[A-Za-z0-9+/=]+$', current.strip()):
+    # 5. PUA "Glassworm" Shift (0xE000 Offset)
+    # Heuristic: If we see a cluster of PUA chars, try to shift them back to ASCII.
+    pua_chars = [c for c in current if 0xE000 <= ord(c) <= 0xF8FF]
+    if len(pua_chars) > 2:
         try:
-            # Add padding if missing
-            pad = len(current) % 4
-            if pad: current += "=" * (4 - pad)
+            shifted_chars = []
+            valid_shift = False
+            for c in current:
+                cp = ord(c)
+                if 0xE000 <= cp <= 0xF8FF:
+                    # The Shift: PUA -> ASCII
+                    shifted_chars.append(chr(cp - 0xE000))
+                    valid_shift = True
+                else:
+                    shifted_chars.append(c)
             
-            b_data = base64.b64decode(current, validate=True)
+            if valid_shift:
+                shifted_str = "".join(shifted_chars)
+                # Validation: Does it look like code? (High syntax density)
+                # We check for common code characters to avoid false positives
+                if any(x in shifted_str for x in "=<>()[]{};\"'"):
+                    current = shifted_str
+                    layers.append("PUA-Shift (Glassworm)")
+        except: pass
+
+    # 6. Base64 Heuristic (Hardened)
+    # Must be > 16 chars to avoid false positives on random words like "Admin"
+    # Must match B64 alphabet strictly.
+    if len(current) > 16 and re.match(r'^[A-Za-z0-9+/=\s]+$', current):
+        try:
+            # Strip whitespace before decoding
+            clean_b64 = re.sub(r'\s+', '', current)
+            # Add padding
+            pad = len(clean_b64) % 4
+            if pad: clean_b64 += "=" * (4 - pad)
+            
+            b_data = base64.b64decode(clean_b64, validate=True)
             decoded_utf8 = b_data.decode('utf-8')
             
-            # Entropy check: > 70% printable
-            printable = sum(1 for c in decoded_utf8 if c.isprintable())
-            if printable / len(decoded_utf8) > 0.7:
+            # Entropy check: > 80% printable to be considered "Text"
+            printable = sum(1 for c in decoded_utf8 if c.isprintable() or c in "\n\r\t")
+            if printable / len(decoded_utf8) > 0.8:
                 current = decoded_utf8
                 layers.append("Base64")
+        except: pass
+
+    # 7. Raw Hex Heuristic (Payloads)
+    # Looks for long strings of [0-9A-F]
+    if len(current) > 16 and re.match(r'^[0-9a-fA-F]+$', current):
+        try:
+            # Try to decode as hex bytes
+            b_data = bytes.fromhex(current)
+            decoded_utf8 = b_data.decode('utf-8')
+            # Same entropy check
+            printable = sum(1 for c in decoded_utf8 if c.isprintable() or c in "\n\r\t")
+            if printable / len(decoded_utf8) > 0.8:
+                current = decoded_utf8
+                layers.append("Raw-Hex")
         except: pass
 
     # Recursion Step
@@ -16181,13 +16211,22 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
         # [HOMOGLYPH]
-        conf_data = analyze_confusion_density(token_text, confusables_map)
-        
         if conf_data:
             if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
                 conf_data['desc'] += " (Start-Char)"
             
+            # Whole-Script Masquerade
+            # If a token is 100% one script (e.g. Cyrillic) but looks like Latin,
+            # standard "Mixed Script" checks fail. We catch it here.
+            script_set = _get_script_set(token_text)
+            if len(script_set) == 1:
+                sc = list(script_set)[0]
+                # If it's a Foreign Script AND High Confusion Risk
+                if sc not in ("Latin", "Common", "Inherited") and conf_data['risk'] > 80:
+                    conf_data['desc'] += f" (Whole-Script {sc} Masquerade)"
+                    conf_data['risk'] = 100 # Force CRITICAL
+
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
