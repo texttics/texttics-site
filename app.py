@@ -5016,6 +5016,56 @@ def _get_codepoint_properties(t: str):
 # BLOCK 6. FORENSIC LOGIC ENGINES (PURE LOGIC)
 # ===============================================
 
+def analyze_truncation_risk(t: str) -> list:
+    """
+    [Stage 2.1] Modulo Overflow Simulator (Hardened).
+    Detects Astral characters (> U+FFFF) that masquerade as dangerous ASCII
+    when truncated by legacy 16-bit parsers (buffer overflows/logic errors).
+    
+    Vectors:
+    1. Syntax Injection: Truncates to < > ' " \ / (SQLi/XSS)
+    2. Null Byte Injection: Truncates to \0 (C-string termination)
+    3. Line Break Injection: Truncates to \n or \r (Log forging)
+    """
+    # Expanded Hazard Set: Syntax + Shell Metachars
+    DANGER_SET = set("<>\"';/\\`{}[]$#|")
+    
+    findings = []
+    
+    for i, char in enumerate(t):
+        cp = ord(char)
+        
+        # Only check Astral Plane (High Fidelity Trigger)
+        # Any char > 65535 requires a Surrogate Pair in UTF-16
+        if cp > 0xFFFF: 
+            # Simulate 16-bit Cast (Overflow)
+            truncated = cp & 0xFFFF 
+            
+            try:
+                trunc_char = chr(truncated)
+                
+                # Check 1: Critical Control Injection (Null/Newline)
+                if truncated == 0x00:
+                    findings.append({
+                        "pos": i, "src": char, "target": "NULL",
+                        "desc": f"Truncation Payload (0x{cp:X} -> NULL Byte)"
+                    })
+                elif truncated in (0x0A, 0x0D):
+                    findings.append({
+                        "pos": i, "src": char, "target": "LF/CR",
+                        "desc": f"Truncation Payload (0x{cp:X} -> Newline)"
+                    })
+                
+                # Check 2: Syntax Injection
+                elif trunc_char in DANGER_SET:
+                    findings.append({
+                        "pos": i, "src": char, "target": trunc_char,
+                        "desc": f"Truncation Risk (0x{cp:X} -> '{trunc_char}')"
+                    })
+            except: pass
+            
+    return findings
+
 def scan_markov_physics(t: str) -> list:
     """
     [Stage 2.2] Markov Transition Analyst (SOTA).
@@ -16985,6 +17035,35 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
     try:
         # Use the new name compute_adversarial_metrics (v11)
         adversarial_data = compute_adversarial_metrics(t)
+
+    # Truncation Physics (Stage 2.1)
+    # Merges Modulo Overflow findings into the Adversarial Dashboard
+    trunc_findings = analyze_truncation_risk(t)
+    if trunc_findings:
+        # 1. Add to Findings List
+        for f in trunc_findings:
+            adversarial_data["findings"].append({
+                'family': '[OVERFLOW]', 
+                'desc': f.get('desc'),
+                'token': f.get('src'), 
+                'severity': 'crit' # Critical: Exploits low-level memory handling
+            })
+        
+        # 2. Update Topology Counters
+        # "INJECTION" is the correct category for overflow payloads
+        adversarial_data["topology"]["INJECTION"] = adversarial_data["topology"].get("INJECTION", 0) + len(trunc_findings)
+        
+        # 3. Create a Synthetic Target for Visibility
+        # This forces the "Paranoia Peak" to show the overflow risk immediately
+        if trunc_findings:
+            top_threat = trunc_findings[0]
+            adversarial_data["targets"].append({
+                'token': f"{top_threat['src']} -> {top_threat['target']}",
+                'score': 100,
+                'verdict': "Memory Corruption Risk",
+                'stack': [{'lvl': 'CRIT', 'type': 'OVERFLOW', 'desc': top_threat['desc']}]
+            })
+
     except Exception as e:
         print(f"CRITICAL ERROR in Adversarial Engine: {e}")
         # Return empty structure so UI doesn't break
