@@ -17707,27 +17707,24 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 def render_physics_legend():
     """
     Renders the explanatory footer for the Structural Physics Report.
-    Design V3: High-Density Datasheet Layout. 
+    Design V4: comprehensive Glossary for Primary & Secondary (Gray) Data.
     """
-    # [CHANGED] We now strictly target the internal container created by render_physics_report
     legend_container = document.getElementById("emoji-physics-legend")
-    
-    # If the report hasn't run or the row is missing, we abort (prevents "floating" legends)
     if not legend_container: return
 
-    # CSS CONSTANTS for consistency (Updated for Compact Density)
-    # Reduced header from 0.7rem to 0.65rem, reduced body from 0.75rem to 0.7rem
+    # CSS Constants
     header_style = "text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em; margin: 0 0 10px 0; font-weight: 700;"
-    row_style = "display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.7rem;"
-    key_style = "font-weight: 700; color: #334155; font-family: var(--font-mono); white-space: nowrap; margin-right: 12px;"
-    val_style = "text-align: right; color: #64748b; line-height: 1.25;"
+    # Updated row style to handle the glossaries better
+    row_style = "display: grid; grid-template-columns: 80px 1fr; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.7rem;"
+    key_primary_style = "font-weight: 700; color: #334155; font-family: var(--font-mono); text-align: right;"
+    key_secondary_style = "font-weight: 400; color: #94a3b8; font-family: var(--font-mono); text-align: right;"
+    val_style = "color: #64748b; line-height: 1.3;"
 
-    # [NOTE] removed border-top from here because the TD cell above it already has the border
     html = f"""
     <div style="
         display: grid; 
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
-        gap: 40px; 
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
+        gap: 32px; 
         padding: 24px; 
         background: #f8fafc; 
         font-family: system-ui, -apple-system, sans-serif;
@@ -17735,19 +17732,18 @@ def render_physics_legend():
         
         <div style="border-left: 3px solid #cbd5e1; padding-left: 16px;">
             <h4 style="{header_style} color: #64748b;">Thermodynamics (Stability)</h4>
-            
             <div style="display:flex; flex-direction:column; gap:8px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span class="legend-pill legend-pill-ok" style="min-width: 80px; text-align:center;">STABLE</span>
-                    <span style="font-size: 0.75rem; color: #475569;">Valid Physics.<br><span style="opacity:0.7">Risk &lt; 0.5</span></span>
+                    <span class="legend-pill legend-pill-ok" style="min-width: 70px; text-align:center;">STABLE</span>
+                    <span style="font-size: 0.75rem; color: #475569;"><b>Safe.</b> Risk &lt; 0.5.<br>Standard specification compliance.</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span class="legend-pill legend-pill-warn" style="min-width: 80px; text-align:center;">VOLATILE</span>
-                    <span style="font-size: 0.75rem; color: #475569;">Warning.<br><span style="opacity:0.7">Risk 0.5-0.9</span></span>
+                    <span class="legend-pill legend-pill-warn" style="min-width: 70px; text-align:center;">VOLATILE</span>
+                    <span style="font-size: 0.75rem; color: #475569;"><b>Warning.</b> Risk 0.5 - 0.9.<br>Redundant selectors or odd structure.</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span class="legend-pill legend-pill-error" style="min-width: 80px; text-align:center;">UNSTABLE</span>
-                    <span style="font-size: 0.75rem; color: #475569;">Breach.<br><span style="opacity:0.7">Risk &ge; 1.0</span></span>
+                    <span class="legend-pill legend-pill-error" style="min-width: 70px; text-align:center;">UNSTABLE</span>
+                    <span style="font-size: 0.75rem; color: #475569;"><b>Breach.</b> Risk &ge; 1.0.<br>Broken chains, leaks, or illegal injection.</span>
                 </div>
             </div>
         </div>
@@ -17757,24 +17753,24 @@ def render_physics_legend():
             
             <div style="display:flex; flex-direction:column;">
                 <div style="{row_style}">
-                    <span style="{key_style}">Z (Mass)</span>
-                    <span style="{val_style}">Scalar Count. <span style="color:#dc2626; font-weight:700;">&gt;30</span> breaches UAX #15.</span>
+                    <span style="{key_primary_style}">Z (Mass)</span>
+                    <span style="{val_style}"><b>Atom Count.</b> Total scalar values in sequence. <span style="color:#dc2626;">&gt;30</span> is unsafe.</span>
                 </div>
                 <div style="{row_style}">
-                    <span style="{key_style}">Weight</span>
-                    <span style="{val_style}">UTF-8 Byte Size. Hidden capacity.</span>
+                    <span style="{key_secondary_style}">4b</span>
+                    <span style="{val_style}"><b>Weight.</b> UTF-8 storage size (bytes). High weight = hidden capacity.</span>
                 </div>
                 <div style="{row_style}">
-                    <span style="{key_style} color:#15803d;">Covalent</span>
-                    <span style="{val_style}">Strong Bond (ZWJ). Structure Glue.</span>
+                    <span style="{key_primary_style} color:#15803d;">VALID</span>
+                    <span style="{val_style}"><b>Topology.</b> Checks if connectors (ZWJ/Mod) are legally placed.</span>
                 </div>
                 <div style="{row_style}">
-                    <span style="{key_style} color:#b45309;">Ionic</span>
-                    <span style="{val_style}">Weak Bond (Modifier). Leak risk.</span>
+                    <span style="{key_secondary_style}">Σb=0</span>
+                    <span style="{val_style}"><b>Sigma Bonds.</b> Total count of structural glue (ZWJ + Modifiers).</span>
                 </div>
-                <div style="{row_style} border-bottom: none;">
-                    <span style="{key_style} color:#dc2626;">Tags</span>
-                    <span style="{val_style}">Plane 14 Injection Vector.</span>
+                 <div style="{row_style} border-bottom:none;">
+                    <span style="{key_primary_style} color:#b45309;">T=0</span>
+                    <span style="{val_style}"><b>Ghost Tags.</b> Hidden Plane 14 tag characters (Injection Vector).</span>
                 </div>
             </div>
         </div>
@@ -17784,27 +17780,28 @@ def render_physics_legend():
             
             <div style="display:flex; flex-direction:column;">
                 <div style="{row_style}">
-                    <span style="{key_style}">Frankenstein</span>
-                    <span style="{val_style}">Temporal Paradox (Old Base + New Mod).</span>
+                    <span style="{key_primary_style}">v15.0</span>
+                    <span style="{val_style}"><b>Age.</b> Minimum Unicode version required to render this emoji.</span>
                 </div>
                 <div style="{row_style}">
-                    <span style="{key_style}">Gap (Δ)</span>
-                    <span style="{val_style}">Version Delta. High Δ = Tofu Risk.</span>
+                    <span style="{key_secondary_style}">Δ0.0</span>
+                    <span style="{val_style}"><b>Temporal Gap.</b> Difference between newest & oldest atom. High Δ = "Frankenstein" risk.</span>
                 </div>
                 <div style="{row_style}">
-                    <span style="{key_style} color:#3b82f6;">Active Spin</span>
-                    <span style="{val_style}">VS16 (Emoji Lock) or VS15 (Text Lock).</span>
+                    <span style="{key_primary_style} color:#3b82f6;">1</span>
+                    <span style="{val_style}"><b>Active Spin.</b> Variation Selectors (VS15/16). Controls display logic.</span>
                 </div>
                 <div style="{row_style}">
-                    <span style="{key_style} color:#b45309;">Washing</span>
-                    <span style="{val_style}">Forced Text (VS15) on Emoji-only glyphs.</span>
+                    <span style="{key_secondary_style}">K=0</span>
+                    <span style="{val_style}"><b>Static Spin.</b> Keycap Enclosing Marks (20E3). Hardens the previous atom.</span>
                 </div>
-                <div style="{row_style} border-bottom: none;">
-                    <span style="{key_style} color:#dc2626;">Stego</span>
-                    <span style="{val_style}">High VS density = Hidden Payload.</span>
+                 <div style="{row_style} border-bottom:none;">
+                    <span style="{key_primary_style} color:#dc2626;">Diag</span>
+                    <span style="{val_style}"><b>Forensic Verdict.</b> The primary reason for instability or risk.</span>
                 </div>
             </div>
         </div>
+
     </div>
     """
     
