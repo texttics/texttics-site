@@ -86,364 +86,6 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
-class EmojiPhysicsEngine:
-    """
-    Implementation of Feature Specification v2.0: Structural Physics Engine.
-    Analyzes Molecular Structure: Mass, Valency, Tags, Time, and Presentation.
-    """
-
-    @staticmethod
-    def analyze_sequence(sequence):
-        """
-        Runs the 5-Vector Forensic Analysis on a single grapheme cluster.
-        Returns a detailed report dictionary.
-        """
-        codepoints = [ord(c) for c in sequence]
-        report = {
-            "vectors": {},
-            "verdict": "STABLE",
-            "risk_score": 0.0
-        }
-
-        # --- VECTOR 1: Z-AXIS (Cluster Mass) ---
-        # Metric: Cluster_Mass_Index (CMI)
-        mass = len(codepoints)
-        cmi_risk = "SAFE"
-        if mass > 30: 
-            cmi_risk = "CRITICAL (Event Horizon Breach)" #
-            report["risk_score"] += 1.0
-        elif mass > 15:
-            cmi_risk = "SUSPICIOUS (High Density)" #
-            report["risk_score"] += 0.5
-            
-        report["vectors"]["Z_AXIS"] = {
-            "metric": f"D_u={mass}",
-            "status": cmi_risk,
-            "details": "Recursive Depth Check"
-        }
-
-        # --- VECTOR 2: VALENCY & GRAMMAR (Chemical Bonds) ---
-        # Metric: Valency_State_Integrity
-        # Heuristic check for Modifier Leakage (Electron without Nucleus)
-        # We check if a Skin Tone follows a character that is likely NOT a base.
-        valency_status = "VALID"
-        valency_details = "Bonds Intact"
-        
-        for i, cp in enumerate(codepoints):
-            # Check for Orphaned/Illegal Electron (Skin Tone)
-            if 0x1F3FB <= cp <= 0x1F3FF: 
-                if i == 0:
-                    valency_status = "VIOLATION"
-                    valency_details = "Orphaned Electron (Start)"
-                    report["risk_score"] += 0.4
-                else:
-                    prev = codepoints[i-1]
-                    # Simple heuristic: If prev is ASCII or non-emoji symbol, it's an illegal bond.
-                    # (Ideally requires full Emoji_Modifier_Base property lookup)
-                    if prev < 0x2600: 
-                        valency_status = "VIOLATION"
-                        valency_details = "Illegal Bond (Modifier on Weak Base)" #
-                        report["risk_score"] += 0.6
-
-            # Check for Dangling Bond (Trailing ZWJ)
-            if cp == 0x200D and i == len(codepoints) - 1:
-                valency_status = "VIOLATION"
-                valency_details = "Dangling Bond (Trailing ZWJ)"
-                report["risk_score"] += 0.5
-
-        report["vectors"]["VALENCY"] = {
-            "metric": valency_status,
-            "status": "CRITICAL" if valency_status == "VIOLATION" else "SAFE",
-            "details": valency_details
-        }
-
-        # --- VECTOR 3: GHOST TAGS (Attribute Injection) ---
-        # Metric: Plane14_Visibility_Index
-        tag_count = sum(1 for cp in codepoints if 0xE0000 <= cp <= 0xE007F)
-        tag_status = "CLEAN"
-        tag_msg = "No Tags"
-        
-        if tag_count > 0:
-            # Check Base: Must be Waving Black Flag (U+1F3F4)
-            if codepoints[0] != 0x1F3F4:
-                tag_status = "INJECTION"
-                tag_msg = "Ghost Tag Injection (Invalid Base)"
-                report["risk_score"] += 0.9
-            # Check Payload Mass
-            elif tag_count > 10:
-                tag_status = "SUSPECT"
-                tag_msg = "Payload Suspect (>10 Tags)"
-                report["risk_score"] += 0.7
-            else:
-                tag_status = "VALID"
-                tag_msg = f"RGI Tag Sequence ({tag_count})"
-
-        report["vectors"]["GHOST_TAGS"] = {
-            "metric": f"Tags={tag_count}",
-            "status": tag_status,
-            "details": tag_msg
-        }
-
-        # --- VECTOR 4: TEMPORAL FORENSICS (Frankenstein) ---
-        # Metric: Max_Unicode_Age & Age_Gradient
-        # We reuse your existing EmojiForensics.get_version() logic here manually
-        # to calculate the Gradient (Min vs Max).
-        versions = []
-        for char in sequence:
-            v_str = EmojiForensics.get_version(char).replace("v", "")
-            try: versions.append(float(v_str))
-            except: pass
-            
-        if versions:
-            min_v, max_v = min(versions), max(versions)
-            gradient = max_v - min_v
-            
-            t_status = "CONSISTENT"
-            t_msg = f"Gradient: {gradient:.1f}"
-            
-            # Check for Frankenstein Sequence (Gap > 5.0)
-            if gradient > 5.0:
-                t_status = "ANACHRONISM"
-                t_msg = f"Frankenstein Seq (Gap {gradient:.1f})"
-                report["risk_score"] += 0.3
-            # Check Compatibility Horizon (e.g., > v15.0)
-            if max_v >= 15.0:
-                 t_msg += " (Modern)"
-                 
-            report["vectors"]["TEMPORAL"] = {
-                "metric": f"v{max_v} (Δ{gradient:.1f})",
-                "status": "WARNING" if t_status == "ANACHRONISM" else "SAFE",
-                "details": t_msg
-            }
-        else:
-             report["vectors"]["TEMPORAL"] = {"metric": "N/A", "status": "SAFE", "details": "No Data"}
-
-        # --- VECTOR 5: PRESENTATION (Steganography) ---
-        # Metric: Presentation_Coherence
-        vs_count = sum(1 for cp in codepoints if cp in (0xFE0E, 0xFE0F))
-        
-        p_status = "NORMAL"
-        p_msg = "Standard"
-        
-        if len(codepoints) > 0:
-            stego_risk = vs_count / len(codepoints)
-            # Threshold: > 10% density
-            if stego_risk > 0.1 and len(codepoints) > 3:
-                p_status = "SUSPECT"
-                p_msg = f"Stego Risk ({int(stego_risk*100)}%)"
-                report["risk_score"] += 0.6
-            elif vs_count > 2:
-                p_status = "REDUNDANT"
-                p_msg = "Over-Qualification"
-
-        report["vectors"]["PRESENTATION"] = {
-            "metric": f"VS={vs_count}",
-            "status": "WARNING" if p_status == "SUSPECT" else "SAFE",
-            "details": p_msg
-        }
-        
-        # Final Verdict Calculation
-        if report["risk_score"] >= 1.0: report["verdict"] = "UNSTABLE"
-        elif report["risk_score"] >= 0.5: report["verdict"] = "VOLATILE"
-        
-        return report
-
-class EmojiForensics:
-    """
-    Forensic Taxonomy Engine v2.0
-    - AXIS 1 (KIND): Structural mechanism (Component vs Atom vs Sequence)
-    - AXIS 2 (BASE): Precise Unicode Block Origin (Map/Transport vs Emoticon vs Enclosed)
-    - AXIS 3 (STATUS): Forensic State (Shattered, Orphan, Fragment, Leaked)
-    """
-
-    # 1. FORENSIC DICTIONARIES
-    
-    # Range-based Component Rules
-    COMPONENT_RANGES = [
-        # Regional Indicators (The "Flag Letters") -> ENCLOSED_ALPHANUM block context
-        (0x1F1E6, 0x1F1FF, "COMP_INDICATOR_REGIONAL", "ENCLOSED_ALPHANUM", "FRAGMENT_FLAG_LEAK"),
-
-        # Skin Tones -> MISC_SYMBOLS context
-        (0x1F3FB, 0x1F3FF, "COMP_MODIFIER_SKIN",      "BODY_MODIFIERS",  "ORPHAN_SKIN_TONE"),
-
-        # Hair Components -> SYMBOLS_EXT_A context
-        (0x1F9B0, 0x1F9B3, "COMP_HAIR",               "BODY_MODIFIERS",  "ORPHAN_HAIR_COMPONENT"),
-
-        # Tags -> SPECIAL tags block
-        (0xE0020, 0xE007E, "COMP_TAG",                "TAG_SPECIFIERS",  "INVISIBLE_TAG_FRAGMENT"),
-    ]
-
-    # Single Character Rules (The "Singleton Specials")
-    COMPONENT_SINGLES = {
-        # --- THE SHATTERED GLUE (ZWJ) ---
-        # If we see this alone, a sequence has definitely "Shattered"
-        0x200D: (
-            "COMP_JOINER_ZWJ", 
-            "CTRL_FORMAT", 
-            "SHATTERED_GLUE"          # <--- Explicit Forensic Diagnosis
-        ),
-        
-        # --- SELECTORS ---
-        0xFE0F: ("COMP_SELECTOR_EMOJI", "CTRL_VARIATION", "STRAY_SELECTOR_EMOJI"),
-        0xFE0E: ("COMP_SELECTOR_TEXT",  "CTRL_VARIATION", "STRAY_SELECTOR_TEXT"),
-        
-        # --- KEYCAP GLUE ---
-        0x20E3: ("COMP_KEYCAP_MARK",    "MARK_ENCLOSING", "ORPHAN_KEYCAP_MARK"),
-        
-        # --- TAG END ---
-        0xE007F: ("COMP_TAG_END",       "TAG_CTRL",       "ORPHAN_TAG_END"),
-
-        # --- KEYCAP BASES (Official Emoji_Component) --------------------------
-        # Symbols
-        0x0023: ("COMP_KEYCAP_BASE", "ASCII_SYMBOL", "ORPHAN_KEYCAP_BASE"),  # '#'
-        0x002A: ("COMP_KEYCAP_BASE", "ASCII_SYMBOL", "ORPHAN_KEYCAP_BASE"),  # '*'
-        
-        # Digits 0-9
-        0x0030: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '0'
-        0x0031: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '1'
-        0x0032: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '2'
-        0x0033: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '3'
-        0x0034: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '4'
-        0x0035: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '5'
-        0x0036: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '6'
-        0x0037: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '7'
-        0x0038: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '8'
-        0x0039: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '9'
-    }
-
-    # Presentation Lock States
-    PRESENTATION_STATES = {
-        "VS16": "EMOJI_LOCKED",
-        "VS15": "TEXT_LOCKED",
-        "NONE": "AMBIGUOUS"
-    }
-
-
-    # 2. ORIGIN TRACING (Block Resolver)
-
-    @staticmethod
-    def _resolve_block_name(cp):
-        """
-        Maps a codepoint to its precise Unicode Block for forensic context.
-        Replaces vague 'SYM' with forensic specificity.
-        """
-        # Emoji-relevant blocks
-        if 0x1F600 <= cp <= 0x1F64F: return "EMOTICONS"
-        if 0x1F300 <= cp <= 0x1F5FF: return "MISC_SYMBOLS_PICT"
-        if 0x1F680 <= cp <= 0x1F6FF: return "TRANSPORT_MAP"
-        if 0x2600  <= cp <= 0x26FF:  return "MISC_SYMBOLS"
-        if 0x2700  <= cp <= 0x27BF:  return "DINGBATS"
-        if 0x1F900 <= cp <= 0x1F9FF: return "SYMBOLS_EXT_A"
-        if 0x1FA70 <= cp <= 0x1FAFF: return "SYMBOLS_EXT_B"
-        
-        # Enclosed / Regional Indicators often leak here
-        if 0x1F100 <= cp <= 0x1F1FF: return "ENCLOSED_ALPHANUM_SUP" 
-        if 0x2460  <= cp <= 0x24FF:  return "ENCLOSED_ALPHANUM"
-        
-        # Fallback to standard generic categories
-        if cp <= 0x7F: return "ASCII"
-        if 0x80 <= cp <= 0xFF: return "LATIN_1_SUP"
-        
-        return "UNKNOWN_BLOCK"
-
-    # 4. AGE ESTIMATOR (Real Unicode 17.0 Data)
-    
-    @staticmethod
-    def get_version(sequence: str):
-        """
-        Look up the exact Unicode Version from the loaded DerivedAge.txt.
-        """
-        # Access the global store we populated in load_unicode_data
-        age_db = DATA_STORES.get("AgeMap", {}) 
-        
-        if not sequence: return "-"
-        if not age_db: return "DB_ERR" # Fallback if file failed to load
-        
-        max_ver = 0.0
-        
-        for char in sequence:
-            cp = ord(char)
-            # Default to 0.0 if not found (e.g. unassigned or private use)
-            ver = age_db.get(cp, 0.0)
-            if ver > max_ver:
-                max_ver = ver
-            
-        return f"v{max_ver}"
-
-    # 4. THE CLASSIFIER LOGIC
-    
-    @staticmethod
-    def classify(sequence: str, is_rgi: bool = False):
-        codepoints = [ord(c) for c in sequence]
-        depth = len(codepoints)
-        primary_cp = codepoints[0]
-        
-        # 1. BASE RESOLUTION (The Origin)
-        # We calculate this ONCE and DO NOT overwrite it. 
-        # This ensures the 'Base' column always shows the Unicode Block (e.g., 'EMOTICONS').
-        base = EmojiForensics._resolve_block_name(primary_cp)
-        
-        # Defaults
-        kind = "ATOM"
-        status_flags = []
-        is_component = False
-
-        # A. SINGLE COMPONENT LOOKUP (Trojan Check)
-        if depth == 1:
-            if primary_cp in EmojiForensics.COMPONENT_SINGLES:
-                k, b_override, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
-                kind = k
-                base = b_override # Exception: Components define their own semantic base
-                status_flags.append(s)
-                is_component = True
-            else:
-                for start, end, k, b_override, s in EmojiForensics.COMPONENT_RANGES:
-                    if start <= primary_cp <= end:
-                        kind = k
-                        base = b_override
-                        status_flags.append(s)
-                        is_component = True
-                        break
-
-        # B. SEQUENCE ANALYSIS
-        if not is_component and depth > 1:
-            # We determine KIND based on structure, but keep BASE as the Origin Block.
-            if 0x200D in codepoints:
-                kind = "SEQ_ZWJ"
-                # Forensic Check: Does it END with a ZWJ? (The "Cliffhanger" Error)
-                if codepoints[-1] == 0x200D:
-                    status_flags.append("TRAILING_GLUE_ERROR")
-            elif any(0x1F1E6 <= cp <= 0x1F1FF for cp in codepoints):
-                kind = "SEQ_FLAG"
-                # Refinement: If it's a flag, we can be specific about the base
-                base = "REGIONAL_INDICATOR_PAIR" 
-            elif any(0x1F3FB <= cp <= 0x1F3FF for cp in codepoints):
-                kind = "SEQ_MODIFIER" 
-            else:
-                kind = "SEQ_OTHER"
-
-        # C. STATUS DIAGNOSIS
-        if is_rgi:
-            status_flags.insert(0, "FULLY_QUALIFIED_RGI")
-        elif is_component:
-            pass 
-        else:
-            status_flags.append("UNQUALIFIED")
-
-        # D. PRESENTATION LOCKS
-        if 0xFE0F in codepoints: status_flags.append("EMOJI_LOCKED")
-        elif 0xFE0E in codepoints: status_flags.append("TEXT_LOCKED")
-        else: status_flags.append("AMBIGUOUS")
-
-        return {
-            "sequence": sequence,
-            "hex": " ".join([f"U+{cp:04X}" for cp in codepoints]),
-            "kind": kind,
-            "base": base,
-            "status": " · ".join(status_flags),
-            "depth": depth
-        }
-
 # CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
 
 # 1. Serialization & Container Magic Signatures
@@ -1922,6 +1564,365 @@ FORENSIC_EXPLAINER = None # Global instance placeholder
 # Global Context Memory (The Bridge)
 # Stores the latest threat analysis for the Inspector to query.
 LATEST_THREAT_DATA = {}
+
+class EmojiPhysicsEngine:
+    """
+    Implementation of Feature Specification v2.0: Structural Physics Engine.
+    Analyzes Molecular Structure: Mass, Valency, Tags, Time, and Presentation.
+    """
+
+    @staticmethod
+    def analyze_sequence(sequence):
+        """
+        Runs the 5-Vector Forensic Analysis on a single grapheme cluster.
+        Returns a detailed report dictionary.
+        """
+        codepoints = [ord(c) for c in sequence]
+        report = {
+            "vectors": {},
+            "verdict": "STABLE",
+            "risk_score": 0.0
+        }
+
+        # --- VECTOR 1: Z-AXIS (Cluster Mass) ---
+        # Metric: Cluster_Mass_Index (CMI)
+        mass = len(codepoints)
+        cmi_risk = "SAFE"
+        if mass > 30: 
+            cmi_risk = "CRITICAL (Event Horizon Breach)" #
+            report["risk_score"] += 1.0
+        elif mass > 15:
+            cmi_risk = "SUSPICIOUS (High Density)" #
+            report["risk_score"] += 0.5
+            
+        report["vectors"]["Z_AXIS"] = {
+            "metric": f"D_u={mass}",
+            "status": cmi_risk,
+            "details": "Recursive Depth Check"
+        }
+
+        # --- VECTOR 2: VALENCY & GRAMMAR (Chemical Bonds) ---
+        # Metric: Valency_State_Integrity
+        # Heuristic check for Modifier Leakage (Electron without Nucleus)
+        # We check if a Skin Tone follows a character that is likely NOT a base.
+        valency_status = "VALID"
+        valency_details = "Bonds Intact"
+        
+        for i, cp in enumerate(codepoints):
+            # Check for Orphaned/Illegal Electron (Skin Tone)
+            if 0x1F3FB <= cp <= 0x1F3FF: 
+                if i == 0:
+                    valency_status = "VIOLATION"
+                    valency_details = "Orphaned Electron (Start)"
+                    report["risk_score"] += 0.4
+                else:
+                    prev = codepoints[i-1]
+                    # Simple heuristic: If prev is ASCII or non-emoji symbol, it's an illegal bond.
+                    # (Ideally requires full Emoji_Modifier_Base property lookup)
+                    if prev < 0x2600: 
+                        valency_status = "VIOLATION"
+                        valency_details = "Illegal Bond (Modifier on Weak Base)" #
+                        report["risk_score"] += 0.6
+
+            # Check for Dangling Bond (Trailing ZWJ)
+            if cp == 0x200D and i == len(codepoints) - 1:
+                valency_status = "VIOLATION"
+                valency_details = "Dangling Bond (Trailing ZWJ)"
+                report["risk_score"] += 0.5
+
+        report["vectors"]["VALENCY"] = {
+            "metric": valency_status,
+            "status": "CRITICAL" if valency_status == "VIOLATION" else "SAFE",
+            "details": valency_details
+        }
+
+        # --- VECTOR 3: GHOST TAGS (Attribute Injection) ---
+        # Metric: Plane14_Visibility_Index
+        tag_count = sum(1 for cp in codepoints if 0xE0000 <= cp <= 0xE007F)
+        tag_status = "CLEAN"
+        tag_msg = "No Tags"
+        
+        if tag_count > 0:
+            # Check Base: Must be Waving Black Flag (U+1F3F4)
+            if codepoints[0] != 0x1F3F4:
+                tag_status = "INJECTION"
+                tag_msg = "Ghost Tag Injection (Invalid Base)"
+                report["risk_score"] += 0.9
+            # Check Payload Mass
+            elif tag_count > 10:
+                tag_status = "SUSPECT"
+                tag_msg = "Payload Suspect (>10 Tags)"
+                report["risk_score"] += 0.7
+            else:
+                tag_status = "VALID"
+                tag_msg = f"RGI Tag Sequence ({tag_count})"
+
+        report["vectors"]["GHOST_TAGS"] = {
+            "metric": f"Tags={tag_count}",
+            "status": tag_status,
+            "details": tag_msg
+        }
+
+        # --- VECTOR 4: TEMPORAL FORENSICS (Frankenstein) ---
+        # Metric: Max_Unicode_Age & Age_Gradient
+        # We reuse your existing EmojiForensics.get_version() logic here manually
+        # to calculate the Gradient (Min vs Max).
+        versions = []
+        for char in sequence:
+            v_str = EmojiForensics.get_version(char).replace("v", "")
+            try: versions.append(float(v_str))
+            except: pass
+            
+        if versions:
+            min_v, max_v = min(versions), max(versions)
+            gradient = max_v - min_v
+            
+            t_status = "CONSISTENT"
+            t_msg = f"Gradient: {gradient:.1f}"
+            
+            # Check for Frankenstein Sequence (Gap > 5.0)
+            if gradient > 5.0:
+                t_status = "ANACHRONISM"
+                t_msg = f"Frankenstein Seq (Gap {gradient:.1f})"
+                report["risk_score"] += 0.3
+            # Check Compatibility Horizon (e.g., > v15.0)
+            if max_v >= 15.0:
+                 t_msg += " (Modern)"
+                 
+            report["vectors"]["TEMPORAL"] = {
+                "metric": f"v{max_v} (Δ{gradient:.1f})",
+                "status": "WARNING" if t_status == "ANACHRONISM" else "SAFE",
+                "details": t_msg
+            }
+        else:
+             report["vectors"]["TEMPORAL"] = {"metric": "N/A", "status": "SAFE", "details": "No Data"}
+
+        # --- VECTOR 5: PRESENTATION (Steganography) ---
+        # Metric: Presentation_Coherence
+        vs_count = sum(1 for cp in codepoints if cp in (0xFE0E, 0xFE0F))
+        
+        p_status = "NORMAL"
+        p_msg = "Standard"
+        
+        if len(codepoints) > 0:
+            stego_risk = vs_count / len(codepoints)
+            # Threshold: > 10% density
+            if stego_risk > 0.1 and len(codepoints) > 3:
+                p_status = "SUSPECT"
+                p_msg = f"Stego Risk ({int(stego_risk*100)}%)"
+                report["risk_score"] += 0.6
+            elif vs_count > 2:
+                p_status = "REDUNDANT"
+                p_msg = "Over-Qualification"
+
+        report["vectors"]["PRESENTATION"] = {
+            "metric": f"VS={vs_count}",
+            "status": "WARNING" if p_status == "SUSPECT" else "SAFE",
+            "details": p_msg
+        }
+        
+        # Final Verdict Calculation
+        if report["risk_score"] >= 1.0: report["verdict"] = "UNSTABLE"
+        elif report["risk_score"] >= 0.5: report["verdict"] = "VOLATILE"
+        
+        return report
+
+class EmojiForensics:
+    """
+    Forensic Taxonomy Engine v2.0
+    - AXIS 1 (KIND): Structural mechanism (Component vs Atom vs Sequence)
+    - AXIS 2 (BASE): Precise Unicode Block Origin (Map/Transport vs Emoticon vs Enclosed)
+    - AXIS 3 (STATUS): Forensic State (Shattered, Orphan, Fragment, Leaked)
+    """
+
+    # 1. FORENSIC DICTIONARIES
+    
+    # Range-based Component Rules
+    COMPONENT_RANGES = [
+        # Regional Indicators (The "Flag Letters") -> ENCLOSED_ALPHANUM block context
+        (0x1F1E6, 0x1F1FF, "COMP_INDICATOR_REGIONAL", "ENCLOSED_ALPHANUM", "FRAGMENT_FLAG_LEAK"),
+
+        # Skin Tones -> MISC_SYMBOLS context
+        (0x1F3FB, 0x1F3FF, "COMP_MODIFIER_SKIN",      "BODY_MODIFIERS",  "ORPHAN_SKIN_TONE"),
+
+        # Hair Components -> SYMBOLS_EXT_A context
+        (0x1F9B0, 0x1F9B3, "COMP_HAIR",               "BODY_MODIFIERS",  "ORPHAN_HAIR_COMPONENT"),
+
+        # Tags -> SPECIAL tags block
+        (0xE0020, 0xE007E, "COMP_TAG",                "TAG_SPECIFIERS",  "INVISIBLE_TAG_FRAGMENT"),
+    ]
+
+    # Single Character Rules (The "Singleton Specials")
+    COMPONENT_SINGLES = {
+        # --- THE SHATTERED GLUE (ZWJ) ---
+        # If we see this alone, a sequence has definitely "Shattered"
+        0x200D: (
+            "COMP_JOINER_ZWJ", 
+            "CTRL_FORMAT", 
+            "SHATTERED_GLUE"          # <--- Explicit Forensic Diagnosis
+        ),
+        
+        # --- SELECTORS ---
+        0xFE0F: ("COMP_SELECTOR_EMOJI", "CTRL_VARIATION", "STRAY_SELECTOR_EMOJI"),
+        0xFE0E: ("COMP_SELECTOR_TEXT",  "CTRL_VARIATION", "STRAY_SELECTOR_TEXT"),
+        
+        # --- KEYCAP GLUE ---
+        0x20E3: ("COMP_KEYCAP_MARK",    "MARK_ENCLOSING", "ORPHAN_KEYCAP_MARK"),
+        
+        # --- TAG END ---
+        0xE007F: ("COMP_TAG_END",       "TAG_CTRL",       "ORPHAN_TAG_END"),
+
+        # --- KEYCAP BASES (Official Emoji_Component) --------------------------
+        # Symbols
+        0x0023: ("COMP_KEYCAP_BASE", "ASCII_SYMBOL", "ORPHAN_KEYCAP_BASE"),  # '#'
+        0x002A: ("COMP_KEYCAP_BASE", "ASCII_SYMBOL", "ORPHAN_KEYCAP_BASE"),  # '*'
+        
+        # Digits 0-9
+        0x0030: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '0'
+        0x0031: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '1'
+        0x0032: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '2'
+        0x0033: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '3'
+        0x0034: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '4'
+        0x0035: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '5'
+        0x0036: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '6'
+        0x0037: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '7'
+        0x0038: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '8'
+        0x0039: ("COMP_KEYCAP_BASE", "ASCII_DIGIT", "ORPHAN_KEYCAP_BASE"),   # '9'
+    }
+
+    # Presentation Lock States
+    PRESENTATION_STATES = {
+        "VS16": "EMOJI_LOCKED",
+        "VS15": "TEXT_LOCKED",
+        "NONE": "AMBIGUOUS"
+    }
+
+
+    # 2. ORIGIN TRACING (Block Resolver)
+
+    @staticmethod
+    def _resolve_block_name(cp):
+        """
+        Maps a codepoint to its precise Unicode Block for forensic context.
+        Replaces vague 'SYM' with forensic specificity.
+        """
+        # Emoji-relevant blocks
+        if 0x1F600 <= cp <= 0x1F64F: return "EMOTICONS"
+        if 0x1F300 <= cp <= 0x1F5FF: return "MISC_SYMBOLS_PICT"
+        if 0x1F680 <= cp <= 0x1F6FF: return "TRANSPORT_MAP"
+        if 0x2600  <= cp <= 0x26FF:  return "MISC_SYMBOLS"
+        if 0x2700  <= cp <= 0x27BF:  return "DINGBATS"
+        if 0x1F900 <= cp <= 0x1F9FF: return "SYMBOLS_EXT_A"
+        if 0x1FA70 <= cp <= 0x1FAFF: return "SYMBOLS_EXT_B"
+        
+        # Enclosed / Regional Indicators often leak here
+        if 0x1F100 <= cp <= 0x1F1FF: return "ENCLOSED_ALPHANUM_SUP" 
+        if 0x2460  <= cp <= 0x24FF:  return "ENCLOSED_ALPHANUM"
+        
+        # Fallback to standard generic categories
+        if cp <= 0x7F: return "ASCII"
+        if 0x80 <= cp <= 0xFF: return "LATIN_1_SUP"
+        
+        return "UNKNOWN_BLOCK"
+
+    # 4. AGE ESTIMATOR (Real Unicode 17.0 Data)
+    
+    @staticmethod
+    def get_version(sequence: str):
+        """
+        Look up the exact Unicode Version from the loaded DerivedAge.txt.
+        """
+        # Access the global store we populated in load_unicode_data
+        age_db = DATA_STORES.get("AgeMap", {}) 
+        
+        if not sequence: return "-"
+        if not age_db: return "DB_ERR" # Fallback if file failed to load
+        
+        max_ver = 0.0
+        
+        for char in sequence:
+            cp = ord(char)
+            # Default to 0.0 if not found (e.g. unassigned or private use)
+            ver = age_db.get(cp, 0.0)
+            if ver > max_ver:
+                max_ver = ver
+            
+        return f"v{max_ver}"
+
+    # 4. THE CLASSIFIER LOGIC
+    
+    @staticmethod
+    def classify(sequence: str, is_rgi: bool = False):
+        codepoints = [ord(c) for c in sequence]
+        depth = len(codepoints)
+        primary_cp = codepoints[0]
+        
+        # 1. BASE RESOLUTION (The Origin)
+        # We calculate this ONCE and DO NOT overwrite it. 
+        # This ensures the 'Base' column always shows the Unicode Block (e.g., 'EMOTICONS').
+        base = EmojiForensics._resolve_block_name(primary_cp)
+        
+        # Defaults
+        kind = "ATOM"
+        status_flags = []
+        is_component = False
+
+        # A. SINGLE COMPONENT LOOKUP (Trojan Check)
+        if depth == 1:
+            if primary_cp in EmojiForensics.COMPONENT_SINGLES:
+                k, b_override, s = EmojiForensics.COMPONENT_SINGLES[primary_cp]
+                kind = k
+                base = b_override # Exception: Components define their own semantic base
+                status_flags.append(s)
+                is_component = True
+            else:
+                for start, end, k, b_override, s in EmojiForensics.COMPONENT_RANGES:
+                    if start <= primary_cp <= end:
+                        kind = k
+                        base = b_override
+                        status_flags.append(s)
+                        is_component = True
+                        break
+
+        # B. SEQUENCE ANALYSIS
+        if not is_component and depth > 1:
+            # We determine KIND based on structure, but keep BASE as the Origin Block.
+            if 0x200D in codepoints:
+                kind = "SEQ_ZWJ"
+                # Forensic Check: Does it END with a ZWJ? (The "Cliffhanger" Error)
+                if codepoints[-1] == 0x200D:
+                    status_flags.append("TRAILING_GLUE_ERROR")
+            elif any(0x1F1E6 <= cp <= 0x1F1FF for cp in codepoints):
+                kind = "SEQ_FLAG"
+                # Refinement: If it's a flag, we can be specific about the base
+                base = "REGIONAL_INDICATOR_PAIR" 
+            elif any(0x1F3FB <= cp <= 0x1F3FF for cp in codepoints):
+                kind = "SEQ_MODIFIER" 
+            else:
+                kind = "SEQ_OTHER"
+
+        # C. STATUS DIAGNOSIS
+        if is_rgi:
+            status_flags.insert(0, "FULLY_QUALIFIED_RGI")
+        elif is_component:
+            pass 
+        else:
+            status_flags.append("UNQUALIFIED")
+
+        # D. PRESENTATION LOCKS
+        if 0xFE0F in codepoints: status_flags.append("EMOJI_LOCKED")
+        elif 0xFE0E in codepoints: status_flags.append("TEXT_LOCKED")
+        else: status_flags.append("AMBIGUOUS")
+
+        return {
+            "sequence": sequence,
+            "hex": " ".join([f"U+{cp:04X}" for cp in codepoints]),
+            "kind": kind,
+            "base": base,
+            "status": " · ".join(status_flags),
+            "depth": depth
+        }
+
 
 def _build_enclosed():
     """Populates the ENCLOSED_MAP with manual normalization rules."""
