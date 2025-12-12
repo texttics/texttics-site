@@ -239,16 +239,39 @@ This is the "Flag" report. It provides a detailed, non-judgmental list of all "p
     * `Flag: Invalid Variation Selector`: Detects a VS attached to a non-designated base character.
     * `Steganography (IVS)`: A specific check for **Ideographic Variation Selectors** (`U+E0100`–`U+E01EF`).
 
-### Group 2.D: Provenance & Context Profile
+---
 
-This is the "Origin Story" of the atoms. It provides the deep forensic context of *what* the characters are and *where* they come from. Unlike the simple counters of earlier versions, this module is now a full "matrix of facts" that reports both **Count** and **Positions** for each property, allowing for precise cross-referencing.
+### Group 2.D: Provenance & Context Profile (The Origin Story)
 
-* **`Script:`, `Script-Ext:`, `Block:`, `Age:`, `Numeric Type:`**
-    * A sophisticated, multi-property analysis (from `Scripts.txt`, `ScriptExtensions.txt`, `Blocks.txt`, `DerivedAge.txt`, and `DerivedNumericType.txt`) that reports the count and all positions for each property found. This provides a 100% accurate, non-redundant profile for detecting homograph attacks.
-* **Total Numeric Value:**
-    * A powerful, non-obvious profile. It uses `unicodedata.numeric()` to calculate the **actual mathematical sum** of all numeric characters (e.g., `V` + `¼` = `5.25`). Any change to a number, even a "confusable" one, will change this profile.
-* **Mixed-Number Systems:**
-    * A flag that triggers if characters from two different numbering systems (e.g., Latin `1` and Arabic `١`) are found in the same string.
+This module analyzes the "Historical & Cultural DNA" of the text. It has been upgraded from a passive counter to an active **"Forensic Saturation Engine"** (v2.0) that operates on a "Zero-Dependency" model. Instead of relying on the browser's potentially outdated Unicode version, it hydrates its own forensic truth from **40+ raw Unicode 17.0 data files**.
+
+This profile provides deep forensic context on *what* the characters are, *where* they come from, and *when* they were introduced.
+
+* **`Script` & `Script-Extension` Topology:**
+    * **Forensic Value:** Beyond simple counts, this module now performs a **Run-Length Analysis** (Topological Scan) to detect "Script Flicker."
+    * **The "Stutter" Detector:** It visualizes the exact sequence of script changes (e.g., `Latin (5)` $\to$ `Cyrillic (1)` $\to$ `Latin (5)`). This exposes "Frankenstein" text where a single foreign character is spliced into a valid word to bypass filters (Homograph Attacks).
+    * **Extension Awareness:** Accurately resolves "Bridge Characters" (like `·` or `1`) that are valid in multiple scripts, preventing false positives on common punctuation.
+
+* **`Age` (Cosmology Sensor):**
+    * **Forensic Value:** Analyzes the chronological origin of every character (e.g., "Age 1.1" vs "Age 15.0").
+    * **Time-Travel Detection:** Flags "Future Particles"—characters introduced in recent standards (Unicode 14.0+) appearing in legacy contexts. This detects potential rendering failures (Tofu) or "Backdated Document" forgery attempts.
+
+* **`Block` Taxonomy:**
+    * **Forensic Value:** Maps characters to their specific allocation block (e.g., `Mathematical Alphanumeric Symbols` vs. `Basic Latin`).
+    * **Masquerade Detection:** Instantly exposes "Block Bleeding," where symbols from obscure blocks (like *Tags* or *Variation Selectors Supplement*) are used to mimic standard text or hide payloads.
+
+* **`Numeric Type` & Financial Integrity (The Mass Sensor):**
+    * **Forensic Value:** A specialized engine that calculates the **Total Numeric Value** of the text using a "Saturated" database (`Unihan_NumericValues.txt`).
+    * **Shadow Payload Detection:** Unlike standard counters, this sensor detects **non-decimal** numeric payloads. It correctly sums:
+        * **Suzhou Numerals:** Historical commercial digits (e.g., `〡`, `〢`) that often bypass `\d` regex filters.
+        * **CJK Bankers' Numerals:** Ideographic numbers (e.g., `壹` = 1, `万` = 10,000) used in financial spoofing.
+        * **Roman & Enclosed Numerals:** (e.g., `Ⅻ`, `①`).
+    * **Mixed-System Alert:** Explicitly flags and locates the exact positions where multiple decimal systems (e.g., Latin `1` + Arabic `١`) are mixed in the same stream—a primary signature of international banking fraud and phishing.
+
+* **`Mixed-Number Systems` (Phishing Radar):**
+    * **Forensic Value:** A dedicated heuristic that triggers *only* when digits from conflicting decimal systems are found. It reports the exact indices of the collision, allowing analysts to pinpoint the spoofed phone number or account ID in massive log files.
+
+---
 
 ### Group 2.E: Emoji Qualification Profile
 
