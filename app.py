@@ -17750,8 +17750,45 @@ def render_physics_report(emoji_list):
         report = EmojiPhysicsEngine.analyze_sequence(seq)
         v = report["vectors"]
         
-        # 1. Molecule
-        td_mol = f'<td style="font-size: 1.6rem; padding: 10px; line-height: 1;">{seq}</td>'
+        # 1. Molecule (Updated with Bill of Materials Schematic)
+        # We decompose the sequence into a list of "Chips"
+        bom_html = []
+        for cp_val in [ord(c) for c in seq]:
+            # Stylize based on type
+            if cp_val == 0x200D:
+                # ZWJ -> Connector
+                chip = '<span style="color:#cbd5e1; font-weight:700;">+</span>'
+            elif cp_val == 0xFE0F:
+                # VS16 -> Force
+                chip = '<span style="font-size:0.6rem; border:1px solid #cbd5e1; color:#64748b; padding:0 2px; border-radius:3px;">VS</span>'
+            elif cp_val == 0xFE0E:
+                # VS15 -> Text Force
+                chip = '<span style="font-size:0.6rem; border:1px solid #94a3b8; color:#475569; padding:0 2px; border-radius:3px; background:#f1f5f9;">TXT</span>'
+            elif 0xE0000 <= cp_val <= 0xE007F:
+                # Tags -> Orange Dot or specific tag
+                if cp_val == 0xE007F:
+                    chip = '<span style="font-size:0.6rem; color:#b45309;">END</span>'
+                else:
+                    chip = '<span style="font-size:0.6rem; color:#b45309;">•</span>'
+            else:
+                # Atom -> Small Glyph
+                # We handle invisible bases or spaces by ensuring they have width
+                char_disp = chr(cp_val)
+                chip = f'<span style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:3px; padding:0 3px; color:#334155;">{char_disp}</span>'
+            
+            bom_html.append(chip)
+            
+        # Join with thin spaces
+        bom_str = "".join(bom_html)
+        
+        td_mol = f'''<td style="padding: 10px;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                <span style="font-size: 1.8rem; line-height: 1;">{seq}</span>
+                <div style="display:flex; flex-wrap:wrap; gap:2px; font-family:var(--font-mono); font-size:0.7rem; align-items:center;">
+                    {bom_str}
+                </div>
+            </div>
+        </td>'''
         
         # 2. Stability Badge
         verdict = report["verdict"]
