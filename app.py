@@ -15823,7 +15823,8 @@ def compute_provenance_stats(t: str):
     if LOADING_STATE != "READY":
         return {} # Return empty if data isn't ready
 
-    number_script_zeros = set()
+    # Changed from set() to dict() to track positions of mixed number systems
+    number_script_zeros = {} 
     final_stats = {} # This will now hold the dicts
 
     # Helper to add to our new structure
@@ -15863,14 +15864,19 @@ def compute_provenance_stats(t: str):
             _add_stat(f"Numeric Type: {num_type}", i)
 
         # --- Numeric System Check (Decimal Systems Only) ---
-        # This keeps the "Mixed-Number Systems" check working for standard digits (0-9)
+        # Tracks positions of decimal digits to pinpoint mixed-system attacks.
         # We rely on Python's unicodedata for this specific structural check.
         try:
             gc = unicodedata.category(char)
             if gc == "Nd":
                 val = unicodedata.numeric(char)
+                # Calculate the 'Zero' base (e.g., '1' -> '0', '١' -> '٠')
                 zero_code_point = ord(char) - int(val)
-                number_script_zeros.add(zero_code_point)
+                
+                # We store a tuple: (ZeroBase, Index) to track location
+                if zero_code_point not in number_script_zeros:
+                    number_script_zeros[zero_code_point] = []
+                number_script_zeros[zero_code_point].append(i)
         except (ValueError, TypeError):
             pass
 
@@ -15891,10 +15897,20 @@ def compute_provenance_stats(t: str):
             'positions': ["(Financial Integrity Audit)"]
         }
 
+    # Mixed-Number Systems Position Reporting
     if len(number_script_zeros) > 1:
+        # Collect all positions from all divergent systems
+        all_positions = []
+        for zero_cp, indices in number_script_zeros.items():
+            for idx in indices:
+                all_positions.append(f"#{idx}")
+        
+        # Sort them numerically for the report to ensure clean reading order
+        all_positions.sort(key=lambda x: int(x[1:]))
+
         final_stats["Mixed-Number Systems"] = {
             'count': len(number_script_zeros), 
-            'positions': ["(N/A)"]
+            'positions': all_positions
         }
 
     return final_stats
