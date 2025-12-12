@@ -17707,22 +17707,16 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 def render_physics_legend():
     """
     Renders the explanatory footer for the Structural Physics Report.
-    Explains the Thermodynamic, Atomic, and Quantum metrics used in the forensic analysis.
+    Redesigned (v2) for strict alignment, hierarchy, and a cleaner 'Datasheet' aesthetic.
     """
-    # We target the parent container of the physics table to append the legend
-    # Ideally, there should be a <div id="emoji-physics-legend"></div> in the HTML.
-    # If not, we try to find it or create it dynamically after the table.
-    
-    # Try to find the specific slot first
     legend_container = document.getElementById("emoji-physics-legend")
     
-    # If explicit slot doesn't exist, try to find the table and append after it
+    # Dynamic creation if missing
     if not legend_container:
         tbody = document.getElementById("emoji-physics-body")
         if tbody:
             table = tbody.closest("table")
             if table:
-                # Check if we already created it dynamically to avoid duplicates
                 if table.nextElementSibling and table.nextElementSibling.id == "emoji-physics-legend":
                     legend_container = table.nextElementSibling
                 else:
@@ -17732,48 +17726,113 @@ def render_physics_legend():
 
     if not legend_container: return
 
-    # The Semantic Legend Content
+    # Redesigned HTML with strict Flexbox alignment to prevent overlapping
     html = """
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; padding: 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-family: var(--font-mono); font-size: 0.75rem; color: #475569;">
+    <div style="
+        display: grid; 
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
+        gap: 32px; 
+        padding: 24px; 
+        background: #f8fafc; 
+        border-top: 1px solid #e2e8f0; 
+        font-family: system-ui, -apple-system, sans-serif; 
+        color: #475569;
+    ">
         
-        <div>
-            <h4 style="text-transform: uppercase; color: #334155; font-weight: 700; margin: 0 0 12px 0; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">Thermodynamics (Stability)</h4>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-                <div style="display:flex; justify-content:space-between;">
-                    <span class="legend-pill legend-pill-ok">STABLE</span>
-                    <span>Low Entropy (Risk &lt; 0.5). Valid Physics.</span>
+        <div style="border-left: 3px solid #cbd5e1; padding-left: 16px;">
+            <h4 style="
+                text-transform: uppercase; 
+                font-size: 0.7rem; 
+                letter-spacing: 0.05em; 
+                color: #64748b; 
+                margin: 0 0 16px 0; 
+                font-weight: 700;
+            ">Thermodynamics (Stability)</h4>
+            
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="legend-pill legend-pill-ok" style="min-width: 80px; text-align:center;">STABLE</span>
+                    <div style="font-size: 0.75rem; line-height: 1.4;">
+                        <strong>Valid Physics.</strong><br>Low Entropy (Risk &lt; 0.5).
+                    </div>
                 </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span class="legend-pill legend-pill-warn">VOLATILE</span>
-                    <span>Med Entropy (Risk 0.5-0.9). Warning.</span>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="legend-pill legend-pill-warn" style="min-width: 80px; text-align:center;">VOLATILE</span>
+                    <div style="font-size: 0.75rem; line-height: 1.4;">
+                        <strong>Warning.</strong><br>Med Entropy (Risk 0.5-0.9).
+                    </div>
                 </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span class="legend-pill legend-pill-error">UNSTABLE</span>
-                    <span>Crit Entropy (Risk &ge; 1.0). Breach.</span>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="legend-pill legend-pill-error" style="min-width: 80px; text-align:center;">UNSTABLE</span>
+                    <div style="font-size: 0.75rem; line-height: 1.4;">
+                        <strong>Breach.</strong><br>Crit Entropy (Risk &ge; 1.0).
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div>
-            <h4 style="text-transform: uppercase; color: #334155; font-weight: 700; margin: 0 0 12px 0; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">Atomic Physics (Mass & Bonds)</h4>
-            <ul style="list-style: none; padding: 0; margin: 0; display:flex; flex-direction:column; gap:6px;">
-                <li><strong style="color:#0f172a;">Z (Mass):</strong> Scalar Count. <span style="color:#dc2626;">&gt;30</span> breaches UAX #15 (DoS).</li>
-                <li><strong style="color:#0f172a;">Weight:</strong> UTF-8 Byte Size. Hidden capacity.</li>
-                <li><strong style="color:#15803d;">Covalent:</strong> Strong Bond (ZWJ). Structure Glue.</li>
-                <li><strong style="color:#dc2626;">Ionic (Weak):</strong> Modifier Bond. Risk of Leakage.</li>
-                <li><strong style="color:#b45309;">Tags:</strong> Plane 14 Injection Vector.</li>
-            </ul>
+        <div style="border-left: 3px solid #3b82f6; padding-left: 16px;">
+            <h4 style="
+                text-transform: uppercase; 
+                font-size: 0.7rem; 
+                letter-spacing: 0.05em; 
+                color: #3b82f6; 
+                margin: 0 0 16px 0; 
+                font-weight: 700;
+            ">Atomic Physics (Mass & Bonds)</h4>
+            
+            <div style="display:flex; flex-direction:column; gap:10px; font-size: 0.75rem;">
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
+                    <span style="font-family: var(--font-mono); font-weight:700; color:#0f172a;">Z (Mass)</span>
+                    <span style="text-align:right;">Scalar Count. <span style="color:#dc2626;">&gt;30</span> = DoS Risk.</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
+                    <span style="font-family: var(--font-mono); font-weight:700; color:#0f172a;">Weight</span>
+                    <span style="text-align:right;">UTF-8 Byte Size.</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
+                    <span style="font-family: var(--font-mono); font-weight:700; color:#15803d;">Covalent</span>
+                    <span style="text-align:right;">Strong Bond (ZWJ). Valid Glue.</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
+                    <span style="font-family: var(--font-mono); font-weight:700; color:#dc2626;">Ionic</span>
+                    <span style="text-align:right;">Weak/Modifier Bond. Leak Risk.</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="font-family: var(--font-mono); font-weight:700; color:#b45309;">Tags</span>
+                    <span style="text-align:right;">Plane 14 Injection Vector.</span>
+                </div>
+            </div>
         </div>
 
-        <div>
-            <h4 style="text-transform: uppercase; color: #334155; font-weight: 700; margin: 0 0 12px 0; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">Quantum States (Time & Spin)</h4>
-            <ul style="list-style: none; padding: 0; margin: 0; display:flex; flex-direction:column; gap:6px;">
-                <li><strong style="color:#0f172a;">Frankenstein:</strong> Temporal Paradox (Old Base + New Mod).</li>
-                <li><strong style="color:#0f172a;">Gap (Δ):</strong> Version Delta. High Δ = Tofu Risk.</li>
-                <li><strong style="color:#3b82f6;">Active Spin:</strong> VS16 (Emoji Lock) or VS15 (Text Lock).</li>
-                <li><strong style="color:#b45309;">Washing:</strong> Forced Text (VS15) on Emoji-only glyphs.</li>
-                <li><strong style="color:#dc2626;">Stego Density:</strong> High VS ratio = Hidden Payload.</li>
-            </ul>
+        <div style="border-left: 3px solid #8b5cf6; padding-left: 16px;">
+            <h4 style="
+                text-transform: uppercase; 
+                font-size: 0.7rem; 
+                letter-spacing: 0.05em; 
+                color: #8b5cf6; 
+                margin: 0 0 16px 0; 
+                font-weight: 700;
+            ">Quantum States (Time & Spin)</h4>
+            
+            <div style="display:flex; flex-direction:column; gap:8px; font-size: 0.75rem;">
+                <div>
+                    <span style="font-weight:700; color:#0f172a;">Frankenstein Seq:</span><br>
+                    <span style="color:#64748b;">Temporal Paradox (Old Base + Modern Mod).</span>
+                </div>
+                <div>
+                    <span style="font-weight:700; color:#0f172a;">Gap (Δ):</span><br>
+                    <span style="color:#64748b;">Version Delta. High Δ = Tofu Tunneling.</span>
+                </div>
+                <div>
+                    <span style="font-weight:700; color:#3b82f6;">Active Spin:</span><br>
+                    <span style="color:#64748b;">VS16 (Emoji Lock) or VS15 (Text Lock).</span>
+                </div>
+                <div>
+                    <span style="font-weight:700; color:#b45309;">Text Washing:</span><br>
+                    <span style="color:#64748b;">Forced Text (VS15) on Emoji-only glyphs.</span>
+                </div>
+            </div>
         </div>
     </div>
     """
