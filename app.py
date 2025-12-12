@@ -17838,14 +17838,14 @@ def render_physics_report(emoji_list):
             
         thead.innerHTML = """
             <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-transform: uppercase; font-size: 0.7rem; color: #64748b; letter-spacing: 0.05em;">
-                <th style="padding: 12px; width: 10%;">Molecule</th>
-                <th style="padding: 12px; width: 10%;">Stability</th>
-                <th style="padding: 12px; width: 10%;">Mass (Z)</th>
-                <th style="padding: 12px; width: 10%;">Bond</th>
-                <th style="padding: 12px; width: 8%;">Tags</th>
-                <th style="padding: 12px; width: 10%;">Time (Age)</th>
-                <th style="padding: 12px; width: 10%;">Spin</th>
-                <th style="padding: 12px; width: 32%;">Primary Diagnosis</th>
+                <th style="padding: 12px; width: 10%; text-align: left;">Molecule</th>
+                <th style="padding: 12px; width: 10%; text-align: left;">Stability</th>
+                <th style="padding: 12px; width: 10%; text-align: left;">Mass (Z)</th>
+                <th style="padding: 12px; width: 10%; text-align: left;">Bond</th>
+                <th style="padding: 12px; width: 8%; text-align: left;">Tags</th>
+                <th style="padding: 12px; width: 10%; text-align: left;">Time (Age)</th>
+                <th style="padding: 12px; width: 10%; text-align: left;">Spin</th>
+                <th style="padding: 12px; width: 32%; text-align: left;">Primary Diagnosis</th>
             </tr>
         """
     except: pass
