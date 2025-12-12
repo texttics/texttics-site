@@ -1750,9 +1750,10 @@ class EmojiPhysicsEngine:
             # Distinguish between VS15 (Force Text) and VS16 (Force Emoji)
             has_vs15 = any(cp == 0xFE0E for cp in codepoints)
             
-            if stego_density > 0.5 and len(codepoints) > 2:
+            # Spec demands > 0.1 (10%), we were at 0.5.
+            if stego_density > 0.1 and len(codepoints) > 2:
                 p_status = "SUSPECT"
-                report["diagnosis"].append(f"High Spin Density ({int(stego_density*100)}%)")
+                report["diagnosis"].append(f"Spin Density ({int(stego_density*100)}%)")
                 report["risk_score"] += 0.6
             elif has_vs15:
                 # VS15 detected in a complex sequence (implies attempting to hide an emoji)
