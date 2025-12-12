@@ -16004,7 +16004,8 @@ def compute_adversarial_metrics(t: str):
     if not t: 
         return {
             "findings": [], "top_tokens": [], "targets": [],
-            "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0}
+            "topology": {"OBFUSCATION": 0, "INJECTION": 0, "SPOOFING": 0, "HIDDEN": 0, "SEMANTIC": 0},
+            "targets": []
         }
 
     # --- 1. Setup ---
@@ -16258,22 +16259,24 @@ def compute_adversarial_metrics(t: str):
                 threat_stack.append({ "lvl": lvl, "type": "SPOOFING", "desc": r_lbl })
             
         # [HOMOGLYPH]
+        # Initialize conf_data safely
+        conf_data = analyze_confusion_density(token_text, confusables_map)
+        
         if conf_data:
             if len(token_text) > 0 and ord(token_text[0]) in confusables_map:
                 conf_data['risk'] = min(100, conf_data['risk'] + 20)
                 conf_data['desc'] += " (Start-Char)"
             
-            # Whole-Script Masquerade
-            # If a token is 100% one script (e.g. Cyrillic) but looks like Latin,
-            # standard "Mixed Script" checks fail. We catch it here.
+            # --- WHOLE SCRIPT MASQUERADE ---
             script_set = _get_script_set(token_text)
             if len(script_set) == 1:
                 sc = list(script_set)[0]
-                # If it's a Foreign Script AND High Confusion Risk
                 if sc not in ("Latin", "Common", "Inherited") and conf_data['risk'] > 80:
                     conf_data['desc'] += f" (Whole-Script {sc} Masquerade)"
                     conf_data['risk'] = 100 # Force CRITICAL
+            # -------------------------------
 
+            # Ensure these lines are strictly inside the 'if conf_data' block
             token_score += conf_data['risk']
             token_reasons.append(conf_data['desc'])
             token_families.add("HOMOGLYPH")
@@ -17786,27 +17789,24 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         elif sig["risk"] == "MED":    score_add = 15   # Volatility (Ambiguity Risk)
         threat_score += score_add
 
-        # D. Dashboard Bridge (The Paranoia Link)
-        # If the physics are broken, we inject this into the "Suspicion Dashboard"
-        # so it appears as a Top Target alongside malicious tokens.
+       # D. Dashboard Bridge (The Paranoia Link)
         if adversarial_data and 'topology' in adversarial_data:
-
-            # Defensive Initialization: Ensure 'targets' list exists
+            
+            # Defensive Init: Create targets list if missing to prevent KeyError
             if 'targets' not in adversarial_data:
                 adversarial_data['targets'] = []
-            
+
             # Map Badge to Topology Column
             topo_cat = "OBFUSCATION" # Default
-            if sig['badge'] == "LOOP":     topo_cat = "INJECTION" # DoS is an attack
-            elif sig['badge'] == "FLUID":  topo_cat = "AMBIGUITY"
-            elif sig['badge'] == "SHIFT":  topo_cat = "PROTOCOL"
-            elif sig['badge'] == "MUTANT": topo_cat = "OBFUSCATION"
+            if sig['badge'] == "LOOP":      topo_cat = "INJECTION" 
+            elif sig['badge'] == "FLUID":   topo_cat = "AMBIGUITY"
+            elif sig['badge'] == "SHIFT":   topo_cat = "PROTOCOL"
+            elif sig['badge'] == "MUTANT":  topo_cat = "OBFUSCATION"
             
             # Increment Stats
             adversarial_data['topology'][topo_cat] = adversarial_data['topology'].get(topo_cat, 0) + 1
             
             # Inject Synthetic Target (If High/Critical)
-            # This forces the "Paranoia Peak" to display "PHYSICS FAILURE" as the top threat.
             if sig["risk"] in ("CRITICAL", "HIGH"):
                 adversarial_data['targets'].insert(0, {
                     "token": "GLOBAL_PHYSICS",
@@ -17816,9 +17816,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                         "type": topo_cat, 
                         "desc": sig['desc']
                     }],
-                    "b64": "N/A", 
-                    "hex": "N/A", 
-                    "score": 95 # Force near top of list
+                    "b64": "N/A", "hex": "N/A", "score": 95 
                 })
     
     return {
