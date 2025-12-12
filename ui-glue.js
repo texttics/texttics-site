@@ -1960,58 +1960,73 @@ window.updateStatConsole = function(row) {
   }
 
 // ==========================================
-// 15. METADATA WORKBENCH BRIDGE (Dynamic & Debounced)
+// 15. METADATA WORKBENCH BRIDGE (Hardened & Debounced)
 // ==========================================
 
 const metadataInput = document.getElementById('metadata-input');
 
 if (metadataInput) {
     let debounceTimer;
+    
+    // SECURITY CONFIGURATION
+    const MAX_INPUT_LENGTH = 100000; // Limit to 100KB to prevent Browser Freeze (DoS)
 
-    // A. The Trigger Function
-    // Calls the Python backend with flow control to prevent crashes
     const triggerForensicScan = (content) => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            // Check if Python bridge is ready (it exports as window.analyze_html_metadata)
-            if (typeof window.analyze_html_metadata === 'function') {
-                // Determine payload: If empty or just <br>, send empty string to reset UI
-                const payload = (!content || content === "<br>") ? "" : content;
-                window.analyze_html_metadata(payload);
-            } else {
-                console.warn("[Metadata] Python bridge not ready yet.");
+            // LAYER 1: Availability Protection (DoS)
+            // Prevent massive pastes from freezing the main thread or crashing Pyodide memory
+            if (content.length > MAX_INPUT_LENGTH) {
+                console.warn(`[Security] Input truncated. Length ${content.length} exceeds limit of ${MAX_INPUT_LENGTH}.`);
+                content = content.substring(0, MAX_INPUT_LENGTH);
+                // Optional: Alert user visually
             }
-        }, 400); // 400ms delay
+
+            // LAYER 2: Input Sanitization (Type Safety)
+            // Ensure we are passing a string, never null/undefined/object
+            const safePayload = (typeof content === 'string') ? content : "";
+
+            // LAYER 3: Bridge Safety
+            if (typeof window.py_analyze_html_metadata === 'function') {
+                try {
+                    // SECURE CALL: Passing data by reference, not by string evaluation
+                    window.py_analyze_html_metadata(safePayload);
+                } catch (err) {
+                    console.error("[Security] Python Bridge Error:", err);
+                }
+            } else {
+                // Fail silently or log if Python isn't ready (prevents console spam)
+            }
+        }, 400); // 400ms debounce
     };
 
     // B. The Paste Interceptor (High Fidelity)
-    // Captures raw HTML before the browser normalizes it
     metadataInput.addEventListener("paste", (e) => {
         e.preventDefault(); 
         
         const clipboardData = e.clipboardData || window.clipboardData;
-        const rawHtml = clipboardData.getData('text/html');
-        const plainText = clipboardData.getData('text/plain');
         
-        // 1. Visual Injection (So the user sees what they pasted)
-        // Use execCommand to preserve the Undo stack and handle HTML insertion safely
+        // Prefer HTML, fallback to Text. 
+        // SECURITY: We trust the browser's clipboard API to deliver these formats safely.
+        let rawHtml = clipboardData.getData('text/html');
+        let plainText = clipboardData.getData('text/plain');
+        
+        // Clean <br> artifacts if empty
+        if (rawHtml === "<br>") rawHtml = "";
+
+        // 1. Visual Injection
         if (rawHtml) {
             document.execCommand('insertHTML', false, rawHtml);
         } else {
-            // Fallback for plain text pastes
             document.execCommand('insertText', false, plainText);
         }
 
-        // 2. Forensic Handoff (Send the rawest data possible)
-        // Note: We send 'rawHtml' if available, otherwise 'plainText'
-        triggerForensicScan(rawHtml || plainText);
+        // 2. Forensic Handoff
+        triggerForensicScan(rawHtml || plainText || "");
     });
 
-    // C. The Dynamic Monitor (Edits/Deletes)
-    // Fires on typing, backspace, cut, and drag-drop.
+    // C. The Dynamic Monitor
     metadataInput.addEventListener("input", (e) => {
-        // For edits, we must analyze the current DOM state (innerHTML)
-        // This handles the "Ghost Problem" where deleting text didn't clear the alert.
         triggerForensicScan(metadataInput.innerHTML);
     });
 }
