@@ -86,6 +86,168 @@ def _debug_threat_bridge(t: str, hit: tuple):
 # BLOCK 2. THE PHYSICS (BITMASKS & CONSTANTS)
 # ===============================================
 
+class EmojiPhysicsEngine:
+    """
+    Implementation of Feature Specification v2.0: Structural Physics Engine.
+    Analyzes Molecular Structure: Mass, Valency, Tags, Time, and Presentation.
+    """
+
+    @staticmethod
+    def analyze_sequence(sequence):
+        """
+        Runs the 5-Vector Forensic Analysis on a single grapheme cluster.
+        Returns a detailed report dictionary.
+        """
+        codepoints = [ord(c) for c in sequence]
+        report = {
+            "vectors": {},
+            "verdict": "STABLE",
+            "risk_score": 0.0
+        }
+
+        # --- VECTOR 1: Z-AXIS (Cluster Mass) ---
+        # Metric: Cluster_Mass_Index (CMI)
+        mass = len(codepoints)
+        cmi_risk = "SAFE"
+        if mass > 30: 
+            cmi_risk = "CRITICAL (Event Horizon Breach)" #
+            report["risk_score"] += 1.0
+        elif mass > 15:
+            cmi_risk = "SUSPICIOUS (High Density)" #
+            report["risk_score"] += 0.5
+            
+        report["vectors"]["Z_AXIS"] = {
+            "metric": f"D_u={mass}",
+            "status": cmi_risk,
+            "details": "Recursive Depth Check"
+        }
+
+        # --- VECTOR 2: VALENCY & GRAMMAR (Chemical Bonds) ---
+        # Metric: Valency_State_Integrity
+        # Heuristic check for Modifier Leakage (Electron without Nucleus)
+        # We check if a Skin Tone follows a character that is likely NOT a base.
+        valency_status = "VALID"
+        valency_details = "Bonds Intact"
+        
+        for i, cp in enumerate(codepoints):
+            # Check for Orphaned/Illegal Electron (Skin Tone)
+            if 0x1F3FB <= cp <= 0x1F3FF: 
+                if i == 0:
+                    valency_status = "VIOLATION"
+                    valency_details = "Orphaned Electron (Start)"
+                    report["risk_score"] += 0.4
+                else:
+                    prev = codepoints[i-1]
+                    # Simple heuristic: If prev is ASCII or non-emoji symbol, it's an illegal bond.
+                    # (Ideally requires full Emoji_Modifier_Base property lookup)
+                    if prev < 0x2600: 
+                        valency_status = "VIOLATION"
+                        valency_details = "Illegal Bond (Modifier on Weak Base)" #
+                        report["risk_score"] += 0.6
+
+            # Check for Dangling Bond (Trailing ZWJ)
+            if cp == 0x200D and i == len(codepoints) - 1:
+                valency_status = "VIOLATION"
+                valency_details = "Dangling Bond (Trailing ZWJ)"
+                report["risk_score"] += 0.5
+
+        report["vectors"]["VALENCY"] = {
+            "metric": valency_status,
+            "status": "CRITICAL" if valency_status == "VIOLATION" else "SAFE",
+            "details": valency_details
+        }
+
+        # --- VECTOR 3: GHOST TAGS (Attribute Injection) ---
+        # Metric: Plane14_Visibility_Index
+        tag_count = sum(1 for cp in codepoints if 0xE0000 <= cp <= 0xE007F)
+        tag_status = "CLEAN"
+        tag_msg = "No Tags"
+        
+        if tag_count > 0:
+            # Check Base: Must be Waving Black Flag (U+1F3F4)
+            if codepoints[0] != 0x1F3F4:
+                tag_status = "INJECTION"
+                tag_msg = "Ghost Tag Injection (Invalid Base)"
+                report["risk_score"] += 0.9
+            # Check Payload Mass
+            elif tag_count > 10:
+                tag_status = "SUSPECT"
+                tag_msg = "Payload Suspect (>10 Tags)"
+                report["risk_score"] += 0.7
+            else:
+                tag_status = "VALID"
+                tag_msg = f"RGI Tag Sequence ({tag_count})"
+
+        report["vectors"]["GHOST_TAGS"] = {
+            "metric": f"Tags={tag_count}",
+            "status": tag_status,
+            "details": tag_msg
+        }
+
+        # --- VECTOR 4: TEMPORAL FORENSICS (Frankenstein) ---
+        # Metric: Max_Unicode_Age & Age_Gradient
+        # We reuse your existing EmojiForensics.get_version() logic here manually
+        # to calculate the Gradient (Min vs Max).
+        versions = []
+        for char in sequence:
+            v_str = EmojiForensics.get_version(char).replace("v", "")
+            try: versions.append(float(v_str))
+            except: pass
+            
+        if versions:
+            min_v, max_v = min(versions), max(versions)
+            gradient = max_v - min_v
+            
+            t_status = "CONSISTENT"
+            t_msg = f"Gradient: {gradient:.1f}"
+            
+            # Check for Frankenstein Sequence (Gap > 5.0)
+            if gradient > 5.0:
+                t_status = "ANACHRONISM"
+                t_msg = f"Frankenstein Seq (Gap {gradient:.1f})"
+                report["risk_score"] += 0.3
+            # Check Compatibility Horizon (e.g., > v15.0)
+            if max_v >= 15.0:
+                 t_msg += " (Modern)"
+                 
+            report["vectors"]["TEMPORAL"] = {
+                "metric": f"v{max_v} (Δ{gradient:.1f})",
+                "status": "WARNING" if t_status == "ANACHRONISM" else "SAFE",
+                "details": t_msg
+            }
+        else:
+             report["vectors"]["TEMPORAL"] = {"metric": "N/A", "status": "SAFE", "details": "No Data"}
+
+        # --- VECTOR 5: PRESENTATION (Steganography) ---
+        # Metric: Presentation_Coherence
+        vs_count = sum(1 for cp in codepoints if cp in (0xFE0E, 0xFE0F))
+        
+        p_status = "NORMAL"
+        p_msg = "Standard"
+        
+        if len(codepoints) > 0:
+            stego_risk = vs_count / len(codepoints)
+            # Threshold: > 10% density
+            if stego_risk > 0.1 and len(codepoints) > 3:
+                p_status = "SUSPECT"
+                p_msg = f"Stego Risk ({int(stego_risk*100)}%)"
+                report["risk_score"] += 0.6
+            elif vs_count > 2:
+                p_status = "REDUNDANT"
+                p_msg = "Over-Qualification"
+
+        report["vectors"]["PRESENTATION"] = {
+            "metric": f"VS={vs_count}",
+            "status": "WARNING" if p_status == "SUSPECT" else "SAFE",
+            "details": p_msg
+        }
+        
+        # Final Verdict Calculation
+        if report["risk_score"] >= 1.0: report["verdict"] = "UNSTABLE"
+        elif report["risk_score"] >= 0.5: report["verdict"] = "VOLATILE"
+        
+        return report
+
 class EmojiForensics:
     """
     Forensic Taxonomy Engine v2.0
@@ -17491,6 +17653,103 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 # BLOCK 9. RENDERERS (THE VIEW)
 # ===============================================
 
+def render_physics_report(emoji_list):
+    """
+    Renders the 'Structural Physics Report' based on the 5-Vector Analysis.
+    Displays forensic findings for Z-Axis, Valency, Tags, Time, and Presentation.
+    """
+    element = document.getElementById("emoji-physics-body")
+    # Note: You need to create a <tbody id="emoji-physics-body"> in your HTML
+    # OR reuse an existing container. If you want me to write the container injection logic, let me know.
+    # For now, I'll assume you have a container or I'll try to find one.
+    
+    # Fallback: If specific ID doesn't exist, try to append to the main container
+    if not element: 
+        # Create a new section dynamically if needed (Optional advanced logic)
+        return
+
+    if not emoji_list:
+        element.innerHTML = "<tr><td colspan='6' class='placeholder-text'>No molecular structures analyzed.</td></tr>"
+        return
+
+    html_rows = []
+    
+    # Filter: Only show interesting items (skip simple atomic emojis to reduce noise?)
+    # For now, we show everything for pedagogical reasons.
+    
+    seen_seqs = set()
+
+    for item in emoji_list:
+        seq = item.get("sequence", "")
+        if seq in seen_seqs: continue
+        seen_seqs.add(seq)
+        
+        # RUN THE PHYSICS ENGINE
+        report = EmojiPhysicsEngine.analyze_sequence(seq)
+        vectors = report["vectors"]
+        
+        # Verdict Badge
+        v_cls = "legend-pill legend-pill-ok"
+        if report["verdict"] == "UNSTABLE": v_cls = "legend-pill legend-pill-error"
+        elif report["verdict"] == "VOLATILE": v_cls = "legend-pill legend-pill-warn"
+        
+        # Build Vector Cells
+        # We compress the 5 vectors into a mini-grid inside the cell
+        
+        def _get_vec_style(status):
+            if "CRITICAL" in status or "INJECTION" in status: return "color: #dc2626; font-weight: 700;"
+            if "SUSPICIOUS" in status or "WARNING" in status or "SUSPECT" in status: return "color: #b45309;"
+            return "color: #15803d;"
+
+        vector_html = f"""
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.7rem; font-family: var(--font-mono);">
+            <div>
+                <span style="color:#6b7280">MASS:</span> <span style="{_get_vec_style(vectors['Z_AXIS']['status'])}">{vectors['Z_AXIS']['metric']}</span>
+            </div>
+            <div>
+                <span style="color:#6b7280">BOND:</span> <span style="{_get_vec_style(vectors['VALENCY']['status'])}">{vectors['VALENCY']['metric']}</span>
+            </div>
+            <div>
+                <span style="color:#6b7280">TAGS:</span> <span style="{_get_vec_style(vectors['GHOST_TAGS']['status'])}">{vectors['GHOST_TAGS']['metric']}</span>
+            </div>
+            <div>
+                <span style="color:#6b7280">TIME:</span> <span style="{_get_vec_style(vectors['TEMPORAL']['status'])}">{vectors['TEMPORAL']['metric']}</span>
+            </div>
+        </div>
+        """
+        
+        # Details Column (Highlighting the most critical finding)
+        # Find the vector with the highest risk
+        primary_issue = "Stable Structure"
+        for k, v in vectors.items():
+            if "CRITICAL" in v['status'] or "INJECTION" in v['status']:
+                primary_issue = f"<b>{k}:</b> {v['details']}"
+                break
+            elif "SUSPICIOUS" in v['status'] or "WARNING" in v['status']:
+                primary_issue = f"<b>{k}:</b> {v['details']}"
+        
+        row = f"""
+        <tr>
+            <td style="font-size: 1.5rem;">{seq}</td>
+            <td><span class="{v_cls}">{report['verdict']}</span></td>
+            <td>{vector_html}</td>
+            <td style="font-size: 0.75rem; color: #4b5563;">{primary_issue}</td>
+        </tr>
+        """
+        html_rows.append(row)
+
+    # Header for Physics Table
+    header = """
+    <tr style="background: #f1f5f9; border-bottom: 2px solid #e2e8f0; text-transform: uppercase; font-size: 0.7rem; color: #475569;">
+        <th style="text-align: left; padding: 8px;">Molecule</th>
+        <th style="text-align: left; padding: 8px;">Stability</th>
+        <th style="text-align: left; padding: 8px;">Vector Analysis (Mass / Bond / Tag / Time)</th>
+        <th style="text-align: left; padding: 8px;">Primary Diagnosis</th>
+    </tr>
+    """
+
+    element.innerHTML = header + "".join(html_rows)
+
 def render_whitespace_topology(physics_data: dict) -> str:
     """
     [Stage 2.3] Whitespace Topology Renderer (High-Res).
@@ -22655,6 +22914,7 @@ def update_all(event=None):
         render_matrix_table({}, "eawidth-run-matrix-body")
         render_matrix_table({}, "vo-run-matrix-body")
         render_emoji_qualification_table([])
+        render_physics_report(emoji_list)
         render_emoji_summary({}, [])
         render_threat_analysis({}) 
         render_toc_counts({})
