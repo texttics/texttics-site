@@ -10516,7 +10516,14 @@ def recursive_deobfuscate(text: str, depth=0, max_depth=5):
         try:
             # A. Try Standard Python Decode
             # This handles \u0041, \x41, and some octal
-            decoded = current.encode('utf-8').decode('unicode_escape')
+            
+            # Suppress DeprecationWarning for invalid escapes like \z
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                # We encode to latin-1 to preserve bytes, then decode escape
+                # (Standard approach, but utf-8 is also fine if input is str)
+                decoded = current.encode('utf-8').decode('unicode_escape')
+            
             if decoded != current:
                 current = decoded
                 layers.append("Escape-Sequence")
