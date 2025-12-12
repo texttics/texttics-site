@@ -17894,7 +17894,7 @@ def render_physics_report(emoji_list):
         # 3. Mass
         mass_val = v['Z_AXIS']['metric'].replace("Z=", "")
         weight_val = v['Z_AXIS'].get('sub_metric', '')
-        m_style = "font-weight: 700; color: #334155;"
+        m_style = "font-weight: 700; color: #334155; font-size: 0.9rem;"
         if "CRITICAL" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #dc2626;"
         elif "HIGH" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #b45309;"
         
@@ -17907,7 +17907,7 @@ def render_physics_report(emoji_list):
         # 4. Bond
         bond_status = v['VALENCY']['metric']
         bond_count = v['VALENCY'].get('sub_metric', '')
-        b_style = "color: #15803d;"
+        b_style = "color: #15803d; font-size: 0.9rem;"
         if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
         
         # Removed width:10%
@@ -17918,7 +17918,7 @@ def render_physics_report(emoji_list):
 
         # 5. Tags
         tag_val = v['GHOST_TAGS']['metric'].replace("T=", "")
-        t_style = "color: #94a3b8;" 
+        t_style = "color: #94a3b8; font-size: 0.9rem;" 
         if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
         # Removed width:8%
         td_tags = f'<td style="font-family: var(--font-mono); {t_style};">{tag_val}</td>'
@@ -17926,7 +17926,7 @@ def render_physics_report(emoji_list):
         # 6. Time
         time_ver = v['TEMPORAL']['metric']
         time_delta = v['TEMPORAL'].get('sub_metric', '-')
-        delta_style = "color: #94a3b8;"
+        delta_style = "color: #94a3b8; font-size: 0.9rem;"
         if "ANACHRONISM" in v['TEMPORAL']['status']: delta_style = "color: #dc2626; font-weight: 700;"
         
         # Removed width:10%
@@ -17938,7 +17938,7 @@ def render_physics_report(emoji_list):
         # 7. Spin
         spin_val = v['PRESENTATION']['metric'].replace("VS=", "")
         key_val = v['PRESENTATION'].get('sub_metric', '')
-        p_style = "color: #94a3b8;"
+        p_style = "color: #94a3b8; font-size: 0.9rem;"
         if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600;"
         
         # Removed width:10%
