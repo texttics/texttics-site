@@ -1633,6 +1633,15 @@ class EmojiPhysicsEngine:
             # 2. Check Covalent Bonds (ZWJ)
             elif cp == 0x200D:
                 bond_map.append("COV")
+                # Ensure the ZWJ is bonding valid Emoji architecture, not ASCII/Text.
+                if i > 0:
+                    prev_atom = codepoints[i-1]
+                    # Flag if previous atom is ASCII (U+0000-U+007F) or generic text
+                    # Exception: '#' (0x23), '*' (0x2A), digits (0x30-0x39) allow ZWJ in Keycaps (though usually VS16 comes first)
+                    if prev_atom < 0x2000 and prev_atom not in (0x23, 0x2A) and not (0x30 <= prev_atom <= 0x39):
+                        valency_status = "VIOLATION"
+                        report["diagnosis"].append("Heterogeneous Injection (ASCII in ZWJ)")
+                        report["risk_score"] += 0.8
                 # Dangling Bond Check
                 if i == len(codepoints) - 1:
                     valency_status = "VIOLATION"
@@ -1672,6 +1681,12 @@ class EmojiPhysicsEngine:
                 report["risk_score"] += 0.7
             else:
                 tag_status = "VALID"
+
+            # A Tag sequence MUST be terminated by U+E007F (Cancel Tag).
+            if codepoints[-1] != 0xE007F:
+                tag_status = "UNTERMINATED"
+                report["diagnosis"].append("Bleeding Tag State (Missing Cancel)")
+                report["risk_score"] += 0.8
 
         report["vectors"]["GHOST_TAGS"] = {
             "metric": f"T={tag_count}",
@@ -1724,10 +1739,18 @@ class EmojiPhysicsEngine:
             spin_label = "Active"
             stego_density = vs_count / max(1, len(codepoints))
             
+            # Distinguish between VS15 (Force Text) and VS16 (Force Emoji)
+            has_vs15 = any(cp == 0xFE0E for cp in codepoints)
+            
             if stego_density > 0.5 and len(codepoints) > 2:
                 p_status = "SUSPECT"
                 report["diagnosis"].append(f"High Spin Density ({int(stego_density*100)}%)")
                 report["risk_score"] += 0.6
+            elif has_vs15:
+                # VS15 detected in a complex sequence (implies attempting to hide an emoji)
+                p_status = "ANOMALY"
+                report["diagnosis"].append("Text Washing (Forced Text Presentation)")
+                report["risk_score"] += 0.4
             elif vs_count > 2:
                 p_status = "REDUNDANT"
                 report["diagnosis"].append("Redundant Selector")
