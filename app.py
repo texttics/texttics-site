@@ -17908,18 +17908,18 @@ def render_physics_report(emoji_list):
         bond_status = v['VALENCY']['metric']
         bond_count = v['VALENCY'].get('sub_metric', '')
         b_style = "color: #15803d; font-size: 0.9rem;"
-        if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
+        if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700; font-size: 0.9rem;"
         
         # Removed width:10%
         td_bond = f'''<td style="font-family: var(--font-mono);">
-            <div style="{b_style}">{bond_status}</div>
+            <div style="color: #15803d; font-size: 0.9rem;">{bond_status}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{bond_count}</div>
         </td>'''
 
         # 5. Tags
         tag_val = v['GHOST_TAGS']['metric'].replace("T=", "")
         t_style = "color: #94a3b8; font-size: 0.9rem;" 
-        if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
+        if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700; font-size: 0.9rem;"
         # Removed width:8%
         td_tags = f'<td style="font-family: var(--font-mono); {t_style};">{tag_val}</td>'
 
@@ -17927,7 +17927,7 @@ def render_physics_report(emoji_list):
         time_ver = v['TEMPORAL']['metric']
         time_delta = v['TEMPORAL'].get('sub_metric', '-')
         delta_style = "color: #94a3b8; font-size: 0.9rem;"
-        if "ANACHRONISM" in v['TEMPORAL']['status']: delta_style = "color: #dc2626; font-weight: 700;"
+        if "ANACHRONISM" in v['TEMPORAL']['status']: delta_style = "color: #dc2626; font-weight: 700; font-size: 0.9rem;"
         
         # Removed width:10%
         td_time = f'''<td style="font-family: var(--font-mono);">
@@ -17939,11 +17939,11 @@ def render_physics_report(emoji_list):
         spin_val = v['PRESENTATION']['metric'].replace("VS=", "")
         key_val = v['PRESENTATION'].get('sub_metric', '')
         p_style = "color: #94a3b8; font-size: 0.9rem;"
-        if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600;"
+        if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600; font-size: 0.9rem;"
         
         # Removed width:10%
         td_spin = f'''<td style="font-family: var(--font-mono);">
-            <div style="{p_style}">{spin_val}</div>
+            <div style="color: #94a3b8; font-size: 0.9rem;">{spin_val}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{key_val}</div>
         </td>'''
 
@@ -17953,9 +17953,9 @@ def render_physics_report(emoji_list):
         d_color = "#64748b"
         d_weight = "400"
         if "CRITICAL" in str(report) or "Breach" in primary_diag or "Injection" in primary_diag:
-            d_color = "#dc2626"; d_weight = "600"
+            d_color = "#dc2626"; d_weight = "600; font-size: 0.9rem"
         elif "WARNING" in str(report) or "Risk" in primary_diag or "Frankenstein" in primary_diag:
-            d_color = "#b45309"
+            d_color = "#b45309; font-size: 0.9rem"
         
         # Removed width:32%
         td_diag = f'<td style="font-size: 0.9rem; color: {d_color}; font-weight: {d_weight};">{primary_diag}</td>'
