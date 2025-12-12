@@ -15864,16 +15864,20 @@ def compute_provenance_stats(t: str):
             _add_stat(f"Numeric Type: {num_type}", i)
 
         # --- Numeric System Check (Decimal Systems Only) ---
-        # Tracks positions of decimal digits to pinpoint mixed-system attacks.
-        # We rely on Python's unicodedata for this specific structural check.
+        # [HARDENED] Tracks positions of decimal digits to pinpoint mixed-system attacks.
+        # uses _get_forensic_category to ensure Unicode 17.0 compliance and Surrogate safety.
         try:
-            gc = unicodedata.category(char)
+            # 1. Use Saturated Lookup (Architectural Consistency)
+            gc = _get_forensic_category(char)
+            
+            # 2. Strict Guard: Must be Decimal Digit (Nd). 
+            # Note: _get_forensic_category correctly identifies Surrogates as 'Cs', 
+            # effectively preventing 'unicodedata.numeric()' execution on them.
             if gc == "Nd":
                 val = unicodedata.numeric(char)
                 # Calculate the 'Zero' base (e.g., '1' -> '0', '١' -> '٠')
                 zero_code_point = ord(char) - int(val)
                 
-                # We store a tuple: (ZeroBase, Index) to track location
                 if zero_code_point not in number_script_zeros:
                     number_script_zeros[zero_code_point] = []
                 number_script_zeros[zero_code_point].append(i)
