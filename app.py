@@ -17948,7 +17948,6 @@ def render_physics_report(emoji_list):
         html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_spin}{td_diag}</tr>')
 
     element.innerHTML = "".join(html_rows)
-    render_physics_legend()
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
@@ -23802,6 +23801,7 @@ def update_all(event=None):
     
     render_emoji_qualification_table(emoji_list, text_context=t)
     render_physics_report(emoji_list)
+    render_physics_legend()
     render_emoji_summary(emoji_counts, emoji_list)
     
     threat_results['flags'] = final_threat_flags
