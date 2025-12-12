@@ -17707,11 +17707,10 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 def render_physics_legend():
     """
     Renders the explanatory footer for the Structural Physics Report.
-    Redesigned (v2) for strict alignment, hierarchy, and a cleaner 'Datasheet' aesthetic.
+    Design V3: High-Density Datasheet Layout. 
     """
     legend_container = document.getElementById("emoji-physics-legend")
     
-    # Dynamic creation if missing
     if not legend_container:
         tbody = document.getElementById("emoji-physics-body")
         if tbody:
@@ -17726,111 +17725,92 @@ def render_physics_legend():
 
     if not legend_container: return
 
-    # Redesigned HTML with strict Flexbox alignment to prevent overlapping
-    html = """
+    # CSS CONSTANTS for consistency
+    header_style = "text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; margin: 0 0 12px 0; font-weight: 700;"
+    row_style = "display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.75rem;"
+    key_style = "font-weight: 700; color: #334155; font-family: var(--font-mono); white-space: nowrap; margin-right: 12px;"
+    val_style = "text-align: right; color: #64748b; line-height: 1.3;"
+
+    html = f"""
     <div style="
         display: grid; 
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
-        gap: 32px; 
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+        gap: 40px; 
         padding: 24px; 
         background: #f8fafc; 
         border-top: 1px solid #e2e8f0; 
-        font-family: system-ui, -apple-system, sans-serif; 
-        color: #475569;
+        font-family: system-ui, -apple-system, sans-serif;
     ">
         
         <div style="border-left: 3px solid #cbd5e1; padding-left: 16px;">
-            <h4 style="
-                text-transform: uppercase; 
-                font-size: 0.7rem; 
-                letter-spacing: 0.05em; 
-                color: #64748b; 
-                margin: 0 0 16px 0; 
-                font-weight: 700;
-            ">Thermodynamics (Stability)</h4>
+            <h4 style="{header_style} color: #64748b;">Thermodynamics (Stability)</h4>
             
-            <div style="display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
                 <div style="display:flex; align-items:center; gap:12px;">
                     <span class="legend-pill legend-pill-ok" style="min-width: 80px; text-align:center;">STABLE</span>
-                    <div style="font-size: 0.75rem; line-height: 1.4;">
-                        <strong>Valid Physics.</strong><br>Low Entropy (Risk &lt; 0.5).
-                    </div>
+                    <span style="font-size: 0.75rem; color: #475569;">Valid Physics.<br><span style="opacity:0.7">Risk &lt; 0.5</span></span>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px;">
                     <span class="legend-pill legend-pill-warn" style="min-width: 80px; text-align:center;">VOLATILE</span>
-                    <div style="font-size: 0.75rem; line-height: 1.4;">
-                        <strong>Warning.</strong><br>Med Entropy (Risk 0.5-0.9).
-                    </div>
+                    <span style="font-size: 0.75rem; color: #475569;">Warning.<br><span style="opacity:0.7">Risk 0.5-0.9</span></span>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px;">
                     <span class="legend-pill legend-pill-error" style="min-width: 80px; text-align:center;">UNSTABLE</span>
-                    <div style="font-size: 0.75rem; line-height: 1.4;">
-                        <strong>Breach.</strong><br>Crit Entropy (Risk &ge; 1.0).
-                    </div>
+                    <span style="font-size: 0.75rem; color: #475569;">Breach.<br><span style="opacity:0.7">Risk &ge; 1.0</span></span>
                 </div>
             </div>
         </div>
 
         <div style="border-left: 3px solid #3b82f6; padding-left: 16px;">
-            <h4 style="
-                text-transform: uppercase; 
-                font-size: 0.7rem; 
-                letter-spacing: 0.05em; 
-                color: #3b82f6; 
-                margin: 0 0 16px 0; 
-                font-weight: 700;
-            ">Atomic Physics (Mass & Bonds)</h4>
+            <h4 style="{header_style} color: #3b82f6;">Atomic Physics (Mass & Bonds)</h4>
             
-            <div style="display:flex; flex-direction:column; gap:10px; font-size: 0.75rem;">
-                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
-                    <span style="font-family: var(--font-mono); font-weight:700; color:#0f172a;">Z (Mass)</span>
-                    <span style="text-align:right;">Scalar Count. <span style="color:#dc2626;">&gt;30</span> = DoS Risk.</span>
+            <div style="display:flex; flex-direction:column;">
+                <div style="{row_style}">
+                    <span style="{key_style}">Z (Mass)</span>
+                    <span style="{val_style}">Scalar Count. <span style="color:#dc2626; font-weight:700;">&gt;30</span> breaches UAX #15.</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
-                    <span style="font-family: var(--font-mono); font-weight:700; color:#0f172a;">Weight</span>
-                    <span style="text-align:right;">UTF-8 Byte Size.</span>
+                <div style="{row_style}">
+                    <span style="{key_style}">Weight</span>
+                    <span style="{val_style}">UTF-8 Byte Size. Hidden capacity.</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
-                    <span style="font-family: var(--font-mono); font-weight:700; color:#15803d;">Covalent</span>
-                    <span style="text-align:right;">Strong Bond (ZWJ). Valid Glue.</span>
+                <div style="{row_style}">
+                    <span style="{key_style} color:#15803d;">Covalent</span>
+                    <span style="{val_style}">Strong Bond (ZWJ). Structure Glue.</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding-bottom:4px;">
-                    <span style="font-family: var(--font-mono); font-weight:700; color:#dc2626;">Ionic</span>
-                    <span style="text-align:right;">Weak/Modifier Bond. Leak Risk.</span>
+                <div style="{row_style}">
+                    <span style="{key_style} color:#b45309;">Ionic</span>
+                    <span style="{val_style}">Weak Bond (Modifier). Leak risk.</span>
                 </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span style="font-family: var(--font-mono); font-weight:700; color:#b45309;">Tags</span>
-                    <span style="text-align:right;">Plane 14 Injection Vector.</span>
+                <div style="{row_style} border-bottom: none;">
+                    <span style="{key_style} color:#dc2626;">Tags</span>
+                    <span style="{val_style}">Plane 14 Injection Vector.</span>
                 </div>
             </div>
         </div>
 
         <div style="border-left: 3px solid #8b5cf6; padding-left: 16px;">
-            <h4 style="
-                text-transform: uppercase; 
-                font-size: 0.7rem; 
-                letter-spacing: 0.05em; 
-                color: #8b5cf6; 
-                margin: 0 0 16px 0; 
-                font-weight: 700;
-            ">Quantum States (Time & Spin)</h4>
+            <h4 style="{header_style} color: #8b5cf6;">Quantum States (Time & Spin)</h4>
             
-            <div style="display:flex; flex-direction:column; gap:8px; font-size: 0.75rem;">
-                <div>
-                    <span style="font-weight:700; color:#0f172a;">Frankenstein Seq:</span><br>
-                    <span style="color:#64748b;">Temporal Paradox (Old Base + Modern Mod).</span>
+            <div style="display:flex; flex-direction:column;">
+                <div style="{row_style}">
+                    <span style="{key_style}">Frankenstein</span>
+                    <span style="{val_style}">Temporal Paradox (Old Base + New Mod).</span>
                 </div>
-                <div>
-                    <span style="font-weight:700; color:#0f172a;">Gap (Δ):</span><br>
-                    <span style="color:#64748b;">Version Delta. High Δ = Tofu Tunneling.</span>
+                <div style="{row_style}">
+                    <span style="{key_style}">Gap (Δ)</span>
+                    <span style="{val_style}">Version Delta. High Δ = Tofu Risk.</span>
                 </div>
-                <div>
-                    <span style="font-weight:700; color:#3b82f6;">Active Spin:</span><br>
-                    <span style="color:#64748b;">VS16 (Emoji Lock) or VS15 (Text Lock).</span>
+                <div style="{row_style}">
+                    <span style="{key_style} color:#3b82f6;">Active Spin</span>
+                    <span style="{val_style}">VS16 (Emoji Lock) or VS15 (Text Lock).</span>
                 </div>
-                <div>
-                    <span style="font-weight:700; color:#b45309;">Text Washing:</span><br>
-                    <span style="color:#64748b;">Forced Text (VS15) on Emoji-only glyphs.</span>
+                <div style="{row_style}">
+                    <span style="{key_style} color:#b45309;">Washing</span>
+                    <span style="{val_style}">Forced Text (VS15) on Emoji-only glyphs.</span>
+                </div>
+                <div style="{row_style} border-bottom: none;">
+                    <span style="{key_style} color:#dc2626;">Stego</span>
+                    <span style="{val_style}">High VS density = Hidden Payload.</span>
                 </div>
             </div>
         </div>
