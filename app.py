@@ -17728,11 +17728,24 @@ def render_physics_report(emoji_list):
         if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
         td_tags = f'<td style="font-family: var(--font-mono); {t_style}">{tag_val}</td>'
 
-        # 6. Time (Temporal)
-        time_val = v['TEMPORAL']['metric'].split(' ')[0] # Just vX.X
+        # 6. Time (Temporal) - Restored Gradient
+        # The metric string is like "v15.0 (Δ5.0)"
+        full_time_metric = v['TEMPORAL']['metric']
+        
+        # Split it to style the delta differently
+        if "(" in full_time_metric:
+            version, delta = full_time_metric.split(" ", 1)
+            # Make the delta smaller/lighter unless it's a warning
+            delta_style = "color: #94a3b8; font-size: 0.7rem;"
+            if "ANACHRONISM" in v['TEMPORAL']['status']: 
+                delta_style = "color: #b45309; font-weight: 700;" # Orange warning for high gap
+            
+            time_html = f'{version} <span style="{delta_style}">{delta}</span>'
+        else:
+            time_html = full_time_metric
+
         tm_style = "color: #475569;"
-        if "ANACHRONISM" in v['TEMPORAL']['status']: tm_style = "color: #b45309; font-weight: 700;"
-        td_time = f'<td style="font-family: var(--font-mono); font-size: 0.85rem; {tm_style}">{time_val}</td>'
+        td_time = f'<td style="font-family: var(--font-mono); font-size: 0.85rem; {tm_style}">{time_html}</td>'
 
         # 7. Presentation
         pres_val = v['PRESENTATION']['metric'].replace("VS=", "")
