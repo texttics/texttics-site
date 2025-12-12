@@ -17931,7 +17931,7 @@ def render_physics_report(emoji_list):
         
         # Removed width:10%
         td_time = f'''<td style="font-family: var(--font-mono);">
-            <div style="color: #475569;">{time_ver}</div>
+            <div style="color: #475569; font-size: 0.9rem; font-weight: 600;">{time_ver}</div>
             <div style="font-size: 0.7rem; {delta_style}">{time_delta}</div>
         </td>'''
 
@@ -17958,7 +17958,7 @@ def render_physics_report(emoji_list):
             d_color = "#b45309"
         
         # Removed width:32%
-        td_diag = f'<td style="font-size: 0.8rem; color: {d_color}; font-weight: {d_weight};">{primary_diag}</td>'
+        td_diag = f'<td style="font-size: 0.9rem; color: {d_color}; font-weight: {d_weight};">{primary_diag}</td>'
 
         html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_spin}{td_diag}</tr>')
 
