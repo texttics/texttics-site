@@ -17725,11 +17725,12 @@ def render_physics_legend():
 
     if not legend_container: return
 
-    # CSS CONSTANTS for consistency
-    header_style = "text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; margin: 0 0 12px 0; font-weight: 700;"
-    row_style = "display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.75rem;"
+    # CSS CONSTANTS for consistency (Updated for Compact Density)
+    # Reduced header from 0.7rem to 0.65rem, reduced body from 0.75rem to 0.7rem
+    header_style = "text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em; margin: 0 0 10px 0; font-weight: 700;"
+    row_style = "display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.7rem;"
     key_style = "font-weight: 700; color: #334155; font-family: var(--font-mono); white-space: nowrap; margin-right: 12px;"
-    val_style = "text-align: right; color: #64748b; line-height: 1.3;"
+    val_style = "text-align: right; color: #64748b; line-height: 1.25;"
 
     html = f"""
     <div style="
@@ -17869,34 +17870,22 @@ def render_physics_report(emoji_list):
         # We decompose the sequence into a list of "Chips"
         bom_html = []
         for cp_val in [ord(c) for c in seq]:
-            # Stylize based on type
             if cp_val == 0x200D:
-                # ZWJ -> Connector
                 chip = '<span style="color:#cbd5e1; font-weight:700;">+</span>'
             elif cp_val == 0xFE0F:
-                # VS16 -> Force
                 chip = '<span style="font-size:0.6rem; border:1px solid #cbd5e1; color:#64748b; padding:0 2px; border-radius:3px;">VS</span>'
             elif cp_val == 0xFE0E:
-                # VS15 -> Text Force
                 chip = '<span style="font-size:0.6rem; border:1px solid #94a3b8; color:#475569; padding:0 2px; border-radius:3px; background:#f1f5f9;">TXT</span>'
             elif 0xE0000 <= cp_val <= 0xE007F:
-                # Tags -> Orange Dot or specific tag
-                if cp_val == 0xE007F:
-                    chip = '<span style="font-size:0.6rem; color:#b45309;">END</span>'
-                else:
-                    chip = '<span style="font-size:0.6rem; color:#b45309;">•</span>'
+                if cp_val == 0xE007F: chip = '<span style="font-size:0.6rem; color:#b45309;">END</span>'
+                else: chip = '<span style="font-size:0.6rem; color:#b45309;">•</span>'
             else:
-                # Atom -> Small Glyph
-                # We handle invisible bases or spaces by ensuring they have width
                 char_disp = chr(cp_val)
                 chip = f'<span style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:3px; padding:0 3px; color:#334155;">{char_disp}</span>'
-            
             bom_html.append(chip)
-            
-        # Join with thin spaces
-        bom_str = "".join(bom_html)
         
-        td_mol = f'''<td style="padding: 10px;">
+        bom_str = "".join(bom_html)
+        td_mol = f'''<td style="padding: 10px; width: 10%;">
             <div style="display:flex; flex-direction:column; gap:4px;">
                 <span style="font-size: 1.8rem; line-height: 1;">{seq}</span>
                 <div style="display:flex; flex-wrap:wrap; gap:2px; font-family:var(--font-mono); font-size:0.7rem; align-items:center;">
@@ -17905,84 +17894,75 @@ def render_physics_report(emoji_list):
             </div>
         </td>'''
         
-        # 2. Stability Badge
+        # 2. Stability (10%)
         verdict = report["verdict"]
         v_cls = "legend-pill legend-pill-ok"
         if verdict == "UNSTABLE": v_cls = "legend-pill legend-pill-error"
         elif verdict == "VOLATILE": v_cls = "legend-pill legend-pill-warn"
-        td_stab = f'<td><span class="{v_cls}">{verdict}</span></td>'
+        td_stab = f'<td style="width: 10%;"><span class="{v_cls}">{verdict}</span></td>'
         
-        # 3. Mass (Z-Axis) -> Show Mass + Weight
+        # 3. Mass (10%)
         mass_val = v['Z_AXIS']['metric'].replace("Z=", "")
         weight_val = v['Z_AXIS'].get('sub_metric', '')
-        
         m_style = "font-weight: 700; color: #334155;"
         if "CRITICAL" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #dc2626;"
         elif "HIGH" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #b45309;"
         
-        td_mass = f'''<td style="font-family: var(--font-mono);">
+        td_mass = f'''<td style="font-family: var(--font-mono); width: 10%;">
             <div style="{m_style}">{mass_val}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{weight_val}</div>
         </td>'''
         
-        # 4. Bond (Valency) -> Show Status + Count
+        # 4. Bond (10%)
         bond_status = v['VALENCY']['metric']
         bond_count = v['VALENCY'].get('sub_metric', '')
-        
         b_style = "color: #15803d;"
         if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
         
-        td_bond = f'''<td style="font-family: var(--font-mono);">
+        td_bond = f'''<td style="font-family: var(--font-mono); width: 10%;">
             <div style="{b_style}">{bond_status}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{bond_count}</div>
         </td>'''
 
-        # 5. Tags
+        # 5. Tags (8%)
         tag_val = v['GHOST_TAGS']['metric'].replace("T=", "")
         t_style = "color: #94a3b8;" 
         if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
-        td_tags = f'<td style="font-family: var(--font-mono); {t_style}">{tag_val}</td>'
+        td_tags = f'<td style="font-family: var(--font-mono); {t_style}; width: 8%;">{tag_val}</td>'
 
-        # 6. Time (Temporal) -> Version + Gradient
+        # 6. Time (10%)
         time_ver = v['TEMPORAL']['metric']
         time_delta = v['TEMPORAL'].get('sub_metric', '-')
-        
         delta_style = "color: #94a3b8;"
-        if "ANACHRONISM" in v['TEMPORAL']['status']: 
-            delta_style = "color: #dc2626; font-weight: 700;"
+        if "ANACHRONISM" in v['TEMPORAL']['status']: delta_style = "color: #dc2626; font-weight: 700;"
         
-        td_time = f'''<td style="font-family: var(--font-mono);">
+        td_time = f'''<td style="font-family: var(--font-mono); width: 10%;">
             <div style="color: #475569;">{time_ver}</div>
             <div style="font-size: 0.7rem; {delta_style}">{time_delta}</div>
         </td>'''
 
-        # 7. Spin (Presentation) -> VS + Keycaps
+        # 7. Spin (10%)
         spin_val = v['PRESENTATION']['metric'].replace("VS=", "")
         key_val = v['PRESENTATION'].get('sub_metric', '')
-        
         p_style = "color: #94a3b8;"
         if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600;"
         
-        td_spin = f'''<td style="font-family: var(--font-mono);">
+        td_spin = f'''<td style="font-family: var(--font-mono); width: 10%;">
             <div style="{p_style}">{spin_val}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{key_val}</div>
         </td>'''
 
-        # 8. Diagnosis (Prioritized List)
-        # We take the first diagnosis as primary, or "Stable Structure"
+        # 8. Diagnosis (32%)
         diag_list = report.get("diagnosis", ["Stable Structure"])
         primary_diag = diag_list[0]
-        
-        d_color = "#64748b" # Default Slate
+        d_color = "#64748b"
         d_weight = "400"
-        
         if "CRITICAL" in str(report) or "Breach" in primary_diag or "Injection" in primary_diag:
-            d_color = "#dc2626"
-            d_weight = "600"
+            d_color = "#dc2626"; d_weight = "600"
         elif "WARNING" in str(report) or "Risk" in primary_diag or "Frankenstein" in primary_diag:
             d_color = "#b45309"
         
-        td_diag = f'<td style="font-size: 0.8rem; color: {d_color}; font-weight: {d_weight};">{primary_diag}</td>'
+        td_diag = f'<td style="font-size: 0.8rem; color: {d_color}; font-weight: {d_weight}; width: 32%;">{primary_diag}</td>'
 
         html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_spin}{td_diag}</tr>')
 
