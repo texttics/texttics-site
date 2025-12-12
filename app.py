@@ -5021,14 +5021,10 @@ def analyze_truncation_risk(t: str) -> list:
     [Stage 2.1] Modulo Overflow Simulator (Hardened).
     Detects Astral characters (> U+FFFF) that masquerade as dangerous ASCII
     when truncated by legacy 16-bit parsers (buffer overflows/logic errors).
-    
-    Vectors:
-    1. Syntax Injection: Truncates to < > ' " \ / (SQLi/XSS)
-    2. Null Byte Injection: Truncates to \0 (C-string termination)
-    3. Line Break Injection: Truncates to \n or \r (Log forging)
     """
-    # Expanded Hazard Set: Syntax + Shell Metachars
-    DANGER_SET = set("<>\"';/\\`{}[]$#|")
+    # [FIX] Define characters explicitly to avoid SyntaxWarning/Escape issues
+    danger_chars = ['<', '>', '"', "'", ';', '/', '\\', '`', '{', '}', '[', ']', '$', '#', '|']
+    DANGER_SET = set(danger_chars)
     
     findings = []
     
@@ -5062,7 +5058,8 @@ def analyze_truncation_risk(t: str) -> list:
                         "pos": i, "src": char, "target": trunc_char,
                         "desc": f"Truncation Risk (0x{cp:X} -> '{trunc_char}')"
                     })
-            except: pass
+            except Exception:
+                pass
             
     return findings
 
@@ -17036,7 +17033,6 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # Use the new name compute_adversarial_metrics (v11)
         adversarial_data = compute_adversarial_metrics(t)
 
-    # Truncation Physics (Stage 2.1)
     # Merges Modulo Overflow findings into the Adversarial Dashboard
     trunc_findings = analyze_truncation_risk(t)
     if trunc_findings:
@@ -17046,15 +17042,13 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
                 'family': '[OVERFLOW]', 
                 'desc': f.get('desc'),
                 'token': f.get('src'), 
-                'severity': 'crit' # Critical: Exploits low-level memory handling
+                'severity': 'crit' 
             })
         
         # 2. Update Topology Counters
-        # "INJECTION" is the correct category for overflow payloads
         adversarial_data["topology"]["INJECTION"] = adversarial_data["topology"].get("INJECTION", 0) + len(trunc_findings)
         
         # 3. Create a Synthetic Target for Visibility
-        # This forces the "Paranoia Peak" to show the overflow risk immediately
         if trunc_findings:
             top_threat = trunc_findings[0]
             adversarial_data["targets"].append({
