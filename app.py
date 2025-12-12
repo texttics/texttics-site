@@ -17908,11 +17908,11 @@ def render_physics_report(emoji_list):
         bond_status = v['VALENCY']['metric']
         bond_count = v['VALENCY'].get('sub_metric', '')
         b_style = "color: #15803d; font-size: 0.9rem;"
-        if bond_status == "VIOLATION": b_style = "color: #dc2626; font-weight: 700; font-size: 0.9rem;"
+        if bond_status == "VIOLATION": 
+            b_style = "color: #dc2626; font-weight: 700; font-size: 0.9rem;"
         
-        # Removed width:10%
         td_bond = f'''<td style="font-family: var(--font-mono);">
-            <div style="color: #15803d; font-size: 0.9rem;">{bond_status}</div>
+            <div style="{b_style}">{bond_status}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{bond_count}</div>
         </td>'''
 
@@ -17938,12 +17938,14 @@ def render_physics_report(emoji_list):
         # 7. Spin
         spin_val = v['PRESENTATION']['metric'].replace("VS=", "")
         key_val = v['PRESENTATION'].get('sub_metric', '')
-        p_style = "color: #94a3b8; font-size: 0.9rem;"
-        if int(spin_val) > 0: p_style = "color: #3b82f6; font-weight: 600; font-size: 0.9rem;"
         
-        # Removed width:10%
+        # Default is Gray (#94a3b8). If you want Black for standard numbers, use #334155
+        p_style = "color: #94a3b8; font-size: 0.9rem;" 
+        if int(spin_val) > 0: 
+            p_style = "color: #3b82f6; font-weight: 600; font-size: 0.9rem;"
+        
         td_spin = f'''<td style="font-family: var(--font-mono);">
-            <div style="color: #94a3b8; font-size: 0.9rem;">{spin_val}</div>
+            <div style="{p_style}">{spin_val}</div>
             <div style="font-size: 0.7rem; color: #94a3b8;">{key_val}</div>
         </td>'''
 
