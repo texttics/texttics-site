@@ -17704,6 +17704,82 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 # BLOCK 9. RENDERERS (THE VIEW)
 # ===============================================
 
+def render_physics_legend():
+    """
+    Renders the explanatory footer for the Structural Physics Report.
+    Explains the Thermodynamic, Atomic, and Quantum metrics used in the forensic analysis.
+    """
+    # We target the parent container of the physics table to append the legend
+    # Ideally, there should be a <div id="emoji-physics-legend"></div> in the HTML.
+    # If not, we try to find it or create it dynamically after the table.
+    
+    # Try to find the specific slot first
+    legend_container = document.getElementById("emoji-physics-legend")
+    
+    # If explicit slot doesn't exist, try to find the table and append after it
+    if not legend_container:
+        tbody = document.getElementById("emoji-physics-body")
+        if tbody:
+            table = tbody.closest("table")
+            if table:
+                # Check if we already created it dynamically to avoid duplicates
+                if table.nextElementSibling and table.nextElementSibling.id == "emoji-physics-legend":
+                    legend_container = table.nextElementSibling
+                else:
+                    legend_container = document.createElement("div")
+                    legend_container.id = "emoji-physics-legend"
+                    table.parentNode.insertBefore(legend_container, table.nextSibling)
+
+    if not legend_container: return
+
+    # The Semantic Legend Content
+    html = """
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; padding: 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-family: var(--font-mono); font-size: 0.75rem; color: #475569;">
+        
+        <div>
+            <h4 style="text-transform: uppercase; color: #334155; font-weight: 700; margin: 0 0 12px 0; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">Thermodynamics (Stability)</h4>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; justify-content:space-between;">
+                    <span class="legend-pill legend-pill-ok">STABLE</span>
+                    <span>Low Entropy (Risk &lt; 0.5). Valid Physics.</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span class="legend-pill legend-pill-warn">VOLATILE</span>
+                    <span>Med Entropy (Risk 0.5-0.9). Warning.</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span class="legend-pill legend-pill-error">UNSTABLE</span>
+                    <span>Crit Entropy (Risk &ge; 1.0). Breach.</span>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h4 style="text-transform: uppercase; color: #334155; font-weight: 700; margin: 0 0 12px 0; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">Atomic Physics (Mass & Bonds)</h4>
+            <ul style="list-style: none; padding: 0; margin: 0; display:flex; flex-direction:column; gap:6px;">
+                <li><strong style="color:#0f172a;">Z (Mass):</strong> Scalar Count. <span style="color:#dc2626;">&gt;30</span> breaches UAX #15 (DoS).</li>
+                <li><strong style="color:#0f172a;">Weight:</strong> UTF-8 Byte Size. Hidden capacity.</li>
+                <li><strong style="color:#15803d;">Covalent:</strong> Strong Bond (ZWJ). Structure Glue.</li>
+                <li><strong style="color:#dc2626;">Ionic (Weak):</strong> Modifier Bond. Risk of Leakage.</li>
+                <li><strong style="color:#b45309;">Tags:</strong> Plane 14 Injection Vector.</li>
+            </ul>
+        </div>
+
+        <div>
+            <h4 style="text-transform: uppercase; color: #334155; font-weight: 700; margin: 0 0 12px 0; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px;">Quantum States (Time & Spin)</h4>
+            <ul style="list-style: none; padding: 0; margin: 0; display:flex; flex-direction:column; gap:6px;">
+                <li><strong style="color:#0f172a;">Frankenstein:</strong> Temporal Paradox (Old Base + New Mod).</li>
+                <li><strong style="color:#0f172a;">Gap (Δ):</strong> Version Delta. High Δ = Tofu Risk.</li>
+                <li><strong style="color:#3b82f6;">Active Spin:</strong> VS16 (Emoji Lock) or VS15 (Text Lock).</li>
+                <li><strong style="color:#b45309;">Washing:</strong> Forced Text (VS15) on Emoji-only glyphs.</li>
+                <li><strong style="color:#dc2626;">Stego Density:</strong> High VS ratio = Hidden Payload.</li>
+            </ul>
+        </div>
+    </div>
+    """
+    
+    legend_container.innerHTML = html
+
 def render_physics_report(emoji_list):
     """
     Renders the 'Structural Physics Report' as a clean 8-column scientific table.
@@ -17872,6 +17948,7 @@ def render_physics_report(emoji_list):
         html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_spin}{td_diag}</tr>')
 
     element.innerHTML = "".join(html_rows)
+    render_physics_legend()
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
