@@ -1594,7 +1594,8 @@ class EmojiPhysicsEngine:
         if mass > 30: 
             cmi_risk = "CRITICAL"
             report["risk_score"] += 1.0
-            report["diagnosis"].append("Event Horizon Breach")
+            # Replaced heuristic 'Event Horizon' with normative protocol violation.
+            report["diagnosis"].append("Stream-Safe Violation (UAX #15)")
         elif mass > 15:
             cmi_risk = "HIGH_DENSITY"
             report["risk_score"] += 0.5
@@ -1613,6 +1614,13 @@ class EmojiPhysicsEngine:
         valency_status = "VALID"
         bond_map = []
         has_broken_chain = False
+
+        # Detects 'Boundary Straddling' (Odd number of Regional Indicators).
+        ri_count = sum(1 for cp in codepoints if 0x1F1E6 <= cp <= 0x1F1FF)
+        if ri_count > 0 and ri_count % 2 != 0:
+             valency_status = "VIOLATION"
+             report["diagnosis"].append("Structural Fracture (RI Parity)")
+             report["risk_score"] += 0.5
         
         for i, cp in enumerate(codepoints):
             # 1. Check Ionic Bonds (Modifiers)
