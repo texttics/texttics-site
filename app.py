@@ -1751,15 +1751,18 @@ class EmojiPhysicsEngine:
             has_vs15 = any(cp == 0xFE0E for cp in codepoints)
             
             # Spec demands > 0.1 (10%), we were at 0.5.
-            if stego_density > 0.1 and len(codepoints) > 2:
-                p_status = "SUSPECT"
-                report["diagnosis"].append(f"Spin Density ({int(stego_density*100)}%)")
-                report["risk_score"] += 0.6
-            elif has_vs15:
-                # VS15 detected in a complex sequence (implies attempting to hide an emoji)
+            # Check for Text Washing (Specific Intent)
+            if has_vs15:
                 p_status = "ANOMALY"
                 report["diagnosis"].append("Text Washing (Forced Text Presentation)")
                 report["risk_score"] += 0.4
+            
+            # Check for Density (General Characteristic)
+            elif stego_density > 0.1 and len(codepoints) > 2:
+                p_status = "SUSPECT"
+                report["diagnosis"].append(f"Spin Density ({int(stego_density*100)}%)")
+                report["risk_score"] += 0.6
+                
             elif vs_count > 2:
                 p_status = "REDUNDANT"
                 report["diagnosis"].append("Redundant Selector")
