@@ -444,19 +444,6 @@ class EmojiForensics:
             "depth": depth
         }
 
-# 3. FORENSIC TEST (Running your specific 'U' case)
-
-# The "U" from your image (Regional Indicator Symbol Letter U)
-u_char = "\U0001F1FA" 
-
-diagnosis = EmojiForensics.classify(u_char, is_rgi=False)
-
-print(f"SEQUENCE: {diagnosis['sequence']}")
-print(f"HEX:      {diagnosis['hex']}")
-print(f"KIND:     {diagnosis['kind']}")
-print(f"BASE:     {diagnosis['base']}")
-print(f"STATUS:   {diagnosis['status']}")
-
 # CODE INJECTION PHYSICS (Deterministic Byte/Syntax Signatures)
 
 # 1. Serialization & Container Magic Signatures
