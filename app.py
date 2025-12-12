@@ -16478,7 +16478,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
                 if id_status_val:
                     if id_status_val not in UAX31_ALLOWED_STATUSES:
-                        # [Unicode 17.0 Fix] Suppression Logic
+                        # Suppression Logic
                         # If Restricted BUT just "Uncommon_Use", do not flag as an Integrity Defect.
                         # We only flag if it's Restricted AND NOT Uncommon.
                         if id_status_val == "Restricted" and specific_id_type == "Uncommon_Use":
@@ -17661,7 +17661,7 @@ def render_physics_report(emoji_list):
     element = document.getElementById("emoji-physics-body")
     if not element: return
 
-    # [FIX] Inject the correct headers for the Physics Table dynamically
+    # Injection of the correct headers for the Physics Table dynamically
     try:
         table = element.closest("table")
         thead = table.querySelector("thead")
@@ -18755,7 +18755,6 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
     body_element = document.getElementById("emoji-qualification-body")
     if not body_element: return
 
-    # [FIX] INJECT THE CORRECT HEADERS DYNAMICALLY
     # We grab the parent table to fix the <thead>
     try:
         table = body_element.closest("table")
@@ -18851,7 +18850,7 @@ def render_emoji_qualification_table(emoji_list, text_context=None):
         pills_html = []
 
         for p in parts:
-            # Fix text: Title case, then force Acronyms back to UPPER
+            # Title case, then force Acronyms back to UPPER
             txt = p.replace('_', ' ').lower().title()
             txt = txt.replace("Rgi", "RGI").replace("Vs16", "VS16")
             
@@ -20021,7 +20020,7 @@ def render_statistical_profile(stats):
         map_segments = []
         for seg in layout_map:
             width_style = f"width:{seg['w']}%;"
-            # Fix invisible segments by ensuring min-width if percent is tiny but not zero
+            # Fixing invisible segments by ensuring min-width if percent is tiny but not zero
             if seg['w'] > 0 and seg['w'] < 1: width_style = "width:1%; flex-grow:1;"
             map_segments.append(f'<div style="{width_style} background:{seg["c"]}; height:100%;" title="Line Mass Segment"></div>')
             
