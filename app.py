@@ -17655,28 +17655,40 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
 
 def render_physics_report(emoji_list):
     """
-    Renders the 'Structural Physics Report' based on the 5-Vector Analysis.
-    Displays forensic findings for Z-Axis, Valency, Tags, Time, and Presentation.
+    Renders the 'Structural Physics Report' as a clean 8-column scientific table.
+    Columns: Molecule | Stability | Mass | Bond | Tags | Time | Pres | Diagnosis
     """
     element = document.getElementById("emoji-physics-body")
-    # Note: You need to create a <tbody id="emoji-physics-body"> in your HTML
-    # OR reuse an existing container. If you want me to write the container injection logic, let me know.
-    # For now, I'll assume you have a container or I'll try to find one.
-    
-    # Fallback: If specific ID doesn't exist, try to append to the main container
-    if not element: 
-        # Create a new section dynamically if needed (Optional advanced logic)
-        return
+    if not element: return
+
+    # [FIX] Inject the correct headers for the Physics Table dynamically
+    try:
+        table = element.closest("table")
+        thead = table.querySelector("thead")
+        if not thead:
+            # Create header if missing
+            thead = document.createElement("thead")
+            table.insertBefore(thead, element)
+            
+        thead.innerHTML = """
+            <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-transform: uppercase; font-size: 0.7rem; color: #475569; letter-spacing: 0.05em;">
+                <th style="padding: 12px; text-align: left;">Molecule</th>
+                <th style="padding: 12px; text-align: left;">Stability</th>
+                <th style="padding: 12px; text-align: left;">Mass (Z)</th>
+                <th style="padding: 12px; text-align: left;">Bond</th>
+                <th style="padding: 12px; text-align: left;">Tags</th>
+                <th style="padding: 12px; text-align: left;">Time (Age)</th>
+                <th style="padding: 12px; text-align: left;">Pres</th>
+                <th style="padding: 12px; text-align: left;">Primary Diagnosis</th>
+            </tr>
+        """
+    except: pass
 
     if not emoji_list:
-        element.innerHTML = "<tr><td colspan='6' class='placeholder-text'>No molecular structures analyzed.</td></tr>"
+        element.innerHTML = "<tr><td colspan='8' class='placeholder-text' style='padding:20px; text-align:center; color:#94a3b8;'>No molecular structures analyzed.</td></tr>"
         return
 
     html_rows = []
-    
-    # Filter: Only show interesting items (skip simple atomic emojis to reduce noise?)
-    # For now, we show everything for pedagogical reasons.
-    
     seen_seqs = set()
 
     for item in emoji_list:
@@ -17684,71 +17696,65 @@ def render_physics_report(emoji_list):
         if seq in seen_seqs: continue
         seen_seqs.add(seq)
         
-        # RUN THE PHYSICS ENGINE
+        # Run Physics Engine
         report = EmojiPhysicsEngine.analyze_sequence(seq)
-        vectors = report["vectors"]
+        v = report["vectors"]
         
-        # Verdict Badge
+        # 1. Molecule
+        td_mol = f'<td style="font-size: 1.6rem; padding: 10px;">{seq}</td>'
+        
+        # 2. Stability Badge
+        verdict = report["verdict"]
         v_cls = "legend-pill legend-pill-ok"
-        if report["verdict"] == "UNSTABLE": v_cls = "legend-pill legend-pill-error"
-        elif report["verdict"] == "VOLATILE": v_cls = "legend-pill legend-pill-warn"
+        if verdict == "UNSTABLE": v_cls = "legend-pill legend-pill-error"
+        elif verdict == "VOLATILE": v_cls = "legend-pill legend-pill-warn"
+        td_stab = f'<td><span class="{v_cls}">{verdict}</span></td>'
         
-        # Build Vector Cells
-        # We compress the 5 vectors into a mini-grid inside the cell
+        # 3. Mass (Z-Axis)
+        mass_val = v['Z_AXIS']['metric'].replace("D_u=", "")
+        m_style = "font-weight: 700; color: #334155;"
+        if "CRITICAL" in v['Z_AXIS']['status']: m_style = "font-weight: 700; color: #dc2626;"
+        td_mass = f'<td style="font-family: var(--font-mono); {m_style}">{mass_val}</td>'
         
-        def _get_vec_style(status):
-            if "CRITICAL" in status or "INJECTION" in status: return "color: #dc2626; font-weight: 700;"
-            if "SUSPICIOUS" in status or "WARNING" in status or "SUSPECT" in status: return "color: #b45309;"
-            return "color: #15803d;"
+        # 4. Bond (Valency)
+        bond_val = v['VALENCY']['metric'] # VALID / VIOLATION
+        b_style = "color: #15803d;"
+        if bond_val == "VIOLATION": b_style = "color: #dc2626; font-weight: 700;"
+        td_bond = f'<td style="font-family: var(--font-mono); font-size: 0.8rem; {b_style}">{bond_val}</td>'
 
-        vector_html = f"""
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.7rem; font-family: var(--font-mono);">
-            <div>
-                <span style="color:#6b7280">MASS:</span> <span style="{_get_vec_style(vectors['Z_AXIS']['status'])}">{vectors['Z_AXIS']['metric']}</span>
-            </div>
-            <div>
-                <span style="color:#6b7280">BOND:</span> <span style="{_get_vec_style(vectors['VALENCY']['status'])}">{vectors['VALENCY']['metric']}</span>
-            </div>
-            <div>
-                <span style="color:#6b7280">TAGS:</span> <span style="{_get_vec_style(vectors['GHOST_TAGS']['status'])}">{vectors['GHOST_TAGS']['metric']}</span>
-            </div>
-            <div>
-                <span style="color:#6b7280">TIME:</span> <span style="{_get_vec_style(vectors['TEMPORAL']['status'])}">{vectors['TEMPORAL']['metric']}</span>
-            </div>
-        </div>
-        """
-        
-        # Details Column (Highlighting the most critical finding)
-        # Find the vector with the highest risk
-        primary_issue = "Stable Structure"
-        for k, v in vectors.items():
-            if "CRITICAL" in v['status'] or "INJECTION" in v['status']:
-                primary_issue = f"<b>{k}:</b> {v['details']}"
+        # 5. Tags
+        tag_val = v['GHOST_TAGS']['metric'].replace("Tags=", "")
+        t_style = "color: #94a3b8;" # Grey if 0
+        if int(tag_val) > 0: t_style = "color: #b45309; font-weight: 700;"
+        td_tags = f'<td style="font-family: var(--font-mono); {t_style}">{tag_val}</td>'
+
+        # 6. Time (Temporal)
+        time_val = v['TEMPORAL']['metric'].split(' ')[0] # Just vX.X
+        tm_style = "color: #475569;"
+        if "ANACHRONISM" in v['TEMPORAL']['status']: tm_style = "color: #b45309; font-weight: 700;"
+        td_time = f'<td style="font-family: var(--font-mono); font-size: 0.85rem; {tm_style}">{time_val}</td>'
+
+        # 7. Presentation
+        pres_val = v['PRESENTATION']['metric'].replace("VS=", "")
+        p_style = "color: #94a3b8;"
+        if int(pres_val) > 0: p_style = "color: #3b82f6;"
+        td_pres = f'<td style="font-family: var(--font-mono); {p_style}">{pres_val}</td>'
+
+        # 8. Diagnosis
+        # Find the most serious issue
+        diagnosis = '<span style="color:#cbd5e1;">Stable Structure</span>'
+        for k, vec in v.items():
+            if "CRITICAL" in vec['status'] or "INJECTION" in vec['status'] or "VIOLATION" in vec['status']:
+                diagnosis = f'<span style="color:#dc2626; font-weight:600;">{vec["details"]}</span>'
                 break
-            elif "SUSPICIOUS" in v['status'] or "WARNING" in v['status']:
-                primary_issue = f"<b>{k}:</b> {v['details']}"
+            elif "SUSPICIOUS" in vec['status'] or "WARNING" in vec['status']:
+                diagnosis = f'<span style="color:#b45309;">{vec["details"]}</span>'
         
-        row = f"""
-        <tr>
-            <td style="font-size: 1.5rem;">{seq}</td>
-            <td><span class="{v_cls}">{report['verdict']}</span></td>
-            <td>{vector_html}</td>
-            <td style="font-size: 0.75rem; color: #4b5563;">{primary_issue}</td>
-        </tr>
-        """
-        html_rows.append(row)
+        td_diag = f'<td style="font-size: 0.8rem;">{diagnosis}</td>'
 
-    # Header for Physics Table
-    header = """
-    <tr style="background: #f1f5f9; border-bottom: 2px solid #e2e8f0; text-transform: uppercase; font-size: 0.7rem; color: #475569;">
-        <th style="text-align: left; padding: 8px;">Molecule</th>
-        <th style="text-align: left; padding: 8px;">Stability</th>
-        <th style="text-align: left; padding: 8px;">Vector Analysis (Mass / Bond / Tag / Time)</th>
-        <th style="text-align: left; padding: 8px;">Primary Diagnosis</th>
-    </tr>
-    """
+        html_rows.append(f'<tr style="border-bottom: 1px solid #f1f5f9;">{td_mol}{td_stab}{td_mass}{td_bond}{td_tags}{td_time}{td_pres}{td_diag}</tr>')
 
-    element.innerHTML = header + "".join(html_rows)
+    element.innerHTML = "".join(html_rows)
 
 def render_whitespace_topology(physics_data: dict) -> str:
     """
