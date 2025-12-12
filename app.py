@@ -23602,6 +23602,7 @@ def update_all(event=None):
         glitch_container.innerHTML = glitch_html
     
     render_emoji_qualification_table(emoji_list, text_context=t)
+    render_physics_report(emoji_list)
     render_emoji_summary(emoji_counts, emoji_list)
     
     threat_results['flags'] = final_threat_flags
