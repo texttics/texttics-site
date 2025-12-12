@@ -17033,30 +17033,30 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         # Use the new name compute_adversarial_metrics (v11)
         adversarial_data = compute_adversarial_metrics(t)
 
-    # Merges Modulo Overflow findings into the Adversarial Dashboard
-    trunc_findings = analyze_truncation_risk(t)
-    if trunc_findings:
-        # 1. Add to Findings List
-        for f in trunc_findings:
-            adversarial_data["findings"].append({
-                'family': '[OVERFLOW]', 
-                'desc': f.get('desc'),
-                'token': f.get('src'), 
-                'severity': 'crit' 
-            })
-        
-        # 2. Update Topology Counters
-        adversarial_data["topology"]["INJECTION"] = adversarial_data["topology"].get("INJECTION", 0) + len(trunc_findings)
-        
-        # 3. Create a Synthetic Target for Visibility
+        # Merges Modulo Overflow findings into the Adversarial Dashboard
+        trunc_findings = analyze_truncation_risk(t)
         if trunc_findings:
-            top_threat = trunc_findings[0]
-            adversarial_data["targets"].append({
-                'token': f"{top_threat['src']} -> {top_threat['target']}",
-                'score': 100,
-                'verdict': "Memory Corruption Risk",
-                'stack': [{'lvl': 'CRIT', 'type': 'OVERFLOW', 'desc': top_threat['desc']}]
-            })
+            # 1. Add to Findings List
+            for f in trunc_findings:
+                adversarial_data["findings"].append({
+                    'family': '[OVERFLOW]', 
+                    'desc': f.get('desc'),
+                    'token': f.get('src'), 
+                    'severity': 'crit' 
+                })
+            
+            # 2. Update Topology Counters
+            adversarial_data["topology"]["INJECTION"] = adversarial_data["topology"].get("INJECTION", 0) + len(trunc_findings)
+            
+            # 3. Create a Synthetic Target for Visibility
+            if trunc_findings:
+                top_threat = trunc_findings[0]
+                adversarial_data["targets"].append({
+                    'token': f"{top_threat['src']} -> {top_threat['target']}",
+                    'score': 100,
+                    'verdict': "Memory Corruption Risk",
+                    'stack': [{'lvl': 'CRIT', 'type': 'OVERFLOW', 'desc': top_threat['desc']}]
+                })
 
     except Exception as e:
         print(f"CRITICAL ERROR in Adversarial Engine: {e}")
