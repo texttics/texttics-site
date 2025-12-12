@@ -17709,20 +17709,10 @@ def render_physics_legend():
     Renders the explanatory footer for the Structural Physics Report.
     Design V3: High-Density Datasheet Layout. 
     """
+    # [CHANGED] We now strictly target the internal container created by render_physics_report
     legend_container = document.getElementById("emoji-physics-legend")
     
-    if not legend_container:
-        tbody = document.getElementById("emoji-physics-body")
-        if tbody:
-            table = tbody.closest("table")
-            if table:
-                if table.nextElementSibling and table.nextElementSibling.id == "emoji-physics-legend":
-                    legend_container = table.nextElementSibling
-                else:
-                    legend_container = document.createElement("div")
-                    legend_container.id = "emoji-physics-legend"
-                    table.parentNode.insertBefore(legend_container, table.nextSibling)
-
+    # If the report hasn't run or the row is missing, we abort (prevents "floating" legends)
     if not legend_container: return
 
     # CSS CONSTANTS for consistency (Updated for Compact Density)
@@ -17732,6 +17722,7 @@ def render_physics_legend():
     key_style = "font-weight: 700; color: #334155; font-family: var(--font-mono); white-space: nowrap; margin-right: 12px;"
     val_style = "text-align: right; color: #64748b; line-height: 1.25;"
 
+    # [NOTE] removed border-top from here because the TD cell above it already has the border
     html = f"""
     <div style="
         display: grid; 
@@ -17739,7 +17730,6 @@ def render_physics_legend():
         gap: 40px; 
         padding: 24px; 
         background: #f8fafc; 
-        border-top: 1px solid #e2e8f0; 
         font-family: system-ui, -apple-system, sans-serif;
     ">
         
