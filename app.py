@@ -211,8 +211,8 @@ UAX15_MAX_NONSTARTERS = 30
 
 class ZALGO_PHYSICS:
     """
-    Zalgo & Stream-Safe Physics Constants.
-    Derived from UAX #15 and Forensic Threat Research.
+    [SOTA] Zalgo & Stream-Safe Physics Constants.
+    Derived from UAX #15, Forensic Threat Research, and Atomic Density Theory.
     """
     # 1. MARK DENSITY THRESHOLDS (Atomic Mass)
     # -------------------------------------------------------------------------
@@ -233,6 +233,13 @@ class ZALGO_PHYSICS:
     # Verdict: FATAL (Stream-Unsafe)
     # 30 non-starters is the normative limit for Stream-Safe Text Format.
     LIMIT_STREAM_SAFE = 30
+
+    # 2. ATOMIC DENSITY METRIC (Mass Defect)
+    # -------------------------------------------------------------------------
+    # Bytes per Grapheme thresholds. Measures "Neutron Star" text.
+    # Standard English is ~1.0-1.2. CJK is ~3.0.
+    ADM_HEAVY = 3.0    # Warning: CJK / Emoji / Complex Script range
+    ADM_CRITICAL = 8.0 # Critical: "Neutron Star" (Family/Flag sequence attacks)
 
 # Define Spacing Physics
 ASCII_SPACE = 0x0020
@@ -9072,14 +9079,8 @@ def analyze_nsm_overload(graphemes):
     # Solid default: always return all keys so callers never KeyError.
     if total_g == 0:
         return {
-            "level": 0,
-            "max_marks": 0,
-            "mark_density": 0.0,
-            "max_repeat_run": 0,
-            "total_marks": 0,
-            "count": 0,
-            "positions": [],
-            "max_marks_positions": [],
+            "level": 0, "max_marks": 0, "mark_density": 0.0, "max_repeat_run": 0,
+            "total_marks": 0, "count": 0, "positions": [], "max_marks_positions": [],
             "stream_safe_violations": [], 
         }
 
@@ -9106,7 +9107,7 @@ def analyze_nsm_overload(graphemes):
     _get_cat = unicodedata.category
 
     for glyph in graphemes:
-        # Handle dict vs string input
+        # Handle dict vs string input (Robustness)
         g_str = glyph['segment'] if isinstance(glyph, dict) and 'segment' in glyph else glyph
         
         marks_in_g = 0
@@ -9120,8 +9121,8 @@ def analyze_nsm_overload(graphemes):
             cp = ord(ch)
 
             # --- 1. CCC LOOKUP (Physics) ---
+            # We use the Saturated Data Store for truth, falling back to 0 (Starter)
             val_obj = _find_in_ranges(cp, "CombiningClass")
-            
             ccc = 0
             if val_obj:
                 try:
@@ -9130,18 +9131,21 @@ def analyze_nsm_overload(graphemes):
                     ccc = 0
             
             # --- 2. UAX #15 CHECK (Normative) ---
-            # Any character with CCC != 0 is a Non-Starter.
+            # "Stream-Safe Text Format": No sequence of non-starters (CCC!=0) longer than 30.
+            # This check must ignore grapheme boundaries.
             if ccc != 0:
                 if current_non_starter_run == 0:
                     run_start_index = current_cp_index
                 current_non_starter_run += 1
             else:
-                # If we just ended a run, check if it was a violation
+                # Run ended. Was it a violation?
                 if current_non_starter_run > ZALGO_PHYSICS.LIMIT_STREAM_SAFE:
                     stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
                 current_non_starter_run = 0
 
             # --- 3. ZALGO CHECK (Visual) ---
+            # Heuristic: Counts Mn/Me categories OR non-zero CCC.
+            # Captures visual stacking even if CCC is 0 (rare but possible with certain fonts).
             is_visual_mark = _get_cat(ch) in ("Mn", "Me") or ccc != 0
 
             if is_visual_mark:
@@ -9155,13 +9159,14 @@ def analyze_nsm_overload(graphemes):
             last_cp = cp
             current_cp_index += 1
 
-        # Grapheme Loop End Stats
+        # End of Grapheme Analysis
         max_g_repeat = max(max_g_repeat, current_repeat)
         total_marks += marks_in_g
 
         if marks_in_g > 0:
             g_with_marks += 1
 
+        # Track global max intensity
         if marks_in_g > max_marks:
             max_marks = marks_in_g
             max_intensity_indices = [f"#{grapheme_start_pos}"]
@@ -9170,19 +9175,19 @@ def analyze_nsm_overload(graphemes):
 
         max_repeat_run = max(max_repeat_run, max_g_repeat)
 
-        # Use Standardized Warn Threshold for List Population
+        # Populate Zalgo List based on Physics Constants
         if marks_in_g >= ZALGO_PHYSICS.THR_WARN_MARKS:
             zalgo_indices.append(f"#{grapheme_start_pos}")
 
     # --- Finalize Stream-Safe Check (Trailing Run) ---
+    # Catch violations that occur at the very end of the string
     if current_non_starter_run > ZALGO_PHYSICS.LIMIT_STREAM_SAFE:
         stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
 
-    # --- Calculations ---
+    # --- Verdict Calculations ---
     mark_density = g_with_marks / total_g if total_g > 0 else 0.0
 
-    # Verdict Logic (Visual Impact)
-    # Uses the Saturated Physics Constants
+    # Level 2: CRITICAL (Weaponized Zalgo)
     level = 0
     if (
         max_marks >= ZALGO_PHYSICS.THR_CRIT_MARKS
@@ -9191,6 +9196,8 @@ def analyze_nsm_overload(graphemes):
         or max_repeat_run >= ZALGO_PHYSICS.THR_CRIT_REPEAT
     ):
         level = 2
+    # Level 1: WARNING (Complex/Messy)
+    # Triggered if ANY metric exceeds WARN threshold but NONE exceed CRIT
     elif not (
         max_marks < ZALGO_PHYSICS.THR_WARN_MARKS
         and mark_density < ZALGO_PHYSICS.THR_WARN_DENSITY
@@ -15574,20 +15581,67 @@ def compute_grapheme_stats(t: str):
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
 def compute_combining_class_stats(t: str):
-    """Module 1.C: Runs Combining Class Profile."""
+    """
+    Module 1.C: Combining Class Profile & Canonical Stability Audit.
+    
+    Forensic Goals:
+    1. Profile the 'Vertical Physics' of the text (Zalgo composition).
+    2. Detect 'Canonical Stability' exploits (Ordering Attacks).
+       - Rule: If CCC(n) == CCC(n-1) and CCC > 0, the order is arbitrary.
+       - Threat: Attackers swap the order to bypass hash/signature checks 
+         while maintaining identical visual rendering and NFC status.
+    """
     counters = {}
+    stability_risks = []
+    
     if not t or LOADING_STATE != "READY":
         return counters
 
-    for char in t:
+    prev_ccc = 0
+    
+    # We iterate code points directly to check adjacency physics
+    for i, char in enumerate(t):
         cp = ord(char)
-        ccc_class = _find_in_ranges(cp, "CombiningClass")
         
-        # We only care about combining marks (class 0 is "Spacing")
-        if ccc_class and ccc_class != "0":
+        # Use fast lookup helper logic
+        # We rely on the Saturated Data Store for truth
+        val_obj = _find_in_ranges(cp, "CombiningClass")
+        
+        # Parse CCC (it comes as string "230", "0", or None)
+        # Default to 0 (Starter) if missing or invalid
+        ccc_class = val_obj if val_obj else "0"
+        
+        # Only track non-zero classes for the profile table
+        if ccc_class != "0":
             key = f"ccc={ccc_class}"
             counters[key] = counters.get(key, 0) + 1
             
+            # [ATOMIC PHYSICS] Canonical Stability Check
+            # Detecting the "Canonical Chaos" Vector.
+            try:
+                curr_ccc_int = int(ccc_class)
+                
+                # If current mark has same class as previous mark,
+                # they stack outward but are NOT reordered by NFC.
+                # This creates a "Stable Permutation" vulnerability.
+                if curr_ccc_int == prev_ccc:
+                    # Record the position as a range [prev, curr]
+                    stability_risks.append(f"#{i-1}-{i}")
+                
+                prev_ccc = curr_ccc_int
+            except ValueError:
+                prev_ccc = 0
+        else:
+            # Reset stability tracker on base character (Starter)
+            prev_ccc = 0
+            
+    # Inject the Stability Flag into the counters dict.
+    # This key starts with underscore to be hidden from the standard CCC table renderer,
+    # but available for the main orchestrator to grab and flag in the Integrity Report.
+    if stability_risks:
+        counters["_STABILITY_RISK_COUNT"] = len(stability_risks)
+        counters["_STABILITY_RISK_POS"] = stability_risks
+
     return counters
 
 def compute_sequence_stats(t: str):
@@ -16512,7 +16566,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "vs_all": [], "invalid_vs": [], "discouraged": [], 
         "other_ctrl": [], "esc": [], "interlinear": [], 
         "bidi_mirrored": [], "loe": [], "unassigned": [], "suspicious_syntax_vs": [],
-        "zombie_ctrl": [], "norm_correction": []
+        "zombie_ctrl": [], "norm_correction": [], "canonical_stability": []
     }
     
     decomp_type_stats = {}
@@ -16608,6 +16662,21 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                         prev_cp = ord(js_array[i-1])
                         if prev_cp in DATA_STORES["VariantBase"]: is_valid_vs = True
                     if not is_valid_vs: legacy_indices["invalid_vs"].append(i)
+
+                # [ATOMIC PHYSICS] Canonical Stability Check
+                # Detects adjacent marks with IDENTICAL, NON-ZERO Combining Class.
+                # These are not reordered by NFC, allowing "Stable Permutation" attacks.
+                # We use the raw data store for speed.
+                ccc_val = _find_in_ranges(cp, "CombiningClass")
+                # Handle string return "230" or None
+                curr_ccc = int(ccc_val) if ccc_val and ccc_val.isdigit() else 0
+                
+                if curr_ccc > 0 and curr_ccc == prev_ccc_stability:
+                    # We flag the *current* mark as the violation
+                    legacy_indices["canonical_stability"].append(i)
+                
+                # Update state for next char
+                prev_ccc_stability = curr_ccc
 
                 # --- Properties ---
                 if _find_in_ranges(cp, "Discouraged"): legacy_indices["discouraged"].append(i)
@@ -16713,8 +16782,48 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
             if pct is not None: row["pct"] = pct
             rows.append(row)
 
-    # --- 1. STRUCTURAL FEEDBACK LOOP ---
+    # --- 1. STRUCTURAL FEEDBACK LOOP (Atomic Physics & Topology) ---
     struct_rows = []
+    
+    # [ATOMIC PHYSICS] Normalization Bomb & Surrogate Cluster Detector
+    # 1. Expansion Ratio (DoS Risk)
+    # Measures the "Mass Defect" between Raw and NFKC states.
+    # An expansion > 2.0x indicates a potential buffer overflow vector (e.g., U+FDFD -> 18 chars).
+    nfkc_t = unicodedata.normalize("NFKC", t)
+    # Use small epsilon to prevent division by zero on empty string
+    expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
+    
+    if expansion_ratio > 2.0 and len(t) > 10:
+        add_row(f"CRITICAL: Normalization Bomb (Ratio {expansion_ratio:.1f}x)", 
+                1, ["Potential DoS Vector"], "crit", badge="DoS RISK")
+    elif expansion_ratio > 1.5 and len(t) > 10:
+        add_row(f"Flag: High Expansion Factor ({expansion_ratio:.1f}x)", 
+                1, ["Check for 'Doppelgänger' characters"], "warn")
+
+    # 2. Surrogate Scar Tissue (Reconstitution Risk)
+    # Detects adjacent or clustered surrogates that suggest a failed filter or 
+    # a "healing" attack where stripped high-surrogates leave valid pairs behind.
+    surrogate_clusters = []
+    prev_was_surrogate = False
+    
+    # We iterate the JS array indices to match the visual report
+    for idx, char in enumerate(js_array):
+        cp = ord(char)
+        is_surr = (0xD800 <= cp <= 0xDFFF)
+        
+        if is_surr and prev_was_surrogate:
+            # Found two adjacent surrogates in the raw stream.
+            # In a clean stream, these should be resolved. If they persist here,
+            # they represent a "Scar" or a raw UTF-16 injection.
+            surrogate_clusters.append(f"#{idx-1}-{idx}")
+            
+        prev_was_surrogate = is_surr
+    
+    if surrogate_clusters:
+        add_row("CRITICAL: Surrogate Cluster (Reconstitution Risk)", 
+                len(surrogate_clusters), surrogate_clusters, "crit", badge="SCAR")
+
+    # --- Standard Structural Analysis ---
     
     # Call analyze_bidi_structure ONLY ONCE and unpack correctly
     bidi_pen, bidi_fracs, bidi_dangers = analyze_bidi_structure(t, struct_rows)
@@ -16746,8 +16855,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         for v_str in viol_list:
             try:
                 # Parse index from string format "#123 (Len: 35)"
-                idx = int(v_str.split()[0].replace("#", ""))
-                _register_hit("int_fatal", idx, idx+1, "Stream-Unsafe")
+                idx_str = v_str.split()[0].replace("#", "")
+                if idx_str.isdigit():
+                    idx = int(idx_str)
+                    _register_hit("int_fatal", idx, idx+1, "Stream-Unsafe")
             except: pass
 
     # --- Populate Integrity Aggregator Buckets (Ranges) ---
@@ -16943,6 +17054,14 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     add_row("Flag: Full Composition Exclusion", len(legacy_indices["norm_excl"]), legacy_indices["norm_excl"], "warn")
     add_row("Flag: Changes on NFKC Casefold", len(legacy_indices["norm_fold"]), legacy_indices["norm_fold"], "warn")
     add_row("SUSPICIOUS: Variation Selector on Syntax", len(legacy_indices["suspicious_syntax_vs"]), legacy_indices["suspicious_syntax_vs"], "crit")
+
+    # [ATOMIC PHYSICS] Canonical Stability Verdict
+    if legacy_indices["canonical_stability"]:
+        add_row("CRITICAL: Canonical Stability Ambiguity (Ordering Exploit)", 
+                len(legacy_indices["canonical_stability"]), 
+                legacy_indices["canonical_stability"], 
+                "crit", 
+                badge="SPOOF")
 
     for k, v in decomp_type_stats.items(): add_row(k, v['count'], v['positions'], "ok")
     for k, v in id_type_stats.items(): add_row(k, v['count'], v['positions'], "warn")
