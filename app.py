@@ -4196,13 +4196,41 @@ def _get_char_script_id(char, cp: int):
 
 def _compute_storage_metrics(t: str, supplementary_count: int):
     """
-    Helper to calculate the Physical and Runtime dimensions of the text.
-    Centralizes the 'encode' logic to ensure consistency.
+    [FORENSIC CORE] Storage Physics Engine (Hardened v2.0).
+    Calculates Physical (Disk) and Runtime (Memory) dimensions with Toxic Tolerance.
+    
+    Philosophy: "Measure the Crash, Don't Crash."
+    
+    Mechanics:
+    1. UTF-16 (Runtime): Uses 'surrogatepass' to emulate JS/Java .length 
+       perfectly. A lone surrogate is 1 unit (2 bytes), not a crash.
+    2. UTF-8 (Storage): Uses 'surrogatepass' (WTF-8) to measure the 
+       raw physical mass of the payload, preserving the weight of toxic 
+       particles that standard encoders would discard.
     """
+    # 1. UTF-16 UNITS (The Runtime Reality)
+    # Simulates the JS Heap view. Handles broken surrogate chains without flinching.
+    try:
+        # 'surrogatepass' allows encoding U+D800-U+DFFF as-is.
+        # This matches how browsers store broken strings in memory.
+        u16_len = len(t.encode('utf-16-le', errors='surrogatepass')) // 2
+    except LookupError:
+        # Fallback for restrictive platforms (standard 'replace' is safe but lossy)
+        u16_len = len(t.encode('utf-16-le', errors='replace')) // 2
+
+    # 2. UTF-8 BYTES (The Physical Mass)
+    # Measures the "Wire Weight". 
+    # 'surrogatepass' calculates the size of the "WTF-8" representation,
+    # ensuring we capture the full size of the attack vector.
+    try:
+        u8_len = len(t.encode('utf-8', errors='surrogatepass'))
+    except LookupError:
+        u8_len = len(t.encode('utf-8', errors='replace'))
+
     return {
-        "UTF-16 Units": len(t.encode('utf-16-le')) // 2, # JS/Java .length
-        "UTF-8 Bytes": len(t.encode('utf-8')),           # Disk/Network size
-        "Astral Count": supplementary_count              # Re-use existing loop count
+        "UTF-16 Units": u16_len,
+        "UTF-8 Bytes": u8_len,
+        "Astral Count": supplementary_count
     }
 
 # Sanitization & Escaping
