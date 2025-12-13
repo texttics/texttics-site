@@ -16682,7 +16682,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     }
 
     if LOADING_STATE == "READY":
-        js_array = window.Array.from_(t)
+        js_array = window.Array.from_(t).to_py()
         
         # Surrogate Scar Detector
         surrogate_clusters = []
@@ -17564,7 +17564,7 @@ def compute_threat_analysis(t: str, script_stats: dict = None):
         confusables_map = DATA_STORES.get("Confusables", {})
 
         if LOADING_STATE == "READY":
-            js_array_raw = window.Array.from_(t)
+            js_array_raw = window.Array.from_(t).to_py()
 
             for i, char in enumerate(js_array_raw):
                 cp = ord(char)
