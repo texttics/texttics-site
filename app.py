@@ -14414,7 +14414,7 @@ def compute_threat_score(inputs):
     adm = inputs.get("adm", 0.0)
     if adm > ZALGO_PHYSICS.ADM_CRITICAL:
         add_entry(f"Mass Defect (Density {adm:.1f} b/g)", THR_BASE_OBFUSCATION, "OBFUSCATION")
-
+        
     # B. The Accountant (Mass)
     # Checks for Numeric Masquerade (Parser Ambiguity)
     if inputs.get("mass_stats"):
@@ -16933,9 +16933,10 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        "expansion_ratio": expansion_ratio if 'expansion_ratio' in locals() else 1.0,
+        "surrogate_scar_count": len(surrogate_clusters) if 'surrogate_clusters' in locals() else 0,
         "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
-        "expansion_ratio": expansion_ratio,
-        "surrogate_scar_count": len(surrogate_clusters),
+        "stream_safe_violations": nsm_stats.get("stream_safe_violations", []), # Pass list or count
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
         "nul": len(health_issues["nul"]),
