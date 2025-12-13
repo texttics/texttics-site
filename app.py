@@ -18799,9 +18799,6 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             if count > 0:
                 html.append(f'<div class="card"><strong>{k}</strong><div>{count}</div></div>')
 
-        # --- RENDER PATH 2.5: High-Density Forensic Quad Cards ---
-        
-        # 1. VISUAL REALITY (Graphemes)
         # 1. VISUAL REALITY (Graphemes)
         elif k == "Total Graphemes":
             icon = METRIC_ICONS["eye"]
@@ -18810,16 +18807,30 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             avg_marks = stats_dict.get("Avg. Marks per Grapheme", 0)
             rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
             
+            # [ATOMIC PHYSICS] Mass Defect (Atomic Density Metric)
+            # We calculate this JIT because we need access to the UTF-8 Byte count
+            # which is in the same stats_dict.
+            total_bytes = stats_dict.get("UTF-8 Bytes", 0)
+            # Use 'v' (Total Graphemes) as the denominator. Add epsilon for safety.
+            adm = total_bytes / (v + 1e-9) 
+            
+            adm_badge = ""
+            if adm >= ZALGO_PHYSICS.ADM_CRITICAL:
+                adm_badge = '<span class="badge badge-crit" style="font-size:0.7em; margin-left:4px;">MASS DEFECT</span>'
+            elif adm >= ZALGO_PHYSICS.ADM_HEAVY:
+                adm_badge = '<span class="badge badge-warn" style="font-size:0.7em; margin-left:4px;">HEAVY</span>'
+
             # Retrieve Verdict
             verdict = stats_dict.get("seg_verdict", "LOW")
             badge_cls = stats_dict.get("seg_class", "badge-ok")
             
-            # Scientifically Rigorous Tooltip
+            # Scientifically Rigorous Tooltip (Updated with ADM)
             tooltip = (
                 "[ DEFINITION ]\n"
                 "User-perceived characters based on UAX #29 Extended Grapheme Clusters.\n"
                 "Represents the visual 'atomic' unit displayed to the user.\n\n"
                 "[ FORENSIC BENCHMARKS ]\n"
+                f"• ADM (Bytes/Graph): {adm:.1f} (Normal: 1.0-3.0)\n"
                 "• ~0.0 marks/graph: Standard Text (Latin/ASCII)\n"
                 "• >1.0 marks/graph: Heavy Diacritics or Zalgo\n"
                 "• >2.0 marks/graph: Rendering Stack Overflow Risk\n\n"
@@ -18839,7 +18850,8 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                     f'</div>'
                     f'<div class="metric-facts">'
                         f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
-                        # Injected Row
+                        # Injected ADM Row with Badge
+                        f'<div class="fact-row">Density: <strong>{adm:.1f}</strong> b/g {adm_badge}</div>'
                         f'<div class="fact-row">Complexity: <span class="badge {badge_cls}" style="font-size:0.7em;">{verdict}</span></div>'
                     f'</div>'
                 f'</div>'
