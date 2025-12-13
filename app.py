@@ -23836,6 +23836,10 @@ def update_all(event=None):
     meta_cards = {
         # --- The Forensic Quad-Metric Reality ---
         "Total Graphemes": gr_summary.get("Total Graphemes", 0),   # Visual
+        # Bridge the Forensic Verdict to the UI Card
+        "seg_verdict": gr_summary.get("seg_verdict", "LOW"),
+        "seg_class": gr_summary.get("seg_class", "badge-ok"),
+        "Avg. Marks per Grapheme": gr_summary.get("Avg. Marks per Grapheme", 0),
         "Total Code Points": cp_summary.get("Total Code Points", 0), # Logical
         "UTF-16 Units": cp_summary.get("UTF-16 Units", 0),       # Runtime (JS/Java)
         "UTF-8 Bytes": cp_summary.get("UTF-8 Bytes", 0),         # Physical (Storage)
