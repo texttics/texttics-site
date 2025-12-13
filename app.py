@@ -209,6 +209,31 @@ HORIZONTAL_SCRIPTS = {
 # Exceeding this is a Protocol Violation, not just "Zalgo".
 UAX15_MAX_NONSTARTERS = 30
 
+class ZALGO_PHYSICS:
+    """
+    Zalgo & Stream-Safe Physics Constants.
+    Derived from UAX #15 and Forensic Threat Research.
+    """
+    # 1. MARK DENSITY THRESHOLDS (Atomic Mass)
+    # -------------------------------------------------------------------------
+    # Tier 1: "Light" (3-5 marks). Complex scripts or mild typos.
+    # Verdict: WARN (Medium Complexity)
+    THR_WARN_MARKS = 3
+    THR_WARN_DENSITY = 0.35  # Avg marks per grapheme
+    THR_WARN_REPEAT = 3      # Repeated base chars
+
+    # Tier 2: "Medium/Heavy" (7+ marks). Intentional visual obfuscation.
+    # Verdict: CRITICAL (High Zalgo)
+    THR_CRIT_MARKS = 7
+    THR_CRIT_DENSITY = 0.70
+    THR_CRIT_REPEAT = 6
+    THR_CRIT_TOTAL = 64      # Total marks in string
+
+    # Tier 3: "Protocol Violation" (UAX #15 Limit)
+    # Verdict: FATAL (Stream-Unsafe)
+    # 30 non-starters is the normative limit for Stream-Safe Text Format.
+    LIMIT_STREAM_SAFE = 30
+
 # Define Spacing Physics
 ASCII_SPACE = 0x0020
 NBSP_SPACE  = 0x00A0
@@ -9073,7 +9098,6 @@ def analyze_nsm_overload(graphemes):
     # 1. UAX #15 State (Persists across graphemes)
     current_non_starter_run = 0
     run_start_index = 0
-    UAX15_LIMIT = 30 
     
     # 2. Index Tracker
     current_cp_index = 0
@@ -9096,15 +9120,11 @@ def analyze_nsm_overload(graphemes):
             cp = ord(ch)
 
             # --- 1. CCC LOOKUP (Physics) ---
-            # The data loader stores DerivedCombiningClass.txt under the key "CombiningClass".
-            # We query "CombiningClass" directly.
             val_obj = _find_in_ranges(cp, "CombiningClass")
             
             ccc = 0
             if val_obj:
                 try:
-                    # _find_in_ranges returns the value column string (e.g., "230")
-                    # We strip just in case, though parser handles it.
                     ccc = int(val_obj)
                 except (ValueError, TypeError):
                     ccc = 0
@@ -9117,12 +9137,11 @@ def analyze_nsm_overload(graphemes):
                 current_non_starter_run += 1
             else:
                 # If we just ended a run, check if it was a violation
-                if current_non_starter_run > UAX15_LIMIT:
+                if current_non_starter_run > ZALGO_PHYSICS.LIMIT_STREAM_SAFE:
                     stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
                 current_non_starter_run = 0
 
             # --- 3. ZALGO CHECK (Visual) ---
-            # Visual Heuristic: Category Mn/Me OR CCC!=0 (catch visible spacing marks too if they stack)
             is_visual_mark = _get_cat(ch) in ("Mn", "Me") or ccc != 0
 
             if is_visual_mark:
@@ -9151,29 +9170,31 @@ def analyze_nsm_overload(graphemes):
 
         max_repeat_run = max(max_repeat_run, max_g_repeat)
 
-        if marks_in_g >= 3:
+        # Use Standardized Warn Threshold for List Population
+        if marks_in_g >= ZALGO_PHYSICS.THR_WARN_MARKS:
             zalgo_indices.append(f"#{grapheme_start_pos}")
 
     # --- Finalize Stream-Safe Check (Trailing Run) ---
-    if current_non_starter_run > UAX15_LIMIT:
+    if current_non_starter_run > ZALGO_PHYSICS.LIMIT_STREAM_SAFE:
         stream_unsafe_sequences.append(f"#{run_start_index} (Len: {current_non_starter_run})")
 
     # --- Calculations ---
     mark_density = g_with_marks / total_g if total_g > 0 else 0.0
 
     # Verdict Logic (Visual Impact)
+    # Uses the Saturated Physics Constants
     level = 0
     if (
-        max_marks >= 7
-        or mark_density > 0.7 
-        or total_marks >= 64
-        or max_repeat_run >= 6
+        max_marks >= ZALGO_PHYSICS.THR_CRIT_MARKS
+        or mark_density > ZALGO_PHYSICS.THR_CRIT_DENSITY 
+        or total_marks >= ZALGO_PHYSICS.THR_CRIT_TOTAL
+        or max_repeat_run >= ZALGO_PHYSICS.THR_CRIT_REPEAT
     ):
         level = 2
     elif not (
-        max_marks <= 2
-        and mark_density <= 0.35
-        and max_repeat_run <= 2
+        max_marks < ZALGO_PHYSICS.THR_WARN_MARKS
+        and mark_density < ZALGO_PHYSICS.THR_WARN_DENSITY
+        and max_repeat_run < ZALGO_PHYSICS.THR_WARN_REPEAT
     ):
         level = 1
 
@@ -15524,17 +15545,14 @@ def compute_grapheme_stats(t: str):
     seg_class = "badge-ok"
 
     if total_graphemes >= 3: # Ignore microscopic samples
-        # Thresholds (Conservative / Latin-Centric Default)
-        # Note: Non-Latin scripts (Thai, Tibetan) naturally use more marks. 
-        # A truly script-aware engine would relax this if 'Latin' is not dominant.
-        high_max, high_avg = 5, 0.8
-        med_max, med_avg = 2, 0.2
-
-        if max_marks >= high_max or avg_marks >= high_avg:
+        # Verdict: Standardized via ZALGO_PHYSICS (Block 2)
+        # We now use the Saturated Physics Constants to ensure the Card matches the Report.
+        
+        if max_marks >= ZALGO_PHYSICS.THR_CRIT_MARKS or avg_marks >= ZALGO_PHYSICS.THR_CRIT_DENSITY:
             seg_verdict = "HIGH (Zalgo)"
             seg_reason = "Stacking Abuse Detected (Rendering Instability Risk)"
             seg_class = "badge-crit"
-        elif max_marks >= med_max or avg_marks >= med_avg:
+        elif max_marks >= ZALGO_PHYSICS.THR_WARN_MARKS or avg_marks >= ZALGO_PHYSICS.THR_WARN_DENSITY:
             seg_verdict = "MED (Complex)"
             seg_reason = "Complex Clusters (Emoji Sequences or Heavy Diacritics)"
             seg_class = "badge-warn"
