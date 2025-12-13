@@ -18815,10 +18815,8 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             rgi_count = stats_dict.get("RGI Emoji Sequences", 0)
             
             # [ATOMIC PHYSICS] Mass Defect (Atomic Density Metric)
-            # We calculate this JIT because we need access to the UTF-8 Byte count
-            # which is in the same stats_dict.
+            # We calculate JIT. Use 'v' (Total Graphemes) as denominator.
             total_bytes = stats_dict.get("UTF-8 Bytes", 0)
-            # Use 'v' (Total Graphemes) as the denominator. Add epsilon for safety.
             adm = total_bytes / (v + 1e-9) 
             
             adm_badge = ""
@@ -18834,7 +18832,7 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
             # Scientifically Rigorous Tooltip (Updated with ADM)
             tooltip = (
                 "[ DEFINITION ]\n"
-                "User-perceived characters based on UAX #29 Extended Grapheme Clusters.\n"
+                "User-perceived characters (UAX #29 Extended Grapheme Clusters).\n"
                 "Represents the visual 'atomic' unit displayed to the user.\n\n"
                 "[ FORENSIC BENCHMARKS ]\n"
                 f"• ADM (Bytes/Graph): {adm:.1f} (Normal: 1.0-3.0)\n"
@@ -18857,7 +18855,6 @@ def render_cards(stats_dict, element_id=None, key_order=None, return_html=False)
                     f'</div>'
                     f'<div class="metric-facts">'
                         f'<div class="fact-row">Marks/Graph: <strong>{avg_marks}</strong></div>'
-                        # Injected ADM Row with Badge
                         f'<div class="fact-row">Density: <strong>{adm:.1f}</strong> b/g {adm_badge}</div>'
                         f'<div class="fact-row">Complexity: <span class="badge {badge_cls}" style="font-size:0.7em;">{verdict}</span></div>'
                     f'</div>'
@@ -23769,7 +23766,10 @@ def update_all(event=None):
     # ==============================================================================
     nsm_stats["count"] = len(zalgo_participants)
     
-    # Inject into profile
+    # The analyze_nsm_overload function strictly counts marks >= 3.
+    # The forensic loop above captured ALL anomalies. We sync them here.
+    if len(zalgo_participants) > 0:
+        nsm_stats["count"] = len(zalgo_participants)
     stat_profile['zalgo'] = nsm_stats
     stat_profile['zalgo_participants'] = zalgo_participants
 
