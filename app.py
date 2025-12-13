@@ -24201,16 +24201,23 @@ def update_all(event=None):
     if "ASCII-Compatible" in cp_summary:
         is_ascii_safe = cp_summary["ASCII-Compatible"].get("is_full", False)
 
+    # Robustly fetch threat metrics directly from the source object
+    # This prevents NameErrors if local variables were optimized away.
+    _skel = threat_results.get("skel_metrics", {})
+    
     hud_stats = {
         "major_stats": cp_major,
         "forensic_flags": forensic_map,
         "emoji_counts": emoji_counts,
         "integrity": audit_result,
         "threat": final_score,
-        "script_mix": script_mix_class,
+        
+        # Read directly from threat_results
+        "script_mix": threat_results.get('script_mix_class', "Common"), 
+        "drift": _skel.get("total_drift", 0),
+        
         "is_ascii": is_ascii_safe,
         "nsm_level": nsm_stats["level"],
-        "drift": skel_metrics.get("total_drift", 0),
         "master_ledgers": master_ledgers
     }
 
