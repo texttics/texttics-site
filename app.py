@@ -16597,6 +16597,14 @@ def compute_stage1_5_forensics(text):
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict, grapheme_stats: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
     
+    # --- 0. Helper Definitions (MOVED TO TOP TO PREVENT CRASH) ---
+    rows = []
+    def add_row(label, count, positions, severity="warn", badge=None, pct=None):
+        if count > 0:
+            row = {"label": label, "count": count, "positions": positions, "severity": severity, "badge": badge}
+            if pct is not None: row["pct"] = pct
+            rows.append(row)
+
     # --- 1. Init Trackers ---
     legacy_indices = {
         "deceptive_ls": [], "deceptive_ps": [], "deceptive_nel": [],
@@ -16611,6 +16619,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "zombie_ctrl": [], "norm_correction": [], "canonical_stability": []
     }
     
+    # State Machine for Stability
+    prev_ccc_stability = 0
+    
     decomp_type_stats = {}
     bidi_mirroring_map = {}
     id_type_stats = {} 
@@ -16623,7 +16634,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     
     health_issues = {
         "fffd": [], "surrogate": [], "nonchar": [], "fdd0": [],
-        "pua": [], "nul": [], "bom_mid": [], "donotemit": []
+        "pua": [], "nul": [], "bom_mid": [], "donotemit": [], "hyper_complex": []
     }
 
     ID_TYPE_ALIASES = {
@@ -16637,6 +16648,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
+        
         # [ATOMIC PHYSICS ENGINE] - Must run BEFORE the main loop
         # 1. Normalization Bomb Detector
         nfkc_t = unicodedata.normalize("NFKC", t)
@@ -16652,14 +16664,16 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 surrogate_clusters.append(f"#{_idx-1}-{_idx}")
             _prev_surr = _is_surr
 
-        # 3. Register Critical Alerts (The Missing Rows)
-        if expansion_ratio > 2.0 and len(t) > 0: # Removed len check to catch small bombs
+        # 3. Register Critical Alerts (Now Safe because add_row is defined)
+        if expansion_ratio > 2.0 and len(t) > 0: 
             add_row(f"CRITICAL: Normalization Bomb (Ratio {expansion_ratio:.1f}x)", 
                     1, ["Potential DoS Vector"], "crit", badge="DoS RISK")
         
         if surrogate_clusters:
             add_row("CRITICAL: Surrogate Cluster (Reconstitution Risk)", 
                     len(surrogate_clusters), surrogate_clusters, "crit", badge="SCAR")
+
+        # --- Main Loop ---
         for i, char in enumerate(js_array):
             try:
                 cp = ord(char)
