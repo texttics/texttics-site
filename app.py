@@ -17159,7 +17159,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
     rows.extend(struct_rows)
 
-    return rows, audit_result, health_issues
+    return rows, audit_result, health_issues, integrity_inputs
 
 def compute_threat_analysis(t: str, script_stats: dict = None):
     """Module 3: Runs Threat-Hunting Analysis (UTS #39, etc.)."""
@@ -23583,7 +23583,7 @@ def update_all(event=None):
 
     # Integrity Analysis (Populates Registry)
     # Passing grapheme_forensics for NFC data
-    forensic_rows, audit_result, health_issues = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
+    forensic_rows, audit_result, health_issues, integrity_inputs = compute_forensic_stats_with_positions(t, cp_minor, emoji_flags, grapheme_forensics)
     forensic_map = {row['label']: row for row in forensic_rows}
 
     # Reconstruct the inputs dict needed by the Auditor from the UI map
@@ -23591,35 +23591,37 @@ def update_all(event=None):
     
     integrity_inputs = {
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        
+        # USE LOCAL VARIABLES DIRECTLY:
         "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
         "surrogate_scar_count": len(surrogate_clusters),
         "expansion_ratio": expansion_ratio,
         "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])),
+        "bidi_broken_count": bidi_pen,
+        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
+        "max_cluster_len": cluster_max_len,
         
-        # Standard lookups
+        # Standard lookups for simple flags:
+        "discouraged": len(legacy_indices["discouraged"]),
+        "deprecated": len(legacy_indices["deprecated"]),
+        "nfkc_fold": len(legacy_indices["norm_fold"]),
+        "unassigned": len(legacy_indices["unassigned"]),
+        "restricted_id": id_issue_count,
+
         "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
         "surrogate": _get_f_count("Surrogates (Broken)"),
         "nul": _get_f_count("Flag: NUL (U+0000)"),
-        "bidi_broken_count": bidi_pen,
         "broken_keycap": _get_f_count("Flag: Broken Keycap Sequence"),
-        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
         "tags": _get_f_count("Flag: Unicode Tags (Plane 14)"),
         "nonchar": _get_f_count("Noncharacter"),
         "invalid_vs": _get_f_count("Flag: Invalid Variation Selector"),
         "donotemit": _get_f_count("Flag: Do-Not-Emit Characters"),
-        "max_cluster_len": cluster_max_len,
         "bom": _get_f_count("Flag: Internal BOM (U+FEFF)"),
         "pua": _get_f_count("Flag: Private Use Area (PUA)"),
         "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
         "dec_space": _get_f_count("Deceptive Spaces"),
         "not_nfc": not (t == unicodedata.normalize("NFC", t)),
-        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)"),
-        
-        "discouraged": len(legacy_indices["discouraged"]),
-        "deprecated": len(legacy_indices["deprecated"]),
-        "nfkc_fold": len(legacy_indices["norm_fold"]),
-        "unassigned": len(legacy_indices["unassigned"]),
-        "restricted_id": id_issue_count
+        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
     }
 
     
