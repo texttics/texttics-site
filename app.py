@@ -16933,14 +16933,19 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        
+        # Atomic Physics & Stability Metrics
         "expansion_ratio": expansion_ratio if 'expansion_ratio' in locals() else 1.0,
         "surrogate_scar_count": len(surrogate_clusters) if 'surrogate_clusters' in locals() else 0,
         "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
-        "stream_safe_violations": nsm_stats.get("stream_safe_violations", []), # Pass list or count
+        
+        # Wrap in len() to prevent TypeError: list > int
+        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])), 
+        
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
         "nul": len(health_issues["nul"]),
-        "bidi_broken_count": bidi_pen, # CORRECT: Integer Count
+        "bidi_broken_count": bidi_pen,
         "broken_keycap": len(emoji_flags.get("Flag: Broken Keycap Sequence", {}).get("positions", [])), 
         "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
         "tags": len(flags["tags"]),
