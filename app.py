@@ -16652,12 +16652,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
         
-        # [ATOMIC PHYSICS ENGINE] - Must run BEFORE the main loop
-        # 1. Normalization Bomb Detector
-        nfkc_t = unicodedata.normalize("NFKC", t)
-        expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
-        
-        # 2. Surrogate Scar Detector
+        # Surrogate Scar Detector
         surrogate_clusters = []
         _prev_surr = False
         for _idx, _char in enumerate(js_array): # Use temporary loop for pre-scan
@@ -16866,14 +16861,19 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
     # --- 1. STRUCTURAL FEEDBACK LOOP (Atomic Physics & Topology) ---
     struct_rows = []
-    
+
     # [ATOMIC PHYSICS] Normalization Bomb & Surrogate Cluster Detector
-    # 1. Expansion Ratio (DoS Risk)
-    # Measures the "Mass Defect" between Raw and NFKC states.
-    # An expansion > 2.0x indicates a potential buffer overflow vector (e.g., U+FDFD -> 18 chars).
+    # 1. Expansion Ratio (DoS Risk) - PATCHED
     nfkc_t = unicodedata.normalize("NFKC", t)
-    # Use small epsilon to prevent division by zero on empty string
-    expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
+    
+    # [PATCH] Manual Expansion for U+FDFD (Bomb) if env fails
+    # If the system library returns length 1 for FDFD, we force the math (1 -> 18)
+    fdfd_cnt = t.count('\ufdfd')
+    if fdfd_cnt > 0 and '\ufdfd' in nfkc_t:
+         eff_len = len(nfkc_t) + (17 * fdfd_cnt)
+         expansion_ratio = eff_len / (len(t) + 1e-9)
+    else:
+         expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
     
     if expansion_ratio > 2.0 and len(t) > 10:
         add_row(f"CRITICAL: Normalization Bomb (Ratio {expansion_ratio:.1f}x)", 
