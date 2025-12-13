@@ -23587,29 +23587,31 @@ def update_all(event=None):
     def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
     
     integrity_inputs = {
-        # [WIRED] Atomic Physics - Extracting the new alerts for the Master Score
-        "stability_risk_count": _get_f_count("CRITICAL: Canonical Stability Ambiguity (Ordering Exploit)"),
-        "surrogate_scar_count": _get_f_count("CRITICAL: Surrogate Cluster (Reconstitution Risk)"),
-        # Note: Expansion Ratio is a derived metric, we trigger the bomb score if the row exists
-        "expansion_ratio": 3.0 if _get_f_count("CRITICAL: Normalization Bomb (Ratio") > 0 else 1.0, 
-        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
+        "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        
+        # Direct variable access
+        "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
+        "surrogate_scar_count": len(surrogate_clusters), # Calculated at top of function
+        "expansion_ratio": expansion_ratio,              # Calculated at top of function
+        
+        # Standard lookups (These work because the labels are static strings)
+        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])),
         "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
         "surrogate": _get_f_count("Surrogates (Broken)"),
         "nul": _get_f_count("Flag: NUL (U+0000)"),
-        "bidi_broken_count": _get_f_count("Flag: Unclosed Bidi Sequence") + _get_f_count("Flag: Unmatched PDF/PDI"),
+        "bidi_broken_count": bidi_pen, # Use the local variable from analyze_bidi_structure
         "broken_keycap": _get_f_count("Flag: Broken Keycap Sequence"),
-        "hidden_marks": _get_f_count("Flag: Marks on Non-Visual Base"),
+        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
         "tags": _get_f_count("Flag: Unicode Tags (Plane 14)"),
         "nonchar": _get_f_count("Noncharacter"),
         "invalid_vs": _get_f_count("Flag: Invalid Variation Selector"),
-        "donotemit": _get_f_count("Prop: Discouraged (DoNotEmit)"),
-        "max_cluster_len": _get_f_count("Max Invisible Run Length"),
+        "donotemit": _get_f_count("Flag: Do-Not-Emit Characters"), # Ensure string matches add_row
+        "max_cluster_len": cluster_max_len, # Use local variable
         "bom": _get_f_count("Flag: Internal BOM (U+FEFF)"),
         "pua": _get_f_count("Flag: Private Use Area (PUA)"),
         "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
-        "dec_space": _get_f_count("Deceptive Spaces"),
-        "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
-        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
+        "dec_space": _get_f_count("Deceptive Spaces (Non-ASCII)"), # Ensure string matches add_row
+        "not_nfc": not (t == unicodedata.normalize("NFC", t)),
         "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
     }
 
