@@ -23550,6 +23550,12 @@ def update_all(event=None):
     def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
     
     integrity_inputs = {
+        # [WIRED] Atomic Physics - Extracting the new alerts for the Master Score
+        "stability_risk_count": _get_f_count("CRITICAL: Canonical Stability Ambiguity (Ordering Exploit)"),
+        "surrogate_scar_count": _get_f_count("CRITICAL: Surrogate Cluster (Reconstitution Risk)"),
+        # Note: Expansion Ratio is a derived metric, we trigger the bomb score if the row exists
+        "expansion_ratio": 3.0 if _get_f_count("CRITICAL: Normalization Bomb (Ratio") > 0 else 1.0, 
+        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
         "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
         "surrogate": _get_f_count("Surrogates (Broken)"),
         "nul": _get_f_count("Flag: NUL (U+0000)"),
