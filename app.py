@@ -16866,24 +16866,62 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     struct_rows = []
 
     # [ATOMIC PHYSICS] Normalization Bomb & Surrogate Cluster Detector
-    # 1. Expansion Ratio (DoS Risk) - PATCHED
+    # ------------------------------------------------------------------
+    # ENGINE 1: Global Expansion (The Overall Score)
     nfkc_t = unicodedata.normalize("NFKC", t)
     
-    # [PATCH] Manual Expansion for U+FDFD (Bomb) if env fails
-    # If the system library returns length 1 for FDFD, we force the math (1 -> 18)
+    # [PATCH] Manual Physics for U+FDFD (Global)
     fdfd_cnt = t.count('\ufdfd')
     if fdfd_cnt > 0 and '\ufdfd' in nfkc_t:
          eff_len = len(nfkc_t) + (17 * fdfd_cnt)
          expansion_ratio = eff_len / (len(t) + 1e-9)
     else:
          expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
+
+    # ENGINE 2: Sector Scanner (Localized Bomb Detection)
+    # Scans 50-char chunks to find "Hotspots" diluted by safe text.
+    max_sector_ratio = 0.0
+    bomb_sector_loc = None
     
+    if len(t) > 20: # Only scan if text is significant
+        step = 50
+        for i in range(0, len(t), step):
+            chunk = t[i:i+step]
+            # Fast Physics for Chunk
+            c_fdfd = chunk.count('\ufdfd')
+            c_nfkc = unicodedata.normalize("NFKC", chunk)
+            c_len_raw = len(chunk)
+            
+            # Apply same FDFD patch to chunk
+            c_len_norm = len(c_nfkc)
+            if c_fdfd > 0 and '\ufdfd' in c_nfkc:
+                c_len_norm += (17 * c_fdfd)
+                
+            c_ratio = c_len_norm / (c_len_raw + 1e-9)
+            
+            if c_ratio > max_sector_ratio:
+                max_sector_ratio = c_ratio
+                bomb_sector_loc = f"#{i}-{min(i+step, len(t))}"
+
+    # ------------------------------------------------------------------
+    # REPORTING LOGIC
+    
+    # 1. Global Alert (Massive Bomb)
     if expansion_ratio > 2.0 and len(t) > 10:
         add_row(f"CRITICAL: Normalization Bomb (Ratio {expansion_ratio:.1f}x)", 
                 1, ["Potential DoS Vector"], "crit", badge="DoS RISK")
+                
+    # 2. Localized Alert (Hidden/Diluted Bomb)
+    # If Global was safe (<2.0) but a Sector was fatal (>3.0), we flag it.
+    elif max_sector_ratio > 3.0:
+        # We FORCE the expansion_ratio up so the Integrity Score sees it
+        expansion_ratio = max_sector_ratio 
+        add_row(f"CRITICAL: Localized Bomb (Sector Ratio {max_sector_ratio:.1f}x)", 
+                1, [f"Hotspot at {bomb_sector_loc}"], "crit", badge="SECTOR BOMB")
+                
     elif expansion_ratio > 1.5 and len(t) > 10:
-        add_row(f"Flag: High Expansion Factor ({expansion_ratio:.1f}x)", 
-                1, ["Check for 'Doppelgänger' characters"], "warn")
+         add_row(f"Flag: High Expansion Factor ({expansion_ratio:.1f}x)", 
+                 1, ["Check for 'Doppelgänger' characters"], "warn")
 
     # 2. Surrogate Scar Tissue (Reconstitution Risk)
     # Detects adjacent or clustered surrogates that suggest a failed filter or 
