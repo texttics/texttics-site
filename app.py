@@ -14175,7 +14175,10 @@ def compute_integrity_score(inputs):
     add_entry("Private Use Area (PUA)", inputs.get("pua", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
     add_entry("Legacy Control Chars", inputs.get("legacy_ctrl", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
     add_entry("Deceptive Spaces", inputs.get("dec_space", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
-    
+    add_entry("Security Discouraged", inputs.get("discouraged", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    add_entry("Deprecated Codepoints", inputs.get("deprecated", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    add_entry("Restricted Identifier", inputs.get("restricted_id", 0), "DECAY", INT_BASE_DECAY, INT_MULT_DECAY)
+    add_entry("Unassigned (Void)", inputs.get("unassigned", 0), "RISK", INT_BASE_RISK, INT_MULT_RISK)
     if inputs.get("not_nfc"):
         add_entry("Normalization Drift (Not NFC)", 1, "DECAY", 1, 0) # Fixed low cost
 
@@ -23587,33 +23590,36 @@ def update_all(event=None):
     def _get_f_count(lbl): return forensic_map.get(lbl, {}).get("count", 0)
     
     integrity_inputs = {
-        # [WIRED] Atomic Physics - Extracting the new alerts for the Master Score
-        "stability_risk_count": _get_f_count("CRITICAL: Canonical Stability Ambiguity (Ordering Exploit)"),
-        "surrogate_scar_count": _get_f_count("CRITICAL: Surrogate Cluster (Reconstitution Risk)"),
-        # Note: Expansion Ratio is a derived metric, we trigger the bomb score if the row exists
-        "expansion_ratio": 3.0 if _get_f_count("CRITICAL: Normalization Bomb (Ratio") > 0 else 1.0, 
-        
-        # Now health_issues is available in this scope
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
+        "surrogate_scar_count": len(surrogate_clusters),
+        "expansion_ratio": expansion_ratio,
+        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])),
         
-        "stream_safe_violations": _get_f_count("CRITICAL: Stream-Safe Violation (UAX #15)"),
+        # Standard lookups
         "fffd": _get_f_count("Flag: Replacement Char (U+FFFD)"),
         "surrogate": _get_f_count("Surrogates (Broken)"),
         "nul": _get_f_count("Flag: NUL (U+0000)"),
-        "bidi_broken_count": _get_f_count("Flag: Unclosed Bidi Sequence") + _get_f_count("Flag: Unmatched PDF/PDI"),
+        "bidi_broken_count": bidi_pen,
         "broken_keycap": _get_f_count("Flag: Broken Keycap Sequence"),
-        "hidden_marks": _get_f_count("Flag: Marks on Non-Visual Base"),
+        "hidden_marks": len(legacy_indices["suspicious_syntax_vs"]), 
         "tags": _get_f_count("Flag: Unicode Tags (Plane 14)"),
         "nonchar": _get_f_count("Noncharacter"),
         "invalid_vs": _get_f_count("Flag: Invalid Variation Selector"),
-        "donotemit": _get_f_count("Prop: Discouraged (DoNotEmit)"),
-        "max_cluster_len": _get_f_count("Max Invisible Run Length"),
+        "donotemit": _get_f_count("Flag: Do-Not-Emit Characters"),
+        "max_cluster_len": cluster_max_len,
         "bom": _get_f_count("Flag: Internal BOM (U+FEFF)"),
         "pua": _get_f_count("Flag: Private Use Area (PUA)"),
         "legacy_ctrl": _get_f_count("Flag: Other Control Chars (C0/C1)"),
         "dec_space": _get_f_count("Deceptive Spaces"),
-        "not_nfc": _get_f_count("Flag: Normalization (Not NFC)") > 0,
-        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)")
+        "not_nfc": not (t == unicodedata.normalize("NFC", t)),
+        "bidi_present": _get_f_count("Flag: Bidi Controls (UAX #9)"),
+        
+        "discouraged": len(legacy_indices["discouraged"]),
+        "deprecated": len(legacy_indices["deprecated"]),
+        "nfkc_fold": len(legacy_indices["norm_fold"]),
+        "unassigned": len(legacy_indices["unassigned"]),
+        "restricted_id": id_issue_count
     }
 
     
