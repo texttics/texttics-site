@@ -15539,7 +15539,14 @@ def compute_grapheme_stats(t: str):
     }
 
     # Build Summary (for Meta-Analysis cards)
-    summary_stats = {"Total Graphemes": total_graphemes}
+    # We explicitly inject the verdict here so render_cards sees it.
+    summary_stats = {
+        "Total Graphemes": total_graphemes,
+        "seg_verdict": seg_verdict,
+        "seg_class": seg_class,
+        "seg_reason": seg_reason,
+        "Avg. Marks per Grapheme": round(avg_marks, 2)
+    }
     
     # Build Grapheme Forensics (Module 1.5)
 
@@ -19097,11 +19104,17 @@ def render_ccc_table(stats_dict, element_id):
         return
 
     for key in sorted_keys:
+        # [POLISH] Hide internal logic keys (starting with _)
+        if key.startswith("_"):
+            continue
+
         count = stats_dict[key]
         if count == 0:
             continue
         
-        class_num = key.split('=')[-1]
+        # Key format is "ccc=230"
+        parts = key.split('=')
+        class_num = parts[-1] if len(parts) > 1 else key
         description = CCC_ALIASES.get(class_num, "N/A")
         
         html.append(
