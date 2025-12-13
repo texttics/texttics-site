@@ -2957,3 +2957,33 @@ We have transitioned the emoji analysis engine from simple dictionary validation
 * **`EmojiForensics`:** A static taxonomy engine for O(1) classification of component types.
 * **`EmojiPhysicsEngine`:** A topological logic engine that runs the 5-vector analysis.
 * **Real-Time Age Hydration:** The system parses the official Unicode `DerivedAge.txt` file into memory, enabling accurate, version-aware forensic dating for every character.
+
+**Update Log: The "Atomic Physics" Engine (v3.0)**
+
+This session implemented a major architectural upgrade to the forensic core, shifting from simple "character counting" to a physics-based analysis of text behavior. The system now detects threats based on how text *acts* (expands, reorders, hides) rather than just what it *is*.
+
+**New Forensic Capabilities:**
+
+1.  **Normalization Bomb Detector (DoS Physics)**
+    * **The Threat:** Detects "Mass Defect" attacks where small payloads explode into massive strings under Unicode Normalization (e.g., `﷽` $\to$ 18 characters).
+    * **The Solution:** Implemented a real-time `Expansion Ratio` sensor.
+    * **Trigger:** Ratios > 2.0x now trigger a **FATAL (CRITICAL)** integrity violation, flagging potential Buffer Overflow and Denial of Service vectors.
+
+2.  **Canonical Stability Analysis (The "Zalgo" Singularity)**
+    * **The Threat:** "Stable Permutations" where attackers swap the order of identical combining marks (e.g., two `CCC=230` marks) to bypass hashing filters while maintaining identical rendering.
+    * **The Solution:** Injected a `Canonical Stability` sensor that tracks the Combining Class (CCC) of adjacent marks.
+    * **Trigger:** Adjacent marks with the same non-zero CCC now trigger a **SPOOFING (CRITICAL)** alert, warning of potential signature bypasses.
+
+3.  **Atomic Density Metric (ADM)**
+    * **The Threat:** "Neutron Star" text—strings that look short visually but consume massive storage (e.g., Family Emoji sequences, Zalgo stacks).
+    * **The Solution:** Added a `Bytes-per-Grapheme` calculator to the Core Metrics card.
+    * **Trigger:** Density > 8.0 b/g is flagged as **MASS DEFECT**, identifying high-density payloads that can crash rendering engines.
+
+4.  **Surrogate Scar Detection (Reconstitution Risk)**
+    * **The Threat:** "Healing" attacks where a sanitizer strips a high-surrogate, causing two previously separated halves to fuse into a valid (but malicious) character.
+    * **The Solution:** Added a `Surrogate Cluster` scanner that detects adjacent or broken surrogate pairs in the raw stream.
+    * **Trigger:** Any found cluster flags a **FRACTURE (CRITICAL)** risk, warning of potential encoding manipulation.
+
+5.  **Forensic Scoring Bridge (The "Judge")**
+    * **The Fix:** Rewired the entire Integrity Scoring Engine (`compute_integrity_score`) to explicitly weigh these new physics violations.
+    * **Result:** The "Integrity Level" now correctly escalates from **HEALTHY (Green)** to **CORRUPT (Red)** when atomic violations are detected, with precise point penalties (e.g., +50 for Normalization Bombs).
