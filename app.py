@@ -14145,6 +14145,35 @@ def compute_integrity_score(inputs):
     scar_count = inputs.get("surrogate_scar_count", 0)
     if scar_count > 0:
         add_entry("Surrogate Scar Tissue", scar_count, "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
+
+    # [ATOMIC PHYSICS] Recursive Surrogate Smuggling
+    # Severity: FATAL (Bypass Vector)
+    rec_depth = inputs.get("recursive_surr_depth", 0)
+    if rec_depth > 1:
+        ledger.append({
+            "vector": "SURROGATE_SMUGGLING",
+            "count": rec_depth,
+            "severity": "FATAL",
+            "points": 60 # Critical Security Bypass
+        })
+
+    # [ATOMIC PHYSICS] Void Ratio (Ghost Topology)
+    # Severity: DECAY -> RISK (Steganography)
+    v_ratio = inputs.get("void_ratio", 0.0)
+    if v_ratio > 0.25: # >25% Invisible
+        ledger.append({
+            "vector": "GHOST_TOPOLOGY (High Void Ratio)",
+            "count": 1,
+            "severity": "RISK",
+            "points": 25 # High Probability of Hidden Payload
+        })
+    elif v_ratio > 0.05: # >5% Invisible
+        ledger.append({
+            "vector": "VOID_DENSITY",
+            "count": 1,
+            "severity": "DECAY",
+            "points": 10
+        })
     
     # --- 2. FRACTURE (Structural Breaks) ---
     # Logic Gate: If Bidi structure is broken, we flag it here.
@@ -16947,6 +16976,61 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         add_row("CRITICAL: Surrogate Cluster (Reconstitution Risk)", 
                 len(surrogate_clusters), surrogate_clusters, "crit", badge="SCAR")
 
+    # [DUAL-ATOM] II. Recursive Surrogate Sanitization (Smuggling Detector)
+    # Detects "Russian Doll" attacks (H1 [H2 L2] L1)
+    recursive_surrogate_depth = 0
+    
+    # Only run expensive simulation if surrogates exist
+    if health_issues["surrogate"]:
+        # Extract pure surrogate stream (High/Low sequence)
+        surr_stream = [ord(c) for c in js_array if 0xD800 <= ord(c) <= 0xDFFF]
+        
+        current_depth = 0
+        mutation_occurred = True
+        
+        while mutation_occurred and surr_stream:
+            mutation_occurred = False
+            next_gen = []
+            skip_next = False
+            
+            for k in range(len(surr_stream)):
+                if skip_next:
+                    skip_next = False
+                    continue
+                
+                # Check for Valid Pair (High + Low)
+                is_pair = False
+                if k + 1 < len(surr_stream):
+                    h, l = surr_stream[k], surr_stream[k+1]
+                    if (0xD800 <= h <= 0xDBFF) and (0xDC00 <= l <= 0xDFFF):
+                        is_pair = True
+                
+                if is_pair:
+                    mutation_occurred = True
+                    skip_next = True # Strip the pair
+                else:
+                    next_gen.append(surr_stream[k]) # Keep the orphan
+            
+            if mutation_occurred:
+                current_depth += 1
+                surr_stream = next_gen
+        
+        if current_depth > 1:
+            recursive_surrogate_depth = current_depth
+            add_row(f"CRITICAL: Recursive Surrogate Smuggling (Depth {current_depth})", 
+                    1, ["Nested Encoding Layers Detected"], "crit", badge="SMUGGLING")
+
+    # [DUAL-ATOM] V. Void Physics (Ghost Topology)
+    total_void_count = len(flags["any_invis"])
+    void_ratio = 0.0
+    if len(t) > 0:
+        void_ratio = total_void_count / len(t)
+        
+        # Forensic Trigger: Void Ratio > 5%
+        if void_ratio > 0.05: 
+             add_row(f"Flag: High Void Ratio ({void_ratio:.1%})", 
+                     total_void_count, ["Text is mostly invisible"], "warn", badge="GHOST")
+
     # --- Standard Structural Analysis ---
     
     # Call analyze_bidi_structure ONLY ONCE and unpack correctly
@@ -17211,6 +17295,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     # --- 2. Build Inputs ---
     integrity_inputs = {
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        "void_ratio": void_ratio,
+        "recursive_surr_depth": recursive_surrogate_depth,
         "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
         "surrogate_scar_count": len(surrogate_clusters),
         "expansion_ratio": expansion_ratio,
