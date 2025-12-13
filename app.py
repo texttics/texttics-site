@@ -16936,11 +16936,11 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         
         # Atomic Physics & Stability Metrics
         "expansion_ratio": expansion_ratio if 'expansion_ratio' in locals() else 1.0,
-        "surrogate_scar_count": len(surrogate_clusters) if 'surrogate_clusters' in locals() else 0,
         "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
+        "surrogate_scar_count": len(surrogate_clusters) if 'surrogate_clusters' in locals() else 0,
         
         # Wrap in len() to prevent TypeError: list > int
-        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])), 
+        "stream_safe_violations": len(nsm_stats.get("stream_safe_violations", [])),
         
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
