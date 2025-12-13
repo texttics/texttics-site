@@ -16878,13 +16878,13 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     else:
          expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
 
-    # ENGINE 2: Sector Scanner (Localized Bomb Detection)
-    # Scans 50-char chunks to find "Hotspots" diluted by safe text.
+    # ENGINE 2: Micro-Sector Scanner (Localized Bomb Detection; High Frequency)
+    # Scans tiny 10-char chunks to catch bombs hidden by "ballast" text.
     max_sector_ratio = 0.0
     bomb_sector_loc = None
     
     if len(t) > 20: # Only scan if text is significant
-        step = 50
+        step = 10
         for i in range(0, len(t), step):
             chunk = t[i:i+step]
             # Fast Physics for Chunk
@@ -16913,7 +16913,8 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
                 
     # 2. Localized Alert (Hidden/Diluted Bomb)
     # If Global was safe (<2.0) but a Sector was fatal (>3.0), we flag it.
-    elif max_sector_ratio > 3.0:
+    # Threshold lowered to 2.5x to catch bombs mixed with Zalgo
+    elif max_sector_ratio > 2.5:
         # We FORCE the expansion_ratio up so the Integrity Score sees it
         expansion_ratio = max_sector_ratio 
         add_row(f"CRITICAL: Localized Bomb (Sector Ratio {max_sector_ratio:.1f}x)", 
