@@ -16637,6 +16637,29 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
 
     if LOADING_STATE == "READY":
         js_array = window.Array.from_(t)
+        # [ATOMIC PHYSICS ENGINE] - Must run BEFORE the main loop
+        # 1. Normalization Bomb Detector
+        nfkc_t = unicodedata.normalize("NFKC", t)
+        expansion_ratio = len(nfkc_t) / (len(t) + 1e-9)
+        
+        # 2. Surrogate Scar Detector
+        surrogate_clusters = []
+        _prev_surr = False
+        for _idx, _char in enumerate(js_array): # Use temporary loop for pre-scan
+            _cp = ord(_char)
+            _is_surr = (0xD800 <= _cp <= 0xDFFF)
+            if _is_surr and _prev_surr:
+                surrogate_clusters.append(f"#{_idx-1}-{_idx}")
+            _prev_surr = _is_surr
+
+        # 3. Register Critical Alerts (The Missing Rows)
+        if expansion_ratio > 2.0 and len(t) > 0: # Removed len check to catch small bombs
+            add_row(f"CRITICAL: Normalization Bomb (Ratio {expansion_ratio:.1f}x)", 
+                    1, ["Potential DoS Vector"], "crit", badge="DoS RISK")
+        
+        if surrogate_clusters:
+            add_row("CRITICAL: Surrogate Cluster (Reconstitution Risk)", 
+                    len(surrogate_clusters), surrogate_clusters, "crit", badge="SCAR")
         for i, char in enumerate(js_array):
             try:
                 cp = ord(char)
