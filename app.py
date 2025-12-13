@@ -15461,12 +15461,19 @@ def compute_code_point_stats(t: str, emoji_counts: dict):
 def compute_grapheme_stats(t: str):
     """Module 1 (Grapheme): Runs analysis on Grapheme Clusters."""
     
-    segments_iterable = GRAPHEME_SEGMENTER.segment(t)
-    segments = window.Array.from_(segments_iterable)
+    # 1. Segmentation
+    try:
+        segments_iterable = GRAPHEME_SEGMENTER.segment(t)
+        segments = window.Array.from_(segments_iterable)
+    except:
+        # Fallback if Segmenter missing
+        segments = []
+        
     total_graphemes = len(segments)
 
+    # 2. Init Counters
     minor_stats = {key: 0 for key in MINOR_CATEGORIES_29}
-    minor_stats["Cn"] = 0 # Initialize Cn
+    minor_stats["Cn"] = 0 
     
     # Module 1.5 Grapheme Forensic stats
     single_cp_count = 0
@@ -15475,29 +15482,24 @@ def compute_grapheme_stats(t: str):
     max_marks = 0
     
     # NFC Stability Tracker
-    # We track graphemes that are physically different from their NFC form.
-    # This detects "Decomposed" characters (e.g. e + ´ instead of é).
     non_nfc_indices = []
 
     # Manual Python Index for Reporting
     current_python_idx = 0
 
+    # 3. Analysis Loop
     for segment in segments:
         grapheme_str = segment.segment
         if not grapheme_str:
             continue
             
         # --- NFC Check ---
-        # If the grapheme changes when normalized to NFC, it is "Unstable"
         if grapheme_str != unicodedata.normalize("NFC", grapheme_str):
             non_nfc_indices.append(f"#{current_python_idx}")
         
         # --- Module 1.5 Logic (Forensics) ---
         cp_array = window.Array.from_(grapheme_str)
         cp_count = len(cp_array)
-        
-        # Advance index for next loop (Must happen after using current_python_idx but before next iteration)
-        # Note: We calculate cp_count first, then use it to increment AFTER the NFC check.
         
         if cp_count == 1:
             single_cp_count += 1
@@ -15520,14 +15522,13 @@ def compute_grapheme_stats(t: str):
                 break
         
         if not classified:
-            # Test for Cn explicitly
             if window.RegExp.new(r"^\p{Cn}$", "u").test(first_char):
                  minor_stats["Cn"] += 1
 
-        # Advance index for the next grapheme
+        # Advance index
         current_python_idx += cp_count
 
-    # Aggregate Major Categories
+    # 4. Aggregate Major Categories
     major_stats = {
         "L (Letter)": minor_stats["Lu"] + minor_stats["Ll"] + minor_stats["Lt"] + minor_stats["Lm"] + minor_stats["Lo"],
         "M (Mark)": minor_stats["Mn"] + minor_stats["Mc"] + minor_stats["Me"],
@@ -15538,30 +15539,17 @@ def compute_grapheme_stats(t: str):
         "C (Other)": minor_stats["Cc"] + minor_stats["Cf"] + minor_stats["Cs"] + minor_stats["Co"] + minor_stats["Cn"]
     }
 
-    # Build Summary (for Meta-Analysis cards)
-    # We explicitly inject the verdict here so render_cards sees it.
-    summary_stats = {
-        "Total Graphemes": total_graphemes,
-        "seg_verdict": seg_verdict,
-        "seg_class": seg_class,
-        "seg_reason": seg_reason,
-        "Avg. Marks per Grapheme": round(avg_marks, 2)
-    }
-    
-    # Build Grapheme Forensics (Module 1.5)
-
+    # 5. Logic Calculation (Must happen BEFORE dictionary creation)
     avg_marks = (total_mark_count / total_graphemes) if total_graphemes > 0 else 0
 
-    # Segmentation Complexity Verdict (Zalgo / Grapheme Complexity)
-    # Ref: UTR #36 "Grapheme Cluster Security"
+    # Segmentation Complexity Verdict
+    # Ref: UTR #36 "Grapheme Cluster Security" + ZALGO_PHYSICS
     seg_verdict = "LOW"
     seg_reason = "Simple clusters."
     seg_class = "badge-ok"
 
-    if total_graphemes >= 3: # Ignore microscopic samples
+    if total_graphemes >= 3: 
         # Verdict: Standardized via ZALGO_PHYSICS (Block 2)
-        # We now use the Saturated Physics Constants to ensure the Card matches the Report.
-        
         if max_marks >= ZALGO_PHYSICS.THR_CRIT_MARKS or avg_marks >= ZALGO_PHYSICS.THR_CRIT_DENSITY:
             seg_verdict = "HIGH (Zalgo)"
             seg_reason = "Stacking Abuse Detected (Rendering Instability Risk)"
@@ -15571,6 +15559,8 @@ def compute_grapheme_stats(t: str):
             seg_reason = "Complex Clusters (Emoji Sequences or Heavy Diacritics)"
             seg_class = "badge-warn"
     
+    # 6. Build Output Dictionaries (Now that variables exist)
+    
     grapheme_forensic_stats = {
         "Single-Code-Point": single_cp_count,
         "Multi-Code-Point": multi_cp_count,
@@ -15579,11 +15569,19 @@ def compute_grapheme_stats(t: str):
         "Avg. Marks per Grapheme": round(avg_marks, 2),
         "seg_verdict": seg_verdict,
         "seg_reason": seg_reason,
-        "seg_class": seg_class
+        "seg_class": seg_class,
+        "_non_nfc_indices": non_nfc_indices
     }
-    
-    # Pass the NFC data out via the stats dictionary 
-    grapheme_forensic_stats["_non_nfc_indices"] = non_nfc_indices
+
+    # We explicitly inject the verdict here so render_cards sees it.
+    # Because we are defining this dictionary AT THE END, seg_verdict is now defined.
+    summary_stats = {
+        "Total Graphemes": total_graphemes,
+        "seg_verdict": seg_verdict,
+        "seg_class": seg_class,
+        "seg_reason": seg_reason,
+        "Avg. Marks per Grapheme": round(avg_marks, 2)
+    }
 
     return summary_stats, major_stats, minor_stats, grapheme_forensic_stats
 
