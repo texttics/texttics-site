@@ -16599,6 +16599,9 @@ def compute_stage1_5_forensics(text):
 
 def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_flags: dict, grapheme_stats: dict):
     """Hybrid Forensic Analysis with Uncapped Scoring & Structural Feedback."""
+
+    # [INIT] Safety Default (Prevents UnboundLocalError)
+    expansion_ratio = 1.0
     
     # --- 0. Helper Definitions (MOVED TO TOP TO PREVENT CRASH) ---
     rows = []
@@ -16975,7 +16978,7 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
         
         # Atomic Physics & Stability Metrics
-        "expansion_ratio": expansion_ratio if 'expansion_ratio' in locals() else 1.0,
+        "expansion_ratio": expansion_ratio,
         "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
         "surrogate_scar_count": len(surrogate_clusters) if 'surrogate_clusters' in locals() else 0,
         
