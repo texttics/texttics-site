@@ -14108,7 +14108,7 @@ def compute_integrity_score(inputs):
     add_entry("Broken Encoding (Surrogates)", inputs.get("surrogate", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
     add_entry("Binary Injection (Null Bytes)", inputs.get("nul", 0), "FATAL", INT_BASE_FATAL, INT_MULT_FATAL)
     
-    # [NEW] UAX #15 Stream-Safe Limit (Capacity)
+    # UAX #15 Stream-Safe Limit (Capacity)
     stream_unsafe_count = inputs.get("stream_safe_violations", 0)
     if stream_unsafe_count > 0:
         ledger.append({
@@ -14117,6 +14117,34 @@ def compute_integrity_score(inputs):
             "severity": "FATAL",
             "points": 40 # Base Fatal Score
         })
+
+    # [ATOMIC PHYSICS] Canonical Stability (Ordering Exploit)
+    # Severity: FATAL (Bypasses Hashing/Normalization Filters)
+    stability_count = inputs.get("stability_risk_count", 0)
+    if stability_count > 0:
+        ledger.append({
+            "vector": "CANONICAL_STABILITY_FAILURE",
+            "count": stability_count,
+            "severity": "FATAL",
+            "points": 35 # High Integrity Breach
+        })
+
+    # [ATOMIC PHYSICS] Normalization Bomb (Expansion Ratio)
+    # Severity: FATAL (DoS Vector)
+    expansion_ratio = inputs.get("expansion_ratio", 1.0)
+    if expansion_ratio > 2.0:
+        ledger.append({
+            "vector": "NORMALIZATION_BOMB",
+            "count": 1,
+            "severity": "FATAL",
+            "points": 50 # DoS Risk
+        })
+
+    # [ATOMIC PHYSICS] Surrogate Scars (Reconstitution)
+    # Severity: FRACTURE (Encoding Integrity)
+    scar_count = inputs.get("surrogate_scar_count", 0)
+    if scar_count > 0:
+        add_entry("Surrogate Scar Tissue", scar_count, "FRACTURE", INT_BASE_FRACTURE, INT_MULT_FRACTURE)
     
     # --- 2. FRACTURE (Structural Breaks) ---
     # Logic Gate: If Bidi structure is broken, we flag it here.
@@ -14377,6 +14405,15 @@ def compute_threat_score(inputs):
     # Checks for Future Particles (Compatibility Risk)
     if inputs.get("temporal_findings"):
         audit_cosmology(inputs["temporal_findings"], ledger)
+
+    # [ATOMIC PHYSICS] Mass Defect (Neutron Star Text)
+    # Checks for extreme byte-to-grapheme density (Length Oracle Attack)
+    # We calculate ADM here if mass_stats is available, or pass it in.
+    # Assuming 'mass_stats' contains raw sums, we can use inputs.get("adm", 0)
+    
+    adm = inputs.get("adm", 0.0)
+    if adm > ZALGO_PHYSICS.ADM_CRITICAL:
+        add_entry(f"Mass Defect (Density {adm:.1f} b/g)", THR_BASE_OBFUSCATION, "OBFUSCATION")
 
     # B. The Accountant (Mass)
     # Checks for Numeric Masquerade (Parser Ambiguity)
@@ -16896,6 +16933,9 @@ def compute_forensic_stats_with_positions(t: str, cp_minor_stats: dict, emoji_fl
     # --- 2. INTEGRITY AUDITOR ---
     auditor_inputs = {
         "hyper_astral_count": len(health_issues.get("hyper_complex", [])),
+        "stability_risk_count": len(legacy_indices.get("canonical_stability", [])),
+        "expansion_ratio": expansion_ratio,
+        "surrogate_scar_count": len(surrogate_clusters),
         "fffd": len(health_issues["fffd"]),
         "surrogate": len(health_issues["surrogate"]),
         "nul": len(health_issues["nul"]),
@@ -23757,17 +23797,15 @@ def update_all(event=None):
     zalgo_participants.sort(key=lambda x: x['marks'], reverse=True)
 
     # ==============================================================================
-    # [PATCH] SYNCHRONIZE ZALGO COUNTS (Fixes "x6" vs "7" Discrepancy)
-    # The analyze_nsm_overload function strictly counts marks >= 3.
-    # The loop above correctly captured an Invisible Stack with only 2 marks.
-    # We must force nsm_stats to accept the total forensic count.
+    # [PATCH] SYNCHRONIZE ZALGO COUNTS (Cleaned)
+    # Ensure the physics engine (nsm_stats) respects the detailed participant list.
     # ==============================================================================
-    nsm_stats["count"] = len(zalgo_participants)
-    
-    # The analyze_nsm_overload function strictly counts marks >= 3.
-    # The forensic loop above captured ALL anomalies. We sync them here.
-    if len(zalgo_participants) > 0:
+    if zalgo_participants:
         nsm_stats["count"] = len(zalgo_participants)
+        # Force level upgrade if we found invisible stacks that nsm_stats missed
+        if nsm_stats["level"] == 0:
+            nsm_stats["level"] = 1 
+            
     stat_profile['zalgo'] = nsm_stats
     stat_profile['zalgo_participants'] = zalgo_participants
 
@@ -23777,6 +23815,12 @@ def update_all(event=None):
     if threat_results.get("skel_metrics", {}).get("drift_ascii", 0) > 0: 
         noise_list.append("ASCII Normalization Drift")
         
+    # [ATOMIC PHYSICS] Calculate ADM for Threat Score
+    # We need to pass the "Mass Defect" metric to the Threat Auditor.
+    total_bytes_threat = cp_summary.get("UTF-8 Bytes", 0)
+    total_graphs_threat = gr_summary.get("Total Graphemes", 1)
+    adm_val = total_bytes_threat / (total_graphs_threat + 1e-9)
+
     # Build Inputs for Threat Auditor
     score_inputs = {
         "waf_score": threat_results.get("waf_score", 0),
@@ -23798,8 +23842,9 @@ def update_all(event=None):
         "temporal_findings": scan_temporal_anomalies(t),
         "mass_stats": calculate_global_sum_v2(t),
         "geometric_findings": scan_geometric_anomalies(t),
-        "vs_signals": scan_vs_topology(t)[1], # Index 1 is the signals list
-        "noise_list": noise_list
+        "vs_signals": scan_vs_topology(t)[1], 
+        "noise_list": noise_list,
+        "adm": adm_val
     }
     
     # Calculate! (This generates the 'ledger' key)
@@ -23807,7 +23852,7 @@ def update_all(event=None):
 
     # THE MASTER AUDITOR (New Logic from Block 7)
     
-    # Convert reality signals to Integrity Format
+    # 1. Convert reality signals to Integrity Format
     reality_items = []
     for sig in reality_signals:
         reality_items.append({
@@ -23819,7 +23864,8 @@ def update_all(event=None):
             "indices": [] # Global error, no position
         })
 
-    # Pass to Auditor (Merge Reality Items into Integrity)
+    # 2. Execute Audit (Merge Reality Items into Integrity)
+    # We use the 'final_score' and 'stage1_5_data' calculated in the previous steps.
     master_ledgers = audit_master_ledgers(
         inputs=integrity_inputs, 
         stats_inputs=stat_profile, 
@@ -23832,22 +23878,22 @@ def update_all(event=None):
     
     # --- Prepare Data for Renderers ---
     
-    # 2.A Cards
+    # 2.A Cards (The Forensic Quad)
     meta_cards = {
-        # --- The Forensic Quad-Metric Reality ---
-        "Total Graphemes": gr_summary.get("Total Graphemes", 0),   # Visual
-        # Bridge the Forensic Verdict to the UI Card
+        # Visual & Verdicts (Bridged from gr_summary)
+        "Total Graphemes": gr_summary.get("Total Graphemes", 0),
         "seg_verdict": gr_summary.get("seg_verdict", "LOW"),
         "seg_class": gr_summary.get("seg_class", "badge-ok"),
         "Avg. Marks per Grapheme": gr_summary.get("Avg. Marks per Grapheme", 0),
-        "Total Code Points": cp_summary.get("Total Code Points", 0), # Logical
-        "UTF-16 Units": cp_summary.get("UTF-16 Units", 0),       # Runtime (JS/Java)
-        "UTF-8 Bytes": cp_summary.get("UTF-8 Bytes", 0),         # Physical (Storage)
-        "Astral Count": cp_summary.get("Astral Count", 0),       # Context (Subtitle for UTF-16)
-        "Avg. Marks per Grapheme": grapheme_forensics.get("Avg. Marks per Grapheme", 0),
+        
+        # Logical & Physical
+        "Total Code Points": cp_summary.get("Total Code Points", 0),
+        "UTF-16 Units": cp_summary.get("UTF-16 Units", 0),
+        "UTF-8 Bytes": cp_summary.get("UTF-8 Bytes", 0),
+        "Astral Count": cp_summary.get("Astral Count", 0),
         "Total Combining Marks": grapheme_forensics.get("Total Combining Marks", 0),
         
-        # --- Contextual Metrics ---
+        # Contextual Metrics
         "RGI Emoji Sequences": emoji_counts.get("rgi_total", 0), 
         "Whitespace (Total)": cp_summary.get("Whitespace (Total)", 0),
         "ASCII-Compatible": cp_summary.get("ASCII-Compatible"),
@@ -23856,67 +23902,23 @@ def update_all(event=None):
         "Supplementary Planes": cp_summary.get("Supplementary Planes"),
     }
     
-    # STRICT FORENSIC ORDER: Visual -> Logical -> Runtime -> Physical -> [Context]
     meta_cards_order = [
-        "Total Graphemes", 
-        "Total Code Points", 
-        "UTF-16 Units", 
-        "UTF-8 Bytes",
-        "RGI Emoji Sequences", 
-        "Whitespace (Total)",
+        "Total Graphemes", "Total Code Points", "UTF-16 Units", "UTF-8 Bytes",
+        "RGI Emoji Sequences", "Whitespace (Total)",
         "ASCII-Compatible", "Latin-1-Compatible", "BMP Coverage", "Supplementary Planes"
     ]
-    grapheme_cards = grapheme_forensics
     
+    grapheme_cards = grapheme_forensics
     shape_matrix = major_seq_stats
     prov_matrix = provenance_stats
 
-    # --- THREAT FLAGS & SCORE LOGIC ---
-    grapheme_strings = [seg.segment for seg in window.Array.from_(GRAPHEME_SEGMENTER.segment(t))]
-    nsm_stats = analyze_nsm_overload(grapheme_strings)
-
-    def get_count(label):
-        return forensic_map.get(label, {}).get("count", 0)
-
-    malicious_bidi = threat_results.get('bidi_danger', False)
-    script_mix_class = threat_results.get('script_mix_class', "")
-    skel_metrics = threat_results.get("skel_metrics", {})
-    
-    noise_list = []
-    if nsm_stats["level"] >= 1: noise_list.append("Excessive Combining Marks (Zalgo)")
-    drift_ascii = skel_metrics.get("drift_ascii", 0)
-    if drift_ascii > 0: noise_list.append(f"ASCII Normalization Drift ({drift_ascii} chars)")
-
-    # Calculate counts for new engines
-    # Retrieve flags from the results object (threat_flags is not local to this function)
-    current_flags = threat_results.get('flags', {})
-
-    score_inputs = {
-        # WIRING
-        "waf_score": threat_results.get("waf_score", 0),
-        "norm_injection_count": norm_inj_count,
-        "logic_bypass_count": logic_bypass_count,
-        
-        # [EXISTING]
-        "malicious_bidi": malicious_bidi,
-        "has_unclosed_bidi": get_count("Flag: Unclosed Bidi Sequence") > 0,
-        "drift_cross_script": skel_metrics.get("drift_cross_script", 0),
-        "script_mix_class": script_mix_class,
-        "max_invis_run": forensic_map.get("Max Invisible Run Length", {}).get("count", 0),
-        "invis_cluster_count": forensic_map.get("Invisible Clusters (All)", {}).get("count", 0),
-        "rgi_count": emoji_counts.get("rgi_total", 0),
-        "tags_count": get_count("Flag: Unicode Tags (Plane 14)"),
-        "suspicious_syntax_vs": get_count("SUSPICIOUS: Variation Selector on Syntax") > 0,
-        "forced_pres_count": (
-            emoji_flags.get("Flag: Forced Emoji Presentation", {}).get("count", 0) +
-            emoji_flags.get("Flag: Forced Text Presentation", {}).get("count", 0)
-        ),
-        "noise_list": noise_list
-    }
-    
-    final_score = compute_threat_score(score_inputs)
+    # --- THREAT FLAGS CONSTRUCTION (UI Table) ---
+    # [CLEANUP] Removed redundant re-calculation of final_score and nsm_stats.
+    # We use the data computed in the previous injection.
     
     final_threat_flags = {}
+    
+    # 1. Add the Score Summary Row
     score_badge = f"{final_score['verdict']} (Score: {final_score['score']})"
     final_threat_flags["Threat Level (Heuristic)"] = {
         'count': 0, 'positions': [],
@@ -23926,23 +23928,18 @@ def update_all(event=None):
         'noise': final_score.get('noise', [])
     }
 
-    # MERGE STAGE 1.7 FINDINGS INTO DISPLAY
-    # We convert the list-based findings from the new Auditors into the 
-    # dictionary format required by render_threat_analysis.
-    
-    # 1. Merge Threat Items (Regex Kryptonite, CSV Injection)
+    # 2. Merge Stage 1.7 Findings (Regex & Authenticity)
+    # Formats the raw audit items into the UI table structure.
     for item in new_threat_items:
-        # Create a unique key for the table
         label = item.get("label", "Unknown Threat")
         final_threat_flags[label] = {
             "count": item.get("count", 1),
-            "severity": "crit" if "CRITICAL" in label else "warn", # Visual mapping
-            "badge": item.get("vector", "THREAT"), # e.g. SYNTAX_EVASION
+            "severity": "crit" if "CRITICAL" in label else "warn",
+            "badge": item.get("vector", "THREAT"),
             "positions": [f"#{i}" for i in item.get("indices", [])],
             "details": item.get("details", "")
         }
 
-    # 2. Merge Authenticity Items (Syntax Spoofing)
     for item in new_authenticity_items:
         label = item.get("label", "Unknown Risk")
         final_threat_flags[label] = {
@@ -23953,12 +23950,17 @@ def update_all(event=None):
             "details": item.get("details", "")
         }
     
+    # 3. Add Zalgo Flag (Using Synced Stats)
     if nsm_stats["count"] > 0:
         sev = "crit" if nsm_stats["level"] == 2 else "warn"
-        label = "Flag: Excessive Combining Marks (Zalgo)"
-        final_threat_flags[label] = {
+        # Ensure we have positions; if empty (invisible stacks), map from participants
+        positions = nsm_stats.get("positions", [])
+        if not positions and zalgo_participants:
+             positions = [f"#{p['idx']}" for p in zalgo_participants[:10]] # Limit to 10 for display
+
+        final_threat_flags["Flag: Excessive Combining Marks (Zalgo)"] = {
             'count': nsm_stats["count"],
-            'positions': nsm_stats["positions"],
+            'positions': positions,
             'severity': sev,
             'badge': "ZALGO"
         }
